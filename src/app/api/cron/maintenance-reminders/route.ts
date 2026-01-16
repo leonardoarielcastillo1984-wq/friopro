@@ -4,6 +4,8 @@ import { getAccessState } from "@/lib/access";
 import { sendEmail } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 
+export const runtime = "nodejs";
+
 function asDateOnly(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -75,6 +77,8 @@ export async function POST(req: Request) {
           process.env.NODE_ENV === "production"
             ? {
                 nodeEnv: process.env.NODE_ENV,
+                nextRuntime: process.env.NEXT_RUNTIME ?? null,
+                vercelEnv: process.env.VERCEL_ENV ?? null,
                 expectedSet: Boolean(process.env.CRON_SECRET),
                 expectedLen: expected.length,
                 gotLen: secret.length,
