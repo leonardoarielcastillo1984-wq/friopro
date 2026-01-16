@@ -48,10 +48,25 @@ function buildMessage({
 }
 
 export async function POST(req: Request) {
-  const secret = req.headers.get("x-cron-secret") ?? "";
-  const expected =
+  const rawSecret = req.headers.get("x-cron-secret") ?? "";
+  const rawExpected =
     process.env.CRON_SECRET ||
     (process.env.NODE_ENV !== "production" ? "change-me" : "");
+
+  const normalize = (v: string) => {
+    const trimmed = v.trim();
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      return trimmed.slice(1, -1).trim();
+    }
+    return trimmed;
+  };
+
+  const secret = normalize(rawSecret);
+  const expected = normalize(rawExpected);
+
   if (!expected || secret !== expected) {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
