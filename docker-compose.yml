@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: friopro
+      POSTGRES_PASSWORD: friopro
+      POSTGRES_DB: friopro
+    volumes:
+      - friopro_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U friopro -d friopro"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  friopro_pgdata:
