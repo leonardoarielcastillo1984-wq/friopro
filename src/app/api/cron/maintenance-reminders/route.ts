@@ -68,7 +68,21 @@ export async function POST(req: Request) {
   const expected = normalize(rawExpected);
 
   if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    return NextResponse.json(
+      {
+        error: "UNAUTHORIZED",
+        debug:
+          process.env.NODE_ENV === "production"
+            ? {
+                nodeEnv: process.env.NODE_ENV,
+                expectedSet: Boolean(process.env.CRON_SECRET),
+                expectedLen: expected.length,
+                gotLen: secret.length,
+              }
+            : undefined,
+      },
+      { status: 401 },
+    );
   }
 
   const now = new Date();
