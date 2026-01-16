@@ -73,17 +73,6 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: "UNAUTHORIZED",
-        debug:
-          process.env.NODE_ENV === "production"
-            ? {
-                nodeEnv: process.env.NODE_ENV,
-                nextRuntime: process.env.NEXT_RUNTIME ?? null,
-                vercelEnv: process.env.VERCEL_ENV ?? null,
-                expectedSet: Boolean(process.env.CRON_SECRET),
-                expectedLen: expected.length,
-                gotLen: secret.length,
-              }
-            : undefined,
       },
       { status: 401 },
     );
@@ -255,13 +244,6 @@ export async function POST(req: Request) {
       {
         error: "INTERNAL_ERROR",
         message,
-        debug:
-          process.env.NODE_ENV === "production"
-            ? {
-                hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-                hasDirectUrl: Boolean(process.env.DIRECT_URL),
-              }
-            : undefined,
       },
       { status: 500 },
     );
