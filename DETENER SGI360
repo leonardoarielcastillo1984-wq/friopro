@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# DETENER SGI360 - Sistema de Gestión Integral
+# Script para detener el backend y frontend
+
+echo "🛑 Deteniendo SGI360 - Sistema de Gestión Integral..."
+
+# Colores para output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Directorio del proyecto
+PROJECT_DIR="/Users/leonardocastillo/Desktop/APP/SGI 360"
+
+# Función para detener procesos en puertos específicos
+stop_port() {
+    local port=$1
+    local service=$2
+    echo -e "${YELLOW}🔄 Deteniendo $service (puerto $port)...${NC}"
+    
+    local pids=$(lsof -ti:$port 2>/dev/null)
+    if [ -n "$pids" ]; then
+        echo "$pids" | xargs kill -9
+        echo -e "${GREEN}✅ $service detenido${NC}"
+    else
+        echo -e "${BLUE}ℹ️  $service no estaba corriendo${NC}"
+    fi
+}
+
+# Detener Backend API (puerto 3001)
+stop_port 3001 "Backend API"
+
+# Detener Frontend Web (puerto 3000)
+stop_port 3000 "Frontend Web"
+
+# Eliminar archivos PID si existen
+if [ -f "$PROJECT_DIR/.api_pid" ]; then
+    rm "$PROJECT_DIR/.api_pid"
+    echo -e "${BLUE}🗑️  Archivo API PID eliminado${NC}"
+fi
+
+if [ -f "$PROJECT_DIR/.web_pid" ]; then
+    rm "$PROJECT_DIR/.web_pid"
+    echo -e "${BLUE}🗑️  Archivo Web PID eliminado${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}🎉 SGI360 ha sido detenido completamente!${NC}"
+echo ""
+echo -e "${BLUE}📋 Para iniciar nuevamente:${NC}"
+echo -e "   Doble click en: 'INICIAR SGI360'"
+echo -e "   o ejecuta: ./\"INICIAR SGI360\""
+echo ""

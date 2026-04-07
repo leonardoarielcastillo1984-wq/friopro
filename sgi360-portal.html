@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SGI 360 - User Portal</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f7fa;
+      color: #333;
+    }
+
+    /* AUTH PAGES STYLES */
+    .auth-container {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .auth-box {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      width: 100%;
+      max-width: 420px;
+      padding: 50px;
+    }
+
+    .auth-header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .auth-header h1 {
+      color: #333;
+      font-size: 32px;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .auth-header p {
+      color: #888;
+      font-size: 14px;
+    }
+
+    /* DASHBOARD STYLES */
+    .dashboard-container {
+      min-height: 100vh;
+      background: #f5f7fa;
+      display: flex;
+    }
+
+    .sidebar {
+      width: 260px;
+      background: linear-gradient(180deg, #1a237e 0%, #283593 100%);
+      color: white;
+      padding: 30px 0;
+      position: fixed;
+      height: 100vh;
+      left: 0;
+      top: 0;
+      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+      overflow-y: auto;
+    }
+
+    .sidebar-header {
+      padding: 0 20px 30px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 20px;
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .sidebar-menu {
+      list-style: none;
+    }
+
+    .sidebar-menu li {
+      margin: 0;
+    }
+
+    .sidebar-menu a {
+      color: rgba(255, 255, 255, 0.7);
+      text-decoration: none;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .sidebar-menu a:hover,
+    .sidebar-menu a.active {
+      color: white;
+      background: rgba(255, 255, 255, 0.1);
+      padding-left: 25px;
+    }
+
+    .menu-icon {
+      font-size: 18px;
+      width: 24px;
+    }
+
+    .sidebar-footer {
+      position: absolute;
+      bottom: 30px;
+      width: 100%;
+      padding: 0 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 20px;
+    }
+
+    .logout-btn {
+      background: rgba(255, 77, 77, 0.2);
+      color: #ff4d4d;
+      border: 1px solid rgba(255, 77, 77, 0.3);
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .logout-btn:hover {
+      background: rgba(255, 77, 77, 0.3);
+      border-color: rgba(255, 77, 77, 0.5);
+    }
+
+    .main-content {
+      margin-left: 260px;
+      flex: 1;
+      padding: 40px;
+    }
+
+    .top-bar {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 30px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .welcome-message {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .user-avatar {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .user-info h2 {
+      font-size: 20px;
+      margin-bottom: 4px;
+      color: #1a237e;
+    }
+
+    .user-info p {
+      color: #888;
+      font-size: 13px;
+    }
+
+    .last-login {
+      text-align: right;
+      color: #888;
+      font-size: 13px;
+    }
+
+    .content-area {
+      display: none;
+    }
+
+    .content-area.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      border-left: 4px solid;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-card.security {
+      border-left-color: #667eea;
+    }
+
+    .stat-card.activity {
+      border-left-color: #26a69a;
+    }
+
+    .stat-card.account {
+      border-left-color: #ffa726;
+    }
+
+    .stat-icon {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+
+    .stat-label {
+      color: #888;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1a237e;
+    }
+
+    /* PROFILE PAGE */
+    .profile-section {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      margin-bottom: 30px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a237e;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .profile-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 25px;
+    }
+
+    .profile-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .profile-label {
+      color: #888;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .profile-value {
+      font-size: 16px;
+      color: #333;
+      word-break: break-all;
+    }
+
+    /* SECURITY SETTINGS */
+    .security-item {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .security-item-content {
+      flex: 1;
+    }
+
+    .security-item-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1a237e;
+      margin-bottom: 4px;
+    }
+
+    .security-item-description {
+      color: #888;
+      font-size: 13px;
+    }
+
+    .security-item-status {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .status-badge {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-enabled {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .status-disabled {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .btn-danger {
+      background: #ffebee;
+      color: #c62828;
+      border: 1px solid #ff9999;
+    }
+
+    .btn-danger:hover {
+      background: #ffcccc;
+    }
+
+    /* FORM STYLES */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #555;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+      font-family: inherit;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    input:disabled {
+      background-color: #f5f5f5;
+      cursor: not-allowed;
+    }
+
+    .alert {
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .alert.show {
+      display: block;
+      animation: slideDown 0.3s ease;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .alert-error {
+      background-color: #ffebee;
+      color: #c62828;
+      border: 1px solid #ff9999;
+    }
+
+    .alert-success {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #81c784;
+    }
+
+    .alert-warning {
+      background-color: #fff3e0;
+      color: #e65100;
+      border: 1px solid #ffb74d;
+    }
+
+    .alert-info {
+      background-color: #e3f2fd;
+      color: #1565c0;
+      border: 1px solid #90caf9;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .test-credentials {
+      background-color: #e3f2fd;
+      border-left: 4px solid #667eea;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 25px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    .test-credentials strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #1565c0;
+      margin-top: 8px;
+    }
+
+    .test-credentials strong:first-child {
+      margin-top: 0;
+    }
+
+    .text-muted {
+      color: #888;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .form-switch {
+      margin-top: 15px;
+      text-align: center;
+    }
+
+    .form-switch button {
+      background: none;
+      border: none;
+      color: #667eea;
+      cursor: pointer;
+      font-weight: 600;
+      padding: 0;
+      text-decoration: underline;
+    }
+
+    .form-switch button:hover {
+      color: #764ba2;
+    }
+
+    .code-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .code-item {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 6px;
+      text-align: center;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #555;
+      word-break: break-all;
+    }
+
+    /* MODALS */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal.show {
+      display: flex;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-header {
+      margin-bottom: 20px;
+    }
+
+    .modal-header h2 {
+      color: #1a237e;
+      font-size: 22px;
+      margin-bottom: 8px;
+    }
+
+    .modal-header p {
+      color: #888;
+      font-size: 13px;
+    }
+
+    .modal-body {
+      margin-bottom: 25px;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        padding: 15px 0;
+      }
+
+      .main-content {
+        margin-left: 0;
+        padding: 20px;
+      }
+
+      .top-bar {
+        flex-direction: column;
+        text-align: center;
+        gap: 15px;
+      }
+
+      .profile-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .security-item {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .security-item-status {
+        width: 100%;
+        margin-top: 15px;
+        flex-direction: column;
+      }
+
+      .sidebar-footer {
+        position: static;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        margin-top: 20px;
+        padding-top: 20px;
+      }
+
+      .auth-box {
+        max-width: 100%;
+        padding: 30px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- LOGIN PAGE -->
+  <div id="loginPage" class="auth-container">
+    <div class="auth-box">
+      <div class="auth-header">
+        <h1>SGI 360</h1>
+        <p>Secure Portal Login</p>
+      </div>
+
+      <div id="loginForm">
+        <div class="test-credentials">
+          <strong>Test Credentials:</strong>
+          Email: test@example.com<br>
+          Password: Test123!@#<br>
+          <strong>2FA Code:</strong> 123456 (or any 6-digit code)
+        </div>
+
+        <form onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label>Email Address</label>
+            <input
+              type="email"
+              id="email"
+              placeholder="test@example.com"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              id="password"
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
+          <div id="loginError" class="alert alert-error"></div>
+
+          <button type="submit" id="loginBtn" class="btn btn-primary" style="width: 100%;">Sign In</button>
+        </form>
+      </div>
+
+      <!-- 2FA Form -->
+      <div id="twoFAForm" class="hidden">
+        <p class="text-muted">Enter the 6-digit code from your authenticator app</p>
+        <form onsubmit="handleVerify2FA(event)">
+          <div class="form-group">
+            <label>2FA Code</label>
+            <input
+              type="text"
+              id="totpCode"
+              placeholder="000000"
+              maxlength="6"
+              inputmode="numeric"
+              required
+              autofocus
+            />
+          </div>
+
+          <div id="twoFAError" class="alert alert-error"></div>
+
+          <button type="submit" id="verifyBtn" class="btn btn-primary" style="width: 100%;">Verify Code</button>
+
+          <div class="form-switch">
+            <button type="button" onclick="goBackToLogin()">← Back to Login</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboardPage" class="dashboard-container hidden">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-icon">🔐</div>
+          <span>SGI 360</span>
+        </div>
+      </div>
+
+      <ul class="sidebar-menu">
+        <li><a class="menu-item active" data-page="dashboard">
+          <span class="menu-icon">📊</span>
+          <span>Dashboard</span>
+        </a></li>
+        <li><a class="menu-item" data-page="profile">
+          <span class="menu-icon">👤</span>
+          <span>My Profile</span>
+        </a></li>
+        <li><a class="menu-item" data-page="security">
+          <span class="menu-icon">🔒</span>
+          <span>Security Settings</span>
+        </a></li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <button class="logout-btn" onclick="logout()">🚪 Logout</button>
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
+      <!-- TOP BAR -->
+      <div class="top-bar">
+        <div class="welcome-message">
+          <div class="user-avatar" id="userInitials">JD</div>
+          <div class="user-info">
+            <h2 id="welcomeName">John Doe</h2>
+            <p id="userEmail">john.doe@example.com</p>
+          </div>
+        </div>
+        <div class="last-login">
+          <p><strong>Last Login:</strong></p>
+          <p id="lastLoginTime">Today, 09:30 AM</p>
+        </div>
+      </div>
+
+      <!-- DASHBOARD VIEW -->
+      <div id="dashboardView" class="content-area active">
+        <div class="stats-grid">
+          <div class="stat-card security">
+            <div class="stat-icon">🔐</div>
+            <div class="stat-label">Security Status</div>
+            <div class="stat-value" id="securityStatus">Protected</div>
+            <p style="color: #888; font-size: 12px; margin-top: 8px;" id="securityDetail">2FA Enabled</p>
+          </div>
+
+          <div class="stat-card activity">
+            <div class="stat-icon">📝</div>
+            <div class="stat-label">Active Sessions</div>
+            <div class="stat-value" id="activeSessions">1</div>
+            <p style="color: #888; font-size: 12px; margin-top: 8px;">Current session</p>
+          </div>
+
+          <div class="stat-card account">
+            <div class="stat-icon">✅</div>
+            <div class="stat-label">Account Status</div>
+            <div class="stat-value">Active</div>
+            <p style="color: #888; font-size: 12px; margin-top: 8px;">All systems operational</p>
+          </div>
+        </div>
+
+        <div class="profile-section">
+          <div class="section-title">Quick Stats</div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+            <div>
+              <p style="color: #888; font-size: 12px; margin-bottom: 5px;">Account Created</p>
+              <p style="font-size: 16px; color: #333; font-weight: 600;" id="accountCreated">January 15, 2026</p>
+            </div>
+            <div>
+              <p style="color: #888; font-size: 12px; margin-bottom: 5px;">Last Password Change</p>
+              <p style="font-size: 16px; color: #333; font-weight: 600;" id="lastPasswordChange">March 10, 2026</p>
+            </div>
+            <div>
+              <p style="color: #888; font-size: 12px; margin-bottom: 5px;">Total Login Attempts</p>
+              <p style="font-size: 16px; color: #333; font-weight: 600;" id="loginAttempts">47</p>
+            </div>
+            <div>
+              <p style="color: #888; font-size: 12px; margin-bottom: 5px;">Failed Attempts (30 days)</p>
+              <p style="font-size: 16px; color: #333; font-weight: 600;" id="failedAttempts">2</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROFILE VIEW -->
+      <div id="profileView" class="content-area">
+        <div class="profile-section">
+          <div class="section-title">Personal Information</div>
+          <div class="profile-grid">
+            <div class="profile-item">
+              <span class="profile-label">Full Name</span>
+              <span class="profile-value" id="profileName">John Doe</span>
+            </div>
+            <div class="profile-item">
+              <span class="profile-label">Email Address</span>
+              <span class="profile-value" id="profileEmail">john.doe@example.com</span>
+            </div>
+            <div class="profile-item">
+              <span class="profile-label">Account ID</span>
+              <span class="profile-value" id="profileId">USR-2026-001</span>
+            </div>
+            <div class="profile-item">
+              <span class="profile-label">Account Status</span>
+              <span class="profile-value">✅ Active</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-section">
+          <div class="section-title">Organization Information</div>
+          <div class="profile-grid">
+            <div class="profile-item">
+              <span class="profile-label">Organization</span>
+              <span class="profile-value" id="orgName">SGI Corporation</span>
+            </div>
+            <div class="profile-item">
+              <span class="profile-label">Department</span>
+              <span class="profile-value" id="department">IT Operations</span>
+            </div>
+            <div class="profile-item">
+              <span class="profile-label">Role</span>
+              <span class="profile-value" id="userRole">Administrator</span>
+            </div>
+            <div class="profile-item">
+              <span class="profile-label">Access Level</span>
+              <span class="profile-value">Full Access</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-section">
+          <div class="section-title">Account Timeline</div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+            <div style="padding: 15px; background: #f5f5f5; border-radius: 6px;">
+              <p style="color: #888; font-size: 12px; margin-bottom: 5px;">ACCOUNT CREATED</p>
+              <p style="color: #333; font-size: 14px; font-weight: 600;">January 15, 2026</p>
+            </div>
+            <div style="padding: 15px; background: #f5f5f5; border-radius: 6px;">
+              <p style="color: #888; font-size: 12px; margin-bottom: 5px;">2FA ENABLED</p>
+              <p style="color: #333; font-size: 14px; font-weight: 600;">February 20, 2026</p>
+            </div>
+            <div style="padding: 15px; background: #f5f5f5; border-radius: 6px;">
+              <p style="color: #888; font-size: 12px; margin-bottom: 5px;">LAST LOGIN</p>
+              <p style="color: #333; font-size: 14px; font-weight: 600;" id="profileLastLogin">Today, 09:30 AM</p>
+            </div>
+            <div style="padding: 15px; background: #f5f5f5; border-radius: 6px;">
+              <p style="color: #888; font-size: 12px; margin-bottom: 5px;">LAST PASSWORD CHANGE</p>
+              <p style="color: #333; font-size: 14px; font-weight: 600;">March 10, 2026</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECURITY VIEW -->
+      <div id="securityView" class="content-area">
+        <div id="securityAlert" class="alert alert-info"></div>
+
+        <div class="security-item">
+          <div class="security-item-content">
+            <div class="security-item-title">Two-Factor Authentication</div>
+            <div class="security-item-description">
+              Protect your account with an additional layer of security using TOTP (Time-based One-Time Password)
+            </div>
+          </div>
+          <div class="security-item-status">
+            <span class="status-badge status-enabled" id="twoFAStatus">✓ Enabled</span>
+            <button class="btn btn-danger" onclick="openTwoFADisableModal()">Disable 2FA</button>
+          </div>
+        </div>
+
+        <div class="security-item">
+          <div class="security-item-content">
+            <div class="security-item-title">Recovery Codes</div>
+            <div class="security-item-description">
+              Backup codes to regain access if you lose access to your authenticator app
+            </div>
+          </div>
+          <div class="security-item-status">
+            <button class="btn btn-primary" onclick="openRecoveryCodesModal()">View Codes</button>
+          </div>
+        </div>
+
+        <div class="security-item">
+          <div class="security-item-content">
+            <div class="security-item-title">Active Sessions</div>
+            <div class="security-item-description">
+              Manage your active login sessions across devices
+            </div>
+          </div>
+          <div class="security-item-status">
+            <button class="btn btn-primary" onclick="openSessionsModal()">View Sessions</button>
+          </div>
+        </div>
+
+        <div class="security-item">
+          <div class="security-item-content">
+            <div class="security-item-title">Change Password</div>
+            <div class="security-item-description">
+              Update your account password regularly to maintain security
+            </div>
+          </div>
+          <div class="security-item-status">
+            <button class="btn btn-primary" onclick="openChangePasswordModal()">Change Password</button>
+          </div>
+        </div>
+
+        <div class="security-item">
+          <div class="security-item-content">
+            <div class="security-item-title">Login History</div>
+            <div class="security-item-description">
+              View a log of all recent login attempts to your account
+            </div>
+          </div>
+          <div class="security-item-status">
+            <button class="btn btn-primary" onclick="openLoginHistoryModal()">View History</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALS -->
+  <!-- Recovery Codes Modal -->
+  <div id="recoveryCodesModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Recovery Codes</h2>
+        <p>Save these codes in a safe place. You can use them to regain access to your account.</p>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning" style="display: block;">
+          ⚠️ Each code can only be used once. Store them securely.
+        </div>
+        <div class="code-grid">
+          <div class="code-item">2B4K9P7X</div>
+          <div class="code-item">8C5M3R9L</div>
+          <div class="code-item">1D6N4S7Q</div>
+          <div class="code-item">9E2J5T8W</div>
+          <div class="code-item">4F7K8U2V</div>
+          <div class="code-item">6G9H3X1Y</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('recoveryCodesModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sessions Modal -->
+  <div id="sessionsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Active Sessions</h2>
+        <p>Manage your login sessions across all devices</p>
+      </div>
+      <div class="modal-body">
+        <div style="padding: 15px; background: #f5f5f5; border-radius: 6px; margin-bottom: 15px;">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+            <div>
+              <p style="font-weight: 600; color: #333;">Chrome on macOS</p>
+              <p style="color: #888; font-size: 13px;">Current Session</p>
+              <p style="color: #888; font-size: 12px; margin-top: 5px;">192.168.1.100</p>
+            </div>
+            <span style="color: #2e7d32; font-weight: 600;">Active</span>
+          </div>
+          <p style="color: #888; font-size: 12px;">Last active: Just now</p>
+        </div>
+
+        <div style="padding: 15px; background: #f5f5f5; border-radius: 6px; margin-bottom: 15px;">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+            <div>
+              <p style="font-weight: 600; color: #333;">Safari on iPhone</p>
+              <p style="color: #888; font-size: 13px;">Secondary Device</p>
+              <p style="color: #888; font-size: 12px; margin-top: 5px;">192.168.1.101</p>
+            </div>
+            <span style="color: #2e7d32; font-weight: 600;">Active</span>
+          </div>
+          <p style="color: #888; font-size: 12px;">Last active: 2 hours ago</p>
+        </div>
+
+        <div style="padding: 15px; background: #f5f5f5; border-radius: 6px;">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+            <div>
+              <p style="font-weight: 600; color: #333;">Firefox on Windows</p>
+              <p style="color: #888; font-size: 13px;">Old Device</p>
+              <p style="color: #888; font-size: 12px; margin-top: 5px;">192.168.1.102</p>
+            </div>
+            <button class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;">Sign Out</button>
+          </div>
+          <p style="color: #888; font-size: 12px;">Last active: 5 days ago</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('sessionsModal')">Close</button>
+        <button class="btn btn-danger" onclick="signOutAllOther()">Sign Out All Other Sessions</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div id="changePasswordModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Change Password</h2>
+        <p>Update your account password</p>
+      </div>
+      <div class="modal-body">
+        <form onsubmit="handleChangePassword(event)">
+          <div class="form-group">
+            <label>Current Password</label>
+            <input type="password" id="currentPassword" placeholder="••••••••" required />
+          </div>
+          <div class="form-group">
+            <label>New Password</label>
+            <input type="password" id="newPassword" placeholder="••••••••" required />
+          </div>
+          <div class="form-group">
+            <label>Confirm New Password</label>
+            <input type="password" id="confirmPassword" placeholder="••••••••" required />
+          </div>
+          <div id="passwordError" class="alert alert-error"></div>
+          <div id="passwordSuccess" class="alert alert-success"></div>
+          <div style="margin-top: 20px;">
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Update Password</button>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('changePasswordModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Disable 2FA Modal -->
+  <div id="disableTwoFAModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Disable Two-Factor Authentication</h2>
+        <p>Are you sure? This will reduce your account security.</p>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning" style="display: block;">
+          ⚠️ Disabling 2FA will make your account less secure. You'll only need your password to log in.
+        </div>
+        <form onsubmit="handleDisable2FA(event)">
+          <div class="form-group">
+            <label>Enter Your Password to Confirm</label>
+            <input type="password" id="confirm2FAPassword" placeholder="••••••••" required />
+          </div>
+          <div id="disable2FAError" class="alert alert-error"></div>
+          <button type="submit" class="btn btn-danger" style="width: 100%;">Disable 2FA</button>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('disableTwoFAModal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login History Modal -->
+  <div id="loginHistoryModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Login History</h2>
+        <p>Recent login attempts to your account</p>
+      </div>
+      <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+        <div style="padding: 12px; background: #e8f5e9; border-left: 4px solid #2e7d32; border-radius: 4px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span><strong>✓ Successful Login</strong></span>
+            <span style="color: #888;">Today, 09:30 AM</span>
+          </div>
+          <p style="color: #666; font-size: 12px; margin-top: 4px;">Chrome on macOS • 192.168.1.100</p>
+        </div>
+
+        <div style="padding: 12px; background: #e8f5e9; border-left: 4px solid #2e7d32; border-radius: 4px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span><strong>✓ Successful Login</strong></span>
+            <span style="color: #888;">Yesterday, 11:15 AM</span>
+          </div>
+          <p style="color: #666; font-size: 12px; margin-top: 4px;">Safari on iPhone • 192.168.1.101</p>
+        </div>
+
+        <div style="padding: 12px; background: #ffebee; border-left: 4px solid #c62828; border-radius: 4px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span><strong>✗ Failed Login</strong></span>
+            <span style="color: #888;">March 15, 03:45 PM</span>
+          </div>
+          <p style="color: #666; font-size: 12px; margin-top: 4px;">Reason: Invalid password • 192.168.1.50</p>
+        </div>
+
+        <div style="padding: 12px; background: #e8f5e9; border-left: 4px solid #2e7d32; border-radius: 4px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span><strong>✓ Successful Login</strong></span>
+            <span style="color: #888;">March 14, 10:22 AM</span>
+          </div>
+          <p style="color: #666; font-size: 12px; margin-top: 4px;">Firefox on Windows • 192.168.1.102</p>
+        </div>
+
+        <div style="padding: 12px; background: #e8f5e9; border-left: 4px solid #2e7d32; border-radius: 4px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span><strong>✓ Successful Login</strong></span>
+            <span style="color: #888;">March 13, 02:10 PM</span>
+          </div>
+          <p style="color: #666; font-size: 12px; margin-top: 4px;">Chrome on macOS • 192.168.1.100</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('loginHistoryModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== STATE MANAGEMENT =====
+    let sessionData = {
+      sessionToken: null,
+      email: null,
+      user: {
+        name: 'John Doe',
+        email: 'john.doe@example.com',
+        id: 'USR-2026-001',
+        twoFAEnabled: true,
+        lastLogin: new Date(),
+        accountCreated: new Date('2026-01-15')
+      }
+    };
+
+    // ===== PAGE NAVIGATION =====
+    function showPage(pageName) {
+      if (pageName === 'login') {
+        document.getElementById('loginPage').classList.remove('hidden');
+        document.getElementById('dashboardPage').classList.add('hidden');
+      } else if (pageName === 'dashboard') {
+        document.getElementById('loginPage').classList.add('hidden');
+        document.getElementById('dashboardPage').classList.remove('hidden');
+        updateDashboard();
+      }
+    }
+
+    function updateDashboard() {
+      const name = sessionData.user.name;
+      const email = sessionData.user.email;
+
+      document.getElementById('welcomeName').textContent = name;
+      document.getElementById('userEmail').textContent = email;
+      document.getElementById('profileName').textContent = name;
+      document.getElementById('profileEmail').textContent = email;
+      document.getElementById('userInitials').textContent = getInitials(name);
+
+      // Update last login time
+      const lastLogin = new Date(sessionData.user.lastLogin);
+      const timeStr = lastLogin.toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      document.getElementById('lastLoginTime').textContent = timeStr;
+      document.getElementById('profileLastLogin').textContent = timeStr;
+
+      // Update 2FA status
+      if (sessionData.user.twoFAEnabled) {
+        document.getElementById('twoFAStatus').textContent = '✓ Enabled';
+        document.getElementById('twoFAStatus').classList.add('status-enabled');
+        document.getElementById('securityDetail').textContent = '2FA Enabled - Account Protected';
+      } else {
+        document.getElementById('twoFAStatus').textContent = '✗ Disabled';
+        document.getElementById('twoFAStatus').classList.remove('status-enabled');
+        document.getElementById('twoFAStatus').classList.add('status-disabled');
+        document.getElementById('securityDetail').textContent = '2FA Disabled - Consider enabling';
+      }
+    }
+
+    function getInitials(name) {
+      return name.split(' ').map(n => n[0]).join('').toUpperCase();
+    }
+
+    // ===== MENU NAVIGATION =====
+    document.querySelectorAll('.menu-item').forEach(item => {
+      item.addEventListener('click', function(e) {
+        e.preventDefault();
+        const page = this.getAttribute('data-page');
+
+        // Update active menu item
+        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+        this.classList.add('active');
+
+        // Update active content area
+        document.querySelectorAll('.content-area').forEach(area => {
+          area.classList.remove('active');
+        });
+        document.getElementById(page + 'View').classList.add('active');
+      });
+    });
+
+    // ===== AUTH HANDLERS =====
+    async function handleLogin(event) {
+      event.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const loginBtn = document.getElementById('loginBtn');
+      const loginError = document.getElementById('loginError');
+
+      loginBtn.disabled = true;
+      loginError.classList.remove('show');
+
+      try {
+        const response = await fetch('http://localhost:3001/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Login failed');
+        }
+
+        if (data.requires2FA) {
+          sessionData.sessionToken = data.sessionToken;
+          sessionData.email = email;
+          showTwoFAForm();
+        } else {
+          completeLogin(data);
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        loginError.textContent = '❌ ' + error.message;
+        loginError.classList.add('show');
+      } finally {
+        loginBtn.disabled = false;
+      }
+    }
+
+    async function handleVerify2FA(event) {
+      event.preventDefault();
+      const code = document.getElementById('totpCode').value;
+      const verifyBtn = document.getElementById('verifyBtn');
+      const twoFAError = document.getElementById('twoFAError');
+
+      if (code.length !== 6 || !/^\d+$/.test(code)) {
+        twoFAError.textContent = '❌ Please enter a valid 6-digit code';
+        twoFAError.classList.add('show');
+        return;
+      }
+
+      verifyBtn.disabled = true;
+      twoFAError.classList.remove('show');
+
+      try {
+        // Step 1: Verify the 2FA code
+        const verifyResponse = await fetch('http://localhost:3001/api/2fa/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionToken: sessionData.sessionToken,
+            token: code
+          })
+        });
+
+        if (!verifyResponse.ok) {
+          const error = await verifyResponse.json();
+          throw new Error(error.error || 'Invalid 2FA code');
+        }
+
+        // Step 2: Complete 2FA and get tokens
+        const completeResponse = await fetch('http://localhost:3001/api/auth/2fa-complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionToken: sessionData.sessionToken
+          })
+        });
+
+        if (!completeResponse.ok) {
+          const error = await completeResponse.json();
+          throw new Error(error.error || '2FA completion failed');
+        }
+
+        const tokens = await completeResponse.json();
+        completeLogin(tokens);
+      } catch (error) {
+        console.error('2FA error:', error);
+        twoFAError.textContent = '❌ ' + error.message;
+        twoFAError.classList.add('show');
+      } finally {
+        verifyBtn.disabled = false;
+      }
+    }
+
+    function completeLogin(data) {
+      // Update session with user data
+      if (data.user) {
+        sessionData.user = {
+          ...sessionData.user,
+          name: data.user.name || sessionData.user.name,
+          email: data.user.email || sessionData.user.email,
+          id: data.user.id || sessionData.user.id
+        };
+      }
+
+      // Store token if provided
+      if (data.accessToken) {
+        sessionData.sessionToken = data.accessToken;
+      }
+
+      // Update 2FA status
+      if (data.user && data.user.twoFAEnabled !== undefined) {
+        sessionData.user.twoFAEnabled = data.user.twoFAEnabled;
+      }
+
+      // Navigate to dashboard
+      showPage('dashboard');
+    }
+
+    function showTwoFAForm() {
+      document.getElementById('loginForm').classList.add('hidden');
+      document.getElementById('twoFAForm').classList.remove('hidden');
+      document.getElementById('totpCode').focus();
+    }
+
+    function goBackToLogin() {
+      document.getElementById('loginForm').classList.remove('hidden');
+      document.getElementById('twoFAForm').classList.add('hidden');
+      document.getElementById('email').value = '';
+      document.getElementById('password').value = '';
+      document.getElementById('totpCode').value = '';
+      document.getElementById('loginError').classList.remove('show');
+      document.getElementById('twoFAError').classList.remove('show');
+      sessionData = { sessionToken: null, email: null, user: sessionData.user };
+    }
+
+    // ===== MODAL FUNCTIONS =====
+    function openRecoveryCodesModal() {
+      document.getElementById('recoveryCodesModal').classList.add('show');
+    }
+
+    function openSessionsModal() {
+      document.getElementById('sessionsModal').classList.add('show');
+    }
+
+    function openChangePasswordModal() {
+      document.getElementById('changePasswordModal').classList.add('show');
+      document.getElementById('passwordError').classList.remove('show');
+      document.getElementById('passwordSuccess').classList.remove('show');
+    }
+
+    function openTwoFADisableModal() {
+      document.getElementById('disableTwoFAModal').classList.add('show');
+    }
+
+    function openLoginHistoryModal() {
+      document.getElementById('loginHistoryModal').classList.add('show');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove('show');
+    }
+
+    // ===== MODAL ACTION HANDLERS =====
+    function handleChangePassword(event) {
+      event.preventDefault();
+      const current = document.getElementById('currentPassword').value;
+      const newPass = document.getElementById('newPassword').value;
+      const confirm = document.getElementById('confirmPassword').value;
+      const errorEl = document.getElementById('passwordError');
+      const successEl = document.getElementById('passwordSuccess');
+
+      errorEl.classList.remove('show');
+      successEl.classList.remove('show');
+
+      if (newPass !== confirm) {
+        errorEl.textContent = '❌ Passwords do not match';
+        errorEl.classList.add('show');
+        return;
+      }
+
+      if (newPass.length < 8) {
+        errorEl.textContent = '❌ Password must be at least 8 characters';
+        errorEl.classList.add('show');
+        return;
+      }
+
+      // Simulate success
+      successEl.textContent = '✅ Password changed successfully';
+      successEl.classList.add('show');
+
+      setTimeout(() => {
+        closeModal('changePasswordModal');
+        document.getElementById('changePasswordModal').querySelector('form').reset();
+      }, 2000);
+    }
+
+    function handleDisable2FA(event) {
+      event.preventDefault();
+      const password = document.getElementById('confirm2FAPassword').value;
+      const errorEl = document.getElementById('disable2FAError');
+
+      errorEl.classList.remove('show');
+
+      if (!password) {
+        errorEl.textContent = '❌ Please enter your password';
+        errorEl.classList.add('show');
+        return;
+      }
+
+      // Simulate disabling 2FA
+      sessionData.user.twoFAEnabled = false;
+
+      // Show success message
+      const alert = document.getElementById('securityAlert');
+      alert.textContent = '⚠️ Two-Factor Authentication has been disabled. Your account is less secure.';
+      alert.classList.remove('alert-info');
+      alert.classList.add('alert-warning');
+      alert.classList.add('show');
+
+      closeModal('disableTwoFAModal');
+      updateDashboard();
+    }
+
+    function signOutAllOther() {
+      alert('All other sessions have been signed out. You remain logged in on this device.');
+      closeModal('sessionsModal');
+    }
+
+    // ===== LOGOUT =====
+    function logout() {
+      if (confirm('Are you sure you want to logout?')) {
+        sessionData = { sessionToken: null, email: null, user: sessionData.user };
+        goBackToLogin();
+        showPage('login');
+      }
+    }
+
+    // ===== CLOSE MODALS ON BACKGROUND CLICK =====
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.addEventListener('click', function(e) {
+        if (e.target === this) {
+          this.classList.remove('show');
+        }
+      });
+    });
+
+    // ===== INITIALIZE =====
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('email').value = 'test@example.com';
+      document.getElementById('password').value = 'Test123!@#';
+      showPage('login');
+    });
+
+    // ===== KEYBOARD SHORTCUTS =====
+    document.addEventListener('keydown', (e) => {
+      // Escape to close modals
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
+      }
+    });
+  </script>
+</body>
+</html>

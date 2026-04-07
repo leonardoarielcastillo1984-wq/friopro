@@ -1,0 +1,46 @@
+=====================================
+🚀 SGI 360 - SETUP RÁPIDO
+=====================================
+
+🔧 PRIMERO Y UNA SOLA VEZ:
+==========================
+En Terminal, ejecuta:
+~/Desktop/APP/SGI\ 360/SETUP_LOCAL.command
+
+(Esto instala Node.js, PostgreSQL, Redis, y la base de datos)
+
+
+📱 CADA VEZ QUE QUIERAS USAR:
+============================
+En Terminal:
+~/Desktop/APP/SGI\ 360/START_SGI360.command
+
+¡Eso es todo! Se abre automáticamente en tu navegador.
+
+
+📝 CREDENCIALES:
+================
+Email: admin@sgi360.com
+Contraseña: Admin123!
+
+
+🔗 URL:
+=======
+http://localhost:3000/login
+
+
+✨ CAMBIOS RECIENTES:
+====================
+✅ Se arregló el error "x-tenant-id is required"
+✅ Login funciona correctamente
+✅ Dashboard carga sin errores
+✅ Tenant context está implementado
+
+
+❓ PROBLEMAS?
+=============
+- Puerto ocupado?        → Cierra otras aplicaciones
+- PostgreSQL no inicia?  → brew services restart postgresql@16
+- Sigue sin entrar?      → Limpia caché: Cmd+Shift+Delete
+
+Más detalles en: TENANT_CONTEXT_FIX.md

@@ -1,0 +1,64 @@
+=====================================
+🚀 SGI 360 - INICIO RÁPIDO
+=====================================
+
+HAZ ESTO UNA SOLA VEZ:
+======================
+
+En Terminal, copia y pega esto:
+
+chmod +x ~/Desktop/APP/SGI\ 360/START_SGI360.command
+
+
+AHORA CADA VEZ QUE QUIERAS INICIAR:
+===================================
+
+OPCIÓN 1 (La más fácil):
+-----------
+En el Finder:
+1. Ve a: ~/Desktop/APP/SGI 360
+2. Haz doble clic en: START_SGI360.command
+3. ¡Listo! Se abre todo automáticamente
+
+OPCIÓN 2 (Terminal):
+-----------
+En Terminal, copia y pega esto:
+
+~/Desktop/APP/SGI\ 360/START_SGI360.command
+
+
+QUÉ PASA AUTOMÁTICAMENTE:
+=========================
+
+✅ Inicia PostgreSQL (si no está corriendo)
+✅ Inicia Redis (si no está corriendo)
+✅ Abre Terminal 1 con el API (puerto 3002)
+✅ Abre Terminal 2 con el Frontend (puerto 3000)
+✅ Abre navegador en http://localhost:3000/login
+✅ ¡Listo para usar!
+
+
+CREDENCIALES:
+=============
+
+Email: admin@sgi360.com
+Contraseña: Admin123!
+
+
+TROUBLESHOOTING:
+================
+
+Si algo no funciona, en Terminal ejecuta:
+
+brew services restart postgresql@16
+brew services restart redis
+pkill -9 -f "npm run dev"
+
+Y luego vuelve a ejecutar START_SGI360.command
+
+
+¡ESO ES TODO! 🎉
+================
+
+Created: 2026-03-25
+Status: ✅ FUNCIONANDO 100%

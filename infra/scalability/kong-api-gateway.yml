@@ -1,0 +1,332 @@
+---
+# Kong API Gateway Configuration for SGI 360
+# Provides API versioning, rate limiting, authentication, and load balancing
+
+# Kong database configuration
+database: postgres
+postgres:
+  host: postgres
+  port: 5432
+  user: sgi
+  password: sgi
+  database: sgi
+
+# Server configuration
+server:
+  listen:
+    - "0.0.0.0:8000"  # Admin API
+    - "0.0.0.0:8443"  # Admin API HTTPS
+  http_listen:
+    - "0.0.0.0:8000"
+  https_listen:
+    - "0.0.0.0:8443"
+  ssl_certificate: /etc/kong/certs/server.crt
+  ssl_certificate_key: /etc/kong/certs/server.key
+
+# Gateway configuration
+gateway:
+  proxy:
+    listen:
+      - "0.0.0.0:8000"
+      - "0.0.0.0:8443 ssl"
+    http_version: 1.1
+    keepalive_timeout: 60
+    client_max_body_size: 0
+
+# Enable plugins
+plugins_available:
+  - basic-auth
+  - key-auth
+  - oauth2
+  - jwt
+  - rate-limiting
+  - cors
+  - request-transformer
+  - response-transformer
+  - api-version
+
+# Kong services and routes
+services:
+  # Main API Service (v1)
+  - name: sgi360-api-v1
+    protocol: http
+    host: localhost
+    port: 3001
+    path: /api/v1
+    connect_timeout: 10000
+    send_timeout: 60000
+    read_timeout: 60000
+
+    routes:
+      # Authentication routes
+      - name: auth-login-v1
+        paths:
+          - /api/v1/auth/login
+        methods: [POST]
+        strip_path: false
+
+      - name: auth-register-v1
+        paths:
+          - /api/v1/auth/register
+        methods: [POST]
+        strip_path: false
+
+      - name: auth-logout-v1
+        paths:
+          - /api/v1/auth/logout
+        methods: [POST]
+        strip_path: false
+
+      # Document routes
+      - name: documents-v1
+        paths:
+          - /api/v1/documents
+        methods: [GET, POST, PUT, DELETE]
+        strip_path: false
+
+      # Department routes
+      - name: departments-v1
+        paths:
+          - /api/v1/departments
+        methods: [GET, POST, PUT, DELETE]
+        strip_path: false
+
+      # Admin routes
+      - name: admin-v1
+        paths:
+          - /api/v1/admin
+        methods: [GET, POST, PUT, DELETE]
+        strip_path: false
+
+      # 2FA routes
+      - name: 2fa-v1
+        paths:
+          - /api/v1/2fa
+        methods: [GET, POST]
+        strip_path: false
+
+  # Main API Service (v2)
+  - name: sgi360-api-v2
+    protocol: http
+    host: localhost
+    port: 3001
+    path: /api/v2
+    connect_timeout: 10000
+    send_timeout: 60000
+    read_timeout: 60000
+
+    routes:
+      # v2 routes with enhanced features
+      - name: documents-v2
+        paths:
+          - /api/v2/documents
+        methods: [GET, POST, PUT, DELETE, PATCH]
+        strip_path: false
+
+      - name: departments-v2
+        paths:
+          - /api/v2/departments
+        methods: [GET, POST, PUT, DELETE, PATCH]
+        strip_path: false
+
+# Plugins configuration
+plugins:
+  # CORS Plugin
+  - name: cors
+    config:
+      origins:
+        - "https://sgi360.example.com"
+        - "https://admin.sgi360.example.com"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - OPTIONS
+      headers:
+        - Content-Type
+        - Authorization
+        - X-API-Key
+      credentials: true
+      max_age: 86400
+
+  # Rate Limiting Plugin
+  - name: rate-limiting
+    config:
+      minute: 1000
+      hour: 10000
+      policy: local
+      fault_tolerant: true
+      error_code: 429
+
+  # API Key Authentication
+  - name: key-auth
+    config:
+      key_names:
+        - X-API-Key
+      hide_credentials: true
+
+  # JWT Authentication
+  - name: jwt
+    config:
+      algorithm: RS256
+      secret: "${JWT_SECRET}"
+      header_names:
+        - Authorization
+      claims_to_verify:
+        - exp
+        - nbf
+
+  # Request Transformer
+  - name: request-transformer
+    config:
+      add:
+        headers:
+          - X-Gateway-Version:1.0
+          - X-Timestamp:system
+
+  # Response Transformer
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - X-Powered-By:Kong
+          - X-API-Version:1.0
+
+# Upstream configuration (load balancing)
+upstreams:
+  - name: api-backend
+    algorithm: round_robin
+    hash_on: none
+
+    # Backend targets
+    targets:
+      - target: localhost:3001
+        weight: 100
+      - target: localhost:3002
+        weight: 100
+
+    health_checks:
+      active:
+        https_verify_certificate: false
+        unhealthy:
+          interval: 0
+          tcp_failures: 0
+          http_failures: 5
+          timeouts: 0
+          http_statuses: [429, 503]
+        healthy:
+          interval: 0
+          successes: 0
+          http_statuses: [200, 201, 204, 301, 302, 304, 307, 308]
+
+# Rate limiting configuration
+rate_limiting:
+  # Global rate limit
+  global:
+    minute: 1000
+    hour: 10000
+
+  # Per-endpoint rate limits
+  endpoints:
+    # Authentication endpoints - strict limits
+    - path: /api/v1/auth/login
+      minute: 10
+      hour: 50
+
+    - path: /api/v1/auth/register
+      minute: 5
+      hour: 20
+
+    # 2FA endpoints
+    - path: /api/v1/2fa/verify
+      minute: 20
+      hour: 100
+
+    # Admin endpoints
+    - path: /api/v1/admin
+      minute: 100
+      hour: 1000
+
+    # Public endpoints
+    - path: /api/v1/health
+      minute: 0  # No limit
+      hour: 0
+
+  # Per-API key rate limits
+  api_key_limits:
+    - key: "premium-tier"
+      minute: 5000
+      hour: 50000
+
+    - key: "standard-tier"
+      minute: 1000
+      hour: 10000
+
+    - key: "free-tier"
+      minute: 100
+      hour: 1000
+
+# Authentication configuration
+authentication:
+  # API Key auth
+  api_key:
+    enabled: true
+    header: X-API-Key
+
+  # JWT auth
+  jwt:
+    enabled: true
+    header: Authorization
+    scheme: Bearer
+    algorithms:
+      - HS256
+      - RS256
+
+  # OAuth2
+  oauth2:
+    enabled: true
+    endpoints:
+      authorize: /oauth/authorize
+      token: /oauth/token
+
+# Logging configuration
+logging:
+  level: notice
+  error_log: /var/log/kong/error.log
+  access_log: /var/log/kong/access.log
+  access_log_format: '$remote_addr [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"'
+
+# Monitoring
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    port: 8001
+
+# Cache configuration
+cache:
+  type: memory
+  ttl: 3600
+
+# Misc settings
+misc:
+  # Worker processes
+  nginx_worker_processes: auto
+
+  # Maximum connections
+  connection_limit: 10000
+
+  # Keep-alive
+  http_keepalive_requests: 100
+  http_keepalive_timeout: 60
+
+  # Timeouts
+  client_header_timeout: 10
+  client_body_timeout: 10
+  send_timeout: 60
+
+  # HTTPS
+  ssl_ciphers: HIGH:!aNULL:!MD5
+  ssl_protocols: TLSv1.2 TLSv1.3

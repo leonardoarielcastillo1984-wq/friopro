@@ -649,4 +649,39 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       tenantRole: membership.role,
     });
   });
+
+
+  // ── DEBUG: Check user status ──
+  app.get('/debug/check-user', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { email } = req.query as { email?: string };
+    if (!email) return reply.code(400).send({ error: 'Email required' });
+
+    const user = await app.prisma.platformUser.findUnique({
+      where: { email },
+      select: { 
+        id: true, 
+        email: true, 
+        isActive: true, 
+        deletedAt: true,
+        globalRole: true
+      }
+    });
+
+    if (!user) {
+      return reply.send({ found: false, message: 'User not found' });
+    }
+
+    const memberships = await app.prisma.tenantMembership.findMany({
+      where: { userId: user.id, status: 'ACTIVE', deletedAt: null },
+      select: { tenantId: true, role: true }
+    });
+
+    return reply.send({ 
+      found: true, 
+      user, 
+      membershipsCount: memberships.length,
+      memberships 
+    });
+  });
+
 };

@@ -1,0 +1,59 @@
+{
+  "description": "Complete package.json additions for 2FA testing and deployment",
+  "scripts_to_add": {
+    "test": "vitest",
+    "test:unit": "vitest run",
+    "test:e2e": "cypress run",
+    "test:e2e:open": "cypress open",
+    "test:coverage": "vitest run --coverage",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "build": "vite build",
+    "dev": "vite",
+    "deploy:staging": "bash /mnt/SGI\\ 360/COMPLETE_SETUP.sh $(pwd)",
+    "deploy:prod": "bash /mnt/SGI\\ 360/deploy-production.sh"
+  },
+  "devDependencies_to_add": {
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "@types/jest": "^29.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "@vitest/ui": "^0.34.0",
+    "cypress": "^13.0.0",
+    "vitest": "^0.34.0",
+    "happy-dom": "^12.0.0",
+    "jsdom": "^22.0.0",
+    "typescript": "^5.0.0",
+    "eslint": "^8.0.0",
+    "eslint-plugin-react": "^7.32.0",
+    "eslint-plugin-react-hooks": "^4.6.0"
+  },
+  "cypress_config": {
+    "baseUrl": "http://localhost:3000",
+    "apiUrl": "https://staging-api.sgi360.com",
+    "viewportWidth": 1280,
+    "viewportHeight": 720,
+    "defaultCommandTimeout": 10000,
+    "responseTimeout": 10000,
+    "pageLoadTimeout": 30000,
+    "requestTimeout": 10000,
+    "videoRecording": true,
+    "video": true,
+    "videoUploadOnPasses": false,
+    "screenshotOnRunFailure": true
+  },
+  "vitest_config": {
+    "globals": true,
+    "environment": "happy-dom",
+    "setupFiles": ["src/test/setup.ts"],
+    "coverage": {
+      "provider": "v8",
+      "reporter": ["text", "json", "html"],
+      "exclude": [
+        "node_modules/",
+        "src/test/"
+      ]
+    }
+  }
+}

@@ -76,13 +76,46 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     const header = req.headers.authorization;
     const bearerToken = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : undefined;
     const token = cookieToken ?? bearerToken;
+    
+    // Log para depurar
+    if (req.url.includes('/api/') || req.url.includes('/license/')) {
+      console.log('[AUTH] Request:', {
+        url: req.url,
+        method: req.method,
+        hasCookieToken: !!cookieToken,
+        hasBearerToken: !!bearerToken,
+        hasToken: !!token
+      });
+    }
+    
     if (!token) return;
 
     try {
       const payload = app.verifyAccessToken(token);
       req.auth = payload;
-    } catch {
+      
+      // Log para depurar payload
+      if (req.url.includes('/api/') || req.url.includes('/license/')) {
+        console.log('[AUTH] Payload decoded:', {
+          userId: payload.userId,
+          tenantId: payload.tenantId,
+          globalRole: payload.globalRole,
+          tenantRole: payload.tenantRole
+        });
+      }
+    } catch (error) {
+      console.log('[AUTH] Token verification failed - clearing auth:', error);
       req.auth = null;
+      
+      // Si el token está malformed, limpiar las cookies en la respuesta
+      if (error instanceof Error && error.message.includes('jwt malformed')) {
+        const reply = (req as any).reply;
+        if (reply) {
+          reply.clearCookie('access_token', { path: '/' });
+          reply.clearCookie('refresh_token', { path: '/auth/refresh' });
+          reply.clearCookie('csrf_token', { path: '/' });
+        }
+      }
     }
   });
 });

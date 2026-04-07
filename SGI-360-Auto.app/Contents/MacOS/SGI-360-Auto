@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Obtener la ruta del script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Ejecutar el auto-start.sh
+exec "$SCRIPT_DIR/auto-start.sh"

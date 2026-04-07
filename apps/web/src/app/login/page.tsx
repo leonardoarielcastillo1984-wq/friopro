@@ -41,14 +41,8 @@ export default function LoginPage() {
 
       window.location.href = '/dashboard';
     } catch (e: any) {
-      // Fallback local para no bloquear acceso si la API no está disponible
-      const now = Date.now();
-      const user = { id: `user-${now}`, email, name: 'Administrador', globalRole: 'SUPER_ADMIN' };
-      localStorage.setItem('user', JSON.stringify(user));
-      localStorage.setItem('accessToken', `token-${now}`);
-      localStorage.setItem('csrfToken', `csrf-${now}`);
-      setError('API no disponible, ingresando en modo local');
-      window.location.href = '/dashboard';
+      console.error('Login error:', e);
+      setError('Credenciales inválidas o error de servidor. Por favor intenta nuevamente.');
     } finally {
       setLoading(false);
     }

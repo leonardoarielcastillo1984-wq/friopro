@@ -1,0 +1,381 @@
+---
+# Redis Cluster Configuration for Advanced Cache Optimization
+# Multi-node Redis deployment with clustering, replication, and monitoring
+
+apiVersion: v1
+kind: RedisCluster
+metadata:
+  name: sgi360-redis-cluster
+  namespace: default
+
+# Cluster configuration
+cluster:
+  enabled: true
+  nodes: 6
+  replicas_per_master: 1
+
+  # Node configuration
+  node_config:
+    # Memory settings
+    maxmemory: "2gb"
+    maxmemory_policy: "allkeys-lru"  # LRU eviction policy
+
+    # Persistence
+    save:
+      - "900 1"      # Save if 1 key changed in 900 seconds
+      - "300 10"     # Save if 10 keys changed in 300 seconds
+      - "60 10000"   # Save if 10000 keys changed in 60 seconds
+
+    # AOF (Append Only File)
+    appendonly: "yes"
+    appendfsync: "everysec"
+
+    # Client configuration
+    timeout: 300
+    tcp_backlog: 511
+
+    # Replication
+    min_slaves_to_write: 1
+    min_slaves_max_lag: 10
+
+# Redis Nodes
+nodes:
+  - name: redis-master-1
+    role: master
+    memory: "2gb"
+    port: 6379
+
+  - name: redis-slave-1
+    role: slave
+    memory: "2gb"
+    port: 6380
+    master: redis-master-1
+
+  - name: redis-master-2
+    role: master
+    memory: "2gb"
+    port: 6381
+
+  - name: redis-slave-2
+    role: slave
+    memory: "2gb"
+    port: 6382
+    master: redis-master-2
+
+  - name: redis-master-3
+    role: master
+    memory: "2gb"
+    port: 6383
+
+  - name: redis-slave-3
+    role: slave
+    memory: "2gb"
+    port: 6384
+    master: redis-master-3
+
+# Cache strategies
+cache_strategies:
+
+  # Least Recently Used (LRU)
+  lru:
+    enabled: true
+    policy: "allkeys-lru"
+    samples: 5
+    description: "Evict least recently used keys first"
+
+  # Time To Live (TTL)
+  ttl:
+    enabled: true
+
+    # TTL by cache type
+    ttl_policies:
+      - cache_type: "session"
+        ttl: 3600          # 1 hour
+
+      - cache_type: "document"
+        ttl: 86400         # 24 hours
+
+      - cache_type: "department"
+        ttl: 259200        # 3 days
+
+      - cache_type: "user_profile"
+        ttl: 3600          # 1 hour
+
+      - cache_type: "2fa_verification"
+        ttl: 300           # 5 minutes
+
+      - cache_type: "api_response"
+        ttl: 600           # 10 minutes
+
+      - cache_type: "dashboard"
+        ttl: 1800          # 30 minutes
+
+      - cache_type: "search_results"
+        ttl: 900           # 15 minutes
+
+# Query result caching
+query_result_caching:
+  enabled: true
+
+  # Cache queries by pattern
+  cached_queries:
+    - pattern: "SELECT.*FROM departments"
+      ttl: 3600
+      invalidate_on_write: true
+
+    - pattern: "SELECT.*FROM users"
+      ttl: 1800
+      invalidate_on_write: true
+
+    - pattern: "SELECT.*FROM documents"
+      ttl: 600
+      invalidate_on_write: true
+
+    - pattern: "SELECT.*FROM audit_logs"
+      ttl: 300
+      invalidate_on_write: false
+
+  # Query invalidation triggers
+  invalidation_triggers:
+    - table: "users"
+      actions: ["INSERT", "UPDATE", "DELETE"]
+      invalidate_patterns: ["user_*", "profile_*"]
+
+    - table: "documents"
+      actions: ["INSERT", "UPDATE", "DELETE"]
+      invalidate_patterns: ["document_*", "search_*"]
+
+    - table: "departments"
+      actions: ["INSERT", "UPDATE", "DELETE"]
+      invalidate_patterns: ["department_*", "org_*"]
+
+# Session caching
+session_caching:
+  enabled: true
+
+  # Session store configuration
+  store:
+    type: "redis"
+    key_prefix: "session:"
+    ttl: 3600
+
+  # Session data to cache
+  cached_fields:
+    - "user_id"
+    - "email"
+    - "role"
+    - "permissions"
+    - "department"
+    - "last_activity"
+    - "2fa_verified"
+    - "login_timestamp"
+
+  # Session security
+  security:
+    secure_cookies: true
+    httponly: true
+    samesite: "Strict"
+
+  # Session replication
+  replication:
+    enabled: true
+    replicate_to_peers: true
+    consistency: "strong"
+
+# Caching patterns
+patterns:
+
+  # Cache-aside pattern
+  cache_aside:
+    enabled: true
+    description: "Application checks cache, falls back to database"
+    flow:
+      - "1. Check cache for key"
+      - "2. If hit, return cached value"
+      - "3. If miss, query database"
+      - "4. Store result in cache"
+      - "5. Return value to application"
+
+  # Write-through pattern
+  write_through:
+    enabled: true
+    description: "Write to cache and database simultaneously"
+    ttl: 3600
+
+  # Refresh-ahead pattern
+  refresh_ahead:
+    enabled: true
+    description: "Proactively refresh cache before expiration"
+    threshold: 0.8  # Refresh when 80% of TTL elapsed
+
+# Performance optimization
+optimization:
+  enabled: true
+
+  # Connection pooling
+  connection_pool:
+    max_connections: 100
+    min_connections: 10
+    max_idle_time: 300
+
+  # Batch operations
+  batch:
+    enabled: true
+    batch_size: 1000
+    max_batch_time: 100  # ms
+
+  # Pipeline operations
+  pipeline:
+    enabled: true
+    max_pipeline_size: 10000
+
+# Monitoring and metrics
+monitoring:
+  enabled: true
+
+  metrics:
+    - "hits"
+    - "misses"
+    - "evictions"
+    - "connections"
+    - "memory_usage"
+    - "replication_lag"
+    - "cluster_state"
+
+  # Prometheus integration
+  prometheus:
+    enabled: true
+    metrics_port: 9121
+    scrape_interval: "15s"
+
+  # Health checks
+  health_checks:
+    - type: "ping"
+      interval: 10
+
+    - type: "info"
+      interval: 30
+
+    - type: "cluster"
+      interval: 30
+
+  # Alerting thresholds
+  alerts:
+    - metric: "memory_usage"
+      threshold: "90%"
+      severity: "critical"
+
+    - metric: "hit_ratio"
+      threshold: "<70%"
+      severity: "warning"
+
+    - metric: "eviction_rate"
+      threshold: ">100/sec"
+      severity: "warning"
+
+    - metric: "replication_lag"
+      threshold: ">5000ms"
+      severity: "critical"
+
+# Backup and disaster recovery
+backup:
+  enabled: true
+
+  # RDB snapshots
+  rdb:
+    enabled: true
+    frequency: "daily"
+    time: "02:00"
+    retention_days: 7
+
+  # AOF backups
+  aof:
+    enabled: true
+    fsync: "everysec"
+    retention_days: 30
+
+  # Backup destination
+  destination:
+    type: "s3"
+    bucket: "sgi360-redis-backups"
+    region: "us-east-1"
+    prefix: "redis/"
+    encryption: "AES256"
+
+# Scaling configuration
+scaling:
+  enabled: true
+
+  # Horizontal scaling
+  horizontal:
+    enabled: true
+    auto_scale: true
+    min_nodes: 6
+    max_nodes: 12
+    scale_up_threshold: "80%"
+    scale_down_threshold: "30%"
+
+  # Vertical scaling
+  vertical:
+    enabled: true
+    max_memory_per_node: "8gb"
+
+# Network configuration
+network:
+  enabled: true
+
+  # TLS/SSL
+  tls:
+    enabled: true
+    certificate: "/etc/redis/certs/redis.crt"
+    key: "/etc/redis/certs/redis.key"
+    ca: "/etc/redis/certs/ca.crt"
+
+  # Access control
+  acl:
+    enabled: true
+
+    users:
+      - name: "default"
+        password: "${REDIS_DEFAULT_PASSWORD}"
+        permissions: "+@all"
+
+      - name: "app"
+        password: "${REDIS_APP_PASSWORD}"
+        permissions: "+@read +@write -@admin"
+
+      - name: "monitor"
+        password: "${REDIS_MONITOR_PASSWORD}"
+        permissions: "+@read +@admin"
+
+# Cluster failover
+failover:
+  enabled: true
+
+  # Sentinel configuration (for high availability)
+  sentinel:
+    enabled: true
+    nodes: 3
+    monitor: "redis-master-1 6379 2"
+    down_after: 5000     # 5 seconds
+    parallel_syncs: 1
+    failover_timeout: 180000  # 3 minutes
+
+  # Automatic failover
+  automatic_failover: true
+  failover_timeout: 180000
+
+# Logging
+logging:
+  enabled: true
+
+  levels:
+    - level: "debug"
+      modules: ["cluster"]
+
+    - level: "notice"
+      modules: ["all"]
+
+  log_destination: "file /var/log/redis/redis.log"
+  max_log_size: "100mb"
+  log_retention_days: 30

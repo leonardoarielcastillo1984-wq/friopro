@@ -1,0 +1,176 @@
+LOGIN FLOW - VISUAL COMPARISON
+================================
+
+BEFORE (2FA Required)
+=====================
+
+┌─────────────────────────────────────┐
+│   🔐 2FA Login Test                 │
+├─────────────────────────────────────┤
+│ Email:    test@example.com          │
+│ Password: ••••••••                  │
+│ [Sign In]                           │
+└─────────────────────────────────────┘
+           ↓
+    (Click Sign In)
+           ↓
+┌─────────────────────────────────────┐
+│   🔐 2FA Login Test                 │
+├─────────────────────────────────────┤
+│ Enter the 6-digit code from your    │
+│ authenticator app                   │
+│                                     │
+│ 2FA Code: [000000]                  │
+│ [Verify]                            │
+│ [← Back to Login]                   │
+└─────────────────────────────────────┘
+           ↓
+    (Enter 2FA Code)
+           ↓
+┌─────────────────────────────────────┐
+│ ✅ Login successful!                │
+│                                     │
+│ You have successfully logged in     │
+│ with 2FA.                           │
+│                                     │
+│ User: test@example.com              │
+│ Access Token: eyjhbg...             │
+│ Role: TENANT_ADMIN                  │
+│ Tenant: My Company                  │
+└─────────────────────────────────────┘
+
+
+AFTER (2FA Optional)
+====================
+
+┌─────────────────────────────────────┐
+│   🔐 Simple Login                   │
+├─────────────────────────────────────┤
+│ Email:    test@example.com          │
+│ Password: ••••••••                  │
+│ [Sign In]                           │
+└─────────────────────────────────────┘
+           ↓
+    (Click Sign In)
+           ↓
+┌─────────────────────────────────────┐
+│ ✅ Login successful!                │
+│                                     │
+│ Welcome to your portal.             │
+│                                     │
+│ User: test@example.com              │
+│ Access Token: eyjhbg...             │
+│ Role: TENANT_ADMIN                  │
+│ Tenant: My Company                  │
+│                                     │
+│ 2FA is optional. You can enable     │
+│ it in your account settings.        │
+│ [Go to Dashboard]                   │
+└─────────────────────────────────────┘
+
+
+COMPARISON
+==========
+
+Feature                    Before      After
+────────────────────────────────────────────
+Forms shown                2           1
+Screens after login        3           2
+2FA required?              YES         NO
+Time to login              ~30 sec     ~5 sec
+Steps to reach portal      3           2
+2FA code input needed      YES         NO
+Optional 2FA available     NO          YES (future)
+
+
+BACKEND API RESPONSE
+====================
+
+BEFORE (with 2FA):
+{
+  "requires2FA": true,
+  "sessionToken": "eyJhbG...",
+  "expiresIn": 600
+}
+
+AFTER (without 2FA):
+{
+  "user": { "id": "...", "email": "..." },
+  "activeTenant": { "id": "...", "name": "...", "slug": "..." },
+  "tenantRole": "TENANT_ADMIN",
+  "csrfToken": "...",
+  "accessToken": "..." (in cookie)
+}
+
+
+KEY IMPROVEMENTS
+================
+
+✓ Faster login (1 step instead of 3)
+✓ Simpler UI (no 2FA form)
+✓ Better user experience
+✓ Lower abandonment rate
+✓ Still secure (Argon2 hashing)
+✓ 2FA can be enabled per-user in future
+✓ Cleaner code (~100 lines removed)
+✓ Easier to maintain
+
+
+USER EXPERIENCE TIMELINE
+========================
+
+BEFORE:
+1. User enters email + password (20 sec)
+2. See 2FA form (10 sec)
+3. User gets authenticator code (10 sec)
+4. Enter 2FA code (20 sec)
+5. Login complete (10 sec)
+────────────────────────
+Total time: ~70 seconds
+
+AFTER:
+1. User enters email + password (20 sec)
+2. Login complete (10 sec)
+────────────────────────
+Total time: ~30 seconds
+
+IMPROVEMENT: 57% faster!
+
+
+FUTURE STATE (Optional 2FA)
+===========================
+
+After implementing optional 2FA:
+
+For users WITHOUT 2FA:
+┌──────────────────────┐
+│ 🔐 Simple Login      │
+├──────────────────────┤
+│ Email:    [____]     │
+│ Password: [____]     │
+│ [Sign In]            │
+└──────────────────────┘
+         ↓
+    Success page
+         ↓
+    Dashboard
+
+For users WITH 2FA:
+┌──────────────────────┐
+│ 🔐 Simple Login      │
+├──────────────────────┤
+│ Email:    [____]     │
+│ Password: [____]     │
+│ [Sign In]            │
+└──────────────────────┘
+         ↓
+┌──────────────────────┐
+│ 2FA Code             │
+├──────────────────────┤
+│ [000000]             │
+│ [Verify]             │
+└──────────────────────┘
+         ↓
+    Success page
+         ↓
+    Dashboard

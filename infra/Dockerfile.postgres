@@ -1,0 +1,36 @@
+FROM postgres:16
+
+# Script que configura los permisos correctos DESPUÉS que PostgreSQL inicia
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Ejecutar el entrypoint normal en background\n\
+/usr/local/bin/docker-entrypoint.sh postgres &\n\
+POSTGRES_PID=$!\n\
+\n\
+# Esperar a que PostgreSQL esté listo\n\
+echo "Waiting for PostgreSQL..."\n\
+for i in {1..120}; do\n\
+  if pg_isready -U postgres 2>/dev/null; then\n\
+    echo "PostgreSQL ready"\n\
+    break\n\
+  fi\n\
+  sleep 1\n\
+done\n\
+\n\
+sleep 5\n\
+\n\
+# Crear BD y dar permisos\n\
+PGPASSWORD=postgres psql -U postgres -h localhost << "EOSQL"\n\
+CREATE DATABASE IF NOT EXISTS sgi OWNER postgres ENCODING UTF8 LC_COLLATE C LC_CTYPE C TEMPLATE template0;\n\
+GRANT ALL PRIVILEGES ON DATABASE sgi TO postgres;\n\
+GRANT ALL PRIVILEGES ON SCHEMA public TO postgres WITH GRANT OPTION;\n\
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres;\n\
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres;\n\
+EOSQL\n\
+\n\
+echo "PostgreSQL setup complete"\n\
+wait $POSTGRES_PID\n\
+' > /start.sh && chmod +x /start.sh
+
+ENTRYPOINT ["/start.sh"]

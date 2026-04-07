@@ -2164,7 +2164,7 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
   // ── DIAGNOSTIC: Get current subscription ──
   app.get('/super-admin/test-subscription/:tenantId', async (req: FastifyRequest, reply: FastifyReply) => {
     const { tenantId } = req.params as { tenantId: string };
-    
+
     const subscription = await app.prisma.tenantSubscription.findFirst({
       where: { tenantId, deletedAt: null },
       orderBy: { startedAt: 'desc' },
@@ -2176,6 +2176,113 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       subscription,
       timestamp: new Date().toISOString()
     });
+  });
+
+  // ── DIAGNOSTIC: Check user login status ──
+  app.get('/super-admin/debug/check-user', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { email } = req.query as { email?: string };
+
+    if (!email) {
+      return reply.code(400).send({ error: 'Email is required as query parameter' });
+    }
+
+    try {
+      const user = await app.prisma.platformUser.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          email: true,
+          isActive: true,
+          deletedAt: true,
+          globalRole: true,
+          createdAt: true,
+          passwordHash: true, // Include to check if password is set
+        }
+      });
+
+      if (!user) {
+        return reply.send({
+          exists: false,
+          email,
+          message: 'Usuario no encontrado en la base de datos'
+        });
+      }
+
+      // Check tenant memberships
+      const memberships = await app.prisma.tenantMembership.findMany({
+        where: {
+          userId: user.id,
+          status: 'ACTIVE',
+          deletedAt: null,
+          tenant: { deletedAt: null }
+        },
+        include: {
+          tenant: {
+            select: {
+              id: true,
+              name: true,
+              slug: true
+            }
+          }
+        }
+      });
+
+      // Check subscription status
+      const subscription = memberships.length > 0
+        ? await app.prisma.tenantSubscription.findFirst({
+            where: {
+              tenantId: memberships[0].tenantId,
+              deletedAt: null
+            },
+            include: { plan: true },
+            orderBy: { startedAt: 'desc' }
+          })
+        : null;
+
+      const canLogin = !user.deletedAt && user.isActive && user.passwordHash;
+
+      return reply.send({
+        exists: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          globalRole: user.globalRole,
+          isActive: user.isActive,
+          isDeleted: !!user.deletedAt,
+          hasPasswordHash: !!user.passwordHash,
+          createdAt: user.createdAt
+        },
+        loginStatus: {
+          canLogin,
+          reasons: {
+            isActive: user.isActive ? '✓ Usuario activo' : '✗ Usuario INACTIVO',
+            isNotDeleted: !user.deletedAt ? '✓ Usuario no eliminado' : '✗ Usuario ELIMINADO',
+            hasPassword: user.passwordHash ? '✓ Contraseña establecida' : '✗ Sin contraseña'
+          }
+        },
+        tenantMemberships: memberships.map(m => ({
+          tenantId: m.tenantId,
+          tenantName: m.tenant.name,
+          tenantSlug: m.tenant.slug,
+          role: m.role,
+          status: m.status
+        })),
+        subscription: subscription ? {
+          planTier: subscription.plan?.tier,
+          status: subscription.status,
+          startedAt: subscription.startedAt,
+          endsAt: subscription.endsAt
+        } : null,
+        message: canLogin
+          ? 'Usuario puede iniciar sesión correctamente'
+          : 'Usuario NO puede iniciar sesión. Ver razones arriba.'
+      });
+    } catch (error: any) {
+      app.log.error({ error }, 'Error checking user');
+      return reply.code(500).send({
+        error: 'Error verificando usuario: ' + (error.message || 'Error desconocido')
+      });
+    }
   });
 
 };

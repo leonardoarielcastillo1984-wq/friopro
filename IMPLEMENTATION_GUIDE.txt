@@ -1,0 +1,186 @@
+LOGIN SIMPLIFICATION - IMPLEMENTATION GUIDE
+==============================================
+
+WHAT WAS CHANGED
+================
+
+1. Frontend (/apps/web/test-login.html)
+   - Removed all 2FA UI elements
+   - Simplified to email + password only
+   - Removed 2FA verification logic
+   - Added note that 2FA is optional
+
+2. Backend (/apps/api/src/routes/auth.ts)
+   - Removed mandatory 2FA check
+   - Users now get tokens directly after password verification
+   - No session token for 2FA flow
+
+
+TESTING THE NEW FLOW
+====================
+
+Test Credentials:
+- Email: test@example.com
+- Password: Test123!@#
+
+Steps:
+1. Open test-login.html
+2. Click "Sign In"
+3. See success page with token info
+4. No 2FA code required!
+
+
+LOGIN FLOW (Now)
+================
+
+Email + Password
+    ↓
+Backend verifies credentials
+    ↓
+Backend generates tokens
+    ↓
+User logged in
+    ↓
+Success page shown
+
+
+MAKING 2FA OPTIONAL (Future)
+============================
+
+To allow users to enable/disable 2FA:
+
+1. Create user settings endpoints:
+   - POST /api/user/2fa/enable
+   - POST /api/user/2fa/disable
+   - GET /api/user/2fa/status
+
+2. Modify login to check 2FA per user:
+   - Get user's 2FA status
+   - If enabled: require 2FA verification
+   - If disabled: issue tokens directly
+
+3. Add UI in user settings:
+   - Toggle for 2FA
+   - QR code for authenticator
+   - Backup codes
+
+
+KEY CHANGES
+===========
+
+Removed from Frontend:
+- 2FA form (twoFAForm div)
+- handleVerify2FA() function
+- showTwoFAForm() function
+- 2FA code input field
+- 2FA verification logic
+
+Removed from Backend:
+- get2FAStatus() call
+- create2FASession() call
+- requires2FA response condition
+- sessionToken generation on login
+
+Kept in Both:
+- Password verification
+- Token generation
+- Security headers
+- Rate limiting
+- CSRF protection
+
+
+FILES MODIFIED
+==============
+
+1. /apps/web/test-login.html (Frontend)
+   - Line 6: Title changed
+   - Line 133: Heading changed
+   - Lines 136-141: Test credentials updated
+   - Lines 171-180: Success section updated
+   - Lines 184-241: JavaScript simplified
+
+2. /apps/api/src/routes/auth.ts (Backend)
+   - Lines 270-271: 2FA check removed
+   - Removed conditional 2FA session logic
+
+
+SECURITY STATUS
+===============
+
+✓ Still secure:
+  - Argon2 password hashing
+  - Rate limiting (10 req/minute)
+  - CSRF protection
+  - HTTP-only cookies
+  - Secure token generation
+  - Input validation
+
+Only changed:
+  - 2FA requirement removed
+  - Can be re-enabled per user
+
+
+NEXT STEPS
+==========
+
+Option 1: Keep it simple (no optional 2FA)
+- Login with email + password only
+- No 2FA support for now
+
+Option 2: Make 2FA optional (recommended)
+- Build user settings page
+- Add 2FA enable/disable endpoint
+- Modify login to check per-user 2FA status
+- Use existing 2FA infrastructure
+
+Option 3: Restore mandatory 2FA
+- Restore deleted code from git history
+- Restore 2FA form HTML
+- Restore 2FA check in backend
+
+
+TESTING CHECKLIST
+=================
+
+[ ] Frontend test-login.html loads
+[ ] Email field prefilled: test@example.com
+[ ] Password field prefilled: Test123!@#
+[ ] Click "Sign In" button
+[ ] No 2FA form appears
+[ ] Success page shows token info
+[ ] Token info displays email correctly
+[ ] Token info displays role correctly
+[ ] Token info displays tenant correctly
+[ ] "Go to Dashboard" button clickable
+[ ] Login works with valid credentials
+[ ] Login fails with invalid credentials
+[ ] Error message shown on failure
+[ ] Browser console shows success log
+
+
+ROLLBACK INSTRUCTIONS
+=====================
+
+If you need to undo these changes:
+
+1. Restore test-login.html from git
+2. Restore auth.ts from git
+3. The 2FA infrastructure is still available
+4. No database changes needed
+
+Or manually:
+1. Re-add 2FA form HTML
+2. Re-add handleVerify2FA() function
+3. Re-add 2FA status check in auth.ts
+4. Re-add 2FA session creation logic
+
+
+ADDITIONAL NOTES
+================
+
+- All 2FA backend code still exists
+- No database migrations needed
+- No infrastructure removed
+- Clean, minimal implementation
+- Easily reversible if needed
+- Well-documented for future work

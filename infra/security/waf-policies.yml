@@ -1,0 +1,355 @@
+---
+# WAF Policies for SGI 360
+# Comprehensive security policies for production deployment
+
+apiVersion: v1
+kind: WAFPolicies
+metadata:
+  name: sgi360-waf-policies
+  version: "1.0"
+
+# DDoS Protection Policies
+ddos_protection:
+  enabled: true
+
+  # Rate limiting rules
+  rate_limiting:
+    global:
+      requests_per_minute: 1000
+      requests_per_second: 20
+      connections_per_ip: 100
+
+    endpoint_specific:
+      - endpoint: "/api/auth/login"
+        requests_per_minute: 10
+        requests_per_second: 1
+        block_duration: 3600
+
+      - endpoint: "/api/auth/register"
+        requests_per_minute: 5
+        requests_per_second: 1
+        block_duration: 3600
+
+      - endpoint: "/api/2fa/verify"
+        requests_per_minute: 20
+        requests_per_second: 2
+        block_duration: 1800
+
+      - endpoint: "/api/documents/upload"
+        requests_per_minute: 30
+        requests_per_second: 5
+        block_duration: 1800
+
+  # Connection rate limiting
+  connection_limits:
+    max_connections_per_ip: 100
+    max_requests_per_connection: 1000
+    connection_timeout: 300
+    idle_timeout: 120
+
+  # Bandwidth limiting
+  bandwidth_limits:
+    global_bandwidth_limit: "1000Mbps"
+    per_ip_bandwidth_limit: "100Mbps"
+    burst_limit: "500Mbps"
+
+  # Slowloris attack prevention
+  slowloris_protection:
+    enabled: true
+    min_request_rate: 10  # bytes per second
+    timeout: 10           # seconds
+    max_pending_requests: 100
+
+# Bot Detection Policies
+bot_detection:
+  enabled: true
+
+  # Challenge-based detection
+  challenge_enabled: true
+  challenge_types:
+    - type: "javascript"
+      difficulty: "medium"
+    - type: "captcha"
+      difficulty: "high"
+    - type: "interactive"
+      difficulty: "medium"
+
+  # Behavioral analysis
+  behavioral_analysis:
+    enabled: true
+    track_user_patterns: true
+    anomaly_threshold: 0.7
+
+  # Known bad bots
+  block_list:
+    user_agents:
+      - "BadBot"
+      - "EvilBot"
+      - "MalwareBot"
+      - "SqlMap"
+      - "Nikto"
+      - "Nmap"
+
+    ip_ranges:
+      - "192.0.2.0/24"  # TEST-NET-1
+      - "198.51.100.0/24"  # TEST-NET-2
+      - "203.0.113.0/24"  # TEST-NET-3
+
+  # Legitimate bots whitelist
+  whitelist:
+    user_agents:
+      - "Googlebot"
+      - "Bingbot"
+      - "Slurp"
+      - "DuckDuckBot"
+      - "Baiduspider"
+
+    ip_ranges:
+      - "66.249.66.0/24"  # Google
+      - "157.55.39.0/24"  # Microsoft
+
+# Malicious Request Blocking
+malicious_request_blocking:
+  enabled: true
+
+  # SQL Injection protection
+  sql_injection:
+    enabled: true
+    protection_level: "high"
+    block_patterns:
+      - "union.*select"
+      - "select.*from.*where"
+      - "drop.*table"
+      - "insert.*into"
+      - "delete.*from"
+      - "update.*set"
+      - "--.*"
+      - ";.*;"
+
+    exceptions:
+      - endpoints: ["/api/admin/reports"]
+        allow_patterns: ["select.*from"]
+
+  # XSS protection
+  xss_protection:
+    enabled: true
+    protection_level: "high"
+    block_patterns:
+      - "<script[^>]*>"
+      - "javascript:"
+      - "on(load|error|click)[^=]*="
+      - "<iframe"
+      - "<embed"
+      - "<object"
+
+    encode_output: true
+    sanitize_input: true
+
+  # Command injection protection
+  command_injection:
+    enabled: true
+    block_patterns:
+      - "\\$\\("
+      - "[;&|`]"
+      - "\\${.*}"
+
+  # Path traversal protection
+  path_traversal:
+    enabled: true
+    block_patterns:
+      - "\\.\\./"
+      - "\\.\\.\\\\"
+      - "%2e%2e/"
+      - "..%5c"
+
+  # File upload validation
+  file_upload:
+    enabled: true
+    max_file_size: 52428800  # 50MB
+    blocked_extensions:
+      - "exe"
+      - "bat"
+      - "cmd"
+      - "sh"
+      - "php"
+      - "jsp"
+      - "asp"
+      - "aspx"
+      - "py"
+      - "rb"
+      - "pl"
+
+    allowed_mime_types:
+      - "application/pdf"
+      - "application/msword"
+      - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      - "image/jpeg"
+      - "image/png"
+
+# Authentication & Authorization
+authentication:
+  enabled: true
+
+  # Session management
+  session_management:
+    enabled: true
+    session_timeout: 3600
+    idle_timeout: 1800
+    regenerate_on_auth: true
+    secure_cookie: true
+    httponly_cookie: true
+    samesite_cookie: "Strict"
+
+  # API key validation
+  api_key_validation:
+    enabled: true
+    key_format: "^[a-zA-Z0-9]{32}$"
+    rate_limit_per_key: 10000
+
+  # JWT validation
+  jwt_validation:
+    enabled: true
+    algorithms: ["HS256", "RS256"]
+    signature_verification: true
+    expiration_check: true
+
+# CORS Policy
+cors_policy:
+  enabled: true
+  allowed_origins:
+    - "https://sgi360.example.com"
+    - "https://admin.sgi360.example.com"
+    - "https://api.sgi360.example.com"
+
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+  allowed_headers: ["Content-Type", "Authorization", "X-CSRF-Token"]
+  exposed_headers: ["X-Total-Count", "X-Page-Count"]
+  allow_credentials: true
+  max_age: 86400
+
+# Geolocation Blocking
+geolocation_blocking:
+  enabled: false
+
+  # Block access from specific countries
+  blocked_countries:
+    - "KP"  # North Korea
+
+  # Require MFA for certain countries
+  mfa_required_countries:
+    - "CN"
+    - "RU"
+    - "IR"
+
+# Security Headers
+security_headers:
+  enabled: true
+
+  headers:
+    # Content Security Policy
+    - name: "Content-Security-Policy"
+      value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https:;"
+
+    # X-Frame-Options
+    - name: "X-Frame-Options"
+      value: "DENY"
+
+    # X-Content-Type-Options
+    - name: "X-Content-Type-Options"
+      value: "nosniff"
+
+    # X-XSS-Protection
+    - name: "X-XSS-Protection"
+      value: "1; mode=block"
+
+    # Strict-Transport-Security
+    - name: "Strict-Transport-Security"
+      value: "max-age=31536000; includeSubDomains; preload"
+
+    # Referrer-Policy
+    - name: "Referrer-Policy"
+      value: "strict-origin-when-cross-origin"
+
+    # Permissions-Policy
+    - name: "Permissions-Policy"
+      value: "geolocation=(), microphone=(), camera=()"
+
+# Logging & Alerting
+logging_alerting:
+  enabled: true
+
+  # Log levels
+  log_levels:
+    sql_injection: "CRITICAL"
+    xss_attempts: "CRITICAL"
+    authentication_failures: "HIGH"
+    rate_limit_exceeded: "MEDIUM"
+    bot_detection: "MEDIUM"
+
+  # Alert thresholds
+  alerts:
+    - event_type: "sql_injection"
+      threshold: 1
+      action: "BLOCK_AND_ALERT"
+
+    - event_type: "xss_attempt"
+      threshold: 1
+      action: "BLOCK_AND_ALERT"
+
+    - event_type: "rate_limit_exceeded"
+      threshold: 10
+      action: "ALERT"
+
+    - event_type: "authentication_failure"
+      threshold: 5
+      action: "BLOCK_IP_TEMPORARY"
+      block_duration: 3600
+
+  # Log destinations
+  destinations:
+    - type: "file"
+      path: "/var/log/waf/access.log"
+      format: "json"
+
+    - type: "elasticsearch"
+      endpoint: "https://elasticsearch.example.com:9200"
+      index: "waf-logs"
+
+    - type: "siem"
+      endpoint: "https://siem.example.com/api/events"
+
+# Monitoring & Analytics
+monitoring:
+  enabled: true
+
+  metrics:
+    - "blocked_requests_per_minute"
+    - "request_rate_per_ip"
+    - "bot_detection_rate"
+    - "authentication_failures"
+    - "ssl_violations"
+
+  dashboards:
+    - name: "WAF Overview"
+      refresh_interval: 60
+
+    - name: "Security Incidents"
+      refresh_interval: 30
+
+    - name: "Bot Activity"
+      refresh_interval: 120
+
+# Compliance & Audit
+compliance:
+  enabled: true
+
+  standards:
+    - "PCI-DSS"
+    - "HIPAA"
+    - "GDPR"
+    - "SOC2"
+
+  audit_trail:
+    enabled: true
+    retention_days: 90
+    immutable: true
