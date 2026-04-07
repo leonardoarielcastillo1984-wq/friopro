@@ -1,0 +1,34 @@
+[
+  {
+    "id": "ind-1",
+    "name": "Eficiencia de Producción",
+    "description": "Porcentaje de eficiencia en línea de producción principal",
+    "type": "EFFICIENCY",
+    "unit": "%",
+    "target": 85,
+    "current": 82,
+    "status": "ACTIVE",
+    "area": "Producción",
+    "frequency": "MONTHLY",
+    "tenantId": "test-tenant",
+    "createdById": "test-user",
+    "createdAt": "2026-04-03T12:18:27.688Z",
+    "updatedAt": "2026-04-03T12:18:27.688Z"
+  },
+  {
+    "id": "ind-2",
+    "name": "Cumplimiento de Capacitaciones",
+    "description": "Porcentaje de personal con capacitaciones al día",
+    "type": "COMPLIANCE",
+    "unit": "%",
+    "target": 100,
+    "current": 95,
+    "status": "ACTIVE",
+    "area": "Seguridad",
+    "frequency": "QUARTERLY",
+    "tenantId": "test-tenant",
+    "createdById": "test-user",
+    "createdAt": "2026-04-03T12:18:27.688Z",
+    "updatedAt": "2026-04-03T12:18:27.688Z"
+  }
+]

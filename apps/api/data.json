@@ -1,0 +1,700 @@
+{
+  "documents": [
+    {
+      "id": "doc-1775215083753-0",
+      "title": "Test Normativo",
+      "type": "PROCEDURE",
+      "status": "EFFECTIVE",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:18:03.753Z",
+      "updatedAt": "2026-04-03T11:41:18.156Z",
+      "normativeId": "norm-1",
+      "departmentId": "dept-2"
+    },
+    {
+      "id": "doc-1775215083767-1",
+      "title": "SV PRO 001 Contexto de la Organización",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-PRO-001 Contexto de la Organización-1775177153520.docx",
+      "fileName": "SV-PRO-001 Contexto de la Organización-1775177153520.docx",
+      "fileSize": 42239,
+      "content": "1. OBJETIVO\n\nEstablecer la metodología para determinar las cuestiones externas e internas relevantes para el propósito de DADA que afectan la capacidad del SGSV para lograr los resultados previstos, así como identificar las partes interesadas y sus requisitos.\n\n2. ALCANCE\n\nAplica a todos los procesos del Sistema de Gestión de la Seguridad Vial de DADA y a todas las partes interesadas pertinentes.\n\n3. RESPONSABILIDADES\n\n• Alta Dirección: Aprobar el análisis de contexto y asegurar que se consideren las cuestiones pertinentes en la planificación estratégica.\n\n• Responsable del SGSV: Coordinar el análisis de contexto, identificar partes interesadas y mantener actualizada la información documentada.\n\n• Líderes de proceso: Proporcionar información sobre cuestiones internas y externas de sus áreas.\n\n4. DESARROLLO\n\n4.1 Análisis del contexto externo\n\nSe analizan las siguientes cuestiones externas que pueden influir en el desempeño del SGSV:\n\n• Marco legal y regulatorio: legislación de tránsito nacional, provincial y municipal, requisitos de habilitación vehicular, regulaciones de transporte.\n\n• Condiciones de infraestructura vial: estado de rutas y caminos utilizados, señalización, iluminación, puntos críticos.\n\n• Condiciones climáticas y geográficas: factores ambientales que afectan la seguridad en las rutas operadas.\n\n• Contexto social y cultural: comportamientos viales predominantes en las zonas de operación.\n\n• Avances tecnológicos: nuevas tecnologías disponibles para mejorar la seguridad vial.\n\n• Estadísticas de siniestralidad vial: datos nacionales y regionales de accidentes de tránsito.\n\n4.2 Análisis del contexto interno\n\nSe analizan las siguientes cuestiones internas:\n\n• Estructura organizacional y recursos disponibles.\n\n• Cultura de seguridad vial existente.\n\n• Competencias del personal (conductores y no conductores).\n\n• Estado y antigüedad de la flota vehicular.\n\n• Historial de siniestros e incidentes viales.\n\n• Sistemas de gestión implementados.\n\n• Tecnología disponible (GPS, telemetría, cámaras).\n\n4.3 Identificación de partes interesadas\n\nSe identifican las partes interesadas pertinentes al SGSV y sus necesidades y expectativas:\n\nParte Interesada\n\nNecesidades y Expectativas\n\nConductores y personal\n\nCondiciones seguras de trabajo, capacitación, vehículos en buen estado\n\nClientes\n\nTransporte seguro y confiable de personas/mercancías\n\nAutoridades de tránsito\n\nCumplimiento legal, habilitaciones vigentes, documentación al día\n\nComunidad / usuarios viales\n\nConducción responsable, respeto de normas de tránsito\n\nProveedores de servicios\n\nRequisitos claros de seguridad vial\n\nAseguradoras\n\nGestión de riesgos, reducción de siniestralidad\n\nFamilias del personal\n\nSeguridad y bienestar de los trabajadores\n\n4.4 Revisión y actualización\n\nEl análisis de contexto y la identificación de partes interesadas se revisan al menos anualmente durante la Revisión por la Dirección, o cuando ocurran cambios significativos en las condiciones internas o externas de la organización.\n\n5. REGISTROS\n\n• SV-REG-001 Matriz de Contexto (cuestiones internas y externas).\n\n• SV-REG-002 Registro de Partes Interesadas y sus Requisitos.\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:18:03.767Z",
+      "updatedAt": "2026-04-03T11:18:03.767Z"
+    },
+    {
+      "id": "doc-1775215083779-2",
+      "title": "SV PRO 002 Liderazgo Roles y Responsabilidades",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-PRO-002 Liderazgo Roles y Responsabilidades-1775177524469.docx",
+      "fileName": "SV-PRO-002 Liderazgo Roles y Responsabilidades-1775177524469.docx",
+      "fileSize": 41691,
+      "content": "1. OBJETIVO\n\nDefinir las responsabilidades, autoridades y roles de las personas involucradas en el Sistema de Gestión de la Seguridad Vial de DADA, asegurando el liderazgo y compromiso de la Alta Dirección.\n\n2. ALCANCE\n\nAplica a todos los niveles de la organización que participan directa o indirectamente en la gestión de la seguridad vial.\n\n3. RESPONSABILIDADES\n\n3.1 Alta Dirección\n\n• Establecer y aprobar la Política de Seguridad Vial.\n\n• Asegurar la integración del SGSV en los procesos de negocio de la organización.\n\n• Asignar los recursos necesarios para el SGSV.\n\n• Comunicar la importancia de cumplir con los requisitos del SGSV.\n\n• Asegurar que el SGSV logre los resultados previstos.\n\n• Dirigir y apoyar a las personas para contribuir a la eficacia del SGSV.\n\n• Promover la mejora continua.\n\n• Realizar la Revisión por la Dirección.\n\n3.2 Responsable del SGSV\n\n• Coordinar la implementación, mantenimiento y mejora del SGSV.\n\n• Asegurar que los procesos del SGSV se establezcan y mantengan.\n\n• Informar a la Alta Dirección sobre el desempeño del SGSV.\n\n• Gestionar la documentación del sistema.\n\n• Coordinar auditorías internas y externas.\n\n• Supervisar la investigación de siniestros viales.\n\n• Coordinar programas de capacitación en seguridad vial.\n\n3.3 Jefes de Operaciones / Jefes de Flota\n\n• Implementar los controles operacionales de seguridad vial en sus áreas.\n\n• Asegurar el cumplimiento de los procedimientos de seguridad vial.\n\n• Supervisar el estado de los vehículos y el comportamiento de los conductores.\n\n• Reportar siniestros, incidentes y condiciones inseguras.\n\n• Participar en la investigación de siniestros viales.\n\n3.4 Conductores\n\n• Cumplir con la legislación de tránsito y los procedimientos de seguridad vial de la organización.\n\n• Realizar la inspección pre-operacional del vehículo.\n\n• Reportar cualquier condición insegura, incidente o siniestro vial.\n\n• Participar en las capacitaciones de seguridad vial.\n\n• Utilizar correctamente los elementos de seguridad (cinturón, luces, etc.).\n\n• Mantener vigentes las licencias y habilitaciones requeridas.\n\n3.5 Área de Mantenimiento\n\n• Ejecutar el programa de mantenimiento preventivo y correctivo de la flota.\n\n• Asegurar que los vehículos cumplan con las condiciones de seguridad requeridas.\n\n• Mantener registros de mantenimiento actualizados.\n\n• Informar sobre vehículos que no cumplan condiciones de seguridad.\n\n3.6 Recursos Humanos\n\n• Gestionar los procesos de selección asegurando la competencia en seguridad vial.\n\n• Coordinar y registrar las capacitaciones en seguridad vial.\n\n• Gestionar los exámenes psicofísicos de los conductores.\n\n4. ORGANIGRAMA DEL SGSV\n\nEl organigrama del SGSV se mantiene actualizado y disponible, mostrando las líneas de reporte y autoridad para la gestión de la seguridad vial.\n\n5. REGISTROS\n\n• SV-REG-003 Matriz de Roles y Responsabilidades del SGSV.\n\n• SV-REG-004 Designación del Responsable del SGSV.\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:18:03.779Z",
+      "updatedAt": "2026-04-03T11:18:03.779Z"
+    },
+    {
+      "id": "doc-1775215083790-3",
+      "title": "SV PRO 004 Evaluación de Riesgos Viales",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-PRO-004 Evaluación de Riesgos Viales-1775177749701.docx",
+      "fileName": "SV-PRO-004 Evaluación de Riesgos Viales-1775177749701.docx",
+      "fileSize": 42344,
+      "content": "1. OBJETIVO\n\nEstablecer la metodología para la identificación de peligros, evaluación de riesgos y determinación de oportunidades en materia de seguridad vial, así como la planificación de acciones para abordarlos.\n\n2. ALCANCE\n\nAplica a todos los riesgos viales asociados a las actividades de DADA, incluyendo riesgos en ruta, in itinere y en instalaciones.\n\n3. RESPONSABILIDADES\n\n• Responsable del SGSV: Coordinar el proceso de evaluación de riesgos y elaborar el plan de acción.\n\n• Jefes de operaciones: Identificar peligros y participar en la evaluación de riesgos.\n\n• Alta Dirección: Aprobar el plan de acción y asignar recursos.\n\n4. DESARROLLO\n\n4.1 Identificación de peligros viales\n\nSe identifican los peligros viales considerando:\n\n• Actividades rutinarias y no rutinarias de conducción.\n\n• Características de las rutas y vías utilizadas.\n\n• Condiciones meteorológicas adversas.\n\n• Comportamiento de otros usuarios viales.\n\n• Estado y características de los vehículos.\n\n• Fatiga, estrés y distracciones del conductor.\n\n• Carga de trabajo y presiones de tiempo.\n\n• Circulación en instalaciones internas.\n\n4.2 Evaluación de riesgos\n\nLos riesgos se evalúan utilizando la siguiente matriz de probabilidad e impacto:\n\nProbabilidad / Severidad\n\nLeve (1)\n\nModerada (2)\n\nGrave (3)\n\nMuy Grave (4)\n\nCatastrófica (5)\n\nMuy Alta (5)\n\n5\n\n10\n\n15\n\n20\n\n25\n\nAlta (4)\n\n4\n\n8\n\n12\n\n16\n\n20\n\nMedia (3)\n\n3\n\n6\n\n9\n\n12\n\n15\n\nBaja (2)\n\n2\n\n4\n\n6\n\n8\n\n10\n\nMuy Baja (1)\n\n1\n\n2\n\n3\n\n4\n\n5\n\nNiveles de riesgo: Bajo (1-4): Aceptable con monitoreo. Medio (5-9): Requiere medidas de control. Alto (10-15): Requiere acciones prioritarias. Muy Alto (16-25): Inaceptable, requiere acciones inmediatas.\n\n4.3 Determinación de controles\n\nLos controles se determinan siguiendo la jerarquía:\n\n• Eliminación: Eliminar la exposición al riesgo (ej: evitar viajes innecesarios).\n\n• Sustitución: Reemplazar por alternativas más seguras (ej: rutas alternativas más seguras).\n\n• Controles de ingeniería: Medidas técnicas (ej: limitadores de velocidad, GPS, cámaras).\n\n• Controles administrativos: Procedimientos, capacitación, señalización.\n\n• Elementos de protección personal: Cinturón de seguridad, elementos reflectivos.\n\n4.4 Plan de acción de seguridad vial\n\nPara cada riesgo que requiera acción, se establece un plan que incluye: la acción a implementar, el responsable, los recursos necesarios, el plazo de implementación y el criterio de eficacia.\n\n4.5 Objetivos de seguridad vial\n\nLos objetivos se establecen considerando los FDE-SV priorizados y son SMART (específicos, medibles, alcanzables, relevantes y con plazo definido).\n\n5. REGISTROS\n\n• SV-REG-007 Matriz de Identificación de Peligros y Evaluación de Riesgos Viales.\n\n• SV-REG-008 Plan de Acción de Seguridad Vial.\n\n• SV-REG-009 Objetivos y Metas de Seguridad Vial.\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:18:03.790Z",
+      "updatedAt": "2026-04-03T11:18:03.790Z"
+    },
+    {
+      "id": "doc-1775215083801-4",
+      "title": "SV PRO 004 Evaluación de Riesgos Viales v1",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-PRO-004 Evaluación de Riesgos Viales-v1-1775180224787.docx",
+      "fileName": "SV-PRO-004 Evaluación de Riesgos Viales-v1-1775180224787.docx",
+      "fileSize": 42344,
+      "content": "1. OBJETIVO\n\nEstablecer la metodología para la identificación de peligros, evaluación de riesgos y determinación de oportunidades en materia de seguridad vial, así como la planificación de acciones para abordarlos.\n\n2. ALCANCE\n\nAplica a todos los riesgos viales asociados a las actividades de DADA, incluyendo riesgos en ruta, in itinere y en instalaciones.\n\n3. RESPONSABILIDADES\n\n• Responsable del SGSV: Coordinar el proceso de evaluación de riesgos y elaborar el plan de acción.\n\n• Jefes de operaciones: Identificar peligros y participar en la evaluación de riesgos.\n\n• Alta Dirección: Aprobar el plan de acción y asignar recursos.\n\n4. DESARROLLO\n\n4.1 Identificación de peligros viales\n\nSe identifican los peligros viales considerando:\n\n• Actividades rutinarias y no rutinarias de conducción.\n\n• Características de las rutas y vías utilizadas.\n\n• Condiciones meteorológicas adversas.\n\n• Comportamiento de otros usuarios viales.\n\n• Estado y características de los vehículos.\n\n• Fatiga, estrés y distracciones del conductor.\n\n• Carga de trabajo y presiones de tiempo.\n\n• Circulación en instalaciones internas.\n\n4.2 Evaluación de riesgos\n\nLos riesgos se evalúan utilizando la siguiente matriz de probabilidad e impacto:\n\nProbabilidad / Severidad\n\nLeve (1)\n\nModerada (2)\n\nGrave (3)\n\nMuy Grave (4)\n\nCatastrófica (5)\n\nMuy Alta (5)\n\n5\n\n10\n\n15\n\n20\n\n25\n\nAlta (4)\n\n4\n\n8\n\n12\n\n16\n\n20\n\nMedia (3)\n\n3\n\n6\n\n9\n\n12\n\n15\n\nBaja (2)\n\n2\n\n4\n\n6\n\n8\n\n10\n\nMuy Baja (1)\n\n1\n\n2\n\n3\n\n4\n\n5\n\nNiveles de riesgo: Bajo (1-4): Aceptable con monitoreo. Medio (5-9): Requiere medidas de control. Alto (10-15): Requiere acciones prioritarias. Muy Alto (16-25): Inaceptable, requiere acciones inmediatas.\n\n4.3 Determinación de controles\n\nLos controles se determinan siguiendo la jerarquía:\n\n• Eliminación: Eliminar la exposición al riesgo (ej: evitar viajes innecesarios).\n\n• Sustitución: Reemplazar por alternativas más seguras (ej: rutas alternativas más seguras).\n\n• Controles de ingeniería: Medidas técnicas (ej: limitadores de velocidad, GPS, cámaras).\n\n• Controles administrativos: Procedimientos, capacitación, señalización.\n\n• Elementos de protección personal: Cinturón de seguridad, elementos reflectivos.\n\n4.4 Plan de acción de seguridad vial\n\nPara cada riesgo que requiera acción, se establece un plan que incluye: la acción a implementar, el responsable, los recursos necesarios, el plazo de implementación y el criterio de eficacia.\n\n4.5 Objetivos de seguridad vial\n\nLos objetivos se establecen considerando los FDE-SV priorizados y son SMART (específicos, medibles, alcanzables, relevantes y con plazo definido).\n\n5. REGISTROS\n\n• SV-REG-007 Matriz de Identificación de Peligros y Evaluación de Riesgos Viales.\n\n• SV-REG-008 Plan de Acción de Seguridad Vial.\n\n• SV-REG-009 Objetivos y Metas de Seguridad Vial.\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:18:03.801Z",
+      "updatedAt": "2026-04-03T11:18:03.801Z"
+    },
+    {
+      "id": "doc-1775215083812-5",
+      "title": "SV PRO 005 Competencia y Formación",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-PRO-005 Competencia y Formación-1775177964007.docx",
+      "fileName": "SV-PRO-005 Competencia y Formación-1775177964007.docx",
+      "fileSize": 42035,
+      "content": "1. OBJETIVO\n\nEstablecer los requisitos de competencia, formación y toma de conciencia en seguridad vial para todo el personal cuyas actividades impacten en el desempeño del SGSV.\n\n2. ALCANCE\n\nAplica a todos los empleados de DADA, con énfasis en conductores, personal de operaciones, mantenimiento y supervisores.\n\n3. RESPONSABILIDADES\n\n• Recursos Humanos: Gestionar los procesos de selección, capacitación y evaluación de competencias.\n\n• Responsable del SGSV: Definir los requisitos de competencia en seguridad vial y coordinar el programa de formación.\n\n• Jefes de área: Identificar necesidades de formación y evaluar la competencia de su personal.\n\n4. DESARROLLO\n\n4.1 Requisitos de competencia para conductores\n\n• Licencia de conducir vigente de la categoría correspondiente.\n\n• Examen psicofísico aprobado (vigencia anual).\n\n• Curso de manejo defensivo aprobado.\n\n• Conocimiento de la legislación de tránsito aplicable.\n\n• Experiencia mínima según tipo de vehículo.\n\n• Evaluación práctica de conducción aprobada.\n\n• Conocimiento de procedimientos de emergencia vial.\n\n4.2 Programa de formación en seguridad vial\n\nEl programa de formación incluye:\n\nFormación\n\nFrecuencia\n\nDestinatarios\n\nInducción en seguridad vial\n\nAl ingreso\n\nTodo el personal\n\nManejo defensivo\n\nAnual\n\nConductores\n\nPrimeros auxilios viales\n\nAnual\n\nConductores y supervisores\n\nLegislación de tránsito actualizada\n\nSemestral\n\nConductores\n\nFatiga y somnolencia\n\nSemestral\n\nConductores\n\nCarga segura\n\nAnual\n\nConductores de carga\n\nConducción en condiciones adversas\n\nAnual\n\nConductores\n\nInvestigación de siniestros\n\nAnual\n\nSupervisores y responsable SGSV\n\nAuditoría del SGSV\n\nSegún programa\n\nAuditores internos\n\n4.3 Toma de conciencia\n\nSe implementan actividades de concientización que incluyen:\n\n• Charlas de seguridad vial periódicas (charlas de 5 minutos).\n\n• Campañas de comunicación sobre riesgos viales.\n\n• Difusión de lecciones aprendidas de siniestros e incidentes.\n\n• Cartelería y señalización de seguridad vial en instalaciones.\n\n• Reconocimiento a conductores con buen desempeño en seguridad vial.\n\n4.4 Evaluación de la eficacia\n\nLa eficacia de la formación se evalúa mediante: evaluaciones teóricas y prácticas, seguimiento del desempeño en ruta (telemetría/GPS), análisis de tendencias en siniestralidad y encuestas de conocimiento.\n\n5. REGISTROS\n\n• SV-REG-010 Plan Anual de Formación en Seguridad Vial.\n\n• SV-REG-011 Registro de Asistencia a Capacitaciones.\n\n• SV-REG-012 Evaluación de Competencias de Conductores.\n\n• SV-REG-013 Registro de Licencias y Habilitaciones.\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:18:03.812Z",
+      "updatedAt": "2026-04-03T11:18:03.812Z"
+    },
+    {
+      "id": "doc-1775215083822-6",
+      "title": "SV PRO 009 Auditoría Interna",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-PRO-009 Auditoría Interna-1775178088785.docx",
+      "fileName": "SV-PRO-009 Auditoría Interna-1775178088785.docx",
+      "fileSize": 41362,
+      "content": "1. OBJETIVO\n\nEstablecer la metodología para la planificación, ejecución y seguimiento de las auditorías internas del SGSV, para verificar su conformidad con los requisitos de la norma ISO 39001:2012 y con los requisitos propios de la organización.\n\n2. ALCANCE\n\nAplica a todos los procesos y áreas incluidos en el alcance del SGSV de DADA.\n\n3. RESPONSABILIDADES\n\n• Responsable del SGSV: Elaborar el programa anual de auditorías y coordinar su ejecución.\n\n• Auditores internos: Ejecutar las auditorías conforme a la metodología establecida. Deben ser independientes del área auditada.\n\n• Auditados: Facilitar el acceso a información, registros e instalaciones.\n\n• Alta Dirección: Revisar los resultados de las auditorías y asignar recursos para acciones correctivas.\n\n4. DESARROLLO\n\n4.1 Programa anual de auditorías\n\nSe elabora un programa anual que asegure que todos los procesos del SGSV sean auditados al menos una vez al año. La frecuencia puede incrementarse para procesos con mayor riesgo o con hallazgos previos.\n\n4.2 Competencia de auditores\n\nLos auditores internos deben contar con formación en técnicas de auditoría y conocimiento de la norma ISO 39001:2012, además de ser independientes del área a auditar.\n\n4.3 Ejecución de la auditoría\n\n• Reunión de apertura: Presentar alcance, objetivos y metodología.\n\n• Recopilación de evidencias: Entrevistas, revisión documental, observación de actividades.\n\n• Registro de hallazgos: No conformidades, observaciones, oportunidades de mejora.\n\n• Reunión de cierre: Presentar hallazgos preliminares y acordar plazos.\n\n4.4 Informe de auditoría\n\nEl informe debe incluir: alcance y criterios de auditoría, hallazgos clasificados (no conformidades mayores, menores, observaciones), evidencias, conclusiones y recomendaciones.\n\n4.5 Seguimiento de hallazgos\n\nLas no conformidades detectadas requieren acciones correctivas con análisis de causa raíz. Se verifica la implementación y eficacia de las acciones en la siguiente auditoría o en auditorías de seguimiento.\n\n5. REGISTROS\n\n• SV-REG-023 Programa Anual de Auditorías Internas del SGSV.\n\n• SV-REG-024 Plan de Auditoría.\n\n• SV-REG-025 Informe de Auditoría Interna.\n\n• SV-REG-026 Registro de Hallazgos y Acciones Correctivas.\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:18:03.822Z",
+      "updatedAt": "2026-04-03T11:18:03.822Z"
+    },
+    {
+      "id": "doc-1775216308146-7",
+      "title": "SV POL 001 Política de Seguridad Vial",
+      "type": "PROCEDURE",
+      "status": "EFFECTIVE",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:38:28.146Z",
+      "updatedAt": "2026-04-03T11:43:06.605Z",
+      "normativeId": "norm-1",
+      "departmentId": null
+    },
+    {
+      "id": "doc-1775216423893-8",
+      "title": "SV POL 001 Política de Seguridad Vial",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:40:23.893Z",
+      "updatedAt": "2026-04-03T11:40:23.893Z"
+    },
+    {
+      "id": "doc-1775217216287-9",
+      "title": "SV POL 001 Política de Seguridad Vial",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T11:53:36.287Z",
+      "updatedAt": "2026-04-03T11:53:36.287Z"
+    },
+    {
+      "id": "doc-1775217788533-10",
+      "title": "SV POL 001 Política de Seguridad Vial",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:03:08.533Z",
+      "updatedAt": "2026-04-03T12:03:08.533Z"
+    },
+    {
+      "id": "doc-1775218020945-11",
+      "title": "SV POL 001 Política de Seguridad Vial",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:07:00.945Z",
+      "updatedAt": "2026-04-03T12:07:00.945Z"
+    },
+    {
+      "id": "doc-1775218085157-12",
+      "title": "SV POL 001 Política de Seguridad Vial",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:08:05.157Z",
+      "updatedAt": "2026-04-03T12:08:05.157Z"
+    },
+    {
+      "id": "doc-1775218388987-13",
+      "title": "SV POL 001 Política de Seguridad Vial",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:13:08.988Z",
+      "updatedAt": "2026-04-03T12:13:08.988Z"
+    },
+    {
+      "id": "doc-1775218534211-14",
+      "title": "SV POL 001 Política de Seguridad Vial",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:15:34.211Z",
+      "updatedAt": "2026-04-03T12:15:34.211Z"
+    },
+    {
+      "id": "doc-1775218707791-15",
+      "title": "SV POL 001 Política de Seguridad Vial",
+      "type": "PROCEDURE",
+      "status": "DRAFT",
+      "filePath": "/uploads/SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileName": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+      "fileSize": 41196,
+      "content": "POLÍTICA DE SEGURIDAD VIAL\n\nDADA, como empresa de transporte comprometida con la seguridad vial, establece la siguiente política en el marco de su Sistema de Gestión de la Seguridad Vial conforme a la norma ISO 39001:2012:\n\nLa Dirección de DADA se compromete a:\n\n• Prevenir y reducir progresivamente la incidencia de muertes y lesiones graves derivadas de siniestros de tránsito relacionados con nuestras operaciones, con la meta a largo plazo de eliminarlos por completo.\n\n• Cumplir con la legislación vigente en materia de tránsito y seguridad vial a nivel nacional, provincial y municipal, así como con otros requisitos que la organización suscriba.\n\n• Identificar, evaluar y gestionar los riesgos viales asociados a nuestras actividades, tomando acciones para reducirlos a niveles aceptables.\n\n• Establecer objetivos y metas medibles de seguridad vial, revisándolos periódicamente para asegurar la mejora continua del desempeño.\n\n• Proveer los recursos necesarios para la implementación, mantenimiento y mejora del Sistema de Gestión de la Seguridad Vial.\n\n• Asegurar que todo el personal cuyas actividades impacten en la seguridad vial posea la competencia, formación y concienciación adecuadas.\n\n• Mantener vehículos en condiciones óptimas de seguridad mediante programas de mantenimiento preventivo y correctivo.\n\n• Promover una cultura de seguridad vial en toda la organización, fomentando comportamientos seguros y responsables.\n\n• Investigar todos los siniestros e incidentes viales para determinar sus causas y prevenir su recurrencia.\n\n• Comunicar esta política a todo el personal y partes interesadas, asegurando su comprensión y aplicación.\n\nEsta política es revisada periódicamente para asegurar su continua adecuación y eficacia, y se encuentra disponible para todas las partes interesadas.\n\n\n\nFirma: ____________________________\n\nRepresentante de la Alta Dirección\n\nFecha: 09/03/2026\n\n",
+      "version": 1,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:18:27.791Z",
+      "updatedAt": "2026-04-03T12:18:27.791Z"
+    }
+  ],
+  "drills": [
+    {
+      "id": "drill-1",
+      "name": "Simulacro de Evacuación",
+      "description": "Simulacro de evacuación por incendio - Planta Principal",
+      "type": "FIRE",
+      "severity": "HIGH",
+      "category": "INDUSTRIAL_ACCIDENT",
+      "status": "PLANNED",
+      "schedule": {
+        "plannedDate": "2024-12-15T10:00:00Z",
+        "duration": 2,
+        "start_time": "10:00",
+        "end_time": "12:00"
+      },
+      "scope": {
+        "areas": [
+          "Planta"
+        ],
+        "departments": [
+          "Producción"
+        ],
+        "participants": 50,
+        "external_agencies": [
+          "Bomberos"
+        ]
+      },
+      "coordinator": {
+        "id": "user-1",
+        "name": "Coordinador",
+        "email": "coord@test.com",
+        "phone": "123"
+      },
+      "evaluators": [],
+      "resources": {
+        "equipment": [],
+        "personnel": [],
+        "facilities": []
+      },
+      "procedures": [],
+      "evaluation_criteria": [],
+      "participants": [],
+      "objectives": [
+        "Evacuación segura",
+        "Control de incendios",
+        "Coordinación de equipos"
+      ],
+      "results": null,
+      "location": "Planta Principal",
+      "created_at": "2026-04-03T12:18:27.689Z",
+      "updated_at": "2026-04-03T12:18:27.689Z",
+      "created_by": "test-user",
+      "tenantId": "test-tenant"
+    }
+  ],
+  "trainings": [
+    {
+      "id": "train-1",
+      "title": "Seguridad Industrial Básica",
+      "description": "Capacitación obligatoria en seguridad industrial para todo el personal",
+      "type": "SAFETY",
+      "status": "ACTIVE",
+      "duration": 8,
+      "mode": "PRESENTIAL",
+      "area": "Seguridad",
+      "startDate": "2026-04-03T12:18:27.688Z",
+      "endDate": "2026-04-10T12:18:27.688Z",
+      "instructor": "Juan Pérez",
+      "capacity": 20,
+      "enrolled": 15,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:18:27.688Z",
+      "updatedAt": "2026-04-03T12:18:27.688Z"
+    },
+    {
+      "id": "train-2",
+      "title": "Manejo de Residuos Peligrosos",
+      "description": "Procedimientos para manejo y disposición de residuos clasificados",
+      "type": "ENVIRONMENTAL",
+      "status": "PLANNED",
+      "duration": 4,
+      "mode": "ONLINE",
+      "area": "Medio Ambiente",
+      "startDate": "2026-04-17T12:18:27.688Z",
+      "endDate": "2026-04-24T12:18:27.688Z",
+      "instructor": "María González",
+      "capacity": 30,
+      "enrolled": 0,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:18:27.688Z",
+      "updatedAt": "2026-04-03T12:18:27.688Z"
+    }
+  ],
+  "indicators": [
+    {
+      "id": "ind-1",
+      "name": "Eficiencia de Producción",
+      "description": "Porcentaje de eficiencia en línea de producción principal",
+      "type": "EFFICIENCY",
+      "unit": "%",
+      "target": 85,
+      "current": 82,
+      "status": "ACTIVE",
+      "area": "Producción",
+      "frequency": "MONTHLY",
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:18:27.688Z",
+      "updatedAt": "2026-04-03T12:18:27.688Z"
+    },
+    {
+      "id": "ind-2",
+      "name": "Cumplimiento de Capacitaciones",
+      "description": "Porcentaje de personal con capacitaciones al día",
+      "type": "COMPLIANCE",
+      "unit": "%",
+      "target": 100,
+      "current": 95,
+      "status": "ACTIVE",
+      "area": "Seguridad",
+      "frequency": "QUARTERLY",
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:18:27.688Z",
+      "updatedAt": "2026-04-03T12:18:27.688Z"
+    }
+  ],
+  "ncrs": [
+    {
+      "id": "ncr-1",
+      "title": "NCR-001 - Desviación en proceso de producción",
+      "description": "Se detectó una desviación en el control de calidad del lote #4521",
+      "type": "INTERNAL",
+      "status": "OPEN",
+      "severity": "HIGH",
+      "area": "Producción",
+      "detectedAt": "2026-04-03T12:18:27.687Z",
+      "createdById": "test-user",
+      "tenantId": "test-tenant",
+      "createdAt": "2026-04-03T12:18:27.688Z",
+      "updatedAt": "2026-04-03T12:18:27.688Z"
+    },
+    {
+      "id": "ncr-2",
+      "title": "NCR-002 - Documentación incompleta",
+      "description": "Falta registro de capacitación en seguridad para nuevo personal",
+      "type": "INTERNAL",
+      "status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "area": "Recursos Humanos",
+      "detectedAt": "2026-04-03T12:18:27.688Z",
+      "createdById": "test-user",
+      "tenantId": "test-tenant",
+      "createdAt": "2026-04-03T12:18:27.688Z",
+      "updatedAt": "2026-04-03T12:18:27.688Z"
+    }
+  ],
+  "clauseMappings": [
+    {
+      "id": "mapping-1775216870330",
+      "documentId": "doc-1775216308146-7",
+      "clauseId": "norm-1-c1",
+      "complianceType": "CUMPLE",
+      "notes": null,
+      "createdAt": "2026-04-03T11:47:50.330Z",
+      "updatedAt": "2026-04-03T11:47:50.330Z",
+      "deletedAt": null
+    },
+    {
+      "id": "mapping-1775217310241",
+      "documentId": "doc-1775216308146-7",
+      "clauseId": "norm-1-c1",
+      "complianceType": "CUMPLE",
+      "notes": null,
+      "createdAt": "2026-04-03T11:55:10.241Z",
+      "updatedAt": "2026-04-03T11:55:10.241Z",
+      "deletedAt": "2026-04-03T11:55:14.181Z"
+    }
+  ],
+  "normativos": [
+    {
+      "id": "norm-1",
+      "name": "ISO 39001",
+      "code": "2012",
+      "version": "2012",
+      "description": "Seguridad Vial",
+      "status": "ACTIVE",
+      "processingStatus": "COMPLETED",
+      "fileSize": 2621440,
+      "filePath": "/uploads/ISO-39001-2012.pdf",
+      "originalFileName": "ISO-39001-2012.pdf",
+      "fileHash": "abc123",
+      "clauseCount": 45,
+      "tenantId": "test-tenant",
+      "createdById": "test-user",
+      "createdAt": "2026-04-03T12:08:12.768Z",
+      "updatedAt": "2026-04-03T12:08:12.768Z"
+    }
+  ],
+  "users": [],
+  "notifications": [],
+  "documentVersions": [],
+  "contingencyPlans": [],
+  "emergencyResources": [],
+  "departments": [
+    {
+      "id": "dept-1",
+      "name": "Tecnología",
+      "description": "Departamento de tecnología",
+      "_count": {
+        "employees": 5
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-2",
+      "name": "Recursos Humanos",
+      "description": "Departamento de RRHH",
+      "_count": {
+        "employees": 3
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-3",
+      "name": "Operaciones",
+      "description": "Departamento de operaciones",
+      "_count": {
+        "employees": 8
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-1",
+      "name": "Tecnología",
+      "description": "Departamento de tecnología",
+      "_count": {
+        "employees": 5
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-2",
+      "name": "Recursos Humanos",
+      "description": "Departamento de RRHH",
+      "_count": {
+        "employees": 3
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-3",
+      "name": "Operaciones",
+      "description": "Departamento de operaciones",
+      "_count": {
+        "employees": 8
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-1774544876506",
+      "name": "Calidad",
+      "description": null,
+      "_count": {
+        "employees": 1
+      },
+      "createdAt": "2026-03-26T17:07:56.506Z",
+      "updatedAt": "2026-03-26T17:07:56.506Z"
+    }
+  ],
+  "positions": [
+    {
+      "id": "pos-1",
+      "name": "Desarrollador Senior",
+      "category": "TI",
+      "level": "Senior",
+      "_count": {
+        "employees": 3
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-2",
+      "name": "Gerente de TI",
+      "category": "TI",
+      "level": "Gerencial",
+      "_count": {
+        "employees": 1
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-3",
+      "name": "Analista RRHH",
+      "category": "RRHH",
+      "level": "Analista",
+      "_count": {
+        "employees": 2
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-1",
+      "name": "Desarrollador Senior",
+      "category": "TI",
+      "level": "Senior",
+      "_count": {
+        "employees": 3
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-2",
+      "name": "Gerente de TI",
+      "category": "TI",
+      "level": "Gerencial",
+      "_count": {
+        "employees": 1
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-3",
+      "name": "Analista RRHH",
+      "category": "RRHH",
+      "level": "Analista",
+      "_count": {
+        "employees": 2
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-1774544996224",
+      "name": "Sistemas",
+      "code": "SV-123",
+      "category": "Tecnico",
+      "level": "Senior",
+      "objective": "asegurar funcionamiento del sistema",
+      "responsibilities": [
+        "probando 1",
+        "probando 2"
+      ],
+      "tasks": [
+        "tarea 1",
+        "tarea 2"
+      ],
+      "requirements": [
+        "requisito 1",
+        "requisito 2"
+      ],
+      "kpis": [
+        "no hay"
+      ],
+      "risks": [
+        "Riesgo 1",
+        "riesgo 2"
+      ],
+      "_count": {
+        "employees": 0
+      },
+      "createdAt": "2026-03-26T17:09:56.224Z",
+      "updatedAt": "2026-03-26T17:09:56.224Z"
+    },
+    {
+      "id": "pos-1774545693330",
+      "name": "Responsable de Calidad",
+      "code": null,
+      "category": null,
+      "level": null,
+      "objective": null,
+      "responsibilities": [],
+      "tasks": [],
+      "requirements": [],
+      "kpis": [],
+      "risks": [],
+      "_count": {
+        "employees": 1
+      },
+      "createdAt": "2026-03-26T17:21:33.330Z",
+      "updatedAt": "2026-03-26T17:21:33.330Z"
+    }
+  ],
+  "employees": [
+    {
+      "id": "emp-1",
+      "firstName": "Juan",
+      "lastName": "Pérez",
+      "dni": "12345678",
+      "email": "juan.perez@empresa.com",
+      "phone": "+54 11 1234-5678",
+      "status": "ACTIVE",
+      "hireDate": "2023-01-15T00:00:00.000Z",
+      "contractType": "PERMANENT",
+      "departmentId": "dept-1",
+      "positionId": "pos-1",
+      "supervisorId": null,
+      "user": null,
+      "_count": {
+        "subordinates": 0,
+        "employeeCompetencies": 5,
+        "trainingAssignments": 3
+      },
+      "birthDate": "1990-01-01",
+      "address": "Dirección de ejemplo",
+      "cuil": "20-12345678-9",
+      "location": "Oficina Central",
+      "notes": "Empleado de ejemplo",
+      "createdAt": "2023-01-15T00:00:00.000Z",
+      "updatedAt": "2023-01-15T00:00:00.000Z"
+    },
+    {
+      "id": "emp-1774545743962",
+      "firstName": "Leonardo ",
+      "lastName": "Castillo",
+      "dni": "31234510",
+      "email": "lcastillo@dadalogistica.com",
+      "phone": "1166169368",
+      "status": "ACTIVE",
+      "hireDate": "2026-03-04",
+      "contractType": "PERMANENT",
+      "departmentId": "dept-1774544876506",
+      "positionId": "pos-1774545693330",
+      "supervisorId": "emp-1",
+      "user": null,
+      "_count": {
+        "subordinates": 0,
+        "employeeCompetencies": 0,
+        "trainingAssignments": 0
+      },
+      "birthDate": "2026-03-12",
+      "address": "Jujuy 1197",
+      "cuil": "20312345103",
+      "location": "Casa central",
+      "notes": null,
+      "createdAt": "2026-03-26T17:22:23.962Z",
+      "updatedAt": "2026-03-26T17:38:13.735Z"
+    }
+  ]
+}

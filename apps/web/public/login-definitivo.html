@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SGI 360 - Login Definitivo</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .container { max-width: 400px; margin: 0 auto; background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        h1 { text-align: center; color: #333; margin-bottom: 10px; font-size: 28px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; font-size: 14px; }
+        input, button { width: 100%; padding: 15px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { background: linear-gradient(45deg, #667eea, #764ba2); color: white; border: none; cursor: pointer; font-weight: bold; transition: transform 0.2s; }
+        button:hover { transform: translateY(-2px); }
+        .error { color: #e74c3c; margin: 15px 0; text-align: center; padding: 10px; background: #ffe4e1; border-radius: 5px; }
+        .success { color: #27ae60; margin: 15px 0; text-align: center; padding: 10px; background: #e8f8f5; border-radius: 5px; }
+        .info { text-align: center; margin: 25px 0; color: #666; }
+        .loading { display: none; text-align: center; margin: 15px 0; }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏢 SGI 360</h1>
+        <p class="subtitle">Sistema de Gestión Integrado - Control y Mejora Continua</p>
+        
+        <form id="loginForm">
+            <input type="email" id="email" value="admin@sgi360.com" placeholder="Email" required>
+            <input type="password" id="password" value="Admin123!" placeholder="Contraseña" required>
+            <button type="submit" id="submitBtn">🚀 Ingresar al Dashboard</button>
+        </form>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Iniciando sesión...</p>
+        </div>
+        
+        <div id="error" class="error"></div>
+        <div id="success" class="success"></div>
+        
+        <div class="info">
+            <strong>Acceso Directo:</strong><br>
+            <a href="/dashboard-operativo.html" style="color: #667eea; text-decoration: none; font-weight: bold;">📊 Ir al Dashboard directamente</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+            const successDiv = document.getElementById('success');
+            const loadingDiv = document.getElementById('loading');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            errorDiv.textContent = '';
+            successDiv.textContent = '';
+            loadingDiv.style.display = 'block';
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Procesando...';
+            
+            try {
+                console.log('🔵 Iniciando login SGI 360...');
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                console.log('📡 Status:', response.status);
+                const data = await response.json();
+                console.log('📋 Data:', data);
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Login failed');
+                }
+                
+                if (data.token) {
+                    console.log('✅ Login exitoso');
+                    successDiv.textContent = '✅ ¡Login exitoso! Redirigiendo al dashboard...';
+                    
+                    // Guardar token
+                    localStorage.setItem('accessToken', data.token);
+                    document.cookie = `access_token=${data.token}; path=/; SameSite=Lax`;
+                    console.log('💾 Token guardado');
+                    
+                    // Redirección inmediata
+                    setTimeout(() => {
+                        console.log('🔄 Redirigiendo...');
+                        window.location.href = '/dashboard-operativo.html';
+                    }, 1000);
+                    
+                    return;
+                }
+                
+                throw new Error('No token received');
+            } catch (error) {
+                console.error('❌ Error:', error);
+                errorDiv.textContent = '❌ Error: ' + error.message;
+                successDiv.textContent = '';
+                loadingDiv.style.display = 'none';
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 Ingresar al Dashboard';
+            }
+        });
+        
+        // Verificar si ya hay un token
+        window.addEventListener('load', () => {
+            const token = localStorage.getItem('accessToken');
+            if (token) {
+                console.log('✅ Token encontrado, redirigiendo...');
+                window.location.href = '/dashboard-operativo.html';
+            }
+        });
+    </script>
+</body>
+</html>

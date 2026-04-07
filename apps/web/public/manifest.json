@@ -1,0 +1,16 @@
+{
+  "name": "SGI 360",
+  "short_name": "SGI 360",
+  "description": "Sistema de Gestión Integrado — Control y Mejora Continua",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#f5f5f5",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

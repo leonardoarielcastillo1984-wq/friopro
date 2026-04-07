@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SGI 360 - Test Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 50px; }
+        .container { max-width: 400px; margin: 0 auto; }
+        input, button { width: 100%; padding: 10px; margin: 5px 0; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; }
+        .error { color: red; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SGI 360 - Test Login</h1>
+        <form id="loginForm">
+            <input type="email" id="email" value="admin@sgi360.com" required>
+            <input type="password" id="password" value="Admin123!" required>
+            <button type="submit">Ingresar</button>
+        </form>
+        <div id="error" class="error"></div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+            const resultDiv = document.getElementById('result');
+            
+            errorDiv.textContent = '';
+            resultDiv.textContent = 'Procesando...';
+            
+            try {
+                console.log('🔵 Iniciando login...');
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                console.log('📡 Status:', response.status);
+                const data = await response.json();
+                console.log('📋 Data:', data);
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Login failed');
+                }
+                
+                if (data.token) {
+                    console.log('✅ Login exitoso');
+                    resultDiv.textContent = 'Login exitoso! Redirigiendo...';
+                    
+                    // Guardar token
+                    localStorage.setItem('accessToken', data.token);
+                    document.cookie = `access_token=${data.token}; path=/; SameSite=Lax`;
+                    
+                    // Redirigir
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1000);
+                    
+                    return;
+                }
+                
+                throw new Error('No token received');
+            } catch (error) {
+                console.error('❌ Error:', error);
+                errorDiv.textContent = error.message;
+                resultDiv.textContent = '';
+            }
+        });
+    </script>
+</body>
+</html>

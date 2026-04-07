@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SGI 360 - Login Funcional</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 50px; background: #f5f5f5; }
+        .container { max-width: 400px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; margin-bottom: 30px; }
+        input, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        .error { color: red; margin: 10px 0; text-align: center; }
+        .success { color: green; margin: 10px 0; text-align: center; }
+        .info { text-align: center; margin: 20px 0; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏢 SGI 360</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">Sistema de Gestión Integrado</p>
+        
+        <form id="loginForm">
+            <input type="email" id="email" value="admin@sgi360.com" placeholder="Email" required>
+            <input type="password" id="password" value="Admin123!" placeholder="Contraseña" required>
+            <button type="submit">🚀 Ingresar al Dashboard</button>
+        </form>
+        
+        <div id="error" class="error"></div>
+        <div id="success" class="success"></div>
+        
+        <div class="info">
+            <strong>Acceso Directo:</strong><br>
+            <a href="/dashboard-simple" style="color: #007bff; text-decoration: none;">📊 Ir al Dashboard directamente</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+            const successDiv = document.getElementById('success');
+            
+            errorDiv.textContent = '';
+            successDiv.textContent = '';
+            
+            try {
+                console.log('🔵 Iniciando login SGI 360...');
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                console.log('📡 Status:', response.status);
+                const data = await response.json();
+                console.log('📋 Data:', data);
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Login failed');
+                }
+                
+                if (data.token) {
+                    console.log('✅ Login exitoso');
+                    successDiv.textContent = '✅ Login exitoso! Redirigiendo al dashboard...';
+                    
+                    // Guardar token
+                    localStorage.setItem('accessToken', data.token);
+                    document.cookie = `access_token=${data.token}; path=/; SameSite=Lax`;
+                    
+                    // Redirección directa al dashboard simple
+                    setTimeout(() => {
+                        window.location.href = '/dashboard-simple';
+                    }, 1500);
+                    
+                    return;
+                }
+                
+                throw new Error('No token received');
+            } catch (error) {
+                console.error('❌ Error:', error);
+                errorDiv.textContent = '❌ Error: ' + error.message;
+                successDiv.textContent = '';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SGI 360 - Login Simple</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 50px; background: #f0f0f0; }
+        .container { max-width: 400px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; margin-bottom: 20px; }
+        input, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        .message { padding: 10px; margin: 10px 0; border-radius: 5px; text-align: center; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+        .links { text-align: center; margin-top: 20px; }
+        .links a { color: #007bff; text-decoration: none; margin: 0 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏢 SGI 360</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">Sistema de Gestión Integrado</p>
+        
+        <form id="loginForm">
+            <input type="email" id="email" value="admin@sgi360.com" placeholder="Email" required>
+            <input type="password" id="password" value="Admin123!" placeholder="Contraseña" required>
+            <button type="submit">🚀 Ingresar</button>
+        </form>
+        
+        <div id="message" class="message" style="display: none;"></div>
+        
+        <div class="links">
+            <a href="/dashboard-operativo.html">📊 Dashboard Directo</a>
+            <a href="/login-definitivo.html">🔄 Login Original</a>
+        </div>
+    </div>
+
+    <script>
+        function showMessage(text, type) {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            msg.className = 'message ' + type;
+            msg.style.display = 'block';
+            setTimeout(() => {
+                msg.style.display = 'none';
+            }, 3000);
+        }
+        
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                console.log('🔵 Login iniciado...');
+                showMessage('🔄 Procesando login...', 'success');
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                console.log('📡 Status:', response.status);
+                const data = await response.json();
+                console.log('📋 Data:', data);
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Login failed');
+                }
+                
+                if (data.token) {
+                    console.log('✅ Login exitoso');
+                    showMessage('✅ Login exitoso! Redirigiendo...', 'success');
+                    
+                    // Guardar token
+                    localStorage.setItem('accessToken', data.token);
+                    document.cookie = `access_token=${data.token}; path=/; SameSite=Lax`;
+                    console.log('💾 Token guardado');
+                    
+                    // Redirección inmediata
+                    setTimeout(() => {
+                        console.log('🔄 Redirigiendo al dashboard...');
+                        window.location.replace('/dashboard-operativo.html');
+                    }, 1500);
+                    
+                    return;
+                }
+                
+                throw new Error('No token received');
+            } catch (error) {
+                console.error('❌ Error:', error);
+                showMessage('❌ Error: ' + error.message, 'error');
+            }
+        });
+        
+        // Auto-redirección si ya hay token
+        if (localStorage.getItem('accessToken')) {
+            console.log('✅ Token encontrado, redirigiendo...');
+            window.location.replace('/dashboard-operativo.html');
+        }
+    </script>
+</body>
+</html>

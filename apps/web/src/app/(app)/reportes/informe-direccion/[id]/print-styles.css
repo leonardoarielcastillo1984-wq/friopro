@@ -1,0 +1,281 @@
+/* Print styles for Management Review Report */
+@media print {
+  /* Hide navigation and UI elements */
+  .print\\:hidden {
+    display: none !important;
+  }
+  
+  /* Ensure full width */
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  /* Page settings */
+  @page {
+    size: A4;
+    margin: 2cm;
+  }
+  
+  /* Font sizes for print */
+  .print\\:text-xs {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  
+  .print\\:text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  
+  .print\\:text-base {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+  
+  .print\\:text-lg {
+    font-size: 1.125rem;
+    line-height: 1.75rem;
+  }
+  
+  .print\\:text-xl {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+  
+  .print\\:text-2xl {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+  
+  /* Spacing for print */
+  .print\\:mt-0 {
+    margin-top: 0;
+  }
+  
+  .print\\:mt-1 {
+    margin-top: 0.25rem;
+  }
+  
+  .print\\:mt-2 {
+    margin-top: 0.5rem;
+  }
+  
+  .print\\:mt-4 {
+    margin-top: 1rem;
+  }
+  
+  .print\\:mt-6 {
+    margin-top: 1.5rem;
+  }
+  
+  .print\\:mt-8 {
+    margin-top: 2rem;
+  }
+  
+  .print\\:mb-0 {
+    margin-bottom: 0;
+  }
+  
+  .print\\:mb-1 {
+    margin-bottom: 0.25rem;
+  }
+  
+  .print\\:mb-2 {
+    margin-bottom: 0.5rem;
+  }
+  
+  .print\\:mb-4 {
+    margin-bottom: 1rem;
+  }
+  
+  .print\\:mb-6 {
+    margin-bottom: 1.5rem;
+  }
+  
+  .print\\:mb-8 {
+    margin-bottom: 2rem;
+  }
+  
+  .print\\:p-4 {
+    padding: 1rem;
+  }
+  
+  .print\\:p-6 {
+    padding: 1.5rem;
+  }
+  
+  .print\\:p-8 {
+    padding: 2rem;
+  }
+  
+  /* Borders for print */
+  .print\\:border {
+    border-width: 1px;
+  }
+  
+  .print\\:border-b {
+    border-bottom-width: 1px;
+  }
+  
+  .print\\:border-t {
+    border-top-width: 1px;
+  }
+  
+  .print\\:border-gray-200 {
+    border-color: rgb(229 231 235);
+  }
+  
+  .print\\:border-gray-300 {
+    border-color: rgb(209 213 219);
+  }
+  
+  /* Background colors for print */
+  .print\\:bg-white {
+    background-color: white;
+  }
+  
+  .print\\:bg-gray-50 {
+    background-color: rgb(249 250 251);
+  }
+  
+  .print\\:bg-blue-50 {
+    background-color: rgb(239 246 255);
+  }
+  
+  /* Text colors for print */
+  .print\\:text-gray-900 {
+    color: rgb(17 24 39);
+  }
+  
+  .print\\:text-gray-700 {
+    color: rgb(55 65 81);
+  }
+  
+  .print\\:text-gray-600 {
+    color: rgb(75 85 99);
+  }
+  
+  .print\\:text-gray-500 {
+    color: rgb(107 114 128);
+  }
+  
+  .print\\:text-blue-600 {
+    color: rgb(37 99 235);
+  }
+  
+  /* Font weights for print */
+  .print\\:font-normal {
+    font-weight: 400;
+  }
+  
+  .print\\:font-medium {
+    font-weight: 500;
+  }
+  
+  .print\\:font-semibold {
+    font-weight: 600;
+  }
+  
+  .print\\:font-bold {
+    font-weight: 700;
+  }
+  
+  /* Text alignment */
+  .print\\:text-left {
+    text-align: left;
+  }
+  
+  .print\\:text-center {
+    text-align: center;
+  }
+  
+  .print\\:text-right {
+    text-align: right;
+  }
+  
+  /* Display */
+  .print\\:block {
+    display: block;
+  }
+  
+  .print\\:inline-block {
+    display: inline-block;
+  }
+  
+  .print\\:flex {
+    display: flex;
+  }
+  
+  .print\\:grid {
+    display: grid;
+  }
+  
+  /* Flex utilities */
+  .print\\:justify-between {
+    justify-content: space-between;
+  }
+  
+  .print\\:justify-center {
+    justify-content: center;
+  }
+  
+  .print\\:items-center {
+    align-items: center;
+  }
+  
+  /* Grid utilities */
+  .print\\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  
+  .print\\:gap-4 {
+    gap: 1rem;
+  }
+  
+  /* Width */
+  .print\\:w-full {
+    width: 100%;
+  }
+  
+  /* Rounded corners */
+  .print\\:rounded-lg {
+    border-radius: 0.5rem;
+  }
+  
+  /* Break page for sections */
+  .print\\:break-after {
+    break-after: page;
+  }
+  
+  /* Avoid breaking inside elements */
+  .print\\:break-inside-avoid {
+    break-inside: avoid;
+  }
+  
+  /* Table styles */
+  .print\\:table {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .print\\:table-cell {
+    display: table-cell;
+  }
+  
+  /* Whitespace */
+  .print\\:whitespace-pre-line {
+    white-space: pre-line;
+  }
+  
+  /* Uppercase */
+  .print\\:uppercase {
+    text-transform: uppercase;
+  }
+  
+  /* Tracking */
+  .print\\:tracking-wider {
+    letter-spacing: 0.05em;
+  }
+}

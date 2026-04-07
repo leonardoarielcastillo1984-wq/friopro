@@ -1,0 +1,20 @@
+[
+  {
+    "id": "norm-1",
+    "name": "ISO 39001",
+    "code": "2012",
+    "version": "2012",
+    "description": "Seguridad Vial",
+    "status": "ACTIVE",
+    "processingStatus": "COMPLETED",
+    "fileSize": 2621440,
+    "filePath": "/uploads/ISO-39001-2012.pdf",
+    "originalFileName": "ISO-39001-2012.pdf",
+    "fileHash": "abc123",
+    "clauseCount": 45,
+    "tenantId": "test-tenant",
+    "createdById": "test-user",
+    "createdAt": "2026-04-03T12:08:12.768Z",
+    "updatedAt": "2026-04-03T12:08:12.768Z"
+  }
+]

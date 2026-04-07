@@ -1,0 +1,248 @@
+{
+  "departments": [
+    {
+      "id": "dept-1",
+      "name": "Tecnología",
+      "description": "Departamento de tecnología",
+      "_count": {
+        "employees": 5
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-2",
+      "name": "Recursos Humanos",
+      "description": "Departamento de RRHH",
+      "_count": {
+        "employees": 3
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-3",
+      "name": "Operaciones",
+      "description": "Departamento de operaciones",
+      "_count": {
+        "employees": 8
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-1",
+      "name": "Tecnología",
+      "description": "Departamento de tecnología",
+      "_count": {
+        "employees": 5
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-2",
+      "name": "Recursos Humanos",
+      "description": "Departamento de RRHH",
+      "_count": {
+        "employees": 3
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-3",
+      "name": "Operaciones",
+      "description": "Departamento de operaciones",
+      "_count": {
+        "employees": 8
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "dept-1774544876506",
+      "name": "Calidad",
+      "description": null,
+      "_count": {
+        "employees": 1
+      },
+      "createdAt": "2026-03-26T17:07:56.506Z",
+      "updatedAt": "2026-03-26T17:07:56.506Z"
+    }
+  ],
+  "positions": [
+    {
+      "id": "pos-1",
+      "name": "Desarrollador Senior",
+      "category": "TI",
+      "level": "Senior",
+      "_count": {
+        "employees": 3
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-2",
+      "name": "Gerente de TI",
+      "category": "TI",
+      "level": "Gerencial",
+      "_count": {
+        "employees": 1
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-3",
+      "name": "Analista RRHH",
+      "category": "RRHH",
+      "level": "Analista",
+      "_count": {
+        "employees": 2
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-1",
+      "name": "Desarrollador Senior",
+      "category": "TI",
+      "level": "Senior",
+      "_count": {
+        "employees": 3
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-2",
+      "name": "Gerente de TI",
+      "category": "TI",
+      "level": "Gerencial",
+      "_count": {
+        "employees": 1
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-3",
+      "name": "Analista RRHH",
+      "category": "RRHH",
+      "level": "Analista",
+      "_count": {
+        "employees": 2
+      },
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "pos-1774544996224",
+      "name": "Sistemas",
+      "code": "SV-123",
+      "category": "Tecnico",
+      "level": "Senior",
+      "objective": "asegurar funcionamiento del sistema",
+      "responsibilities": [
+        "probando 1",
+        "probando 2"
+      ],
+      "tasks": [
+        "tarea 1",
+        "tarea 2"
+      ],
+      "requirements": [
+        "requisito 1",
+        "requisito 2"
+      ],
+      "kpis": [
+        "no hay"
+      ],
+      "risks": [
+        "Riesgo 1",
+        "riesgo 2"
+      ],
+      "_count": {
+        "employees": 0
+      },
+      "createdAt": "2026-03-26T17:09:56.224Z",
+      "updatedAt": "2026-03-26T17:09:56.224Z"
+    },
+    {
+      "id": "pos-1774545693330",
+      "name": "Responsable de Calidad",
+      "code": null,
+      "category": null,
+      "level": null,
+      "objective": null,
+      "responsibilities": [],
+      "tasks": [],
+      "requirements": [],
+      "kpis": [],
+      "risks": [],
+      "_count": {
+        "employees": 1
+      },
+      "createdAt": "2026-03-26T17:21:33.330Z",
+      "updatedAt": "2026-03-26T17:21:33.330Z"
+    }
+  ],
+  "employees": [
+    {
+      "id": "emp-1",
+      "firstName": "Juan",
+      "lastName": "Pérez",
+      "dni": "12345678",
+      "email": "juan.perez@empresa.com",
+      "phone": "+54 11 1234-5678",
+      "status": "ACTIVE",
+      "hireDate": "2023-01-15T00:00:00.000Z",
+      "contractType": "PERMANENT",
+      "departmentId": "dept-1",
+      "positionId": "pos-1",
+      "supervisorId": null,
+      "user": null,
+      "_count": {
+        "subordinates": 0,
+        "employeeCompetencies": 5,
+        "trainingAssignments": 3
+      },
+      "birthDate": "1990-01-01",
+      "address": "Dirección de ejemplo",
+      "cuil": "20-12345678-9",
+      "location": "Oficina Central",
+      "notes": "Empleado de ejemplo",
+      "createdAt": "2023-01-15T00:00:00.000Z",
+      "updatedAt": "2023-01-15T00:00:00.000Z"
+    },
+    {
+      "id": "emp-1774545743962",
+      "firstName": "Leonardo ",
+      "lastName": "Castillo",
+      "dni": "31234510",
+      "email": "lcastillo@dadalogistica.com",
+      "phone": "1166169368",
+      "status": "ACTIVE",
+      "hireDate": "2026-03-04",
+      "contractType": "PERMANENT",
+      "departmentId": "dept-1774544876506",
+      "positionId": "pos-1774545693330",
+      "supervisorId": "emp-1",
+      "user": null,
+      "_count": {
+        "subordinates": 0,
+        "employeeCompetencies": 0,
+        "trainingAssignments": 0
+      },
+      "birthDate": "2026-03-12",
+      "address": "Jujuy 1197",
+      "cuil": "20312345103",
+      "location": "Casa central",
+      "notes": null,
+      "createdAt": "2026-03-26T17:22:23.962Z",
+      "updatedAt": "2026-03-26T17:38:13.735Z"
+    }
+  ]
+}

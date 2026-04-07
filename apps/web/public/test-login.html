@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Login Simple</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .box {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 { color: #333; margin-bottom: 20px; }
+    input {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 20px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { background: #1d4ed8; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    #output {
+      margin-top: 30px;
+      padding: 20px;
+      background: #f0f0f0;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .success { color: #10b981; font-weight: bold; }
+    .error { color: #ef4444; font-weight: bold; }
+    .info { color: #3b82f6; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>🔐 Test Login Simple</h1>
+
+    <input type="email" id="email" value="test@example.com" placeholder="Email">
+    <input type="password" id="password" value="Test123!@#" placeholder="Password">
+    <button onclick="testLogin()" id="loginBtn">Intentar Login</button>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const output = document.getElementById('output');
+
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const className = type;
+      const line = document.createElement('div');
+      line.className = className;
+      line.textContent = `[${timestamp}] ${message}`;
+      output.appendChild(line);
+      output.scrollTop = output.scrollHeight;
+      console.log(message);
+    }
+
+    async function testLogin() {
+      output.innerHTML = '';
+      const btn = document.getElementById('loginBtn');
+      btn.disabled = true;
+
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      log(`📧 Email: ${email}`, 'info');
+      log(`🔑 Password: ${password}`, 'info');
+      log('', 'info');
+
+      try {
+        log('Enviando petición a /api/auth/login...', 'info');
+
+        const response = await fetch('http://localhost:3000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        log(`Status HTTP: ${response.status}`, 'info');
+        const data = await response.json();
+
+        log('Respuesta recibida:', 'info');
+        log(JSON.stringify(data, null, 2), 'info');
+        log('', 'info');
+
+        if (!response.ok) {
+          log(`❌ Error: ${data.error}`, 'error');
+          btn.disabled = false;
+          return;
+        }
+
+        if (!data.token) {
+          log('❌ ¡ERROR! No hay "token" en la respuesta', 'error');
+          log(`Campos recibidos: ${Object.keys(data).join(', ')}`, 'error');
+          btn.disabled = false;
+          return;
+        }
+
+        log(`✅ Token recibido: ${data.token}`, 'success');
+        log(`✅ Usuario: ${JSON.stringify(data.user)}`, 'success');
+        log('', 'info');
+
+        // Store in localStorage
+        localStorage.setItem('accessToken', data.token);
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
+
+        log('✅ Datos guardados en localStorage', 'success');
+        log('', 'info');
+        log('🔄 Redirigiendo a /dashboard en 2 segundos...', 'info');
+
+        setTimeout(() => {
+          window.location.href = 'http://localhost:3000/dashboard';
+        }, 2000);
+
+      } catch (error) {
+        log(`❌ Error de red: ${error.message}`, 'error');
+        log(error.stack, 'error');
+        btn.disabled = false;
+      }
+    }
+
+    // Test on load
+    window.addEventListener('load', () => {
+      log('Página cargada. Click en "Intentar Login" para testear', 'info');
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,517 @@
+// PROJECT360 - Sistema de Gestión de Planes de Acción
+
+model ActionProject {
+  id                String    @id @default(cuid())
+  code              String    @unique // AUTO-GEN: PROJ-2026-001
+  name              String
+  description       String?
+  origin            OriginType
+  originModule      String    // módulo que generó
+  originEntityId    String?   // ID de entidad origen
+  originReference   String?   // referencia legible
+  
+  // Asignación y Responsabilidad
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  responsibleId    String
+  responsible       PlatformUser @relation(fields: [responsibleId], references: [id])
+  
+  // Temporalidad
+  startDate         DateTime @default(now())
+  targetDate        DateTime
+  completedAt       DateTime?
+  
+  // Estado y Prioridad
+  status            ProjectStatus @default(PENDING)
+  priority          Priority @default(MEDIUM)
+  progress          Float @default(0) // 0-100
+  
+  // Métricas y KPIs
+  indicatorId        String?
+  indicator         Indicator? @relation(fields: [indicatorId], references: [id])
+  targetValue       Float?
+  currentValue      Float?
+  
+  // Impacto y Riesgo
+  impactLevel       ImpactLevel @default(MEDIUM)
+  riskLevel         RiskLevel @default(MEDIUM)
+  
+  // Metadata
+  tags              String[]
+  metadata          Json? // datos adicionales específicos del origen
+  
+  // Auditoría
+  createdBy         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relaciones
+  tasks             ActionTask[]
+  milestones         ProjectMilestone[]
+  evidences          ProjectEvidence[]
+  comments          ProjectComment[]
+  
+  @@map("action_projects")
+  @@index([tenantId])
+  @@index([status])
+  @@index([responsibleId])
+  @@index([origin, originModule])
+  @@index([targetDate])
+}
+
+model ActionTask {
+  id                String    @id @default(cuid())
+  projectId         String
+  project           ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // Información básica
+  title             String
+  description       String?
+  
+  // Asignación
+  responsibleId     String
+  responsible       PlatformUser @relation(fields: [responsibleId], references: [id])
+  
+  // Temporalidad
+  dueDate           DateTime
+  completedAt       DateTime?
+  estimatedHours    Float?
+  actualHours       Float?
+  
+  // Estado
+  status            TaskStatus @default(PENDING)
+  progress          Float @default(0)
+  
+  // Validación
+  checklist         Json? // array de items con estado
+  requirements       String[] // requisitos para completar
+  
+  // Evidencia
+  evidenceRequired  Boolean @default(false)
+  evidenceFiles     Json? // array de archivos de evidencia
+  
+  // Dependencias
+  dependencies      String[] // IDs de tareas que deben completarse primero
+  
+  // Metadata
+  tags              String[]
+  
+  // Auditoría
+  createdBy         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("action_tasks")
+  @@index([projectId])
+  @@index([responsibleId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model ProjectMilestone {
+  id                String    @id @default(cuid())
+  projectId         String
+  project           ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  title             String
+  description       String?
+  targetDate        DateTime
+  completedAt       DateTime?
+  status            MilestoneStatus @default(PENDING)
+  
+  // Condiciones de cumplimiento
+  conditions        Json? // array de condiciones para marcar como completado
+  
+  // Auditoría
+  createdBy         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("project_milestones")
+  @@index([projectId])
+  @@index([targetDate])
+}
+
+model ProjectEvidence {
+  id                String    @id @default(cuid())
+  projectId         String
+  project           ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId            String?
+  task              ActionTask? @relation(fields: [taskId], references: [id])
+  
+  // Información del archivo
+  fileName          String
+  originalName      String
+  mimeType          String
+  fileSize          Int
+  filePath          String
+  thumbnailPath     String?
+  
+  // Metadatos
+  description       String?
+  tags              String[]
+  uploadedBy        String
+  uploadedAt        DateTime @default(now())
+  
+  @@map("project_evidences")
+  @@index([projectId])
+  @@index([taskId])
+}
+
+model ProjectComment {
+  id                String    @id @default(cuid())
+  projectId         String
+  project           ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId            String?
+  task              ActionTask? @relation(fields: [taskId], references: [id])
+  
+  content           String
+  authorId          String
+  author            PlatformUser @relation(fields: [authorId], references: [id])
+  
+  // Referencia a otros comentarios
+  parentCommentId   String?
+  parentComment     ProjectComment? @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies           ProjectComment[] @relation("CommentReplies")
+  
+  // Auditoría
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("project_comments")
+  @@index([projectId])
+  @@index([taskId])
+  @@index([authorId])
+}
+
+// Enums
+enum OriginType {
+  AUDIT_FINDING      // Hallazgo de auditoría
+  NON_CONFORMITY    // No conformidad
+  INCIDENT          // Incidente
+  DRILL_DEVIATION    // Desvío en simulacro
+  MAINTENANCE_ISSUE  // Problema de mantenimiento
+  RISK_DETECTED      // Riesgo detectado
+  MANAGEMENT_OBJECTIVE // Objetivo de dirección
+  MANUAL            // Creación manual
+}
+
+enum ProjectStatus {
+  PENDING           // Pendiente de iniciar
+  IN_PROGRESS       // En ejecución
+  AT_RISK           // En riesgo (próximo a vencer)
+  OVERDUE           // Vencido
+  COMPLETED         // Completado
+  CANCELLED         // Cancelado
+  ON_HOLD           // En pausa
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ImpactLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  CANCELLED
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================
+// MODULO DE MANTENIMIENTO (MAINTENANCE)
+// ============================================
+
+enum MaintenanceAssetStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  RETIRED
+}
+
+enum MaintenanceAssetCategory {
+  MACHINERY
+  VEHICLE
+  TOOL
+  INFRASTRUCTURE
+  ELECTRONIC
+  SAFETY
+  OTHER
+}
+
+enum WorkOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  OVERDUE
+}
+
+enum WorkOrderType {
+  PREVENTIVE
+  CORRECTIVE
+  PREDICTIVE
+  EMERGENCY
+}
+
+enum MaintenancePlanStatus {
+  ACTIVE
+  PAUSED
+  INACTIVE
+}
+
+model MaintenanceAsset {
+  id                String    @id @default(cuid())
+  code              String    @unique
+  name              String
+  description       String?
+  category          MaintenanceAssetCategory @default(OTHER)
+  status            MaintenanceAssetStatus @default(ACTIVE)
+  
+  // Ubicación
+  location          String?
+  department        String?
+  
+  // Información del fabricante
+  manufacturer      String?
+  model             String?
+  serialNumber      String?
+  
+  // Fechas importantes
+  purchaseDate      DateTime?
+  warrantyDate      DateTime?
+  lastMaintenanceDate DateTime?
+  nextMaintenanceDate DateTime?
+  
+  // Costos
+  acquisitionCost   Float     @default(0)
+  totalMaintenanceCost Float @default(0)
+  
+  // Relaciones
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  workOrders        WorkOrder[]
+  maintenancePlans  MaintenancePlan[]
+  maintenanceCosts  MaintenanceCost[]
+  
+  // Auditoría
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@map("maintenance_assets")
+  @@index([tenantId])
+  @@index([status])
+  @@index([category])
+}
+
+model MaintenanceTechnician {
+  id                String    @id @default(cuid())
+  code              String    @unique
+  name              String
+  email             String?
+  phone             String?
+  specialization    String?
+  certification     String?
+  isActive          Boolean   @default(true)
+  
+  // Relaciones
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  workOrders        WorkOrder[]
+  
+  // Auditoría
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@map("maintenance_technicians")
+  @@index([tenantId])
+  @@index([isActive])
+}
+
+model WorkOrder {
+  id                String    @id @default(cuid())
+  code              String    @unique
+  title             String
+  description       String?
+  type              WorkOrderType @default(PREVENTIVE)
+  status            WorkOrderStatus @default(PENDING)
+  priority          Priority  @default(MEDIUM)
+  
+  // Fechas
+  scheduledDate     DateTime
+  completedDate     DateTime?
+  estimatedDuration Int       @default(0) // en horas
+  actualDuration    Int?      // en horas
+  
+  // Costos (almacenados como JSON para flexibilidad)
+  laborCost         Float     @default(0)
+  partsCost         Float     @default(0)
+  totalCost         Float     @default(0)
+  
+  // Relaciones
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  assetId           String
+  asset             MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  
+  technicianId      String?
+  technician        MaintenanceTechnician? @relation(fields: [technicianId], references: [id], onDelete: SetNull)
+  
+  planExecutionId   String?
+  planExecution     MaintenancePlanExecution? @relation(fields: [planExecutionId], references: [id], onDelete: SetNull)
+  
+  // Auditoría
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@map("work_orders")
+  @@index([tenantId])
+  @@index([status])
+  @@index([assetId])
+  @@index([technicianId])
+  @@index([scheduledDate])
+}
+
+model MaintenancePlan {
+  id                String    @id @default(cuid())
+  code              String    @unique
+  title             String
+  description       String?
+  type              WorkOrderType @default(PREVENTIVE)
+  status            MaintenancePlanStatus @default(ACTIVE)
+  
+  // Frecuencia
+  frequencyValue    Int       @default(30)
+  frequencyUnit     String    @default("DAYS") // DAYS, WEEKS, MONTHS, YEARS
+  
+  // Fechas
+  nextExecutionDate DateTime?
+  lastExecutionDate DateTime?
+  
+  // Contadores
+  totalExecutions   Int       @default(0)
+  
+  // Relaciones
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  assetId           String?
+  asset             MaintenanceAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  
+  executions        MaintenancePlanExecution[]
+  
+  // Auditoría
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@map("maintenance_plans")
+  @@index([tenantId])
+  @@index([status])
+  @@index([assetId])
+  @@index([nextExecutionDate])
+}
+
+model MaintenancePlanExecution {
+  id                String    @id @default(cuid())
+  executedAt        DateTime  @default(now())
+  notes             String?
+  
+  // Relaciones
+  planId            String
+  plan              MaintenancePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  
+  workOrderId       String?
+  workOrder         WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  
+  // Auditoría
+  createdAt         DateTime  @default(now())
+  
+  @@map("maintenance_plan_executions")
+  @@index([planId])
+  @@index([workOrderId])
+}
+
+model MaintenanceSparePart {
+  id                String    @id @default(cuid())
+  code              String    @unique
+  name              String
+  description       String?
+  category          String?
+  
+  // Stock
+  currentStock      Int       @default(0)
+  minStock          Int       @default(0)
+  maxStock          Int?
+  unitCost          Float     @default(0)
+  
+  // Proveedor
+  supplier          String?
+  supplierCode      String?
+  
+  // Ubicación
+  location          String?
+  
+  // Relaciones
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Auditoría
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@map("maintenance_spare_parts")
+  @@index([tenantId])
+  @@index([category])
+}
+
+model MaintenanceCost {
+  id                String    @id @default(cuid())
+  costType          String    // LABOR, PARTS, EXTERNAL, OTHER
+  amount            Float
+  description       String?
+  date              DateTime  @default(now())
+  
+  // Relaciones
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  assetId           String
+  asset             MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  
+  workOrderId       String?
+  
+  // Auditoría
+  createdAt         DateTime  @default(now())
+  
+  @@map("maintenance_costs")
+  @@index([tenantId])
+  @@index([assetId])
+  @@index([date])
+}

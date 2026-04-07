@@ -1,0 +1,473 @@
+{
+  "info": {
+    "_postman_id": "sgi360-2fa-admin-api",
+    "name": "SGI 360 - 2FA & Admin API",
+    "description": "Production-ready API collection for Two-Factor Authentication and Admin Panel Management",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"SecurePassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/auth/login",
+              "host": ["{{BASE_URL}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Authenticate user with email and password. Returns JWT token or requires 2FA verification."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Two-Factor Authentication",
+      "item": [
+        {
+          "name": "Get 2FA Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AUTH_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/2fa/status",
+              "host": ["{{BASE_URL}}"],
+              "path": ["2fa", "status"]
+            },
+            "description": "Get current 2FA status for authenticated user"
+          }
+        },
+        {
+          "name": "Setup 2FA",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AUTH_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/2fa/setup",
+              "host": ["{{BASE_URL}}"],
+              "path": ["2fa", "setup"]
+            },
+            "description": "Start 2FA setup: generate TOTP secret and QR code"
+          }
+        },
+        {
+          "name": "Confirm 2FA",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AUTH_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/2fa/confirm",
+              "host": ["{{BASE_URL}}"],
+              "path": ["2fa", "confirm"]
+            },
+            "description": "Verify TOTP token to complete 2FA setup and receive recovery codes"
+          }
+        },
+        {
+          "name": "Verify 2FA (Login)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionToken\": \"session_token_from_login\",\n  \"token\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/2fa/verify",
+              "host": ["{{BASE_URL}}"],
+              "path": ["2fa", "verify"]
+            },
+            "description": "Verify TOTP code or recovery code during login process"
+          }
+        },
+        {
+          "name": "Disable 2FA",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AUTH_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"UserPassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/2fa/disable",
+              "host": ["{{BASE_URL}}"],
+              "path": ["2fa", "disable"]
+            },
+            "description": "Disable 2FA for authenticated user (requires password confirmation)"
+          }
+        },
+        {
+          "name": "Get Recovery Codes Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AUTH_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/2fa/recovery-codes",
+              "host": ["{{BASE_URL}}"],
+              "path": ["2fa", "recovery-codes"]
+            },
+            "description": "Get status and count of recovery codes"
+          }
+        },
+        {
+          "name": "Regenerate Recovery Codes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AUTH_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/2fa/recovery-codes",
+              "host": ["{{BASE_URL}}"],
+              "path": ["2fa", "recovery-codes"]
+            },
+            "description": "Generate new set of recovery codes for 2FA"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - 2FA Management",
+      "item": [
+        {
+          "name": "List Users with 2FA Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/2fa/users?page=1&pageSize=20&search=&twoFactorEnabled=",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "2fa", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "description": "Number of users per page"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search by email or name (optional)"
+                },
+                {
+                  "key": "twoFactorEnabled",
+                  "value": "",
+                  "description": "Filter by 2FA status - true/false (optional)"
+                }
+              ]
+            },
+            "description": "Get paginated list of all users with their 2FA status (admin only)"
+          }
+        },
+        {
+          "name": "Get User Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/2fa/users/{{USER_ID}}/audit-logs?limit=50&offset=0",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "2fa", "users", "{{USER_ID}}", "audit-logs"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Get audit trail for specific user (admin only)"
+          }
+        },
+        {
+          "name": "Disable User 2FA (Admin Override)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"User locked out of authenticator app\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/2fa/users/{{USER_ID}}/disable",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "2fa", "users", "{{USER_ID}}", "disable"]
+            },
+            "description": "Admin override to disable 2FA for a user"
+          }
+        },
+        {
+          "name": "Send Security Alert to User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Unusual Login Activity Detected\",\n  \"message\": \"We detected a login attempt from an unusual location. If this wasn't you, please reset your password immediately.\",\n  \"type\": \"WARNING\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/2fa/users/{{USER_ID}}/alert",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "2fa", "users", "{{USER_ID}}", "alert"]
+            },
+            "description": "Send security alert or notification to specific user. Type: INFO, WARNING, or CRITICAL"
+          }
+        },
+        {
+          "name": "Get 2FA Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/2fa/stats",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "2fa", "stats"]
+            },
+            "description": "Get overall 2FA statistics and recent activity"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit Logs",
+      "item": [
+        {
+          "name": "Get User Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AUTH_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/audit-logs?limit=50&offset=0",
+              "host": ["{{BASE_URL}}"],
+              "path": ["audit-logs"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Get audit logs for current authenticated user"
+          }
+        }
+      ]
+    },
+    {
+      "name": "API Documentation",
+      "item": [
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/api-docs",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api-docs"]
+            },
+            "description": "Interactive API documentation with Swagger UI"
+          }
+        },
+        {
+          "name": "OpenAPI JSON",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/api-docs.json",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api-docs.json"]
+            },
+            "description": "OpenAPI 3.0 specification in JSON format"
+          }
+        },
+        {
+          "name": "Admin Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/dashboard",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "dashboard"]
+            },
+            "description": "Admin dashboard HTML interface"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "AUTH_TOKEN",
+      "value": "",
+      "type": "string",
+      "description": "JWT token for authenticated requests"
+    },
+    {
+      "key": "ADMIN_TOKEN",
+      "value": "",
+      "type": "string",
+      "description": "JWT token for admin user"
+    },
+    {
+      "key": "USER_ID",
+      "value": "",
+      "type": "string",
+      "description": "Target user ID for admin operations"
+    }
+  ]
+}

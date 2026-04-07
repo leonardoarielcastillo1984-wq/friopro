@@ -1,0 +1,30 @@
+[
+  {
+    "id": "ncr-1",
+    "title": "NCR-001 - Desviación en proceso de producción",
+    "description": "Se detectó una desviación en el control de calidad del lote #4521",
+    "type": "INTERNAL",
+    "status": "OPEN",
+    "severity": "HIGH",
+    "area": "Producción",
+    "detectedAt": "2026-04-03T12:18:27.687Z",
+    "createdById": "test-user",
+    "tenantId": "test-tenant",
+    "createdAt": "2026-04-03T12:18:27.688Z",
+    "updatedAt": "2026-04-03T12:18:27.688Z"
+  },
+  {
+    "id": "ncr-2",
+    "title": "NCR-002 - Documentación incompleta",
+    "description": "Falta registro de capacitación en seguridad para nuevo personal",
+    "type": "INTERNAL",
+    "status": "IN_PROGRESS",
+    "severity": "MEDIUM",
+    "area": "Recursos Humanos",
+    "detectedAt": "2026-04-03T12:18:27.688Z",
+    "createdById": "test-user",
+    "tenantId": "test-tenant",
+    "createdAt": "2026-04-03T12:18:27.688Z",
+    "updatedAt": "2026-04-03T12:18:27.688Z"
+  }
+]

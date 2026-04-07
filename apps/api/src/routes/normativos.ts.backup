@@ -1,0 +1,846 @@
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import type { Prisma } from '@prisma/client';
+import { z } from 'zod';
+import { getStorage, computeFileHash, buildStorageKey } from '../services/storage.js';
+import { getNormativeQueue } from '../jobs/queue.js';
+
+const FEATURE_KEY = 'normativos_compliance';
+const MAX_PDF_SIZE = parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 1024;
+
+// ──────────────────────────────────────────────────────────────
+// Rutas de Normativos
+// ──────────────────────────────────────────────────────────────
+
+export const normativoRoutes: FastifyPluginAsync = async (app) => {
+  // ── GET /normativos — Listar normas del tenant ──
+  app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    // Get tenantId from header (fallback to hardcoded for testing)
+    const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
+    const effectiveTenantId = headerTenantId || req.db?.tenantId || 'f20f0bfe-c1d8-40f6-8d36-97734881ffde';
+
+    if (!effectiveTenantId) {
+      return reply.code(400).send({ error: 'Tenant context required' });
+    }
+
+    const prisma = app.prisma;
+
+    const normativos = await prisma.normativeStandard.findMany({
+      where: { tenantId: effectiveTenantId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        version: true,
+        description: true,
+        status: true,
+        totalClauses: true,
+        originalFileName: true,
+        fileSize: true,
+        errorMessage: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return reply.send({ normativos });
+  });
+
+  // ── GET /normativos/compliance-summary — Resumen de cumplimiento de todas las normas ──
+  app.get('/compliance-summary', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    // Get tenantId from header (fallback to hardcoded for testing)
+    const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
+    const effectiveTenantId = headerTenantId || req.db?.tenantId || 'f20f0bfe-c1d8-40f6-8d36-97734881ffde';
+
+    if (!effectiveTenantId) {
+      return reply.code(400).send({ error: 'Tenant context required' });
+    }
+
+    const prisma = app.prisma;
+
+    try {
+      // Get all normatives for tenant
+      const normatives = await prisma.normativeStandard.findMany({
+        where: { 
+          tenantId: effectiveTenantId, 
+          deletedAt: null,
+          status: { not: 'ARCHIVED' }
+        },
+        select: { id: true, name: true, code: true, status: true }
+      });
+
+      // Calculate compliance for each normative
+      const complianceSummary = await Promise.all(
+        normatives.map(async (normative) => {
+          const allClauses = await prisma.normativeClause.count({
+            where: { 
+              normativeId: normative.id, 
+              deletedAt: null 
+            }
+          });
+
+          const mappedClauses = await prisma.documentClauseMapping.count({
+            where: { 
+              deletedAt: null,
+              clause: {
+                normativeId: normative.id,
+                deletedAt: null
+              }
+            }
+          });
+
+          const compliancePercentage = allClauses > 0 ? Math.round((mappedClauses / allClauses) * 100) : 0;
+
+          let complianceLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+          if (compliancePercentage >= 80) complianceLevel = 'HIGH';
+          else if (compliancePercentage >= 50) complianceLevel = 'MEDIUM';
+          else complianceLevel = 'LOW';
+
+          return {
+            normative,
+            compliance: {
+              totalClauses: allClauses,
+              completedClauses: mappedClauses,
+              pendingClauses: allClauses - mappedClauses,
+              compliancePercentage,
+              complianceLevel
+            }
+          };
+        })
+      );
+
+      // Calculate overall compliance
+      const totalAllClauses = complianceSummary.reduce((sum, item) => sum + item.compliance.totalClauses, 0);
+      const totalCompletedClauses = complianceSummary.reduce((sum, item) => sum + item.compliance.completedClauses, 0);
+      const overallCompliance = totalAllClauses > 0 ? Math.round((totalCompletedClauses / totalAllClauses) * 100) : 0;
+
+      return reply.send({
+        overallCompliance,
+        normatives: complianceSummary
+      });
+    } catch (error) {
+      console.error('Error calculating compliance summary:', error);
+      return reply.code(500).send({ error: 'Failed to calculate compliance summary' });
+    }
+  });
+
+  // ── GET /normativos/:id — Detalle de una norma ──
+  app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const params = paramsSchema.parse(req.params);
+
+    const normativo = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      return tx.normativeStandard.findFirst({
+        where: { id: params.id, deletedAt: null },
+        include: {
+          _count: { select: { clauses: true } },
+        },
+      });
+    });
+
+    if (!normativo) return reply.code(404).send({ error: 'Not found' });
+    return reply.send({ normativo });
+  });
+
+  // ── POST /normativos/upload — Subir PDF de norma ──
+  app.post('/upload', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const parts = req.parts();
+    let fileBuffer: Buffer | null = null;
+    let originalFileName = '';
+    const fields: Record<string, string> = {};
+
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        if (part.mimetype !== 'application/pdf') {
+          return reply.code(400).send({ error: 'Solo se aceptan archivos PDF' });
+        }
+        const chunks: Buffer[] = [];
+        for await (const chunk of part.file) {
+          chunks.push(chunk);
+        }
+        fileBuffer = Buffer.concat(chunks);
+        originalFileName = part.filename;
+
+        if (fileBuffer.length > MAX_PDF_SIZE) {
+          return reply.code(400).send({
+            error: `El archivo excede el límite de ${process.env.MAX_PDF_SIZE_MB || 50}MB`,
+          });
+        }
+      } else {
+        fields[part.fieldname] = (part as any).value;
+      }
+    }
+
+    if (!fileBuffer) {
+      return reply.code(400).send({ error: 'No se proporcionó archivo PDF' });
+    }
+
+    // Validar campos de metadatos
+    const metaSchema = z.object({
+      name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
+      code: z
+        .string()
+        .min(2)
+        .regex(/^[A-Za-z0-9\-_]+$/, 'El código solo puede contener letras, números, guiones y guiones bajos'),
+      version: z.string().min(1, 'La versión es requerida'),
+      description: z.string().optional(),
+    });
+
+    const meta = metaSchema.parse(fields);
+
+    // Verificar duplicado por code en este tenant
+    const existing = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      return tx.normativeStandard.findFirst({
+        where: {
+          tenantId: req.db!.tenantId,
+          code: meta.code,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+    });
+
+    if (existing) {
+      return reply.code(409).send({ error: `Ya existe una norma con el código "${meta.code}" en este tenant` });
+    }
+
+    // Calcular hash y subir archivo
+    const fileHash = computeFileHash(fileBuffer);
+    const storage = getStorage();
+
+    // Crear registro en BD
+    const normativo = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      return tx.normativeStandard.create({
+        data: {
+          tenantId: req.db!.tenantId,
+          name: meta.name,
+          code: meta.code,
+          version: meta.version,
+          description: meta.description || null,
+          originalFileName,
+          fileSize: fileBuffer!.length,
+          filePath: '', // Se actualiza después
+          fileHash,
+          status: 'UPLOADING',
+          createdById: req.auth?.userId ?? null,
+          updatedById: req.auth?.userId ?? null,
+        },
+      });
+    });
+
+    // Subir archivo al storage
+    const storageKey = buildStorageKey(req.db!.tenantId, normativo.id, 'original.pdf');
+    await storage.upload(storageKey, fileBuffer);
+
+    // Actualizar filePath
+    await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      await tx.normativeStandard.update({
+        where: { id: normativo.id },
+        data: { filePath: storageKey },
+      });
+    });
+
+    // Encolar job de procesamiento
+    const queue = getNormativeQueue();
+    const job = await queue.add('process-normative', {
+      normativeId: normativo.id,
+      tenantId: req.db!.tenantId,
+      filePath: storageKey,
+    });
+
+    return reply.code(202).send({
+      normativo: {
+        id: normativo.id,
+        code: normativo.code,
+        name: normativo.name,
+        status: 'UPLOADING',
+      },
+      jobId: job.id,
+    });
+  });
+
+  // ── PATCH /normativos/:id — Actualizar metadatos ──
+  app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const params = paramsSchema.parse(req.params);
+
+    const bodySchema = z.object({
+      name: z.string().min(2).optional(),
+      description: z.string().optional(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const updated = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      const existing = await tx.normativeStandard.findFirst({
+        where: { id: params.id, deletedAt: null },
+      });
+      if (!existing) return null;
+
+      return tx.normativeStandard.update({
+        where: { id: existing.id },
+        data: {
+          name: body.name ?? existing.name,
+          description: body.description !== undefined ? body.description : existing.description,
+          updatedById: req.auth?.userId ?? null,
+        },
+      });
+    });
+
+    if (!updated) return reply.code(404).send({ error: 'Not found' });
+    return reply.send({ normativo: updated });
+  });
+
+  // ── DELETE /normativos/:id — Soft delete ──
+  app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const params = paramsSchema.parse(req.params);
+
+    const deleted = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      const existing = await tx.normativeStandard.findFirst({
+        where: { id: params.id, deletedAt: null },
+      });
+      if (!existing) return null;
+
+      return tx.normativeStandard.update({
+        where: { id: existing.id },
+        data: {
+          deletedAt: new Date(),
+          updatedById: req.auth?.userId ?? null,
+        },
+      });
+    });
+
+    if (!deleted) return reply.code(404).send({ error: 'Not found' });
+    return reply.send({ ok: true });
+  });
+
+  // ── GET /normativos/:id/status — Estado del procesamiento ──
+  app.get('/:id/status', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const params = paramsSchema.parse(req.params);
+
+    const normativo = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      return tx.normativeStandard.findFirst({
+        where: { id: params.id, deletedAt: null },
+        select: {
+          id: true,
+          status: true,
+          processingJobId: true,
+          errorMessage: true,
+          totalClauses: true,
+          extractedAt: true,
+        },
+      });
+    });
+
+    if (!normativo) return reply.code(404).send({ error: 'Not found' });
+
+    // Obtener progreso del job si está procesando
+    let progress: number | null = null;
+    if (normativo.processingJobId && normativo.status === 'PROCESSING') {
+      try {
+        const queue = getNormativeQueue();
+        const job = await queue.getJob(normativo.processingJobId);
+        if (job) {
+          const p = job.progress;
+          progress = typeof p === 'number' ? p : null;
+        }
+      } catch {
+        // Si no se puede obtener el progreso, no es crítico
+      }
+    }
+
+    return reply.send({
+      id: normativo.id,
+      status: normativo.status,
+      errorMessage: normativo.errorMessage,
+      totalClauses: normativo.totalClauses,
+      extractedAt: normativo.extractedAt,
+      progress,
+    });
+  });
+
+  // ── GET /normativos/:id/clauses — Listar cláusulas ──
+  app.get('/:id/clauses', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const params = paramsSchema.parse(req.params);
+
+    const querySchema = z.object({
+      search: z.string().optional(),
+      parentOnly: z.string().optional(), // "true" para solo raíz
+    });
+    const query = querySchema.parse(req.query);
+
+    const clauses = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      // Verificar que la norma existe y pertenece al tenant
+      const normativo = await tx.normativeStandard.findFirst({
+        where: { id: params.id, deletedAt: null },
+        select: { id: true },
+      });
+      if (!normativo) return null;
+
+      const where: any = {
+        normativeId: params.id,
+        deletedAt: null,
+      };
+
+      // Filtrar solo raíz si se pide
+      if (query.parentOnly === 'true') {
+        where.parentClauseId = null;
+      }
+
+      // Búsqueda por texto
+      if (query.search) {
+        where.OR = [
+          { clauseNumber: { contains: query.search, mode: 'insensitive' } },
+          { title: { contains: query.search, mode: 'insensitive' } },
+          { content: { contains: query.search, mode: 'insensitive' } },
+        ];
+      }
+
+      return tx.normativeClause.findMany({
+        where,
+        orderBy: { extractionOrder: 'asc' },
+        select: {
+          id: true,
+          clauseNumber: true,
+          title: true,
+          level: true,
+          parentClauseId: true,
+          status: true,
+          extractionOrder: true,
+          pageNumber: true,
+          keywords: true,
+          _count: { select: { childClauses: true, documentMappings: true } },
+        },
+      });
+    });
+
+    if (clauses === null) return reply.code(404).send({ error: 'Normative not found' });
+    return reply.send({ clauses });
+  });
+
+  // ── GET /normativos/:id/clauses/:clauseId — Detalle de cláusula ──
+  app.get('/:id/clauses/:clauseId', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    const paramsSchema = z.object({
+      id: z.string().uuid(),
+      clauseId: z.string().uuid(),
+    });
+    const params = paramsSchema.parse(req.params);
+
+    const clause = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      return tx.normativeClause.findFirst({
+        where: {
+          id: params.clauseId,
+          normativeId: params.id,
+          deletedAt: null,
+        },
+        include: {
+          childClauses: {
+            where: { deletedAt: null },
+            orderBy: { extractionOrder: 'asc' },
+            select: {
+              id: true,
+              clauseNumber: true,
+              title: true,
+              level: true,
+            },
+          },
+          documentMappings: {
+            where: { deletedAt: null },
+            include: {
+              document: {
+                select: { id: true, title: true, type: true, status: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    if (!clause) return reply.code(404).send({ error: 'Clause not found' });
+    return reply.send({ clause });
+  });
+};
+
+// ──────────────────────────────────────────────────────────────
+// Rutas de Document Clause Mappings (para agregar en documents)
+// ──────────────────────────────────────────────────────────────
+
+export const clauseMappingRoutes: FastifyPluginAsync = async (app) => {
+  // ── POST /documents/:docId/clause-mappings — Vincular cláusula ──
+  app.post('/:docId/clause-mappings', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    console.log('📥 POST clause-mappings - body:', req.body);
+    console.log('📥 POST clause-mappings - params:', req.params);
+    console.log('📥 POST clause-mappings - headers x-tenant-id:', req.headers['x-tenant-id']);
+
+    // Get tenantId from header (fallback to hardcoded for testing)
+    const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
+    const effectiveTenantId = headerTenantId || 'f20f0bfe-c1d8-40f6-8d36-97734881ffde';
+    
+    try {
+      const paramsSchema = z.object({ docId: z.string().uuid() });
+      const params = paramsSchema.parse(req.params);
+
+      const bodySchema = z.object({
+        clauseId: z.string().uuid(),
+        complianceType: z.enum(['CUMPLE', 'REFERENCIA', 'IMPLEMENTA', 'NO_APLICA']),
+        notes: z.string().optional(),
+      });
+      const body = bodySchema.parse(req.body);
+
+      console.log('✅ Validation passed:', { docId: params.docId, clauseId: body.clauseId, complianceType: body.complianceType });
+
+      // Use prisma directly
+      const prisma = app.prisma;
+      
+      // Verificar que el documento existe y pertenece al tenant
+      const doc = await prisma.document.findFirst({
+        where: { 
+          id: params.docId, 
+          tenantId: effectiveTenantId,
+          deletedAt: null 
+        },
+        select: { id: true },
+      });
+      if (!doc) {
+        console.log('❌ Document not found:', params.docId);
+        return reply.code(404).send({ error: 'Document not found' });
+      }
+
+      // Verificar que la cláusula existe
+      const clause = await prisma.normativeClause.findFirst({
+        where: { id: body.clauseId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!clause) {
+        console.log('❌ Clause not found:', body.clauseId);
+        return reply.code(404).send({ error: 'Clause not found' });
+      }
+
+      // Verificar duplicado
+      const existing = await prisma.documentClauseMapping.findFirst({
+        where: {
+          documentId: params.docId,
+          clauseId: body.clauseId,
+          deletedAt: null,
+        },
+      });
+      if (existing) {
+        console.log('❌ Mapping already exists');
+        return reply.code(409).send({ error: 'Mapping already exists' });
+      }
+
+      const mapping = await prisma.documentClauseMapping.create({
+        data: {
+          documentId: params.docId,
+          clauseId: body.clauseId,
+          complianceType: body.complianceType,
+          notes: body.notes || null,
+          createdById: req.auth?.userId ?? 'd03b0adb-6557-4430-ae10-046493e31c8b',
+        },
+      });
+
+      console.log('✅ Mapping created:', mapping.id);
+      return reply.code(201).send({ mapping });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        console.error('❌ Validation error:', error.errors);
+        return reply.code(400).send({ error: 'Validation failed', details: error.errors });
+      }
+      console.error('❌ Error creating clause mapping:', error);
+      return reply.code(500).send({ error: 'Internal server error' });
+    }
+  });
+
+  // ── GET /documents/:docId/clause-mappings — Listar vínculos ──
+  app.get('/:docId/clause-mappings', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    const paramsSchema = z.object({ docId: z.string().uuid() });
+    const params = paramsSchema.parse(req.params);
+
+    const mappings = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      return tx.documentClauseMapping.findMany({
+        where: { documentId: params.docId, deletedAt: null },
+        include: {
+          clause: {
+            select: {
+              id: true,
+              clauseNumber: true,
+              title: true,
+              normative: {
+                select: { id: true, name: true, code: true },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+
+    return reply.send({ mappings });
+  });
+
+  // ── DELETE /documents/:docId/clause-mappings/:mappingId — Eliminar vínculo ──
+  app.delete('/:docId/clause-mappings/:mappingId', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    const paramsSchema = z.object({
+      docId: z.string().uuid(),
+      mappingId: z.string().uuid(),
+    });
+    const params = paramsSchema.parse(req.params);
+
+    const deleted = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+      const existing = await tx.documentClauseMapping.findFirst({
+        where: {
+          id: params.mappingId,
+          documentId: params.docId,
+          deletedAt: null,
+        },
+      });
+      if (!existing) return null;
+
+      return tx.documentClauseMapping.update({
+        where: { id: existing.id },
+        data: { deletedAt: new Date() },
+      });
+    });
+
+    if (!deleted) return reply.code(404).send({ error: 'Mapping not found' });
+    return reply.send({ ok: true });
+  });
+
+    }
+
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const params = paramsSchema.parse(req.params);
+    const prisma = app.prisma;
+
+    try {
+      const normative = await prisma.normativeStandard.findFirst({
+        where: { id: params.id, tenantId: effectiveTenantId, deletedAt: null },
+        select: { id: true, name: true, code: true, status: true }
+      });
+
+      if (!normative) {
+        return reply.code(404).send({ error: "Normative not found" });
+      }
+
+      const allClauses = await prisma.normativeClause.findMany({
+        where: { normativeId: params.id, deletedAt: null },
+        select: { id: true, clauseNumber: true, title: true, content: true },
+        orderBy: { clauseNumber: "asc" }
+      });
+
+      const mappedClauses = await prisma.documentClauseMapping.findMany({
+        where: { 
+          deletedAt: null,
+          clause: { normativeId: params.id, deletedAt: null }
+        },
+        select: { clauseId: true }
+      });
+
+      const mappedClauseIds = new Set(mappedClauses.map(m => m.clauseId));
+      const pendingClauses = allClauses.filter(c => !mappedClauseIds.has(c.id));
+
+      const suggestions = pendingClauses.map(clause => {
+        const content = (clause.content || "").toLowerCase();
+        const title = (clause.title || "").toLowerCase();
+        const clauseNumber = clause.clauseNumber || "";
+
+        let documentTypes: string[] = [];
+        let examples: string[] = [];
+        let priority: "HIGH" | "MEDIUM" | "LOW" = "MEDIUM";
+
+        if (content.includes("política") || title.includes("política") || clauseNumber.startsWith("5")) {
+          documentTypes = ["Política de calidad", "Manual de gestión", "Declaración de política"];
+          examples = ["Política de calidad firmada", "Manual de gestión de calidad", "Declaración de misión y visión"];
+          priority = "HIGH";
+        } else if (content.includes("procedimiento") || title.includes("procedimiento") || clauseNumber.startsWith("8")) {
+          documentTypes = ["Procedimientos documentados", "Instrucciones de trabajo", "Guías operativas"];
+          examples = ["Procedimiento de control de documentos", "Instrucciones de trabajo", "Guías de procesos"];
+          priority = "HIGH";
+        } else if (content.includes("registro") || title.includes("registro") || content.includes("evidencia")) {
+          documentTypes = ["Registros de calidad", "Formularios", "Informes de auditoría"];
+          examples = ["Registros de capacitación", "Informes de auditoría interna", "Formularios de control"];
+          priority = "MEDIUM";
+        } else if (content.includes("competencia") || title.includes("competencia") || content.includes("capacitación")) {
+          documentTypes = ["Registros de capacitación", "Matriz de competencias", "Plan de formación"];
+          examples = ["Registros de entrenamiento", "Evaluación de competencias", "Plan anual de capacitación"];
+          priority = "MEDIUM";
+        } else if (content.includes("evaluación") || title.includes("evaluación") || content.includes("auditoría")) {
+          documentTypes = ["Informes de auditoría", "Evaluaciones de desempeño", "Mediciones de procesos"];
+          examples = ["Informes de auditoría interna", "Evaluación de proveedores", "Indicadores de proceso"];
+          priority = "HIGH";
+        } else if (content.includes("recurso") || title.includes("recurso") || content.includes("infraestructura")) {
+          documentTypes = ["Plan de recursos", "Inventario de equipos", "Mantenimiento preventivo"];
+          examples = ["Plan de infraestructura", "Registro de equipos", "Programa de mantenimiento"];
+          priority = "MEDIUM";
+        } else if (content.includes("comunicación") || title.includes("comunicación")) {
+          documentTypes = ["Plan de comunicación", "Actas de reunión", "Comunicados internos"];
+          examples = ["Plan de comunicación interna", "Actas de reuniones de revisión", "Boletines informativos"];
+          priority = "LOW";
+        } else {
+          documentTypes = ["Documentos del sistema", "Evidencias de implementación", "Registros"];
+          examples = ["Documentación del sistema de gestión", "Evidencias de cumplimiento", "Registros de actividades"];
+          priority = "MEDIUM";
+        }
+
+        return {
+          clauseId: clause.id,
+          clauseNumber: clause.clauseNumber,
+          clauseTitle: clause.title,
+          suggestion: {
+            documentTypes,
+            examples,
+            priority,
+            suggestedFileName: `${normative.code}_${clauseNumber}_${title.split(" ")[0].toLowerCase()}`
+          }
+        };
+      });
+
+      return reply.send({
+        normative,
+        totalPendingClauses: pendingClauses.length,
+        suggestions
+      });
+    } catch (error) {
+      console.error("Error generating clause suggestions:", error);
+      return reply.code(500).send({ error: "Failed to generate suggestions" });
+    }
+  });
+  // ── GET /normativos/:id/compliance — Cumplimiento de una norma específica ──
+  app.get('/:id/compliance', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+
+    // Get tenantId from header (fallback to hardcoded for testing)
+    const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
+    const effectiveTenantId = headerTenantId || req.db?.tenantId || 'f20f0bfe-c1d8-40f6-8d36-97734881ffde';
+
+    if (!effectiveTenantId) {
+      return reply.code(400).send({ error: 'Tenant context required' });
+    }
+
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const params = paramsSchema.parse(req.params);
+
+    const prisma = app.prisma;
+
+    try {
+      // Get normative info
+      const normative = await prisma.normativeStandard.findFirst({
+        where: { 
+          id: params.id, 
+          tenantId: effectiveTenantId, 
+          deletedAt: null 
+        },
+        select: { id: true, name: true, code: true, status: true }
+      });
+
+      if (!normative) {
+        return reply.code(404).send({ error: 'Normative not found' });
+      }
+
+      // Get all clauses for this normative
+      const allClauses = await prisma.normativeClause.findMany({
+        where: { 
+          normativeId: params.id, 
+          deletedAt: null 
+        },
+        select: { 
+          id: true, 
+          clauseNumber: true, 
+          title: true 
+        },
+        orderBy: { clauseNumber: 'asc' }
+      });
+
+      // Get clause mappings (clauses with documents)
+      const mappedClauses = await prisma.documentClauseMapping.findMany({
+        where: { 
+          deletedAt: null,
+          clause: {
+            normativeId: params.id,
+            deletedAt: null
+          }
+        },
+        select: { 
+          clauseId: true,
+          complianceType: true,
+          clause: {
+            select: {
+              clauseNumber: true,
+              title: true
+            }
+          }
+        }
+      });
+
+      // Calculate compliance
+      const totalClauses = allClauses.length;
+      const mappedClauseIds = new Set(mappedClauses.map(m => m.clauseId));
+      const completedClauses = allClauses.filter(c => mappedClauseIds.has(c.id));
+      const pendingClauses = allClauses.filter(c => !mappedClauseIds.has(c.id));
+
+      const compliancePercentage = totalClauses > 0 ? Math.round((completedClauses.length / totalClauses) * 100) : 0;
+
+      // Determine compliance level
+      let complianceLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+      if (compliancePercentage >= 80) complianceLevel = 'HIGH';
+      else if (compliancePercentage >= 50) complianceLevel = 'MEDIUM';
+      else complianceLevel = 'LOW';
+
+      return reply.send({
+        normative,
+        compliance: {
+          totalClauses,
+          completedClauses: completedClauses.length,
+          pendingClauses: pendingClauses.length,
+          compliancePercentage,
+          complianceLevel,
+          completedClausesList: completedClauses.map(c => ({
+            id: c.id,
+            clauseNumber: c.clauseNumber,
+            title: c.title,
+            complianceType: mappedClauses.find(m => m.clauseId === c.id)?.complianceType
+          })),
+          pendingClausesList: pendingClauses.map(c => ({
+            id: c.id,
+            clauseNumber: c.clauseNumber,
+            title: c.title
+          }))
+        }
+      });
+    } catch (error) {
+      console.error('Error calculating compliance:', error);
+      return reply.code(500).send({ error: 'Failed to calculate compliance' });
+    }
+  });
+
+
+  // ── GET /normativos/:id/compliance — Cumplimiento de una norma específica ──
+};

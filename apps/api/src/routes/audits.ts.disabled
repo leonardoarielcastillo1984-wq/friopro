@@ -1,0 +1,719 @@
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { z } from 'zod';
+
+// Esquemas de validación Zod
+const CreateProgramSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  name: z.string().min(3),
+  description: z.string().optional(),
+});
+
+const UpdateProgramSchema = z.object({
+  name: z.string().min(3).optional(),
+  description: z.string().optional(),
+  status: z.enum(['ACTIVE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
+});
+
+const CreateAuditorSchema = z.object({
+  type: z.enum(['INTERNAL', 'EXTERNAL']),
+  name: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  company: z.string().optional(),
+  employeeId: z.string().uuid().optional(),
+  normativeCompetencies: z.array(z.enum(['ISO_9001', 'ISO_14001', 'ISO_45001', 'ISO_39001', 'IATF_16949', 'ISO_27001', 'ISO_50001', 'CUSTOM'])).optional(),
+});
+
+const CreateAuditSchema = z.object({
+  programId: z.string().uuid(),
+  code: z.string().min(3),
+  title: z.string().min(3),
+  description: z.string().optional(),
+  type: z.enum(['INTERNAL', 'EXTERNAL', 'SUPPLIER', 'CUSTOMER', 'CERTIFICATION', 'RECERTIFICATION', 'SURVEILLANCE']),
+  plannedStartDate: z.string().datetime().optional(),
+  plannedEndDate: z.string().datetime().optional(),
+  duration: z.number().int().positive().optional(),
+  leadAuditorId: z.string().uuid(),
+  area: z.string().min(1),
+  process: z.string().optional(),
+  isoStandard: z.array(z.enum(['ISO_9001', 'ISO_14001', 'ISO_45001', 'ISO_39001', 'IATF_16949', 'ISO_27001', 'ISO_50001', 'CUSTOM'])),
+  scope: z.string().optional(),
+  objective: z.string().optional(),
+});
+
+const UpdateAuditSchema = z.object({
+  title: z.string().min(3).optional(),
+  description: z.string().optional(),
+  status: z.enum(['DRAFT', 'PLANNED', 'SCHEDULED', 'IN_PROGRESS', 'PENDING_REPORT', 'COMPLETED', 'CLOSED', 'CANCELLED']).optional(),
+  plannedStartDate: z.string().datetime().optional(),
+  plannedEndDate: z.string().datetime().optional(),
+  actualStartDate: z.string().datetime().optional(),
+  actualEndDate: z.string().datetime().optional(),
+  duration: z.number().int().positive().optional(),
+  leadAuditorId: z.string().uuid().optional(),
+  area: z.string().min(1).optional(),
+  process: z.string().optional(),
+  scope: z.string().optional(),
+  objective: z.string().optional(),
+});
+
+// ===== RUTAS API PARA MÓDULO DE AUDITORÍAS ISO =====
+
+export async function registerAuditRoutes(app: FastifyInstance) {
+  
+  // ===========================================
+  // PROGRAMAS ANUALES DE AUDITORÍA
+  // ===========================================
+  
+  // GET /audit/programs - Listar programas anuales
+  app.get('/audit/programs', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const programs = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditProgram.findMany({
+          where: { tenantId, deletedAt: null },
+          orderBy: { year: 'desc' },
+        });
+      });
+      
+      return reply.send({ programs });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch audit programs' });
+    }
+  });
+  
+  // GET /audit/programs/:year - Obtener programa por año
+  app.get('/audit/programs/:year', async (req: FastifyRequest<{ Params: { year: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    const year = parseInt(req.params.year);
+    if (isNaN(year)) return reply.code(400).send({ error: 'Invalid year' });
+    
+    try {
+      const program = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditProgram.findUnique({
+          where: { tenantId_year: { tenantId, year } },
+        });
+      });
+      
+      if (!program) return reply.code(404).send({ error: 'Audit program not found' });
+      return reply.send({ program });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch audit program' });
+    }
+  });
+  
+  // POST /audit/programs - Crear programa anual
+  app.post('/audit/programs', async (req: FastifyRequest<{ Body: z.infer<typeof CreateProgramSchema> }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    const validation = CreateProgramSchema.safeParse(req.body);
+    if (!validation.success) return reply.code(400).send({ error: 'Validation failed', details: validation.error.errors });
+    
+    const { year, name, description } = validation.data;
+    
+    try {
+      const program = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditProgram.create({
+          data: {
+            tenantId,
+            year,
+            name,
+            description,
+            createdById: req.auth!.userId,
+          },
+        });
+      });
+      
+      return reply.code(201).send({ program });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to create audit program' });
+    }
+  });
+  
+  // PATCH /audit/programs/:id - Actualizar programa
+  app.patch('/audit/programs/:id', async (req: FastifyRequest<{ Params: { id: string }; Body: z.infer<typeof UpdateProgramSchema> }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    const validation = UpdateProgramSchema.safeParse(req.body);
+    if (!validation.success) return reply.code(400).send({ error: 'Validation failed', details: validation.error.errors });
+    
+    try {
+      const program = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditProgram.update({
+          where: { id: req.params.id, tenantId },
+          data: validation.data,
+        });
+      });
+      
+      return reply.send({ program });
+    } catch (error) {
+      return reply.code(404).send({ error: 'Audit program not found' });
+    }
+  });
+  
+  // DELETE /audit/programs/:id - Eliminar programa (soft delete)
+  app.delete('/audit/programs/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      await app.runWithDbContext(req, async (tx) => {
+        return tx.auditProgram.update({
+          where: { id: req.params.id, tenantId },
+          data: { deletedAt: new Date() },
+        });
+      });
+      
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(404).send({ error: 'Audit program not found' });
+    }
+  });
+  
+  // ===========================================
+  // AUDITORÍAS INDIVIDUALES
+  // ===========================================
+  
+  // GET /audit/audits - Listar auditorías
+  app.get('/audit/audits', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const audits = await app.runWithDbContext(req, async (tx) => {
+        return tx.audit.findMany({
+          where: { tenantId, deletedAt: null },
+          orderBy: { plannedStartDate: 'desc' },
+        });
+      });
+      
+      return reply.send({ audits });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch audits' });
+    }
+  });
+  
+  // GET /audit/audits/:id - Obtener auditoría por ID
+  app.get('/audit/audits/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const audit = await app.runWithDbContext(req, async (tx) => {
+        return tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+        });
+      });
+      
+      if (!audit) return reply.code(404).send({ error: 'Audit not found' });
+      return reply.send({ audit });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch audit' });
+    }
+  });
+  
+  // POST /audit/audits - Crear auditoría
+  app.post('/audit/audits', async (req: FastifyRequest<{ Body: z.infer<typeof CreateAuditSchema> }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    const validation = CreateAuditSchema.safeParse(req.body);
+    if (!validation.success) return reply.code(400).send({ error: 'Validation failed', details: validation.error.errors });
+    
+    const data = validation.data;
+    
+    try {
+      const audit = await app.runWithDbContext(req, async (tx) => {
+        return tx.audit.create({
+          data: {
+            tenantId,
+            ...data,
+            plannedStartDate: data.plannedStartDate ? new Date(data.plannedStartDate) : null,
+            plannedEndDate: data.plannedEndDate ? new Date(data.plannedEndDate) : null,
+            createdById: req.auth!.userId,
+          },
+        });
+      });
+      
+      return reply.code(201).send({ audit });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to create audit' });
+    }
+  });
+  
+  // PATCH /audit/audits/:id - Actualizar auditoría
+  app.patch('/audit/audits/:id', async (req: FastifyRequest<{ Params: { id: string }; Body: z.infer<typeof UpdateAuditSchema> }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    const validation = UpdateAuditSchema.safeParse(req.body);
+    if (!validation.success) return reply.code(400).send({ error: 'Validation failed', details: validation.error.errors });
+    
+    const data = validation.data;
+    
+    try {
+      const audit = await app.runWithDbContext(req, async (tx) => {
+        return tx.audit.update({
+          where: { id: req.params.id, tenantId },
+          data: {
+            ...data,
+            plannedStartDate: data.plannedStartDate ? new Date(data.plannedStartDate) : undefined,
+            plannedEndDate: data.plannedEndDate ? new Date(data.plannedEndDate) : undefined,
+            actualStartDate: data.actualStartDate ? new Date(data.actualStartDate) : undefined,
+            actualEndDate: data.actualEndDate ? new Date(data.actualEndDate) : undefined,
+          },
+        });
+      });
+      
+      return reply.send({ audit });
+    } catch (error) {
+      return reply.code(404).send({ error: 'Audit not found' });
+    }
+  });
+  
+  // DELETE /audit/audits/:id - Eliminar auditoría (soft delete)
+  app.delete('/audit/audits/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      await app.runWithDbContext(req, async (tx) => {
+        return tx.audit.update({
+          where: { id: req.params.id, tenantId },
+          data: { deletedAt: new Date() },
+        });
+      });
+      
+      return reply.code(204).send();
+    } catch (error) {
+      return reply.code(404).send({ error: 'Audit not found' });
+    }
+  });
+  
+  // GET /audit/audits/:id/findings - Hallazgos de una auditoría
+  app.get('/audit/audits/:id/findings', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const findings = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditFinding.findMany({
+          where: { auditId: req.params.id, tenantId, deletedAt: null },
+          orderBy: { detectedAt: 'desc' },
+        });
+      });
+      
+      return reply.send({ findings });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch findings' });
+    }
+  });
+  
+  // ===========================================
+  // AUDITORES
+  // ===========================================
+  
+  // GET /audit/auditors - Listar auditores
+  app.get('/audit/auditors', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const auditors = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditor.findMany({
+          where: { tenantId, deletedAt: null, isActive: true },
+          orderBy: { name: 'asc' },
+        });
+      });
+      
+      return reply.send({ auditors });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch auditors' });
+    }
+  });
+  
+  // POST /audit/auditors - Crear auditor
+  app.post('/audit/auditors', async (req: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const auditor = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditor.create({
+          data: {
+            tenantId,
+            ...req.body,
+            createdById: req.auth!.userId,
+          },
+        });
+      });
+      
+      return reply.code(201).send({ auditor });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to create auditor' });
+    }
+  });
+  
+  // ===========================================
+  // TEMPLATES DE CHECKLIST (ISO)
+  // ===========================================
+  
+  // GET /audit/templates - Listar templates disponibles
+  app.get('/audit/templates', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const templates = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditTemplate.findMany({
+          where: { tenantId, deletedAt: null, isActive: true },
+          orderBy: { name: 'asc' },
+        });
+      });
+      
+      return reply.send({ templates });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch templates' });
+    }
+  });
+  
+  // GET /audit/templates/:id/items - Obtener items de un template
+  app.get('/audit/templates/:id/items', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const items = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditTemplateItem.findMany({
+          where: { templateId: req.params.id },
+          orderBy: { order: 'asc' },
+        });
+      });
+      
+      return reply.send({ items });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch template items' });
+    }
+  });
+  
+  // POST /audit/templates/:id/apply - Aplicar template a una auditoría
+  app.post('/audit/templates/:id/apply', async (req: FastifyRequest<{ Params: { id: string }; Body: { auditId: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    const { auditId } = req.body;
+    if (!auditId) return reply.code(400).send({ error: 'auditId is required' });
+    
+    try {
+      await app.runWithDbContext(req, async (tx) => {
+        // Obtener items del template
+        const templateItems = await tx.auditTemplateItem.findMany({
+          where: { templateId: req.params.id },
+          orderBy: { order: 'asc' },
+        });
+        
+        // Crear checklist items para la auditoría
+        for (const item of templateItems) {
+          await tx.auditChecklistItem.create({
+            data: {
+              auditId,
+              templateItemId: item.id,
+              clause: item.clause,
+              requirement: item.requirement,
+              whatToCheck: item.whatToCheck,
+              weight: item.weight,
+              order: item.order,
+            },
+          });
+        }
+        
+        return { applied: templateItems.length };
+      });
+      
+      return reply.code(201).send({ message: 'Template applied successfully' });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to apply template' });
+    }
+  });
+  
+  // ===========================================
+  // CHECKLIST ITEMS
+  // ===========================================
+  
+  // GET /audit/audits/:id/checklist - Obtener checklist de auditoría
+  app.get('/audit/audits/:id/checklist', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const items = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditChecklistItem.findMany({
+          where: { auditId: req.params.id },
+          orderBy: { order: 'asc' },
+        });
+      });
+      
+      return reply.send({ items });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch checklist' });
+    }
+  });
+  
+  // PATCH /audit/checklist/:id - Actualizar respuesta de item
+  app.patch('/audit/checklist/:id', async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const item = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditChecklistItem.update({
+          where: { id: req.params.id },
+          data: req.body,
+        });
+      });
+      
+      return reply.send({ item });
+    } catch (error) {
+      return reply.code(404).send({ error: 'Checklist item not found' });
+    }
+  });
+  
+  // ===========================================
+  // HALLAZGOS (FINDINGS)
+  // ===========================================
+  
+  // POST /audit/audits/:id/findings - Crear hallazgo
+  app.post('/audit/audits/:id/findings', async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const finding = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditFinding.create({
+          data: {
+            tenantId,
+            auditId: req.params.id,
+            ...req.body,
+            createdById: req.auth!.userId,
+          },
+        });
+      });
+      
+      return reply.code(201).send({ finding });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to create finding' });
+    }
+  });
+  
+  // PATCH /audit/findings/:id - Actualizar hallazgo
+  app.patch('/audit/findings/:id', async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const finding = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditFinding.update({
+          where: { id: req.params.id, tenantId },
+          data: req.body,
+        });
+      });
+      
+      return reply.send({ finding });
+    } catch (error) {
+      return reply.code(404).send({ error: 'Finding not found' });
+    }
+  });
+  
+  // ===========================================
+  // ACCIONES CORRECTIVAS
+  // ===========================================
+  
+  // GET /audit/findings/:id/actions - Obtener acciones de un hallazgo
+  app.get('/audit/findings/:id/actions', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const actions = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditFindingAction.findMany({
+          where: { findingId: req.params.id },
+          orderBy: { createdAt: 'desc' },
+        });
+      });
+      
+      return reply.send({ actions });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch actions' });
+    }
+  });
+  
+  // POST /audit/findings/:id/actions - Crear acción correctiva
+  app.post('/audit/findings/:id/actions', async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const action = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditFindingAction.create({
+          data: {
+            findingId: req.params.id,
+            ...req.body,
+          },
+        });
+      });
+      
+      return reply.code(201).send({ action });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to create action' });
+    }
+  });
+  
+  // ===========================================
+  // AI ASSISTANT - SUGERENCIAS INTELIGENTES
+  // ===========================================
+  
+  // GET /audit/audits/:id/ai-suggestions - Obtener sugerencias de IA
+  app.get('/audit/audits/:id/ai-suggestions', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      // Por ahora, retornar array vacío - en producción esto integraría con LLM
+      return reply.send({ suggestions: [] });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch AI suggestions' });
+    }
+  });
+  
+  // POST /audit/audits/:id/ai-analyze - Analizar auditoría con IA
+  app.post('/audit/audits/:id/ai-analyze', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      // Obtener datos de la auditoría para análisis
+      const audit = await app.runWithDbContext(req, async (tx) => {
+        return tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+          include: {
+            checklistItems: true,
+            findings: true,
+          },
+        });
+      });
+      
+      if (!audit) return reply.code(404).send({ error: 'Audit not found' });
+      
+      // Análisis simulado de IA - en producción integrar con LLM
+      const suggestions = [];
+      
+      // Detectar items no conformes sin hallazgos asociados
+      const nonCompliantItems = audit.checklistItems?.filter(item => item.response === 'NON_COMPLIANT') || [];
+      for (const item of nonCompliantItems.slice(0, 2)) {
+        suggestions.push({
+          id: 'ai-' + Date.now() + Math.random(),
+          type: 'FINDING',
+          severity: 'MEDIUM',
+          title: `Hallazgo potencial: ${item.clause}`,
+          description: `El item "${item.requirement}" fue marcado como no conforme pero no tiene un hallazgo registrado.`,
+          clause: item.clause,
+          confidence: 85,
+          rationale: 'Basado en la respuesta NON_COMPLIANT del checklist sin hallazgo asociado',
+          status: 'PENDING',
+          createdAt: new Date().toISOString(),
+        });
+      }
+      
+      // Detectar inconsistencias en fechas
+      if (audit.plannedStartDate && audit.plannedEndDate) {
+        const planned = new Date(audit.plannedStartDate);
+        const actual = audit.actualStartDate ? new Date(audit.actualStartDate) : null;
+        if (actual && actual > new Date(planned.getTime() + 7 * 24 * 60 * 60 * 1000)) {
+          suggestions.push({
+            id: 'ai-' + Date.now() + Math.random(),
+            type: 'INCONSISTENCY',
+            severity: 'LOW',
+            title: 'Retraso significativo detectado',
+            description: `La auditoría inició con más de 7 días de retraso respecto a la fecha planificada.`,
+            clause: 'N/A',
+            confidence: 95,
+            rationale: 'Análisis de fechas planificadas vs reales',
+            status: 'PENDING',
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+      
+      return reply.send({ suggestions });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to analyze audit' });
+    }
+  });
+  
+  // PATCH /audit/ai-suggestions/:id - Actualizar estado de sugerencia
+  app.patch('/audit/ai-suggestions/:id', async (req: FastifyRequest<{ Params: { id: string }; Body: { status: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      // En producción, guardar en tabla de sugerencias
+      return reply.send({ suggestion: { id: req.params.id, ...req.body } });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to update suggestion' });
+    }
+  });
+  
+  // ===========================================
+  // DASHBOARD / STATS
+  // ===========================================
+  
+  // GET /audit/stats - Estadísticas del módulo
+  app.get('/audit/stats', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    
+    try {
+      const stats = await app.runWithDbContext(req, async (tx) => {
+        const [
+          totalPrograms,
+          totalAudits,
+          auditsByStatus,
+          totalFindings,
+          findingsBySeverity,
+        ] = await Promise.all([
+          tx.auditProgram.count({ where: { tenantId, deletedAt: null } }),
+          tx.audit.count({ where: { tenantId, deletedAt: null } }),
+          tx.audit.groupBy({
+            by: ['status'],
+            where: { tenantId, deletedAt: null },
+            _count: { status: true },
+          }),
+          tx.auditFinding.count({ where: { tenantId, deletedAt: null } }),
+          tx.auditFinding.groupBy({
+            by: ['severity'],
+            where: { tenantId, deletedAt: null },
+            _count: { severity: true },
+          }),
+        ]);
+        
+        return {
+          totalPrograms,
+          totalAudits,
+          auditsByStatus: Object.fromEntries(auditsByStatus.map(s => [s.status, s._count.status])),
+          totalFindings,
+          findingsBySeverity: Object.fromEntries(findingsBySeverity.map(f => [f.severity, f._count.severity])),
+        };
+      });
+      
+      return reply.send({ stats });
+    } catch (error) {
+      return reply.code(500).send({ error: 'Failed to fetch audit stats' });
+    }
+  });
+}

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SGI 360 - Test Simple</title>
+</head>
+<body>
+    <h1>Test Simple</h1>
+    <button onclick="testFetch()">Probar API</button>
+    <button onclick="testRedirect()">Probar Redirect</button>
+    <div id="result"></div>
+
+    <script>
+        function testFetch() {
+            console.log('🔵 Iniciando test...');
+            document.getElementById('result').textContent = 'Probando API...';
+            
+            fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    email: 'admin@sgi360.com', 
+                    password: 'Admin123!' 
+                })
+            })
+            .then(response => {
+                console.log('📡 Status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('📋 Data:', data);
+                document.getElementById('result').textContent = 'API funciona! Token: ' + (data.token ? '✅' : '❌');
+                
+                if (data.token) {
+                    // Guardar token
+                    localStorage.setItem('accessToken', data.token);
+                    document.cookie = `access_token=${data.token}; path=/; SameSite=Lax`;
+                    console.log('✅ Token guardado');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error:', error);
+                document.getElementById('result').textContent = 'Error: ' + error.message;
+            });
+        }
+        
+        function testRedirect() {
+            console.log('🔄 Probando redirección...');
+            
+            // Probar diferentes métodos de redirección
+            const methods = [
+                () => window.location.href = '/dashboard',
+                () => window.location.replace('/dashboard'),
+                () => window.location.assign('/dashboard'),
+                () => location.href = '/dashboard',
+                () => window.open('/dashboard', '_self')
+            ];
+            
+            let i = 0;
+            function tryNext() {
+                if (i < methods.length) {
+                    console.log(`🔄 Intentando método ${i + 1}:`, methods[i].toString());
+                    try {
+                        methods[i]();
+                        console.log(`✅ Método ${i + 1} ejecutado`);
+                    } catch (error) {
+                        console.error(`❌ Método ${i + 1} falló:`, error);
+                        i++;
+                        setTimeout(tryNext, 1000);
+                    }
+                } else {
+                    console.log('❌ Todos los métodos fallaron');
+                    alert('Todos los métodos de redirección fallaron');
+                }
+            }
+            
+            tryNext();
+        }
+    </script>
+</body>
+</html>

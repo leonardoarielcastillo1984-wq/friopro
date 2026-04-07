@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Test Login 2FA</title>
+  <style>
+    body { font-family: Arial; max-width: 600px; margin: 50px auto; }
+    form { background: #f5f5f5; padding: 20px; border-radius: 8px; }
+    input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
+    button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .success { color: green; padding: 10px; background: #d4edda; border-radius: 4px; margin: 10px 0; }
+    .error { color: red; padding: 10px; background: #f8d7da; border-radius: 4px; margin: 10px 0; }
+    .info { color: #004085; padding: 10px; background: #d1ecf1; border-radius: 4px; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>SGI 360 - Test Login</h1>
+  
+  <form id="loginForm">
+    <h2>Login</h2>
+    <input type="email" id="email" placeholder="Email" value="test@example.com" required>
+    <input type="password" id="password" placeholder="Password" value="Test123!@#" required>
+    <button type="submit">Login</button>
+  </form>
+
+  <div id="message"></div>
+  <div id="response"></div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const messageDiv = document.getElementById('message');
+    const responseDiv = document.getElementById('response');
+    const apiUrl = 'http://localhost:3001';
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      messageDiv.innerHTML = '';
+      responseDiv.innerHTML = '';
+
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      try {
+        messageDiv.innerHTML = '<div class="info">Intentando login...</div>';
+        
+        const response = await fetch(`${apiUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          messageDiv.innerHTML = '<div class="success">✅ Login exitoso!</div>';
+          responseDiv.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+          console.log('Login response:', data);
+        } else {
+          messageDiv.innerHTML = '<div class="error">❌ Login fallido: ' + data.error + '</div>';
+        }
+      } catch (error) {
+        messageDiv.innerHTML = '<div class="error">❌ Error: ' + error.message + '</div>';
+        console.error('Error:', error);
+      }
+    });
+  </script>
+</body>
+</html>

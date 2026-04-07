@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SGI 360 - Test Final</title>
+</head>
+<body>
+    <h1>Test Final de Redirección</h1>
+    
+    <button onclick="testBasicRedirect()">Redirección Básica</button>
+    <button onclick="testGoogle()">Ir a Google</button>
+    <button onclick="testDashboard()">Ir a Dashboard</button>
+    <button onclick="testManual()">Navegación Manual</button>
+    
+    <div id="result"></div>
+    <a href="/dashboard" style="display:block;margin-top:20px;">Link directo al Dashboard</a>
+
+    <script>
+        console.log('🔵 Página cargada');
+        
+        function testBasicRedirect() {
+            console.log('🔄 Probando redirección básica...');
+            document.getElementById('result').textContent = 'Intentando redirección básica...';
+            
+            // Redirección simple
+            window.location.href = '/dashboard';
+        }
+        
+        function testGoogle() {
+            console.log('🔄 Probando redirección a Google...');
+            document.getElementById('result').textContent = 'Intentando Google...';
+            
+            window.location.href = 'https://www.google.com';
+        }
+        
+        function testDashboard() {
+            console.log('🔄 Probando dashboard...');
+            document.getElementById('result').textContent = 'Intentando dashboard...';
+            
+            window.location.href = '/dashboard';
+        }
+        
+        function testManual() {
+            console.log('🔄 Probando navegación manual...');
+            document.getElementById('result').textContent = 'Intentando navegación manual...';
+            
+            // Simular click en el link
+            const link = document.querySelector('a[href="/dashboard"]');
+            if (link) {
+                link.click();
+            } else {
+                console.log('❌ Link no encontrado');
+            }
+        }
+        
+        // Detectar si hay bloqueadores
+        setTimeout(() => {
+            console.log('🔍 Verificando estado...');
+            console.log('📍 URL actual:', window.location.href);
+            console.log('🍪 Cookies:', document.cookie);
+            console.log('💾 LocalStorage:', localStorage.getItem('accessToken') ? 'Token presente' : 'Sin token');
+        }, 1000);
+    </script>
+</body>
+</html>

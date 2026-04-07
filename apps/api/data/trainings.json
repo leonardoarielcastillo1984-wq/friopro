@@ -1,0 +1,40 @@
+[
+  {
+    "id": "train-1",
+    "title": "Seguridad Industrial Básica",
+    "description": "Capacitación obligatoria en seguridad industrial para todo el personal",
+    "type": "SAFETY",
+    "status": "ACTIVE",
+    "duration": 8,
+    "mode": "PRESENTIAL",
+    "area": "Seguridad",
+    "startDate": "2026-04-03T12:18:27.688Z",
+    "endDate": "2026-04-10T12:18:27.688Z",
+    "instructor": "Juan Pérez",
+    "capacity": 20,
+    "enrolled": 15,
+    "tenantId": "test-tenant",
+    "createdById": "test-user",
+    "createdAt": "2026-04-03T12:18:27.688Z",
+    "updatedAt": "2026-04-03T12:18:27.688Z"
+  },
+  {
+    "id": "train-2",
+    "title": "Manejo de Residuos Peligrosos",
+    "description": "Procedimientos para manejo y disposición de residuos clasificados",
+    "type": "ENVIRONMENTAL",
+    "status": "PLANNED",
+    "duration": 4,
+    "mode": "ONLINE",
+    "area": "Medio Ambiente",
+    "startDate": "2026-04-17T12:18:27.688Z",
+    "endDate": "2026-04-24T12:18:27.688Z",
+    "instructor": "María González",
+    "capacity": 30,
+    "enrolled": 0,
+    "tenantId": "test-tenant",
+    "createdById": "test-user",
+    "createdAt": "2026-04-03T12:18:27.688Z",
+    "updatedAt": "2026-04-03T12:18:27.688Z"
+  }
+]

@@ -1,0 +1,67 @@
+              }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Crear Repuesto</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditPartModal && editingPart && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Editar Repuesto</h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
+                <input type="text" id="editPartCode" defaultValue={editingPart.code} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                <input type="text" id="editPartName" defaultValue={editingPart.name} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                <select id="editPartCategory" defaultValue={editingPart.category} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="MECANICA">Mecánica</option>
+                  <option value="ELECTRICA">Eléctrica</option>
+                  <option value="NEUMATICA">Neumática</option>
+                  <option value="HIDRAULICA">Hidráulica</option>
+                  <option value="PLC">PLC/Automatización</option>
+                  <option value="SEGURIDAD">Seguridad</option>
+                  <option value="CONSUMIBLE">Consumible</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock</label>
+                  <input type="number" id="editPartStock" defaultValue={editingPart.currentStock} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock Mín</label>
+                  <input type="number" id="editPartMinStock" defaultValue={editingPart.minStock} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Costo</label>
+                  <input type="number" id="editPartCost" defaultValue={editingPart.unitCost} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex gap-3">
+              <button onClick={() => { setShowEditPartModal(false); setEditingPart(null); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancelar</button>
+              <button onClick={() => {
+                const code = (document.getElementById('editPartCode') as HTMLInputElement)?.value;
+                const name = (document.getElementById('editPartName') as HTMLInputElement)?.value;
+                const category = (document.getElementById('editPartCategory') as HTMLSelectElement)?.value;
+                const currentStock = parseInt((document.getElementById('editPartStock') as HTMLInputElement)?.value || '0');
+                const minStock = parseInt((document.getElementById('editPartMinStock') as HTMLInputElement)?.value || '0');
+                const unitCost = parseFloat((document.getElementById('editPartCost') as HTMLInputElement)?.value || '0');
+                if (code && name && editingPart) {
+                  handleUpdatePart(editingPart.id, { code, name, category, currentStock, minStock, unitCost });
+                }
+              }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Guardar Cambios</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreateAssetModal && (

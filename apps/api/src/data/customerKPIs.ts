@@ -1,0 +1,90 @@
+export const CUSTOMER_KPIS = [
+  {
+    code: 'CUST-SAT-001',
+    name: 'Satisfacción del Cliente',
+    description: 'Puntaje promedio de satisfacción del cliente',
+    category: 'CUSTOMER',
+    process: 'Gestión de Clientes',
+    standard: 'ISO_9001',
+    unit: '%',
+    targetValue: 85,
+    minValue: 0,
+    maxValue: 100,
+    direction: 'HIGHER_BETTER',
+    frequency: 'MONTHLY',
+    warningValue: 75,
+    criticalValue: 60
+  },
+  {
+    code: 'CUST-RESP-001',
+    name: 'Tiempo de Respuesta',
+    description: 'Tiempo promedio de respuesta a reclamos',
+    category: 'CUSTOMER',
+    process: 'Atención al Cliente',
+    standard: 'ISO_9001',
+    unit: 'horas',
+    targetValue: 24,
+    minValue: 0,
+    maxValue: 72,
+    direction: 'LOWER_BETTER',
+    frequency: 'WEEKLY',
+    warningValue: 48,
+    criticalValue: 72
+  },
+  {
+    code: 'CUST-RES-001',
+    name: 'Tasa de Resolución',
+    description: 'Porcentaje de reclamos resueltos en tiempo',
+    category: 'CUSTOMER',
+    process: 'Gestión de Clientes',
+    standard: 'ISO_9001',
+    unit: '%',
+    targetValue: 90,
+    minValue: 0,
+    maxValue: 100,
+    direction: 'HIGHER_BETTER',
+    frequency: 'MONTHLY',
+    warningValue: 80,
+    criticalValue: 70
+  },
+  {
+    code: 'CUST-RET-001',
+    name: 'Retención de Clientes',
+    description: 'Porcentaje de clientes recurrentes',
+    category: 'CUSTOMER',
+    process: 'Ventas',
+    standard: 'ISO_9001',
+    unit: '%',
+    targetValue: 85,
+    minValue: 0,
+    maxValue: 100,
+    direction: 'HIGHER_BETTER',
+    frequency: 'QUARTERLY',
+    warningValue: 75,
+    criticalValue: 65
+  },
+  {
+    code: 'CUST-NPS-001',
+    name: 'Net Promoter Score',
+    description: 'Puntaje NPS de recomendación',
+    category: 'CUSTOMER',
+    process: 'Gestión de Clientes',
+    standard: 'ISO_9001',
+    unit: 'puntos',
+    targetValue: 50,
+    minValue: -100,
+    maxValue: 100,
+    direction: 'HIGHER_BETTER',
+    frequency: 'QUARTERLY',
+    warningValue: 20,
+    criticalValue: 0
+  }
+];
+
+export const CUSTOMER_CATEGORIES = [
+  'CUSTOMER',
+  'SATISFACCIÓN',
+  'TIEMPO_RESPUESTA',
+  'RESOLUCIÓN',
+  'RETENCIÓN'
+];

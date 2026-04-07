@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Debug Login - SGI 360</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { color: #4ec9b0; margin-bottom: 20px; }
+    .step { background: #252526; padding: 15px; margin-bottom: 15px; border-left: 3px solid #007acc; border-radius: 4px; }
+    .step h3 { color: #4ec9b0; margin-bottom: 10px; }
+    input { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 8px; margin: 5px 0; width: 100%; border-radius: 4px; font-family: monospace; }
+    button { background: #007acc; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 10px 5px 10px 0; font-family: monospace; }
+    button:hover { background: #005a9e; }
+    .output { background: #1e1e1e; border: 1px solid #555; padding: 15px; border-radius: 4px; font-size: 12px; max-height: 300px; overflow-y: auto; margin-top: 10px; }
+    .success { color: #4ec9b0; }
+    .error { color: #f48771; }
+    .info { color: #9cdcfe; }
+    .warning { color: #ce9178; }
+    pre { background: #1e1e1e; padding: 10px; overflow-x: auto; margin: 10px 0; border: 1px solid #555; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 Debug Login - Paso a Paso</h1>
+
+    <div class="step">
+      <h3>Paso 1: Verifica Mock API (localhost:3001)</h3>
+      <button onclick="testMockAPI()">Probar Mock API</button>
+      <div id="step1-output" class="output"></div>
+    </div>
+
+    <div class="step">
+      <h3>Paso 2: Verifica Route Handler (localhost:3000)</h3>
+      <button onclick="testRouteHandler()">Probar Route Handler</button>
+      <div id="step2-output" class="output"></div>
+    </div>
+
+    <div class="step">
+      <h3>Paso 3: Intenta Login Completo</h3>
+      <input type="text" id="email" value="test@example.com" placeholder="Email">
+      <input type="password" id="password" value="Test123!@#" placeholder="Password">
+      <button onclick="testLogin()">Intentar Login</button>
+      <div id="step3-output" class="output"></div>
+    </div>
+
+    <div class="step">
+      <h3>Paso 4: Verifica localStorage</h3>
+      <button onclick="checkLocalStorage()">Verificar localStorage</button>
+      <div id="step4-output" class="output"></div>
+    </div>
+
+    <div class="step">
+      <h3>Paso 5: Intenta ir a Dashboard</h3>
+      <button onclick="goToDashboard()">Ir a /dashboard</button>
+      <div id="step5-output" class="output"></div>
+    </div>
+  </div>
+
+  <script>
+    function log(elementId, message, type = 'info') {
+      const element = document.getElementById(elementId);
+      const icon = {
+        'info': 'ℹ️',
+        'success': '✅',
+        'error': '❌',
+        'warning': '⚠️'
+      }[type] || '•';
+
+      const timestamp = new Date().toLocaleTimeString();
+      const line = `[${timestamp}] ${icon} ${message}`;
+      element.textContent += line + '\n';
+      console.log(line);
+    }
+
+    function clear(elementId) {
+      document.getElementById(elementId).textContent = '';
+    }
+
+    async function testMockAPI() {
+      clear('step1-output');
+      log('step1-output', 'Iniciando test de Mock API...', 'info');
+
+      try {
+        log('step1-output', 'Haciendo POST a http://localhost:3001/api/auth/login', 'info');
+
+        const response = await fetch('http://localhost:3001/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'test@example.com',
+            password: 'Test123!@#'
+          })
+        });
+
+        log('step1-output', `Status HTTP: ${response.status}`, 'info');
+        const data = await response.json();
+        log('step1-output', `Respuesta: ${JSON.stringify(data, null, 2)}`, 'info');
+
+        if (response.ok && data.accessToken) {
+          log('step1-output', '✅ Mock API está funcionando correctamente', 'success');
+          return true;
+        } else {
+          log('step1-output', '❌ Mock API no retornó accessToken', 'error');
+          return false;
+        }
+      } catch (error) {
+        log('step1-output', `Error: ${error.message}`, 'error');
+        return false;
+      }
+    }
+
+    async function testRouteHandler() {
+      clear('step2-output');
+      log('step2-output', 'Iniciando test de Route Handler...', 'info');
+
+      try {
+        log('step2-output', 'Haciendo POST a http://localhost:3000/api/auth/login', 'info');
+
+        const response = await fetch('http://localhost:3000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'test@example.com',
+            password: 'Test123!@#'
+          })
+        });
+
+        log('step2-output', `Status HTTP: ${response.status}`, 'info');
+        const data = await response.json();
+        log('step2-output', `Respuesta completa: ${JSON.stringify(data, null, 2)}`, 'info');
+
+        if (!response.ok) {
+          log('step2-output', `❌ Error HTTP ${response.status}`, 'error');
+          return false;
+        }
+
+        if (data.token) {
+          log('step2-output', `✅ Tiene 'token': ${data.token}`, 'success');
+        } else {
+          log('step2-output', '❌ NO TIENE CAMPO "token"', 'error');
+          log('step2-output', `Campos disponibles: ${Object.keys(data).join(', ')}`, 'warning');
+        }
+
+        if (data.user) {
+          log('step2-output', `✅ Tiene 'user': ${JSON.stringify(data.user)}`, 'success');
+        } else {
+          log('step2-output', '⚠️ NO TIENE CAMPO "user"', 'warning');
+        }
+
+        return data.token ? true : false;
+      } catch (error) {
+        log('step2-output', `Error: ${error.message}`, 'error');
+        log('step2-output', 'Stack: ' + error.stack, 'error');
+        return false;
+      }
+    }
+
+    async function testLogin() {
+      clear('step3-output');
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      log('step3-output', `Email: ${email}`, 'info');
+      log('step3-output', `Password: ${password}`, 'info');
+      log('step3-output', 'Enviando login...', 'info');
+
+      try {
+        const response = await fetch('http://localhost:3000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+        log('step3-output', `Respuesta: ${JSON.stringify(data, null, 2)}`, 'info');
+
+        if (!response.ok) {
+          log('step3-output', `❌ Error: ${data.error}`, 'error');
+          return false;
+        }
+
+        if (!data.token) {
+          log('step3-output', '❌ NO HAY TOKEN EN RESPUESTA', 'error');
+          log('step3-output', `Campos: ${Object.keys(data).join(', ')}`, 'warning');
+          return false;
+        }
+
+        log('step3-output', `✅ Login exitoso! Token: ${data.token}`, 'success');
+        log('step3-output', 'Guardando en localStorage...', 'info');
+
+        localStorage.setItem('accessToken', data.token);
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
+
+        log('step3-output', '✅ Guardado en localStorage', 'success');
+        return true;
+      } catch (error) {
+        log('step3-output', `Error: ${error.message}`, 'error');
+        return false;
+      }
+    }
+
+    function checkLocalStorage() {
+      clear('step4-output');
+      const token = localStorage.getItem('accessToken');
+      const user = localStorage.getItem('user');
+
+      log('step4-output', `localStorage.accessToken: ${token || 'VACIO'}`, token ? 'success' : 'error');
+      log('step4-output', `localStorage.user: ${user || 'VACIO'}`, user ? 'success' : 'error');
+
+      if (token && user) {
+        log('step4-output', '✅ Ambos campos están guardados', 'success');
+        return true;
+      } else {
+        log('step4-output', '❌ Faltan campos en localStorage', 'error');
+        return false;
+      }
+    }
+
+    function goToDashboard() {
+      clear('step5-output');
+      const token = localStorage.getItem('accessToken');
+
+      if (!token) {
+        log('step5-output', '❌ No hay token en localStorage', 'error');
+        return;
+      }
+
+      log('step5-output', 'Redirigiendo a /dashboard...', 'info');
+      log('step5-output', 'Si esto no funciona, algo está mal con AuthProvider', 'warning');
+
+      window.location.href = 'http://localhost:3000/dashboard';
+    }
+
+    // Auto-test cuando carga la página
+    window.addEventListener('load', () => {
+      log('step1-output', 'Página cargada. Haz click en los botones para testear.', 'info');
+    });
+  </script>
+</body>
+</html>

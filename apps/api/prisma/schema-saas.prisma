@@ -1,0 +1,291 @@
+// SGI360 - Sistema SaaS Multi-Tenant
+
+model Tenant {
+  id                String    @id @default(cuid())
+  name              String
+  slug              String    @unique // URL-friendly identifier
+  logo              String?   // Logo URL
+  domain            String?   // Custom domain (Enterprise)
+  
+  // Contacto y configuración
+  adminEmail        String    @unique
+  adminName         String
+  adminPhone        String?
+  
+  // Configuración de empresa
+  industry          String?   // Industria: manufacturing, services, healthcare, etc.
+  employeeCount     Int       @default(1) // Empleados estimados
+  location          String?   // País/Ciudad
+  timezone          String    @default("America/Argentina/Buenos_Aires")
+  language          String    @default("es")
+  
+  // Estado y configuración
+  status            TenantStatus @default(SETUP)
+  isActive          Boolean   @default(false)
+  trialEndsAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relaciones
+  subscription      Subscription?
+  users             PlatformUser[]
+  projects          ActionProject[]
+  audits            Audit[]
+  incidents         Incident[]
+  indicators        Indicator[]
+  trainings         Training[]
+  assets            Asset[]
+  maintenanceOrders WorkOrder[]
+  drills            DrillScenario[]
+  risks             Risk[]
+  surveys           Survey[]
+  
+  @@map("tenants")
+  @@index([status])
+  @@index([isActive])
+  @@index([trialEndsAt])
+}
+
+model Subscription {
+  id                String    @id @default(cuid())
+  tenantId          String    @unique
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Plan actual
+  planId            String
+  plan              Plan      @relation(fields: [planId], references: [id])
+  addons            SubscriptionAddon[]
+  
+  // Estado y facturación
+  status            SubscriptionStatus @default(TRIAL)
+  startDate         DateTime  @default(now())
+  endDate           DateTime?
+  nextBillingDate   DateTime
+  billingCycle      BillingCycle @default(MONTHLY)
+  
+  // Precios
+  basePrice         Float     // Precio base del plan
+  addonsPrice       Float     @default(0) // Suma de addons
+  totalPrice        Float     // Precio total mensual/anual
+  
+  // Límites y uso
+  userLimit         Int
+  currentUsers      Int       @default(0)
+  storageLimit      Int       @default(1000) // MB
+  currentStorage    Int       @default(0)
+  
+  // Integración con pagos
+  mercadoPagoId     String?   // ID de suscripción en MercadoPago
+  lastPaymentDate   DateTime?
+  lastPaymentAmount Float?
+  nextPaymentDue    DateTime
+  
+  // Metadata
+  metadata          Json?     // Datos adicionales del plan
+  
+  @@map("subscriptions")
+  @@index([tenantId])
+  @@index([status])
+  @@index([nextBillingDate])
+}
+
+model Plan {
+  id                String    @id @default(cuid())
+  name              String    @unique
+  slug              String    @unique
+  description       String
+  
+  // Precios
+  monthlyPrice      Float
+  annualPrice       Float     // 10% descuento
+  
+  // Límites y características
+  userLimit         Int
+  storageLimit      Int       // MB
+  features          Json      // Array de características
+  
+  // Estado y visibilidad
+  isActive          Boolean   @default(true)
+  isPopular         Boolean   @default(false)
+  sortOrder         Int       @default(0)
+  
+  // Configuración
+  setupFee          Float?    // Cargo único de setup
+  trialDays         Int       @default(14)
+  
+  // Relaciones
+  subscriptions     Subscription[]
+  planFeatures      PlanFeature[]
+  
+  @@map("plans")
+  @@index([isActive])
+  @@index([isPopular])
+}
+
+model PlanFeature {
+  id                String    @id @default(cuid())
+  planId            String
+  plan              Plan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  
+  featureKey        String    // Clave única de la funcionalidad
+  featureName       String    // Nombre visible
+  description       String?
+  isEnabled         Boolean   @default(true)
+  limit             Int?      // Límite si aplica (ej: 5 usuarios)
+  
+  @@map("plan_features")
+  @@index([planId])
+  @@index([featureKey])
+}
+
+model Addon {
+  id                String    @id @default(cuid())
+  name              String    @unique
+  slug              String    @unique
+  description       String
+  
+  // Precios
+  monthlyPrice      Float
+  annualPrice       Float
+  
+  // Características
+  features          Json      // Array de funcionalidades
+  
+  // Estado
+  isActive          Boolean   @default(true)
+  sortOrder         Int       @default(0)
+  
+  // Relaciones
+  subscriptions     SubscriptionAddon[]
+  
+  @@map("addons")
+  @@index([isActive])
+}
+
+model SubscriptionAddon {
+  id                String    @id @default(cuid())
+  subscriptionId    String
+  subscription      Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  addonId           String
+  addon             Addon      @relation(fields: [addonId], references: [id])
+  
+  // Precios al momento de contratación
+  monthlyPrice      Float
+  annualPrice      Float
+  
+  // Estado
+  isActive          Boolean   @default(true)
+  startDate         DateTime  @default(now())
+  
+  @@map("subscription_addons")
+  @@index([subscriptionId])
+  @@index([addonId])
+}
+
+model UsageMetrics {
+  id                String    @id @default(cuid())
+  tenantId          String
+  metric            String    // users, storage, api_calls, etc.
+  currentValue      Int       @default(0)
+  maxValue          Int
+  period            String    // daily, monthly, yearly
+  recordedAt        DateTime  @default(now())
+  
+  @@map("usage_metrics")
+  @@index([tenantId])
+  @@index([metric])
+  @@index([recordedAt])
+}
+
+model PaymentTransaction {
+  id                String    @id @default(cuid())
+  tenantId          String
+  
+  // Información de pago
+  mercadoPagoId     String    @unique
+  amount            Float
+  currency          String    @default("ARS")
+  status            PaymentStatus
+  
+  // Fechas
+  paymentDate       DateTime  @default(now())
+  periodStart       DateTime
+  periodEnd         DateTime
+  
+  // Detalles
+  planId            String
+  addons            Json?     // IDs de addons incluidos
+  billingCycle      BillingCycle
+  
+  // Metadata
+  metadata          Json?     // Respuesta completa de MercadoPago
+  
+  @@map("payment_transactions")
+  @@index([tenantId])
+  @@index([mercadoPagoId])
+  @@index([paymentDate])
+}
+
+// Enums
+enum TenantStatus {
+  SETUP             // En configuración inicial
+  TRIAL             // Período de prueba
+  ACTIVE            // Activo y pagando
+  SUSPENDED         // Suspendido por falta de pago
+  CANCELLED         // Cancelado
+}
+
+enum SubscriptionStatus {
+  TRIAL             // Período de prueba
+  ACTIVE            // Activo y pagando
+  PAST_DUE          // Vencido
+  CANCELLED         // Cancelado
+  SUSPENDED         // Suspendido
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL            // 10% descuento
+}
+
+enum PaymentStatus {
+  PENDING           // Pendiente de pago
+  APPROVED          // Pago aprobado
+  REJECTED          // Pago rechazado
+  CANCELLED         // Pago cancelado
+  REFUNDED          // Reembolsado
+}
+
+// Feature Keys para control de acceso
+enum FeatureKey {
+  // Core
+  DASHBOARD_BASIC
+  USERS_MANAGEMENT
+  
+  // Módulos básicos (Starter)
+  AUDITS_BASIC
+  DOCUMENTS_BASIC
+  INDICATORS_BASIC
+  
+  // Módulos avanzados (Professional)
+  PROJECT360
+  MAINTENANCE
+  DRILLS
+  RISKS
+  INDICATORS_ADVANCED
+  
+  // Enterprise
+  BUSINESS_INTELLIGENCE
+  REPORTS_AUTO
+  AI_FEATURES
+  MULTI_BRANCH
+  
+  // Addons
+  AUDIT360
+  HSE360
+  
+  // Límites
+  USER_LIMIT
+  STORAGE_LIMIT
+  API_CALLS_LIMIT
+}

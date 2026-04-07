@@ -1,0 +1,22 @@
+[
+  {
+    "id": "mapping-1775216870330",
+    "documentId": "doc-1775216308146-7",
+    "clauseId": "norm-1-c1",
+    "complianceType": "CUMPLE",
+    "notes": null,
+    "createdAt": "2026-04-03T11:47:50.330Z",
+    "updatedAt": "2026-04-03T11:47:50.330Z",
+    "deletedAt": null
+  },
+  {
+    "id": "mapping-1775217310241",
+    "documentId": "doc-1775216308146-7",
+    "clauseId": "norm-1-c1",
+    "complianceType": "CUMPLE",
+    "notes": null,
+    "createdAt": "2026-04-03T11:55:10.241Z",
+    "updatedAt": "2026-04-03T11:55:10.241Z",
+    "deletedAt": "2026-04-03T11:55:14.181Z"
+  }
+]
