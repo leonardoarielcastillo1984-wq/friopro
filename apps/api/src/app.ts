@@ -44,7 +44,7 @@ import maintenanceRoutes from './routes/maintenance.js';
 import { emergencyRoutes } from './routes/emergency.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerSurveyRoutes } from './routes/surveys.js';
-import licenseRoutes from './routes/license.js';
+import { licenseRoutes } from './routes/license.js';
 import { superAdminRoutes } from './routes/superAdmin.js';
 import surveyPublicRoutes from './routes/survey-public.js';
 import { publicRoutes } from './routes/publicRoutes.js';

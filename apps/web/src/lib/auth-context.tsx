@@ -62,6 +62,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // Guardar usuario con globalRole en localStorage
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('user', JSON.stringify(res.user));
+        // Guardar globalRole específicamente
+        if (res.user.globalRole) {
+          window.localStorage.setItem('globalRole', res.user.globalRole);
+          console.log('AuthContext: GlobalRole guardado:', res.user.globalRole);
+        } else {
+          window.localStorage.removeItem("globalRole");
+        }
+      }
+
       setState({
         user: res.user,
         tenant: res.activeTenant ?? null,
@@ -70,24 +82,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error: null,
       });
     } catch (e: any) {
+      // Limpiar localStorage si hay error para forzar login fresco
       if (typeof window !== 'undefined') {
-        const token = window.localStorage.getItem('accessToken');
-        const userStr = window.localStorage.getItem('user');
-        if (token && userStr) {
-          try {
-            const cachedUser = JSON.parse(userStr) as AuthUser;
-            setState({
-              user: cachedUser,
-              tenant: null,
-              tenantRole: null,
-              loading: false,
-              error: null,
-            });
-            return;
-          } catch {
-            // ignore parse errors and continue to unauthenticated state
-          }
-        }
+        window.localStorage.removeItem('user');
+        window.localStorage.removeItem('accessToken');
+        window.localStorage.removeItem('tenantId');
+        window.localStorage.removeItem('csrfToken');
       }
 
       setState({

@@ -20,14 +20,33 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      // Forzar API Fixed v2 para evitar problemas de configuración
+      const apiUrl = 'http://127.0.0.1:3002';
+      const loginUrl = `${apiUrl}/api/auth/login`;
+      console.log('=== LOGIN DEBUG ===');
+      console.log('Login attempt to:', loginUrl);
+      console.log('Credentials:', { email, password: '***' });
+      console.log('Timestamp:', new Date().toISOString());
+      
+      // Agregar timestamp para evitar caché
+      const cacheBuster = `?t=${Date.now()}`;
+      const res = await fetch(`${loginUrl}${cacheBuster}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
         credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
 
+      console.log('Response status:', res.status);
+      console.log('Response headers:', Object.fromEntries(res.headers.entries()));
+
       const data = await res.json().catch(() => null);
+      console.log('Response data:', data);
+      console.log('=== END LOGIN DEBUG ===');
 
       if (!res.ok) {
         throw new Error((data as any)?.error || `HTTP ${res.status}`);
@@ -35,9 +54,24 @@ export default function LoginPage() {
 
       const accessToken = (data as any)?.accessToken ?? (data as any)?.token;
       if (accessToken) localStorage.setItem('accessToken', accessToken);
-      if ((data as any)?.user) localStorage.setItem('user', JSON.stringify((data as any).user));
+      if ((data as any)?.user) {
+        localStorage.setItem('user', JSON.stringify((data as any).user));
+        // Guardar globalRole específicamente
+        if ((data as any).user.globalRole) {
+          localStorage.setItem('globalRole', (data as any).user.globalRole);
+          console.log('Login: GlobalRole guardado:', (data as any).user.globalRole);
+        } else {
+          console.log('Login: user.globalRole no encontrado en:', (data as any).user);
+        }
+      }
       if ((data as any)?.activeTenant?.id) localStorage.setItem('tenantId', (data as any).activeTenant.id);
       if ((data as any)?.csrfToken) localStorage.setItem('csrfToken', (data as any).csrfToken);
+      
+      // Debug final del localStorage
+      console.log('Login: Estado final del localStorage:');
+      console.log('- globalRole:', localStorage.getItem('globalRole'));
+      console.log('- user:', localStorage.getItem('user'));
+      console.log('- accessToken:', localStorage.getItem('accessToken') ? '***' : null);
 
       window.location.href = '/dashboard';
     } catch (e: any) {

@@ -100,12 +100,12 @@ export default function PlanesPagoPage() {
       });
 
       // Redirect to MercadoPago
-      if (response.preferenceId) {
-        window.location.href = response.initPoint;
+      if (response.checkout?.preferenceId) {
+        window.location.href = response.checkout?.initPoint;
       }
     } catch (error) {
       console.error('Error creating checkout:', error);
-      alert('Error al procesar el pago. Por favor intenta nuevamente.');
+      alert(`Error: ${error.message || "Error desconocido al procesar el pago"}`);
     } finally {
       setProcessing(false);
     }

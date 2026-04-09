@@ -271,7 +271,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             const Icon = item.icon;
             const active = isActive(item.href);
             // SUPER_ADMIN nunca tiene módulos bloqueados
-            const isLocked = user?.globalRole !== 'SUPER_ADMIN' && !hasAccessToModule(currentPlan, item.href);
+            const isLocked = user?.globalRole === "SUPER_ADMIN" ? false : !hasAccessToModule(currentPlan, item.href);
             const requiredPlan = getModuleRequiredPlan(item.href);
             
             return (

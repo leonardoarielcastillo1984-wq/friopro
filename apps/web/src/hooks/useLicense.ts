@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 
 export type PlanTier = 'BASIC' | 'PROFESSIONAL' | 'PREMIUM';
 
@@ -81,6 +82,8 @@ export interface LicenseNotification {
 }
 
 export function useLicense() {
+  const auth = useAuth();
+  
   const [status, setStatus] = useState<LicenseStatus>({
     setupRequired: true,
     setupPaid: false,
@@ -167,17 +170,34 @@ export function useLicense() {
   // Cargar planes disponibles
   const fetchPlans = useCallback(async () => {
     try {
+      console.log('🔍 Fetching plans from /license/plans');
       const response = await apiFetch<{ plans: Plan[] }>('/license/plans');
-      setPlans(response.plans);
-      return response.plans;
+      console.log('📦 Response from API:', response);
+      
+      // La API devuelve { plans: [...] }
+      const plansArray = response.plans || [];
+      console.log('✅ Plans array:', plansArray);
+      
+      setPlans(plansArray);
+      return plansArray;
     } catch (error) {
-      console.error('Error fetching plans:', error);
+      console.error('❌ Error fetching plans:', error);
+      setPlans([]);
       return [];
     }
   }, []);
 
   // Verificar acceso a un módulo
   const checkModuleAccess = useCallback(async (module: string): Promise<ModuleAccess> => {
+    // Verificar globalRole del auth context o localStorage
+    const globalRole = auth.user?.globalRole || (typeof window !== 'undefined' ? window.localStorage.getItem('globalRole') : null);
+    console.log('useLicense: Verificando acceso, globalRole:', globalRole);
+    
+    if (globalRole === "SUPER_ADMIN") {
+      console.log('useLicense: SuperAdmin detectado, acceso permitido a todos los módulos');
+      return { allowed: true };
+    }
+    
     try {
       const response = await apiFetch<ModuleAccess>(`/license/check-access/${module}`);
       return response;
@@ -187,7 +207,7 @@ export function useLicense() {
       }
       return { allowed: false, message: 'Error checking access' };
     }
-  }, []);
+  }, [auth.user?.globalRole]);
 
   // Obtener historial de pagos
   const fetchPayments = useCallback(async () => {
@@ -284,17 +304,35 @@ export function useLicense() {
   // Cargar datos iniciales
   useEffect(() => {
     const loadInitialData = async () => {
-      await Promise.all([
-        fetchSetupStatus(),
-        fetchSubscription(),
-        fetchPlans()
-      ]);
+      try {
+        setStatus(prev => ({ ...prev, loading: true }));
+        await Promise.all([
+          fetchSetupStatus(),
+          fetchSubscription(),
+          fetchPlans()
+        ]);
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+      } finally {
+        setStatus(prev => ({ ...prev, loading: false }));
+      }
     };
     loadInitialData();
   }, [fetchSetupStatus, fetchSubscription, fetchPlans]);
 
   // Helpers
   const hasAccessToModule = useCallback((module: string): boolean => {
+    // Verificar globalRole del auth context o localStorage
+    const globalRole = auth.user?.globalRole || (typeof window !== 'undefined' ? window.localStorage.getItem('globalRole') : null);
+    
+    // Los SuperAdmin tienen acceso completo a todos los módulos
+    if (globalRole === 'SUPER_ADMIN') {
+      console.log(`useLicense: hasAccessToModule(${module}) - SuperAdmin detectado, acceso permitido`);
+      return true;
+    }
+    
+    console.log(`useLicense: hasAccessToModule(${module}) - No es SuperAdmin, verificando plan...`);
+    
     const moduleConfig: Record<string, { minPlan: PlanTier }> = {
       dashboard: { minPlan: 'BASIC' },
       documents: { minPlan: 'BASIC' },
@@ -314,14 +352,20 @@ export function useLicense() {
       intelligence: { minPlan: 'PREMIUM' }
     };
 
-    if (!status.planTier) return false;
+    if (!status.planTier) {
+      console.log(`useLicense: hasAccessToModule(${module}) - Sin plan, acceso denegado`);
+      return false;
+    }
     
     const planHierarchy: PlanTier[] = ['BASIC', 'PROFESSIONAL', 'PREMIUM'];
     const currentPlanIndex = planHierarchy.indexOf(status.planTier);
     const requiredPlanIndex = planHierarchy.indexOf(moduleConfig[module]?.minPlan || 'BASIC');
 
-    return currentPlanIndex >= requiredPlanIndex;
-  }, [status.planTier]);
+    const hasAccess = currentPlanIndex >= requiredPlanIndex;
+    console.log(`useLicense: hasAccessToModule(${module}) - Plan actual: ${status.planTier}, requerido: ${moduleConfig[module]?.minPlan}, acceso: ${hasAccess}`);
+    
+    return hasAccess;
+  }, [status.planTier, auth.user?.globalRole]);
 
   const canCreateUser = useCallback((): boolean => {
     if (!status.planTier) return false;

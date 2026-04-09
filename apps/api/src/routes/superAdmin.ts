@@ -399,7 +399,7 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
     requireSuperAdmin(req);
 
     const { tenantId } = req.params as { tenantId: string };
-    const { planTier, status } = req.body as { planTier: string; status: string };
+    const { planTier, status, period = 'monthly' } = req.body as { planTier: string; status: string; period?: string };
 
     try {
       console.log(`[API] Actualizando ${tenantId}: ${planTier} - ${status}`);
@@ -415,7 +415,7 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       // Obtener plan
       let plan = null;
       if (planTier !== 'NO_PLAN') {
-        plan = await app.prisma.plan.findUnique({ where: { tier: planTier } });
+        plan = await app.prisma.plan.findUnique({ where: { tier: planTier as any } });
         if (!plan) {
           return reply.code(400).send({ error: 'Plan no encontrado' });
         }
@@ -432,31 +432,58 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
 
       console.log(`[API] Suscripción existente:`, existing?.id);
 
-      // Actualizar o crear
-      const subscription = existing
-        ? await app.prisma.tenantSubscription.update({
-            where: { id: existing.id },
-            data: {
-              planId: plan.id,
-              status: status,
-              providerRef: planTier === 'NO_PLAN' ? 'NO_PLAN' : null
-            },
-            include: { plan: true }
-          })
-        : await app.prisma.tenantSubscription.create({
-            data: {
-              tenantId,
-              planId: plan.id,
-              status: status,
-              startedAt: new Date(),
-              providerRef: planTier === 'NO_PLAN' ? 'NO_PLAN' : null
-            },
-            include: { plan: true }
-          });
+      // Calcular fechas
+      const now = new Date();
+      const startDate = now;
+      let endDate = new Date(now);
+      
+      if (period === 'monthly') {
+        endDate.setMonth(endDate.getMonth() + 1);
+      } else {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      }
 
-      console.log(`[API] Suscripción guardada:`, subscription.id);
+      // Crear o actualizar suscripción
+      let subscription;
+      if (existing) {
+        // Actualizar suscripción existente
+        subscription = await app.prisma.tenantSubscription.update({
+          where: { id: existing.id },
+          data: {
+            planId: plan?.id || '',
+            status: 'ACTIVE',
+            startedAt: startDate,
+            endsAt: endDate
+          }
+        });
+      } else {
+        // Crear nueva suscripción
+        subscription = await app.prisma.tenantSubscription.create({
+          data: {
+            tenantId,
+            planId: plan?.id || '',
+            status: 'ACTIVE',
+            startedAt: startDate,
+            endsAt: endDate
+          }
+        });
+      }
 
-      return reply.send({ subscription });
+      // Actualizar tenant (no tiene planTier ni subscriptionStatus en el modelo)
+      // El plan se asocia a través de la suscripción
+      
+      console.log(`[API] Suscripción actualizada:`, subscription.id);
+
+      return reply.send({
+        success: true,
+        subscription: {
+          id: subscription.id,
+          planTier: plan?.tier || 'NO_PLAN',
+          status: subscription.status,
+          startDate: subscription.startedAt,
+          endDate: subscription.endsAt
+        }
+      });
     } catch (error) {
       console.error(`[API] Error:`, error);
       return reply.code(500).send({ error: String(error) });
@@ -2179,7 +2206,7 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── DIAGNOSTIC: Check user login status ──
-  app.get('/super-admin/debug/check-user', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.get('/debug/check-user', async (req: FastifyRequest, reply: FastifyReply) => {
     const { email } = req.query as { email?: string };
 
     if (!email) {

@@ -23,7 +23,7 @@ import {
   DialogDescription
 } from '@/components/ui/dialog';
 import { useLicense, type PlanTier } from '@/hooks/useLicense';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface LicenseGateProps {
   children: React.ReactNode;
@@ -240,8 +240,25 @@ export function LicenseGate({ children, module, fallback }: LicenseGateProps) {
   const [accessData, setAccessData] = useState<any>(null);
   const router = useRouter();
 
+  // Verificar si es SuperAdmin por localStorage
+  const isSuperAdmin = typeof window !== 'undefined' && window.localStorage.getItem('globalRole') === 'SUPER_ADMIN';
+  
+  // Debug: Mostrar contenido del localStorage
+  if (typeof window !== 'undefined') {
+    console.log(`LicenseGate: Verificando acceso para módulo ${module}`);
+    console.log('LicenseGate: globalRole en localStorage:', window.localStorage.getItem('globalRole'));
+    console.log('LicenseGate: user en localStorage:', window.localStorage.getItem('user'));
+    console.log('LicenseGate: isSuperAdmin:', isSuperAdmin);
+  }
+  
+  // Si es SuperAdmin, permitir acceso inmediato
+  if (isSuperAdmin) {
+    console.log(`LicenseGate: SuperAdmin detectado para módulo ${module}, acceso permitido`);
+    return children;
+  }
+
   // Verificar acceso al montar
-  useState(() => {
+  useEffect(() => {
     const verifyAccess = async () => {
       const access = await checkModuleAccess(module);
       setAccessData(access);

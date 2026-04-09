@@ -148,7 +148,7 @@ export default function PlanesPage() {
 
         {/* Planes */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {plans.map((plan) => {
+          {plans && plans.length > 0 ? plans.map((plan) => {
             const Icon = PLAN_ICONS[plan.tier];
             const colors = PLAN_COLORS[plan.tier];
             const isCurrentPlan = status.planTier === plan.tier;
@@ -249,7 +249,12 @@ export default function PlanesPage() {
                 </CardContent>
               </Card>
             );
-          })}
+          }) : (
+            <div className="col-span-3 text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4" />
+              <p className="text-slate-600">Cargando planes...</p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

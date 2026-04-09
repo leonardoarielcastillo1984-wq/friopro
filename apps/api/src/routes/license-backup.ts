@@ -1,14 +1,7 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
-import { MercadoPagoService } from '../services/mercadopago.js';
-
-// Extender FastifyInstance para incluir prisma
-declare module 'fastify' {
-  interface FastifyInstance {
-    prisma: PrismaClient;
-  }
-}
+// import { MercadoPagoService } from '../services/mercadopago.js'; // Temporalmente comentado
 
 // ============================================
 // SISTEMA DE LICENCIAS SGI 360
@@ -96,7 +89,60 @@ const trackAccessAttemptSchema = z.object({
   path: z.string()
 });
 
-export async function licenseRoutes(app: FastifyInstance) {
+export const licenseRoutes: FastifyPluginAsync = async (app) => {
+  // ── GET /license/mercadopago-status — Verificar configuración de MercadoPago ──
+  app.get('/mercadopago-status', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+      const publicKey = process.env.MERCADOPAGO_PUBLIC_KEY;
+      const userId = process.env.MERCADOPAGO_USER_ID;
+
+      const status = {
+        hasAccessToken: !!accessToken,
+        hasPublicKey: !!publicKey,
+        hasUserId: !!userId,
+        accessTokenLength: accessToken?.length || 0,
+        accessTokenPrefix: accessToken ? accessToken.substring(0, 10) + '...' : null,
+        nodeEnv: process.env.NODE_ENV || 'development',
+        appUrl: process.env.APP_URL || 'http://localhost:3000'
+      };
+
+      // Probar conexión con MercadoPago
+      if (accessToken) {
+        try {
+          const testResponse = await fetch('https://api.mercadopago.com/users/me', {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+
+          status.mpConnectionStatus = testResponse.ok ? 'connected' : 'error';
+          status.mpConnectionCode = testResponse.status;
+          
+          if (testResponse.ok) {
+            const userData = await testResponse.json();
+            status.mpUser = {
+              id: userData.id,
+              nickname: userData.nickname,
+              email: userData.email
+            };
+          } else {
+            const errorData = await testResponse.text();
+            status.mpError = errorData;
+          }
+        } catch (error) {
+          status.mpConnectionStatus = 'failed';
+          status.mpError = error instanceof Error ? error.message : 'Unknown error';
+        }
+      } else {
+        status.mpConnectionStatus = 'no_token';
+      }
+
+      return reply.send(status);
+    } catch (error) {
+      return reply.code(500).send({ error: 'Error checking MercadoPago status' });
+    }
+  });
 
   // DIAGNOSTIC ENDPOINT
   app.get('/test', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -1360,6 +1406,8 @@ export async function licenseRoutes(app: FastifyInstance) {
       if (accessToken) {
         // Si tenemos token de MercadoPago, crear preferencia real
         try {
+          console.log('[CHECKOUT] Creando preferencia MercadoPago...');
+          
           const preferenceData = {
             items: [{
               title: `SGI 360 - Plan ${planTier} (${period === 'monthly' ? 'Mensual' : 'Anual'})`,
@@ -1387,7 +1435,16 @@ export async function licenseRoutes(app: FastifyInstance) {
             }
           };
 
-          const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+          console.log('[CHECKOUT] Datos de preferencia:', JSON.stringify(preferenceData, null, 2));
+
+          // Usar sandbox para desarrollo
+          const mpApiUrl = process.env.NODE_ENV === 'production' 
+            ? 'https://api.mercadopago.com/checkout/preferences'
+            : 'https://api.mercadopago.com/checkout/preferences';
+
+          console.log('[CHECKOUT] Enviando a:', mpApiUrl);
+
+          const response = await fetch(mpApiUrl, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -1396,10 +1453,23 @@ export async function licenseRoutes(app: FastifyInstance) {
             body: JSON.stringify(preferenceData)
           });
 
-          const preference = await response.json();
+          const responseText = await response.text();
+          console.log('[CHECKOUT] Respuesta MercadoPago:', response.status, responseText);
+
+          let preference;
+          try {
+            preference = JSON.parse(responseText);
+          } catch (parseError) {
+            throw new Error(`Invalid JSON response: ${responseText}`);
+          }
 
           if (!response.ok) {
-            throw new Error(`MercadoPago API Error: ${preference.message || 'Unknown error'}`);
+            const errorMessage = preference.message || preference.error || 'Unknown error';
+            throw new Error(`MercadoPago API Error (${response.status}): ${errorMessage}`);
+          }
+
+          if (!preference.id) {
+            throw new Error('MercadoPago response missing preference ID');
           }
 
           checkoutResponse = {
@@ -1407,10 +1477,14 @@ export async function licenseRoutes(app: FastifyInstance) {
             initPoint: preference.init_point,
             sandboxInitPoint: preference.sandbox_init_point || preference.init_point
           };
+          
+          console.log('[CHECKOUT] Preferencia creada exitosamente:', checkoutResponse);
         } catch (mpError: any) {
-          console.error('MercadoPago error details:', mpError);
+          console.error('[CHECKOUT] MercadoPago error details:', mpError);
           app.log.error(mpError, 'Error creating MercadoPago preference');
+          
           // Fallback a mock si MercadoPago falla
+          console.log('[CHECKOUT] Usando fallback mock...');
           const mockPreferenceId = `mock_${Date.now()}`;
           checkoutResponse = {
             preferenceId: mockPreferenceId,

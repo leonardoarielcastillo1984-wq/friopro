@@ -1,0 +1,90 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build outputs
+.next/
+dist/
+build/
+out/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Upload directories
+uploads/
+temp/
+
+# Documentation (keep main README)
+CLEANUP_REPORT.md
+PROYECTO_LIMPIO.md
+FINAL_STATUS.txt
+2FA_LOGIN_STATUS.md
+IMPLEMENTATION_SUMMARY.md
+SETUP_INSTRUCTIONS.md
+
+# Scripts and utilities
+RUN_COMPLETE.sh
+SETUP_LOCAL.sh
+reset_password.py
+check-permissions.js
+
+# Test files
+test-cookies.txt
+auth-test-cookies.txt
+final-test-cookies.txt
+login-cookies.txt
+
+# Development files
+api.log
+web.log
+url
+
+# Backup files
+*.backup
+*.bak
+
+# Lock files (keep package-lock.json but exclude others)
+yarn.lock
+pnpm-lock.yaml
+
+# Build artifacts
+*.tsbuildinfo
+
+# Local configuration
+.env.backup
+.mercadopago.json

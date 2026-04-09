@@ -33,7 +33,7 @@ COPY --from=builder /app/apps/api/package.json ./apps/api/
 # Create uploads directory
 RUN mkdir -p /app/apps/api/uploads
 
-EXPOSE 3001
+EXPOSE 3002
 
 WORKDIR /app/apps/api
 CMD ["node", "dist/main.js"]
