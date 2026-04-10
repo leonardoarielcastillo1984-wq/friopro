@@ -72,8 +72,8 @@ services:
   # Web Frontend
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
     container_name: sgi-web
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:3002
