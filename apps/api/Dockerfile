@@ -14,6 +14,7 @@ RUN pnpm install --no-frozen-lockfile
 # Copy source and generate Prisma client
 COPY apps/api apps/api/
 RUN pnpm --filter api exec prisma generate
+RUN rm -rf /app/apps/api/node_modules
 RUN cd apps/api && npx tsc -p tsconfig.json --noEmit false --skipLibCheck true || true
 
 # Ensure .cjs files are copied and executable
