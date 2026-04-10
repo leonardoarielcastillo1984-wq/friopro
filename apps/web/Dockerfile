@@ -18,6 +18,7 @@ COPY package.json pnpm-workspace.yaml ./
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV NEXT_PRIVATE_STANDALONE=true
 
 RUN pnpm --filter web run build
 
@@ -30,9 +31,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./.next/static
 COPY --from=builder /app/apps/web/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/web/node_modules ./apps/web/node_modules
 
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+WORKDIR /app
 CMD ["node", "server.js"]
