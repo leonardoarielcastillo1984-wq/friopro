@@ -27,12 +27,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-COPY --from=builder /app/apps/web/.next/standalone /app
-COPY --from=builder /app/apps/web/.next/static /app/apps/web/.next/static
-COPY --from=builder /app/apps/web/public /app/apps/web/public
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static ./.next/static
+COPY --from=builder /app/apps/web/public ./public
 
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "/app/server.js"]
+CMD ["node", "server.js"]
