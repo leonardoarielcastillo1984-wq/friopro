@@ -9,7 +9,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/api/prisma apps/api/prisma/
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Copy source and generate Prisma client
 COPY apps/api apps/api/
