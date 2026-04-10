@@ -80,7 +80,7 @@ url
 
 # Lock files (keep package-lock.json but exclude others)
 yarn.lock
-pnpm-lock.yaml
+# pnpm-lock.yaml - needed for Docker build
 
 # Build artifacts
 *.tsbuildinfo

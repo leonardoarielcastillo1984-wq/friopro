@@ -45,8 +45,8 @@ services:
   # API Backend
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/api/Dockerfile
     container_name: sgi-api
     environment:
       NODE_ENV: production
