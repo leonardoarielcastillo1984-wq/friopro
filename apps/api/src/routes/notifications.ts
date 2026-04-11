@@ -35,6 +35,21 @@ export const notificacionesRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ notifications, unreadCount });
   });
 
+  // GET /notificaciones/count — Obtener conteo de notificaciones no leídas
+  app.get('/count', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const tenantId = req.db.tenantId;
+    const unreadCount = await app.runWithDbContext(req, async (tx: any) => {
+      return await tx.notification.count({
+        where: { tenantId, userId: req.auth!.userId, deletedAt: null, isRead: false },
+      });
+    });
+
+    return reply.send({ unreadCount });
+  });
+
   // POST /notificaciones/mark-read — Marcar como leídas
   app.post('/mark-read', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
