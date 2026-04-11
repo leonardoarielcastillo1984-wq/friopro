@@ -1997,7 +1997,7 @@ export default function EmployeesPage() {
                     setIsUpdating(true);
                     
                     try {
-                      const response = await fetch(`http://localhost:3002/hr/employees/${selectedEmployee.id}/status`, {
+                      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/hr/employees/${selectedEmployee.id}/status`, {
                         method: 'PATCH',
                         headers: {
                           'Content-Type': 'application/json',
@@ -2074,7 +2074,7 @@ export default function EmployeesPage() {
                 <button
                   onClick={async () => {
                     try {
-                      const response = await fetch(`http://localhost:3002/hr/employees/${selectedEmployee.id}`, {
+                      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/hr/employees/${selectedEmployee.id}`, {
                         method: 'DELETE',
                       });
                       

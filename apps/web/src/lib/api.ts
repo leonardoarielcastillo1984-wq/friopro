@@ -80,10 +80,7 @@ export function getTenantId() {
 }
 
 function apiBase() {
-  const base = process.env.NEXT_PUBLIC_API_URL;
-  if (base) return base;
-  // Fallback para desarrollo local - USA IPv4 directo para evitar problemas de IPv6
-  return 'http://127.0.0.1:3002';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 }
 
 async function tryRefreshToken(): Promise<boolean> {
@@ -183,7 +180,7 @@ async function rawFetch<T>(
   }
 
   const primaryBase = apiBase();
-  const fallbackBase = 'http://127.0.0.1:3002';
+  const fallbackBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
   const doFetch = (base: string) =>
     fetch(`${base}${normalizedPath}`, {
