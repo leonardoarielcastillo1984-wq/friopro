@@ -34,7 +34,7 @@ export const openApiSpec = {
   },
   servers: [
     {
-      url: 'http://localhost:3001',
+      url: process.env.API_URL || 'http://localhost:3002',
       description: 'Development server',
     },
     {

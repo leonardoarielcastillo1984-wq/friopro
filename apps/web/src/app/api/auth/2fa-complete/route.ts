@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 function getApiBase() {
-  const raw = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:3001';
+  const raw = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:3002';
   return raw.endsWith('/') ? raw.slice(0, -1) : raw;
 }
 

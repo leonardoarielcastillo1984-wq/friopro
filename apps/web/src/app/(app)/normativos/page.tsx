@@ -143,7 +143,7 @@ export default function NormativosPage() {
       formData.append('version', uploadVersion);
       if (uploadDescription) formData.append('description', uploadDescription);
 
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
       const csrfToken = getCsrfToken();
       const headers: Record<string, string> = {};
       if (csrfToken) headers['x-csrf-token'] = csrfToken;
@@ -291,7 +291,7 @@ export default function NormativosPage() {
       formData.append('version', revisionVersion);
       if (revisionDescription) formData.append('description', revisionDescription);
 
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
       const csrfToken = getCsrfToken();
       const headers: Record<string, string> = {};
       if (csrfToken) headers['x-csrf-token'] = csrfToken;

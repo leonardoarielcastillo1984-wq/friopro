@@ -194,7 +194,7 @@ export default function DocumentDetailPage() {
     }
     
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
       const res = await fetch(`${apiBase}/documents/${doc.id}/download`, {
         credentials: 'include',
       });
@@ -243,7 +243,7 @@ export default function DocumentDetailPage() {
   async function handleDelete() {
     if (!confirm('¿Estás seguro de eliminar este documento?')) return;
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
       const csrfToken = getCsrfToken();
       const headers: Record<string, string> = {};
       if (csrfToken) headers['x-csrf-token'] = csrfToken;
@@ -288,7 +288,7 @@ export default function DocumentDetailPage() {
       const uploadFormData = new FormData();
       uploadFormData.append('file', file);
       
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
       const csrfToken = getCsrfToken();
       const headers: Record<string, string> = {};
       if (csrfToken) headers['x-csrf-token'] = csrfToken;
@@ -490,7 +490,7 @@ export default function DocumentDetailPage() {
 
   async function downloadVersion(versionId: string, fileName: string) {
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
       const res = await fetch(`${apiBase}/documents/${id}/versions/${versionId}/download`, {
         credentials: 'include',
       });

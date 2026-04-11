@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 function getApiBases() {
   const configured = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL;
-  const bases = [configured, 'http://localhost:3001', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002']
+  const bases = [configured, process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002']
     .filter((v): v is string => Boolean(v))
     .map((v) => (v.endsWith('/') ? v.slice(0, -1) : v));
   return Array.from(new Set(bases));
