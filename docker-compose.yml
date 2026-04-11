@@ -54,7 +54,7 @@ services:
       DATABASE_URL: postgresql://sgi:sgi@postgres:5432/sgi
       REDIS_URL: redis://redis:6379
       JWT_SECRET: change-me-in-production
-      CORS_ORIGIN: http://localhost:3000
+      CORS_ORIGIN: http://logismart.ar
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: ./uploads
       EMAIL_PROVIDER: console
@@ -76,8 +76,8 @@ services:
       dockerfile: apps/web/Dockerfile
     container_name: sgi-web
     environment:
-      NEXT_PUBLIC_API_URL: http://46.62.253.81:3002
-      NEXT_PUBLIC_APP_URL: http://46.62.253.81:3000
+      NEXT_PUBLIC_API_URL: http://logismart.ar/api
+      NEXT_PUBLIC_APP_URL: http://logismart.ar
     ports:
       - "3000:3000"
     depends_on:
