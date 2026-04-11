@@ -16,6 +16,7 @@ RUN pnpm --filter api exec prisma generate
 FROM node:20-alpine AS runner
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
+RUN apk add --no-cache openssl1.1-compat
 
 ENV NODE_ENV=production
 
