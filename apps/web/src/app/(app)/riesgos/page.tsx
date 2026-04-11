@@ -42,9 +42,7 @@ function getRiskLabel(level: number): string {
 }
 
 function apiBase() {
-  const base = process.env.NEXT_PUBLIC_API_URL;
-  if (base) return base;
-  return 'http://localhost:3001';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 }
 
 export default function RiesgosPage() {

@@ -9,7 +9,7 @@ export async function POST(
     const formData = await request.formData();
     
     // Forward to API
-    const apiRes = await fetch(`http://localhost:3001/audit/auditors/${auditorId}/upload`, {
+    const apiRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:3002'}/audit/auditors/${auditorId}/upload`, {
       method: 'POST',
       body: formData,
       headers: {

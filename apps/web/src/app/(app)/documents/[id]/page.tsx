@@ -464,7 +464,7 @@ export default function DocumentDetailPage() {
       console.log('🗑️ Unlinking clause mapping:', mappingId);
       
       // Direct fetch without apiFetch layer
-      const response = await fetch(`http://localhost:3001/documents/${id}/clause-mappings/${mappingId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/documents/${id}/clause-mappings/${mappingId}`, {
         method: 'DELETE',
         headers: {
           'Origin': 'http://localhost:3000'

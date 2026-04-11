@@ -31,8 +31,8 @@ export async function GET(request: NextRequest) {
       tenantId = 'f20f0bfe-c1d8-40f6-8d36-97734881ffde';
     }
 
-    // Forward to API server on localhost:3001 with tenant context
-    const response = await fetch('http://localhost:3001/dashboard', {
+    // Forward to API server with tenant context
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:3002'}/dashboard`, {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${accessToken}`,

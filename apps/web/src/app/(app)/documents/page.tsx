@@ -91,7 +91,7 @@ export default function DocumentsPage() {
         apiFetch<{ documents: DocumentRow[] }>('/documents').catch(() => ({ documents: [] })),
         apiFetch<{ departments: {id: string; name: string}[] }>('/hr/departments').catch(() => ({ departments: [] })),
         apiFetch<{ normativos: {id: string; name: string; code: string}[] }>('/normativos').catch(() => ({ normativos: [] })),
-        fetch('http://localhost:3001/documents/list').then(r => r.json()).catch(() => ({ documents: [] })),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/documents/list`).then(r => r.json()).catch(() => ({ documents: [] })),
       ]);
 
       // Combinar documentos de BD con documentos reales del almacenamiento
