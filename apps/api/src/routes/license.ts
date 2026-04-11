@@ -1465,6 +1465,91 @@ export async function licenseRoutes(app: FastifyInstance) {
     }
   });
 
+  // GET /license/usage - Obtener uso de licencia
+  app.get('/usage', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+      const tenantId = req.db.tenantId;
+
+      // Datos básicos de uso
+      return reply.send({
+        tenantId,
+        documentsCount: 0,
+        usersCount: 1,
+        auditsCount: 0,
+        ncrCount: 0,
+        storageUsedMB: 0,
+        maxStorageMB: 1000
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ error: 'Error obteniendo uso de licencia' });
+    }
+  });
+
+  // GET /license/usage-history - Obtener historial de uso
+  app.get('/usage-history', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+      // Historial vacío por defecto
+      return reply.send({ history: [] });
+    } catch (error: any) {
+      return reply.code(500).send({ error: 'Error obteniendo historial' });
+    }
+  });
+
+  // GET /license/payment-methods - Obtener métodos de pago
+  app.get('/payment-methods', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+      // Métodos de pago vacío por defecto
+      return reply.send({ paymentMethods: [] });
+    } catch (error: any) {
+      return reply.code(500).send({ error: 'Error obteniendo métodos de pago' });
+    }
+  });
+
+  // GET /license/admin/setup-fees - Obtener cuotas de setup
+  app.get('/admin/setup-fees', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // Verificar que sea admin
+      // Setup fees vacío por defecto
+      return reply.send({ setupFees: [] });
+    } catch (error: any) {
+      return reply.code(500).send({ error: 'Error obteniendo cuotas' });
+    }
+  });
+
+  // GET /license/admin/payments - Obtener pagos de admin
+  app.get('/admin/payments', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // Verificar que sea admin
+      // Pagos vacío por defecto
+      return reply.send({ payments: [] });
+    } catch (error: any) {
+      return reply.code(500).send({ error: 'Error obteniendo pagos' });
+    }
+  });
+
+  // POST /license/admin/setup-fee - Crear cuota de setup
+  app.post('/admin/setup-fee', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // Verificar que sea admin
+      const body = req.body as any;
+
+      return reply.send({
+        id: 'setup-fee-' + Date.now(),
+        amount: body.amount || 0,
+        tenantId: body.tenantId,
+        createdAt: new Date()
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ error: 'Error creando cuota' });
+    }
+  });
+
   // Webhook para recibir notificaciones de pago
   app.post('/webhook/mercadopago', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -1475,7 +1560,7 @@ export async function licenseRoutes(app: FastifyInstance) {
       if (body.type === 'payment' && body.data?.id) {
         // Aquí procesaríamos el pago real con MercadoPago
         // Por ahora simulamos un pago exitoso
-        
+
         // Crear notificación para admin
         await (app.prisma as any).adminNotification.create({
           data: {
