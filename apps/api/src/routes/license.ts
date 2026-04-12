@@ -1072,7 +1072,6 @@ export async function licenseRoutes(app: FastifyInstance) {
           failure: `${process.env.APP_URL || 'http://localhost:3000'}/plan-selection?payment=failure`,
           pending: `${process.env.APP_URL || 'http://localhost:3000'}/plan-selection?payment=pending`,
         },
-        auto_return: 'approved',
         external_reference: `${tenantId}-${planId}`,
         metadata: {
           tenantId,
@@ -1377,7 +1376,6 @@ export async function licenseRoutes(app: FastifyInstance) {
               failure: `${process.env.APP_URL || 'http://localhost:3000'}/licencia/planes?status=failure`,
               pending: `${process.env.APP_URL || 'http://localhost:3000'}/licencia/planes?status=pending`
             },
-            auto_return: 'approved',
             external_reference: `${tenantId}_${planTier}_${period}_${Date.now()}`,
             metadata: {
               tenant_id: tenantId,
