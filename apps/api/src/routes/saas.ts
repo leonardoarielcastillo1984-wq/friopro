@@ -362,16 +362,14 @@ export default async function saasRoutes(app: FastifyInstance) {
 
   // POST /webhooks/mercadopago - Webhook de MercadoPago
   app.post('/webhooks/mercadopago', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Always return 200 immediately to MercadoPago
+    reply.send({ received: true });
+    
     try {
       const notification = request.body as any;
-      
-      // Procesar notificación
       await app.mercadoPagoService.processWebhook(notification);
-      
-      return reply.send({ received: true });
     } catch (error) {
       app.log.error('Error processing MercadoPago webhook:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
     }
   });
 

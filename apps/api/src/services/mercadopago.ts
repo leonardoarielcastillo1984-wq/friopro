@@ -281,31 +281,70 @@ export class MercadoPagoService {
         throw new Error(`MercadoPago API Error: ${payment.message}`);
       }
 
-      const externalReference = payment.external_reference;
-      const [tenantId, paymentType] = externalReference.split('_');
-
-      // Registrar transacción
-      await this.app.prisma.paymentTransaction.create({
-        data: {
-          tenantId,
-          mercadoPagoId: paymentId,
-          amount: payment.transaction_amount,
-          currency: payment.currency_id,
-          status: this.mapPaymentStatus(payment.status),
-          paymentDate: new Date(payment.date_approved),
-          periodStart: new Date(payment.date_created),
-          periodEnd: new Date(payment.money_release_date),
-          billingCycle: 'MONTHLY',
-          metadata: payment
-        }
-      });
-
-      // Si es pago de setup, activar tenant
-      if (paymentType === 'setup' && payment.status === 'approved') {
-        await this.activateTenantAfterSetup(tenantId);
+      if (payment.status !== 'approved') {
+        console.log(`Payment ${paymentId} not approved: ${payment.status}`);
+        return;
       }
 
-      console.log(`✅ Payment ${paymentId} processed for tenant ${tenantId}`);
+      const externalReference = payment.external_reference;
+      const parts = externalReference.split('_');
+      const tenantId = parts[0];
+      const planTier = parts[1];
+      const period = parts[2];
+
+      console.log(`[WEBHOOK] Payment approved for tenant ${tenantId}, plan ${planTier}, period ${period}`);
+
+      const plan = await this.app.prisma.plan.findUnique({ where: { tier: planTier } });
+      if (!plan) throw new Error(`Plan ${planTier} not found`);
+
+      const now = new Date();
+      const endsAt = new Date(now);
+      if (period === 'annual') {
+        endsAt.setFullYear(endsAt.getFullYear() + 1);
+      } else {
+        endsAt.setMonth(endsAt.getMonth() + 1);
+      }
+
+      const existing = await this.app.prisma.tenantSubscription.findFirst({
+        where: { tenantId, deletedAt: null },
+        orderBy: { startedAt: 'desc' }
+      });
+
+      if (existing) {
+        await this.app.prisma.tenantSubscription.update({
+          where: { id: existing.id },
+          data: { planId: plan.id, status: 'ACTIVE', providerRef: null, startedAt: now, endsAt }
+        });
+      } else {
+        await this.app.prisma.tenantSubscription.create({
+          data: { tenantId, planId: plan.id, status: 'ACTIVE', providerRef: null, startedAt: now, endsAt }
+        });
+      }
+
+      const updatedSub = await this.app.prisma.tenantSubscription.findFirst({
+        where: { tenantId, deletedAt: null },
+        orderBy: { startedAt: 'desc' }
+      });
+
+      if (updatedSub) {
+        await this.app.prisma.payment.create({
+          data: {
+            tenantId,
+            subscriptionId: updatedSub.id,
+            planId: plan.id,
+            amount: payment.transaction_amount,
+            currency: payment.currency_id || 'ARS',
+            status: 'COMPLETED',
+            period: period === 'annual' ? 'annual' : 'monthly',
+            planTier: planTier as any,
+            paidAt: new Date(payment.date_approved),
+            providerRef: String(paymentId),
+            provider: 'mercadopago'
+          }
+        });
+      }
+
+      console.log(`✅ Payment ${paymentId} processed - tenant ${tenantId} activated with plan ${planTier}`);
     } catch (error) {
       console.error('Error handling payment notification:', error);
     }

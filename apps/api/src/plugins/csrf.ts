@@ -10,6 +10,7 @@ function isStateChanging(method?: string) {
 function shouldSkip(req: FastifyRequest) {
   const url = req.url;
   if (url.startsWith('/health')) return true;
+  if (url.startsWith('/webhooks/mercadopago')) return true;
   if (url.startsWith('/docs')) return true;
   if (url.startsWith('/api/auth/login')) return true;
   if (url.startsWith('/api/auth/register')) return true;

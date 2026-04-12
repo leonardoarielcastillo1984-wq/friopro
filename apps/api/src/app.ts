@@ -17,6 +17,7 @@ import { dbContextPlugin } from './plugins/dbContext.js';
 import { featuresPlugin } from './plugins/features.js';
 
 import { healthRoutes } from './routes/health.js';
+import saasRoutes from './routes/saas.js';
 import { authRoutes } from './routes/auth.js';
 import { documentRoutes } from './routes/documents.js';
 import { departmentRoutes } from './routes/departments.js';
@@ -195,6 +196,7 @@ export async function buildApp() {
   await app.register(superAdminRoutes, { prefix: '/super-admin' });
   await app.register(surveyPublicRoutes, { prefix: '/survey' });
   await app.register(registerCompanyRoutes); // Registro de empresas
+  await app.register(saasRoutes);
 
   // Servir archivos estáticos de uploads (AL FINAL para no interferir con API routes)
   const __filename = fileURLToPath(import.meta.url);
