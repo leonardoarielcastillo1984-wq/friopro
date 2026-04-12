@@ -103,8 +103,13 @@ export default function PlanesPagoPage() {
 
       console.log("[CHECKOUT] response:", JSON.stringify(response));
       // Redirect to MercadoPago
-      if (response.checkout?.preferenceId) {
-        window.location.href = response.checkout?.initPoint;
+      const prefId = response.checkout?.preferenceId || response.preferenceId;
+      const initPoint = response.checkout?.initPoint || response.initPoint;
+      if (prefId && initPoint) {
+        window.location.href = initPoint;
+      } else {
+        console.error("[CHECKOUT] No initPoint found:", response);
+        alert("Error: no se pudo obtener el link de pago");
       }
     } catch (error: any) {
       console.error("[CHECKOUT] ERROR:", error?.message, error?.stack);
