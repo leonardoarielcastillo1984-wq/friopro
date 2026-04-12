@@ -451,7 +451,8 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
           where: { id: existing.id },
           data: {
             planId: plan?.id || '',
-            status: 'ACTIVE',
+            status: planTier === 'NO_PLAN' ? 'ACTIVE' : 'ACTIVE',
+            providerRef: planTier === 'NO_PLAN' ? 'NO_PLAN' : null,
             startedAt: startDate,
             endsAt: endDate
           }
@@ -463,6 +464,7 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
             tenantId,
             planId: plan?.id || '',
             status: 'ACTIVE',
+            providerRef: planTier === 'NO_PLAN' ? 'NO_PLAN' : null,
             startedAt: startDate,
             endsAt: endDate
           }
