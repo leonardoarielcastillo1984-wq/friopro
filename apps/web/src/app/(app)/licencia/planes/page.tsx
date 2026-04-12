@@ -92,6 +92,7 @@ export default function PlanesPagoPage() {
     setProcessing(true);
     try {
       // Create checkout preference
+      console.log("[CHECKOUT] calling apiFetch...");
       const response = await apiFetch('/license/checkout', {
         method: 'POST',
         json: {
@@ -100,12 +101,13 @@ export default function PlanesPagoPage() {
         }
       });
 
+      console.log("[CHECKOUT] response:", JSON.stringify(response));
       // Redirect to MercadoPago
       if (response.checkout?.preferenceId) {
         window.location.href = response.checkout?.initPoint;
       }
-    } catch (error) {
-      console.error('Error creating checkout:', error);
+    } catch (error: any) {
+      console.error("[CHECKOUT] ERROR:", error?.message, error?.stack);
       alert(`Error: ${error.message || "Error desconocido al procesar el pago"}`);
     } finally {
       setProcessing(false);
