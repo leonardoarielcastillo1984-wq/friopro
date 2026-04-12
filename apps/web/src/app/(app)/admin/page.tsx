@@ -626,7 +626,7 @@ export default function AdminPage() {
   const getSubFormState = (tenantId: string, tenant: TenantRow) => {
     if (!subscriptionForm[tenantId]) {
       return {
-        planTier: tenant.subscription?.plan.tier || null,
+        planTier: tenant.subscription?.plan.tier || 'NO_PLAN',
         status: tenant.subscription?.status || 'TRIAL',
         price: ''
       };
@@ -1265,7 +1265,7 @@ export default function AdminPage() {
                                 <label className="text-xs text-neutral-500 mb-1 block">Plan</label>
                                 <select
                                   value={formState.planTier || ''}
-                                  onChange={e => updateSubFormState(t.id, { planTier: e.target.value || null })}
+                                  onChange={e => updateSubFormState(t.id, { planTier: e.target.value || 'NO_PLAN' })}
                                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                                 >
                                   <option value="">Sin Plan</option>
