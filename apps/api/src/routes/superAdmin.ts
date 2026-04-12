@@ -205,6 +205,11 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
           take: 1,
           include: { plan: { select: { id: true, tier: true, name: true } } },
         },
+        memberships: {
+          where: { deletedAt: null, role: 'TENANT_ADMIN', status: 'ACTIVE' },
+          include: { user: { select: { id: true, email: true } } },
+          take: 5,
+        },
         _count: { select: { memberships: { where: { deletedAt: null } } } },
       },
     });
@@ -236,6 +241,7 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
         status: t.status,
         createdAt: t.createdAt,
         memberCount: t._count.memberships,
+        admins: (t.memberships || []).map((m: any) => ({ id: m.user.id, email: m.user.email })),
         subscription: transformedSubscription,
       };
     });

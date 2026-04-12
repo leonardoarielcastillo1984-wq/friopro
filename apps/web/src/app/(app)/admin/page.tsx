@@ -21,6 +21,7 @@ type TenantRow = {
   status: string;
   createdAt: string;
   memberCount: number;
+  admins: { email: string; id: string }[];
   subscription: {
     id: string;
     status: string;
@@ -1210,6 +1211,36 @@ export default function AdminPage() {
                 {expandedId === t.id && (
                   <div className="px-5 pb-5 bg-neutral-50/50 border-t border-neutral-100">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4">
+                      {/* Current Admins */}
+                      <div className="rounded-xl border border-blue-200 bg-blue-50/30 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Users className="h-4 w-4 text-blue-600" />
+                          <h3 className="font-medium text-blue-900 text-sm">Admins Activos</h3>
+                        </div>
+                        {(t.admins || []).length === 0 ? (
+                          <p className="text-xs text-neutral-400">Sin admins registrados</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(t.admins || []).map(admin => (
+                              <div key={admin.id} className="bg-white rounded-lg border border-blue-100 p-2">
+                                <p className="text-xs font-medium text-neutral-800 truncate">{admin.email}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const pwd = prompt('Nueva contraseña para ' + admin.email + ' (min 12 chars):');
+                                    if (pwd && pwd.length >= 12) handleResetPassword(admin.email, pwd);
+                                    else if (pwd) alert('La contraseña debe tener al menos 12 caracteres');
+                                  }}
+                                  className="mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                >
+                                  Resetear contraseña
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Add Admin */}
                       <div className="rounded-xl border border-neutral-200 bg-white p-4">
                         <div className="flex items-center gap-2 mb-3">
