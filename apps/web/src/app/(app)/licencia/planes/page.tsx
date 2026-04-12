@@ -86,7 +86,8 @@ export default function PlanesPagoPage() {
   };
 
   const handleSelectPlan = async () => {
-    if (!selectedPlan) return;
+    console.log("[CHECKOUT] called, plan:", selectedPlan);
+    if (!selectedPlan) { console.log("[CHECKOUT] no plan"); return; }
 
     setProcessing(true);
     try {
