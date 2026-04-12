@@ -940,16 +940,13 @@ export default function AdminPage() {
       console.log('Respuesta de la API:', response);
       flash('✅ Suscripción actualizada correctamente');
 
-      // Reset form state for this tenant after successful update
-      setSubscriptionForm(prev => ({
-        ...prev,
-        [tenantId]: {
-          planTier: formState.planTier,
-          status: formState.status,
-          price: ''
-        }
-      }));
-      loadData(); // Reload to get fresh data
+      // Clear form state so it reinitializes from fresh API data
+      setSubscriptionForm(prev => {
+        const next = { ...prev };
+        delete next[tenantId];
+        return next;
+      });
+      await loadData(); // Reload to get fresh data
 
 
 
@@ -1264,7 +1261,7 @@ export default function AdminPage() {
                               <div>
                                 <label className="text-xs text-neutral-500 mb-1 block">Plan</label>
                                 <select
-                                  value={formState.planTier || ''}
+                                  value={formState.planTier === 'NO_PLAN' ? '' : (formState.planTier || '')}
                                   onChange={e => updateSubFormState(t.id, { planTier: e.target.value || 'NO_PLAN' })}
                                   className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                                 >
