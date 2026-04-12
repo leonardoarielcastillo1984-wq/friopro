@@ -618,12 +618,32 @@ export default function AdminPage() {
   const [adminPassword, setAdminPassword] = useState('');
   const [addingAdmin, setAddingAdmin] = useState(false);
 
-  // Subscription form
-  const [subTenantId, setSubTenantId] = useState<string | null>(null);
-  const [subPlanTier, setSubPlanTier] = useState('BASIC');
-  const [subStatus, setSubStatus] = useState('TRIAL');
-  const [subPrice, setSubPrice] = useState('');
+  // Subscription form - Per-tenant state to avoid conflicts when switching tenants
+  const [subscriptionForm, setSubscriptionForm] = useState<Record<string, { planTier: string | null; status: string; price: string }>>({});
   const [updatingSub, setUpdatingSub] = useState(false);
+
+  // Helper to get form state for a specific tenant
+  const getSubFormState = (tenantId: string, tenant: TenantRow) => {
+    if (!subscriptionForm[tenantId]) {
+      return {
+        planTier: tenant.subscription?.plan.tier || null,
+        status: tenant.subscription?.status || 'TRIAL',
+        price: ''
+      };
+    }
+    return subscriptionForm[tenantId];
+  };
+
+  // Helper to update form state for a specific tenant
+  const updateSubFormState = (tenantId: string, updates: Partial<{ planTier: string | null; status: string; price: string }>) => {
+    setSubscriptionForm(prev => ({
+      ...prev,
+      [tenantId]: {
+        ...getSubFormState(tenantId, tenants.find(t => t.id === tenantId) || {} as TenantRow),
+        ...updates
+      }
+    }));
+  };
 
   // Expanded tenant
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -890,34 +910,47 @@ export default function AdminPage() {
     }
   }
 
-  async function handleUpdateSubscription(e: React.FormEvent) {
+  async function handleUpdateSubscription(e: React.FormEvent, tenantId: string) {
     e.preventDefault();
-    if (!subTenantId) {
+    if (!tenantId) {
       setError('Selecciona un tenant');
       return;
     }
     setUpdatingSub(true);
     setError('');
     try {
+      const formState = subscriptionForm[tenantId];
+
       console.log('Enviando actualización de suscripción:', {
-        tenantId: subTenantId,
-        planTier: subPlanTier,
-        status: subStatus,
-        price: subPrice ? parseFloat(subPrice) : undefined
+        tenantId,
+        planTier: formState.planTier,
+        status: formState.status,
+        price: formState.price ? parseFloat(formState.price) : undefined
       });
 
-      const response = await apiFetch(`/super-admin/tenants/${subTenantId}/subscription`, {
+      const response = await apiFetch(`/super-admin/tenants/${tenantId}/subscription`, {
         method: 'PUT',
         json: {
-          planTier: subPlanTier,
-          status: subStatus,
-          ...(subPrice && { price: parseFloat(subPrice) })
+          planTier: formState.planTier,
+          status: formState.status,
+          ...(formState.price && { price: parseFloat(formState.price) })
         },
       });
 
       console.log('Respuesta de la API:', response);
       flash('✅ Suscripción actualizada correctamente');
-      
+
+      // Reset form state for this tenant after successful update
+      setSubscriptionForm(prev => ({
+        ...prev,
+        [tenantId]: {
+          planTier: formState.planTier,
+          status: formState.status,
+          price: ''
+        }
+      }));
+      loadData(); // Reload to get fresh data
+
 
 
 
@@ -1224,56 +1257,59 @@ export default function AdminPage() {
                           <CreditCard className="h-4 w-4 text-neutral-600" />
                           <h3 className="font-medium text-neutral-900 text-sm">Suscripción</h3>
                         </div>
-                        <form onSubmit={(e) => { setSubTenantId(t.id); handleUpdateSubscription(e); }} className="space-y-3">
-                          <div>
-                            <label className="text-xs text-neutral-500 mb-1 block">Plan</label>
-                            <select
-                              value={subTenantId === t.id ? subPlanTier : (t.subscription?.plan.tier || 'BASIC')}
-                              onFocus={() => { setSubTenantId(t.id); setSubPlanTier(t.subscription?.plan.tier || 'BASIC'); setSubStatus(t.subscription?.status || 'TRIAL'); }}
-                              onChange={e => { setSubTenantId(t.id); setSubPlanTier(e.target.value); }}
-                              className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-                            >
-                              {plans.map(p => (
-                                <option key={p.tier} value={p.tier}>{p.name} ({p.tier})</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs text-neutral-500 mb-1 block">Estado</label>
-                            <select
-                              value={subTenantId === t.id ? subStatus : (t.subscription?.status || 'TRIAL')}
-                              onFocus={() => { setSubTenantId(t.id); setSubStatus(t.subscription?.status || 'TRIAL'); }}
-                              onChange={e => { setSubTenantId(t.id); setSubStatus(e.target.value); }}
-                              className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-                            >
-                              <option value="TRIAL">Trial</option>
-                              <option value="ACTIVE">Activo</option>
-                              <option value="PAST_DUE">Vencido</option>
-                              <option value="CANCELED">Cancelado (CANCELED)</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs text-neutral-500 mb-1 block">Precio Personalizado (opcional)</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={subTenantId === t.id ? subPrice : ''}
-                              onFocus={() => { setSubTenantId(t.id); setSubPrice(''); }}
-                              onChange={e => { setSubTenantId(t.id); setSubPrice(e.target.value); }}
-                              placeholder="Dejar vacío para usar precio por defecto"
-                              className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-                            />
-                          </div>
-                          <button
-                            type="submit"
-                            disabled={updatingSub}
-                            className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700 disabled:bg-neutral-300 transition-colors"
-                          >
-                            {updatingSub ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
-                            Actualizar Plan
-                          </button>
-                        </form>
+                        {(() => {
+                          const formState = getSubFormState(t.id, t);
+                          return (
+                            <form onSubmit={(e) => handleUpdateSubscription(e, t.id)} className="space-y-3">
+                              <div>
+                                <label className="text-xs text-neutral-500 mb-1 block">Plan</label>
+                                <select
+                                  value={formState.planTier || ''}
+                                  onChange={e => updateSubFormState(t.id, { planTier: e.target.value || null })}
+                                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                                >
+                                  <option value="">Sin Plan</option>
+                                  {plans.map(p => (
+                                    <option key={p.tier} value={p.tier}>{p.name} ({p.tier})</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-neutral-500 mb-1 block">Estado</label>
+                                <select
+                                  value={formState.status}
+                                  onChange={e => updateSubFormState(t.id, { status: e.target.value })}
+                                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                                >
+                                  <option value="TRIAL">Trial</option>
+                                  <option value="ACTIVE">Activo</option>
+                                  <option value="PAST_DUE">Vencido</option>
+                                  <option value="CANCELED">Cancelado</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-neutral-500 mb-1 block">Precio Personalizado (opcional)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={formState.price}
+                                  onChange={e => updateSubFormState(t.id, { price: e.target.value })}
+                                  placeholder="Dejar vacío para usar precio por defecto"
+                                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                                />
+                              </div>
+                              <button
+                                type="submit"
+                                disabled={updatingSub}
+                                className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700 disabled:bg-neutral-300 transition-colors"
+                              >
+                                {updatingSub ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
+                                Actualizar Plan
+                              </button>
+                            </form>
+                          );
+                        })()}
                       </div>
 
                       {/* Suspend/Reactivate Tenant */}
