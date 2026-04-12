@@ -1,0 +1,75 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                  Git Commit Instructions - Null Safety Fixes                   ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+All code changes have been completed successfully. Follow these steps to commit:
+
+STEP 1: Open Terminal
+────────────────────
+Press: Cmd + Space
+Type: Terminal
+Press: Enter
+
+STEP 2: Navigate to Project Directory
+──────────────────────────────────────
+Copy and paste this command:
+  cd /Users/leonardocastillo/Desktop/APP/SGI\ respaldo\ 360
+
+Press: Enter
+
+STEP 3: Run the Commit Script
+─────────────────────────────
+Choose ONE of these options:
+
+OPTION A (Automated):
+  bash make-commit.sh
+  Press: Enter
+
+OPTION B (Manual - step by step):
+  Run these commands one at a time:
+
+  1. Remove git lock file (if needed):
+     rm -f .git/index.lock
+
+  2. Check git status:
+     git status
+
+  3. Stage all changes:
+     git add -A
+
+  4. Create commit:
+     git commit -m "fix: null safety fixes across all components"
+
+  5. Verify commit was created:
+     git log -1 --stat
+
+STEP 4: Push Changes (Optional)
+───────────────────────────────
+After commit, you can push to GitHub:
+  git push origin main
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILES CHANGED IN THIS COMMIT:
+─────────────────────────────
+1. apps/web/src/lib/api.ts
+   - Fixed: GET requests now return {} instead of null (lines 245, 272)
+   - Prevents "Cannot read properties of null" errors
+
+2. apps/web/src/app/(app)/documents/page.tsx
+   - Fixed: Line 111 uses optional chaining (res?.documents)
+   - Safe property access when API response is null
+
+3. apps/web/src/app/(app)/licencia/planes/page.tsx
+   - Fixed: Lines 270, 276, 291 have safe array access
+   - Uses (array || []) pattern for null safety
+
+4. apps/web/src/app/(app)/planes/page.tsx
+   - Fixed: Lines 209, 218, 223 have safe array access
+   - Consistent null safety patterns
+
+5. apps/web/src/app/(app)/encuestas/page.tsx
+   - Fixed: Line 557 has safe array access
+   - Defensive programming for undefined arrays
+
+═══════════════════════════════════════════════════════════════════════════════

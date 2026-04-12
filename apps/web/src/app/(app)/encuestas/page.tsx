@@ -552,9 +552,9 @@ export default function SurveysPage() {
                 </div>
                 
                 {/* Tags */}
-                {survey.tags.length > 0 && (
+                {(survey.tags?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap gap-2 mt-3">
-                    {survey.tags.map(tag => (
+                    {(survey.tags || []).map(tag => (
                       <span
                         key={tag}
                         className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full"

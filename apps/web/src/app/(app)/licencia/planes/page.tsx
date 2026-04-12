@@ -267,28 +267,28 @@ export default function PlanesPagoPage() {
                 <div className="space-y-3">
                   <h4 className="font-semibold text-sm">Características incluidas:</h4>
                   <div className="space-y-2">
-                    {plan.features.slice(0, 5).map((feature, index) => (
+                    {(plan.features || []).slice(0, 5).map((feature, index) => (
                       <div key={index} className="flex items-center text-sm">
                         <Check className="h-4 w-4 mr-2 text-green-500 flex-shrink-0" />
                         <span>{feature}</span>
                       </div>
                     ))}
-                    {plan.features.length > 5 && (
+                    {(plan.features?.length ?? 0) > 5 && (
                       <div className="text-sm text-gray-500">
-                        +{plan.features.length - 5} características más
+                        +{(plan.features?.length ?? 0) - 5} características más
                       </div>
                     )}
                   </div>
                 </div>
 
                 {/* Not included */}
-                {plan.notIncluded && plan.notIncluded.length > 0 && (
+                {(plan.notIncluded?.length ?? 0) > 0 && (
                   <>
                     <Separator />
                     <div className="space-y-3">
                       <h4 className="font-semibold text-sm">No incluido:</h4>
                       <div className="space-y-2">
-                        {plan.notIncluded.slice(0, 3).map((feature, index) => (
+                        {(plan.notIncluded || []).slice(0, 3).map((feature, index) => (
                           <div key={index} className="flex items-center text-sm text-gray-500">
                             <X className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
                             <span>{feature}</span>

@@ -206,7 +206,7 @@ export default function PlanesPage() {
                 <CardContent className="p-6 space-y-6">
                   {/* Features incluidos */}
                   <div className="space-y-3">
-                    {plan.features.map((feature, idx) => (
+                    {(plan.features || []).map((feature, idx) => (
                       <div key={idx} className="flex items-start gap-3">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
                         <span className="text-sm text-slate-700">{feature}</span>
@@ -215,12 +215,12 @@ export default function PlanesPage() {
                   </div>
 
                   {/* Features NO incluidos */}
-                  {plan.notIncluded.length > 0 && (
+                  {(plan.notIncluded?.length ?? 0) > 0 && (
                     <div className="space-y-2 pt-4 border-t">
                       <p className="text-xs font-medium text-slate-500 uppercase">
                         No incluido
                       </p>
-                      {plan.notIncluded.slice(0, 3).map((feature, idx) => (
+                      {(plan.notIncluded || []).slice(0, 3).map((feature, idx) => (
                         <div key={idx} className="flex items-start gap-3 opacity-50">
                           <X className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
                           <span className="text-sm text-slate-600">{feature}</span>

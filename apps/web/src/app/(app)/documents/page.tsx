@@ -108,7 +108,7 @@ export default function DocumentsPage() {
         isStorageFile: true,
       }));
 
-      setDocs([...(res.documents ?? []), ...storageDocuments]);
+      setDocs([...(res?.documents ?? []), ...storageDocuments]);
       setDepartments(deptsRes.departments ?? []);
       setNormatives(normsRes.normativos ?? []);
     } catch (err: any) {

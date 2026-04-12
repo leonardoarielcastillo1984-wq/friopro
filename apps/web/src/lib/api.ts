@@ -241,7 +241,10 @@ export async function apiFetch<T>(
     data = text ? JSON.parse(text) : null;
   } catch {
     // Non-JSON response (e.g. HTML error page from proxy)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      if (method === 'GET') return {} as T;
+      throw new Error(`HTTP ${res.status}`);
+    }
     return null as T;
   }
 
@@ -265,7 +268,10 @@ export async function apiFetch<T>(
         try {
           retryData = retryText ? JSON.parse(retryText) : null;
         } catch {
-          if (!retryRes.ok) throw new Error(`HTTP ${retryRes.status}`);
+          if (!retryRes.ok) {
+            if (method === 'GET') return {} as T;
+            throw new Error(`HTTP ${retryRes.status}`);
+          }
           return null as T;
         }
 
