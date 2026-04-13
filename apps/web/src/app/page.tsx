@@ -325,13 +325,6 @@ const FAQS = [
 // Hook para scroll reveal animations
 const useScrollReveal = () => {
   useEffect(() => {
-    fetch('https://logismart.ar/api/landing/settings')
-      .then(r => r.json())
-      .then(data => { console.log('[LANDING]', data); if (data.settings) setLandingSettings(data.settings); })
-      .catch(e => console.error('[LANDING ERROR]', e));
-  }, []);
-
-  useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
@@ -415,6 +408,13 @@ export default function Home() {
   const router = useRouter();
   const [landingSettings, setLandingSettings] = useState<any>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+
+  useEffect(() => {
+    fetch('https://logismart.ar/api/landing/settings')
+      .then(r => r.json())
+      .then(data => { if (data.settings) setLandingSettings(data.settings); })
+      .catch(() => {});
+  }, []);
   const [loading, setLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedFAQ, setExpandedFAQ] = useState<number | null>(0);
