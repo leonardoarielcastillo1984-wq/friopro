@@ -85,7 +85,7 @@ export default function Home() {
       const res = await fetch('https://logismart.ar/api/register-company', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ companyName: formData.companyName, socialReason: formData.companyName, email: formData.email, phone: formData.phone, rut: '', website: '', address: '', primaryColor: '#E8541A' }),
+        body: JSON.stringify({ companyName: formData.companyName, socialReason: formData.companyName, email: formData.email, phone: formData.phone, rut: 'N/A', website: '', address: 'N/A', primaryColor: '#E8541A' }),
       });
       if (res.status < 400) { setShowModal(false); router.push('/onboarding'); }
     } catch {}
