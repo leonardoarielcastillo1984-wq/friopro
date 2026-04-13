@@ -37,6 +37,8 @@ type PlanRow = {
   name: string;
   features: Record<string, boolean>;
   limits: Record<string, number>;
+  monthlyPrice?: number;
+  annualPrice?: number;
 };
 
 const PLAN_COLORS: Record<string, string> = {
@@ -1710,6 +1712,32 @@ export default function AdminPage() {
                             />
                           </div>
                         ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium mb-2 opacity-75">Precios (USD)</label>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm">Mensual</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={editingPlanData?.monthlyPrice || 0}
+                            onChange={e => setEditingPlanData(prev => prev ? {...prev, monthlyPrice: parseInt(e.target.value) || 0} : null)}
+                            className="w-20 rounded-lg border border-current bg-white/50 px-2 py-1 text-sm text-right"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm">Anual</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={editingPlanData?.annualPrice || 0}
+                            onChange={e => setEditingPlanData(prev => prev ? {...prev, annualPrice: parseInt(e.target.value) || 0} : null)}
+                            className="w-20 rounded-lg border border-current bg-white/50 px-2 py-1 text-sm text-right"
+                          />
+                        </div>
                       </div>
                     </div>
 

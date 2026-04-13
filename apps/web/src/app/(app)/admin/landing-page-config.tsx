@@ -51,7 +51,7 @@ export default function LandingPageConfig() {
     try {
       const response = await apiFetch('/landing/settings', {
         method: 'PUT',
-        body: settings,
+        json: settings,
       });
 
       if (response.success) {
