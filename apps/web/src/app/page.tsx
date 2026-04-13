@@ -1161,30 +1161,6 @@ export default function Home() {
   );
 }
 
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
-          // Para elementos con data-reveal-direction
-          const direction = entry.target.getAttribute('data-reveal-direction');
-          if (direction === 'left') {
-            entry.target.classList.remove('visible');
-            entry.target.classList.add('visible-left');
-          } else if (direction === 'right') {
-            entry.target.classList.remove('visible');
-            entry.target.classList.add('visible-right');
-          }
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.1 });
-
-    document.querySelectorAll('.reveal-on-scroll').forEach(el => observer.observe(el));
-
-    return () => observer.disconnect();
-  }, []);
-}
-
 // Componente de fondo animado con indicadores e IA
 const AnimatedBackground = ({ variant = 'default' }) => {
   return (
