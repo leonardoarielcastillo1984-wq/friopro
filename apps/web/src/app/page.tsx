@@ -364,6 +364,7 @@ export default function Home() {
                 <button onClick={() => { setShowModal(false); setRegistered(false); }} style={{ marginTop: 24, background: '#E8541A', color: 'white', border: 'none', padding: '12px 32px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Cerrar</button>
               </div>
             ) : (
+            <>
             <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 26, letterSpacing: '-0.03em', marginBottom: 8, color: '#1A1A1A' }}>Crear cuenta</div>
             <p style={{ color: '#999990', fontSize: 14, marginBottom: 28, fontFamily: "'Syne', sans-serif" }}>Gratis por 30 días. Sin tarjeta de crédito.</p>
             <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column' as const, gap: 14 }}>
@@ -374,6 +375,7 @@ export default function Home() {
                 {loading ? 'Creando...' : 'Empezar gratis'} {!loading && <ArrowRight size={15} />}
               </button>
             </form>
+            </>
             )}
           </div>
         </div>
