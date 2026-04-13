@@ -1160,13 +1160,6 @@ export default function Home() {
     </div>
   );
 }
- + p.prices.monthly,
-            features: (p.features || []).slice(0, 5),
-            highlight: i === 1
-          })));
-        }
-      }).catch(() => {});
-  }, []);
 
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
