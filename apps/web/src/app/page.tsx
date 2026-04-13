@@ -356,6 +356,14 @@ export default function Home() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ background: 'white', border: '1px solid rgba(0,0,0,0.1)', padding: '48px', maxWidth: 460, width: '100%', position: 'relative' }}>
             <button onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 20, right: 20, background: 'none', border: 'none', color: '#999990', cursor: 'pointer', fontSize: 22 }}>×</button>
+            {registered ? (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ width: 64, height: 64, background: '#E8541A', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}><span style={{ color: 'white', fontSize: 32 }}>✓</span></div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 22, color: '#1A1A1A', marginBottom: 12 }}>¡Solicitud enviada!</div>
+                <p style={{ color: '#777770', fontSize: 14, lineHeight: 1.6 }}>Recibimos tu solicitud. Nos comunicaremos con vos a la brevedad.</p>
+                <button onClick={() => { setShowModal(false); setRegistered(false); }} style={{ marginTop: 24, background: '#E8541A', color: 'white', border: 'none', padding: '12px 32px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Cerrar</button>
+              </div>
+            ) : (
             <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 26, letterSpacing: '-0.03em', marginBottom: 8, color: '#1A1A1A' }}>Crear cuenta</div>
             <p style={{ color: '#999990', fontSize: 14, marginBottom: 28, fontFamily: "'Syne', sans-serif" }}>Gratis por 30 días. Sin tarjeta de crédito.</p>
             <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column' as const, gap: 14 }}>
@@ -366,7 +374,6 @@ export default function Home() {
                 {loading ? 'Creando...' : 'Empezar gratis'} {!loading && <ArrowRight size={15} />}
               </button>
             </form>
-              </>
             )}
           </div>
         </div>
