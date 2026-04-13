@@ -1377,6 +1377,7 @@ export async function licenseRoutes(app: FastifyInstance) {
               pending: `${process.env.APP_URL || 'http://localhost:3000'}/licencia/planes?status=pending`
             },
             external_reference: `${tenantId}_${planTier}_${period}_${Date.now()}`,
+            statement_descriptor: "SGI360",
             metadata: {
               tenant_id: tenantId,
               plan_tier: planTier,
