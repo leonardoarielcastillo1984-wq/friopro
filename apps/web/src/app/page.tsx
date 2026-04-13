@@ -122,7 +122,7 @@ export default function Home() {
             <span className="pulse-dot-dark" />
             <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.1em', color: '#E8541A', textTransform: 'uppercase' as const }}>Sistema de Gestión Integrado</span>
           </div>
-          <h1 className="sr sr-delay-1" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 'clamp(48px, 7vw, 96px)', lineHeight: 0.95, letterSpacing: '-0.035em', margin: '0 0 24px', maxWidth: 800 }}>
+          <h1 className="sr sr-delay-1" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 'clamp(36px, 5vw, 72px)', lineHeight: 0.95, letterSpacing: '-0.035em', margin: '0 0 24px', maxWidth: 800 }}>
             <span style={{ display: 'block', color: '#1A1A1A' }}>Gestión ISO</span>
             <span style={{ display: 'block', color: '#1A1A1A' }}>sin caos.</span>
             <span style={{ display: 'block', color: '#E8541A' }}>Sin excusas.</span>
@@ -244,20 +244,6 @@ export default function Home() {
                 {expandedFAQ === i && <div style={{ paddingBottom: 24, color: '#777770', fontSize: 14, lineHeight: 1.7, fontFamily: "'Syne', sans-serif" }}>{faq.a}</div>}
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA FINAL */}
-      <section style={{ padding: '100px 40px', background: '#E8541A', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -80, right: -80, width: 400, height: 400, borderRadius: '50%', background: 'rgba(0,0,0,0.08)', pointerEvents: 'none' }} />
-        <div style={{ maxWidth: 700, margin: '0 auto', textAlign: 'center' as const, position: 'relative', zIndex: 1 }}>
-          <h2 className="sr" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 'clamp(36px, 6vw, 72px)', letterSpacing: '-0.04em', lineHeight: 0.92, margin: '0 0 24px', color: 'white' }}>Tu primer mes<br />es gratis.</h2>
-          <p className="sr sr-delay-1" style={{ fontSize: 16, color: 'rgba(255,255,255,0.8)', marginBottom: 40, lineHeight: 1.6, fontFamily: "'Syne', sans-serif" }}>Sin tarjeta de crédito. Sin compromisos.</p>
-          <div className="sr sr-delay-2">
-            <button onClick={() => setShowModal(true)} style={{ background: 'white', color: '#E8541A', border: 'none', padding: '16px 40px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              Crear cuenta gratis <ArrowRight size={16} />
-            </button>
           </div>
         </div>
       </section>
