@@ -170,7 +170,7 @@ export default function Home() {
           --ink-2: #111114;
           --ink-3: #1A1A1F;
           --surface: #F5F4F0;
-          --surface-2: #EBEBЕ6;
+          --surface-2: #EBEBE6;
           --accent: #E8541A;
           --accent-2: #FF6B35;
           --white: #FAFAF8;
@@ -210,10 +210,12 @@ export default function Home() {
 
         /* Nav */
         .nav-glass {
-          background: ${scrolled ? 'rgba(10,10,11,0.95)' : 'transparent'};
-          backdrop-filter: ${scrolled ? 'blur(20px)' : 'none'};
-          border-bottom: ${scrolled ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent'};
-          transition: all 0.4s ease;
+          transition: background 0.4s ease, backdrop-filter 0.4s ease, border-bottom 0.4s ease;
+        }
+        .nav-glass.scrolled {
+          background: rgba(10,10,11,0.95);
+          backdrop-filter: blur(20px);
+          border-bottom: 1px solid rgba(255,255,255,0.06);
         }
 
         /* Hero line animation */
@@ -284,7 +286,7 @@ export default function Home() {
       `}</style>
 
       {/* ── NAV ── */}
-      <nav className="nav-glass" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, padding: '0 32px' }}>
+      <nav className={`nav-glass${scrolled ? ' scrolled' : ''}`} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, padding: '0 32px' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 68 }}>
           {/* Logo */}
           <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
