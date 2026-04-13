@@ -360,7 +360,7 @@ const useScrollReveal = () => {
 
     return () => observer.disconnect();
   }, []);
-};
+}
 
 // Componente de fondo animado con indicadores e IA
 const AnimatedBackground = ({ variant = 'default' }) => {
@@ -1183,7 +1183,7 @@ export default function Home() {
 
     return () => observer.disconnect();
   }, []);
-};
+}
 
 // Componente de fondo animado con indicadores e IA
 const AnimatedBackground = ({ variant = 'default' }) => {
