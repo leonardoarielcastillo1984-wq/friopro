@@ -327,8 +327,8 @@ const useScrollReveal = () => {
   useEffect(() => {
     fetch('https://logismart.ar/api/landing/settings')
       .then(r => r.json())
-      .then(data => { if (data.settings) setLandingSettings(data.settings); })
-      .catch(() => {});
+      .then(data => { console.log('[LANDING]', data); if (data.settings) setLandingSettings(data.settings); })
+      .catch(e => console.error('[LANDING ERROR]', e));
   }, []);
 
   useEffect(() => {
