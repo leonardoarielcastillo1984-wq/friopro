@@ -48,6 +48,7 @@ export default function Home() {
   const [landingSettings, setLandingSettings] = useState<any>(null);
   const [expandedFAQ, setExpandedFAQ] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [registered, setRegistered] = useState(false);
   const [loading, setLoading] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [formData, setFormData] = useState({ companyName: '', email: '', phone: '' });
@@ -87,7 +88,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyName: formData.companyName, socialReason: formData.companyName, email: formData.email, phone: formData.phone, rut: 'N/A', website: '', address: 'N/A', primaryColor: '#E8541A' }),
       });
-      if (res.status < 400) { setShowModal(false); router.push('/onboarding'); }
+      if (res.status < 400) { setRegistered(true); }
     } catch {}
     setLoading(false);
   };
@@ -365,6 +366,8 @@ export default function Home() {
                 {loading ? 'Creando...' : 'Empezar gratis'} {!loading && <ArrowRight size={15} />}
               </button>
             </form>
+              </>
+            )}
           </div>
         </div>
       )}

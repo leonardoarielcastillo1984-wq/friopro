@@ -1,13 +1,10 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { Resend } from 'resend';
 import { PrismaClient } from '@prisma/client';
 
 // Cliente Prisma sin RLS para operaciones de CompanyRegistration
 const prismaSuperUser = new PrismaClient();
 
-// Inicializar Resend para enviar emails (usa API key del env)
-const resend = new Resend(process.env.RESEND_API_KEY || 're_123456789');
 
 // Schema de validación
 const registerCompanySchema = z.object({
@@ -85,59 +82,9 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       const totalCount = await prismaSuperUser.companyRegistration.count();
       app.log.info(`[REGISTER-COMPANY] Total registros en DB: ${totalCount}`);
       
-      // Enviar email al administrador
-      try {
-        await resend.emails.send({
-          from: 'SGI 360 <noreply@sgi360.com>',
-          to: 'admin@sgi360.com', // Email del admin
-          subject: `Nueva solicitud de registro: ${validatedData.companyName}`,
-          html: `
-            <h2>Nueva Solicitud de Registro de Empresa</h2>
-            <p><strong>Empresa:</strong> ${validatedData.companyName}</p>
-            <p><strong>Razón Social:</strong> ${validatedData.socialReason || 'No especificada'}</p>
-            <p><strong>RUT:</strong> ${validatedData.rut}</p>
-            <p><strong>Email:</strong> ${validatedData.email}</p>
-            <p><strong>Teléfono:</strong> ${validatedData.phone}</p>
-            <p><strong>Dirección:</strong> ${validatedData.address}</p>
-            <p><strong>Website:</strong> ${validatedData.website || 'No especificada'}</p>
-            <p><strong>Módulo solicitado:</strong> ${validatedData.module}</p>
-            <p><strong>Color de marca:</strong> ${validatedData.primaryColor}</p>
-            <br>
-            <p>Para aprobar esta solicitud, ingrese al panel de administración.</p>
-            <p>ID de registro: ${registration.id}</p>
-          `,
-        });
-        app.log.info('Email de notificación enviado al admin');
-      } catch (emailError) {
-        app.log.error('Error enviando email: ' + String(emailError));
-        // No fallar si el email no se envía
-      }
+      // Email notification skipped - no email service configured
       
-      // También enviar email de confirmación al usuario
-      try {
-        await resend.emails.send({
-          from: 'SGI 360 <noreply@sgi360.com>',
-          to: validatedData.email,
-          subject: 'Solicitud de registro recibida - SGI 360',
-          html: `
-            <h2>¡Gracias por registrarse en SGI 360!</h2>
-            <p>Hemos recibido su solicitud de registro para <strong>${validatedData.companyName}</strong>.</p>
-            <p>Nuestro equipo está revisando su información y pronto recibirá un email con las instrucciones para acceder al sistema.</p>
-            <br>
-            <p>Datos registrados:</p>
-            <ul>
-              <li><strong>Empresa:</strong> ${validatedData.companyName}</li>
-              <li><strong>Email:</strong> ${validatedData.email}</li>
-              <li><strong>Módulo:</strong> SGI 360</li>
-            </ul>
-            <br>
-            <p>Si tiene alguna pregunta, no dude en contactarnos.</p>
-            <p>Saludos,<br>Equipo SGI 360</p>
-          `,
-        });
-      } catch (emailError) {
-        app.log.error('Error enviando email de confirmación: ' + String(emailError));
-      }
+      
       
       return reply.code(201).send({
         success: true,

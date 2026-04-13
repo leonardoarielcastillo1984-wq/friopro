@@ -32,11 +32,8 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         primaryColor: data.primaryColor,
       });
 
-      // Guardar en base de datos usando Prisma sin RLS
-      const { PrismaClient } = require('@prisma/client');
-      const prismaSuperUser = new PrismaClient();
-
-      const newRegistration = await prismaSuperUser.companyRegistration.create({
+      // Guardar en base de datos
+      const newRegistration = await app.prisma.companyRegistration.create({
         data: {
           companyName: validated.companyName,
           socialReason: validated.socialReason,
@@ -49,8 +46,6 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
           status: 'PENDING',
         },
       });
-
-      await prismaSuperUser.$disconnect();
 
       app.log.info(`Nueva solicitud de registro: ${validated.companyName}`);
 
