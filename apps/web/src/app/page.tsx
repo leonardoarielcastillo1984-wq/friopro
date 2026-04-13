@@ -814,9 +814,9 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { name: 'BÁSICO', price: '$35', features: ['Hasta 5 usuarios', 'Auditoría IA', 'Auditorías ISO', 'Capacitaciones', 'No Conformidades'], highlight: false },
-              { name: 'PROFESIONAL', price: '$69', features: ['Hasta 20 usuarios', 'Auditoría IA', 'Auditorías ISO', 'Capacitaciones', 'Clientes'], highlight: true },
-              { name: 'PREMIUM', price: '$99', features: ['Hasta 50 usuarios', 'Auditoría IA', 'Auditorías ISO', 'Capacitaciones', 'Clientes'], highlight: false }
+              { name: 'BÁSICO', price: '$35', features: ['Hasta 5 usuarios', 'Documentos y Normativos', 'No Conformidades', 'Indicadores de gestión', 'Soporte por email'], highlight: false },
+              { name: 'PROFESIONAL', price: '$69', features: ['Hasta 20 usuarios', 'Todo lo del plan Básico', 'Auditorías ISO completas', 'Capacitaciones y RRHH', 'Gestión de Riesgos', 'Soporte prioritario'], highlight: true },
+              { name: 'PREMIUM', price: '$99', features: ['Usuarios ilimitados', 'Todo lo del plan Profesional', 'Auditoría IA avanzada', 'Business Intelligence', 'Integraciones API', 'Gestión de Proyectos 360'], highlight: false }
             ].map((plan, idx) => (
               <div key={idx} className={`p-8 rounded-xl animate-fade-in-up transition-all transform hover:-translate-y-2 ${plan.highlight ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-xl scale-105' : 'bg-gray-50 border border-gray-200'} ${idx === 0 ? 'animate-delay-1' : idx === 1 ? 'animate-delay-2' : 'animate-delay-3'}`}>
                 <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
