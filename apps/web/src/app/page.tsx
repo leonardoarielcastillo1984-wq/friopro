@@ -82,10 +82,18 @@ export default function Home() {
     e.preventDefault();
     setLoading(true);
     try {
+      const fd = new FormData();
+      fd.append('companyName', formData.companyName);
+      fd.append('email', formData.email);
+      fd.append('phone', formData.phone);
+      fd.append('socialReason', formData.companyName);
+      fd.append('rut', '');
+      fd.append('website', '');
+      fd.append('address', '');
+      fd.append('primaryColor', '#E8541A');
       const res = await fetch('/api/register-company', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: fd,
       });
       if (res.ok) { setShowModal(false); router.push('/onboarding'); }
     } catch {}
