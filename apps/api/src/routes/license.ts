@@ -1524,9 +1524,15 @@ export async function licenseRoutes(app: FastifyInstance) {
   // GET /license/admin/payments - Obtener pagos de admin
   app.get('/admin/payments', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      // Verificar que sea admin
-      // Pagos vacío por defecto
-      return reply.send({ payments: [] });
+      const payments = await app.prisma.payment.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: {
+          tenant: { select: { id: true, name: true, slug: true } },
+          subscription: { include: { plan: { select: { name: true, tier: true } } } }
+        }
+      });
+      return reply.send({ payments });
     } catch (error: any) {
       return reply.code(500).send({ error: 'Error obteniendo pagos' });
     }
