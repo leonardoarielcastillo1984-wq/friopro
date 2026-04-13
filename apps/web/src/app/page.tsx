@@ -2,412 +2,117 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Shield, BarChart3, CheckCircle2, ArrowRight, Globe, Lock, Zap,
-  Menu, X, MessageSquare, ChevronDown, Phone, Mail, MapPin, Facebook, Twitter, Linkedin
-} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Zap, Shield, BarChart3, Users, FileCheck, AlertTriangle,
+  ChevronRight, ArrowRight, CheckCircle, Star, Menu, X,
+  Phone, Mail, MapPin, Facebook, Twitter, Linkedin,
+  MessageSquare, Globe, Award, TrendingUp, Clock, Layers
+} from 'lucide-react';
 
-// Estilos de animación
-const animationStyles = `
-  @keyframes fadeInUp {
-    from {
-      opacity: 0;
-      transform: translateY(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
+// ─── DATA ────────────────────────────────────────────────────────────────────
 
-  @keyframes fadeInDown {
-    from {
-      opacity: 0;
-      transform: translateY(-20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes slideInLeft {
-    from {
-      opacity: 0;
-      transform: translateX(-40px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-
-  @keyframes slideInRight {
-    from {
-      opacity: 0;
-      transform: translateX(40px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-
-  @keyframes pulse-glow {
-    0%, 100% {
-      box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
-    }
-    50% {
-      box-shadow: 0 0 40px rgba(59, 130, 246, 0.8);
-    }
-  }
-
-  @keyframes float {
-    0%, 100% {
-      transform: translateY(0px);
-    }
-    50% {
-      transform: translateY(-10px);
-    }
-  }
-
-  @keyframes shimmer {
-    0% {
-      background-position: -1000px 0;
-    }
-    100% {
-      background-position: 1000px 0;
-    }
-  }
-
-  .animate-fade-in-up {
-    animation: fadeInUp 0.6s ease-out;
-  }
-
-  .animate-fade-in-down {
-    animation: fadeInDown 0.6s ease-out;
-  }
-
-  .animate-slide-in-left {
-    animation: slideInLeft 0.6s ease-out;
-  }
-
-  .animate-slide-in-right {
-    animation: slideInRight 0.6s ease-out;
-  }
-
-  .animate-pulse-glow {
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-
-  .animate-float {
-    animation: float 3s ease-in-out infinite;
-  }
-
-  .animate-delay-1 {
-    animation-delay: 0.1s;
-  }
-
-  .animate-delay-2 {
-    animation-delay: 0.2s;
-  }
-
-  .animate-delay-3 {
-    animation-delay: 0.3s;
-  }
-
-  .animate-delay-4 {
-    animation-delay: 0.4s;
-  }
-
-  .animate-delay-5 {
-    animation-delay: 0.5s;
-  }
-
-  .animate-delay-6 {
-    animation-delay: 0.6s;
-  }
-
-  @keyframes moveRight {
-    0%, 100% { transform: translateX(0); }
-    50% { transform: translateX(20px); }
-  }
-
-  @keyframes rotate-slow {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  @keyframes pulse-circle {
-    0%, 100% { r: 3px; opacity: 0.6; }
-    50% { r: 8px; opacity: 0; }
-  }
-
-  @keyframes reveal-up {
-    from {
-      opacity: 0;
-      transform: translateY(40px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes reveal-left {
-    from {
-      opacity: 0;
-      transform: translateX(-40px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-
-  @keyframes reveal-right {
-    from {
-      opacity: 0;
-      transform: translateX(40px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-
-  .reveal-on-scroll {
-    opacity: 0;
-  }
-
-  .reveal-on-scroll.visible {
-    animation: reveal-up 0.8s ease-out forwards;
-  }
-
-  .reveal-on-scroll.visible-left {
-    animation: reveal-left 0.8s ease-out forwards;
-  }
-
-  .reveal-on-scroll.visible-right {
-    animation: reveal-right 0.8s ease-out forwards;
-  }
-
-  .animate-move-right {
-    animation: moveRight 3s ease-in-out infinite;
-  }
-
-  .animate-rotate-slow {
-    animation: rotate-slow 20s linear infinite;
-  }
-
-  .bg-animated-grid {
-    background-image:
-      linear-gradient(0deg, transparent 24%, rgba(59, 130, 246, 0.05) 25%, rgba(59, 130, 246, 0.05) 26%, transparent 27%, transparent 74%, rgba(59, 130, 246, 0.05) 75%, rgba(59, 130, 246, 0.05) 76%, transparent 77%, transparent),
-      linear-gradient(90deg, transparent 24%, rgba(59, 130, 246, 0.05) 25%, rgba(59, 130, 246, 0.05) 26%, transparent 27%, transparent 74%, rgba(59, 130, 246, 0.05) 75%, rgba(59, 130, 246, 0.05) 76%, transparent 77%, transparent);
-    background-size: 40px 40px;
-    background-position: 0 0, 20px 20px;
-  }
-`;
+const NAV_LINKS = [
+  { label: 'Producto', href: '#producto' },
+  { label: 'Módulos', href: '#modulos' },
+  { label: 'Planes', href: '#planes' },
+  { label: 'Clientes', href: '#clientes' },
+  { label: 'Contacto', href: '#contact' },
+];
 
 const MODULES = [
+  { icon: FileCheck, label: 'Documentos', desc: 'Control de versiones y trazabilidad completa de normativos y procedimientos.' },
+  { icon: AlertTriangle, label: 'No Conformidades', desc: 'Gestión de hallazgos, causas raíz y planes de acción correctiva.' },
+  { icon: BarChart3, label: 'Indicadores', desc: 'KPIs en tiempo real con dashboards configurables por área.' },
+  { icon: Shield, label: 'Auditorías ISO', desc: 'Planificación, ejecución y seguimiento de auditorías internas y externas.' },
+  { icon: Users, label: 'RRHH & Capacitación', desc: 'Gestión de competencias, capacitaciones y evaluaciones del personal.' },
+  { icon: AlertTriangle, label: 'Riesgos', desc: 'Matriz de riesgos con evaluación de impacto y probabilidad.' },
+  { icon: TrendingUp, label: 'Proyectos 360', desc: 'Gestión integral de proyectos con seguimiento de hitos y recursos.' },
+  { icon: Layers, label: 'Integraciones', desc: 'API abierta compatible con Excel, Google Workspace, Power BI y más.' },
+];
+
+const PLANS = [
   {
-    id: 'sgi360',
-    name: 'SGI 360',
-    description: 'Sistema Integrado de Gestión ISO',
-    icon: BarChart3,
-    color: 'from-blue-500 to-blue-600',
-    features: ['Documentos', 'Indicadores', 'Auditorías', 'Riesgos', 'Capacitaciones'],
-    active: true,
-    buttonText: 'Ingresar',
+    name: 'Básico',
+    price: 35,
+    features: ['Hasta 5 usuarios', 'Documentos y Normativos', 'No Conformidades', 'Indicadores de gestión', 'Soporte por email'],
+    highlight: false,
   },
   {
-    id: 'seguridad360',
-    name: 'SEH 360',
-    description: 'Sistema de Gestión de Seguridad e Higiene Laboral',
-    icon: Shield,
-    color: 'from-red-500 to-red-600',
-    features: ['Gestión de Riesgos Laborales', 'Investigación de Incidentes', 'EPP y Controles', 'Capacitaciones OBL', 'Auditorías SHE'],
-    active: false,
-    buttonText: 'Próximamente',
+    name: 'Profesional',
+    price: 69,
+    features: ['Hasta 20 usuarios', 'Todo lo del plan Básico', 'Auditorías ISO completas', 'Capacitaciones y RRHH', 'Gestión de Riesgos', 'Soporte prioritario'],
+    highlight: true,
   },
   {
-    id: 'audit360',
-    name: 'Audit360',
-    description: 'Plataforma especializada para Auditores y Consultores',
-    icon: Lock,
-    color: 'from-purple-500 to-purple-600',
-    features: ['Gestión de Auditorías', 'No Conformidades', 'Hallazgos y Acciones', 'Programas Anuales', 'IA Auditora'],
-    active: false,
-    buttonText: 'Próximamente',
+    name: 'Premium',
+    price: 99,
+    features: ['Usuarios ilimitados', 'Todo lo del plan Profesional', 'Auditoría IA avanzada', 'Business Intelligence', 'Integraciones API', 'Gestión de Proyectos 360'],
+    highlight: false,
   },
 ];
 
-const FEATURES = [
-  {
-    icon: '📊',
-    title: 'Integración Total',
-    description: 'Acceso a SGI 360, SEH 360 y Audit360 en una única plataforma centralizada'
-  },
-  {
-    icon: '🔒',
-    title: 'Seguridad Bancaria',
-    description: 'Encriptación de nivel empresarial y cumplimiento con estándares internacionales'
-  },
-  {
-    icon: '⚡',
-    title: 'Rendimiento Ultra Rápido',
-    description: 'Infraestructura en la nube con latencia mínima y disponibilidad 99.9%'
-  },
-  {
-    icon: '🤖',
-    title: 'IA Auditora',
-    description: 'Automatización inteligente de procesos de auditoría y análisis de datos'
-  },
-  {
-    icon: '📱',
-    title: 'Acceso Multi-Dispositivo',
-    description: 'Disponible en web, tablet y dispositivos móviles con sincronización en tiempo real'
-  },
-  {
-    icon: '👥',
-    title: 'Soporte 24/7',
-    description: 'Equipo de expertos disponibles para ayudarte en cualquier momento'
-  }
-];
+const ISOS = ['ISO 9001', 'ISO 39001', 'ISO 14001', 'ISO 45001', 'IATF 16949', 'ISO 27001'];
 
-const TESTIMONIALS = [
-  {
-    name: 'Juan Carrillo',
-    role: 'Gerente de Calidad',
-    text: '\"SGI 360 ha transformado completamente nuestros procesos de gestión. La plataforma es intuitiva y muy potente. Altamente recomendado.\"',
-    rating: 5
-  },
-  {
-    name: 'María Rodríguez',
-    role: 'Directora Ejecutiva',
-    text: '\"El soporte técnico es excepcional. Cualquier duda la resuelven inmediatamente. Excelente inversión para nuestra empresa.\"',
-    rating: 5
-  },
-  {
-    name: 'Carlos Gómez',
-    role: 'Coordinador de Auditoría',
-    text: '\"Implementamos la plataforma en 2 semanas sin disrupciones. El ROI fue evidente en los primeros meses. Impresionante.\"',
-    rating: 5
-  }
+const STATS = [
+  { value: 500, suffix: '+', label: 'Empresas activas' },
+  { value: 1500, suffix: '+', label: 'Usuarios en plataforma' },
+  { value: 99.9, suffix: '%', label: 'Uptime garantizado' },
+  { value: 15, suffix: ' años', label: 'De experiencia ISO' },
 ];
 
 const FAQS = [
-  {
-    question: '¿Cuáles son los planes disponibles?',
-    answer: 'Ofrecemos planes Básico, Profesional y Premium con diferentes módulos y niveles de soporte. Puedes cambiar de plan en cualquier momento.'
-  },
-  {
-    question: '¿Cuánto tiempo toma la implementación?',
-    answer: 'En promedio 2-4 semanas sin disrupciones operacionales. Nuestro equipo te acompañará en cada paso del proceso.'
-  },
-  {
-    question: '¿Ofrecen capacitación para nuestro equipo?',
-    answer: 'Sí, capacitación inicial incluida y acceso a centro de recursos con tutoriales y documentación completa.'
-  },
-  {
-    question: '¿Puedo integrar SGI 360 con otras herramientas?',
-    answer: 'Sí, contamos con API completa y webhooks para integraciones con tus sistemas actuales.'
-  },
-  {
-    question: '¿Qué garantías de seguridad ofrecen?',
-    answer: 'Encriptación de datos de nivel bancario, backup automático diario, cumplimiento ISO y SLA de 99.9%.'
-  }
+  { q: '¿Puedo gestionar múltiples normas ISO a la vez?', a: 'Sí. SGI 360 está diseñado para gestión multi-norma desde un único panel, eliminando la duplicidad de documentos y esfuerzos.' },
+  { q: '¿Qué tan difícil es la implementación?', a: 'La mayoría de nuestros clientes están operativos en menos de 48 horas. El onboarding es guiado y contamos con soporte dedicado en español.' },
+  { q: '¿Puedo cambiar de plan cuando quiera?', a: 'Absolutamente. Los cambios de plan se aplican de forma inmediata y el cobro se ajusta de forma proporcional.' },
+  { q: '¿Los datos están seguros?', a: 'Encriptación AES-256 en reposo y TLS 1.3 en tránsito. Backups automáticos diarios. Infraestructura en servidores europeos certificados.' },
+  { q: '¿Funciona para empresas de cualquier tamaño?', a: 'Desde PYMEs de 5 personas hasta corporaciones con miles de empleados. La arquitectura multi-tenant escala sin límite.' },
 ];
 
-// Hook para scroll reveal animations
-const useScrollReveal = () => {
+// ─── ANIMATED COUNTER ────────────────────────────────────────────────────────
+
+function Counter({ value, suffix }: { value: number; suffix: string }) {
+  const [count, setCount] = useState(0);
+  const ref = useRef<HTMLSpanElement>(null);
+  const started = useRef(false);
+
   useEffect(() => {
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
-          // Para elementos con data-reveal-direction
-          const direction = entry.target.getAttribute('data-reveal-direction');
-          if (direction === 'left') {
-            entry.target.classList.remove('visible');
-            entry.target.classList.add('visible-left');
-          } else if (direction === 'right') {
-            entry.target.classList.remove('visible');
-            entry.target.classList.add('visible-right');
-          }
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.1 });
-
-    document.querySelectorAll('.reveal-on-scroll').forEach(el => observer.observe(el));
-
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !started.current) {
+        started.current = true;
+        const duration = 1800;
+        const steps = 60;
+        const increment = value / steps;
+        let current = 0;
+        const timer = setInterval(() => {
+          current += increment;
+          if (current >= value) { setCount(value); clearInterval(timer); }
+          else setCount(Math.floor(current));
+        }, duration / steps);
+      }
+    }, { threshold: 0.5 });
+    if (ref.current) observer.observe(ref.current);
     return () => observer.disconnect();
-  }, []);
-};
+  }, [value]);
 
-// Componente de fondo animado con indicadores e IA
-const AnimatedBackground = ({ variant = 'default' }) => {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {/* Grid de fondo */}
-      <div className="absolute inset-0 bg-animated-grid opacity-30"></div>
+  return <span ref={ref}>{count}{suffix}</span>;
+}
 
-      {/* SVG con elementos animados */}
-      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 1000 600" preserveAspectRatio="none">
-        {/* Líneas animadas de IA */}
-        <g className="opacity-40">
-          <line x1="50" y1="100" x2="200" y2="200" stroke="#3B82F6" strokeWidth="2" strokeDasharray="5,5" className="animate-move-right" />
-          <line x1="800" y1="150" x2="900" y2="300" stroke="#8B5CF6" strokeWidth="2" strokeDasharray="5,5" className="animate-move-right" style={{ animationDelay: '0.5s' }} />
-          <line x1="100" y1="400" x2="300" y2="500" stroke="#10B981" strokeWidth="2" strokeDasharray="5,5" className="animate-move-right" style={{ animationDelay: '1s' }} />
-        </g>
-
-        {/* Círculos pulsantes (indicadores) */}
-        <g className="opacity-40">
-          <circle cx="150" cy="150" r="3" fill="#3B82F6" className="animate-pulse-glow" />
-          <circle cx="850" cy="250" r="3" fill="#8B5CF6" className="animate-pulse-glow" style={{ animationDelay: '0.3s' }} />
-          <circle cx="200" cy="450" r="3" fill="#10B981" className="animate-pulse-glow" style={{ animationDelay: '0.6s' }} />
-          <circle cx="800" cy="500" r="3" fill="#EC4899" className="animate-pulse-glow" style={{ animationDelay: '0.9s' }} />
-        </g>
-
-        {/* Gráficos de barras animados */}
-        <g className="opacity-40">
-          {/* Barra 1 */}
-          <rect x="300" y="400" width="20" height="80" fill="#3B82F6" opacity="0.6" className="animate-float" style={{ animationDelay: '0s' }} />
-          {/* Barra 2 */}
-          <rect x="340" y="350" width="20" height="130" fill="#8B5CF6" opacity="0.6" className="animate-float" style={{ animationDelay: '0.2s' }} />
-          {/* Barra 3 */}
-          <rect x="380" y="300" width="20" height="180" fill="#10B981" opacity="0.6" className="animate-float" style={{ animationDelay: '0.4s' }} />
-          {/* Barra 4 */}
-          <rect x="420" y="380" width="20" height="100" fill="#F59E0B" opacity="0.6" className="animate-float" style={{ animationDelay: '0.6s' }} />
-        </g>
-
-        {/* Red de IA (nodos y conexiones) */}
-        <g className="opacity-40">
-          {/* Conexiones */}
-          <line x1="100" y1="100" x2="200" y2="150" stroke="#3B82F6" strokeWidth="1.5" className="animate-move-right" style={{ animationDelay: '-1s' }} />
-          <line x1="200" y1="150" x2="300" y2="120" stroke="#8B5CF6" strokeWidth="1.5" className="animate-move-right" style={{ animationDelay: '-1.5s' }} />
-          <line x1="700" y1="200" x2="800" y2="300" stroke="#10B981" strokeWidth="1.5" className="animate-move-right" style={{ animationDelay: '-0.5s' }} />
-
-          {/* Nodos */}
-          <circle cx="100" cy="100" r="4" fill="#3B82F6" opacity="0.8" />
-          <circle cx="200" cy="150" r="4" fill="#8B5CF6" opacity="0.8" />
-          <circle cx="300" cy="120" r="4" fill="#10B981" opacity="0.8" />
-          <circle cx="700" cy="200" r="4" fill="#EC4899" opacity="0.8" />
-          <circle cx="800" cy="300" r="4" fill="#F59E0B" opacity="0.8" />
-        </g>
-      </svg>
-    </div>
-  );
-};
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function Home() {
   const router = useRouter();
   const [landingSettings, setLandingSettings] = useState<any>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [expandedFAQ, setExpandedFAQ] = useState<number | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({ companyName: '', email: '', phone: '', country: 'Argentina' });
+  const [scrolled, setScrolled] = useState(false);
+  const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch('https://logismart.ar/api/landing/settings')
@@ -415,490 +120,382 @@ export default function Home() {
       .then(data => { if (data.settings) setLandingSettings(data.settings); })
       .catch(() => {});
   }, []);
-  const [loading, setLoading] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [expandedFAQ, setExpandedFAQ] = useState<number | null>(0);
-  const [carouselIndex, setCarouselIndex] = useState(0);
-  const [formData, setFormData] = useState({
-    companyName: '',
-    socialReason: '',
-    rut: '',
-    email: '',
-    phone: '',
-    website: '',
-    address: '',
-    logo: null as File | null,
-    primaryColor: '#3B82F6',
-  });
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      setFormData(prev => ({ ...prev, logo: e.target.files![0] }));
-    }
-  };
-
-  // Scroll reveal animations
-  useScrollReveal();
-
-  // Carousel automático
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCarouselIndex((prev) => (prev + 1) % 3);
-    }, 5000); // Cambiar cada 5 segundos
-    return () => clearInterval(interval);
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const carouselItems = [
-    {
-      icon: '🎯',
-      title: 'Misión',
-      description: 'Transformar los procesos de gestión empresarial mediante tecnología innovadora y soporte experto',
-      color: 'from-blue-500 to-blue-600'
-    },
-    {
-      icon: '🚀',
-      title: 'Objetivo',
-      description: 'Ser la plataforma de gestión integrada número 1 en Latinoamérica, confiada por más de 1000 empresas',
-      color: 'from-purple-500 to-purple-600'
-    },
-    {
-      icon: '✨',
-      title: 'Visión',
-      description: 'Empoderar a las organizaciones con herramientas de IA y automatización para lograr excelencia operacional',
-      color: 'from-pink-500 to-pink-600'
-    }
-  ];
+  // Scroll reveal
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('sr-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.08 });
+    document.querySelectorAll('.sr').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
-  const handleSubmitRegistration = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/api/register-company`, {
+      const res = await fetch('/api/register-company', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          companyName: formData.companyName,
-          socialReason: formData.socialReason,
-          rut: formData.rut,
-          email: formData.email,
-          phone: formData.phone,
-          website: formData.website,
-          address: formData.address,
-          primaryColor: formData.primaryColor,
-          module: 'sgi360',
-        }),
+        body: JSON.stringify(formData),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Error en el registro');
+      if (res.ok) {
+        setShowRegisterModal(false);
+        router.push('/onboarding');
       }
-
-      const data = await response.json();
-      alert('✅ Solicitud enviada correctamente. El administrador revisará tu registro pronto.');
-      setShowRegisterModal(false);
-      setFormData({
-        companyName: '',
-        socialReason: '',
-        rut: '',
-        email: '',
-        phone: '',
-        website: '',
-        address: '',
-        logo: null,
-        primaryColor: '#3B82F6',
-      });
-
-      router.push('/planes');
-    } catch (error) {
-      alert('❌ Error al enviar el registro: ' + (error as Error).message);
-    } finally {
-      setLoading(false);
-    }
+    } catch {}
+    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      <style>{animationStyles}</style>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
 
-      {/* ============ HEADER / NAVEGACIÓN ============ */}
-      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white animate-fade-in-down">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+        *, *::before, *::after { box-sizing: border-box; }
+
+        :root {
+          --ink: #0A0A0B;
+          --ink-2: #111114;
+          --ink-3: #1A1A1F;
+          --surface: #F5F4F0;
+          --surface-2: #EBEBЕ6;
+          --accent: #E8541A;
+          --accent-2: #FF6B35;
+          --white: #FAFAF8;
+          --muted: #888880;
+          --border: rgba(255,255,255,0.08);
+          --font-display: 'Syne', sans-serif;
+          --font-body: 'DM Sans', sans-serif;
+        }
+
+        html { scroll-behavior: smooth; }
+        body { background: var(--ink); color: var(--white); font-family: var(--font-body); margin: 0; }
+
+        /* Scroll reveal */
+        .sr { opacity: 0; transform: translateY(28px); transition: opacity 0.7s cubic-bezier(.16,1,.3,1), transform 0.7s cubic-bezier(.16,1,.3,1); }
+        .sr.sr-visible { opacity: 1; transform: none; }
+        .sr-delay-1 { transition-delay: 0.1s; }
+        .sr-delay-2 { transition-delay: 0.2s; }
+        .sr-delay-3 { transition-delay: 0.3s; }
+        .sr-delay-4 { transition-delay: 0.4s; }
+        .sr-delay-5 { transition-delay: 0.5s; }
+
+        /* Ticker */
+        @keyframes ticker {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+        .ticker-track { animation: ticker 22s linear infinite; display: flex; width: max-content; }
+        .ticker-track:hover { animation-play-state: paused; }
+
+        /* Gradient text */
+        .grad-text {
+          background: linear-gradient(135deg, var(--white) 0%, var(--accent) 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        /* Nav */
+        .nav-glass {
+          background: ${scrolled ? 'rgba(10,10,11,0.95)' : 'transparent'};
+          backdrop-filter: ${scrolled ? 'blur(20px)' : 'none'};
+          border-bottom: ${scrolled ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent'};
+          transition: all 0.4s ease;
+        }
+
+        /* Hero line animation */
+        @keyframes line-in {
+          from { width: 0; }
+          to { width: 100%; }
+        }
+        .hero-line { animation: line-in 1.2s cubic-bezier(.16,1,.3,1) forwards; }
+
+        /* Pulse dot */
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.4); }
+        }
+        .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+
+        /* Card hover */
+        .module-card { transition: transform 0.3s cubic-bezier(.16,1,.3,1), border-color 0.3s ease; }
+        .module-card:hover { transform: translateY(-6px); border-color: var(--accent) !important; }
+
+        /* Plan card */
+        .plan-card { transition: transform 0.3s cubic-bezier(.16,1,.3,1); }
+        .plan-card:hover { transform: translateY(-8px); }
+
+        /* Btn */
+        .btn-primary {
+          background: var(--accent);
+          color: white;
+          border: none;
+          padding: 14px 32px;
+          font-family: var(--font-display);
+          font-weight: 600;
+          font-size: 15px;
+          letter-spacing: 0.02em;
+          cursor: pointer;
+          transition: background 0.2s, transform 0.2s;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .btn-primary:hover { background: var(--accent-2); transform: translateY(-1px); }
+
+        .btn-ghost {
+          background: transparent;
+          color: var(--white);
+          border: 1px solid rgba(255,255,255,0.2);
+          padding: 13px 32px;
+          font-family: var(--font-display);
+          font-weight: 500;
+          font-size: 15px;
+          cursor: pointer;
+          transition: border-color 0.2s, background 0.2s;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .btn-ghost:hover { border-color: var(--accent); background: rgba(232,84,26,0.06); }
+
+        /* Noise overlay */
+        .noise::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+          pointer-events: none;
+          z-index: 0;
+        }
+      `}</style>
+
+      {/* ── NAV ── */}
+      <nav className="nav-glass" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, padding: '0 32px' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 68 }}>
           {/* Logo */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <Zap className="h-6 w-6 text-white" />
+          <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+            <div style={{ width: 36, height: 36, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Zap size={20} color="white" />
             </div>
-            <span className="text-xl font-bold text-gray-900">SGI 360</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, color: 'var(--white)', letterSpacing: '-0.02em' }}>SGI 360</span>
+          </a>
+
+          {/* Links desktop */}
+          <div style={{ display: 'flex', gap: 36, alignItems: 'center' }} className="hidden md:flex">
+            {NAV_LINKS.map(l => (
+              <a key={l.label} href={l.href} style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 14, fontWeight: 400, transition: 'color 0.2s' }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--white)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}>
+                {l.label}
+              </a>
+            ))}
           </div>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-8">
-            <a href="#inicio" className="text-gray-600 hover:text-blue-600 transition">Inicio</a>
-            <a href="#productos" className="text-gray-600 hover:text-blue-600 transition">Productos</a>
-            <a href="#about" className="text-gray-600 hover:text-blue-600 transition">Sobre Nosotros</a>
-            <a href="#features" className="text-gray-600 hover:text-blue-600 transition">Características</a>
-            <a href="#faq" className="text-gray-600 hover:text-blue-600 transition">FAQ</a>
-            <a href="#contact" className="text-gray-600 hover:text-blue-600 transition">Contacto</a>
-          </nav>
-
-          {/* Buttons */}
-          <div className="hidden md:flex items-center gap-3">
-            <Button
-              onClick={() => router.push('/login')}
-              className="bg-gray-900 text-white hover:bg-gray-800"
-            >
-              Ingresar
-            </Button>
-            <Button
-              onClick={() => setShowRegisterModal(true)}
-              className="bg-gray-900 hover:bg-gray-800 text-white"
-            >
-              Registrar Empresa
-            </Button>
+          {/* CTA */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <a href="/login" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 14, fontWeight: 400 }}>Ingresar</a>
+            <button className="btn-primary" style={{ padding: '10px 22px', fontSize: 14 }} onClick={() => setShowRegisterModal(true)}>
+              Empezar gratis
+            </button>
           </div>
-
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2"
-          >
-            {mobileMenuOpen ? (
-              <X className="w-6 h-6 text-gray-900" />
-            ) : (
-              <Menu className="w-6 h-6 text-gray-900" />
-            )}
-          </button>
         </div>
+      </nav>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-200 bg-white">
-            <nav className="flex flex-col gap-4 p-4">
-              <a href="#inicio" className="text-gray-600 hover:text-blue-600">Inicio</a>
-              <a href="#productos" className="text-gray-600 hover:text-blue-600">Productos</a>
-              <a href="#about" className="text-gray-600 hover:text-blue-600">Sobre Nosotros</a>
-              <a href="#features" className="text-gray-600 hover:text-blue-600">Características</a>
-              <a href="#faq" className="text-gray-600 hover:text-blue-600">FAQ</a>
-              <a href="#contact" className="text-gray-600 hover:text-blue-600">Contacto</a>
-              <div className="flex gap-2 pt-4">
-                <Button onClick={() => router.push('/login')} className="flex-1 bg-gray-900 text-white hover:bg-gray-800">
-                  Ingresar
-                </Button>
-                <Button onClick={() => setShowRegisterModal(true)} className="flex-1 bg-gray-900 text-white hover:bg-gray-800">
-                  Registrar
-                </Button>
-              </div>
-            </nav>
-          </div>
-        )}
-      </header>
+      {/* ── HERO ── */}
+      <section ref={heroRef} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '120px 32px 80px', position: 'relative', overflow: 'hidden' }}>
+        {/* Background grid */}
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '80px 80px', zIndex: 0 }} />
+        {/* Accent glow */}
+        <div style={{ position: 'absolute', top: '20%', right: '10%', width: 600, height: 600, background: 'radial-gradient(circle, rgba(232,84,26,0.12) 0%, transparent 70%)', zIndex: 0, pointerEvents: 'none' }} />
 
-      {/* ============ HERO SECTION ============ */}
-      <section id="inicio" className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white py-20 relative overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-blue-600 animate-fade-in-up">
-              Soluciones Integrales de Gestión
-            </h1>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto animate-fade-in-up animate-delay-1">
-              Tres sistemas potentes diseñados para diferentes necesidades de gestión, integrados en una sola plataforma
-            </p>
+        <div style={{ maxWidth: 1280, margin: '0 auto', width: '100%', position: 'relative', zIndex: 1 }}>
+          {/* Badge */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid rgba(232,84,26,0.3)', padding: '6px 16px', marginBottom: 48, background: 'rgba(232,84,26,0.06)' }}>
+            <span className="pulse-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>Sistema de Gestión Integrado</span>
           </div>
 
-          {/* CTA Principal */}
-          <div className="text-center mb-16 animate-fade-in-up">
-            <button
-              onClick={() => setShowRegisterModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
-            >
-              ⚡ Empezar Ahora - Prueba Gratuita
+          {/* Headline */}
+          <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'clamp(52px, 8vw, 110px)', lineHeight: 0.92, letterSpacing: '-0.04em', margin: '0 0 32px', maxWidth: 900 }}>
+            <span style={{ display: 'block', color: 'var(--white)' }}>Gestión ISO</span>
+            <span style={{ display: 'block', color: 'var(--white)' }}>sin caos.</span>
+            <span className="grad-text" style={{ display: 'block' }}>Sin excusas.</span>
+          </h1>
+
+          {/* Separator line */}
+          <div style={{ height: 1, background: 'linear-gradient(90deg, var(--accent), transparent)', marginBottom: 32, maxWidth: 400 }} className="hero-line" />
+
+          {/* Subhead */}
+          <p style={{ fontSize: 'clamp(16px, 2vw, 20px)', color: 'var(--muted)', maxWidth: 540, lineHeight: 1.6, margin: '0 0 48px', fontWeight: 300 }}>
+            Una plataforma para gestionar ISO 9001, 14001, 45001 y más — con IA integrada, trazabilidad total y sin hojas de cálculo.
+          </p>
+
+          {/* CTAs */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="btn-primary" onClick={() => setShowRegisterModal(true)}>
+              Comenzar ahora <ArrowRight size={16} />
+            </button>
+            <button className="btn-ghost" onClick={() => document.getElementById('modulos')?.scrollIntoView({ behavior: 'smooth' })}>
+              Ver módulos
             </button>
           </div>
 
-          {/* Módulos */}
-          <div id="productos" className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-            {MODULES.map((module, idx) => {
-              const IconComponent = module.icon;
-              return (
-                <div
-                  key={module.id}
-                  className={`group relative overflow-hidden rounded-2xl bg-slate-800/50 border border-slate-700/50 hover:border-slate-600 transition-all duration-300 p-8 animate-fade-in-up hover:shadow-xl hover:shadow-blue-500/20 cursor-pointer transform hover:-translate-y-2 ${idx === 0 ? 'animate-delay-1' : idx === 1 ? 'animate-delay-2' : 'animate-delay-3'}`}
-                >
-                  <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 bg-gradient-to-br ${module.color} transition-opacity`} />
-
-                  <div className="relative z-10">
-                    <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${module.color} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform animate-float group-hover:animate-pulse-glow`}>
-                      <IconComponent className="h-7 w-7 text-white" />
-                    </div>
-
-                    <h3 className="text-2xl font-bold text-white mb-2">{module.name}</h3>
-                    <p className="text-slate-400 mb-6">{module.description}</p>
-
-                    <ul className="space-y-2 mb-8">
-                      {module.features.slice(0, 3).map((feature, idx) => (
-                        <li key={idx} className="flex items-center gap-2 text-slate-300 text-sm">
-                          <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
-
-                    <Button
-                      onClick={() => module.active ? router.push('/login') : null}
-                      disabled={!module.active}
-                      className={`w-full font-medium ${
-                        module.active
-                          ? 'bg-blue-600 text-white hover:bg-blue-700'
-                          : 'bg-slate-600 text-slate-300 cursor-not-allowed'
-                      }`}
-                    >
-                      {module.buttonText}
-                      {module.active && <ArrowRight className="h-4 w-4 ml-2" />}
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+          {/* ISO tags */}
+          <div style={{ marginTop: 64, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {ISOS.map(iso => (
+              <span key={iso} style={{ fontSize: 11, fontFamily: 'var(--font-display)', fontWeight: 600, letterSpacing: '0.08em', color: 'var(--muted)', border: '1px solid rgba(255,255,255,0.1)', padding: '5px 12px', textTransform: 'uppercase' }}>
+                {iso}
+              </span>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ============ ABOUT US SECTION ============ */}
-      <section id="about" className="py-20 bg-white relative reveal-on-scroll">
-        <AnimatedBackground />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4 animate-fade-in-up">¿Quiénes Somos?</h2>
-            <p className="text-lg text-gray-600 animate-fade-in-up animate-delay-1">Líderes en soluciones integrales de gestión empresarial con certificaciones ISO</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-            <div className="animate-slide-in-left">
-              <h3 className="text-2xl font-bold text-gray-900 mb-6">Transformando la gestión empresarial</h3>
-              <p className="text-gray-600 mb-4 leading-relaxed">
-                Contamos con más de 15 años de experiencia ayudando a empresas de todos los tamaños
-                a mejorar sus procesos de gestión y cumplimiento normativo.
-              </p>
-              <p className="text-gray-600 mb-4 leading-relaxed">
-                Nuestro equipo de expertos certificados en ISO 9001, 14001 y 45001 trabaja
-                constantemente para ofrecerte las mejores soluciones del mercado.
-              </p>
-              <p className="text-gray-600 leading-relaxed">
-                Confiamos en la transparencia, la excelencia y el compromiso con tus objetivos.
-              </p>
-
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-4 mt-8">
-                <div className="bg-blue-50 p-6 rounded-lg text-center animate-fade-in-up animate-delay-1 hover:shadow-lg hover:shadow-blue-200 transition transform hover:scale-105">
-                  <p className="text-3xl font-bold text-blue-600">+500</p>
-                  <p className="text-gray-600 text-sm">Empresas Activas</p>
-                </div>
-                <div className="bg-blue-50 p-6 rounded-lg text-center animate-fade-in-up animate-delay-2 hover:shadow-lg hover:shadow-blue-200 transition transform hover:scale-105">
-                  <p className="text-3xl font-bold text-blue-600">+1500</p>
-                  <p className="text-gray-600 text-sm">Usuarios Registrados</p>
-                </div>
-                <div className="bg-blue-50 p-6 rounded-lg text-center animate-fade-in-up animate-delay-3 hover:shadow-lg hover:shadow-blue-200 transition transform hover:scale-105">
-                  <p className="text-3xl font-bold text-blue-600">15+</p>
-                  <p className="text-gray-600 text-sm">Años Experiencia</p>
-                </div>
-                <div className="bg-blue-50 p-6 rounded-lg text-center animate-fade-in-up animate-delay-4 hover:shadow-lg hover:shadow-blue-200 transition transform hover:scale-105">
-                  <p className="text-3xl font-bold text-blue-600">99.9%</p>
-                  <p className="text-gray-600 text-sm">Uptime</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Carousel Automático */}
-            <div className="relative h-96 rounded-2xl overflow-hidden">
-              {carouselItems.map((item, idx) => (
-                <div
-                  key={idx}
-                  className={`absolute inset-0 bg-gradient-to-br ${item.color} flex items-center justify-center text-white text-center p-8 transition-all duration-700 transform ${
-                    idx === carouselIndex
-                      ? 'opacity-100 translate-x-0'
-                      : idx < carouselIndex
-                      ? 'opacity-0 -translate-x-full'
-                      : 'opacity-0 translate-x-full'
-                  }`}
-                >
-                  <div className="animate-fade-in-up">
-                    <p className="text-6xl mb-4 animate-float">{item.icon}</p>
-                    <p className="text-2xl font-bold mb-4">{item.title}</p>
-                    <p className="mt-2 text-gray-100 max-w-xs">{item.description}</p>
-                  </div>
-                </div>
-              ))}
-
-              {/* Indicadores de progreso */}
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 z-10">
-                {carouselItems.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCarouselIndex(idx)}
-                    className={`h-2 rounded-full transition-all ${
-                      idx === carouselIndex
-                        ? 'bg-white w-8 animate-pulse'
-                        : 'bg-white/50 w-2 hover:bg-white/70'
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
+      {/* ── ISO TICKER ── */}
+      <div style={{ background: 'var(--accent)', padding: '14px 0', overflow: 'hidden', position: 'relative' }}>
+        <div className="ticker-track">
+          {[...ISOS, ...ISOS, ...ISOS, ...ISOS].map((iso, i) => (
+            <span key={i} style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'white', paddingRight: 48, whiteSpace: 'nowrap' }}>
+              {iso} <span style={{ opacity: 0.5, marginRight: 48 }}>—</span>
+            </span>
+          ))}
         </div>
-      </section>
+      </div>
 
-      {/* ============ FEATURES SECTION ============ */}
-      <section id="features" className="py-20 bg-gray-50 relative overflow-hidden">
-        <AnimatedBackground />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4 animate-fade-in-up">Características Principales</h2>
-            <p className="text-lg text-gray-600 animate-fade-in-up animate-delay-1">Integración completa de tres sistemas potentes en una sola plataforma</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {FEATURES.map((feature, idx) => (
-              <div key={idx} className={`bg-white p-8 rounded-xl border border-gray-200 hover:shadow-xl hover:shadow-blue-200 transition-all transform hover:-translate-y-2 hover:border-blue-300 animate-fade-in-up ${idx === 0 ? 'animate-delay-1' : idx === 1 ? 'animate-delay-2' : idx === 2 ? 'animate-delay-3' : idx === 3 ? 'animate-delay-4' : idx === 4 ? 'animate-delay-5' : 'animate-delay-6'}`}>
-                <p className="text-4xl mb-4 hover:scale-125 transition transform duration-300">{feature.icon}</p>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">{feature.title}</h3>
-                <p className="text-gray-600">{feature.description}</p>
+      {/* ── STATS ── */}
+      <section style={{ padding: '100px 32px', background: 'var(--ink-2)' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
+            {STATS.map((s, i) => (
+              <div key={i} className="sr" style={{ transitionDelay: `${i * 0.1}s`, padding: '48px 40px', background: i % 2 === 0 ? 'var(--ink-3)' : 'var(--ink-2)', borderLeft: i === 0 ? '3px solid var(--accent)' : 'none' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'clamp(40px, 5vw, 64px)', lineHeight: 1, letterSpacing: '-0.04em', color: i === 0 ? 'var(--accent)' : 'var(--white)', marginBottom: 12 }}>
+                  <Counter value={s.value} suffix={s.suffix} />
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--muted)', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 500 }}>{s.label}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ============ TESTIMONIALS SECTION ============ */}
-      <section className="py-20 bg-white relative overflow-hidden reveal-on-scroll">
-        <AnimatedBackground />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4 animate-fade-in-up">Lo que dicen nuestros clientes</h2>
+      {/* ── MÓDULOS ── */}
+      <section id="modulos" style={{ padding: '120px 32px', background: 'var(--ink)' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+          <div className="sr" style={{ marginBottom: 80 }}>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.12em', color: 'var(--accent)', textTransform: 'uppercase', display: 'block', marginBottom: 20 }}>Módulos</span>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'clamp(36px, 5vw, 60px)', letterSpacing: '-0.03em', lineHeight: 0.95, margin: 0, maxWidth: 600 }}>
+              Todo lo que necesitás,<br />
+              <span className="grad-text">en un solo lugar.</span>
+            </h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {TESTIMONIALS.map((testimonial, idx) => (
-              <div key={idx} className={`bg-gray-50 p-8 rounded-xl border border-gray-200 hover:shadow-xl hover:shadow-amber-100 hover:border-amber-300 transition-all transform hover:-translate-y-2 animate-fade-in-up ${idx === 0 ? 'animate-delay-1' : idx === 1 ? 'animate-delay-2' : 'animate-delay-3'}`}>
-                <div className="flex gap-1 mb-4">
-                  {[...Array(testimonial.rating)].map((_, i) => (
-                    <span key={i} className="text-amber-400 text-xl animate-float" style={{ animationDelay: `${i * 0.1}s` }}>★</span>
-                  ))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 1, background: 'rgba(255,255,255,0.05)' }}>
+            {MODULES.map((m, i) => (
+              <div key={i} className="sr module-card" style={{ transitionDelay: `${i * 0.07}s`, background: 'var(--ink)', padding: '40px 36px', border: '1px solid rgba(255,255,255,0.06)', cursor: 'default' }}>
+                <div style={{ width: 44, height: 44, background: 'rgba(232,84,26,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+                  <m.icon size={22} color="var(--accent)" />
                 </div>
-                <p className="text-gray-600 mb-6 italic">{testimonial.text}</p>
-                <div>
-                  <p className="font-bold text-gray-900">{testimonial.name}</p>
-                  <p className="text-sm text-gray-500">{testimonial.role}</p>
-                </div>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17, marginBottom: 12, color: 'var(--white)' }}>{m.label}</div>
+                <div style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.6 }}>{m.desc}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ============ PRICING SECTION ============ */}
-      <section className="py-20 bg-white relative overflow-hidden reveal-on-scroll">
-        <AnimatedBackground />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4 animate-fade-in-up">Planes para Todos</h2>
-            <p className="text-lg text-gray-600 animate-fade-in-up animate-delay-1">Elige el plan perfecto para tu empresa</p>
+      {/* ── PLANES ── */}
+      <section id="planes" style={{ padding: '120px 32px', background: 'var(--ink-2)' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+          <div className="sr" style={{ marginBottom: 72, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 24 }}>
+            <div>
+              <span style={{ fontSize: 11, fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.12em', color: 'var(--accent)', textTransform: 'uppercase', display: 'block', marginBottom: 20 }}>Planes</span>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'clamp(36px, 5vw, 60px)', letterSpacing: '-0.03em', lineHeight: 0.95, margin: 0 }}>
+                Simple.<br />Transparente.
+              </h2>
+            </div>
+            <p style={{ fontSize: 15, color: 'var(--muted)', maxWidth: 320, lineHeight: 1.6 }}>Sin contratos anuales obligatorios. Cambiá de plan cuando quieras.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              { name: 'BÁSICO', price: '$35', features: ['Hasta 5 usuarios', 'Documentos y Normativos', 'No Conformidades', 'Indicadores de gestión', 'Soporte por email'], highlight: false },
-              { name: 'PROFESIONAL', price: '$69', features: ['Hasta 20 usuarios', 'Todo lo del plan Básico', 'Auditorías ISO completas', 'Capacitaciones y RRHH', 'Gestión de Riesgos', 'Soporte prioritario'], highlight: true },
-              { name: 'PREMIUM', price: '$99', features: ['Usuarios ilimitados', 'Todo lo del plan Profesional', 'Auditoría IA avanzada', 'Business Intelligence', 'Integraciones API', 'Gestión de Proyectos 360'], highlight: false }
-            ].map((plan, idx) => (
-              <div key={idx} className={`p-8 rounded-xl animate-fade-in-up transition-all transform hover:-translate-y-2 ${plan.highlight ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-xl scale-105' : 'bg-gray-50 border border-gray-200'} ${idx === 0 ? 'animate-delay-1' : idx === 1 ? 'animate-delay-2' : 'animate-delay-3'}`}>
-                <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
-                <p className="text-4xl font-bold mb-6">{plan.price}<span className="text-sm">/mes</span></p>
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((feature, i) => (
-                    <li key={i} className="flex items-center gap-2">
-                      <span className="text-lg">✓</span> {feature}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 2 }}>
+            {PLANS.map((plan, i) => (
+              <div key={i} className={`sr plan-card sr-delay-${i + 1}`} style={{
+                background: plan.highlight ? 'var(--accent)' : 'var(--ink-3)',
+                padding: '48px 40px',
+                border: plan.highlight ? 'none' : '1px solid rgba(255,255,255,0.06)',
+                position: 'relative',
+              }}>
+                {plan.highlight && (
+                  <div style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(0,0,0,0.2)', padding: '4px 12px', fontSize: 11, fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    Más popular
+                  </div>
+                )}
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 24, opacity: 0.7 }}>{plan.name}</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 64, letterSpacing: '-0.04em', lineHeight: 1, marginBottom: 8 }}>
+                  ${plan.price}
+                </div>
+                <div style={{ fontSize: 13, opacity: 0.6, marginBottom: 40 }}>USD / mes</div>
+                <div style={{ height: 1, background: plan.highlight ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)', marginBottom: 32 }} />
+                <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 40px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {plan.features.map((f, j) => (
+                    <li key={j} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, fontSize: 14, opacity: 0.9, lineHeight: 1.4 }}>
+                      <CheckCircle size={16} style={{ flexShrink: 0, marginTop: 1, opacity: plan.highlight ? 1 : 0.6 }} />
+                      {f}
                     </li>
                   ))}
                 </ul>
-                <button className={`w-full py-3 rounded-lg font-bold transition ${plan.highlight ? 'bg-white text-blue-600 hover:bg-gray-100' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                  Contratar Ahora
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ============ CLIENTES SECTION ============ */}
-      <section className="py-20 bg-gray-50 relative overflow-hidden reveal-on-scroll">
-        <AnimatedBackground />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">Confían en nosotros</h2>
-            <p className="text-lg text-gray-600">+500 empresas en toda Latinoamérica</p>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 items-center">
-            {['🏢 Acme Corp', '🏛️ Global SA', '⚙️ TechFlow', '📊 DataPro', '🔧 InnovateLab'].map((company, idx) => (
-              <div key={idx} className={`bg-white p-6 rounded-lg text-center border border-gray-200 hover:shadow-lg transition animate-fade-in-up ${idx === 0 ? 'animate-delay-1' : idx === 1 ? 'animate-delay-2' : idx === 2 ? 'animate-delay-3' : idx === 3 ? 'animate-delay-4' : 'animate-delay-5'}`}>
-                <p className="text-3xl mb-2">{company.split(' ')[0]}</p>
-                <p className="text-gray-600">{company.split(' ')[1]}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ============ INTEGRACIONES SECTION ============ */}
-      <section className="py-20 bg-white relative overflow-hidden reveal-on-scroll">
-        <AnimatedBackground />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">Integraciones</h2>
-            <p className="text-lg text-gray-600">Conecta con tus herramientas favoritas</p>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {['📊 Excel', '📈 Google Sheets', '☁️ Google Drive', '💾 OneDrive', '🔗 Zapier', '📞 Slack', '✉️ Gmail', '⚡ Power BI'].map((integration, idx) => (
-              <div key={idx} className={`bg-gray-50 p-6 rounded-lg text-center border border-gray-200 hover:border-blue-300 hover:shadow-lg transition animate-fade-in-up ${idx === 0 ? 'animate-delay-1' : idx === 1 ? 'animate-delay-2' : idx === 2 ? 'animate-delay-3' : idx === 3 ? 'animate-delay-4' : idx === 4 ? 'animate-delay-5' : 'animate-delay-6'}`}>
-                <p className="text-4xl mb-2">{integration.split(' ')[0]}</p>
-                <p className="text-gray-700 font-semibold">{integration.split(' ')[1]}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ============ FAQ SECTION ============ */}
-      <section id="faq" className="py-20 bg-gray-50 relative overflow-hidden reveal-on-scroll">
-        <AnimatedBackground />
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4 animate-fade-in-up">Preguntas Frecuentes</h2>
-            <p className="text-gray-600 animate-fade-in-up animate-delay-1">¿No encuentras lo que buscas? Contáctanos</p>
-          </div>
-
-          <div className="space-y-4">
-            {FAQS.map((faq, idx) => (
-              <div key={idx} className={`bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all transform hover:scale-102 animate-fade-in-up ${idx === 0 ? 'animate-delay-1' : idx === 1 ? 'animate-delay-2' : idx === 2 ? 'animate-delay-3' : idx === 3 ? 'animate-delay-4' : 'animate-delay-5'}`}>
                 <button
-                  onClick={() => setExpandedFAQ(expandedFAQ === idx ? null : idx)}
-                  className="w-full flex items-center justify-between p-6 hover:bg-blue-50 transition"
-                >
-                  <span className="font-semibold text-gray-900">{faq.question}</span>
-                  <ChevronDown className={`w-5 h-5 text-gray-600 transition transform duration-300 ${expandedFAQ === idx ? 'rotate-180' : ''}`} />
+                  onClick={() => setShowRegisterModal(true)}
+                  style={{
+                    width: '100%', padding: '14px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14,
+                    letterSpacing: '0.02em', cursor: 'pointer', transition: 'all 0.2s',
+                    background: plan.highlight ? 'white' : 'var(--accent)',
+                    color: plan.highlight ? 'var(--accent)' : 'white',
+                    border: 'none',
+                  }}>
+                  Empezar con {plan.name}
                 </button>
-                {expandedFAQ === idx && (
-                  <div className="px-6 pb-6 border-t border-gray-200 text-gray-600 animate-fade-in-down">
-                    {faq.answer}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ── */}
+      <section style={{ padding: '120px 32px', background: 'var(--ink)' }}>
+        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+          <div className="sr" style={{ marginBottom: 72 }}>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.12em', color: 'var(--accent)', textTransform: 'uppercase', display: 'block', marginBottom: 20 }}>FAQ</span>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'clamp(32px, 5vw, 52px)', letterSpacing: '-0.03em', lineHeight: 1, margin: 0 }}>
+              Preguntas frecuentes
+            </h2>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {FAQS.map((faq, i) => (
+              <div key={i} className="sr" style={{ transitionDelay: `${i * 0.08}s`, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <button
+                  onClick={() => setExpandedFAQ(expandedFAQ === i ? null : i)}
+                  style={{ width: '100%', background: 'none', border: 'none', padding: '28px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', gap: 24, textAlign: 'left' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16, color: 'var(--white)', letterSpacing: '-0.01em' }}>{faq.q}</span>
+                  <span style={{ color: 'var(--accent)', flexShrink: 0, fontSize: 22, lineHeight: 1 }}>{expandedFAQ === i ? '−' : '+'}</span>
+                </button>
+                {expandedFAQ === i && (
+                  <div style={{ paddingBottom: 28, color: 'var(--muted)', fontSize: 15, lineHeight: 1.7, paddingRight: 40 }}>
+                    {faq.a}
                   </div>
                 )}
               </div>
@@ -907,255 +504,164 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ============ FOOTER ============ */}
-      <footer id="contact" className="bg-gray-900 text-gray-300 py-16 animate-fade-in-up">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-8 mb-12">
-            {/* Company Info */}
+      {/* ── CTA FINAL ── */}
+      <section style={{ padding: '120px 32px', background: 'var(--accent)', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: -80, right: -80, width: 400, height: 400, borderRadius: '50%', background: 'rgba(0,0,0,0.1)', pointerEvents: 'none' }} />
+        <div style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+          <h2 className="sr" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'clamp(40px, 7vw, 80px)', letterSpacing: '-0.04em', lineHeight: 0.92, margin: '0 0 32px', color: 'white' }}>
+            Tu primer mes<br />es gratis.
+          </h2>
+          <p className="sr sr-delay-1" style={{ fontSize: 18, color: 'rgba(255,255,255,0.8)', marginBottom: 48, lineHeight: 1.6 }}>
+            Sin tarjeta de crédito. Sin compromisos. Empezá hoy.
+          </p>
+          <div className="sr sr-delay-2" style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => setShowRegisterModal(true)} style={{ background: 'white', color: 'var(--accent)', border: 'none', padding: '16px 40px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16, cursor: 'pointer', transition: 'transform 0.2s', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
+              onMouseLeave={e => (e.currentTarget.style.transform = 'none')}>
+              Crear cuenta gratis <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer id="contact" style={{ background: '#07070A', padding: '80px 32px 40px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1.5fr', gap: 48, marginBottom: 64 }}>
+            {/* Brand */}
             <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-white" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <div style={{ width: 32, height: 32, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Zap size={18} color="white" />
                 </div>
-                <span className="font-bold text-white">SGI 360</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 16, color: 'var(--white)' }}>SGI 360</span>
               </div>
-              <p className="text-sm mb-4">Soluciones integrales de gestión empresarial con tecnología de punta.</p>
-              <div className="flex gap-3">
-                {landingSettings?.facebook ? <a href={landingSettings.facebook} target="_blank"><Facebook className="w-5 h-5 cursor-pointer hover:text-blue-400" /></a> : <Facebook className="w-5 h-5 cursor-pointer hover:text-blue-400" />}
-                {landingSettings?.twitter ? <a href={landingSettings.twitter} target="_blank"><Twitter className="w-5 h-5 cursor-pointer hover:text-blue-400" /></a> : <Twitter className="w-5 h-5 cursor-pointer hover:text-blue-400" />}
-                {landingSettings?.linkedin ? <a href={landingSettings.linkedin} target="_blank"><Linkedin className="w-5 h-5 cursor-pointer hover:text-blue-400" /></a> : <Linkedin className="w-5 h-5 cursor-pointer hover:text-blue-400" />}
+              <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 24, maxWidth: 260 }}>
+                Plataforma de gestión integrada para empresas que toman en serio su calidad.
+              </p>
+              <div style={{ display: 'flex', gap: 16 }}>
+                {landingSettings?.facebook && <a href={landingSettings.facebook} target="_blank"><Facebook size={18} color="var(--muted)" /></a>}
+                {landingSettings?.twitter && <a href={landingSettings.twitter} target="_blank"><Twitter size={18} color="var(--muted)" /></a>}
+                {landingSettings?.linkedin && <a href={landingSettings.linkedin} target="_blank"><Linkedin size={18} color="var(--muted)" /></a>}
+                {!landingSettings?.facebook && !landingSettings?.twitter && !landingSettings?.linkedin && (
+                  <>
+                    <Facebook size={18} color="var(--muted)" style={{ cursor: 'pointer' }} />
+                    <Twitter size={18} color="var(--muted)" style={{ cursor: 'pointer' }} />
+                    <Linkedin size={18} color="var(--muted)" style={{ cursor: 'pointer' }} />
+                  </>
+                )}
               </div>
             </div>
 
             {/* Productos */}
             <div>
-              <h4 className="font-bold text-white mb-4">Productos</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-blue-400">SGI 360</a></li>
-                <li><a href="#" className="hover:text-blue-400">SEH 360</a></li>
-                <li><a href="#" className="hover:text-blue-400">Audit360</a></li>
-              </ul>
-            </div>
-
-            {/* Recursos */}
-            <div>
-              <h4 className="font-bold text-white mb-4">Recursos</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-blue-400">Centro de Ayuda</a></li>
-                <li><a href="#" className="hover:text-blue-400">Estado del Sistema</a></li>
-                <li><a href="#" className="hover:text-blue-400">Documentación</a></li>
-              </ul>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--white)', marginBottom: 20 }}>Productos</div>
+              {['SGI 360', 'SEH 360', 'Audit360'].map(p => (
+                <a key={p} href="#" style={{ display: 'block', color: 'var(--muted)', textDecoration: 'none', fontSize: 14, marginBottom: 12, transition: 'color 0.2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--white)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}>{p}</a>
+              ))}
             </div>
 
             {/* Legal */}
             <div>
-              <h4 className="font-bold text-white mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-blue-400">Términos</a></li>
-                <li><a href="#" className="hover:text-blue-400">Privacidad</a></li>
-                <li><a href="#" className="hover:text-blue-400">Cookies</a></li>
-              </ul>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--white)', marginBottom: 20 }}>Legal</div>
+              {['Términos', 'Privacidad', 'Cookies'].map(p => (
+                <a key={p} href="#" style={{ display: 'block', color: 'var(--muted)', textDecoration: 'none', fontSize: 14, marginBottom: 12, transition: 'color 0.2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--white)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}>{p}</a>
+              ))}
             </div>
 
-            {/* Soporte */}
+            {/* Recursos */}
             <div>
-              <h4 className="font-bold text-white mb-4">Soporte</h4>
-              <ul className="space-y-3 text-sm">
-                <li className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4" />
-                  Chat 24/7
-                </li>
-                <li className="flex items-center gap-2">
-                  <Mail className="w-4 h-4" />
-                  {landingSettings?.email || 'support@sgi360.com'}
-                </li>
-                <li className="flex items-center gap-2">
-                  <Phone className="w-4 h-4" />
-                  {landingSettings?.phone || '+56 2 1234 5678'}
-                </li>
-              </ul>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--white)', marginBottom: 20 }}>Recursos</div>
+              {['Centro de Ayuda', 'Documentación', 'Estado del Sistema'].map(p => (
+                <a key={p} href="#" style={{ display: 'block', color: 'var(--muted)', textDecoration: 'none', fontSize: 14, marginBottom: 12, transition: 'color 0.2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--white)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}>{p}</a>
+              ))}
+            </div>
+
+            {/* Contacto */}
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--white)', marginBottom: 20 }}>Contacto</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <a href={`mailto:${landingSettings?.email || 'info@sgi360.com'}`} style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--muted)', textDecoration: 'none', fontSize: 14 }}>
+                  <Mail size={15} /> {landingSettings?.email || 'info@sgi360.com'}
+                </a>
+                <a href={`tel:${landingSettings?.phone || ''}`} style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--muted)', textDecoration: 'none', fontSize: 14 }}>
+                  <Phone size={15} /> {landingSettings?.phone || '+54 011 15 66169368'}
+                </a>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--muted)', fontSize: 14 }}>
+                  <MapPin size={15} /> {landingSettings?.address || 'Buenos Aires, Argentina'}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="border-t border-gray-800 pt-8">
-            <div className="flex flex-col md:flex-row justify-between items-center">
-              <p className="text-sm">&copy; 2025 SGI 360. Todos los derechos reservados.</p>
-              <div className="flex gap-4 mt-4 md:mt-0">
-                <span className="px-3 py-1 bg-gray-800 rounded text-xs">ISO 9001:2015</span>
-                <span className="px-3 py-1 bg-gray-800 rounded text-xs">ISO 45001:2018</span>
-                <span className="px-3 py-1 bg-gray-800 rounded text-xs">ISO 14001:2015</span>
-              </div>
+          {/* Bottom bar */}
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>© 2025 SGI 360. Todos los derechos reservados.</span>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {['ISO 9001:2015', 'ISO 45001:2018', 'ISO 14001:2015'].map(tag => (
+                <span key={tag} style={{ fontSize: 11, color: 'var(--muted)', border: '1px solid rgba(255,255,255,0.08)', padding: '4px 10px', fontFamily: 'var(--font-display)', fontWeight: 600, letterSpacing: '0.05em' }}>{tag}</span>
+              ))}
             </div>
           </div>
         </div>
       </footer>
 
-      {/* ============ REGISTRATION MODAL ============ */}
+      {/* ── REGISTER MODAL ── */}
       {showRegisterModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in-up">
-          <div className="bg-white border border-gray-200 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-fade-in-up shadow-2xl">
-            <div className="p-8">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Registrar Nueva Empresa</h2>
-                <button
-                  onClick={() => setShowRegisterModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmitRegistration} className="space-y-6">
-                {/* Logo */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Logo de Empresa</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-gray-400 transition">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                      id="logo-input"
-                    />
-                    <label htmlFor="logo-input" className="cursor-pointer">
-                      {formData.logo ? (
-                        <p className="text-gray-700">{formData.logo.name}</p>
-                      ) : (
-                        <div>
-                          <p className="text-gray-600">Haz clic para subir logo</p>
-                          <p className="text-xs text-gray-500">PNG, JPG, SVG máx 2MB</p>
-                        </div>
-                      )}
-                    </label>
-                  </div>
-                </div>
-
-                {/* Grid de campos */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Nombre Empresa *</label>
-                    <input
-                      type="text"
-                      name="companyName"
-                      value={formData.companyName}
-                      onChange={handleInputChange}
-                      required
-                      className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Acme Corp"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Razón Social</label>
-                    <input
-                      type="text"
-                      name="socialReason"
-                      value={formData.socialReason}
-                      onChange={handleInputChange}
-                      className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Acme Corporation S.A."
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">RUT / Tax ID *</label>
-                    <input
-                      type="text"
-                      name="rut"
-                      value={formData.rut}
-                      onChange={handleInputChange}
-                      required
-                      className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="12345678-9"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      required
-                      className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="empresa@example.com"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Teléfono</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="+56 9 1234 5678"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Sitio Web</label>
-                    <input
-                      type="url"
-                      name="website"
-                      value={formData.website}
-                      onChange={handleInputChange}
-                      className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="https://example.com"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Dirección</label>
-                  <input
-                    type="text"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Calle Principal 123, Piso 5"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Color Corporativo</label>
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="color"
-                      name="primaryColor"
-                      value={formData.primaryColor}
-                      onChange={handleInputChange}
-                      className="w-16 h-10 rounded cursor-pointer"
-                    />
-                    <span className="text-sm text-gray-500">{formData.primaryColor}</span>
-                  </div>
-                </div>
-
-                <div className="flex gap-4 pt-6">
-                  <Button
-                    type="button"
-                    onClick={() => setShowRegisterModal(false)}
-                    className="flex-1 bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    {loading ? 'Enviando...' : 'Registrar Empresa'}
-                  </Button>
-                </div>
-              </form>
-            </div>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: 'var(--ink-2)', border: '1px solid rgba(255,255,255,0.1)', padding: '48px', maxWidth: 480, width: '100%', position: 'relative' }}>
+            <button onClick={() => setShowRegisterModal(false)} style={{ position: 'absolute', top: 20, right: 20, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 22 }}>×</button>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, letterSpacing: '-0.03em', marginBottom: 8 }}>Crear cuenta</div>
+            <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 32 }}>Gratis por 30 días. Sin tarjeta de crédito.</p>
+            <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <input required placeholder="Nombre de la empresa" value={formData.companyName} onChange={e => setFormData(p => ({ ...p, companyName: e.target.value }))}
+                style={{ background: 'var(--ink-3)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--white)', padding: '14px 16px', fontSize: 15, fontFamily: 'var(--font-body)', outline: 'none', width: '100%' }} />
+              <input required type="email" placeholder="Email corporativo" value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))}
+                style={{ background: 'var(--ink-3)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--white)', padding: '14px 16px', fontSize: 15, fontFamily: 'var(--font-body)', outline: 'none', width: '100%' }} />
+              <input placeholder="Teléfono (opcional)" value={formData.phone} onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))}
+                style={{ background: 'var(--ink-3)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--white)', padding: '14px 16px', fontSize: 15, fontFamily: 'var(--font-body)', outline: 'none', width: '100%' }} />
+              <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 8, padding: '16px' }}>
+                {loading ? 'Creando cuenta...' : 'Empezar gratis'} {!loading && <ArrowRight size={16} />}
+              </button>
+            </form>
           </div>
         </div>
       )}
-    </div>
+    
+      
+        href="https://wa.me/5491115661693688"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          position: 'fixed',
+          bottom: 28,
+          right: 28,
+          width: 58,
+          height: 58,
+          borderRadius: '50%',
+          background: '#25D366',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 24px rgba(37,211,102,0.4)',
+          zIndex: 999,
+          transition: 'transform 0.2s, box-shadow 0.2s',
+          textDecoration: 'none',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(37,211,102,0.5)'; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 24px rgba(37,211,102,0.4)'; }}
+      >
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="white">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+          <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.855L.057 23.943l6.284-1.648A11.933 11.933 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.002-1.368l-.359-.213-3.728.977.995-3.638-.234-.374A9.818 9.818 0 1112 21.818z"/>
+        </svg>
+      </a>
+    </>
   );
 }
