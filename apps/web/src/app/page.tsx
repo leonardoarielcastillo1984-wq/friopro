@@ -171,6 +171,56 @@ export default function Home() {
         </div>
       </section>
 
+
+      {/* PRODUCTOS */}
+      <section style={{ padding: '100px 40px', background: '#F0EEE9' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+          <div className="sr" style={{ marginBottom: 64 }}>
+            <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.12em', color: '#E8541A', textTransform: 'uppercase' as const, display: 'block', marginBottom: 16 }}>Ecosistema</span>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(22px, 2.8vw, 36px)', letterSpacing: '-0.02em', lineHeight: 1, margin: 0, color: '#1A1A1A' }}>
+              Tres productos.<br />Un solo ecosistema.
+            </h2>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            {[
+              {
+                tag: 'SGI 360',
+                title: 'Sistema de Gestión Integrado',
+                features: ['Gestión multi-norma ISO en una sola plataforma', 'Documentos, auditorías, indicadores y más', 'IA integrada para análisis y reportes'],
+                available: true,
+              },
+              {
+                tag: 'SEH 360',
+                title: 'Seguridad e Higiene Laboral',
+                features: ['Gestión de Riesgos Laborales', 'Investigación de Incidentes', 'EPP y Controles'],
+                available: true,
+              },
+              {
+                tag: 'AUDIT 360',
+                title: 'Para Auditores y Consultoras',
+                features: ['Gestión de clientes y empresas auditadas', 'Planificación y ejecución de auditorías externas', 'Generación de informes profesionales'],
+                available: false,
+              },
+            ].map((p, i) => (
+              <div key={i} className="sr module-card-light" style={{ transitionDelay: `${i * 0.1}s`, background: 'white', padding: '40px 36px', border: '1px solid rgba(0,0,0,0.08)', position: 'relative' as const }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                  <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#E8541A', background: 'rgba(232,84,26,0.08)', padding: '4px 10px' }}>{p.tag}</span>
+                  {!p.available && <span style={{ fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#999990', border: '1px solid rgba(0,0,0,0.1)', padding: '3px 8px' }}>Próximamente</span>}
+                </div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 18, marginBottom: 24, color: '#1A1A1A', lineHeight: 1.3 }}>{p.title}</div>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+                  {p.features.map((f, j) => (
+                    <li key={j} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#666660', fontFamily: "'Syne', sans-serif", lineHeight: 1.5 }}>
+                      <span style={{ color: '#E8541A', flexShrink: 0, marginTop: 1 }}>→</span>{f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* MÓDULOS */}
       <section id="modulos" style={{ padding: '100px 40px', background: '#F0EEE9' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto' }}>
