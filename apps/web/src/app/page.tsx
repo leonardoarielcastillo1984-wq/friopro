@@ -88,8 +88,11 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyName: formData.companyName, socialReason: formData.companyName, email: formData.email, phone: formData.phone, rut: 'N/A', website: '', address: 'N/A', primaryColor: '#E8541A' }),
       });
+      const data = await res.json();
+      console.log('Register response:', res.status, data);
       if (res.status < 400) { setRegistered(true); }
-    } catch {}
+      else { alert('Error: ' + (data.error || 'Error desconocido')); }
+    } catch(e) { console.error(e); }
     setLoading(false);
   };
 
