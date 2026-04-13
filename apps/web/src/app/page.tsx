@@ -101,7 +101,7 @@ export default function Home() {
             <div style={{ width: 34, height: 34, background: '#E8541A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Zap size={18} color="white" />
             </div>
-            <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 17, color: '#1A1A1A', letterSpacing: '-0.02em' }}>SGI 360</span>
+            <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 17, color: '#1A1A1A', letterSpacing: '-0.01em' }}>SGI 360</span>
           </a>
           <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
             {NAV_LINKS.map(l => (
@@ -257,7 +257,7 @@ export default function Home() {
                 <div style={{ width: 32, height: 32, background: '#E8541A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Zap size={16} color="white" />
                 </div>
-                <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 16, color: '#FAFAF8' }}>SGI 360</span>
+                <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 16, color: '#FAFAF8' }}>SGI 360</span>
               </div>
               <p style={{ fontSize: 13, color: '#888880', lineHeight: 1.7, marginBottom: 24, maxWidth: 240, fontFamily: "'Syne', sans-serif" }}>Plataforma de gestión integrada para empresas que toman en serio su calidad.</p>
               <div style={{ display: 'flex', gap: 16 }}>
