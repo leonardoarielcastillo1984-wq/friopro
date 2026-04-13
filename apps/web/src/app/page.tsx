@@ -323,7 +323,7 @@ const FAQS = [
 // Hook para scroll reveal animations
 const useScrollReveal = () => {
   useEffect(() => {
-    fetch('/api/landing/settings')
+    fetch('https://logismart.ar/api/landing/settings')
       .then(r => r.json())
       .then(data => { if (data.settings) setLandingSettings(data.settings); })
       .catch(() => {});
