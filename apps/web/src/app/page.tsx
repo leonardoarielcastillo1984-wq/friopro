@@ -122,7 +122,7 @@ export default function Home() {
             <span className="pulse-dot-dark" />
             <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.1em', color: '#E8541A', textTransform: 'uppercase' as const }}>Sistema de Gestión Integrado</span>
           </div>
-          <h1 className="sr sr-delay-1" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 'clamp(36px, 5vw, 72px)', lineHeight: 0.95, letterSpacing: '-0.035em', margin: '0 0 24px', maxWidth: 800 }}>
+          <h1 className="sr sr-delay-1" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(36px, 5vw, 72px)', lineHeight: 0.95, letterSpacing: '-0.035em', margin: '0 0 24px', maxWidth: 800 }}>
             <span style={{ display: 'block', color: '#1A1A1A' }}>Gestión ISO</span>
             <span style={{ display: 'block', color: '#1A1A1A' }}>sin caos.</span>
             <span style={{ display: 'block', color: '#E8541A' }}>Sin excusas.</span>
@@ -163,7 +163,7 @@ export default function Home() {
               { value: '15 años', label: 'Experiencia ISO', orange: true },
             ].map((s, i) => (
               <div key={i} className="sr stat-card-light" style={{ transitionDelay: `${i * 0.1}s`, background: s.orange ? '#E8541A' : 'white', padding: '36px 28px', borderLeft: s.accent ? '3px solid #E8541A' : 'none' }}>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 'clamp(36px, 4vw, 52px)', lineHeight: 1, letterSpacing: '-0.04em', color: s.orange ? 'white' : s.accent ? '#E8541A' : '#1A1A1A', marginBottom: 8 }}>{s.value}</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(36px, 4vw, 52px)', lineHeight: 1, letterSpacing: '-0.04em', color: s.orange ? 'white' : s.accent ? '#E8541A' : '#1A1A1A', marginBottom: 8 }}>{s.value}</div>
                 <div style={{ fontSize: 11, color: s.orange ? 'rgba(255,255,255,0.7)' : '#999990', letterSpacing: '0.06em', textTransform: 'uppercase' as const, fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>{s.label}</div>
               </div>
             ))}
@@ -176,7 +176,7 @@ export default function Home() {
         <div style={{ maxWidth: 1280, margin: '0 auto' }}>
           <div className="sr" style={{ marginBottom: 64 }}>
             <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.12em', color: '#E8541A', textTransform: 'uppercase' as const, display: 'block', marginBottom: 16 }}>Módulos</span>
-            <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 'clamp(32px, 4vw, 52px)', letterSpacing: '-0.03em', lineHeight: 0.95, margin: 0, color: '#1A1A1A' }}>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(24px, 3vw, 38px)', letterSpacing: '-0.03em', lineHeight: 0.95, margin: 0, color: '#1A1A1A' }}>
               Todo lo que necesitás,<br /><span style={{ color: '#E8541A' }}>en un solo lugar.</span>
             </h2>
           </div>
@@ -199,7 +199,7 @@ export default function Home() {
         <div style={{ maxWidth: 1280, margin: '0 auto' }}>
           <div className="sr" style={{ marginBottom: 56 }}>
             <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.12em', color: '#E8541A', textTransform: 'uppercase' as const, display: 'block', marginBottom: 16 }}>Planes</span>
-            <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 'clamp(32px, 4vw, 52px)', letterSpacing: '-0.03em', lineHeight: 0.95, margin: 0, color: '#1A1A1A' }}>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(24px, 3vw, 38px)', letterSpacing: '-0.03em', lineHeight: 0.95, margin: 0, color: '#1A1A1A' }}>
               Simple.<br />Transparente.
             </h2>
           </div>
@@ -208,7 +208,7 @@ export default function Home() {
               <div key={i} className="sr plan-card-light" style={{ transitionDelay: `${i * 0.1}s`, background: plan.highlight ? '#E8541A' : 'white', padding: '40px 32px', border: plan.highlight ? 'none' : '1px solid rgba(0,0,0,0.08)', position: 'relative' }}>
                 {plan.highlight && <div style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(0,0,0,0.15)', padding: '3px 10px', fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'white' }}>Más popular</div>}
                 <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginBottom: 20, color: plan.highlight ? 'rgba(255,255,255,0.7)' : '#999990' }}>{plan.name}</div>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 56, letterSpacing: '-0.04em', lineHeight: 1, marginBottom: 6, color: plan.highlight ? 'white' : '#1A1A1A' }}>${plan.price}</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 56, letterSpacing: '-0.04em', lineHeight: 1, marginBottom: 6, color: plan.highlight ? 'white' : '#1A1A1A' }}>${plan.price}</div>
                 <div style={{ fontSize: 12, color: plan.highlight ? 'rgba(255,255,255,0.6)' : '#999990', marginBottom: 32, fontFamily: "'Syne', sans-serif" }}>USD / mes</div>
                 <div style={{ height: 1, background: plan.highlight ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.08)', marginBottom: 28 }} />
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 36px', display: 'flex', flexDirection: 'column' as const, gap: 11 }}>
@@ -232,7 +232,7 @@ export default function Home() {
         <div style={{ maxWidth: 760, margin: '0 auto' }}>
           <div className="sr" style={{ marginBottom: 56 }}>
             <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.12em', color: '#E8541A', textTransform: 'uppercase' as const, display: 'block', marginBottom: 16 }}>FAQ</span>
-            <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 'clamp(28px, 4vw, 48px)', letterSpacing: '-0.03em', lineHeight: 1, margin: 0, color: '#1A1A1A' }}>Preguntas frecuentes</h2>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(22px, 2.8vw, 36px)', letterSpacing: '-0.03em', lineHeight: 1, margin: 0, color: '#1A1A1A' }}>Preguntas frecuentes</h2>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' as const }}>
             {FAQS.map((faq, i) => (
@@ -305,7 +305,7 @@ export default function Home() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ background: 'white', border: '1px solid rgba(0,0,0,0.1)', padding: '48px', maxWidth: 460, width: '100%', position: 'relative' }}>
             <button onClick={() => setShowModal(false)} style={{ position: 'absolute', top: 20, right: 20, background: 'none', border: 'none', color: '#999990', cursor: 'pointer', fontSize: 22 }}>×</button>
-            <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 26, letterSpacing: '-0.03em', marginBottom: 8, color: '#1A1A1A' }}>Crear cuenta</div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 26, letterSpacing: '-0.03em', marginBottom: 8, color: '#1A1A1A' }}>Crear cuenta</div>
             <p style={{ color: '#999990', fontSize: 14, marginBottom: 28, fontFamily: "'Syne', sans-serif" }}>Gratis por 30 días. Sin tarjeta de crédito.</p>
             <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column' as const, gap: 14 }}>
               <input required placeholder="Nombre de la empresa" value={formData.companyName} onChange={e => setFormData(p => ({ ...p, companyName: e.target.value }))} style={{ background: '#F5F4F0', border: '1px solid rgba(0,0,0,0.1)', color: '#1A1A1A', padding: '13px 16px', fontSize: 14, outline: 'none', width: '100%', fontFamily: "'Syne', sans-serif" }} />
