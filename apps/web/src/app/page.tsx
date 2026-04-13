@@ -323,6 +323,13 @@ const FAQS = [
 // Hook para scroll reveal animations
 const useScrollReveal = () => {
   useEffect(() => {
+    fetch('/api/landing/settings')
+      .then(r => r.json())
+      .then(data => { if (data.settings) setLandingSettings(data.settings); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
@@ -404,6 +411,7 @@ const AnimatedBackground = ({ variant = 'default' }) => {
 
 export default function Home() {
   const router = useRouter();
+  const [landingSettings, setLandingSettings] = useState<any>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -911,9 +919,9 @@ export default function Home() {
               </div>
               <p className="text-sm mb-4">Soluciones integrales de gestión empresarial con tecnología de punta.</p>
               <div className="flex gap-3">
-                <Facebook className="w-5 h-5 cursor-pointer hover:text-blue-400" />
-                <Twitter className="w-5 h-5 cursor-pointer hover:text-blue-400" />
-                <Linkedin className="w-5 h-5 cursor-pointer hover:text-blue-400" />
+                {landingSettings?.facebook ? <a href={landingSettings.facebook} target="_blank"><Facebook className="w-5 h-5 cursor-pointer hover:text-blue-400" /></a> : <Facebook className="w-5 h-5 cursor-pointer hover:text-blue-400" />}
+                {landingSettings?.twitter ? <a href={landingSettings.twitter} target="_blank"><Twitter className="w-5 h-5 cursor-pointer hover:text-blue-400" /></a> : <Twitter className="w-5 h-5 cursor-pointer hover:text-blue-400" />}
+                {landingSettings?.linkedin ? <a href={landingSettings.linkedin} target="_blank"><Linkedin className="w-5 h-5 cursor-pointer hover:text-blue-400" /></a> : <Linkedin className="w-5 h-5 cursor-pointer hover:text-blue-400" />}
               </div>
             </div>
 
@@ -957,11 +965,11 @@ export default function Home() {
                 </li>
                 <li className="flex items-center gap-2">
                   <Mail className="w-4 h-4" />
-                  support@sgi360.com
+                  {landingSettings?.email || 'support@sgi360.com'}
                 </li>
                 <li className="flex items-center gap-2">
                   <Phone className="w-4 h-4" />
-                  +56 2 1234 5678
+                  {landingSettings?.phone || '+56 2 1234 5678'}
                 </li>
               </ul>
             </div>
