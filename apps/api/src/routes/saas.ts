@@ -2,6 +2,7 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { sendEmail, notificationEmail } from '../services/email.js';
 
 // Schemas de validación
 const onboardingSchema = z.object({
@@ -221,6 +222,45 @@ export default async function saasRoutes(app: FastifyInstance) {
         tenant.adminEmail
       );
 
+      // Enviar email de notificación al admin sobre el cambio de plan
+      try {
+        const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
+        const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
+        
+        const currentPlan = await app.prisma.plan.findUnique({
+          where: { id: tenant.subscription?.planId || '' }
+        });
+        
+        const isUpgrade = currentPlan && newPlan.monthlyPrice > currentPlan.monthlyPrice;
+        const changeType = isUpgrade ? 'Upgrade' : 'Downgrade';
+        
+        const emailPayload = notificationEmail({
+          userEmail: adminEmail,
+          title: `Solicitud de ${changeType} de Plan - SGI 360`,
+          message: `Un cliente ha solicitado un cambio de plan:\n\n` +
+            `<strong>Empresa:</strong> ${tenant.companyName}\n` +
+            `<strong>Email:</strong> ${tenant.adminEmail}\n` +
+            `<strong>Plan actual:</strong> ${currentPlan?.name || 'Sin plan'}\n` +
+            `<strong>Plan solicitado:</strong> ${newPlan.name}\n` +
+            `<strong>Tipo de cambio:</strong> ${changeType}\n` +
+            `<strong>Ciclo de facturación:</strong> ${validatedData.billingCycle === 'ANNUAL' ? 'Anual' : 'Mensual'}\n` +
+            `<strong>Monto:</strong> $${validatedData.billingCycle === 'ANNUAL' ? newPlan.annualPrice : newPlan.monthlyPrice} ARS\n\n` +
+            `El cliente ha iniciado el proceso de pago en MercadoPago.`,
+          actionLabel: 'Ver solicitud de cambio',
+          actionUrl: `${appUrl}/admin/subscriptions`,
+          type: 'info',
+        });
+        
+        const emailResult = await sendEmail(emailPayload);
+        if (emailResult.success) {
+          app.log.info(`[SaaS] Email de ${changeType.toLowerCase()} enviado a ${adminEmail}`);
+        } else {
+          app.log.error(`[SaaS] Error enviando email de ${changeType.toLowerCase()}: ${emailResult.error}`);
+        }
+      } catch (emailError) {
+        app.log.error(`[SaaS] Error enviando notificación de ${changeType.toLowerCase()}: ${emailError}`);
+      }
+
       return reply.send({
         success: true,
         subscription,
@@ -258,7 +298,53 @@ export default async function saasRoutes(app: FastifyInstance) {
         return reply.code(401).send({ error: 'Tenant context required' });
       }
 
+      // Obtener información del tenant antes de cancelar
+      const tenant = await app.prisma.tenant.findUnique({
+        where: { id: request.db.tenantId },
+        include: {
+          subscription: {
+            include: {
+              plan: true
+            }
+          }
+        }
+      });
+
       await app.mercadoPagoService.cancelSubscription(request.db.tenantId);
+
+      // Enviar email de notificación al admin sobre la cancelación
+      if (tenant) {
+        try {
+          const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
+          const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
+          
+          const emailPayload = notificationEmail({
+            userEmail: adminEmail,
+            title: '⚠️ Cancelación de Suscripción - SGI 360',
+            message: `Un cliente ha cancelado su suscripción:\n\n` +
+              `<strong>Empresa:</strong> ${tenant.companyName}\n` +
+              `<strong>Email:</strong> ${tenant.adminEmail}\n` +
+              `<strong>Plan cancelado:</strong> ${tenant.subscription?.plan?.name || 'Sin plan'}\n` +
+              `<strong>Fecha de cancelación:</strong> ${new Date().toLocaleDateString('es-AR')}\n\n` +
+              `Acciones recomendadas:\n` +
+              `• Contactar al cliente para entender el motivo\n` +
+              `• Ofrecer alternativas o descuentos\n` +
+              `• Programar seguimiento para posible reconversión`,
+            actionLabel: 'Ver detalles del cliente',
+            actionUrl: `${appUrl}/admin/customers/${tenant.id}`,
+            type: 'warning',
+          });
+          
+          const emailResult = await sendEmail(emailPayload);
+          if (emailResult.success) {
+            app.log.info(`[SaaS] Email de cancelación enviado a ${adminEmail}`);
+          } else {
+            app.log.error(`[SaaS] Error enviando email de cancelación: ${emailResult.error}`);
+          }
+        } catch (emailError) {
+          app.log.error(`[SaaS] Error enviando notificación de cancelación: ${emailError}`);
+        }
+      }
       
       return reply.send({ cancelled: true });
     } catch (error) {

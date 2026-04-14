@@ -4,8 +4,13 @@ import { buildApp } from './app.js';
 import { shutdownQueue } from './jobs/queue.js';
 import { systemMonitor } from './services/systemMonitor.js';
 import { subscriptionMonitor } from './services/subscriptionMonitor.js';
+import { healthMonitor, HealthMonitor } from './services/healthMonitor.js';
+import { databaseMonitor } from './services/databaseMonitor.js';
 
 const app = await buildApp();
+
+// Setup health check endpoint
+HealthMonitor.setupHealthEndpoint(app);
 
 const port = Number(process.env.PORT ?? 3001);
 
@@ -33,4 +38,13 @@ if (process.env.NODE_ENV === 'production') {
   const subscriptionInterval = parseInt(process.env.SUBSCRIPTION_MONITOR_INTERVAL || '6', 10);
   subscriptionMonitor.startMonitoring(subscriptionInterval);
   app.log.info(`[SUBSCRIPTION_MONITOR] Started with ${subscriptionInterval} hour intervals`);
+  
+  // Start health monitoring
+  healthMonitor.startMonitoring();
+  app.log.info(`[HEALTH_MONITOR] Started with 2 minute intervals`);
+  
+  // Start database monitoring
+  const dbMonitorInterval = parseInt(process.env.DATABASE_MONITOR_INTERVAL || '15', 10);
+  databaseMonitor.startMonitoring(dbMonitorInterval);
+  app.log.info(`[DATABASE_MONITOR] Started with ${dbMonitorInterval} minute intervals`);
 }
