@@ -22,7 +22,7 @@ export default function LoginPage() {
     try {
       // Forzar API Fixed v2 para evitar problemas de configuración
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const loginUrl = `${apiUrl}/api/auth/login`;
+      const loginUrl = "/api/auth/login";
       console.log('=== LOGIN DEBUG ===');
       console.log('Login attempt to:', loginUrl);
       console.log('Credentials:', { email, password: '***' });
