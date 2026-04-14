@@ -32,7 +32,6 @@ export class SubscriptionMonitor {
       const expiringSubscriptions = await prisma.tenantSubscription.findMany({
         where: {
           status: 'ACTIVE',
-          deletedAt: null,
           endsAt: {
             lte: warningDate
           }
