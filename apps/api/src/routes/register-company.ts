@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
+import { sendEmail, notificationEmail } from '../services/email.js';
 
 // Cliente Prisma sin RLS para operaciones de CompanyRegistration
 const prismaSuperUser = new PrismaClient();
@@ -82,9 +83,35 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       const totalCount = await prismaSuperUser.companyRegistration.count();
       app.log.info(`[REGISTER-COMPANY] Total registros en DB: ${totalCount}`);
       
-      // Email notification skipped - no email service configured
+      // Enviar email de notificación al admin
+      const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
+      const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
       
-      
+      try {
+        const emailPayload = notificationEmail({
+          userEmail: adminEmail,
+          title: 'Nueva solicitud de registro de empresa',
+          message: `Se ha recibido una nueva solicitud de registro:\n\n` +
+            `<strong>Empresa:</strong> ${validatedData.companyName}\n` +
+            `<strong>Email:</strong> ${validatedData.email}\n` +
+            `<strong>RUT:</strong> ${validatedData.rut}\n` +
+            `<strong>Teléfono:</strong> ${validatedData.phone}\n` +
+            `<strong>Dirección:</strong> ${validatedData.address}\n\n` +
+            `Tenés una solicitud pendiente de aprobación.`,
+          actionLabel: 'Ver solicitudes pendientes',
+          actionUrl: `${appUrl}/admin/registros`,
+          type: 'warning',
+        });
+        
+        const emailResult = await sendEmail(emailPayload);
+        if (emailResult.success) {
+          app.log.info(`[REGISTER-COMPANY] Email de notificación enviado a ${adminEmail}`);
+        } else {
+          app.log.error(`[REGISTER-COMPANY] Error enviando email: ${emailResult.error}`);
+        }
+      } catch (emailError) {
+        app.log.error(`[REGISTER-COMPANY] Error enviando notificación: ${emailError}`);
+      }
       
       return reply.code(201).send({
         success: true,
