@@ -33,6 +33,7 @@ export class SubscriptionMonitor {
         where: {
           status: 'ACTIVE',
           endsAt: {
+            not: null,
             lte: warningDate
           }
         },
