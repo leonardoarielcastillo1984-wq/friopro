@@ -1,6 +1,7 @@
 // Servicio de integración con MercadoPago
 
 import { FastifyInstance } from 'fastify';
+import { sendEmail, notificationEmail } from './email.js';
 
 export class MercadoPagoService {
   private accessToken: string;
@@ -345,6 +346,43 @@ export class MercadoPagoService {
       }
 
       console.log(`✅ Payment ${paymentId} processed - tenant ${tenantId} activated with plan ${planTier}`);
+
+      // Enviar email de notificación al admin sobre el nuevo pago
+      try {
+        // Obtener información del tenant
+        const tenant = await this.app.prisma.tenant.findUnique({
+          where: { id: tenantId }
+        });
+
+        if (tenant) {
+          const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
+          const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
+          
+          const emailPayload = notificationEmail({
+            userEmail: adminEmail,
+            title: 'Nuevo pago recibido - SGI 360',
+            message: `Se ha recibido un nuevo pago:\n\n` +
+              `<strong>Empresa:</strong> ${tenant.companyName}\n` +
+              `<strong>Plan:</strong> ${plan.name}\n` +
+              `<strong>Período:</strong> ${period === 'annual' ? 'Anual' : 'Mensual'}\n` +
+              `<strong>Monto:</strong> $${payment.transaction_amount} ${payment.currency_id || 'ARS'}\n` +
+              `<strong>Fecha:</strong> ${new Date(payment.date_approved).toLocaleDateString('es-AR')}\n\n` +
+              `La suscripción ha sido activada correctamente.`,
+            actionLabel: 'Ver detalles del pago',
+            actionUrl: `${appUrl}/admin/payments`,
+            type: 'success',
+          });
+          
+          const emailResult = await sendEmail(emailPayload);
+          if (emailResult.success) {
+            console.log(`[MERCADOPAGO] Email de pago enviado a ${adminEmail}`);
+          } else {
+            console.error(`[MERCADOPAGO] Error enviando email de pago: ${emailResult.error}`);
+          }
+        }
+      } catch (emailError) {
+        console.error(`[MERCADOPAGO] Error enviando notificación de pago: ${emailError}`);
+      }
     } catch (error) {
       console.error('Error handling payment notification:', error);
     }
