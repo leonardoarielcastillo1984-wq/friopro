@@ -28,14 +28,10 @@ export class SubscriptionMonitor {
       const now = new Date();
       const warningDate = new Date(now.getTime() + (this.PAYMENT_WARNING_DAYS * 24 * 60 * 60 * 1000));
       
-      // Find active subscriptions ending soon or already ended
-      const expiringSubscriptions = await prisma.tenantSubscription.findMany({
+      // Find all active subscriptions and filter manually (Prisma doesn't handle null comparisons well)
+      const allActiveSubscriptions = await prisma.tenantSubscription.findMany({
         where: {
-          status: 'ACTIVE',
-          endsAt: {
-            not: null,
-            lte: warningDate
-          }
+          status: 'ACTIVE'
         },
         include: {
           tenant: {
@@ -54,6 +50,11 @@ export class SubscriptionMonitor {
           }
         }
       });
+
+      // Filter manually for subscriptions with endsAt <= warningDate
+      const expiringSubscriptions = allActiveSubscriptions.filter(sub => 
+        sub.endsAt !== null && sub.endsAt <= warningDate
+      );
 
       console.log(`[SUBSCRIPTION_MONITOR] Found ${expiringSubscriptions.length} subscriptions needing attention`);
 
