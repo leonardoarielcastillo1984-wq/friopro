@@ -41,8 +41,7 @@ export class SubscriptionMonitor {
           tenant: {
             select: {
               id: true,
-              companyName: true,
-              adminEmail: true
+              name: true
             }
           },
           plan: {
@@ -75,7 +74,7 @@ export class SubscriptionMonitor {
     const lastAlert = this.lastPaymentAlert.get(alertKey);
     
     if (lastAlert && (now.getTime() - lastAlert.getTime()) < this.ALERT_COOLDOWN) {
-      console.log(`[SUBSCRIPTION_MONITOR] Alert cooldown active for ${tenant.companyName}`);
+      console.log(`[SUBSCRIPTION_MONITOR] Alert cooldown active for ${tenant.name}`);
       return;
     }
 
@@ -115,8 +114,7 @@ export class SubscriptionMonitor {
       if (alertType === 'overdue') {
         title = '⚠️ Pago Vencido - Suscripción Suspendida';
         message = `La suscripción está vencida y necesita atención inmediata:\n\n` +
-          `<strong>Empresa:</strong> ${tenant.companyName}\n` +
-          `<strong>Email admin:</strong> ${tenant.adminEmail}\n` +
+          `<strong>Empresa:</strong> ${tenant.name}\n` +
           `<strong>Plan:</strong> ${plan.name}\n` +
           `<strong>Días vencida:</strong> ${Math.abs(daysUntilExpiry)} días\n\n` +
           `Acciones recomendadas:\n` +
@@ -127,8 +125,7 @@ export class SubscriptionMonitor {
       } else {
         title = '⏰ Pago Próximo a Vencer';
         message = `La suscripción vencerá pronto:\n\n` +
-          `<strong>Empresa:</strong> ${tenant.companyName}\n` +
-          `<strong>Email admin:</strong> ${tenant.adminEmail}\n` +
+          `<strong>Empresa:</strong> ${tenant.name}\n` +
           `<strong>Plan:</strong> ${plan.name}\n` +
           `<strong>Días restantes:</strong> ${daysUntilExpiry} días\n\n` +
           `Acciones recomendadas:\n` +
@@ -149,7 +146,7 @@ export class SubscriptionMonitor {
       
       const emailResult = await sendEmail(emailPayload);
       if (emailResult.success) {
-        console.log(`[SUBSCRIPTION_MONITOR] Payment alert sent for ${tenant.companyName} (${alertType})`);
+        console.log(`[SUBSCRIPTION_MONITOR] Payment alert sent for ${tenant.name} (${alertType})`);
       } else {
         console.error(`[SUBSCRIPTION_MONITOR] Error sending payment alert: ${emailResult.error}`);
       }
