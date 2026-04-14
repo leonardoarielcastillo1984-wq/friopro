@@ -43,9 +43,7 @@ export class SubscriptionMonitor {
           plan: {
             select: {
               id: true,
-              name: true,
-              monthlyPrice: true,
-              annualPrice: true
+              name: true
             }
           }
         }
