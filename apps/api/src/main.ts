@@ -9,9 +9,6 @@ import { databaseMonitor } from './services/databaseMonitor.js';
 
 const app = await buildApp();
 
-// Setup health check endpoint
-HealthMonitor.setupHealthEndpoint(app);
-
 const port = Number(process.env.PORT ?? 3001);
 
 // Graceful shutdown
