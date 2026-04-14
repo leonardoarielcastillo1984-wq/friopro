@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { buildApp } from './app.js';
 import { shutdownQueue } from './jobs/queue.js';
 import { systemMonitor } from './services/systemMonitor.js';
+import { subscriptionMonitor } from './services/subscriptionMonitor.js';
 
 const app = await buildApp();
 
@@ -27,4 +28,9 @@ if (process.env.NODE_ENV === 'production') {
   const monitorInterval = parseInt(process.env.SYSTEM_MONITOR_INTERVAL || '30', 10);
   systemMonitor.startMonitoring(monitorInterval);
   app.log.info(`[SYSTEM_MONITOR] Started with ${monitorInterval} minute intervals`);
+  
+  // Start subscription monitoring
+  const subscriptionInterval = parseInt(process.env.SUBSCRIPTION_MONITOR_INTERVAL || '6', 10);
+  subscriptionMonitor.startMonitoring(subscriptionInterval);
+  app.log.info(`[SUBSCRIPTION_MONITOR] Started with ${subscriptionInterval} hour intervals`);
 }
