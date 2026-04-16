@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { getStorage, computeFileHash, buildStorageKey } from '../services/storage.js';
 import { getNormativeQueue } from '../jobs/queue.js';
+import { requiresTenantContext, isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 
 const FEATURE_KEY = 'normativos_compliance';
 const MAX_PDF_SIZE = parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 1024;
@@ -16,7 +17,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
 
     const normativos = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
       return tx.normativeStandard.findMany({
@@ -49,7 +50,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
     const effectiveTenantId = headerTenantId || req.db?.tenantId || 'f20f0bfe-c1d8-40f6-8d36-97734881ffde';
 
-    if (!effectiveTenantId) {
+    if (requiresTenantContext(req) && !effectiveTenantId) {
       return reply.code(400).send({ error: 'Tenant context required' });
     }
 
@@ -145,7 +146,13 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
   app.post('/upload', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Tenant context required' });
+
+    // Obtener tenantId efectivo para SUPER_ADMIN
+    const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!effectiveTenantId) {
+      return reply.code(400).send({ error: 'No tenant available for operation' });
+    }
 
     const parts = req.parts();
     let fileBuffer: Buffer | null = null;
@@ -195,7 +202,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     const existing = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
       return tx.normativeStandard.findFirst({
         where: {
-          tenantId: req.db!.tenantId,
+          tenantId: effectiveTenantId,
           code: meta.code,
           deletedAt: null,
         },
@@ -211,7 +218,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
       const deletedNormative = await tx.normativeStandard.findFirst({
         where: {
-          tenantId: req.db!.tenantId,
+          tenantId: effectiveTenantId,
           code: meta.code,
           deletedAt: { not: null },
         },
@@ -234,7 +241,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     const normativo = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
       return tx.normativeStandard.create({
         data: {
-          tenantId: req.db!.tenantId,
+          tenantId: effectiveTenantId,
           name: meta.name,
           code: meta.code,
           version: meta.version,
@@ -251,7 +258,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     });
 
     // Subir archivo al storage
-    const storageKey = buildStorageKey(req.db!.tenantId, normativo.id, 'original.pdf');
+    const storageKey = buildStorageKey(effectiveTenantId, normativo.id, 'original.pdf');
     await storage.upload(storageKey, fileBuffer);
 
     // Actualizar filePath
@@ -266,7 +273,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     const queue = getNormativeQueue();
     const job = await queue.add('process-normative', {
       normativeId: normativo.id,
-      tenantId: req.db!.tenantId,
+      tenantId: effectiveTenantId,
       filePath: storageKey,
     });
 
@@ -344,7 +351,13 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:id/revision', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Tenant context required' });
+
+    // Obtener tenantId efectivo para SUPER_ADMIN
+    const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!effectiveTenantId) {
+      return reply.code(400).send({ error: 'No tenant available for operation' });
+    }
 
     const paramsSchema = z.object({ id: z.string().uuid() });
     const params = paramsSchema.parse(req.params);
@@ -391,7 +404,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     // Obtener norma existente
     const existing = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
       return tx.normativeStandard.findFirst({
-        where: { id: params.id, tenantId: req.db!.tenantId, deletedAt: null },
+        where: { id: params.id, tenantId: effectiveTenantId, deletedAt: null },
       });
     });
 
@@ -417,7 +430,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     const normativo = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
       return tx.normativeStandard.create({
         data: {
-          tenantId: req.db!.tenantId,
+          tenantId: effectiveTenantId,
           name: existing.name,
           code: existing.code,
           version: meta.version,
@@ -434,7 +447,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     });
 
     // Subir archivo al storage
-    const storageKey = buildStorageKey(req.db!.tenantId, normativo.id, 'original.pdf');
+    const storageKey = buildStorageKey(effectiveTenantId, normativo.id, 'original.pdf');
     await storage.upload(storageKey, fileBuffer);
 
     // Actualizar filePath
@@ -449,7 +462,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     const queue = getNormativeQueue();
     const job = await queue.add('process-normative', {
       normativeId: normativo.id,
-      tenantId: req.db!.tenantId,
+      tenantId: effectiveTenantId,
       filePath: storageKey,
     });
 
