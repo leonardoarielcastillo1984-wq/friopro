@@ -146,11 +146,26 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
   app.post('/upload', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    if (!req.db?.tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Tenant context required' });
+    console.log('[UPLOAD] Request received:', {
+      url: req.url,
+      method: req.method,
+      hasTenantId: !!req.db?.tenantId,
+      tenantId: req.db?.tenantId,
+      isSuperAdmin: isSuperAdmin(req),
+      userId: req.auth?.userId
+    });
+
+    if (!req.db?.tenantId && !isSuperAdmin(req)) {
+      console.log('[UPLOAD] Tenant context required - no tenantId and not superadmin');
+      return reply.code(400).send({ error: 'Tenant context required' });
+    }
 
     // Obtener tenantId efectivo para SUPER_ADMIN
     const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);
+    console.log('[UPLOAD] Effective tenantId:', effectiveTenantId);
+    
     if (!effectiveTenantId) {
+      console.log('[UPLOAD] No tenant available for operation');
       return reply.code(400).send({ error: 'No tenant available for operation' });
     }
 
@@ -159,19 +174,34 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     let originalFileName = '';
     const fields: Record<string, string> = {};
 
-    for await (const part of parts) {
-      if (part.type === 'file') {
-        if (part.mimetype !== 'application/pdf') {
-          return reply.code(400).send({ error: 'Solo se aceptan archivos PDF' });
-        }
-        const chunks: Buffer[] = [];
-        for await (const chunk of part.file) {
-          chunks.push(chunk);
-        }
-        fileBuffer = Buffer.concat(chunks);
-        originalFileName = part.filename;
+    try {
+      for await (const part of parts) {
+        console.log('[UPLOAD] Processing part:', {
+          type: part.type,
+          fieldname: part.fieldname,
+          mimetype: part.mimetype
+        });
+        
+        if (part.type === 'file') {
+          const filePart = part as any;
+          if (filePart.mimetype !== 'application/pdf') {
+            console.log('[UPLOAD] Invalid file type:', filePart.mimetype);
+            return reply.code(400).send({ error: 'Solo se aceptan archivos PDF' });
+          }
+          const chunks: Buffer[] = [];
+          for await (const chunk of filePart.file) {
+            chunks.push(chunk);
+          }
+          fileBuffer = Buffer.concat(chunks);
+          originalFileName = filePart.filename;
 
-        if (fileBuffer.length > MAX_PDF_SIZE) {
+          console.log('[UPLOAD] File received:', {
+            filename: originalFileName,
+            size: fileBuffer.length,
+            maxSize: MAX_PDF_SIZE
+          });
+
+          if (fileBuffer.length > MAX_PDF_SIZE) {
           return reply.code(400).send({
             error: `El archivo excede el límite de ${process.env.MAX_PDF_SIZE_MB || 50}MB`,
           });
@@ -179,6 +209,10 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       } else {
         fields[part.fieldname] = (part as any).value;
       }
+    }
+    } catch (error) {
+      console.error('[UPLOAD] Error processing parts:', error);
+      return reply.code(400).send({ error: 'Error processing file upload', details: String(error) });
     }
 
     if (!fileBuffer) {
