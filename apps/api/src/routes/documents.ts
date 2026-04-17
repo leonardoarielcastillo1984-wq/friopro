@@ -211,10 +211,25 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/upload', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
 
-    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    console.log('[DOCUMENTS_UPLOAD] Request received:', {
+      url: req.url,
+      method: req.method,
+      hasTenantId: !!req.db?.tenantId,
+      tenantId: req.db?.tenantId,
+      userId: req.auth?.userId,
+      globalRole: req.auth?.globalRole
+    });
+
+    if (requiresTenantContext(req) && !req.db?.tenantId) {
+      console.log('[DOCUMENTS_UPLOAD] Tenant context required - no tenantId and not superadmin');
+      return reply.code(400).send({ error: 'Tenant context required' });
+    }
 
     const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);
+    console.log('[DOCUMENTS_UPLOAD] Effective tenantId:', effectiveTenantId);
+    
     if (!effectiveTenantId) {
+      console.log('[DOCUMENTS_UPLOAD] No tenant available for operation');
       return reply.code(400).send({ error: 'No tenant available for operation' });
     }
 
