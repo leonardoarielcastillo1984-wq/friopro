@@ -88,7 +88,12 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
       });
     }
     
-    if (!token) return;
+    // TEMPORARY: Disable auth check completely for debugging frontend issue
+    // if (!token) return;
+    if (!token) {
+      req.auth = null;
+      return;
+    }
 
     try {
       const payload = app.verifyAccessToken(token);
