@@ -93,7 +93,7 @@ export async function buildApp() {
     payload.on('error', done);
   });
 
-  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000,http://127.0.0.1:3000';
+  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000,http://127.0.0.1:3000,http://46.62.253.81:4000,http://46.62.253.81:4001';
   await app.register(cors, {
     origin: corsOrigin.split(',').map((o) => o.trim()),
     credentials: true,
@@ -127,13 +127,11 @@ export async function buildApp() {
   await app.register(publicRoutes);
   await app.register(documentsPublicRoutes);
 
-  // TODO: Registrar multipart SOLO en rutas que lo necesiten
-  // Por ahora comentado para permitir que JSON funcione
-  // await app.register(multipart, {
-  //   limits: {
-  //     fileSize: parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 1024,
-  //   },
-  // });
+  await app.register(multipart, {
+    limits: {
+      fileSize: parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 1024,
+    },
+  });
 
   // Global error handler
   app.setErrorHandler((error: any, request, reply) => {
