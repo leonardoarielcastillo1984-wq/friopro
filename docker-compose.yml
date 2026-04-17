@@ -76,7 +76,7 @@ services:
       dockerfile: apps/web/Dockerfile
     container_name: sgi-web
     environment:
-      NEXT_PUBLIC_API_URL: http://logismart.ar/api
+      NEXT_PUBLIC_API_URL: /api
       NEXT_PUBLIC_APP_URL: http://logismart.ar
     ports:
       - "3000:3000"
