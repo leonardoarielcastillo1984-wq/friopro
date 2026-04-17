@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import crypto from 'node:crypto';
 import { extractTextFromPdf } from '../services/pdfParser.js';
 import { generateDocumentSummary } from '../services/aiService.js';
+import { requiresTenantContext, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -210,7 +211,12 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/upload', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!effectiveTenantId) {
+      return reply.code(400).send({ error: 'No tenant available for operation' });
+    }
 
     const data = await req.file();
     if (!data) return reply.code(400).send({ error: 'No file uploaded' });
@@ -234,7 +240,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const fileBuffer = Buffer.concat(chunks);
 
     // Save file to disk (ruta definitiva en proyecto)
-    const uploadDir = path.resolve('/Users/leonardocastillo/Desktop/APP/SGI 360/storage/documents');
+    const uploadDir = path.resolve('/app/apps/api/uploads/documents');
     await fs.mkdir(uploadDir, { recursive: true });
 
     const fileName = `${Date.now()}-${data.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -267,7 +273,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const created = await app.runWithDbContext(req, async (tx: any) => {
       return tx.document.create({
         data: {
-          tenantId: (req.db!.tenantId as string),
+          tenantId: effectiveTenantId,
           title,
           type: docType,
           content,
