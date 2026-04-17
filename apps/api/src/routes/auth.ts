@@ -21,11 +21,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   const isProd = (process.env.NODE_ENV ?? 'development') === 'production';
 
   function setAuthCookies(reply: FastifyReply, args: { accessToken: string; refreshToken: string }) {
+    const domain = isProd ? '.logismart.ar' : undefined;
+    
     reply.setCookie('access_token', args.accessToken, {
       path: '/',
       httpOnly: true,
       sameSite: 'lax',
       secure: isProd,
+      domain,
     });
 
     // Restrict refresh cookie to refresh endpoint.
@@ -34,6 +37,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       httpOnly: true,
       sameSite: 'lax',
       secure: isProd,
+      domain,
     });
   }
 
