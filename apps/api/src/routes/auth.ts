@@ -26,7 +26,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     reply.setCookie('access_token', args.accessToken, {
       path: '/',
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: isProd ? 'none' : 'lax',
       secure: isProd,
       domain,
     });
@@ -35,7 +35,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     reply.setCookie('refresh_token', args.refreshToken, {
       path: '/auth/refresh',
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: isProd ? 'none' : 'lax',
       secure: isProd,
       domain,
     });
