@@ -84,6 +84,22 @@ export default async function project360Routes(app: FastifyInstance) {
     return reply.code(201).send({ project });
   });
 
+  // GET /project360/:id — alias sin /projects/ para compatibilidad
+  app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    if (['projects', 'stats', 'notifications', 'tasks', 'attachments', 'reminders'].includes(id)) {
+      return reply.code(404).send({ error: 'Not found' });
+    }
+    const project = await prisma.project360.findFirst({
+      where: { id, tenantId: req.db.tenantId, deletedAt: null },
+      include: { tasks: { where: { deletedAt: null }, orderBy: { order: 'asc' }, include: { comments: { orderBy: { createdAt: 'desc' } } } }, attachments: { orderBy: { createdAt: 'desc' } }, reminders: { orderBy: { reminderDate: 'asc' } } },
+    });
+    if (!project) return reply.code(404).send({ error: 'Project not found' });
+    const [enriched] = await enrichProjects(prisma, [project]);
+    return reply.send({ project: enriched });
+  });
+
   // GET /project360/projects/:id
   app.get('/projects/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
