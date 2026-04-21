@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { createLLMProvider } from '../services/llm/factory.js';
 
 // Section templates for each standard
 const SECTION_TEMPLATES: Record<string, Array<{ key: string; title: string }>> = {
@@ -674,6 +675,79 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
       });
 
       return reply.code(204).send();
+    },
+  );
+
+  // POST /management-reviews/:id/ai-suggest/:sectionKey
+  // Usa el LLM del servidor para generar sugerencias de texto para una sección específica
+  app.post(
+    '/management-reviews/:id/ai-suggest/:sectionKey',
+    async (req: FastifyRequest<{ Params: { id: string; sectionKey: string } }>, reply: FastifyReply) => {
+      const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+      // Obtener la sección con datos del sistema
+      const section = await (app as any).runWithDbContext(req, async (tx: any) => {
+        const review = await tx.managementReview.findFirst({
+          where: { id: req.params.id, tenantId, deletedAt: null },
+          select: { title: true, periodStart: true, periodEnd: true, standards: true },
+        });
+        if (!review) return null;
+
+        const sec = await tx.managementReviewSection.findFirst({
+          where: { reportId: req.params.id, key: req.params.sectionKey },
+        });
+        return sec ? { section: sec, review } : null;
+      });
+
+      if (!section) return reply.code(404).send({ error: 'Sección no encontrada' });
+
+      try {
+        const llm = createLLMProvider();
+        const { section: sec, review } = section;
+
+        const periodStr = `${new Date(review.periodStart).toLocaleDateString('es-AR')} al ${new Date(review.periodEnd).toLocaleDateString('es-AR')}`;
+        const normas = Array.isArray(review.standards) ? review.standards.join(', ') : review.standards;
+
+        // Construir resumen de datos del sistema si existen
+        let systemDataSummary = '';
+        if (sec.systemData) {
+          try {
+            const sd = typeof sec.systemData === 'string' ? JSON.parse(sec.systemData) : sec.systemData;
+            systemDataSummary = '\n\nDatos del sistema (entradas automáticas):\n' + JSON.stringify(sd, null, 2).slice(0, 1500);
+          } catch {
+            systemDataSummary = '';
+          }
+        }
+
+        // Texto actual del usuario como contexto adicional
+        const currentText = sec.freeText ? `\n\nTexto actual del responsable:\n${sec.freeText}` : '';
+
+        const prompt = `Sos un experto en sistemas de gestión integrado (SGI) con profundo conocimiento en ${normas}.
+Estás ayudando a redactar el Informe para la Dirección del período ${periodStr} para la sección "${sec.title}".
+
+Tu tarea es generar un párrafo de análisis y observaciones profesional, concreto y bien redactado en español formal (Argentina), apropiado para presentar a la alta dirección.
+
+El texto debe:
+- Interpretar los datos disponibles y destacar tendencias o hallazgos relevantes
+- Indicar si el desempeño es satisfactorio o requiere atención
+- Sugerir conclusiones que la dirección debería considerar
+- Proponer posibles decisiones o acciones concretas
+- Usar lenguaje técnico ISO apropiado pero comprensible
+- Tener entre 3 y 5 párrafos bien estructurados
+${systemDataSummary}${currentText}
+
+Generá únicamente el texto del análisis, sin encabezados ni formato adicional.`;
+
+        const response = await llm.chat([{ role: 'user', content: prompt }], 800);
+
+        return reply.send({ suggestion: response.text, model: response.model });
+      } catch (err: any) {
+        app.log.error('AI suggest error:', err);
+        return reply.code(503).send({
+          error: err?.message || 'El servicio de IA no está disponible en este momento',
+        });
+      }
     },
   );
 }

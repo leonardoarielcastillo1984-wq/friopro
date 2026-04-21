@@ -18,8 +18,11 @@ import {
   Users,
   Target,
   Shield,
-  Calendar,
-  Settings
+  Settings,
+  Sparkles,
+  X,
+  Copy,
+  RefreshCw,
 } from 'lucide-react';
 import { useCompany } from '@/lib/company-context';
 import { exportToWord as exportToWordUtil } from '@/lib/exportToWordSimple';
@@ -100,6 +103,9 @@ export default function InformeDireccionDetailPage() {
   const [generatingDraft, setGeneratingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState('');
+  const [savingSummary, setSavingSummary] = useState(false);
 
   useEffect(() => {
     if (reviewId) {
@@ -162,6 +168,30 @@ export default function InformeDireccionDetailPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveSummary() {
+    if (!review) return;
+    setSavingSummary(true);
+    try {
+      await apiFetch(`/management-reviews/${reviewId}`, {
+        method: 'PATCH',
+        json: { summary: summaryDraft },
+      });
+      setReview({ ...review, summary: summaryDraft });
+      setEditingSummary(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar resumen');
+    } finally {
+      setSavingSummary(false);
+    }
+  }
+
+  async function aiSuggestSection(sectionKey: string): Promise<string> {
+    const res = await apiFetch(`/management-reviews/${reviewId}/ai-suggest/${sectionKey}`, {
+      method: 'POST',
+    }) as { suggestion: string; model: string };
+    return res.suggestion;
   }
 
   function exportToPDF() {
@@ -300,15 +330,57 @@ export default function InformeDireccionDetailPage() {
           </div>
         </div>
 
-        {/* Summary */}
-        {review.summary && (
-          <div className="mb-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Resumen Ejecutivo</h2>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-gray-700 whitespace-pre-line">{review.summary}</p>
-            </div>
+        {/* Summary — siempre visible y editable */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-bold text-gray-900">Resumen Ejecutivo</h2>
+            {review.status !== 'FINAL' && (
+              <div className="flex gap-2 print:hidden">
+                {!editingSummary ? (
+                  <button
+                    onClick={() => { setSummaryDraft(review.summary || ''); setEditingSummary(true); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" /> Editar resumen
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={saveSummary}
+                      disabled={savingSummary}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      <Save className="w-3.5 h-3.5" /> {savingSummary ? 'Guardando...' : 'Guardar'}
+                    </button>
+                    <button
+                      onClick={() => setEditingSummary(false)}
+                      className="px-3 py-1.5 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
-        )}
+          {editingSummary ? (
+            <textarea
+              value={summaryDraft}
+              onChange={(e) => setSummaryDraft(e.target.value)}
+              rows={6}
+              className="w-full px-4 py-3 border border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 text-sm"
+              placeholder="Escriba aquí el resumen ejecutivo del período revisado..."
+            />
+          ) : review.summary ? (
+            <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
+              <p className="text-gray-700 whitespace-pre-line leading-relaxed">{review.summary}</p>
+            </div>
+          ) : (
+            <div className="bg-gray-50 border border-dashed border-gray-300 p-5 rounded-xl text-center text-gray-400 text-sm print:hidden">
+              Sin resumen ejecutivo. Haga clic en "Editar resumen" para agregar uno.
+            </div>
+          )}
+        </div>
 
         {/* Sections */}
         <div className="space-y-8">
@@ -323,6 +395,7 @@ export default function InformeDireccionDetailPage() {
                 onEdit={() => setEditingSection(section.key)}
                 onSave={(data) => updateSection(section.key, data)}
                 onCancel={() => setEditingSection(null)}
+                onAiSuggest={() => aiSuggestSection(section.key)}
                 disabled={review.status === 'FINAL'}
                 saving={saving}
               />
@@ -348,15 +421,8 @@ export default function InformeDireccionDetailPage() {
 }
 
 // Section Editor Component
-function SectionEditor({ 
-  section, 
-  Icon, 
-  isEditing, 
-  onEdit, 
-  onSave, 
-  onCancel, 
-  disabled, 
-  saving 
+function SectionEditor({
+  section, Icon, isEditing, onEdit, onSave, onCancel, onAiSuggest, disabled, saving,
 }: {
   section: ManagementReviewSection;
   Icon: any;
@@ -364,6 +430,7 @@ function SectionEditor({
   onEdit: () => void;
   onSave: (data: any) => void;
   onCancel: () => void;
+  onAiSuggest: () => Promise<string>;
   disabled: boolean;
   saving: boolean;
 }) {
@@ -372,125 +439,239 @@ function SectionEditor({
     outputs: section.outputs || '',
     decisions: section.decisions || '',
   });
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [showSystemData, setShowSystemData] = useState(false);
+
+  // Sync when section changes externally (after save)
+  useState(() => {
+    setFormData({
+      freeText: section.freeText || '',
+      outputs: section.outputs || '',
+      decisions: section.decisions || '',
+    });
+  });
 
   function handleSave() {
     const data: any = {};
-    if (formData.freeText.trim()) data.freeText = formData.freeText.trim();
-    if (formData.outputs.trim()) data.outputs = formData.outputs.trim();
-    if (formData.decisions.trim()) data.decisions = formData.decisions.trim();
+    data.freeText = formData.freeText.trim() || null;
+    data.outputs = formData.outputs.trim() || null;
+    data.decisions = formData.decisions.trim() || null;
     onSave(data);
   }
 
+  async function handleAiSuggest() {
+    setAiLoading(true);
+    setAiError(null);
+    setAiSuggestion(null);
+    try {
+      const text = await onAiSuggest();
+      setAiSuggestion(text);
+    } catch (err: any) {
+      setAiError(err?.message || 'Error al conectar con la IA');
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function applyAiSuggestion() {
+    if (!aiSuggestion) return;
+    setFormData((prev) => ({
+      ...prev,
+      freeText: prev.freeText ? prev.freeText + '\n\n' + aiSuggestion : aiSuggestion,
+    }));
+    setAiSuggestion(null);
+    if (!isEditing) onEdit();
+  }
+
   return (
-    <div className="border border-gray-200 rounded-lg p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-          <Icon className="w-5 h-5" />
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      {/* Section header */}
+      <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-200">
+        <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+          <Icon className="w-4 h-4 text-gray-500" />
           {section.title}
         </h2>
-        {!disabled && (
-          <button
-            onClick={isEditing ? handleSave : onEdit}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {isEditing ? (
-              saving ? 'Guardando...' : <><Save className="w-3 h-3" /> Guardar</>
-            ) : (
-              <><Edit3 className="w-3 h-3" /> Editar</>
-            )}
-          </button>
-        )}
-        {isEditing && (
-          <button
-            onClick={onCancel}
-            className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded transition-colors"
-          >
-            Cancelar
-          </button>
-        )}
+        <div className="flex items-center gap-2 print:hidden">
+          {/* Botón IA */}
+          {!disabled && (
+            <button
+              onClick={handleAiSuggest}
+              disabled={aiLoading}
+              title="Generar sugerencia con IA del servidor (Ollama)"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+            >
+              {aiLoading ? (
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Consultando IA...</>
+              ) : (
+                <><Sparkles className="w-3.5 h-3.5" /> Sugerir con IA</>
+              )}
+            </button>
+          )}
+          {/* Editar / Guardar */}
+          {!disabled && (
+            <button
+              onClick={isEditing ? handleSave : onEdit}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isEditing
+                ? (saving ? 'Guardando...' : <><Save className="w-3.5 h-3.5" /> Guardar</>)
+                : <><Edit3 className="w-3.5 h-3.5" /> Editar</>}
+            </button>
+          )}
+          {isEditing && (
+            <button onClick={onCancel} className="p-1.5 text-gray-500 hover:bg-gray-200 rounded-lg">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* System Data (Auto-generated) */}
-      {section.systemData && (
-        <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Datos del Sistema (Entradas)</h3>
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <pre className="text-sm text-gray-700 whitespace-pre-wrap">
-              {JSON.stringify(section.systemData, null, 2)}
-            </pre>
+      <div className="p-6 space-y-5">
+        {/* Panel sugerencia IA */}
+        {aiError && (
+          <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>{aiError}</span>
+            <button onClick={() => setAiError(null)} className="ml-auto"><X className="w-3.5 h-3.5" /></button>
           </div>
-        </div>
-      )}
+        )}
+        {aiSuggestion && (
+          <div className="border border-violet-200 bg-violet-50 rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-sm font-semibold text-violet-700">
+                <Sparkles className="w-4 h-4" /> Sugerencia de la IA
+              </span>
+              <button onClick={() => setAiSuggestion(null)} className="text-violet-400 hover:text-violet-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{aiSuggestion}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={applyAiSuggestion}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700"
+              >
+                <Copy className="w-3.5 h-3.5" /> Aplicar al análisis
+              </button>
+              <button
+                onClick={handleAiSuggest}
+                disabled={aiLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-violet-300 text-violet-700 rounded-lg hover:bg-violet-100 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${aiLoading ? 'animate-spin' : ''}`} /> Regenerar
+              </button>
+            </div>
+          </div>
+        )}
 
-      {/* Editable Fields */}
-      {isEditing ? (
-        <div className="space-y-4">
+        {/* Datos del sistema — colapsable */}
+        {section.systemData && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Análisis y Observaciones
-            </label>
-            <textarea
-              value={formData.freeText}
-              onChange={(e) => setFormData({ ...formData, freeText: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={4}
-              placeholder="Ingrese su análisis y observaciones sobre estos datos..."
-            />
+            <button
+              onClick={() => setShowSystemData(!showSystemData)}
+              className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-700 print:hidden"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Datos del sistema (entradas automáticas)
+              <span className="ml-1">{showSystemData ? '▲' : '▼'}</span>
+            </button>
+            {showSystemData && (
+              <div className="mt-2 bg-gray-50 border border-gray-100 rounded-lg p-4 overflow-auto max-h-64">
+                <SectionDataViewer data={section.systemData} />
+              </div>
+            )}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Salida Requerida
-            </label>
-            <textarea
-              value={formData.outputs}
-              onChange={(e) => setFormData({ ...formData, outputs: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-              placeholder="Describa la salida requerida para estas entradas..."
-            />
+        )}
+
+        {/* Campos editables */}
+        {isEditing ? (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Análisis y Observaciones</label>
+              <textarea
+                value={formData.freeText}
+                onChange={(e) => setFormData({ ...formData, freeText: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                rows={6}
+                placeholder="Ingrese su análisis y observaciones sobre estos datos..."
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Salida Requerida</label>
+              <textarea
+                value={formData.outputs}
+                onChange={(e) => setFormData({ ...formData, outputs: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                rows={3}
+                placeholder="Describa la salida requerida (recursos, mejoras, objetivos nuevos...)"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Decisiones y Acciones</label>
+              <textarea
+                value={formData.decisions}
+                onChange={(e) => setFormData({ ...formData, decisions: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                rows={3}
+                placeholder="Decisiones tomadas, responsables y fechas límite..."
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Decisiones y Acciones
-            </label>
-            <textarea
-              value={formData.decisions}
-              onChange={(e) => setFormData({ ...formData, decisions: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-              placeholder="Decisiones tomadas, acciones requeridas, responsables y fechas..."
-            />
+        ) : (
+          <div className="space-y-4">
+            {section.freeText ? (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Análisis y Observaciones</h3>
+                <p className="text-gray-700 whitespace-pre-line leading-relaxed text-sm">{section.freeText}</p>
+              </div>
+            ) : !disabled && (
+              <p className="text-sm text-gray-400 italic">Sin análisis. Haga clic en "Editar" o use "Sugerir con IA" para comenzar.</p>
+            )}
+            {section.outputs && (
+              <div>
+                <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">Salida Requerida</h3>
+                <div className="bg-blue-50 border border-blue-100 px-4 py-3 rounded-lg">
+                  <p className="text-gray-700 whitespace-pre-line text-sm">{section.outputs}</p>
+                </div>
+              </div>
+            )}
+            {section.decisions && (
+              <div>
+                <h3 className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2">Decisiones y Acciones</h3>
+                <div className="bg-green-50 border border-green-100 px-4 py-3 rounded-lg">
+                  <p className="text-gray-700 whitespace-pre-line text-sm">{section.decisions}</p>
+                </div>
+              </div>
+            )}
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Renderizador amigable de los datos del sistema
+function SectionDataViewer({ data }: { data: any }) {
+  if (typeof data !== 'object' || data === null) {
+    return <span className="text-sm text-gray-600">{String(data)}</span>;
+  }
+  return (
+    <div className="space-y-1">
+      {Object.entries(data).map(([key, value]) => (
+        <div key={key} className="flex gap-2 text-sm">
+          <span className="font-medium text-gray-600 min-w-[160px] capitalize">{key.replace(/_/g, ' ')}:</span>
+          <span className="text-gray-700">
+            {typeof value === 'object' && value !== null
+              ? Array.isArray(value)
+                ? `${(value as any[]).length} elementos`
+                : JSON.stringify(value).slice(0, 120)
+              : String(value)}
+          </span>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {section.freeText && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Análisis y Observaciones</h3>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-gray-700 whitespace-pre-line">{section.freeText}</p>
-              </div>
-            </div>
-          )}
-          {section.outputs && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Salida Requerida</h3>
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <p className="text-gray-700 whitespace-pre-line">{section.outputs}</p>
-              </div>
-            </div>
-          )}
-          {section.decisions && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Decisiones y Acciones</h3>
-              <div className="bg-green-50 p-4 rounded-lg">
-                <p className="text-gray-700 whitespace-pre-line">{section.decisions}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      ))}
     </div>
   );
 }
