@@ -223,7 +223,9 @@ export async function buildApp() {
   // Endpoint genérico de IA para módulos del frontend
   app.post('/ai/chat', async (req: any, reply: any) => {
     try {
-      const { message } = req.body as { message: string };
+      const rawBody = req.body;
+      const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : (rawBody ?? {});
+      const message: string = body?.message || body?.prompt || '';
       if (!message) return reply.code(400).send({ error: 'message requerido' });
       const llm = createLLMProvider();
       const result = await llm.chat([{ role: 'user', content: message }]);

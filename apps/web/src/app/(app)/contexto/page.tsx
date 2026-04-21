@@ -61,6 +61,7 @@ Responde solo con las 3 estrategias numeradas, sin introducción. Sé específic
 
       const res = await apiFetch<{ response?: string; text?: string; content?: string }>('/ai/chat', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ message: prompt, stream: false }),
       });
       const text = res?.response || res?.text || res?.content || '';
