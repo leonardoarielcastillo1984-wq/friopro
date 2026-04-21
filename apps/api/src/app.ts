@@ -6,7 +6,6 @@ import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import staticPlugin from '@fastify/static';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 
@@ -46,6 +45,7 @@ import { emergencyRoutes } from './routes/emergency.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerSurveyRoutes } from './routes/surveys.js';
 import { licenseRoutes } from './routes/license.js';
+import { storageRoutes } from './routes/storage.js';
 import { superAdminRoutes } from './routes/superAdmin.js';
 import surveyPublicRoutes from './routes/survey-public.js';
 import { publicRoutes } from './routes/publicRoutes.js';
@@ -199,6 +199,7 @@ export async function buildApp() {
   await app.register(registerCustomerRoutes, { prefix: '/customers' });
   await app.register(registerSurveyRoutes, { prefix: '/surveys' });
   await app.register(licenseRoutes, { prefix: '/license' });
+  await app.register(storageRoutes, { prefix: '/storage' });
   await app.register(superAdminRoutes, { prefix: '/super-admin' });
   await app.register(surveyPublicRoutes, { prefix: '/survey' });
   await app.register(registerCompanyRoutes); // Registro de empresas
@@ -217,9 +218,7 @@ export async function buildApp() {
   await app.register(calendarRoutes, { prefix: '/calendar' });
 
   // Servir archivos estáticos de uploads (AL FINAL para no interferir con API routes)
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const uploadsPath = path.resolve(__dirname, '..', 'uploads');
+  const uploadsPath = path.resolve(process.env.STORAGE_LOCAL_PATH || '/app/uploads');
   console.log('[STATIC] Serving uploads from:', uploadsPath);
   await app.register(staticPlugin, {
     root: uploadsPath,

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { getStorage, computeFileHash, buildStorageKey } from '../services/storage.js';
+import { checkStorageQuota } from '../services/storage-usage.js';
 import { getNormativeQueue } from '../jobs/queue.js';
 import { requiresTenantContext, isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 
@@ -217,6 +218,17 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
 
     if (!fileBuffer) {
       return reply.code(400).send({ error: 'No se proporcionó archivo PDF' });
+    }
+
+    // Verificar cuota de almacenamiento
+    const quota = await checkStorageQuota((app as any).prisma, effectiveTenantId, fileBuffer.length);
+    if (!quota.allowed) {
+      const usedMB = (quota.used / 1024 / 1024).toFixed(1);
+      const limitMB = (quota.limit / 1024 / 1024 / 1024).toFixed(0);
+      return reply.code(413).send({
+        error: `Límite de almacenamiento alcanzado. Usás ${usedMB} MB de ${limitMB} GB disponibles en tu plan.`,
+        usage: { used: quota.used, limit: quota.limit, percentage: quota.percentage },
+      });
     }
 
     // Validar campos de metadatos

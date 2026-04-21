@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { extractTextFromPdf } from '../services/pdfParser.js';
 import { generateDocumentSummary } from '../services/aiService.js';
 import { requiresTenantContext, getEffectiveTenantId } from '../utils/tenant-bypass.js';
+import { checkStorageQuota } from '../services/storage-usage.js';
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -253,6 +254,17 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       chunks.push(chunk);
     }
     const fileBuffer = Buffer.concat(chunks);
+
+    // Verificar cuota de almacenamiento antes de guardar
+    const quota = await checkStorageQuota((app as any).prisma, effectiveTenantId, fileBuffer.length);
+    if (!quota.allowed) {
+      const usedMB = (quota.used / 1024 / 1024).toFixed(1);
+      const limitMB = (quota.limit / 1024 / 1024 / 1024).toFixed(0);
+      return reply.code(413).send({
+        error: `Límite de almacenamiento alcanzado. Usás ${usedMB} MB de ${limitMB} GB disponibles en tu plan. Contactá soporte para ampliar tu capacidad.`,
+        usage: { used: quota.used, limit: quota.limit, percentage: quota.percentage },
+      });
+    }
 
     // Save file to disk — volumen externo con estructura por tenant
     const storageBase = process.env.STORAGE_LOCAL_PATH || '/app/uploads';
