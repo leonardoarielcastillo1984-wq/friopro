@@ -445,6 +445,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
           select: { id: true },
         });
       });
+      app.log.info({ tenantId, baseTitle, activeConflict }, '[MR-CREATE] duplicate check');
       if (activeConflict) {
         return reply.code(409).send({ error: `Ya existe un informe activo con el título "${baseTitle}". Por favor usá un título diferente.` });
       }
