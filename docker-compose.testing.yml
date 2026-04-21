@@ -13,7 +13,6 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data_testing:/var/lib/postgresql/data
-      - ./apps/api/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - sgi-testing-network
 
