@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 function getApiBases() {
-  const configured = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL;
-  const bases = [configured, process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002']
-    .filter((v): v is string => Boolean(v))
+  // Prioritize API_URL (server-side internal URL) over NEXT_PUBLIC_API_URL (browser URL)
+  // because this code runs on the server and may not reach the public URL.
+  // Also filter out relative URLs like "/api" which only work in the browser.
+  const isAbsolute = (v?: string) => !!v && /^https?:\/\//.test(v);
+  const candidates = [
+    process.env.API_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+    'http://localhost:3002',
+  ];
+  const bases = candidates
+    .filter((v): v is string => isAbsolute(v))
     .map((v) => (v.endsWith('/') ? v.slice(0, -1) : v));
   return Array.from(new Set(bases));
 }

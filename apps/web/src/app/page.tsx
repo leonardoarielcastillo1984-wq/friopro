@@ -54,7 +54,7 @@ export default function Home() {
   const [formData, setFormData] = useState({ companyName: '', email: '', phone: '' });
 
   useEffect(() => {
-    fetch('https://logismart.ar/api/landing/settings')
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/landing/settings`)
       .then(r => r.json())
       .then(data => { if (data.settings) setLandingSettings(data.settings); })
       .catch(() => {});
@@ -83,7 +83,7 @@ export default function Home() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('https://logismart.ar/api/api/register-company', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/register-company`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyName: formData.companyName, socialReason: formData.companyName, email: formData.email, phone: formData.phone, rut: `PENDIENTE-${Date.now()}`, website: '', address: 'N/A', primaryColor: '#E8541A' }),

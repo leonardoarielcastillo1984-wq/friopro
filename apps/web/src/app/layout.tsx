@@ -33,6 +33,8 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="es" className={inter.variable}>
+      <head>
+      </head>
       <body className="min-h-screen bg-neutral-100/50 font-sans text-neutral-900 antialiased">
         <Providers>{children}</Providers>
       </body>

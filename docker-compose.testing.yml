@@ -10,36 +10,36 @@ services:
       POSTGRES_USER: sgi
       POSTGRES_PASSWORD: sgi
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_testing:/var/lib/postgresql/data
       - ./apps/api/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - sgi-network
+      - sgi-testing-network
 
   # Redis (optional, for caching and queues)
   redis:
     image: redis:7-alpine
-    container_name: sgi-redis
+    container_name: sgi-redis-testing
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
-      - redis_data:/data
+      - redis_data_testing:/data
     networks:
-      - sgi-network
+      - sgi-testing-network
 
   # OLLAMA LLM Service
   ollama:
     image: ollama/ollama:latest
-    container_name: sgi-ollama
+    container_name: sgi-ollama-testing
     ports:
-      - "11434:11434"
+      - "11435:11434"
     volumes:
-      - ollama_data:/root/.ollama
+      - ollama_data_testing:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
     networks:
-      - sgi-network
+      - sgi-testing-network
     restart: unless-stopped
 
   # API Backend
@@ -47,51 +47,50 @@ services:
     build:
       context: .
       dockerfile: ./apps/api/Dockerfile
-    container_name: sgi-api
+    container_name: sgi-api-testing
     environment:
       NODE_ENV: production
-      PORT: 3002
+      PORT: 4002
       DATABASE_URL: postgresql://sgi:sgi@postgres:5432/sgi
       REDIS_URL: redis://redis:6379
       JWT_SECRET: change-me-in-production
-      CORS_ORIGIN: http://logismart.ar
+      CORS_ORIGIN: http://46.62.253.81:4000,http://localhost:3000,http://127.0.0.1:3000
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: ./uploads
       EMAIL_PROVIDER: console
     ports:
-      - "3002:3002"
+      - "4002:4002"
     volumes:
-      - api_uploads:/app/uploads
+      - api_uploads_testing:/app/uploads
     depends_on:
       - postgres
       - redis
       - ollama
     networks:
-      - sgi-network
+      - sgi-testing-network
 
   # Web Frontend
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-    container_name: sgi-web
+    container_name: sgi-web-testing
     environment:
-      NEXT_PUBLIC_API_URL: /api
-      NEXT_PUBLIC_APP_URL: http://logismart.ar
-      API_URL: http://api:3002
+      NEXT_PUBLIC_API_URL: http://46.62.253.81:4002
+      NEXT_PUBLIC_APP_URL: http://46.62.253.81:4000
     ports:
-      - "3000:3000"
+      - "4000:3000"
     depends_on:
       - api
     networks:
-      - sgi-network
+      - sgi-testing-network
 
 volumes:
-  postgres_data:
-  redis_data:
-  ollama_data:
-  api_uploads:
+  postgres_data_testing:
+  redis_data_testing:
+  ollama_data_testing:
+  api_uploads_testing:
 
 networks:
-  sgi-network:
+  sgi-testing-network:
     driver: bridge
