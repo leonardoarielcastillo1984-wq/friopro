@@ -53,6 +53,10 @@ const STATUS_LABELS: Record<string, string> = {
   'FINAL': 'Final',
 };
 
+function displayTitle(title: string) {
+  return title.replace(/__\d{6,}$/, '');
+}
+
 const STATUS_COLORS: Record<string, string> = {
   'DRAFT': 'bg-yellow-100 text-yellow-800',
   'FINAL': 'bg-green-100 text-green-800',
@@ -226,7 +230,7 @@ export default function InformeDireccionPage() {
                     <td className="px-6 py-4">
                       <div>
                         <div className="text-sm font-medium text-gray-900">
-                          {review.title}
+                          {displayTitle(review.title)}
                         </div>
                         {review.summary && (
                           <div className="text-sm text-gray-500 truncate max-w-xs">

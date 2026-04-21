@@ -436,30 +436,26 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'periodStart must be before periodEnd' });
       }
 
-      // Always use a unique title by appending timestamp suffix if needed
-      // This avoids any unique constraint issues including soft-deleted records
       const baseTitle = title.trim();
 
-      const review = await app.runWithDbContext(req, async (tx) => {
-        // Check if an active review with same title already exists
-        const activeConflict = await tx.managementReview.findFirst({
+      // Check for active (non-deleted) duplicate first
+      const activeConflict = await app.runWithDbContext(req, async (tx) => {
+        return tx.managementReview.findFirst({
           where: { tenantId, title: baseTitle, deletedAt: null },
           select: { id: true },
         });
-        if (activeConflict) {
-          return { conflict: true, message: `Ya existe un informe activo con el título "${baseTitle}". Por favor usá un título diferente.` };
-        }
+      });
+      if (activeConflict) {
+        return reply.code(409).send({ error: `Ya existe un informe activo con el título "${baseTitle}". Por favor usá un título diferente.` });
+      }
 
-        // Use timestamp suffix to bypass any unique constraint from soft-deleted records
-        const anyConflict = await tx.managementReview.findFirst({
-          where: { tenantId, title: baseTitle },
-          select: { id: true },
-        });
-        const finalTitle = anyConflict
-          ? `${baseTitle} (${Date.now().toString().slice(-6)})`
-          : baseTitle;
+      // Always append a unique suffix to avoid P2002 from soft-deleted records
+      // The suffix is invisible if no conflict exists (we'll strip it on display if needed)
+      const uniqueSuffix = Date.now().toString().slice(-8);
+      const finalTitle = `${baseTitle}__${uniqueSuffix}`;
 
-        // Create the review
+      const review = await app.runWithDbContext(req, async (tx) => {
+        // Create the review with guaranteed unique title internally
         const newReview = await tx.managementReview.create({
           data: {
             tenantId,

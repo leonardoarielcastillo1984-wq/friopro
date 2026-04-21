@@ -154,6 +154,9 @@ export async function buildApp() {
         if (target && target.includes('NormativeStandard') && target.includes('tenantId') && target.includes('code')) {
           return reply.code(409).send({ error: 'Ya existe una norma con ese código en este tenant. Si eliminaste la norma anteriormente, debe ser restaurada o eliminada permanentemente.' });
         }
+        if (target && (Array.isArray(target) ? target.join(',') : String(target)).includes('management_reviews')) {
+          return reply.code(409).send({ error: 'Ya existe un informe con ese título. Por favor usá un título diferente.' });
+        }
         return reply.code(409).send({ error: 'Resource already exists' });
       }
       if (error.code === 'P2025') {
