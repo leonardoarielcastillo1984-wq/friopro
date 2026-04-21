@@ -15,6 +15,17 @@ const createProjectSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
+async function enrichProjects(prisma: any, projects: any[]) {
+  const ids = [...new Set(projects.map(p => p.responsibleId).filter(Boolean))];
+  if (ids.length === 0) return projects;
+  const users = await prisma.platformUser.findMany({ where: { id: { in: ids } }, select: { id: true, email: true } });
+  const userMap = Object.fromEntries(users.map((u: any) => [u.id, u]));
+  return projects.map(p => ({
+    ...p,
+    responsible: userMap[p.responsibleId] ? { id: userMap[p.responsibleId].id, name: userMap[p.responsibleId].email, email: userMap[p.responsibleId].email } : { id: p.responsibleId, name: 'Usuario', email: '' },
+  }));
+}
+
 async function logHistory(prisma: any, projectId: string, tenantId: string, action: string, details: string, userId?: string, userName?: string) {
   try {
     await prisma.project360History.create({
@@ -37,11 +48,12 @@ export default async function project360Routes(app: FastifyInstance) {
     if (priority) where.priority = priority;
     if (origin) where.origin = origin;
 
-    const projects = await prisma.project360.findMany({
+    const raw = await prisma.project360.findMany({
       where,
       include: { tasks: { where: { deletedAt: null }, orderBy: { order: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
+    const projects = await enrichProjects(prisma, raw);
     return reply.send({ projects });
   });
 
@@ -82,7 +94,8 @@ export default async function project360Routes(app: FastifyInstance) {
       include: { tasks: { where: { deletedAt: null }, orderBy: { order: 'asc' }, include: { comments: { orderBy: { createdAt: 'desc' } } } }, attachments: { orderBy: { createdAt: 'desc' } }, reminders: { orderBy: { reminderDate: 'asc' } } },
     });
     if (!project) return reply.code(404).send({ error: 'Project not found' });
-    return reply.send({ project });
+    const [enriched] = await enrichProjects(prisma, [project]);
+    return reply.send({ project: enriched });
   });
 
   // PUT /project360/projects/:id
