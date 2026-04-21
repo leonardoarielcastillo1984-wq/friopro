@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Compass, Save } from 'lucide-react';
+import { Compass, Save, Sparkles, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 interface Context {
@@ -19,6 +19,10 @@ interface Context {
   mission?: string;
   vision?: string;
   values?: string;
+  dafoFo?: string;
+  dafoFa?: string;
+  dafoDo?: string;
+  dafoDa?: string;
 }
 
 function textareaToArray(text: string): string[] {
@@ -33,8 +37,40 @@ export default function ContextoPage() {
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [data, setData] = useState<Context>({ year: new Date().getFullYear() });
   const [foda, setFoda] = useState({ s: '', w: '', o: '', t: '' });
+
+  async function suggestDafo(quadrant: 'dafoFo' | 'dafoFa' | 'dafoDo' | 'dafoDa') {
+    const labels: Record<string, string> = {
+      dafoFo: 'FO (Fortalezas + Oportunidades)',
+      dafoFa: 'FA (Fortalezas + Amenazas)',
+      dafoDo: 'DO (Debilidades + Oportunidades)',
+      dafoDa: 'DA (Debilidades + Amenazas)',
+    };
+    setAiLoading(quadrant);
+    try {
+      const prompt = `Eres un consultor ISO experto. Dado este análisis FODA:
+Fortalezas: ${foda.s || '(no especificadas)'}
+Debilidades: ${foda.w || '(no especificadas)'}
+Oportunidades: ${foda.o || '(no especificadas)'}
+Amenazas: ${foda.t || '(no especificadas)'}
+
+Sugiere 3 estrategias concretas para el cuadrante ${labels[quadrant]} de la Matriz DAFO Cruzado.
+Responde solo con las 3 estrategias numeradas, sin introducción. Sé específico y accionable.`;
+
+      const res = await apiFetch<{ response?: string; text?: string; content?: string }>('/ai/chat', {
+        method: 'POST',
+        body: JSON.stringify({ message: prompt, stream: false }),
+      });
+      const text = res?.response || res?.text || res?.content || '';
+      if (text) setData(prev => ({ ...prev, [quadrant]: text }));
+    } catch (err: any) {
+      alert('Error al obtener sugerencia IA: ' + (err?.message || 'Error desconocido'));
+    } finally {
+      setAiLoading(null);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -170,6 +206,49 @@ export default function ContextoPage() {
                       value={(data as any)[key] || ''}
                       onChange={(e) => setData({ ...data, [key]: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Matriz DAFO Cruzado */}
+            <section className="bg-white border border-gray-200 rounded-xl p-6">
+              <h2 className="text-lg font-semibold mb-1">Matriz DAFO Cruzado</h2>
+              <p className="text-xs text-gray-500 mb-4">
+                Estrategias derivadas del análisis FODA — evidencia requerida por ISO 9001 §6.1
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {([
+                  { key: 'dafoFo' as const, label: 'FO — Fortalezas + Oportunidades', sub: 'Usar fortalezas para aprovechar oportunidades', color: 'text-green-700', border: 'border-green-200 bg-green-50' },
+                  { key: 'dafoFa' as const, label: 'FA — Fortalezas + Amenazas', sub: 'Usar fortalezas para neutralizar amenazas', color: 'text-blue-700', border: 'border-blue-200 bg-blue-50' },
+                  { key: 'dafoDo' as const, label: 'DO — Debilidades + Oportunidades', sub: 'Superar debilidades aprovechando oportunidades', color: 'text-orange-700', border: 'border-orange-200 bg-orange-50' },
+                  { key: 'dafoDa' as const, label: 'DA — Debilidades + Amenazas', sub: 'Reducir debilidades y evitar amenazas', color: 'text-red-700', border: 'border-red-200 bg-red-50' },
+                ]).map(({ key, label, sub, color, border }) => (
+                  <div key={key} className={`rounded-lg border p-4 ${border}`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <p className={`text-xs font-bold ${color}`}>{label}</p>
+                        <p className="text-xs text-gray-500">{sub}</p>
+                      </div>
+                      <button
+                        onClick={() => suggestDafo(key)}
+                        disabled={aiLoading === key}
+                        title="Sugerencia IA"
+                        className="flex items-center gap-1 px-2 py-1 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 shrink-0 ml-2"
+                      >
+                        {aiLoading === key
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <Sparkles className="h-3 w-3 text-purple-500" />}
+                        IA
+                      </button>
+                    </div>
+                    <textarea
+                      rows={5}
+                      value={data[key] || ''}
+                      onChange={(e) => setData(prev => ({ ...prev, [key]: e.target.value }))}
+                      placeholder="Escribí las estrategias o usá el botón IA para obtener sugerencias..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
                     />
                   </div>
                 ))}

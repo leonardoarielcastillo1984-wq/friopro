@@ -3127,6 +3127,10 @@ model OrganizationContext {
   mission       String?
   vision        String?
   values        String?
+  dafoFo        String?
+  dafoFa        String?
+  dafoDo        String?
+  dafoDa        String?
   createdAt     DateTime  @default(now()) @db.Timestamptz
   updatedAt     DateTime  @updatedAt @db.Timestamptz
 
