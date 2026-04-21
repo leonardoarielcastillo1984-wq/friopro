@@ -436,29 +436,29 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'periodStart must be before periodEnd' });
       }
 
-      // Check for duplicate title (only among non-deleted records)
-      const activeWithSameTitle = await app.runWithDbContext(req, async (tx) => {
-        return tx.managementReview.findFirst({
-          where: { tenantId, title: title.trim(), deletedAt: null },
-          select: { id: true },
-        });
-      });
-      if (activeWithSameTitle) {
-        return reply.code(409).send({ error: `Ya existe un informe activo con el título "${title.trim()}". Por favor usá un título diferente.` });
-      }
-
-      // If a soft-deleted record blocks the unique constraint, append a suffix to bypass it
-      const deletedWithSameTitle = await app.runWithDbContext(req, async (tx) => {
-        return tx.managementReview.findFirst({
-          where: { tenantId, title: title.trim(), deletedAt: { not: null } },
-          select: { id: true },
-        });
-      });
-      const finalTitle = deletedWithSameTitle
-        ? `${title.trim()} (${new Date().getFullYear()}-${Date.now().toString().slice(-5)})`
-        : title.trim();
+      // Always use a unique title by appending timestamp suffix if needed
+      // This avoids any unique constraint issues including soft-deleted records
+      const baseTitle = title.trim();
 
       const review = await app.runWithDbContext(req, async (tx) => {
+        // Check if an active review with same title already exists
+        const activeConflict = await tx.managementReview.findFirst({
+          where: { tenantId, title: baseTitle, deletedAt: null },
+          select: { id: true },
+        });
+        if (activeConflict) {
+          return { conflict: true, message: `Ya existe un informe activo con el título "${baseTitle}". Por favor usá un título diferente.` };
+        }
+
+        // Use timestamp suffix to bypass any unique constraint from soft-deleted records
+        const anyConflict = await tx.managementReview.findFirst({
+          where: { tenantId, title: baseTitle },
+          select: { id: true },
+        });
+        const finalTitle = anyConflict
+          ? `${baseTitle} (${Date.now().toString().slice(-6)})`
+          : baseTitle;
+
         // Create the review
         const newReview = await tx.managementReview.create({
           data: {
@@ -495,6 +495,10 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
 
         return { ...newReview, sections };
       });
+
+      if (review && (review as any).conflict) {
+        return reply.code(409).send({ error: (review as any).message });
+      }
 
       return reply.code(201).send({ review });
     },
