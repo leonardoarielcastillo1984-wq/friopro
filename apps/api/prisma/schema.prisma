@@ -3138,6 +3138,123 @@ model OrganizationContext {
   @@map("organization_context")
 }
 
+// -------- PROJECT360 --------
+model Project360 {
+  id            String              @id @default(uuid()) @db.Uuid
+  tenantId      String              @db.Uuid
+  code          String
+  name          String
+  description   String?
+  origin        String
+  originModule  String              @default("PROJECT360")
+  originEntityId String?
+  responsibleId String              @db.Uuid
+  targetDate    DateTime            @db.Timestamptz
+  startDate     DateTime            @default(now()) @db.Timestamptz
+  status        String              @default("PENDING")
+  priority      String              @default("MEDIUM")
+  progress      Int                 @default(0)
+  tags          Json                @default("[]")
+  indicatorId   String?             @db.Uuid
+  targetValue   Float?
+  createdById   String?             @db.Uuid
+  createdAt     DateTime            @default(now()) @db.Timestamptz
+  updatedAt     DateTime            @updatedAt @db.Timestamptz
+  deletedAt     DateTime?           @db.Timestamptz
+
+  tasks         Project360Task[]
+  attachments   Project360Attachment[]
+  reminders     Project360Reminder[]
+  history       Project360History[]
+
+  @@map("project360")
+}
+
+model Project360Task {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  tenantId      String    @db.Uuid
+  title         String
+  description   String?
+  responsibleId String?   @db.Uuid
+  status        String    @default("PENDING")
+  priority      String    @default("MEDIUM")
+  dueDate       DateTime? @db.Timestamptz
+  completedAt   DateTime? @db.Timestamptz
+  order         Int       @default(0)
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+  deletedAt     DateTime? @db.Timestamptz
+
+  project       Project360  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  comments      Project360Comment[]
+
+  @@map("project360_task")
+}
+
+model Project360Comment {
+  id          String    @id @default(uuid()) @db.Uuid
+  taskId      String    @db.Uuid
+  tenantId    String    @db.Uuid
+  text        String
+  authorId    String?   @db.Uuid
+  authorName  String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+
+  task        Project360Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("project360_comment")
+}
+
+model Project360Attachment {
+  id          String    @id @default(uuid()) @db.Uuid
+  projectId   String    @db.Uuid
+  taskId      String?   @db.Uuid
+  tenantId    String    @db.Uuid
+  name        String
+  url         String
+  size        Int       @default(0)
+  type        String    @default("application/octet-stream")
+  uploadedById String?  @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+
+  project     Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project360_attachment")
+}
+
+model Project360Reminder {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  tenantId      String    @db.Uuid
+  title         String
+  description   String?
+  reminderDate  DateTime  @db.Timestamptz
+  userId        String?   @db.Uuid
+  isCompleted   Boolean   @default(false)
+  completedAt   DateTime? @db.Timestamptz
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project360_reminder")
+}
+
+model Project360History {
+  id          String    @id @default(uuid()) @db.Uuid
+  projectId   String    @db.Uuid
+  tenantId    String    @db.Uuid
+  action      String
+  details     String?
+  userId      String?   @db.Uuid
+  userName    String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+
+  project     Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project360_history")
+}
+
 // -------- 5. IPERC (Peligros SST) --------
 model Hazard {
   id            String    @id @default(uuid()) @db.Uuid
