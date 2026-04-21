@@ -463,17 +463,20 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
           },
         });
 
-        // Generate sections based on standards
+        // Generate sections based on standards (deduplicate by key across standards)
+        const seenKeys = new Set<string>();
         const sections = [];
         for (const standard of standards) {
           const templates = SECTION_TEMPLATES[standard] || [];
           for (const template of templates) {
+            if (seenKeys.has(template.key)) continue;
+            seenKeys.add(template.key);
             const section = await tx.managementReviewSection.create({
               data: {
                 reportId: newReview.id,
                 key: template.key,
                 title: template.title,
-                systemData: undefined, // Will be populated when generating draft
+                systemData: undefined,
                 freeText: null,
                 outputs: null,
                 decisions: undefined,
