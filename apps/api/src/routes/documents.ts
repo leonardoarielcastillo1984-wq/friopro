@@ -195,13 +195,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       const existing = await tx.document.findFirst({ where: { id: params.id, deletedAt: null } });
       if (!existing) return null;
 
-      return tx.document.update({
-        where: { id: existing.id },
-        data: {
-          deletedAt: new Date(),
-          updatedById: req.auth?.userId ?? null,
-        },
-      });
+      await tx.document.delete({ where: { id: existing.id } });
+      return existing;
     });
 
     if (!deleted) return reply.code(404).send({ error: 'Not found' });

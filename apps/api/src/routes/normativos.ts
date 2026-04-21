@@ -381,13 +381,8 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       });
       if (!existing) return null;
 
-      return tx.normativeStandard.update({
-        where: { id: existing.id },
-        data: {
-          deletedAt: new Date(),
-          updatedById: req.auth?.userId ?? null,
-        },
-      });
+      await tx.normativeStandard.delete({ where: { id: existing.id } });
+      return existing;
     });
 
     if (!deleted) return reply.code(404).send({ error: 'Not found' });
