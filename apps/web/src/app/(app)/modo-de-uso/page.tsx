@@ -395,6 +395,93 @@ const SCREENSHOT_CAPTIONS: Record<string, string[]> = {
   clientes: ['Gestión de clientes', 'Encuestas de satisfacción'],
 };
 
+// Step-by-step flows. Each step has a screenshot and a caption.
+interface FlowStep { src: string; caption: string; }
+interface Flow { title: string; steps: FlowStep[]; }
+
+const FLOWS: Record<string, Flow[]> = {
+  documentos: [
+    {
+      title: 'Subir un documento al repositorio',
+      steps: [
+        { src: '/manual/flows/documentos-01.png', caption: '1. Entrá al módulo "Documentos" desde el sidebar.' },
+        { src: '/manual/flows/documentos-02.png', caption: '2. Click en "Subir" y completá título, tipo, departamento y archivo. Luego presioná "Subir documento".' },
+      ],
+    },
+  ],
+  'no-conformidades': [
+    {
+      title: 'Registrar una no conformidad',
+      steps: [
+        { src: '/manual/flows/nc-01.png', caption: '1. Abrí el módulo "No Conformidades".' },
+        { src: '/manual/flows/nc-02.png', caption: '2. Click en "Nueva" y completá descripción, origen, severidad y responsable.' },
+      ],
+    },
+  ],
+  riesgos: [
+    {
+      title: 'Registrar un riesgo',
+      steps: [
+        { src: '/manual/flows/riesgos-01.png', caption: '1. Entrá a "Riesgos" en el sidebar.' },
+        { src: '/manual/flows/riesgos-02.png', caption: '2. Click en "Nuevo riesgo" y completá proceso, descripción, probabilidad e impacto.' },
+      ],
+    },
+  ],
+  clientes: [
+    {
+      title: 'Alta de un cliente',
+      steps: [
+        { src: '/manual/flows/clientes-01.png', caption: '1. Abrí el módulo "Clientes".' },
+        { src: '/manual/flows/clientes-02.png', caption: '2. Click en "Nuevo Cliente". Completá nombre, razón social, email, tipo y datos de contacto. Guardá.' },
+      ],
+    },
+    {
+      title: 'Crear una encuesta de satisfacción',
+      steps: [
+        { src: '/manual/flows/encuestas-01.png', caption: '1. En "Clientes", cambiá a la pestaña "Encuestas".' },
+        { src: '/manual/flows/encuestas-02.png', caption: '2. Ya ves la lista de encuestas existentes. Click en "Nueva Encuesta".' },
+        { src: '/manual/flows/encuestas-03.png', caption: '3. Completá título, descripción, tipo (satisfacción, NPS, etc.) y opciones. Click "Crear Encuesta" y luego diseñá las preguntas.' },
+      ],
+    },
+  ],
+  rrhh: [
+    {
+      title: 'Alta de un empleado',
+      steps: [
+        { src: '/manual/flows/empleados-01.png', caption: '1. Entrá a "RRHH" y luego a "Empleados".' },
+        { src: '/manual/flows/empleados-02.png', caption: '2. Click en "Nuevo Empleado". Completá datos personales, puesto y departamento. Guardá.' },
+      ],
+    },
+  ],
+  'auditoria-ia': [
+    {
+      title: 'Analizar un documento con IA',
+      steps: [
+        { src: '/manual/flows/audit-01.png', caption: '1. Entrá a "Auditoría IA" desde el sidebar.' },
+        { src: '/manual/flows/audit-02.png', caption: '2. Seleccioná el documento y la norma contra la cual analizarlo. Iniciá el análisis; la IA devuelve hallazgos y recomendaciones.' },
+      ],
+    },
+  ],
+  'auditorias-iso': [
+    {
+      title: 'Crear una auditoría ISO',
+      steps: [
+        { src: '/manual/flows/audiso-01.png', caption: '1. Abrí el módulo "Auditorías ISO".' },
+        { src: '/manual/flows/audiso-02.png', caption: '2. Click en "Nueva auditoría". Definí alcance, norma, fechas y equipo auditor. Luego completá el checklist.' },
+      ],
+    },
+  ],
+  indicadores: [
+    {
+      title: 'Registrar un indicador',
+      steps: [
+        { src: '/manual/flows/indicadores-01.png', caption: '1. Entrá a "Indicadores".' },
+        { src: '/manual/flows/indicadores-02.png', caption: '2. Click en "Nuevo indicador". Definí nombre, fórmula, unidad, meta y frecuencia de medición.' },
+      ],
+    },
+  ],
+};
+
 export default function ModoDeUsoPage() {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState<string>(guides[0].id);
@@ -546,6 +633,35 @@ export default function ModoDeUsoPage() {
                 ))}
               </div>
             </div>
+
+            {FLOWS[current.id]?.map((flow, fIdx) => (
+              <div key={fIdx}>
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Paso a paso: {flow.title}
+                </h3>
+                <ol className="space-y-4">
+                  {flow.steps.map((step, sIdx) => (
+                    <li
+                      key={sIdx}
+                      className="border border-gray-200 rounded-lg overflow-hidden bg-white"
+                    >
+                      <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border-b border-blue-100 text-sm text-blue-900">
+                        <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">
+                          {sIdx + 1}
+                        </div>
+                        <span className="font-medium">{step.caption}</span>
+                      </div>
+                      <img
+                        src={step.src}
+                        alt={step.caption}
+                        className="w-full h-auto block"
+                        loading="lazy"
+                      />
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
 
             {current.tip && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
