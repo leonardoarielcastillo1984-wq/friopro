@@ -47,9 +47,7 @@ interface ActionProject {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-  _count: {
-    tasks: number;
-  };
+  tasks?: any[];
 }
 
 interface ActionTask {
@@ -487,7 +485,7 @@ export default function Project360Page() {
                           </div>
                           <div className="flex items-center gap-1">
                             <FileText className="w-4 h-4" />
-                            <span>{project._count.tasks} tareas</span>
+                            <span>{project.tasks?.length ?? 0} tareas</span>
                           </div>
                           {project.originReference && (
                             <div className="flex items-center gap-1">
