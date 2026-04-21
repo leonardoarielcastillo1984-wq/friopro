@@ -2101,8 +2101,8 @@ model ManagementReview {
 
   sections ManagementReviewSection[]
 
-  @@unique([tenantId, title])
   @@index([tenantId])
+  @@index([tenantId, title])
   @@index([status])
   @@index([periodStart])
   @@index([periodEnd])
