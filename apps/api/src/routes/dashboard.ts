@@ -47,20 +47,20 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         app.prisma.document.count({ where: { ...tenantFilter, deletedAt: null, status: 'EFFECTIVE' } }).catch(() => 0),
         app.prisma.document.count({ where: { ...tenantFilter, deletedAt: null, status: 'DRAFT' } }).catch(() => 0),
         // Normativos
-        app.prisma.normativeStandard.count({ where: { ...tenantFilter } }).catch(() => 0),
+        app.prisma.normativeStandard.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
         // NCRs
-        app.prisma.nonConformity.count({ where: { ...tenantFilter } }).catch(() => 0),
-        app.prisma.nonConformity.count({ where: { ...tenantFilter, status: 'OPEN' } }).catch(() => 0),
-        app.prisma.nonConformity.count({ where: { ...tenantFilter, status: 'CLOSED' } }).catch(() => 0),
+        app.prisma.nonConformity.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
+        app.prisma.nonConformity.count({ where: { ...tenantFilter, deletedAt: null, status: 'OPEN' } }).catch(() => 0),
+        app.prisma.nonConformity.count({ where: { ...tenantFilter, deletedAt: null, status: 'CLOSED' } }).catch(() => 0),
         // Riesgos
-        app.prisma.risk.count({ where: { ...tenantFilter } }).catch(() => 0),
+        app.prisma.risk.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
         // Capacitaciones
-        app.prisma.sgiTraining.count({ where: { ...tenantFilter } }).catch(() => 0),
-        app.prisma.sgiTraining.count({ where: { ...tenantFilter, status: 'COMPLETED' } }).catch(() => 0),
+        app.prisma.sgiTraining.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
+        app.prisma.sgiTraining.count({ where: { ...tenantFilter, deletedAt: null, status: 'COMPLETED' } }).catch(() => 0),
         // Departamentos
-        app.prisma.department.count({ where: { ...tenantFilter } }).catch(() => 0),
+        app.prisma.department.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
         // Indicadores
-        app.prisma.indicator.count({ where: { ...tenantFilter } }).catch(() => 0),
+        app.prisma.indicator.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
         // Acciones abiertas
         app.prisma.actionItem.count({ where: { ...tenantFilter, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } } }).catch(() => 0),
         // Acciones vencidas
