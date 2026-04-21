@@ -445,22 +445,15 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
           select: { id: true },
         });
       });
-      app.log.info({ tenantId, baseTitle, activeConflict }, '[MR-CREATE] duplicate check');
       if (activeConflict) {
         return reply.code(409).send({ error: `Ya existe un informe activo con el título "${baseTitle}". Por favor usá un título diferente.` });
       }
 
-      // Always append a unique suffix to avoid P2002 from soft-deleted records
-      // The suffix is invisible if no conflict exists (we'll strip it on display if needed)
-      const uniqueSuffix = Date.now().toString().slice(-8);
-      const finalTitle = `${baseTitle}__${uniqueSuffix}`;
-
       const review = await app.runWithDbContext(req, async (tx) => {
-        // Create the review with guaranteed unique title internally
         const newReview = await tx.managementReview.create({
           data: {
             tenantId,
-            title: finalTitle,
+            title: baseTitle,
             summary: summary?.trim() || null,
             periodStart: startDate,
             periodEnd: endDate,
