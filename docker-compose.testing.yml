@@ -73,9 +73,11 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api
     container_name: sgi-web-testing
     environment:
-      NEXT_PUBLIC_API_URL: http://46.62.253.81:4002
+      NEXT_PUBLIC_API_URL: /api
       NEXT_PUBLIC_APP_URL: http://46.62.253.81:4000
       API_URL: http://api:4002
     ports:
