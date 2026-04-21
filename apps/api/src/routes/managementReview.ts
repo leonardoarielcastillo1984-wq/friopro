@@ -2,35 +2,67 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { createLLMProvider } from '../services/llm/factory.js';
 
-// Section templates for each standard
+// Section templates for each standard — aligned to ISO clause 9.3
 const SECTION_TEMPLATES: Record<string, Array<{ key: string; title: string }>> = {
+  // ISO 9001:2015 — Cláusula 9.3.2 (Entradas) y 9.3.3 (Salidas)
   ISO_9001: [
-    { key: 'audit_results', title: 'Resultados de Auditorías' },
-    { key: 'nonconformities', title: 'No Conformidades y Acciones Correctivas' },
-    { key: 'customer_feedback', title: 'Retroalimentación del Cliente' },
-    { key: 'process_performance', title: 'Desempeño de Procesos' },
-    { key: 'improvement_opportunities', title: 'Oportunidades de Mejora' },
-    { key: 'risk_management', title: 'Gestión de Riesgos y Oportunidades' },
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGC (9.3.2.a)' },
+    { key: 'objectives_performance',   title: 'Desempeño de Objetivos de Calidad (9.3.2.b)' },
+    { key: 'process_performance',      title: 'Desempeño de Procesos e Indicadores KPI (9.3.2.b)' },
+    { key: 'customer_feedback',        title: 'Satisfacción del Cliente y Retroalimentación (9.3.2.c)' },
+    { key: 'nonconformities',          title: 'No Conformidades y Acciones Correctivas (9.3.2.d)' },
+    { key: 'audit_results',            title: 'Resultados de Auditorías Internas y Externas (9.3.2.e)' },
+    { key: 'supplier_performance',     title: 'Desempeño de Proveedores Externos (9.3.2.f)' },
+    { key: 'risk_management',          title: 'Gestión de Riesgos y Oportunidades (9.3.2.g)' },
+    { key: 'actions_capa',             title: 'Estado de Acciones CAPA (9.3.2.h)' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora (9.3.3)' },
+    { key: 'resources_adequacy',       title: 'Adecuación de Recursos (9.3.3)' },
   ],
+  // ISO 14001:2015 — Cláusula 9.3
   ISO_14001: [
-    { key: 'environmental_aspects', title: 'Aspectos Ambientales' },
-    { key: 'legal_compliance', title: 'Cumplimiento Legal' },
-    { key: 'environmental_objectives', title: 'Objetivos Ambientales' },
-    { key: 'emergency_preparedness', title: 'Preparación y Respuesta ante Emergencias' },
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGA (9.3.a)' },
+    { key: 'environmental_objectives', title: 'Logro de Objetivos Ambientales (9.3.b)' },
+    { key: 'environmental_aspects',    title: 'Aspectos Ambientales Significativos (9.3.c)' },
+    { key: 'legal_compliance',         title: 'Cumplimiento de Obligaciones Legales (9.3.d)' },
+    { key: 'audit_results',            title: 'Resultados de Auditorías Ambientales (9.3.e)' },
+    { key: 'nonconformities',          title: 'No Conformidades y Acciones Correctivas (9.3.f)' },
+    { key: 'emergency_preparedness',   title: 'Preparación y Respuesta ante Emergencias (9.3.g)' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora Continua (9.3.h)' },
   ],
+  // ISO 45001:2018 — Cláusula 9.3
   ISO_45001: [
-    { key: 'ohs_audit_results', title: 'Resultados de Auditorías SST' },
-    { key: 'incident_investigation', title: 'Investigación de Incidentes y Accidentes' },
-    { key: 'risk_assessment', title: 'Evaluación de Riesgos SST' },
-    { key: 'ohs_objectives', title: 'Objetivos de SST' },
-    { key: 'worker_participation', title: 'Participación y Consulta de los Trabajadores' },
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGSST (9.3.a)' },
+    { key: 'ohs_objectives',           title: 'Logro de Objetivos de SST (9.3.b)' },
+    { key: 'incident_investigation',   title: 'Incidentes, No Conformidades y Acciones Correctivas (9.3.c)' },
+    { key: 'ohs_audit_results',        title: 'Resultados de Auditorías SST (9.3.d)' },
+    { key: 'risk_assessment',          title: 'Evaluación de Peligros y Riesgos SST (9.3.e)' },
+    { key: 'worker_participation',     title: 'Participación y Consulta de los Trabajadores (9.3.f)' },
+    { key: 'legal_compliance',         title: 'Cumplimiento de Requisitos Legales SST (9.3.g)' },
+    { key: 'resources_adequacy',       title: 'Adecuación de Recursos y Competencias (9.3.h)' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora Continua SST (9.3.i)' },
   ],
+  // ISO 27001:2022 — Cláusula 9.3
   ISO_27001: [
-    { key: 'risk_treatment', title: 'Tratamiento de Riesgos de Seguridad' },
-    { key: 'security_incidents', title: 'Incidentes de Seguridad' },
-    { key: 'control_effectiveness', title: 'Efectividad de los Controles' },
-    { key: 'compliance_evaluation', title: 'Evaluación de Cumplimiento' },
-    { key: 'business_continuity', title: 'Continuidad del Negocio' },
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGSI (9.3.a)' },
+    { key: 'security_incidents',       title: 'Incidentes de Seguridad de la Información (9.3.b)' },
+    { key: 'risk_treatment',           title: 'Tratamiento de Riesgos de Seguridad (9.3.c)' },
+    { key: 'control_effectiveness',    title: 'Efectividad de los Controles Implementados (9.3.d)' },
+    { key: 'audit_results',            title: 'Resultados de Auditorías del SGSI (9.3.e)' },
+    { key: 'compliance_evaluation',    title: 'Evaluación de Cumplimiento Normativo (9.3.f)' },
+    { key: 'business_continuity',      title: 'Continuidad del Negocio y Disponibilidad (9.3.g)' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora (9.3.h)' },
+  ],
+  // IATF 16949:2016 — Cláusula 9.3 (extiende ISO 9001)
+  IATF_16949: [
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGCA (9.3.2.a)' },
+    { key: 'customer_feedback',        title: 'Satisfacción del Cliente y Desempeño de Entrega (9.3.2.b)' },
+    { key: 'process_performance',      title: 'Desempeño de Procesos y KPIs (9.3.2.c)' },
+    { key: 'nonconformities',          title: 'No Conformidades Internas y de Campo (9.3.2.d)' },
+    { key: 'audit_results',            title: 'Resultados de Auditorías (internas, de 2da y 3ra parte) (9.3.2.e)' },
+    { key: 'supplier_performance',     title: 'Desempeño de Proveedores y Cadena de Suministro (9.3.2.f)' },
+    { key: 'risk_management',          title: 'Riesgos y Oportunidades del Negocio (9.3.2.g)' },
+    { key: 'actions_capa',             title: 'Estado de Acciones CAPA Abiertas (9.3.2.h)' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora y Lecciones Aprendidas (9.3.3)' },
   ],
 };
 
@@ -43,382 +75,322 @@ async function buildSectionSystemData(params: {
 }) {
   const { tenantId, periodStart, periodEnd, standards, tx } = params;
   const data: Record<string, any> = {};
+  const tf = { tenantId };
+  const tfPeriod = { tenantId, createdAt: { gte: periodStart, lte: periodEnd } };
 
-  // Audit results for all standards
-  if (standards.some(s => SECTION_TEMPLATES[s])) {
+  // ── SECCIÓN COMÚN A TODAS LAS NORMAS: Cambios en el contexto ──────────────
+  try {
+    const context = await tx.organizationContext.findFirst({
+      where: { tenantId, year: periodEnd.getFullYear() },
+    }).catch(() => null);
+    const stakeholders = await tx.stakeholder.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { name: true, type: true, category: true, needs: true, expectations: true },
+    }).catch(() => []);
+    data.context_changes = {
+      hasFodaAnalysis: !!context,
+      year: periodEnd.getFullYear(),
+      strengths: context?.strengths ?? null,
+      weaknesses: context?.weaknesses ?? null,
+      opportunities: context?.opportunities ?? null,
+      threats: context?.threats ?? null,
+      totalStakeholders: stakeholders.length,
+      internalStakeholders: stakeholders.filter((s: any) => s.type === 'INTERNAL').length,
+      externalStakeholders: stakeholders.filter((s: any) => s.type === 'EXTERNAL').length,
+      nota: 'Completar manualmente: cambios en factores externos e internos, cambios normativos, cambios en partes interesadas',
+    };
+  } catch { data.context_changes = { nota: 'Sin datos de contexto registrados. Completar manualmente.' }; }
+
+  // ── AUDITORÍAS (todas las normas) ───────────────────────────────────────────
+  try {
     const audits = await tx.audit.findMany({
-      where: {
-        tenantId,
-        actualStartDate: { gte: periodStart },
-        actualEndDate: { lte: periodEnd },
-        deletedAt: null,
+      where: { tenantId, deletedAt: null,
+        OR: [
+          { actualStartDate: { gte: periodStart, lte: periodEnd } },
+          { plannedStartDate: { gte: periodStart, lte: periodEnd } },
+        ],
       },
-      include: {
-        findings: {
-          where: { deletedAt: null },
-        },
-        checklist: {
-          orderBy: { order: 'asc' },
-        },
-      },
+      select: { id: true, code: true, title: true, type: true, status: true, area: true, actualStartDate: true, actualEndDate: true },
     });
-
+    const allFindings = await tx.auditFinding.findMany({
+      where: { tenantId, deletedAt: null, createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { id: true, code: true, type: true, severity: true, status: true, area: true, description: true, createdAt: true },
+    });
+    const checklists = await tx.auditChecklistItem.findMany({
+      where: { auditId: { in: audits.map((a: any) => a.id) } },
+      select: { auditId: true, response: true },
+    });
+    const complianceByAudit = audits.map((a: any) => {
+      const items = checklists.filter((c: any) => c.auditId === a.id && c.response && c.response !== 'NOT_APPLICABLE');
+      const compliant = items.filter((c: any) => c.response === 'COMPLIES').length;
+      return { ...a, compliancePercentage: items.length > 0 ? Math.round((compliant / items.length) * 100) : null };
+    });
     data.audit_results = {
       totalAudits: audits.length,
       completedAudits: audits.filter((a: any) => a.status === 'COMPLETED').length,
-      totalFindings: audits.reduce((sum: number, a: any) => sum + a.findings.length, 0),
-      openFindings: audits.reduce((sum: number, a: any) => sum + a.findings.filter((f: any) => f.status !== 'CLOSED').length, 0),
-      complianceScore: calculateComplianceScore(audits),
-      audits: audits.map((a: any) => ({
-        id: a.id,
-        code: a.code,
-        title: a.title,
-        type: a.type,
-        area: a.area,
-        actualStartDate: a.actualStartDate,
-        actualEndDate: a.actualEndDate,
-        findingsCount: a.findings.length,
-        compliancePercentage: calculateAuditCompliance(a.checklist),
-      })),
-    };
-  }
-
-  // Non-conformities (if ISO 9001)
-  if (standards.includes('ISO_9001')) {
-    const nonconformities = await tx.auditFinding.findMany({
-      where: {
-        tenantId,
-        type: 'NON_CONFORMITY',
-        createdAt: { gte: periodStart, lte: periodEnd },
-        deletedAt: null,
-      },
-      include: {
-        actions: true,
-      },
-    });
-
-    data.nonconformities = {
-      total: nonconformities.length,
+      totalFindings: allFindings.length,
+      openFindings: allFindings.filter((f: any) => f.status !== 'CLOSED').length,
       bySeverity: {
-        CRITICAL: nonconformities.filter((f: any) => f.severity === 'CRITICAL').length,
-        MAJOR: nonconformities.filter((f: any) => f.severity === 'MAJOR').length,
-        MINOR: nonconformities.filter((f: any) => f.severity === 'MINOR').length,
-        TRIVIAL: nonconformities.filter((f: any) => f.severity === 'TRIVIAL').length,
+        CRITICAL: allFindings.filter((f: any) => f.severity === 'CRITICAL').length,
+        MAJOR: allFindings.filter((f: any) => f.severity === 'MAJOR').length,
+        MINOR: allFindings.filter((f: any) => f.severity === 'MINOR').length,
       },
-      withActions: nonconformities.filter((f: any) => f.actions.length > 0).length,
-      closedOnTime: nonconformities.filter((f: any) => 
-        f.actions.some((a: any) => a.status === 'COMPLETED' && a.dueDate && new Date(a.dueDate) >= new Date(f.createdAt))
-      ).length,
-      items: nonconformities.map((nc: any) => ({
-        id: nc.id,
-        code: nc.code,
-        description: nc.description,
-        severity: nc.severity,
-        status: nc.status,
-        area: nc.area,
-        createdAt: nc.createdAt,
-        actionsCount: nc.actions.length,
+      audits: complianceByAudit.map((a: any) => ({
+        code: a.code, title: a.title, type: a.type, status: a.status,
+        area: a.area, compliancePercentage: a.compliancePercentage,
       })),
     };
-  }
+    data.ohs_audit_results = data.audit_results;
+  } catch { data.audit_results = { totalAudits: 0, completedAudits: 0, totalFindings: 0, openFindings: 0, audits: [] }; }
 
-  // Customer feedback placeholder (would integrate with customer complaints module)
-  if (standards.includes('ISO_9001')) {
-    // Try to get customer feedback from complaints module if it exists
-    try {
-      const complaints = await tx.auditFinding.findMany({
-        where: {
-          tenantId,
-          type: { in: ['NON_CONFORMITY', 'OBSERVATION'] },
-          createdAt: { gte: periodStart, lte: periodEnd },
-          deletedAt: null,
-          area: { contains: 'cliente' }, // Simple heuristic
-        },
-      });
-      
-      data.customer_feedback = {
-        totalComplaints: complaints.length,
-        resolvedOnTime: complaints.filter((c: any) => 
-          c.actions.some((a: any) => a.status === 'COMPLETED' && a.dueDate && new Date(a.dueDate) <= new Date())
-        ).length,
-        satisfactionScore: 0, // Would come from satisfaction survey module
-        trends: [], // Would come from time series data
-        items: complaints.map((c: any) => ({
-          id: c.id,
-          code: c.code,
-          description: c.description,
-          severity: c.severity,
-          status: c.status,
-          createdAt: c.createdAt,
-        })),
-      };
-    } catch (error) {
-      data.customer_feedback = {
-        totalComplaints: 0,
-        resolvedOnTime: 0,
-        satisfactionScore: 0,
-        trends: [],
-        items: [],
-      };
-    }
-  }
+  // ── NO CONFORMIDADES ────────────────────────────────────────────────────────
+  try {
+    const ncrs = await tx.nonConformity.findMany({
+      where: { tenantId, createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { id: true, code: true, title: true, severity: true, status: true, source: true, createdAt: true, closedAt: true },
+    });
+    const findingNcrs = await tx.auditFinding.findMany({
+      where: { tenantId, type: 'NON_CONFORMITY', deletedAt: null, createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { id: true, code: true, severity: true, status: true, area: true, description: true },
+    });
+    data.nonconformities = {
+      totalNcrs: ncrs.length,
+      openNcrs: ncrs.filter((n: any) => n.status === 'OPEN').length,
+      closedNcrs: ncrs.filter((n: any) => n.status === 'CLOSED').length,
+      bySeverity: {
+        CRITICAL: ncrs.filter((n: any) => n.severity === 'CRITICAL').length,
+        MAJOR: ncrs.filter((n: any) => n.severity === 'MAJOR').length,
+        MINOR: ncrs.filter((n: any) => n.severity === 'MINOR').length,
+      },
+      auditFindings: findingNcrs.length,
+      openAuditFindings: findingNcrs.filter((f: any) => f.status !== 'CLOSED').length,
+      items: ncrs.slice(0, 10).map((n: any) => ({ code: n.code, title: n.title, severity: n.severity, status: n.status, source: n.source })),
+    };
+    data.incident_investigation = data.nonconformities;
+  } catch { data.nonconformities = { totalNcrs: 0, openNcrs: 0, closedNcrs: 0, items: [] }; }
 
-  // Process performance (KPIs)
-  if (standards.includes('ISO_9001')) {
-    try {
-      // Get indicators data
-      const indicators = await tx.indicatorMeasurement.findMany({
-        where: {
-          indicator: { tenantId },
-          measuredAt: { gte: periodStart, lte: periodEnd },
-        },
-        include: {
-          indicator: true,
-        },
-      });
+  // ── ACCIONES CAPA ───────────────────────────────────────────────────────────
+  try {
+    const now = new Date();
+    const actions = await tx.actionItem.findMany({
+      where: { tenantId, deletedAt: null, createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { id: true, code: true, title: true, type: true, status: true, priority: true, dueDate: true, completedAt: true },
+    });
+    data.actions_capa = {
+      total: actions.length,
+      open: actions.filter((a: any) => ['OPEN','IN_PROGRESS'].includes(a.status)).length,
+      closed: actions.filter((a: any) => a.status === 'CLOSED').length,
+      overdue: actions.filter((a: any) => ['OPEN','IN_PROGRESS'].includes(a.status) && a.dueDate && new Date(a.dueDate) < now).length,
+      byType: {
+        CORRECTIVE: actions.filter((a: any) => a.type === 'CORRECTIVE').length,
+        PREVENTIVE: actions.filter((a: any) => a.type === 'PREVENTIVE').length,
+        IMPROVEMENT: actions.filter((a: any) => a.type === 'IMPROVEMENT').length,
+      },
+      items: actions.slice(0, 10).map((a: any) => ({ code: a.code, title: a.title, type: a.type, status: a.status, priority: a.priority, dueDate: a.dueDate })),
+    };
+  } catch { data.actions_capa = { total: 0, open: 0, closed: 0, overdue: 0, byType: {} }; }
 
-      const indicatorsGrouped = indicators.reduce((acc: any, measurement: any) => {
-        const key = measurement.indicator.id;
-        if (!acc[key]) {
-          acc[key] = {
-            name: measurement.indicator.name,
-            code: measurement.indicator.code,
-            unit: measurement.indicator.unit,
-            measurements: [],
-            target: measurement.indicator.targetValue,
-          };
-        }
-        acc[key].measurements.push({
-          value: measurement.value,
-          date: measurement.measuredAt,
-        });
-        return acc;
-      }, {} as any);
+  // ── OBJETIVOS SGI ───────────────────────────────────────────────────────────
+  try {
+    const objectives = await tx.sgiObjective.findMany({
+      where: { tenantId, deletedAt: null, year: periodEnd.getFullYear() },
+      select: { id: true, code: true, title: true, standard: true, status: true, progress: true, target: true, targetValue: true, unit: true },
+    });
+    data.objectives_performance = {
+      total: objectives.length,
+      achieved: objectives.filter((o: any) => o.status === 'ACHIEVED').length,
+      inProgress: objectives.filter((o: any) => o.status === 'IN_PROGRESS').length,
+      notAchieved: objectives.filter((o: any) => o.status === 'NOT_ACHIEVED').length,
+      averageProgress: objectives.length > 0 ? Math.round(objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) / objectives.length) : 0,
+      items: objectives.map((o: any) => ({ code: o.code, title: o.title, standard: o.standard, status: o.status, progress: o.progress, target: o.target })),
+    };
+    data.environmental_objectives = data.objectives_performance;
+    data.ohs_objectives = data.objectives_performance;
+  } catch { data.objectives_performance = { total: 0, achieved: 0, inProgress: 0, notAchieved: 0, items: [] }; }
 
-      const kpis = Object.values(indicatorsGrouped).map((kpi: any) => {
-        const avgValue = kpi.measurements.reduce((sum: number, m: any) => sum + m.value, 0) / kpi.measurements.length;
-        const onTarget = kpi.target ? avgValue >= kpi.target : false;
-        const trend = kpi.measurements.length > 1 ? 
-          (kpi.measurements[kpi.measurements.length - 1].value > kpi.measurements[0].value ? 'UP' : 'DOWN') : 'STABLE';
-        
-        return {
-          name: kpi.name,
-          code: kpi.code,
-          unit: kpi.unit,
-          averageValue: avgValue,
-          target: kpi.target,
-          onTarget,
-          trend,
-          measurements: kpi.measurements.length,
-        };
-      });
+  // ── INDICADORES / KPIs ──────────────────────────────────────────────────────
+  try {
+    const measurements = await tx.indicatorMeasurement.findMany({
+      where: { measuredAt: { gte: periodStart, lte: periodEnd } },
+      include: { indicator: { where: { tenantId } } },
+    });
+    const validMeasurements = measurements.filter((m: any) => m.indicator);
+    const grouped = validMeasurements.reduce((acc: any, m: any) => {
+      const k = m.indicator.id;
+      if (!acc[k]) acc[k] = { name: m.indicator.name, code: m.indicator.code, unit: m.indicator.unit, target: m.indicator.targetValue, values: [] };
+      acc[k].values.push(m.value);
+      return acc;
+    }, {} as any);
+    const kpis = Object.values(grouped).map((k: any) => {
+      const avg = k.values.reduce((s: number, v: number) => s + v, 0) / k.values.length;
+      return { name: k.name, code: k.code, unit: k.unit, average: +avg.toFixed(2), target: k.target, onTarget: k.target ? avg >= k.target : null, measurements: k.values.length };
+    });
+    data.process_performance = {
+      kpis,
+      totalIndicators: kpis.length,
+      onTarget: kpis.filter((k: any) => k.onTarget === true).length,
+      offTarget: kpis.filter((k: any) => k.onTarget === false).length,
+      overallScore: kpis.length > 0 ? Math.round((kpis.filter((k: any) => k.onTarget).length / kpis.length) * 100) : 0,
+    };
+  } catch { data.process_performance = { kpis: [], totalIndicators: 0, onTarget: 0, offTarget: 0 }; }
 
-      data.process_performance = {
-        kpis,
-        overallScore: kpis.length > 0 ? Math.round((kpis.filter(k => k.onTarget).length / kpis.length) * 100) : 0,
-        trends: kpis.map(k => ({ name: k.name, trend: k.trend, score: k.onTarget ? 100 : 0 })),
-      };
-    } catch (error) {
-      data.process_performance = {
-        kpis: [],
-        overallScore: 0,
-        trends: [],
-      };
-    }
-  }
+  // ── RIESGOS ─────────────────────────────────────────────────────────────────
+  try {
+    const risks = await tx.risk.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, code: true, title: true, category: true, riskLevel: true, status: true, aspectType: true, strategy: true },
+    });
+    data.risk_management = {
+      total: risks.length,
+      high: risks.filter((r: any) => r.riskLevel >= 15).length,
+      medium: risks.filter((r: any) => r.riskLevel >= 6 && r.riskLevel < 15).length,
+      low: risks.filter((r: any) => r.riskLevel < 6).length,
+      open: risks.filter((r: any) => r.status === 'IDENTIFIED' || r.status === 'IN_TREATMENT').length,
+      byCategory: risks.reduce((acc: any, r: any) => { acc[r.category] = (acc[r.category] || 0) + 1; return acc; }, {}),
+    };
+    data.risk_assessment = data.risk_management;
+    data.risk_treatment = data.risk_management;
+  } catch { data.risk_management = { total: 0, high: 0, medium: 0, low: 0 }; }
 
-  // Environmental aspects (ISO 14001)
-  if (standards.includes('ISO_14001')) {
-    try {
-      // Try to get environmental data from risks module
-      const environmentalRisks = await tx.risk.findMany({
-        where: {
-          tenantId,
-          category: { contains: 'ambiental' },
-          createdAt: { gte: periodStart, lte: periodEnd },
-          deletedAt: null,
-        },
-      });
+  // ── ASPECTOS AMBIENTALES ────────────────────────────────────────────────────
+  try {
+    const aspects = await tx.environmentalAspect.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, aspect: true, impact: true, isSignificant: true, currentControls: true },
+    }).catch(() => []);
+    data.environmental_aspects = {
+      total: aspects.length,
+      significant: aspects.filter((a: any) => a.isSignificant).length,
+      withControls: aspects.filter((a: any) => a.currentControls).length,
+      items: aspects.slice(0, 10).map((a: any) => ({ aspect: a.aspect, impact: a.impact, isSignificant: a.isSignificant })),
+    };
+  } catch { data.environmental_aspects = { total: 0, significant: 0, withControls: 0, items: [] }; }
 
-      data.environmental_aspects = {
-        significantAspects: environmentalRisks.map((r: any) => ({
-          id: r.id,
-          title: r.title,
-          impact: r.impact,
-          probability: r.probability,
-          riskLevel: r.riskLevel,
-        })),
-        complianceStatus: environmentalRisks.length > 0 ? 'MONITORING' : 'COMPLIANT',
-        improvements: environmentalRisks.filter((r: any) => r.status === 'OPEN').length,
-        totalRisks: environmentalRisks.length,
-      };
-    } catch (error) {
-      data.environmental_aspects = {
-        significantAspects: [],
-        complianceStatus: 'COMPLIANT',
-        improvements: 0,
-        totalRisks: 0,
-      };
-    }
-  }
+  // ── INCIDENTES (ISO 45001) ───────────────────────────────────────────────────
+  try {
+    const incidents = await tx.incident.findMany({
+      where: { tenantId, deletedAt: null, date: { gte: periodStart, lte: periodEnd } },
+      select: { id: true, code: true, type: true, severity: true, investigationStatus: true, date: true, daysLost: true },
+    }).catch(() => []);
+    data.incident_investigation = {
+      ...data.incident_investigation,
+      totalIncidents: incidents.length,
+      byType: incidents.reduce((acc: any, i: any) => { acc[i.type] = (acc[i.type] || 0) + 1; return acc; }, {}),
+      bySeverity: {
+        FATALITY: incidents.filter((i: any) => i.severity === 'FATALITY').length,
+        LOST_TIME: incidents.filter((i: any) => i.severity === 'LOST_TIME').length,
+        MEDICAL: incidents.filter((i: any) => i.severity === 'MEDICAL_TREATMENT').length,
+        NEAR_MISS: incidents.filter((i: any) => i.type === 'NEAR_MISS').length,
+      },
+      totalDaysLost: incidents.reduce((s: number, i: any) => s + (i.daysLost || 0), 0),
+      open: incidents.filter((i: any) => i.investigationStatus !== 'COMPLETED').length,
+    };
+  } catch { /* mantiene valor anterior */ }
 
-  // OHS incidents (ISO 45001)
-  if (standards.includes('ISO_45001')) {
-    try {
-      // Try to get OHS incidents from findings
-      const ohsIncidents = await tx.auditFinding.findMany({
-        where: {
-          tenantId,
-          type: 'NON_CONFORMITY',
-          area: { contains: 'seguridad' },
-          createdAt: { gte: periodStart, lte: periodEnd },
-          deletedAt: null,
-        },
-      });
+  // ── PROVEEDORES ─────────────────────────────────────────────────────────────
+  try {
+    const suppliers = await tx.supplier.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, name: true, category: true, status: true, isCritical: true },
+    }).catch(() => []);
+    const evals = await tx.supplierEvaluation.findMany({
+      where: { tenantId, createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { supplierId: true, overallScore: true, result: true },
+    }).catch(() => []);
+    data.supplier_performance = {
+      total: suppliers.length,
+      approved: suppliers.filter((s: any) => s.status === 'APPROVED').length,
+      pending: suppliers.filter((s: any) => s.status === 'PENDING').length,
+      suspended: suppliers.filter((s: any) => s.status === 'SUSPENDED').length,
+      critical: suppliers.filter((s: any) => s.isCritical).length,
+      evaluationsInPeriod: evals.length,
+      approvedEvals: evals.filter((e: any) => e.result === 'APPROVED').length,
+      avgScore: evals.length > 0 ? +(evals.reduce((s: number, e: any) => s + (e.overallScore || 0), 0) / evals.length).toFixed(1) : null,
+    };
+    data.customer_feedback = {
+      nota: 'Registrar manualmente: quejas de clientes, índice de satisfacción, reclamos recibidos y resueltos en el período.',
+      suppliersApproved: data.supplier_performance.approved,
+      suppliersPending: data.supplier_performance.pending,
+    };
+  } catch { data.supplier_performance = { total: 0, approved: 0, pending: 0 }; }
 
-      data.ohs_incidents = {
-        totalIncidents: ohsIncidents.length,
-        lostTimeInjuries: ohsIncidents.filter((i: any) => i.severity === 'CRITICAL').length,
-        nearMisses: ohsIncidents.filter((i: any) => i.type === 'OBSERVATION').length,
-        trend: ohsIncidents.length > 0 ? 'MONITORING' : 'STABLE',
-        items: ohsIncidents.map((i: any) => ({
-          id: i.id,
-          code: i.code,
-          description: i.description,
-          severity: i.severity,
-          createdAt: i.createdAt,
-        })),
-      };
-    } catch (error) {
-      data.ohs_incidents = {
-        totalIncidents: 0,
-        lostTimeInjuries: 0,
-        nearMisses: 0,
-        trend: 'STABLE',
-        items: [],
-      };
-    }
-  }
+  // ── CALIBRACIONES / RECURSOS ─────────────────────────────────────────────────
+  try {
+    const now2 = new Date();
+    const in60 = new Date(Date.now() + 60 * 24 * 3600 * 1000);
+    const equips = await tx.measuringEquipment.findMany({
+      where: { tenantId, deletedAt: null, status: 'ACTIVE' },
+      select: { id: true, name: true, nextCalibrationDate: true, status: true },
+    }).catch(() => []);
+    const trainings = await tx.sgiTraining.findMany({
+      where: { tenantId, deletedAt: null, scheduledDate: { gte: periodStart, lte: periodEnd } },
+      select: { id: true, title: true, status: true, durationHours: true },
+    }).catch(() => []);
+    data.resources_adequacy = {
+      totalEquipment: equips.length,
+      calibrationsDueSoon: equips.filter((e: any) => e.nextCalibrationDate && new Date(e.nextCalibrationDate) <= in60).length,
+      calibrationsOverdue: equips.filter((e: any) => e.nextCalibrationDate && new Date(e.nextCalibrationDate) < now2).length,
+      totalTrainings: trainings.length,
+      completedTrainings: trainings.filter((t: any) => t.status === 'COMPLETED').length,
+      totalTrainingHours: trainings.reduce((s: number, t: any) => s + (t.durationHours || 0), 0),
+      nota: 'Completar manualmente: evaluación de adecuación de infraestructura y ambiente de trabajo.',
+    };
+  } catch { data.resources_adequacy = { totalEquipment: 0, calibrationsDueSoon: 0, nota: 'Sin datos' }; }
 
-  // Security incidents (ISO 27001)
-  if (standards.includes('ISO_27001')) {
-    try {
-      // Try to get security incidents from findings
-      const securityIncidents = await tx.auditFinding.findMany({
-        where: {
-          tenantId,
-          type: 'NON_CONFORMITY',
-          area: { contains: 'información' },
-          createdAt: { gte: periodStart, lte: periodEnd },
-          deletedAt: null,
-        },
-      });
+  // ── CUMPLIMIENTO LEGAL ───────────────────────────────────────────────────────
+  try {
+    const legalRisks = await tx.risk.findMany({
+      where: { tenantId, deletedAt: null, legalRequirement: true },
+      select: { id: true, title: true, status: true, legalReference: true, riskLevel: true },
+    }).catch(() => []);
+    data.legal_compliance = {
+      totalLegalRequirements: legalRisks.length,
+      compliant: legalRisks.filter((r: any) => r.status === 'CLOSED' || r.status === 'ACCEPTED').length,
+      nonCompliant: legalRisks.filter((r: any) => r.status === 'IDENTIFIED' || r.status === 'IN_TREATMENT').length,
+      items: legalRisks.slice(0, 10).map((r: any) => ({ title: r.title, status: r.status, legalReference: r.legalReference, riskLevel: r.riskLevel })),
+      nota: 'Completar manualmente con evaluación de la matriz legal del período.',
+    };
+  } catch { data.legal_compliance = { totalLegalRequirements: 0, nota: 'Completar manualmente.' }; }
 
-      data.security_incidents = {
-        totalIncidents: securityIncidents.length,
-        highRiskIncidents: securityIncidents.filter((i: any) => i.severity === 'CRITICAL' || i.severity === 'MAJOR').length,
-        resolvedIncidents: securityIncidents.filter((i: any) => i.status === 'CLOSED').length,
-        averageResolutionTime: 0, // Would calculate from action dates
-        items: securityIncidents.map((i: any) => ({
-          id: i.id,
-          code: i.code,
-          description: i.description,
-          severity: i.severity,
-          status: i.status,
-          createdAt: i.createdAt,
-        })),
-      };
-    } catch (error) {
-      data.security_incidents = {
-        totalIncidents: 0,
-        highRiskIncidents: 0,
-        resolvedIncidents: 0,
-        averageResolutionTime: 0,
-        items: [],
-      };
-    }
-  }
+  // ── OPORTUNIDADES DE MEJORA ─────────────────────────────────────────────────
+  try {
+    const improvements = await tx.actionItem.findMany({
+      where: { tenantId, deletedAt: null, type: 'IMPROVEMENT', createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { code: true, title: true, status: true, priority: true },
+    }).catch(() => []);
+    data.improvement_opportunities = {
+      total: improvements.length,
+      open: improvements.filter((i: any) => i.status !== 'CLOSED').length,
+      closed: improvements.filter((i: any) => i.status === 'CLOSED').length,
+      items: improvements.slice(0, 10),
+      nota: 'Completar manualmente con análisis de tendencias, benchmarking y propuestas del equipo.',
+    };
+  } catch { data.improvement_opportunities = { total: 0, nota: 'Completar manualmente.' }; }
 
-  // Training data (for all standards)
-  if (standards.length > 0) {
-    try {
-      const trainings = await tx.training.findMany({
-        where: {
-          tenantId,
-          scheduledDate: { gte: periodStart, lte: periodEnd },
-          deletedAt: null,
-        },
-        include: {
-          attendees: true,
-        },
-      });
-
-      data.training_summary = {
-        totalTrainings: trainings.length,
-        completedTrainings: trainings.filter((t: any) => t.status === 'COMPLETED').length,
-        scheduledTrainings: trainings.filter((t: any) => t.status === 'SCHEDULED').length,
-        totalHours: trainings.reduce((sum: number, t: any) => sum + (t.durationHours || 0), 0),
-        totalAttendees: trainings.reduce((sum: number, t: any) => sum + t.attendees.length, 0),
-        byCategory: trainings.reduce((acc: any, t: any) => {
-          acc[t.category] = (acc[t.category] || 0) + 1;
-          return acc;
-        }, {}),
-        items: trainings.map((t: any) => ({
-          id: t.id,
-          code: t.code,
-          title: t.title,
-          category: t.category,
-          status: t.status,
-          durationHours: t.durationHours,
-          attendeesCount: t.attendees.length,
-          scheduledDate: t.scheduledDate,
-        })),
-      };
-    } catch (error) {
-      data.training_summary = {
-        totalTrainings: 0,
-        completedTrainings: 0,
-        scheduledTrainings: 0,
-        totalHours: 0,
-        totalAttendees: 0,
-        byCategory: {},
-        items: [],
-      };
-    }
-  }
+  // ── SEGURIDAD (ISO 27001) ────────────────────────────────────────────────────
+  data.security_incidents = {
+    nota: 'Registrar manualmente: incidentes de seguridad de la información detectados en el período, clasificación y tiempo de respuesta.',
+    ...((data.incident_investigation?.totalIncidents !== undefined) ? { incidentsRegistered: data.incident_investigation.totalIncidents } : {}),
+  };
+  data.control_effectiveness = {
+    nota: 'Evaluar manualmente la efectividad de los controles del Anexo A implementados. Incluir resultado de pruebas de controles.',
+    risksInTreatment: data.risk_management?.open ?? 0,
+  };
+  data.business_continuity = {
+    nota: 'Completar manualmente: estado de planes de continuidad, pruebas realizadas, incidentes que activaron el plan.',
+  };
+  data.emergency_preparedness = {
+    nota: 'Completar manualmente: simulacros realizados, incidentes ambientales o de SST activados, lecciones aprendidas.',
+    incidents: data.incident_investigation?.totalIncidents ?? 0,
+  };
+  data.worker_participation = {
+    nota: 'Completar manualmente: instancias de participación realizadas, consultas respondidas, temas planteados por los trabajadores.',
+    trainings: data.resources_adequacy?.completedTrainings ?? 0,
+  };
 
   return data;
 }
 
-function calculateComplianceScore(audits: any[]): number {
-  if (audits.length === 0) return 0;
-  
-  let totalItems = 0;
-  let compliantItems = 0;
-  
-  audits.forEach(audit => {
-    audit.checklist.forEach((item: any) => {
-      if (item.response && item.response !== 'NOT_APPLICABLE') {
-        totalItems++;
-        if (item.response === 'COMPLIES') {
-          compliantItems++;
-        }
-      }
-    });
-  });
-  
-  return totalItems > 0 ? Math.round((compliantItems / totalItems) * 100) : 0;
-}
-
-function calculateAuditCompliance(checklist: any[]): number {
-  if (checklist.length === 0) return 0;
-  
-  const answered = checklist.filter(item => item.response && item.response !== 'NOT_APPLICABLE');
-  if (answered.length === 0) return 0;
-  
-  const compliant = answered.filter(item => item.response === 'COMPLIES');
-  return Math.round((compliant.length / answered.length) * 100);
-}
 
 export async function registerManagementReviewRoutes(app: FastifyInstance) {
   // GET /management-reviews - List management reviews
