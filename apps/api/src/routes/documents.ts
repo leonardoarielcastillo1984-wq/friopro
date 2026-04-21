@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { extractTextFromPdf } from '../services/pdfParser.js';
 import { generateDocumentSummary } from '../services/aiService.js';
 import { requiresTenantContext, getEffectiveTenantId } from '../utils/tenant-bypass.js';
-import { checkStorageQuota } from '../services/storage-usage.js';
+import { checkStorageQuota, incrementStorageUsed, decrementStorageUsed } from '../services/storage-usage.js';
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -205,6 +205,16 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (!deleted) return reply.code(404).send({ error: 'Not found' });
+
+    // Decrementar uso si el documento tenia archivo
+    if (deleted.filePath) {
+      try {
+        const { size } = await fs.stat(deleted.filePath);
+        const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+        if (tenantId) await decrementStorageUsed((app as any).prisma, tenantId, size);
+      } catch { /* archivo ya no existe en disco */ }
+    }
+
     return reply.send({ ok: true });
   });
 
@@ -274,6 +284,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const fileName = `${Date.now()}-${data.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const filePath = path.join(uploadDir, fileName);
     await fs.writeFile(filePath, fileBuffer);
+    await incrementStorageUsed((app as any).prisma, effectiveTenantId, fileBuffer.length);
 
     // Extract text from file
     let content = '';

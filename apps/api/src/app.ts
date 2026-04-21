@@ -52,6 +52,7 @@ import { publicRoutes } from './routes/publicRoutes.js';
 import { documentsPublicRoutes } from './routes/documentsPublic.js';
 import { registerCompanyRoutes } from './routes/register-company.js';
 import { startNormativeWorker, startAuditWorker } from './jobs/queue.js';
+import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import {
   actionsRoutes, objectivesRoutes, stakeholdersRoutes,
   hazardsRoutes, aspectsRoutes, incidentsRoutes,
@@ -123,6 +124,7 @@ export async function buildApp() {
   });
 
   await app.register(prismaPlugin);
+  startStorageReconcileJob((app as any).prisma);
   await app.register(authPlugin);
   await app.register(csrfPlugin);
   await app.register(dbContextPlugin);

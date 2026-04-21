@@ -236,7 +236,8 @@ model Tenant {
   updatedById String?       @db.Uuid
   updatedBy   PlatformUser? @relation("TenantUpdatedBy", fields: [updatedById], references: [id])
 
-  deletedAt DateTime? @db.Timestamptz
+  deletedAt   DateTime? @db.Timestamptz
+  storageUsed BigInt    @default(0)
 
   memberships   TenantMembership[]
   subscriptions TenantSubscription[]

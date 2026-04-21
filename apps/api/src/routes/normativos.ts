@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { getStorage, computeFileHash, buildStorageKey } from '../services/storage.js';
-import { checkStorageQuota } from '../services/storage-usage.js';
+import { checkStorageQuota, incrementStorageUsed } from '../services/storage-usage.js';
 import { getNormativeQueue } from '../jobs/queue.js';
 import { requiresTenantContext, isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 
@@ -306,6 +306,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     // Subir archivo al storage
     const storageKey = buildStorageKey(effectiveTenantId, normativo.id, 'original.pdf');
     await storage.upload(storageKey, fileBuffer);
+    await incrementStorageUsed((app as any).prisma, effectiveTenantId, fileBuffer!.length);
 
     // Actualizar filePath
     await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
@@ -495,6 +496,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     // Subir archivo al storage
     const storageKey = buildStorageKey(effectiveTenantId, normativo.id, 'original.pdf');
     await storage.upload(storageKey, fileBuffer);
+    await incrementStorageUsed((app as any).prisma, effectiveTenantId, fileBuffer!.length);
 
     // Actualizar filePath
     await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
