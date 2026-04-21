@@ -58,6 +58,9 @@ services:
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: ./uploads
       EMAIL_PROVIDER: console
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://ollama:11434/v1
+      OLLAMA_MODEL: llama3.2
     ports:
       - "3002:3002"
     volumes:
