@@ -206,13 +206,16 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
     if (!deleted) return reply.code(404).send({ error: 'Not found' });
 
-    // Decrementar uso si el documento tenia archivo
+    // Decrementar uso y borrar archivo físico del disco
     if (deleted.filePath) {
       try {
         const { size } = await fs.stat(deleted.filePath);
         const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
         if (tenantId) await decrementStorageUsed((app as any).prisma, tenantId, size);
       } catch { /* archivo ya no existe en disco */ }
+      try {
+        await fs.unlink(deleted.filePath);
+      } catch { /* no bloquear si falla */ }
     }
 
     return reply.send({ ok: true });

@@ -38,10 +38,19 @@ export async function getDirSize(dirPath: string): Promise<number> {
 // ─── Obtener límite del plan ────────────────────────────────────
 export async function getStorageLimit(prisma: any, tenantId: string): Promise<number> {
   const sub = await prisma.tenantSubscription.findFirst({
-    where: { tenantId },
+    where: { tenantId, status: { in: ['ACTIVE', 'TRIAL', 'PAST_DUE'] } },
     include: { plan: true },
   });
-  if (!sub?.plan?.tier) return DEFAULT_LIMIT;
+  if (!sub?.plan) return DEFAULT_LIMIT;
+
+  // Intentar leer limits.storage (en MB) del plan
+  const planLimits = sub.plan.limits as Record<string, number> | null;
+  if (planLimits?.storage) {
+    if (planLimits.storage === -1) return PLAN_STORAGE_LIMITS.PREMIUM; // ilimitado → cap 20GB
+    return planLimits.storage * 1024 * 1024; // MB → bytes
+  }
+
+  // Fallback por tier
   return PLAN_STORAGE_LIMITS[sub.plan.tier] ?? DEFAULT_LIMIT;
 }
 

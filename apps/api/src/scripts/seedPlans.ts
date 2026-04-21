@@ -5,7 +5,6 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  // 14 módulos únicos - TODOS disponibles en todos los planes (usuario controla habilitación/deshabilitación)
   const allFeatures = {
     documentos: true,
     no_conformidades: true,
@@ -17,86 +16,59 @@ async function main() {
     project360: true,
     simulacros: true,
     normativos: true,
+    normativos_compliance: true,
     clientes: true,
     reportes: true,
+    encuestas: true,
     rrhh: true,
     audit_ia: true,
   };
 
-  await prisma.plan.upsert({
-    where: { tier: 'BASIC' },
-    update: {
-      name: 'Básico',
-      features: allFeatures,
-      limits: {
-        max_users: 25,
-        max_documents: 500,
-        max_normatives: 0,
-      },
-      isActive: true,
-    },
-    create: {
-      tier: 'BASIC',
-      name: 'Básico',
-      features: allFeatures,
-      limits: {
-        max_users: 25,
-        max_documents: 500,
-        max_normatives: 0,
-      },
-      isActive: true,
-    },
-  });
-
-  await prisma.plan.upsert({
-    where: { tier: 'PROFESSIONAL' },
-    update: {
-      name: 'Profesional',
-      features: allFeatures,
-      limits: {
-        max_users: 100,
-        max_documents: 5000,
-        max_normatives: 10,
-      },
-      isActive: true,
-    },
-    create: {
-      tier: 'PROFESSIONAL',
-      name: 'Profesional',
-      features: allFeatures,
-      limits: {
-        max_users: 100,
-        max_documents: 5000,
-        max_normatives: 10,
-      },
-      isActive: true,
-    },
-  });
-
-  await prisma.plan.upsert({
+  // ── Plan único: PREMIUM $99/mes — acceso total a todos los módulos ──
+  const premiumPlan = await prisma.plan.upsert({
     where: { tier: 'PREMIUM' },
     update: {
-      name: 'Premium',
+      name: 'SGI 360 — Plan Completo',
       features: allFeatures,
       limits: {
-        max_users: 500,
-        max_documents: 50000,
-        max_normatives: 100,
+        users: -1,           // ilimitado
+        storage: 20480,      // 20 GB en MB
+        max_documents: -1,
+        max_normatives: -1,
       },
       isActive: true,
     },
     create: {
       tier: 'PREMIUM',
-      name: 'Premium',
+      name: 'SGI 360 — Plan Completo',
       features: allFeatures,
       limits: {
-        max_users: 500,
-        max_documents: 50000,
-        max_normatives: 100,
+        users: -1,
+        storage: 20480,
+        max_documents: -1,
+        max_normatives: -1,
       },
       isActive: true,
     },
   });
+
+  console.log(`✅ Plan PREMIUM upserted: ${premiumPlan.id}`);
+
+  // Desactivar planes legacy (no los eliminamos para no romper FKs)
+  await prisma.plan.updateMany({
+    where: { tier: { in: ['BASIC', 'PROFESSIONAL'] } },
+    data: { isActive: false },
+  });
+
+  console.log('✅ Planes BASIC y PROFESSIONAL marcados como inactivos');
+
+  // Migrar todas las suscripciones activas al plan PREMIUM
+  const updated = await prisma.tenantSubscription.updateMany({
+    where: { status: { in: ['ACTIVE', 'TRIAL', 'PAST_DUE'] } },
+    data: { planId: premiumPlan.id },
+  });
+
+  console.log(`✅ ${updated.count} suscripciones migradas al plan PREMIUM`);
 }
 
 main()

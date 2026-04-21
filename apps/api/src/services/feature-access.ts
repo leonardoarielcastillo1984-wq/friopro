@@ -40,7 +40,8 @@ export class FeatureAccessService {
           tenant: {
             select: {
               id: true,
-              name: true
+              name: true,
+              storageUsed: true
             }
           }
         }
@@ -94,7 +95,7 @@ export class FeatureAccessService {
         usage: {
           currentUsers,
           maxUsers: userLimit,
-          currentStorage: 0,
+          currentStorage: Number(subscription.tenant.storageUsed ?? 0),
           maxStorage: storageLimit
         },
         tenant: subscription.tenant

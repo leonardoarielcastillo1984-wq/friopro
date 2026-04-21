@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { getStorage, computeFileHash, buildStorageKey } from '../services/storage.js';
-import { checkStorageQuota, incrementStorageUsed } from '../services/storage-usage.js';
+import { checkStorageQuota, incrementStorageUsed, decrementStorageUsed } from '../services/storage-usage.js';
 import { getNormativeQueue } from '../jobs/queue.js';
 import { requiresTenantContext, isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 
@@ -391,6 +391,21 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (!deleted) return reply.code(404).send({ error: 'Not found' });
+
+    // Decrementar uso y borrar archivo físico del storage
+    if (deleted.filePath && deleted.fileSize) {
+      const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId;
+      if (tenantId) {
+        try {
+          await decrementStorageUsed((app as any).prisma, tenantId, Number(deleted.fileSize));
+        } catch { /* no bloquear la respuesta si falla */ }
+        try {
+          const storage = getStorage();
+          await storage.delete(deleted.filePath);
+        } catch { /* archivo puede no existir */ }
+      }
+    }
+
     return reply.send({ ok: true });
   });
 
