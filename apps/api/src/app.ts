@@ -10,6 +10,7 @@ import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 
 import { prismaPlugin } from './plugins/prisma.js';
+import { createLLMProvider } from './services/llm/factory.js';
 import { authPlugin } from './plugins/auth.js';
 import { csrfPlugin } from './plugins/csrf.js';
 import { dbContextPlugin } from './plugins/dbContext.js';
@@ -218,6 +219,19 @@ export async function buildApp() {
   await app.register(suppliersRoutes, { prefix: '/suppliers' });
   await app.register(equipmentRoutes, { prefix: '/equipment' });
   await app.register(calendarRoutes, { prefix: '/calendar' });
+
+  // Endpoint genérico de IA para módulos del frontend
+  app.post('/ai/chat', async (req: any, reply: any) => {
+    try {
+      const { message } = req.body as { message: string };
+      if (!message) return reply.code(400).send({ error: 'message requerido' });
+      const llm = createLLMProvider();
+      const result = await llm.chat([{ role: 'user', content: message }]);
+      return reply.send({ response: result.text });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err?.message || 'Error IA' });
+    }
+  });
 
   // Servir archivos estáticos de uploads (AL FINAL para no interferir con API routes)
   const uploadsPath = path.resolve(process.env.STORAGE_LOCAL_PATH || '/app/uploads');
