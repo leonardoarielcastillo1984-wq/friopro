@@ -496,7 +496,14 @@ export default function CompetenciasPage() {
                 </span>
               </div>
               <button
-                onClick={() => setShowEvaluationForm(true)}
+                onClick={() => {
+                  if (employees.length === 0) {
+                    alert('No hay empleados cargados. Primero agregá empleados en RRHH > Empleados.');
+                    return;
+                  }
+                  setSelectedEmployee(employees[0]);
+                  setShowEvaluationForm(true);
+                }}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Plus className="h-4 w-4" />
