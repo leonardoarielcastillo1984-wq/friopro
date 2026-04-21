@@ -55,7 +55,7 @@ services:
       JWT_SECRET: change-me-in-production
       CORS_ORIGIN: http://46.62.253.81:4000,http://localhost:3000,http://127.0.0.1:3000
       STORAGE_BACKEND: local
-      STORAGE_LOCAL_PATH: ./uploads
+      STORAGE_LOCAL_PATH: /app/uploads
       EMAIL_PROVIDER: console
       LLM_PROVIDER: ollama
       OLLAMA_BASE_URL: http://ollama:11434/v1
@@ -63,7 +63,7 @@ services:
     ports:
       - "4002:4002"
     volumes:
-      - api_uploads_testing:/app/uploads
+      - /data/sgi360/uploads:/app/uploads
     depends_on:
       - postgres
       - redis
@@ -94,7 +94,6 @@ volumes:
   postgres_data_testing:
   redis_data_testing:
   ollama_data_testing:
-  api_uploads_testing:
 
 networks:
   sgi-testing-network:

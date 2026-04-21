@@ -254,8 +254,9 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     }
     const fileBuffer = Buffer.concat(chunks);
 
-    // Save file to disk (ruta definitiva en proyecto)
-    const uploadDir = path.resolve('/app/apps/api/uploads/documents');
+    // Save file to disk — volumen externo con estructura por tenant
+    const storageBase = process.env.STORAGE_LOCAL_PATH || '/app/uploads';
+    const uploadDir = path.resolve(storageBase, effectiveTenantId, 'documentos');
     await fs.mkdir(uploadDir, { recursive: true });
 
     const fileName = `${Date.now()}-${data.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -415,18 +416,19 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const data = await req.file();
     if (!data) return reply.code(400).send({ error: 'No file uploaded' });
 
-    const uploadDir = path.resolve('/Users/leonardocastillo/Desktop/APP/SGI 360/storage/documents');
-    await fs.mkdir(uploadDir, { recursive: true });
-
     // Obtener documento actual para incrementar versión
     const currentDoc = await app.runWithDbContext(req, async (tx: any) => {
       return tx.document.findFirst({
         where: { id: params.id, deletedAt: null },
-        select: { id: true, version: true, filePath: true },
+        select: { id: true, version: true, filePath: true, tenantId: true },
       });
     });
 
     if (!currentDoc) return reply.code(404).send({ error: 'Document not found' });
+
+    const storageBase = process.env.STORAGE_LOCAL_PATH || '/app/uploads';
+    const uploadDir = path.resolve(storageBase, currentDoc.tenantId, 'documentos', 'versiones');
+    await fs.mkdir(uploadDir, { recursive: true });
 
     // Guardar versión anterior si existe
     let oldVersionId: string | null = null;
