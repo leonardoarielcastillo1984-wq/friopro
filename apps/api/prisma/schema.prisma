@@ -3020,3 +3020,310 @@ model PasswordHistory {
   @@map("password_history")
 }
 
+
+// ============================================================
+// MÓDULOS SGI PROFESIONAL - Agregados Abr 2026
+// ============================================================
+
+// -------- 1. ACCIONES (CAPA transversal) --------
+model ActionItem {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  code          String
+  title         String
+  description   String
+  type          String    // CORRECTIVE, PREVENTIVE, IMPROVEMENT
+  priority      String    @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  status        String    @default("OPEN") // OPEN, IN_PROGRESS, VERIFICATION, CLOSED, CANCELLED
+  sourceType    String    // MANUAL, AUDIT, NCR, INDICATOR, REVIEW, RISK, INCIDENT, SUGGESTION
+  sourceId      String?   @db.Uuid
+  assignedToId  String?   @db.Uuid
+  dueDate       DateTime?
+  completedAt   DateTime?
+  effectivenessCheck String?
+  effectivenessVerifiedAt DateTime?
+  effectivenessVerifiedById String? @db.Uuid
+  notes         String?
+  createdById   String?   @db.Uuid
+  updatedById   String?   @db.Uuid
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([sourceType, sourceId])
+  @@map("action_items")
+}
+
+// -------- 2. OBJETIVOS SGI --------
+model SgiObjective {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  code          String
+  title         String
+  description   String?
+  year          Int
+  standard      String?
+  target        String
+  targetValue   Float?
+  unit          String?
+  responsibleId String?   @db.Uuid
+  startDate     DateTime?
+  endDate       DateTime?
+  status        String    @default("PLANNED") // PLANNED, IN_PROGRESS, ACHIEVED, NOT_ACHIEVED, CANCELLED
+  progress      Int       @default(0)
+  indicatorId   String?   @db.Uuid
+  notes         String?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([year])
+  @@map("sgi_objectives")
+}
+
+// -------- 3. PARTES INTERESADAS --------
+model Stakeholder {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  name          String
+  type          String    // INTERNAL, EXTERNAL
+  category      String    // EMPLOYEE, CUSTOMER, SUPPLIER, COMMUNITY, REGULATOR, SHAREHOLDER, OTHER
+  needs         String?
+  expectations  String?
+  requirements  String?
+  influence     Int       @default(3)
+  interest      Int       @default(3)
+  contactName   String?
+  contactEmail  String?
+  notes         String?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("stakeholders")
+}
+
+// -------- 3b. CONTEXTO ORGANIZACIONAL (FODA/PESTEL) --------
+model OrganizationContext {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  year          Int
+  strengths     Json?
+  weaknesses    Json?
+  opportunities Json?
+  threats       Json?
+  political     String?
+  economic      String?
+  social        String?
+  technological String?
+  environmental String?
+  legal         String?
+  mission       String?
+  vision        String?
+  values        String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, year])
+  @@map("organization_context")
+}
+
+// -------- 5. IPERC (Peligros SST) --------
+model Hazard {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  code          String
+  area          String
+  activity      String
+  hazard        String
+  risk          String
+  probability   Int
+  severity      Int
+  exposure      Int       @default(1)
+  riskLevel     Int
+  riskCategory  String    // TOLERABLE, MODERATE, SUBSTANTIAL, INTOLERABLE
+  elimination   String?
+  substitution  String?
+  engineering   String?
+  administrative String?
+  ppe           String?
+  residualRiskLevel    Int?
+  residualRiskCategory String?
+  responsibleId String?   @db.Uuid
+  reviewDate    DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("hazards")
+}
+
+// -------- 6. ASPECTOS AMBIENTALES --------
+model EnvironmentalAspect {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  code          String
+  process       String
+  aspect        String
+  impact        String
+  category      String    // EMISSIONS, WASTE, ENERGY, WATER, SOIL, BIODIVERSITY, NOISE, OTHER
+  condition     String    @default("NORMAL") // NORMAL, ABNORMAL, EMERGENCY
+  naturalness   String    @default("DIRECT") // DIRECT, INDIRECT
+  magnitude     Int
+  severity      Int
+  frequency     Int
+  legalCompliance Int     @default(3)
+  significance  Int
+  isSignificant Boolean   @default(false)
+  currentControls String?
+  improvementActions String?
+  responsibleId String?   @db.Uuid
+  reviewDate    DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("environmental_aspects")
+}
+
+// -------- 7. INCIDENTES / ACCIDENTES --------
+model Incident {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  code          String
+  type          String    // ACCIDENT, INCIDENT, NEAR_MISS, DANGEROUS_SITUATION
+  severity      String    // NONE, FIRST_AID, MEDICAL_TREATMENT, LOST_TIME, FATALITY, PROPERTY_DAMAGE, ENVIRONMENTAL
+  date          DateTime
+  time          String?
+  location      String
+  description   String
+  immediateActions String?
+  affectedPerson String?
+  position      String?
+  daysLost      Int?      @default(0)
+  investigationStatus String @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  rootCause     String?
+  rootCauseAnalysis String?
+  witnesses     String?
+  reportedById  String?   @db.Uuid
+  investigatedById String? @db.Uuid
+  closedAt      DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([date])
+  @@index([type])
+  @@map("incidents")
+}
+
+// -------- 8. PROVEEDORES --------
+model Supplier {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  code          String
+  name          String
+  legalName     String?
+  taxId         String?
+  category      String?
+  email         String?
+  phone         String?
+  address       String?
+  contactName   String?
+  contactPosition String?
+  status        String    @default("PENDING") // PENDING, APPROVED, CONDITIONAL, REJECTED, SUSPENDED
+  isCritical    Boolean   @default(false)
+  evaluationScore Float?
+  lastEvaluationDate DateTime?
+  nextEvaluationDate DateTime?
+  notes         String?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  evaluations   SupplierEvaluation[]
+
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+model SupplierEvaluation {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  supplierId    String    @db.Uuid
+  supplier      Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  date          DateTime
+  period        String?
+  qualityScore  Float     @default(0)
+  deliveryScore Float     @default(0)
+  priceScore    Float     @default(0)
+  serviceScore  Float     @default(0)
+  overallScore  Float     @default(0)
+  result        String    // APPROVED, CONDITIONAL, REJECTED
+  comments      String?
+  evaluatedById String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([supplierId])
+  @@index([tenantId])
+  @@map("supplier_evaluations")
+}
+
+// -------- 9. CALIBRACIONES --------
+model MeasuringEquipment {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  code          String
+  name          String
+  type          String?
+  brand         String?
+  model         String?
+  serialNumber  String?
+  location      String?
+  responsibleId String?   @db.Uuid
+  status        String    @default("ACTIVE") // ACTIVE, OUT_OF_SERVICE, RETIRED
+  calibrationFrequency String @default("YEARLY") // MONTHLY, QUARTERLY, BIANNUAL, YEARLY, OTHER
+  lastCalibrationDate DateTime?
+  nextCalibrationDate DateTime?
+  acquisitionDate DateTime?
+  notes         String?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  calibrations  Calibration[]
+
+  @@index([tenantId])
+  @@index([nextCalibrationDate])
+  @@map("measuring_equipment")
+}
+
+model Calibration {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  equipmentId   String    @db.Uuid
+  equipment     MeasuringEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  date          DateTime
+  provider      String?
+  certificateNumber String?
+  certificateUrl String?
+  result        String    // CONFORMING, CONFORMING_WITH_ADJUSTMENT, NON_CONFORMING
+  notes         String?
+  nextCalibrationDate DateTime?
+  cost          Float?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([equipmentId])
+  @@index([tenantId])
+  @@map("calibrations")
+}

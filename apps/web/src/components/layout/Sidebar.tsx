@@ -31,37 +31,59 @@ import {
   Lock,
   CreditCard,
   HelpCircle,
+  CheckSquare,
+  Target,
+  UsersRound,
+  Compass,
+  HardHat,
+  Leaf,
+  Siren,
+  Truck,
+  Ruler,
+  CalendarDays,
 } from 'lucide-react';
 
 const mainNav = [
-  // 1. Visión general
+  // 1. Visión general y planificación estratégica
   { label: 'Inicio', icon: LayoutDashboard, href: '/dashboard' },
   { label: 'Panel General', icon: BarChart3, href: '/panel' },
+  { label: 'Calendario', icon: CalendarDays, href: '/calendario' },
   { label: 'PROJECT360', icon: BarChart3, href: '/project360' },
 
-  // 2. Base organizacional (primero definir quién: personas, puestos, stakeholders)
+  // 2. Contexto estratégico (ISO §4)
+  { label: 'Contexto / FODA', icon: Compass, href: '/contexto' },
+  { label: 'Partes Interesadas', icon: UsersRound, href: '/partes-interesadas' },
+  { label: 'Objetivos SGI', icon: Target, href: '/objetivos' },
+
+  // 3. Base organizacional (personas)
   { label: 'RRHH', icon: Users, href: '/rrhh' },
   { label: 'Capacitaciones', icon: GraduationCap, href: '/capacitaciones' },
   { label: 'Clientes', icon: Headphones, href: '/clientes' },
+  { label: 'Proveedores', icon: Truck, href: '/proveedores' },
 
-  // 3. Marco normativo y documental (qué reglas aplican y qué docs propios tengo)
+  // 4. Marco normativo y documental
   { label: 'Normativos', icon: BookOpen, href: '/normativos' },
   { label: 'Documentos', icon: FileText, href: '/documents' },
 
-  // 4. Gestión de riesgos y medición
+  // 5. Gestión de riesgos y SST/Ambiente
   { label: 'Riesgos', icon: Shield, href: '/riesgos' },
+  { label: 'IPERC — Peligros SST', icon: HardHat, href: '/iperc' },
+  { label: 'Aspectos Ambientales', icon: Leaf, href: '/ambientales' },
   { label: 'Indicadores', icon: TrendingUp, href: '/indicadores' },
 
-  // 5. Control y mejora (auditorías y hallazgos)
+  // 6. Control y mejora
   { label: 'Auditoría IA', icon: BrainCircuit, href: '/audit' },
   { label: 'Auditorías ISO', icon: ClipboardCheck, href: '/auditorias' },
   { label: 'No Conformidades', icon: AlertTriangle, href: '/no-conformidades' },
+  { label: 'Incidentes / Accidentes', icon: Siren, href: '/incidentes' },
+  { label: 'Acciones (CAPA)', icon: CheckSquare, href: '/acciones' },
 
-  // 6. Operaciones (activos y emergencias)
+  // 7. Operaciones
   { label: 'Mantenimiento', icon: Settings, href: '/mantenimiento' },
+  { label: 'Calibraciones', icon: Ruler, href: '/calibraciones' },
   { label: 'Simulacros', icon: ClipboardCheck, href: '/simulacros' },
 
-  // 7. Reportes y administración
+  // 8. Reportes y administración
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
   { label: 'Licencias', icon: CreditCard, href: '/licencia' },
   { label: 'Modo de Uso', icon: HelpCircle, href: '/modo-de-uso' },

@@ -52,6 +52,11 @@ import { publicRoutes } from './routes/publicRoutes.js';
 import { documentsPublicRoutes } from './routes/documentsPublic.js';
 import { registerCompanyRoutes } from './routes/register-company.js';
 import { startNormativeWorker, startAuditWorker } from './jobs/queue.js';
+import {
+  actionsRoutes, objectivesRoutes, stakeholdersRoutes,
+  hazardsRoutes, aspectsRoutes, incidentsRoutes,
+  suppliersRoutes, equipmentRoutes, contextRoutes, calendarRoutes,
+} from './routes/sgi-professional.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -195,6 +200,18 @@ export async function buildApp() {
   await app.register(surveyPublicRoutes, { prefix: '/survey' });
   await app.register(registerCompanyRoutes); // Registro de empresas
   await app.register(saasRoutes);
+
+  // SGI Profesional (Abr 2026)
+  await app.register(actionsRoutes, { prefix: '/actions' });
+  await app.register(objectivesRoutes, { prefix: '/objectives' });
+  await app.register(stakeholdersRoutes, { prefix: '/stakeholders' });
+  await app.register(contextRoutes, { prefix: '/context' });
+  await app.register(hazardsRoutes, { prefix: '/hazards' });
+  await app.register(aspectsRoutes, { prefix: '/aspects' });
+  await app.register(incidentsRoutes, { prefix: '/incidents' });
+  await app.register(suppliersRoutes, { prefix: '/suppliers' });
+  await app.register(equipmentRoutes, { prefix: '/equipment' });
+  await app.register(calendarRoutes, { prefix: '/calendar' });
 
   // Servir archivos estáticos de uploads (AL FINAL para no interferir con API routes)
   const __filename = fileURLToPath(import.meta.url);
