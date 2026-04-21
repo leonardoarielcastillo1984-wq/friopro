@@ -627,6 +627,12 @@ export default function CompetenciasPage() {
             </div>
 
             <div className="p-6">
+              {getEmployeeCompetencies(selectedEmployee.id).length === 0 && (
+                <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                  Este empleado no tiene competencias asignadas todavía. Asignale competencias desde
+                  <strong> RRHH &gt; Perfiles</strong> (según su puesto) antes de evaluarlo.
+                </div>
+              )}
               <div className="space-y-4">
                 {getEmployeeCompetencies(selectedEmployee.id).map(ec => {
                   const competency = getCompetencyById(ec.competencyId);
