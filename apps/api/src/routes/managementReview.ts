@@ -524,12 +524,40 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
           tx,
         });
 
-        // Update sections with system data
-        for (const section of existing.sections) {
-          const data = systemData[section.key] || null;
-          await tx.managementReviewSection.update({
-            where: { id: section.id },
-            data: { systemData: data },
+        // Rebuild sections from scratch to get updated templates and deduplicate keys
+        // Delete all existing sections first
+        await tx.managementReviewSection.deleteMany({
+          where: { reportId: req.params.id },
+        });
+
+        // Collect unique sections across all standards (dedup by key, first title wins)
+        const seenKeys = new Set<string>();
+        const sectionsToCreate: Array<{ key: string; title: string; order: number }> = [];
+        let order = 0;
+        for (const standard of existing.standards) {
+          const templates = SECTION_TEMPLATES[standard] || [];
+          for (const template of templates) {
+            if (!seenKeys.has(template.key)) {
+              seenKeys.add(template.key);
+              sectionsToCreate.push({ key: template.key, title: template.title, order: order++ });
+            }
+          }
+        }
+
+        // Create new sections with system data
+        for (const sec of sectionsToCreate) {
+          // Preserve freeText / outputs / decisions from old sections if key matches
+          const oldSection = existing.sections.find((s: any) => s.key === sec.key);
+          await tx.managementReviewSection.create({
+            data: {
+              reportId: req.params.id,
+              key: sec.key,
+              title: sec.title,
+              systemData: systemData[sec.key] ?? null,
+              freeText: oldSection?.freeText ?? null,
+              outputs: oldSection?.outputs ?? null,
+              decisions: oldSection?.decisions ?? undefined,
+            },
           });
         }
 
