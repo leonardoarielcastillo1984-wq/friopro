@@ -436,12 +436,23 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'periodStart must be before periodEnd' });
       }
 
+      // Check for duplicate title before creating
+      const existing = await app.runWithDbContext(req, async (tx) => {
+        return tx.managementReview.findFirst({
+          where: { tenantId, title: title.trim(), deletedAt: null },
+          select: { id: true },
+        });
+      });
+      if (existing) {
+        return reply.code(409).send({ error: `Ya existe un informe con el título "${title.trim()}". Por favor usá un título diferente.` });
+      }
+
       const review = await app.runWithDbContext(req, async (tx) => {
         // Create the review
         const newReview = await tx.managementReview.create({
           data: {
             tenantId,
-            title,
+            title: title.trim(),
             summary: summary?.trim() || null,
             periodStart: startDate,
             periodEnd: endDate,

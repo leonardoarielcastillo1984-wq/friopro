@@ -65,6 +65,7 @@ export default function InformeDireccionPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
     loadReviews();
@@ -93,7 +94,7 @@ export default function InformeDireccionPage() {
   }) {
     try {
       setCreating(true);
-      setError(null);
+      setModalError(null);
       const res = await apiFetch('/management-reviews', {
         method: 'POST',
         json: data,
@@ -102,10 +103,11 @@ export default function InformeDireccionPage() {
       if (res.review) {
         setReviews(prev => [res.review, ...prev]);
         setShowCreateModal(false);
+        setModalError(null);
       }
     } catch (err) {
       console.error('Error creating review:', err);
-      setError(err instanceof Error ? err.message : 'Error al crear informe');
+      setModalError(err instanceof Error ? err.message : 'Error al crear informe');
     } finally {
       setCreating(false);
     }
@@ -302,9 +304,10 @@ export default function InformeDireccionPage() {
       {/* Create Modal */}
       {showCreateModal && (
         <CreateReviewModal
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => { setShowCreateModal(false); setModalError(null); }}
           onSubmit={createReview}
           loading={creating}
+          error={modalError}
         />
       )}
     </div>
@@ -315,11 +318,13 @@ export default function InformeDireccionPage() {
 function CreateReviewModal({ 
   onClose, 
   onSubmit, 
-  loading 
+  loading,
+  error,
 }: { 
   onClose: () => void; 
   onSubmit: (data: any) => void; 
   loading: boolean;
+  error: string | null;
 }) {
   const [formData, setFormData] = useState({
     title: '',
@@ -350,6 +355,12 @@ function CreateReviewModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm flex items-start gap-2">
+              <span className="mt-0.5">⚠️</span>
+              <span>{error}</span>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Título del Informe *
