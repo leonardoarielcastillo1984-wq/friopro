@@ -1,344 +1,220 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import type { DashboardData } from '@/lib/types';
 import {
   FileText, BookOpen, AlertTriangle, Shield, TrendingUp, Users,
-  GraduationCap, BarChart3, Activity, Target, Clock,
-  ArrowUpRight, ArrowDownRight, Minus, RefreshCw
+  GraduationCap, Activity, Target, RefreshCw,
+  CheckSquare, HardHat, Leaf, Siren, Truck, Ruler,
+  UsersRound, CalendarDays, Clock, ChevronRight,
 } from 'lucide-react';
-import TrendChart from '@/components/TrendChart';
-import PeriodComparison from '@/components/PeriodComparison';
-import SmartAlerts from '@/components/SmartAlerts';
-
-interface DashboardStats {
-  documents: number;
-  normatives: number;
-  ncrs: number;
-  risks: number;
-  indicators: number;
-  trainings: number;
-}
 
 interface DashboardResponse {
   dashboard: {
     documents: { total: number; effective: number; draft: number };
-    normatives: { total: number; ready: number };
+    normatives: { total: number };
     ncrs: { total: number; open: number; closed: number };
     risks: { total: number };
-    findings: { total: number };
     trainings: { total: number; completed: number };
     departments: number;
+    indicators: { total: number };
+    actions: { open: number; overdue: number };
+    objectives: { total: number; onTrack: number };
+    hazards: { total: number; critical: number };
+    aspects: { total: number; significant: number };
+    incidents: { thisMonth: number };
+    suppliers: { approved: number; pending: number };
+    calibrations: { dueSoon: number };
+    stakeholders: { total: number };
   };
 }
 
-const DEFAULT_STATS: DashboardStats = {
-  documents: 0,
-  normatives: 0,
-  ncrs: 0,
-  risks: 0,
-  indicators: 0,
-  trainings: 0,
+type D = DashboardResponse['dashboard'];
+
+const EMPTY: D = {
+  documents: { total: 0, effective: 0, draft: 0 },
+  normatives: { total: 0 },
+  ncrs: { total: 0, open: 0, closed: 0 },
+  risks: { total: 0 },
+  trainings: { total: 0, completed: 0 },
+  departments: 0,
+  indicators: { total: 0 },
+  actions: { open: 0, overdue: 0 },
+  objectives: { total: 0, onTrack: 0 },
+  hazards: { total: 0, critical: 0 },
+  aspects: { total: 0, significant: 0 },
+  incidents: { thisMonth: 0 },
+  suppliers: { approved: 0, pending: 0 },
+  calibrations: { dueSoon: 0 },
+  stakeholders: { total: 0 },
 };
 
+function StatCard({
+  icon: Icon, label, value, sub, subAlert, href, color,
+}: {
+  icon: React.ElementType; label: string; value: number | string;
+  sub?: string; subAlert?: boolean; href: string; color: string;
+}) {
+  return (
+    <Link href={href} className="group bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-blue-300 transition-all flex flex-col gap-3">
+      <div className="flex items-start justify-between">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-blue-500 transition-colors mt-1" />
+      </div>
+      <div>
+        <div className="text-2xl font-bold text-gray-900 leading-none">{value}</div>
+        <div className="text-sm font-medium text-gray-600 mt-1">{label}</div>
+        {sub && (
+          <div className={`text-xs mt-1 font-medium ${subAlert ? 'text-red-600' : 'text-gray-400'}`}>{sub}</div>
+        )}
+      </div>
+    </Link>
+  );
+}
+
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [data, setData] = useState<D>(EMPTY);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const loadStats = async () => {
-      try {
-        const data = await apiFetch<DashboardResponse>('/dashboard');
-        // Transform the data to match the expected interface
-        const transformedStats: DashboardStats = {
-          documents: data.dashboard.documents.total,
-          normatives: data.dashboard.normatives.total,
-          ncrs: data.dashboard.ncrs.total,
-          risks: data.dashboard.risks.total,
-          indicators: data.dashboard.findings.total,
-          trainings: data.dashboard.trainings.total,
-        };
-        setStats(transformedStats);
-      } catch (err: any) {
-        setStats(DEFAULT_STATS);
-      } finally {
-        setLoading(false);
-      }
-    };
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await apiFetch<DashboardResponse>('/dashboard');
+      setData(res?.dashboard ?? EMPTY);
+    } catch {
+      setData(EMPTY);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    loadStats();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
 
+  // Alertas críticas calculadas desde datos reales
+  const alerts: { msg: string; href: string; level: 'red' | 'yellow' }[] = [];
+  if (data.actions.overdue > 0)
+    alerts.push({ msg: `${data.actions.overdue} acción${data.actions.overdue > 1 ? 'es' : ''} CAPA vencida${data.actions.overdue > 1 ? 's' : ''}`, href: '/acciones', level: 'red' });
+  if (data.ncrs.open > 0)
+    alerts.push({ msg: `${data.ncrs.open} no conformidad${data.ncrs.open > 1 ? 'es' : ''} abierta${data.ncrs.open > 1 ? 's' : ''}`, href: '/no-conformidades', level: 'red' });
+  if (data.hazards.critical > 0)
+    alerts.push({ msg: `${data.hazards.critical} peligro${data.hazards.critical > 1 ? 's' : ''} SST de nivel crítico / alto`, href: '/iperc', level: 'yellow' });
+  if (data.calibrations.dueSoon > 0)
+    alerts.push({ msg: `${data.calibrations.dueSoon} equipo${data.calibrations.dueSoon > 1 ? 's' : ''} a calibrar en 30 días`, href: '/calibraciones', level: 'yellow' });
+  if (data.suppliers.pending > 0)
+    alerts.push({ msg: `${data.suppliers.pending} proveedor${data.suppliers.pending > 1 ? 'es' : ''} pendiente${data.suppliers.pending > 1 ? 's' : ''} de aprobación`, href: '/proveedores', level: 'yellow' });
+
   return (
-    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
-      {/* Loading State */}
-      {loading && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="animate-pulse">
-            <div className="h-4 bg-slate-200 rounded w-1/4 mb-2"></div>
-            <div className="h-3 bg-slate-200 rounded w-1/3"></div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center">
+              <Activity className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">{greeting} — SGI 360</h1>
+              <p className="text-sm text-gray-500">Panel ejecutivo · {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            </div>
           </div>
+          <button onClick={load} disabled={loading} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
-      )}
+      </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        {/* Alertas críticas */}
+        {alerts.length > 0 && (
+          <div className="space-y-2">
+            {alerts.map((a, i) => (
+              <Link key={i} href={a.href}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all hover:opacity-90 ${a.level === 'red' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                <Clock className="h-4 w-4 flex-shrink-0" />
+                {a.msg}
+                <ChevronRight className="h-4 w-4 ml-auto" />
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Sección: Gestión documental y base */}
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{greeting}</h1>
-          <p className="text-slate-500 mt-1">Resumen ejecutivo de tu sistema de gestión integrado</p>
-        </div>
-        <div className="flex items-center gap-3 px-5 py-3 rounded-xl border bg-blue-50 border-blue-200">
-          <Activity className="h-5 w-5 text-blue-600" />
-          <div>
-            <div className="text-2xl font-bold text-blue-600">SGI 360</div>
-            <div className="text-xs text-slate-500">Panel Principal</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Analytics Section */}
-      {!loading && (
-        <div className="space-y-6">
-          {/* Trend Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <TrendChart
-              data={[
-                { date: 'Ene', value: 85, target: 90 },
-                { date: 'Feb', value: 88, target: 90 },
-                { date: 'Mar', value: 92, target: 90 },
-                { date: 'Abr', value: 87, target: 90 },
-                { date: 'May', value: 91, target: 90 },
-                { date: 'Jun', value: 94, target: 90 },
-              ]}
-              title="Evolución de Indicadores"
-              type="line"
-              showTarget={true}
-              formatValue={(value) => `${value.toFixed(0)}%`}
-            />
-            
-            <TrendChart
-              data={[
-                { date: 'Ene', value: 12, comparison: 15 },
-                { date: 'Feb', value: 8, comparison: 10 },
-                { date: 'Mar', value: 6, comparison: 8 },
-                { date: 'Abr', value: 4, comparison: 7 },
-                { date: 'May', value: 3, comparison: 5 },
-                { date: 'Jun', value: 2, comparison: 4 },
-              ]}
-              title="No Conformidades Abiertas"
-              type="area"
-              showComparison={true}
-              formatValue={(value) => value.toString()}
-            />
-          </div>
-
-          {/* Period Comparison */}
-          <PeriodComparison
-            data={[
-              {
-                label: 'Indicadores',
-                current: 94,
-                previous: 87,
-                target: 95,
-                unit: '%'
-              },
-              {
-                label: 'No Conformidades',
-                current: 2,
-                previous: 4,
-                target: 1,
-                unit: ''
-              },
-              {
-                label: 'Capacitaciones',
-                current: 18,
-                previous: 15,
-                target: 20,
-                unit: ''
-              },
-              {
-                label: 'Auditorías',
-                current: 8,
-                previous: 6,
-                target: 10,
-                unit: ''
-              }
-            ]}
-            currentPeriod="Junio 2026"
-            previousPeriod="Mayo 2026"
-            showTarget={true}
-          />
-
-          {/* Smart Alerts */}
-          <SmartAlerts
-            alerts={[
-              {
-                id: '1',
-                ruleId: 'ncr-high',
-                ruleName: 'NCRs Críticas Abiertas',
-                message: 'Hay 2 NCRs de severidad crítica abiertas por más de 7 días',
-                severity: 'high',
-                metric: 'NCRs',
-                currentValue: 2,
-                threshold: 1,
-                category: 'quality',
-                timestamp: new Date().toISOString(),
-                acknowledged: false,
-                resolved: false,
-                actionRequired: true,
-                suggestedActions: ['Revisar asignación de recursos', 'Priorizar acciones correctivas']
-              },
-              {
-                id: '2',
-                ruleId: 'indicator-below',
-                ruleName: 'Indicador por debajo del objetivo',
-                message: 'El indicador de satisfacción del cliente está 5% por debajo del objetivo',
-                severity: 'medium',
-                metric: 'Satisfacción Cliente',
-                currentValue: 85,
-                threshold: 90,
-                category: 'customer',
-                timestamp: new Date().toISOString(),
-                acknowledged: false,
-                resolved: false,
-                actionRequired: true,
-                suggestedActions: ['Analizar causas raíz', 'Implementar plan de mejora']
-              }
-            ]}
-            rules={[
-              {
-                id: 'ncr-high',
-                name: 'NCRs Críticas Abiertas',
-                description: 'Alerta cuando hay NCRs críticas abiertas por más de 7 días',
-                type: 'threshold',
-                metric: 'NCRs',
-                condition: 'above',
-                threshold: 1,
-                severity: 'high',
-                enabled: true,
-                category: 'quality'
-              },
-              {
-                id: 'indicator-below',
-                name: 'Indicador por debajo del objetivo',
-                description: 'Alerta cuando un indicador está por debajo del objetivo',
-                type: 'threshold',
-                metric: 'Indicadores',
-                condition: 'below',
-                threshold: 90,
-                severity: 'medium',
-                enabled: true,
-                category: 'customer'
-              }
-            ]}
-          />
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600">Documentos</p>
-              <p className="text-2xl font-bold text-slate-900">{stats?.documents || 0}</p>
-              <p className="text-xs text-slate-500 mt-1">Gestión documental</p>
-            </div>
-            <div className="h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center">
-              📄
-            </div>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Base del sistema</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <StatCard icon={FileText} label="Documentos" value={data.documents.total}
+              sub={`${data.documents.effective} vigentes`} href="/documents" color="bg-blue-100 text-blue-600" />
+            <StatCard icon={BookOpen} label="Normativos" value={data.normatives.total}
+              href="/normativos" color="bg-indigo-100 text-indigo-600" />
+            <StatCard icon={Users} label="Empleados" value={data.departments}
+              sub="departamentos" href="/rrhh" color="bg-violet-100 text-violet-600" />
+            <StatCard icon={GraduationCap} label="Capacitaciones" value={data.trainings.total}
+              sub={`${data.trainings.completed} completadas`} href="/capacitaciones" color="bg-cyan-100 text-cyan-600" />
+            <StatCard icon={UsersRound} label="Partes interesadas" value={data.stakeholders.total}
+              href="/partes-interesadas" color="bg-teal-100 text-teal-600" />
+            <StatCard icon={Target} label="Objetivos SGI" value={data.objectives.total}
+              sub={`${data.objectives.onTrack} en curso`} href="/objetivos" color="bg-emerald-100 text-emerald-600" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600">Normativos</p>
-              <p className="text-2xl font-bold text-slate-900">{stats?.normatives || 0}</p>
-              <p className="text-xs text-slate-500 mt-1">Normas y regulaciones</p>
-            </div>
-            <div className="h-8 w-8 bg-green-100 rounded-lg flex items-center justify-center">
-              📋
-            </div>
+        {/* Sección: Riesgos y seguridad */}
+        <div>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Riesgos, SST y ambiente</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <StatCard icon={Shield} label="Riesgos" value={data.risks.total}
+              href="/riesgos" color="bg-orange-100 text-orange-600" />
+            <StatCard icon={HardHat} label="Peligros SST" value={data.hazards.total}
+              sub={data.hazards.critical > 0 ? `${data.hazards.critical} críticos/altos` : undefined}
+              subAlert={data.hazards.critical > 0}
+              href="/iperc" color="bg-yellow-100 text-yellow-600" />
+            <StatCard icon={Leaf} label="Aspectos amb." value={data.aspects.total}
+              sub={`${data.aspects.significant} significativos`} href="/ambientales" color="bg-green-100 text-green-600" />
+            <StatCard icon={Siren} label="Incidentes (mes)" value={data.incidents.thisMonth}
+              href="/incidentes" color="bg-red-100 text-red-600" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600">No Conformidades</p>
-              <p className="text-2xl font-bold text-slate-900">{stats?.ncrs || 0}</p>
-              <p className="text-xs text-slate-500 mt-1">Acciones correctivas</p>
-            </div>
-            <div className="h-8 w-8 bg-red-100 rounded-lg flex items-center justify-center">
-              ⚠️
-            </div>
+        {/* Sección: Control y mejora */}
+        <div>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Control y mejora continua</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <StatCard icon={AlertTriangle} label="No Conformidades" value={data.ncrs.total}
+              sub={data.ncrs.open > 0 ? `${data.ncrs.open} abiertas` : `${data.ncrs.closed} cerradas`}
+              subAlert={data.ncrs.open > 0}
+              href="/no-conformidades" color="bg-red-100 text-red-600" />
+            <StatCard icon={CheckSquare} label="Acciones CAPA" value={data.actions.open}
+              sub={data.actions.overdue > 0 ? `${data.actions.overdue} vencidas` : 'abiertas'}
+              subAlert={data.actions.overdue > 0}
+              href="/acciones" color="bg-blue-100 text-blue-600" />
+            <StatCard icon={TrendingUp} label="Indicadores" value={data.indicators.total}
+              href="/indicadores" color="bg-purple-100 text-purple-600" />
+            <StatCard icon={CalendarDays} label="Ver calendario" value="→"
+              sub="vencimientos próximos" href="/calendario" color="bg-slate-100 text-slate-600" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600">Riesgos</p>
-              <p className="text-2xl font-bold text-slate-900">{stats?.risks || 0}</p>
-              <p className="text-xs text-slate-500 mt-1">Gestión de riesgos</p>
-            </div>
-            <div className="h-8 w-8 bg-orange-100 rounded-lg flex items-center justify-center">
-              🔥
-            </div>
+        {/* Sección: Operaciones */}
+        <div>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Operaciones</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <StatCard icon={Truck} label="Proveedores" value={data.suppliers.approved + data.suppliers.pending}
+              sub={data.suppliers.pending > 0 ? `${data.suppliers.pending} pendientes` : `${data.suppliers.approved} aprobados`}
+              subAlert={data.suppliers.pending > 0}
+              href="/proveedores" color="bg-amber-100 text-amber-600" />
+            <StatCard icon={Ruler} label="Equipos / calibr." value={data.calibrations.dueSoon}
+              sub="vencen en 30 días"
+              subAlert={data.calibrations.dueSoon > 0}
+              href="/calibraciones" color="bg-pink-100 text-pink-600" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600">Indicadores</p>
-              <p className="text-2xl font-bold text-slate-900">{stats?.indicators || 0}</p>
-              <p className="text-xs text-slate-500 mt-1">KPIs y métricas</p>
-            </div>
-            <div className="h-8 w-8 bg-purple-100 rounded-lg flex items-center justify-center">
-              📊
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600">Capacitaciones</p>
-              <p className="text-2xl font-bold text-slate-900">{stats?.trainings || 0}</p>
-              <p className="text-xs text-slate-500 mt-1">Formación y entrenamiento</p>
-            </div>
-            <div className="h-8 w-8 bg-cyan-100 rounded-lg flex items-center justify-center">
-              �
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Bienvenido a SGI 360</h2>
-        <div className="text-slate-600">
-          <p className="mb-4">
-            Tu sistema de gestión integrado está funcionando correctamente. 
-            Comienza agregando documentos, normativos y configurando tus departamentos.
-          </p>
-          <div className="flex flex-wrap gap-4">
-            <Link href="/documents" className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              📄 Ver Documentos
-            </Link>
-            <Link href="/normativos" className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-              📋 Ver Normativos
-            </Link>
-            <Link href="/configuracion" className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
-              ⚙️ Configuración
-            </Link>
-          </div>
-        </div>
       </div>
     </div>
   );
