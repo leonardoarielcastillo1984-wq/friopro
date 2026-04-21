@@ -41,6 +41,7 @@ import {
   Truck,
   Ruler,
   CalendarDays,
+  Scale,
 } from 'lucide-react';
 
 const mainNav = [
@@ -86,6 +87,7 @@ const mainNav = [
   // 8. Reportes y administración
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
   { label: 'Licencias', icon: CreditCard, href: '/licencia' },
+  { label: 'Legales', icon: Scale, href: '/legales' },
   { label: 'Modo de Uso', icon: HelpCircle, href: '/modo-de-uso' },
 ];
 
