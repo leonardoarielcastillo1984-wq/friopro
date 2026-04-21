@@ -185,14 +185,11 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
     const { year } = z.object({ year: z.string() }).parse(req.params);
     const y = parseInt(year, 10);
     const tenantId = req.db.tenantId;
-    const body = req.body as any;
+    const rawBody = req.body;
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody as any;
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
-      const data = { ...body };
-      delete data.id;
-      delete data.tenantId;
-      delete data.year;
-      delete data.createdAt;
+      const { id: _id, tenantId: _tid, year: _y, createdAt: _ca, updatedAt: _ua, ...data } = body;
 
       return tx.organizationContext.upsert({
         where: { tenantId_year: { tenantId, year: y } },
