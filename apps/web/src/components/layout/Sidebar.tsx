@@ -30,6 +30,7 @@ import {
   Headphones,
   Lock,
   CreditCard,
+  HelpCircle,
 } from 'lucide-react';
 
 const mainNav = [
@@ -50,6 +51,7 @@ const mainNav = [
   { label: 'Clientes', icon: Headphones, href: '/clientes' },
   { label: 'Licencias', icon: CreditCard, href: '/licencia' },
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
+  { label: 'Modo de Uso', icon: HelpCircle, href: '/modo-de-uso' },
 ];
 
 const bottomNav = [
