@@ -76,6 +76,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
         id: m.id,
         userId: m.user.id,
         email: m.user.email,
+        name: `${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email,
         role: m.role,
         status: m.status,
         isActive: m.user.isActive,

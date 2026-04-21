@@ -103,6 +103,7 @@ export default function Project360Page() {
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [filterResponsible, setFilterResponsible] = useState<string>('all');
   const [activeView, setActiveView] = useState<'list' | 'board'>('list');
+  const [members, setMembers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTasksModal, setShowTasksModal] = useState(false);
@@ -121,6 +122,9 @@ export default function Project360Page() {
 
   useEffect(() => {
     loadProjects();
+    apiFetch<{ members: any[] }>('/settings/members')
+      .then(res => setMembers((res?.members || []).map((m: any) => ({ id: m.userId, name: m.name || m.email, email: m.email }))))
+      .catch(() => {});
   }, []);
 
   // Calculate stats from projects data
@@ -750,13 +754,16 @@ export default function Project360Page() {
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Responsable</label>
-                <input
-                  type="text"
+                <select
                   value={newProject.responsibleId}
                   onChange={(e) => setNewProject({ ...newProject, responsibleId: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="ID del responsable"
-                />
+                >
+                  <option value="">Seleccionar responsable...</option>
+                  {members.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
               </div>
               
               <div>
