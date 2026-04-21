@@ -34,23 +34,36 @@ import {
 } from 'lucide-react';
 
 const mainNav = [
+  // 1. Visión general
   { label: 'Inicio', icon: LayoutDashboard, href: '/dashboard' },
   { label: 'Panel General', icon: BarChart3, href: '/panel' },
   { label: 'PROJECT360', icon: BarChart3, href: '/project360' },
-  { label: 'Mantenimiento', icon: Settings, href: '/mantenimiento' },
-  { label: 'Simulacros', icon: ClipboardCheck, href: '/simulacros' },
-  { label: 'Documentos', icon: FileText, href: '/documents' },
+
+  // 2. Base organizacional (primero definir quién: personas, puestos, stakeholders)
+  { label: 'RRHH', icon: Users, href: '/rrhh' },
+  { label: 'Capacitaciones', icon: GraduationCap, href: '/capacitaciones' },
+  { label: 'Clientes', icon: Headphones, href: '/clientes' },
+
+  // 3. Marco normativo y documental (qué reglas aplican y qué docs propios tengo)
   { label: 'Normativos', icon: BookOpen, href: '/normativos' },
+  { label: 'Documentos', icon: FileText, href: '/documents' },
+
+  // 4. Gestión de riesgos y medición
+  { label: 'Riesgos', icon: Shield, href: '/riesgos' },
+  { label: 'Indicadores', icon: TrendingUp, href: '/indicadores' },
+
+  // 5. Control y mejora (auditorías y hallazgos)
   { label: 'Auditoría IA', icon: BrainCircuit, href: '/audit' },
   { label: 'Auditorías ISO', icon: ClipboardCheck, href: '/auditorias' },
   { label: 'No Conformidades', icon: AlertTriangle, href: '/no-conformidades' },
-  { label: 'Riesgos', icon: Shield, href: '/riesgos' },
-  { label: 'Indicadores', icon: TrendingUp, href: '/indicadores' },
-  { label: 'Capacitaciones', icon: GraduationCap, href: '/capacitaciones' },
-  { label: 'RRHH', icon: Users, href: '/rrhh' },
-  { label: 'Clientes', icon: Headphones, href: '/clientes' },
-  { label: 'Licencias', icon: CreditCard, href: '/licencia' },
+
+  // 6. Operaciones (activos y emergencias)
+  { label: 'Mantenimiento', icon: Settings, href: '/mantenimiento' },
+  { label: 'Simulacros', icon: ClipboardCheck, href: '/simulacros' },
+
+  // 7. Reportes y administración
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
+  { label: 'Licencias', icon: CreditCard, href: '/licencia' },
   { label: 'Modo de Uso', icon: HelpCircle, href: '/modo-de-uso' },
 ];
 
