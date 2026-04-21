@@ -12,6 +12,8 @@ interface ModuleGuide {
   id: string;
   title: string;
   icon: any;
+  screenshot?: string;
+  screenshots?: { src: string; caption: string }[];
   purpose: string;
   mainFeatures: string[];
   actions: { name: string; description: string }[];
@@ -363,6 +365,36 @@ const guides: ModuleGuide[] = [
   },
 ];
 
+// Mapping of module id -> screenshot file in /public/manual/
+const SCREENSHOT_MAP: Record<string, string | string[]> = {
+  inicio: '/manual/inicio.png',
+  panel: '/manual/panel.png',
+  project360: '/manual/project360.png',
+  mantenimiento: '/manual/mantenimiento.png',
+  simulacros: '/manual/simulacros.png',
+  documentos: '/manual/documentos.png',
+  normativos: '/manual/normativos.png',
+  'auditoria-ia': '/manual/auditoria-ia.png',
+  'auditorias-iso': '/manual/auditorias-iso.png',
+  'no-conformidades': '/manual/no-conformidades.png',
+  riesgos: '/manual/riesgos.png',
+  indicadores: '/manual/indicadores.png',
+  capacitaciones: '/manual/capacitaciones.png',
+  rrhh: ['/manual/rrhh.png', '/manual/rrhh-empleados.png', '/manual/rrhh-competencias.png', '/manual/rrhh-organigrama.png'],
+  clientes: ['/manual/clientes.png', '/manual/clientes-encuestas.png'],
+  licencias: '/manual/licencias.png',
+  reportes: '/manual/reportes.png',
+  notificaciones: '/manual/notificaciones.png',
+  configuracion: '/manual/configuracion.png',
+  integraciones: '/manual/integraciones.png',
+  empresa: '/manual/empresa.png',
+};
+
+const SCREENSHOT_CAPTIONS: Record<string, string[]> = {
+  rrhh: ['Panel principal de RRHH', 'Lista de empleados', 'Gestión de competencias', 'Organigrama'],
+  clientes: ['Gestión de clientes', 'Encuestas de satisfacción'],
+};
+
 export default function ModoDeUsoPage() {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState<string>(guides[0].id);
@@ -452,6 +484,37 @@ export default function ModoDeUsoPage() {
               </h3>
               <p className="text-gray-800 leading-relaxed">{current.purpose}</p>
             </div>
+
+            {(() => {
+              const shots = SCREENSHOT_MAP[current.id];
+              if (!shots) return null;
+              const list = Array.isArray(shots) ? shots : [shots];
+              const captions = SCREENSHOT_CAPTIONS[current.id] || [];
+              return (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    Así se ve
+                  </h3>
+                  <div className={list.length > 1 ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : ''}>
+                    {list.map((src, i) => (
+                      <figure key={src} className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                        <img
+                          src={src}
+                          alt={captions[i] || `${current.title} - captura ${i + 1}`}
+                          className="w-full h-auto block"
+                          loading="lazy"
+                        />
+                        {captions[i] && (
+                          <figcaption className="px-3 py-2 text-xs text-gray-600 bg-white border-t border-gray-200">
+                            {captions[i]}
+                          </figcaption>
+                        )}
+                      </figure>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div>
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
