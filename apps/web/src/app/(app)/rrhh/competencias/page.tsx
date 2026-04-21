@@ -495,7 +495,10 @@ export default function CompetenciasPage() {
                   {employeeCompetencies.filter(ec => ec.gap > 0).length} brechas
                 </span>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              <button
+                onClick={() => setShowEvaluationForm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
                 <Plus className="h-4 w-4" />
                 Nueva Evaluación
               </button>
