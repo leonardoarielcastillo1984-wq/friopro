@@ -7,7 +7,7 @@ import {
   FileText, BookOpen, AlertTriangle, Shield, TrendingUp, Users,
   GraduationCap, Activity, Target, RefreshCw,
   CheckSquare, HardHat, Leaf, Siren, Truck, Ruler,
-  UsersRound, CalendarDays, Clock, ChevronRight, Bug, BarChart3,
+  UsersRound, CalendarDays, Clock, ChevronRight,
 } from 'lucide-react';
 
 interface DashboardResponse {
@@ -149,26 +149,6 @@ export default function DashboardPage() {
   if (data.suppliers.pending > 0)
     alerts.push({ msg: `${data.suppliers.pending} proveedor${data.suppliers.pending > 1 ? 'es' : ''} pendiente${data.suppliers.pending > 1 ? 's' : ''} de aprobación`, href: '/proveedores', level: 'yellow' });
 
-  // Módulos para health scores
-  const healthModules = [
-    { name: 'Documentos', icon: <FileText className="h-4 w-4" />, score: data.documents.total > 0 ? Math.round((data.documents.effective / data.documents.total) * 100) : 0, detail: `${data.documents.effective}/${data.documents.total} vigentes`, color: 'blue' },
-    { name: 'No Conformidades', icon: <Bug className="h-4 w-4" />, score: data.ncrs.total > 0 ? Math.round((data.ncrs.closed / data.ncrs.total) * 100) : 100, detail: `${data.ncrs.closed}/${data.ncrs.total} cerradas`, color: 'red' },
-    { name: 'Riesgos', icon: <AlertTriangle className="h-4 w-4" />, score: data.risks.total > 0 ? Math.round(((data.risks.low + data.risks.medium) / data.risks.total) * 100) : 100, detail: `${data.risks.critical + data.risks.high} altos/críticos`, color: 'amber' },
-    { name: 'Normativos', icon: <Shield className="h-4 w-4" />, score: data.normatives.total > 0 ? Math.round((safeNum((data as any).normatives?.ready) / data.normatives.total) * 100) : 0, detail: `${data.normatives.total} cargados`, color: 'indigo' },
-    { name: 'Auditoría IA', icon: <Target className="h-4 w-4" />, score: data.findings.total > 0 ? Math.round(((data.findings.total - data.findings.open) / data.findings.total) * 100) : 100, detail: `${data.findings.open} hallazgos abiertos`, color: 'purple' },
-    { name: 'Capacitaciones', icon: <GraduationCap className="h-4 w-4" />, score: data.trainings.total > 0 ? Math.round((data.trainings.completed / data.trainings.total) * 100) : 0, detail: `${data.trainings.completed}/${data.trainings.total} completadas`, color: 'pink' },
-  ];
-
-  const avgScore = healthModules.length > 0 ? Math.round(healthModules.reduce((s, m) => s + m.score, 0) / healthModules.length) : 0;
-
-  const COLOR_MAP: Record<string, { bg: string; text: string }> = {
-    blue: { bg: 'bg-blue-50', text: 'text-blue-600' },
-    red: { bg: 'bg-red-50', text: 'text-red-600' },
-    amber: { bg: 'bg-amber-50', text: 'text-amber-600' },
-    indigo: { bg: 'bg-indigo-50', text: 'text-indigo-600' },
-    purple: { bg: 'bg-purple-50', text: 'text-purple-600' },
-    pink: { bg: 'bg-pink-50', text: 'text-pink-600' },
-  };
 
   if (loading) {
     return (
@@ -192,18 +172,9 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-500">Panel ejecutivo · {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-200">
-              <BarChart3 className="h-4 w-4 text-blue-600" />
-              <div>
-                <div className="text-lg font-bold text-slate-900 leading-none">{avgScore}%</div>
-                <div className="text-xs text-slate-500">Salud del SGI</div>
-              </div>
-            </div>
-            <button onClick={load} disabled={loading} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50">
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
+          <button onClick={load} disabled={loading} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
@@ -222,33 +193,6 @@ export default function DashboardPage() {
             ))}
           </div>
         )}
-
-        {/* Health scores por módulo */}
-        <div>
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Salud por módulo</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {healthModules.map(mod => {
-              const c = COLOR_MAP[mod.color];
-              const scoreColor = mod.score >= 80 ? 'text-green-600' : mod.score >= 50 ? 'text-yellow-600' : 'text-red-600';
-              const barColor = mod.score >= 80 ? 'bg-green-500' : mod.score >= 50 ? 'bg-yellow-500' : 'bg-red-500';
-              return (
-                <div key={mod.name} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className={`p-1.5 rounded-lg ${c.bg}`}>
-                      <span className={c.text}>{mod.icon}</span>
-                    </div>
-                    <span className={`text-base font-bold ${scoreColor}`}>{mod.score}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-1.5 mb-1.5">
-                    <div className={`${barColor} rounded-full h-1.5 transition-all`} style={{ width: `${mod.score}%` }} />
-                  </div>
-                  <p className="text-xs font-medium text-slate-700 truncate">{mod.name}</p>
-                  <p className="text-xs text-slate-400 truncate">{mod.detail}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Distribuciones: Riesgos y NC */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
