@@ -6,10 +6,10 @@ export default function PartesInteresadasPage() {
   return (
     <GenericCrudPage
       title="Partes Interesadas"
-      subtitle="Stakeholders del SGI (ISO 9001/14001/45001 §4.2)"
+      subtitle="Stakeholders del SGI (ISO 9001/14001/45001 §4.2) con Evaluación de Cumplimiento"
       endpoint="/stakeholders"
       icon={UsersRound}
-      defaultValues={{ type: 'EXTERNAL', category: 'CUSTOMER', influence: 3, interest: 3 }}
+      defaultValues={{ type: 'EXTERNAL', category: 'CUSTOMER', influence: 3, interest: 3, complianceStatus: 'COMPLIES', complianceLevel: 100, requiresAction: false }}
       fields={[
         { key: 'name', label: 'Nombre', type: 'text', required: true, fullWidth: true },
         { key: 'type', label: 'Tipo', type: 'select', required: true, options: [
@@ -28,6 +28,18 @@ export default function PartesInteresadasPage() {
         { key: 'needs', label: 'Necesidades', type: 'textarea' },
         { key: 'expectations', label: 'Expectativas', type: 'textarea' },
         { key: 'requirements', label: 'Requisitos aplicables', type: 'textarea' },
+        // Evaluación de Cumplimiento (ISO 9001 cláusulas 4.2 y 9.1)
+        { key: 'complianceStatus', label: 'Estado de cumplimiento', type: 'select', options: [
+          { value: 'COMPLIES', label: 'Cumple' },
+          { value: 'PARTIAL', label: 'Parcial' },
+          { value: 'NON_COMPLIANT', label: 'No cumple' },
+        ]},
+        { key: 'complianceLevel', label: 'Nivel de cumplimiento (%)', type: 'number' },
+        { key: 'lastEvaluationDate', label: 'Fecha última evaluación', type: 'date' },
+        { key: 'complianceEvidence', label: 'Evidencia', type: 'textarea' },
+        { key: 'indicatorId', label: 'Indicador asociado (opcional)', type: 'text' },
+        { key: 'requiresAction', label: '¿Requiere acción?', type: 'checkbox' },
+        // Campos originales
         { key: 'influence', label: 'Influencia (1-5)', type: 'number' },
         { key: 'interest', label: 'Interés (1-5)', type: 'number' },
         { key: 'contactName', label: 'Contacto', type: 'text' },
@@ -38,6 +50,11 @@ export default function PartesInteresadasPage() {
         { key: 'name', label: 'Nombre' },
         { key: 'type', label: 'Tipo' },
         { key: 'category', label: 'Categoría' },
+        { key: 'complianceStatus', label: 'Estado Cumplimiento', render: (i) => {
+          const statusMap = { COMPLIES: '✅ Cumple', PARTIAL: '⚠️ Parcial', NON_COMPLIANT: '❌ No cumple' };
+          return statusMap[i.complianceStatus] || '—';
+        }},
+        { key: 'complianceLevel', label: 'Nivel (%)', render: (i) => i.complianceLevel ? `${i.complianceLevel}%` : '—' },
         { key: 'influence', label: 'Influencia' },
         { key: 'interest', label: 'Interés' },
       ]}
