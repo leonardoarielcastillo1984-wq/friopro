@@ -1,4 +1,4 @@
-import StakeholderClient from '@/components/StakeholderClient';
+import StakeholderClient from './StakeholderClient';
 
 export default function PartesInteresadasPage() {
   return <StakeholderClient />;
