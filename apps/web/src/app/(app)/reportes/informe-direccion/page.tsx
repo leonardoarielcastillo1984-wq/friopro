@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -60,6 +61,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function InformeDireccionPage() {
+  const router = useRouter();
   const { settings: companySettings } = useCompany();
   const [reviews, setReviews] = useState<ManagementReview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,8 +71,8 @@ export default function InformeDireccionPage() {
   const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadReviews();
-  }, []);
+    router.replace('/revision-direccion');
+  }, [router]);
 
   async function loadReviews() {
     try {
@@ -270,7 +272,7 @@ export default function InformeDireccionPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
                         <Link
-                          href={`/reportes/informe-direccion/${review.id}`}
+                          href={`/revision-direccion/${review.id}`}
                           className="p-1 text-gray-600 hover:text-blue-600 transition-colors"
                           title="Ver detalle"
                         >

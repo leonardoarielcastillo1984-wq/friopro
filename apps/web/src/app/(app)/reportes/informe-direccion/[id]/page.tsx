@@ -220,7 +220,7 @@ export default function InformeDireccionDetailPage() {
   if (!review) {
     return (
       <div className="space-y-6">
-        <Link href="/reportes/informe-direccion" className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800">
+        <Link href="/revision-direccion" className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800">
           <ChevronLeft className="w-4 h-4" />
           Volver a Informes
         </Link>
@@ -243,7 +243,7 @@ export default function InformeDireccionDetailPage() {
       <div className="flex items-start justify-between print:hidden">
         <div>
           <Link 
-            href="/reportes/informe-direccion" 
+            href="/revision-direccion" 
             className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 mb-2"
           >
             <ChevronLeft className="w-4 h-4" />

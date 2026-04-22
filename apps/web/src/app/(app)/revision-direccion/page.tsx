@@ -1,2 +1,3 @@
 'use client';
-export { default } from '@/app/(app)/reportes/informe-direccion/page';
+import InformeDireccionPage from '@/app/(app)/reportes/informe-direccion/page';
+export default InformeDireccionPage;
