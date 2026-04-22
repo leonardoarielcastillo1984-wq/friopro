@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Compass, Save, Sparkles, Loader2, ArrowRight, CheckSquare, X, Target } from 'lucide-react';
+import { Compass, Save, Sparkles, Loader2, ArrowRight, X, Target } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 interface Context {
@@ -40,15 +40,6 @@ export default function ContextoPage() {
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [data, setData] = useState<Context>({ year: new Date().getFullYear() });
   const [foda, setFoda] = useState({ s: '', w: '', o: '', t: '' });
-  const [showSendModal, setShowSendModal] = useState(false);
-  const [sendingAction, setSendingAction] = useState(false);
-  const [actionForm, setActionForm] = useState({
-    title: '',
-    description: '',
-    type: 'IMPROVEMENT',
-    priority: 'MEDIUM',
-    sourceType: 'MANUAL',
-  });
 
   // Plan de Acción Estratégico desde DAFO
   const [showStrategicPlanModal, setShowStrategicPlanModal] = useState(false);
@@ -370,15 +361,28 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                 <p className="text-xs text-blue-600 mt-0.5">Enviá una debilidad, amenaza o estrategia directamente a Acciones CAPA para cerrar el ciclo.</p>
               </div>
               <button
-                onClick={() => {
-                  setActionForm({
-                    title: '',
-                    description: `Origen: Análisis FODA ${year}\n\nDebilidades identificadas:\n${foda.w || '—'}\n\nAmenazas identificadas:\n${foda.t || '—'}`,
-                    type: 'IMPROVEMENT',
-                    priority: 'MEDIUM',
-                    sourceType: 'MANUAL',
-                  });
-                  setShowSendModal(true);
+                onClick={async () => {
+                  if (!foda.w && !foda.t) {
+                    alert('No hay debilidades ni amenazas para enviar a acciones');
+                    return;
+                  }
+                  try {
+                    await apiFetch('/actions', {
+                      method: 'POST',
+                      json: {
+                        title: `Tratamiento FODA ${year}`,
+                        description: `Origen: Análisis FODA ${year}\n\nDebilidades identificadas:\n${foda.w || '—'}\n\nAmenazas identificadas:\n${foda.t || '—'}`,
+                        type: 'IMPROVEMENT',
+                        priority: 'MEDIUM',
+                        sourceType: 'MANUAL',
+                        responsible: 'Asignar responsable',
+                        status: 'OPEN',
+                      },
+                    });
+                    alert('Acción CAPA creada correctamente en el módulo Acciones');
+                  } catch (e: any) {
+                    alert('Error: ' + e.message);
+                  }
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium shrink-0"
               >
@@ -395,86 +399,6 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                 <Save className="h-4 w-4" /> {saving ? 'Guardando...' : 'Guardar contexto'}
               </button>
             </div>
-
-            {/* Modal enviar a acciones */}
-            {showSendModal && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col">
-                  <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                    <div className="flex items-center gap-2">
-                      <CheckSquare className="w-5 h-5 text-blue-600" />
-                      <h2 className="text-lg font-semibold text-gray-900">Nueva Acción desde FODA</h2>
-                    </div>
-                    <button onClick={() => setShowSendModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
-                  </div>
-                  <div className="p-6 space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Título de la acción *</label>
-                      <input
-                        value={actionForm.title}
-                        onChange={e => setActionForm({ ...actionForm, title: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Ej: Plan para reducir debilidad en proceso X"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                      <textarea
-                        rows={5}
-                        value={actionForm.description}
-                        onChange={e => setActionForm({ ...actionForm, description: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-                        <select value={actionForm.type} onChange={e => setActionForm({ ...actionForm, type: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                          <option value="CORRECTIVE">Correctiva</option>
-                          <option value="PREVENTIVE">Preventiva</option>
-                          <option value="IMPROVEMENT">Mejora</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Prioridad</label>
-                        <select value={actionForm.priority} onChange={e => setActionForm({ ...actionForm, priority: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                          <option value="LOW">Baja</option>
-                          <option value="MEDIUM">Media</option>
-                          <option value="HIGH">Alta</option>
-                          <option value="CRITICAL">Crítica</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-6 border-t border-gray-200 flex gap-3">
-                    <button onClick={() => setShowSendModal(false)}
-                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancelar</button>
-                    <button
-                      disabled={sendingAction || !actionForm.title}
-                      onClick={async () => {
-                        setSendingAction(true);
-                        try {
-                          await apiFetch('/actions', {
-                            method: 'POST',
-                            json: { ...actionForm, status: 'OPEN', sourceType: 'MANUAL' },
-                          });
-                          setShowSendModal(false);
-                          alert('Acción creada correctamente en Acciones (CAPA)');
-                        } catch (e: any) {
-                          alert('Error: ' + e.message);
-                        } finally {
-                          setSendingAction(false);
-                        }
-                      }}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
-                      {sendingAction ? 'Enviando...' : 'Crear Acción'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Modal Plan de Acción Estratégico desde DAFO */}
             {showStrategicPlanModal && (
