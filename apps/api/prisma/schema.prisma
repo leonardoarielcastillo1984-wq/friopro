@@ -3255,6 +3255,56 @@ model Project360History {
   @@map("project360_history")
 }
 
+// -------- Gestión de Cambios (ISO 6.3) --------
+model GestionCambio {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @db.Uuid
+  code            String
+  titulo          String
+  descripcion     String
+  tipo            String    // PROCESO | ORGANIZACIONAL | PRODUCTO_SERVICIO | INFRAESTRUCTURA | PROVEEDOR | NORMATIVO | OTRO
+  origen          String    // AUDITORIA | NO_CONFORMIDAD | MEJORA | CLIENTE | LEGAL | INTERNO | OTRO
+  impactoCalidad  String    // BAJO | MEDIO | ALTO
+  impactoSST      String    // BAJO | MEDIO | ALTO
+  impactoAmbiental String   // BAJO | MEDIO | ALTO
+  status          String    @default("SOLICITADO") // SOLICITADO | EN_REVISION | APROBADO | RECHAZADO | IMPLEMENTADO | VERIFICADO | CERRADO
+  responsableId   String?   @db.Uuid
+  aprobadorId     String?   @db.Uuid
+  fechaSolicitud  DateTime  @default(now()) @db.Timestamptz
+  fechaPrevista   DateTime? @db.Timestamptz
+  fechaAprobacion DateTime? @db.Timestamptz
+  fechaCierre     DateTime? @db.Timestamptz
+  motivoRechazo   String?
+  recursosNecesarios String?
+  capacitacionRequerida Boolean @default(false)
+  documentosAfectados String?
+  riesgosIdentificados String?
+  verificacion    String?
+  creadoPor       String?
+  deletedAt       DateTime? @db.Timestamptz
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @db.Timestamptz
+
+  historial       GestionCambioHistorial[]
+
+  @@map("gestion_cambio")
+}
+
+model GestionCambioHistorial {
+  id        String   @id @default(uuid()) @db.Uuid
+  cambioId  String   @db.Uuid
+  tenantId  String   @db.Uuid
+  accion    String
+  detalle   String?
+  userId    String?  @db.Uuid
+  userName  String?
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  cambio    GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
+
+  @@map("gestion_cambio_historial")
+}
+
 // -------- 5. IPERC (Peligros SST) --------
 model Hazard {
   id            String    @id @default(uuid()) @db.Uuid

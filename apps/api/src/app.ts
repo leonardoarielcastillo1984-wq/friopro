@@ -23,6 +23,7 @@ import { documentRoutes } from './routes/documents.js';
 import { departmentRoutes } from './routes/departments.js';
 import { normativoRoutes, clauseMappingRoutes } from './routes/normativos.js';
 import { auditRoutes } from './routes/audit.js';
+import gestionCambiosRoutes from './routes/gestion-cambios.js';
 import { registerAuditRoutes } from './routes/audits.js';
 import { registerManagementReviewRoutes } from './routes/managementReview.js';
 import { ncrRoutes } from './routes/ncr.js';
@@ -219,6 +220,7 @@ export async function buildApp() {
   await app.register(suppliersRoutes, { prefix: '/suppliers' });
   await app.register(equipmentRoutes, { prefix: '/equipment' });
   await app.register(calendarRoutes, { prefix: '/calendar' });
+  await app.register(gestionCambiosRoutes, { prefix: '/gestion-cambios' });
 
   // Endpoint genérico de IA para módulos del frontend
   app.post('/ai/chat', async (req: any, reply: any) => {

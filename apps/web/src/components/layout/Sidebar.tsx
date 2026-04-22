@@ -42,6 +42,7 @@ import {
   Ruler,
   CalendarDays,
   Scale,
+  GitBranch,
 } from 'lucide-react';
 
 const mainNav = [
@@ -64,6 +65,7 @@ const mainNav = [
 
   // 4. Marco normativo y documental
   { label: 'Normativos', icon: BookOpen, href: '/normativos' },
+  { label: 'Gestión de Cambios', icon: GitBranch, href: '/gestion-cambios' },
   { label: 'Documentos', icon: FileText, href: '/documents' },
 
   // 5. Gestión de riesgos y SST/Ambiente
