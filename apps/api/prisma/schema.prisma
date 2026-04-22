@@ -3048,6 +3048,14 @@ model ActionItem {
   openDate      DateTime?  @db.Timestamptz
   dueDate       DateTime?
   completedAt   DateTime?
+  // Campos de evaluación de riesgo (estilo Matriz de Riesgos)
+  initialProbability Int?      @default(1) // 1-5
+  initialImpact     Int?      @default(1) // 1-5
+  initialRiskLevel  String?   // LOW, MEDIUM, HIGH, CRITICAL (calculado)
+  residualProbability Int?    @default(1) // 1-5
+  residualImpact     Int?    @default(1) // 1-5
+  residualRiskLevel  String? // LOW, MEDIUM, HIGH, CRITICAL (calculado)
+  riskReduction      Float?   // % de reducción (calculado)
   effectivenessCheck String?
   effectivenessVerifiedAt DateTime?
   effectivenessVerifiedById String? @db.Uuid
