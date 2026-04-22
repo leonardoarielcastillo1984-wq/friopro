@@ -52,6 +52,7 @@ import { superAdminRoutes } from './routes/superAdmin.js';
 import surveyPublicRoutes from './routes/survey-public.js';
 import { publicRoutes } from './routes/publicRoutes.js';
 import { documentsPublicRoutes } from './routes/documentsPublic.js';
+import { processMapsRoutes } from './routes/processMaps.js';
 import { registerCompanyRoutes } from './routes/register-company.js';
 import { startNormativeWorker, startAuditWorker } from './jobs/queue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
@@ -204,6 +205,7 @@ export async function buildApp() {
   await app.register(registerSurveyRoutes, { prefix: '/surveys' });
   await app.register(licenseRoutes, { prefix: '/license' });
   await app.register(storageRoutes, { prefix: '/storage' });
+  await app.register(processMapsRoutes, { prefix: '/process-maps' });
   await app.register(superAdminRoutes, { prefix: '/super-admin' });
   await app.register(surveyPublicRoutes, { prefix: '/survey' });
   await app.register(registerCompanyRoutes); // Registro de empresas

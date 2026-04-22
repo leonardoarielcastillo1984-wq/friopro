@@ -287,6 +287,9 @@ model Tenant {
   maintenanceSpareParts  MaintenanceSparePart[]
   workOrders             WorkOrder[]
   maintenanceCosts       MaintenanceCost[]
+
+  // Process Maps
+  processMaps            ProcessMap[]
 }
 
 model PlatformUser {
@@ -400,6 +403,9 @@ model PlatformUser {
   // Password History Relations
   passwordHistory PasswordHistory[]
   passwordChangesMade PasswordHistory[] @relation("PasswordChangedBy")
+
+  // Process Maps
+  processMapsCreated ProcessMap[] @relation("ProcessMapCreatedBy")
 }
 
 model TenantMembership {
@@ -3498,4 +3504,54 @@ model Calibration {
   @@index([equipmentId])
   @@index([tenantId])
   @@map("calibrations")
+}
+
+model ProcessMap {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @db.Uuid
+  tenant      Tenant  @relation(fields: [tenantId], references: [id])
+
+  name        String
+  description String?
+  scope       String?
+  inputLabel  String? @default("Requisitos del cliente / PI")
+  outputLabel String? @default("Satisfacción del cliente / PI")
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  deletedAt   DateTime? @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("ProcessMapCreatedBy", fields: [createdById], references: [id])
+
+  processes   Process[]
+
+  @@index([tenantId])
+  @@map("process_maps")
+}
+
+model Process {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @db.Uuid
+  processMapId String     @db.Uuid
+  processMap   ProcessMap @relation(fields: [processMapId], references: [id], onDelete: Cascade)
+
+  layer        String     // STRATEGIC | OPERATIONAL | SUPPORT
+  name         String
+  description  String?
+  owner        String?
+  inputs       String?
+  outputs      String?
+  indicators   String?
+  documents    String?
+  risks        String?
+  order        Int        @default(0)
+
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @db.Timestamptz
+  deletedAt    DateTime? @db.Timestamptz
+
+  @@index([processMapId])
+  @@index([tenantId])
+  @@map("processes")
 }
