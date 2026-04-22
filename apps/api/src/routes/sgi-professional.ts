@@ -40,7 +40,15 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
     app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
       if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
       const tenantId = req.db.tenantId;
-      const body = req.body as any;
+      let body = req.body as any;
+      // Parse body if it's a string JSON
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch (e) {
+          return reply.code(400).send({ error: 'Invalid JSON body' });
+        }
+      }
 
       const item = await app.runWithDbContext(req, async (tx: any) => {
         const data: any = { ...body, tenantId };
