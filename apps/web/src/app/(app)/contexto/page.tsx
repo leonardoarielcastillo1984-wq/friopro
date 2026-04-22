@@ -41,6 +41,8 @@ export default function ContextoPage() {
   const [data, setData] = useState<Context>({ year: new Date().getFullYear() });
   const [foda, setFoda] = useState({ s: '', w: '', o: '', t: '' });
   const [showSendModal, setShowSendModal] = useState(false);
+  const [sendWeaknesses, setSendWeaknesses] = useState(true);
+  const [sendThreats, setSendThreats] = useState(true);
 
   // Plan de Acción Estratégico desde DAFO
   const [showStrategicPlanModal, setShowStrategicPlanModal] = useState(false);
@@ -396,7 +398,8 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                         <input
                           type="checkbox"
                           id="send-weaknesses"
-                          checked={!!foda.w}
+                          checked={sendWeaknesses}
+                          onChange={(e) => setSendWeaknesses(e.target.checked)}
                           disabled={!foda.w}
                           className="w-4 h-4 text-blue-600 rounded"
                         />
@@ -406,7 +409,8 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                         <input
                           type="checkbox"
                           id="send-threats"
-                          checked={!!foda.t}
+                          checked={sendThreats}
+                          onChange={(e) => setSendThreats(e.target.checked)}
                           disabled={!foda.t}
                           className="w-4 h-4 text-blue-600 rounded"
                         />
@@ -423,6 +427,10 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                     <button
                       disabled={!foda.w && !foda.t}
                       onClick={async () => {
+                        if (!sendWeaknesses && !sendThreats) {
+                          alert('Seleccioná al menos un elemento para enviar');
+                          return;
+                        }
                         const key = `foda-action-sent-${year}`;
                         if (localStorage.getItem(key)) {
                           alert('Ya se envió una acción CAPA para este año. Revisa el módulo Acciones.');
@@ -433,7 +441,7 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                             method: 'POST',
                             json: {
                               title: `Tratamiento FODA ${year}`,
-                              description: `Origen: Análisis FODA ${year}\n\n${foda.w ? `Debilidades identificadas:\n${foda.w}\n\n` : ''}${foda.t ? `Amenazas identificadas:\n${foda.t}` : ''}`,
+                              description: `Origen: Análisis FODA ${year}\n\n${sendWeaknesses && foda.w ? `Debilidades identificadas:\n${foda.w}\n\n` : ''}${sendThreats && foda.t ? `Amenazas identificadas:\n${foda.t}` : ''}`,
                               type: 'IMPROVEMENT',
                               priority: 'MEDIUM',
                               sourceType: 'MANUAL',
