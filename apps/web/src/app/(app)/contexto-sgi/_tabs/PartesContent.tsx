@@ -33,6 +33,7 @@ export default function PartesContent() {
         { key: 'contactName', label: 'Contacto', type: 'text' },
         { key: 'contactEmail', label: 'Email contacto', type: 'text' },
         { key: 'notes', label: 'Notas', type: 'textarea' },
+        { key: 'reviewDate', label: 'Fecha última revisión', type: 'date' },
       ]}
       columns={[
         { key: 'name', label: 'Nombre' },

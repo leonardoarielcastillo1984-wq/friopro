@@ -3045,6 +3045,7 @@ model ActionItem {
   sourceType    String    // MANUAL, AUDIT, NCR, INDICATOR, REVIEW, RISK, INCIDENT, SUGGESTION
   sourceId      String?   @db.Uuid
   assignedToId  String?   @db.Uuid
+  openDate      DateTime?  @db.Timestamptz
   dueDate       DateTime?
   completedAt   DateTime?
   effectivenessCheck String?
@@ -3107,6 +3108,7 @@ model Stakeholder {
   contactName   String?
   contactEmail  String?
   notes         String?
+  reviewDate    DateTime?  @db.Timestamptz
   deletedAt     DateTime?
   createdAt     DateTime  @default(now()) @db.Timestamptz
   updatedAt     DateTime  @updatedAt @db.Timestamptz

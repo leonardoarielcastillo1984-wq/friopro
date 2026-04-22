@@ -66,7 +66,7 @@ export default function NoConformidadesPage() {
   const [filterSource, setFilterSource] = useState(searchParams?.get('source') || 'ALL');
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', severity: 'MAJOR' as NCRSeverity, source: 'INTERNAL_AUDIT' as NCRSource, standard: '', clause: '' });
+  const [form, setForm] = useState({ title: '', description: '', severity: 'MAJOR' as NCRSeverity, source: 'INTERNAL_AUDIT' as NCRSource, standard: '', clause: '', detectedAt: '', dueDate: '' });
   const [showCreateFromFinding, setShowCreateFromFinding] = useState(false);
   const [findings, setFindings] = useState<AiFinding[]>([]);
   const [loadingFindings, setLoadingFindings] = useState(false);
@@ -114,9 +114,13 @@ export default function NoConformidadesPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault(); setCreating(true); setError(null);
     try {
-      await apiFetch('/ncr', { method: 'POST', json: form });
+      await apiFetch('/ncr', { method: 'POST', json: {
+        ...form,
+        detectedAt: form.detectedAt ? new Date(form.detectedAt).toISOString() : undefined,
+        dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
+      } });
       setSuccess('No conformidad creada correctamente'); setShowCreate(false);
-      setForm({ title: '', description: '', severity: 'MAJOR', source: 'INTERNAL_AUDIT', standard: '', clause: '' });
+      setForm({ title: '', description: '', severity: 'MAJOR', source: 'INTERNAL_AUDIT', standard: '', clause: '', detectedAt: '', dueDate: '' });
       await load();
     } catch (err: any) { setError(err?.message ?? 'Error al crear'); } finally { setCreating(false); }
   }
@@ -226,6 +230,8 @@ export default function NoConformidadesPage() {
             <div><label className="block text-sm font-medium text-neutral-700 mb-1">Origen</label><select className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm" value={form.source} onChange={e => setForm({...form, source: e.target.value as NCRSource})}>{SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
             <div><label className="block text-sm font-medium text-neutral-700 mb-1">Norma (opcional)</label><input className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm" placeholder="ISO 9001" value={form.standard} onChange={e => setForm({...form, standard: e.target.value})} /></div>
             <div><label className="block text-sm font-medium text-neutral-700 mb-1">Cláusula (opcional)</label><input className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm" placeholder="8.2.1" value={form.clause} onChange={e => setForm({...form, clause: e.target.value})} /></div>
+            <div><label className="block text-sm font-medium text-neutral-700 mb-1">Fecha de detección *</label><input type="date" className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm" value={form.detectedAt} onChange={e => setForm({...form, detectedAt: e.target.value})} required /></div>
+            <div><label className="block text-sm font-medium text-neutral-700 mb-1">Fecha límite cierre</label><input type="date" className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm" value={form.dueDate} onChange={e => setForm({...form, dueDate: e.target.value})} /></div>
           </div>
           <button type="submit" disabled={creating} className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-neutral-300 transition-colors"><Plus className="h-4 w-4" /> {creating ? 'Creando...' : 'Crear NCR'}</button>
         </form>

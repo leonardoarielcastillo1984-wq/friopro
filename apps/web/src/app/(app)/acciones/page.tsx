@@ -9,7 +9,7 @@ export default function AccionesPage() {
             subtitle="Plan de acciones correctivas, preventivas y de mejora (CAPA)"
             endpoint="/actions"
             icon={CheckSquare}
-            defaultValues={{ type: 'CORRECTIVE', priority: 'MEDIUM', sourceType: 'MANUAL', status: 'OPEN' }}
+            defaultValues={{ type: 'CORRECTIVE', priority: 'MEDIUM', sourceType: 'MANUAL', status: 'OPEN', openDate: new Date().toISOString().split('T')[0] }}
             fields={[
               { key: 'title', label: 'Título', type: 'text', required: true, fullWidth: true },
               { key: 'description', label: 'Descripción', type: 'textarea', required: true },
@@ -41,6 +41,7 @@ export default function AccionesPage() {
                 { value: 'CLOSED', label: 'Cerrada' },
                 { value: 'CANCELLED', label: 'Cancelada' },
               ]},
+              { key: 'openDate', label: 'Fecha de apertura', type: 'date', required: true },
               { key: 'dueDate', label: 'Fecha vencimiento', type: 'date' },
               { key: 'effectivenessCheck', label: 'Verificación de eficacia', type: 'textarea' },
               { key: 'notes', label: 'Notas', type: 'textarea' },
