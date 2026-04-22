@@ -59,14 +59,30 @@ export default function ContextoPage() {
     };
     setAiLoading(quadrant);
     try {
-      const prompt = `Eres un consultor ISO experto. Dado este análisis FODA:
+      const pestelContext = [
+        data.political && `Político: ${data.political}`,
+        data.economic && `Económico: ${data.economic}`,
+        data.social && `Social: ${data.social}`,
+        data.technological && `Tecnológico: ${data.technological}`,
+        data.environmental && `Ambiental: ${data.environmental}`,
+        data.legal && `Legal: ${data.legal}`,
+      ].filter(Boolean).join('\n');
+
+      const prompt = `Eres un consultor ISO experto en empresas logísticas e industriales.
+
+ANÁLISIS FODA:
 Fortalezas: ${foda.s || '(no especificadas)'}
 Debilidades: ${foda.w || '(no especificadas)'}
 Oportunidades: ${foda.o || '(no especificadas)'}
 Amenazas: ${foda.t || '(no especificadas)'}
 
-Sugiere 3 estrategias concretas para el cuadrante ${labels[quadrant]} de la Matriz DAFO Cruzado.
-Responde solo con las 3 estrategias numeradas, sin introducción. Sé específico y accionable.`;
+${pestelContext ? `CONTEXTO PESTEL (factores externos relevantes):\n${pestelContext}\n\nIMPORTANTE: Los factores Económicos y Tecnológicos tienen mayor impacto en operaciones logísticas. Considera costos, inflación, precios de combustible, disponibilidad de tecnología, automatización, y regulaciones específicas del sector.` : ''}
+
+Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadrant]} de la Matriz DAFO Cruzado.
+- Las estrategias deben considerar el contexto externo (PESTEL) cuando esté disponible
+- Deben ser específicas para empresas logísticas/industriales (ej: optimización de rutas, gestión de inventarios, tecnología de tracking, costos operativos)
+- Deben mencionar factores concretos (ej: "usando herramientas tecnológicas para reducir el impacto del aumento del combustible" en lugar de "reducir costos")
+- Responde solo con las 3 estrategias numeradas, sin introducción.`;
 
       const res = await apiFetch<{ response?: string; text?: string; content?: string }>('/ai/chat', {
         method: 'POST',
