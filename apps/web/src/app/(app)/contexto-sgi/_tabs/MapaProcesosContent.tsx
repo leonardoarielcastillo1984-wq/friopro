@@ -61,7 +61,8 @@ export default function MapaProcesosContent() {
   async function load() {
     setLoading(true);
     try {
-      const data = await apiFetch<ProcessMap[]>('/api/process-maps');
+      const raw = await apiFetch<ProcessMap[] | { data: ProcessMap[] }>('/process-maps');
+      const data: ProcessMap[] = Array.isArray(raw) ? raw : (raw as any).data ?? [];
       setMaps(data);
       if (selected) {
         const updated = data.find(m => m.id === selected.id);
@@ -79,9 +80,9 @@ export default function MapaProcesosContent() {
     setSaving(true);
     try {
       if (editingMapId) {
-        await apiFetch(`/api/process-maps/${editingMapId}`, { method: 'PUT', json: mapForm });
+        await apiFetch(`/process-maps/${editingMapId}`, { method: 'PUT', json: mapForm });
       } else {
-        await apiFetch('/api/process-maps', { method: 'POST', json: mapForm });
+        await apiFetch('/process-maps', { method: 'POST', json: mapForm });
       }
       setShowMapForm(false);
       setEditingMapId(null);
@@ -93,7 +94,7 @@ export default function MapaProcesosContent() {
 
   async function deleteMap(id: string) {
     if (!confirm('¿Eliminar este mapa de procesos?')) return;
-    await apiFetch(`/api/process-maps/${id}`, { method: 'DELETE' });
+    await apiFetch(`/process-maps/${id}`, { method: 'DELETE' });
     if (selected?.id === id) setSelected(null);
     await load();
   }
@@ -103,9 +104,9 @@ export default function MapaProcesosContent() {
     setSaving(true);
     try {
       if (editingPid) {
-        await apiFetch(`/api/process-maps/${selected.id}/processes/${editingPid}`, { method: 'PUT', json: drawer });
+        await apiFetch(`/process-maps/${selected.id}/processes/${editingPid}`, { method: 'PUT', json: drawer });
       } else {
-        await apiFetch(`/api/process-maps/${selected.id}/processes`, { method: 'POST', json: drawer });
+        await apiFetch(`/process-maps/${selected.id}/processes`, { method: 'POST', json: drawer });
       }
       setDrawer(null);
       setEditingPid(null);
@@ -116,7 +117,7 @@ export default function MapaProcesosContent() {
 
   async function deleteProcess(pid: string) {
     if (!selected || !confirm('¿Eliminar este proceso?')) return;
-    await apiFetch(`/api/process-maps/${selected.id}/processes/${pid}`, { method: 'DELETE' });
+    await apiFetch(`/process-maps/${selected.id}/processes/${pid}`, { method: 'DELETE' });
     await load();
   }
 
