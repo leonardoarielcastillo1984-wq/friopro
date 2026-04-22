@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X, FileText, Plus, Check, MessageCircle } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 // Edit Project Modal Component
 export function EditProjectModal({ project, onClose, onSave }: { 
@@ -15,6 +16,8 @@ export function EditProjectModal({ project, onClose, onSave }: {
     status: project.status,
     priority: project.priority,
   });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -86,14 +89,27 @@ export function EditProjectModal({ project, onClose, onSave }: {
           >
             Cancelar
           </button>
+          {saveError && <p className="text-xs text-red-600 text-center">{saveError}</p>}
           <button
-            onClick={() => {
-              onSave({ ...project, ...formData });
+            onClick={async () => {
+              setSaving(true);
+              setSaveError('');
+              try {
+                const res = await apiFetch(`/project360/projects/${project.id}`, {
+                  method: 'PUT',
+                  json: formData,
+                }) as any;
+                onSave(res?.project ?? { ...project, ...formData });
+              } catch (err: any) {
+                setSaveError(err.message || 'Error al guardar');
+              } finally {
+                setSaving(false);
+              }
             }}
-            disabled={!formData.name}
+            disabled={!formData.name || saving}
             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            Guardar Cambios
+            {saving ? 'Guardando...' : 'Guardar Cambios'}
           </button>
         </div>
       </div>
