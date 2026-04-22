@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Compass, Save, Sparkles, Loader2, ArrowRight, CheckSquare, X } from 'lucide-react';
+import { Compass, Save, Sparkles, Loader2, ArrowRight, CheckSquare, X, Target } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 interface Context {
@@ -49,6 +49,20 @@ export default function ContextoPage() {
     priority: 'MEDIUM',
     sourceType: 'MANUAL',
   });
+
+  // Plan de Acción Estratégico desde DAFO
+  const [showStrategicPlanModal, setShowStrategicPlanModal] = useState(false);
+  const [strategicPlanForm, setStrategicPlanForm] = useState({
+    quadrant: '' as 'dafoFo' | 'dafoFa' | 'dafoDo' | 'dafoDa',
+    strategyText: '',
+    title: '',
+    description: '',
+    responsibleId: '',
+    dueDate: '',
+    priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+  });
+  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([]);
+  const [creatingStrategicPlan, setCreatingStrategicPlan] = useState(false);
 
   async function suggestDafo(quadrant: 'dafoFo' | 'dafoFa' | 'dafoDo' | 'dafoDa') {
     const labels: Record<string, string> = {
@@ -110,6 +124,10 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
         o: arrayToTextarea(item.opportunities),
         t: arrayToTextarea(item.threats),
       });
+
+      // Cargar miembros para asignar responsable
+      const membersRes = await apiFetch<{ items: Array<{ id: string; name: string }> }>('/users');
+      if (membersRes?.items) setMembers(membersRes.items);
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -118,6 +136,65 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
   }
 
   useEffect(() => { load(); }, [year]);
+
+  function openStrategicPlanModal(quadrant: 'dafoFo' | 'dafoFa' | 'dafoDo' | 'dafoDa') {
+    const labels: Record<string, string> = {
+      dafoFo: 'FO (Fortalezas + Oportunidades)',
+      dafoFa: 'FA (Fortalezas + Amenazas)',
+      dafoDo: 'DO (Debilidades + Oportunidades)',
+      dafoDa: 'DA (Debilidades + Amenazas)',
+    };
+    const strategyText = data[quadrant] || '';
+    const category = quadrant.replace('dafo', '').toUpperCase();
+
+    setStrategicPlanForm({
+      quadrant,
+      strategyText,
+      title: `Plan Estratégico ${category} - ${year}`,
+      description: `Estrategia: ${strategyText}\n\nOrigen: DAFO (${labels[quadrant]})\nAño: ${year}`,
+      responsibleId: '',
+      dueDate: '',
+      priority: 'MEDIUM',
+    });
+    setShowStrategicPlanModal(true);
+  }
+
+  async function createStrategicPlan() {
+    if (!strategicPlanForm.title || !strategicPlanForm.responsibleId) {
+      alert('Por favor completa el título y el responsable');
+      return;
+    }
+    setCreatingStrategicPlan(true);
+    try {
+      const labels: Record<string, string> = {
+        dafoFo: 'FO (Fortalezas + Oportunidades)',
+        dafoFa: 'FA (Fortalezas + Amenazas)',
+        dafoDo: 'DO (Debilidades + Oportunidades)',
+        dafoDa: 'DA (Debilidades + Amenazas)',
+      };
+      const category = strategicPlanForm.quadrant.replace('dafo', '').toUpperCase();
+
+      await apiFetch('/actions', {
+        method: 'POST',
+        json: {
+          title: strategicPlanForm.title,
+          description: `${strategicPlanForm.description}\n\n--- Trazabilidad ---\nOrigen: DAFO\nCategoría: ${category} (${labels[strategicPlanForm.quadrant]})\nAño: ${year}`,
+          type: 'IMPROVEMENT',
+          priority: strategicPlanForm.priority,
+          sourceType: 'MANUAL',
+          responsibleId: strategicPlanForm.responsibleId,
+          dueDate: strategicPlanForm.dueDate ? `${strategicPlanForm.dueDate}T00:00:00Z` : null,
+          status: 'OPEN',
+        },
+      });
+      setShowStrategicPlanModal(false);
+      alert('Plan de Acción Estratégico creado correctamente en el módulo Acciones');
+    } catch (err: any) {
+      alert('Error al crear el plan: ' + (err?.message || 'Error desconocido'));
+    } finally {
+      setCreatingStrategicPlan(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -257,17 +334,28 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                         <p className={`text-xs font-bold ${color}`}>{label}</p>
                         <p className="text-xs text-gray-500">{sub}</p>
                       </div>
-                      <button
-                        onClick={() => suggestDafo(key)}
-                        disabled={aiLoading === key}
-                        title="Sugerencia IA"
-                        className="flex items-center gap-1 px-2 py-1 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 shrink-0 ml-2"
-                      >
-                        {aiLoading === key
-                          ? <Loader2 className="h-3 w-3 animate-spin" />
-                          : <Sparkles className="h-3 w-3 text-purple-500" />}
-                        IA
-                      </button>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => suggestDafo(key)}
+                          disabled={aiLoading === key}
+                          title="Sugerencia IA"
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 shrink-0"
+                        >
+                          {aiLoading === key
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Sparkles className="h-3 w-3 text-purple-500" />}
+                          IA
+                        </button>
+                        <button
+                          onClick={() => openStrategicPlanModal(key)}
+                          disabled={!data[key]}
+                          title="Generar Plan de Acción Estratégico"
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 shrink-0"
+                        >
+                          <Target className="h-3 w-3 text-blue-500" />
+                          Plan
+                        </button>
+                      </div>
                     </div>
                     <textarea
                       rows={5}
@@ -388,6 +476,87 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                       }}
                       className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
                       {sendingAction ? 'Enviando...' : 'Crear Acción'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Plan de Acción Estratégico desde DAFO */}
+            {showStrategicPlanModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col">
+                  <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <Target className="w-5 h-5 text-blue-600" />
+                      <h2 className="text-lg font-semibold text-gray-900">Plan de Acción Estratégico</h2>
+                    </div>
+                    <button onClick={() => setShowStrategicPlanModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Título del plan *</label>
+                      <input
+                        value={strategicPlanForm.title}
+                        onChange={e => setStrategicPlanForm({ ...strategicPlanForm, title: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (estrategia)</label>
+                      <textarea
+                        rows={4}
+                        value={strategicPlanForm.description}
+                        onChange={e => setStrategicPlanForm({ ...strategicPlanForm, description: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Responsable *</label>
+                      <select
+                        value={strategicPlanForm.responsibleId}
+                        onChange={e => setStrategicPlanForm({ ...strategicPlanForm, responsibleId: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Seleccionar responsable...</option>
+                        {members.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Fecha objetivo</label>
+                        <input
+                          type="date"
+                          value={strategicPlanForm.dueDate}
+                          onChange={e => setStrategicPlanForm({ ...strategicPlanForm, dueDate: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Prioridad</label>
+                        <select
+                          value={strategicPlanForm.priority}
+                          onChange={e => setStrategicPlanForm({ ...strategicPlanForm, priority: e.target.value as any })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="LOW">Baja</option>
+                          <option value="MEDIUM">Media</option>
+                          <option value="HIGH">Alta</option>
+                          <option value="CRITICAL">Crítica</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-6 border-t border-gray-200 flex gap-3">
+                    <button onClick={() => setShowStrategicPlanModal(false)}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancelar</button>
+                    <button
+                      disabled={creatingStrategicPlan || !strategicPlanForm.title || !strategicPlanForm.responsibleId}
+                      onClick={createStrategicPlan}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+                      {creatingStrategicPlan ? 'Creando...' : 'Crear Plan'}
                     </button>
                   </div>
                 </div>
