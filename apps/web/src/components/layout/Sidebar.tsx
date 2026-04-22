@@ -11,7 +11,6 @@ import {
   FileText,
   BookOpen,
   BrainCircuit,
-  AlertTriangle,
   Shield,
   TrendingUp,
   GraduationCap,
@@ -29,65 +28,46 @@ import {
   ChevronDown,
   Headphones,
   Lock,
-  CreditCard,
   HelpCircle,
-  CheckSquare,
-  Target,
-  UsersRound,
   Compass,
-  HardHat,
-  Leaf,
-  Siren,
   Truck,
-  Ruler,
   CalendarDays,
-  Scale,
+  Package,
 } from 'lucide-react';
 
 const mainNav = [
-  // 1. Visión general y planificación estratégica
+  // 1. Visión general
   { label: 'Inicio', icon: LayoutDashboard, href: '/dashboard' },
   { label: 'Panel General', icon: BarChart3, href: '/panel' },
   { label: 'Calendario', icon: CalendarDays, href: '/calendario' },
   { label: 'PROJECT360', icon: BarChart3, href: '/project360' },
 
-  // 2. Contexto estratégico (ISO §4)
-  { label: 'Contexto / FODA', icon: Compass, href: '/contexto' },
-  { label: 'Partes Interesadas', icon: UsersRound, href: '/partes-interesadas' },
-  { label: 'Objetivos SGI', icon: Target, href: '/objetivos' },
+  // 2. Contexto estratégico (ISO §4, §6)
+  { label: 'Contexto del SGI', icon: Compass, href: '/contexto-sgi' },
 
-  // 3. Base organizacional (personas)
+  // 3. Personas y proveedores
   { label: 'RRHH', icon: Users, href: '/rrhh' },
   { label: 'Capacitaciones', icon: GraduationCap, href: '/capacitaciones' },
   { label: 'Clientes', icon: Headphones, href: '/clientes' },
   { label: 'Proveedores', icon: Truck, href: '/proveedores' },
 
-  // 4. Marco normativo y documental
-  { label: 'Normativos', icon: BookOpen, href: '/normativos' },
+  // 4. Marco normativo
+  { label: 'Cumplimiento', icon: BookOpen, href: '/cumplimiento' },
   { label: 'Documentos', icon: FileText, href: '/documents' },
 
-  // 5. Gestión de riesgos y SST/Ambiente
-  { label: 'Riesgos', icon: Shield, href: '/riesgos' },
-  { label: 'IPERC — Peligros SST', icon: HardHat, href: '/iperc' },
-  { label: 'Aspectos Ambientales', icon: Leaf, href: '/ambientales' },
+  // 5. Seguridad & Ambiente
+  { label: 'Seguridad & Ambiente', icon: Shield, href: '/seguridad' },
   { label: 'Indicadores', icon: TrendingUp, href: '/indicadores' },
 
-  // 6. Control y mejora
-  { label: 'Auditoría IA', icon: BrainCircuit, href: '/audit' },
-  { label: 'Auditorías ISO', icon: ClipboardCheck, href: '/auditorias' },
-  { label: 'No Conformidades', icon: AlertTriangle, href: '/no-conformidades' },
-  { label: 'Incidentes / Accidentes', icon: Siren, href: '/incidentes' },
-  { label: 'Acciones (CAPA)', icon: CheckSquare, href: '/acciones' },
+  // 6. Calidad y mejora continua
+  { label: 'Calidad / Mejora', icon: ClipboardCheck, href: '/calidad' },
+  { label: 'Auditorías', icon: BrainCircuit, href: '/auditoria' },
 
-  // 7. Operaciones
-  { label: 'Mantenimiento', icon: Settings, href: '/mantenimiento' },
-  { label: 'Calibraciones', icon: Ruler, href: '/calibraciones' },
-  { label: 'Simulacros', icon: ClipboardCheck, href: '/simulacros' },
+  // 7. Infraestructura
+  { label: 'Infraestructura', icon: Package, href: '/infraestructura' },
 
-  // 8. Reportes y administración
+  // 8. Admin
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
-  { label: 'Licencias', icon: CreditCard, href: '/licencia' },
-  { label: 'Legales', icon: Scale, href: '/legales' },
   { label: 'Modo de Uso', icon: HelpCircle, href: '/modo-de-uso' },
 ];
 
@@ -103,19 +83,17 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/dashboard': 'BASIC',
   '/panel': 'BASIC',
   '/documents': 'BASIC',
-  '/licencia': 'NO_PLAN',
-  '/no-conformidades': 'BASIC',
-  '/riesgos': 'BASIC',
+  '/contexto-sgi': 'BASIC',
+  '/calidad': 'BASIC',
+  '/seguridad': 'BASIC',
   '/indicadores': 'BASIC',
+  '/cumplimiento': 'PROFESSIONAL',
+  '/infraestructura': 'PROFESSIONAL',
   '/project360': 'PROFESSIONAL',
-  '/mantenimiento': 'PROFESSIONAL',
-  '/simulacros': 'PROFESSIONAL',
-  '/normativos': 'PROFESSIONAL',
-  '/auditorias': 'PROFESSIONAL',
   '/capacitaciones': 'PROFESSIONAL',
   '/clientes': 'PROFESSIONAL',
   '/reportes': 'PROFESSIONAL',
-  '/audit': 'PREMIUM',
+  '/auditoria': 'PREMIUM',
   '/rrhh': 'PREMIUM',
 };
 
