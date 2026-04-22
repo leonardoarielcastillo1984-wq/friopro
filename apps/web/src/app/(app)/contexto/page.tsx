@@ -366,6 +366,11 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                     alert('No hay debilidades ni amenazas para enviar a acciones');
                     return;
                   }
+                  const key = `foda-action-sent-${year}`;
+                  if (localStorage.getItem(key)) {
+                    alert('Ya se envió una acción CAPA para este año. Revisa el módulo Acciones.');
+                    return;
+                  }
                   try {
                     await apiFetch('/actions', {
                       method: 'POST',
@@ -379,6 +384,7 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                         status: 'OPEN',
                       },
                     });
+                    localStorage.setItem(key, Date.now().toString());
                     alert('Acción CAPA creada correctamente en el módulo Acciones');
                   } catch (e: any) {
                     alert('Error: ' + e.message);
