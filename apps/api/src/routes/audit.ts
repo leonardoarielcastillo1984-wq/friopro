@@ -9,7 +9,7 @@ import { getAuditQueue } from '../jobs/queue.js';
 import { createLLMProvider } from '../services/llm/factory.js';
 import { AuditAnalysisService } from '../services/auditAnalysis.js';
 
-const FEATURE_KEY = 'ia_auditora';
+const FEATURE_KEY = 'audit_ia';
 
 // Tipos locales para NCR
 type NCRSeverity = 'CRITICAL' | 'MAJOR' | 'MINOR' | 'OBSERVATION';
