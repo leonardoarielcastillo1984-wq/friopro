@@ -284,7 +284,7 @@ export default function Project360Page() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">PROJECT360</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Proyectos</h1>
           <p className="text-gray-600">Gestión de Planes de Acción y Mejora Continua</p>
         </div>
         <div className="flex items-center gap-3">

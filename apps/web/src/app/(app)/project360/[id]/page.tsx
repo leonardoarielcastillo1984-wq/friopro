@@ -79,7 +79,11 @@ export default function ProjectDetailPage() {
     try {
       setLoading(true);
       const response = await apiFetch(`/project360/projects/${params.id}`) as any;
-      setProject(response.project || null);
+      if (!response?.project) {
+        setError('No se pudo cargar el proyecto. Verificá tu sesión o volvé al listado.');
+      } else {
+        setProject(response.project);
+      }
     } catch (err: any) {
       setError(err.message || 'Error al cargar el proyecto');
     } finally {
