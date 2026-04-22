@@ -7,15 +7,15 @@ import {
   FileText, BookOpen, AlertTriangle, Shield, TrendingUp, Users,
   GraduationCap, Activity, Target, RefreshCw,
   CheckSquare, HardHat, Leaf, Siren, Truck, Ruler,
-  UsersRound, CalendarDays, Clock, ChevronRight,
+  UsersRound, CalendarDays, Clock, ChevronRight, Bug, BarChart3,
 } from 'lucide-react';
 
 interface DashboardResponse {
   dashboard: {
     documents: { total: number; effective: number; draft: number };
     normatives: { total: number };
-    ncrs: { total: number; open: number; closed: number };
-    risks: { total: number };
+    ncrs: { total: number; open: number; inProgress: number; closed: number; overdue: number; critical: number };
+    risks: { total: number; critical: number; high: number; medium: number; low: number };
     trainings: { total: number; completed: number };
     departments: number;
     indicators: { total: number };
@@ -27,6 +27,7 @@ interface DashboardResponse {
     suppliers: { approved: number; pending: number };
     calibrations: { dueSoon: number };
     stakeholders: { total: number };
+    findings: { total: number; open: number };
   };
 }
 
@@ -35,8 +36,8 @@ type D = DashboardResponse['dashboard'];
 const EMPTY: D = {
   documents: { total: 0, effective: 0, draft: 0 },
   normatives: { total: 0 },
-  ncrs: { total: 0, open: 0, closed: 0 },
-  risks: { total: 0 },
+  ncrs: { total: 0, open: 0, inProgress: 0, closed: 0, overdue: 0, critical: 0 },
+  risks: { total: 0, critical: 0, high: 0, medium: 0, low: 0 },
   trainings: { total: 0, completed: 0 },
   departments: 0,
   indicators: { total: 0 },
@@ -48,7 +49,10 @@ const EMPTY: D = {
   suppliers: { approved: 0, pending: 0 },
   calibrations: { dueSoon: 0 },
   stakeholders: { total: 0 },
+  findings: { total: 0, open: 0 },
 };
+
+const safeNum = (val: any, d = 0) => { const n = Number(val); return isNaN(n) ? d : n; };
 
 function StatCard({
   icon: Icon, label, value, sub, subAlert, href, color,
@@ -75,6 +79,24 @@ function StatCard({
   );
 }
 
+function DistBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+  const pct = total > 0 ? (value / total) * 100 : 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-slate-600 flex-1 min-w-0">{label}</span>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span className="text-xs font-semibold text-slate-900">{value}</span>
+          <span className="text-slate-400 font-normal text-xs">({Math.round(pct)}%)</span>
+        </div>
+      </div>
+      <div className="w-full bg-slate-100 rounded-full h-2">
+        <div className={`${color} rounded-full h-2 transition-all`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<D>(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -83,7 +105,26 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       const res = await apiFetch<DashboardResponse>('/dashboard');
-      setData(res?.dashboard ?? EMPTY);
+      const d = res?.dashboard;
+      if (!d) { setData(EMPTY); return; }
+      setData({
+        documents: { total: safeNum(d.documents?.total), effective: safeNum(d.documents?.effective), draft: safeNum(d.documents?.draft) },
+        normatives: { total: safeNum(d.normatives?.total) },
+        ncrs: { total: safeNum(d.ncrs?.total), open: safeNum(d.ncrs?.open), inProgress: safeNum(d.ncrs?.inProgress), closed: safeNum(d.ncrs?.closed), overdue: safeNum(d.ncrs?.overdue), critical: safeNum(d.ncrs?.critical) },
+        risks: { total: safeNum(d.risks?.total), critical: safeNum(d.risks?.critical), high: safeNum(d.risks?.high), medium: safeNum(d.risks?.medium), low: safeNum(d.risks?.low) },
+        trainings: { total: safeNum(d.trainings?.total), completed: safeNum(d.trainings?.completed) },
+        departments: safeNum(d.departments),
+        indicators: { total: safeNum(d.indicators?.total) },
+        actions: { open: safeNum(d.actions?.open), overdue: safeNum(d.actions?.overdue) },
+        objectives: { total: safeNum(d.objectives?.total), onTrack: safeNum(d.objectives?.onTrack) },
+        hazards: { total: safeNum(d.hazards?.total), critical: safeNum(d.hazards?.critical) },
+        aspects: { total: safeNum(d.aspects?.total), significant: safeNum(d.aspects?.significant) },
+        incidents: { thisMonth: safeNum(d.incidents?.thisMonth) },
+        suppliers: { approved: safeNum(d.suppliers?.approved), pending: safeNum(d.suppliers?.pending) },
+        calibrations: { dueSoon: safeNum(d.calibrations?.dueSoon) },
+        stakeholders: { total: safeNum(d.stakeholders?.total) },
+        findings: { total: safeNum(d.findings?.total), open: safeNum(d.findings?.open) },
+      });
     } catch {
       setData(EMPTY);
     } finally {
@@ -96,7 +137,6 @@ export default function DashboardPage() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
 
-  // Alertas críticas calculadas desde datos reales
   const alerts: { msg: string; href: string; level: 'red' | 'yellow' }[] = [];
   if (data.actions.overdue > 0)
     alerts.push({ msg: `${data.actions.overdue} acción${data.actions.overdue > 1 ? 'es' : ''} CAPA vencida${data.actions.overdue > 1 ? 's' : ''}`, href: '/acciones', level: 'red' });
@@ -108,6 +148,35 @@ export default function DashboardPage() {
     alerts.push({ msg: `${data.calibrations.dueSoon} equipo${data.calibrations.dueSoon > 1 ? 's' : ''} a calibrar en 30 días`, href: '/calibraciones', level: 'yellow' });
   if (data.suppliers.pending > 0)
     alerts.push({ msg: `${data.suppliers.pending} proveedor${data.suppliers.pending > 1 ? 'es' : ''} pendiente${data.suppliers.pending > 1 ? 's' : ''} de aprobación`, href: '/proveedores', level: 'yellow' });
+
+  // Módulos para health scores
+  const healthModules = [
+    { name: 'Documentos', icon: <FileText className="h-4 w-4" />, score: data.documents.total > 0 ? Math.round((data.documents.effective / data.documents.total) * 100) : 0, detail: `${data.documents.effective}/${data.documents.total} vigentes`, color: 'blue' },
+    { name: 'No Conformidades', icon: <Bug className="h-4 w-4" />, score: data.ncrs.total > 0 ? Math.round((data.ncrs.closed / data.ncrs.total) * 100) : 100, detail: `${data.ncrs.closed}/${data.ncrs.total} cerradas`, color: 'red' },
+    { name: 'Riesgos', icon: <AlertTriangle className="h-4 w-4" />, score: data.risks.total > 0 ? Math.round(((data.risks.low + data.risks.medium) / data.risks.total) * 100) : 100, detail: `${data.risks.critical + data.risks.high} altos/críticos`, color: 'amber' },
+    { name: 'Normativos', icon: <Shield className="h-4 w-4" />, score: data.normatives.total > 0 ? Math.round((safeNum((data as any).normatives?.ready) / data.normatives.total) * 100) : 0, detail: `${data.normatives.total} cargados`, color: 'indigo' },
+    { name: 'Auditoría IA', icon: <Target className="h-4 w-4" />, score: data.findings.total > 0 ? Math.round(((data.findings.total - data.findings.open) / data.findings.total) * 100) : 100, detail: `${data.findings.open} hallazgos abiertos`, color: 'purple' },
+    { name: 'Capacitaciones', icon: <GraduationCap className="h-4 w-4" />, score: data.trainings.total > 0 ? Math.round((data.trainings.completed / data.trainings.total) * 100) : 0, detail: `${data.trainings.completed}/${data.trainings.total} completadas`, color: 'pink' },
+  ];
+
+  const avgScore = healthModules.length > 0 ? Math.round(healthModules.reduce((s, m) => s + m.score, 0) / healthModules.length) : 0;
+
+  const COLOR_MAP: Record<string, { bg: string; text: string }> = {
+    blue: { bg: 'bg-blue-50', text: 'text-blue-600' },
+    red: { bg: 'bg-red-50', text: 'text-red-600' },
+    amber: { bg: 'bg-amber-50', text: 'text-amber-600' },
+    indigo: { bg: 'bg-indigo-50', text: 'text-indigo-600' },
+    purple: { bg: 'bg-purple-50', text: 'text-purple-600' },
+    pink: { bg: 'bg-pink-50', text: 'text-pink-600' },
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -123,9 +192,18 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-500">Panel ejecutivo · {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
             </div>
           </div>
-          <button onClick={load} disabled={loading} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50">
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-200">
+              <BarChart3 className="h-4 w-4 text-blue-600" />
+              <div>
+                <div className="text-lg font-bold text-slate-900 leading-none">{avgScore}%</div>
+                <div className="text-xs text-slate-500">Salud del SGI</div>
+              </div>
+            </div>
+            <button onClick={load} disabled={loading} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50">
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -145,7 +223,61 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Sección: Gestión documental y base */}
+        {/* Health scores por módulo */}
+        <div>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Salud por módulo</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {healthModules.map(mod => {
+              const c = COLOR_MAP[mod.color];
+              const scoreColor = mod.score >= 80 ? 'text-green-600' : mod.score >= 50 ? 'text-yellow-600' : 'text-red-600';
+              const barColor = mod.score >= 80 ? 'bg-green-500' : mod.score >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+              return (
+                <div key={mod.name} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className={`p-1.5 rounded-lg ${c.bg}`}>
+                      <span className={c.text}>{mod.icon}</span>
+                    </div>
+                    <span className={`text-base font-bold ${scoreColor}`}>{mod.score}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 rounded-full h-1.5 mb-1.5">
+                    <div className={`${barColor} rounded-full h-1.5 transition-all`} style={{ width: `${mod.score}%` }} />
+                  </div>
+                  <p className="text-xs font-medium text-slate-700 truncate">{mod.name}</p>
+                  <p className="text-xs text-slate-400 truncate">{mod.detail}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Distribuciones: Riesgos y NC */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <h2 className="font-semibold text-slate-900 mb-4 text-sm">Distribución de Riesgos</h2>
+            <div className="space-y-3">
+              <DistBar label="Crítico (20-25)" value={data.risks.critical} total={data.risks.total} color="bg-red-500" />
+              <DistBar label="Alto (12-19)" value={data.risks.high} total={data.risks.total} color="bg-orange-500" />
+              <DistBar label="Medio (5-11)" value={data.risks.medium} total={data.risks.total} color="bg-yellow-500" />
+              <DistBar label="Bajo (1-4)" value={data.risks.low} total={data.risks.total} color="bg-green-500" />
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <h2 className="font-semibold text-slate-900 mb-4 text-sm">Estado de No Conformidades</h2>
+            <div className="space-y-3">
+              <DistBar label="Abiertas" value={data.ncrs.open} total={data.ncrs.total} color="bg-red-500" />
+              <DistBar label="En Proceso" value={data.ncrs.inProgress} total={data.ncrs.total} color="bg-yellow-500" />
+              <DistBar label="Cerradas" value={data.ncrs.closed} total={data.ncrs.total} color="bg-green-500" />
+            </div>
+            {data.ncrs.critical > 0 && (
+              <div className="mt-4 bg-red-50 rounded-lg p-3 text-xs text-red-700 flex items-center gap-2">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {data.ncrs.critical} NCR(s) crítica(s) requieren atención inmediata
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sección: Base del sistema */}
         <div>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Base del sistema</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

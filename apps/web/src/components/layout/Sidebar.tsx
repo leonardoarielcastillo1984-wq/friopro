@@ -38,7 +38,6 @@ import {
 const mainNav = [
   // 1. Visión general
   { label: 'Inicio', icon: LayoutDashboard, href: '/dashboard' },
-  { label: 'Panel General', icon: BarChart3, href: '/panel' },
   { label: 'Calendario', icon: CalendarDays, href: '/calendario' },
   { label: 'Proyectos', icon: BarChart3, href: '/project360' },
 
