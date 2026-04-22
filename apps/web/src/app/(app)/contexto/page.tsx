@@ -442,7 +442,6 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                           });
                           localStorage.setItem(key, Date.now().toString());
                           setShowSendModal(false);
-                          alert('Acción CAPA creada correctamente en el módulo Acciones');
                         } catch (e: any) {
                           alert('Error: ' + e.message);
                         }
