@@ -86,6 +86,23 @@ export default function AccionesPage() {
               { key: 'status', label: 'Estado' },
               { key: 'dueDate', label: 'Vence', render: (i) => i.dueDate ? new Date(i.dueDate).toLocaleDateString() : '—' },
             ]}
+            aiFields={[
+              {
+                targetKey: 'description',
+                buttonLabel: 'Describir acción',
+                buildPrompt: (f) => `Eres un consultor ISO experto en mejora continua. Para esta acción CAPA:\nTítulo: ${f.title || '—'}\nTipo: ${f.type || '—'}, Prioridad: ${f.priority || '—'}, Origen: ${f.sourceType || '—'}\n\nRedactá una descripción clara y completa de la acción que incluya: contexto del problema, objetivo de la acción y alcance. Máximo 3 párrafos.`,
+              },
+              {
+                targetKey: 'effectivenessCheck',
+                buttonLabel: 'Criterios de eficacia',
+                buildPrompt: (f) => `Eres un auditor ISO. Para esta acción CAPA:\nTítulo: ${f.title || '—'}\nDescripción: ${f.description || '—'}\n\nDefiní 3 criterios de verificación de eficacia concretos y medibles que permitan confirmar que la acción fue efectiva y el problema no se repitió.`,
+              },
+              {
+                targetKey: 'notes',
+                buttonLabel: 'Pasos de implementación',
+                buildPrompt: (f) => `Eres un consultor de sistemas de gestión. Para esta acción:\nTítulo: ${f.title || '—'}, Tipo: ${f.type || '—'}\nDescripción: ${f.description || '—'}\n\nDetallá los pasos concretos de implementación en formato numerado. Incluí responsables sugeridos y tiempos estimados por paso.`,
+              },
+            ]}
           />
         )}
         {activeTab === 'cambios' && <GestionCambiosTab />}

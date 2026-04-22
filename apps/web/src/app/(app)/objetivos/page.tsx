@@ -44,6 +44,18 @@ export default function ObjetivosPage() {
         { key: 'status', label: 'Estado' },
         { key: 'progress', label: 'Progreso', render: (i) => `${i.progress ?? 0}%` },
       ]}
+      aiFields={[
+        {
+          targetKey: 'description',
+          buttonLabel: 'Desarrollar objetivo',
+          buildPrompt: (f) => `Eres un consultor ISO experto. Para este objetivo del SGI:\nTítulo: ${f.title || '—'}, Norma: ${f.standard || '—'}, Año: ${f.year || '—'}\n\nRedactá una descripción completa del objetivo que explique su propósito, justificación y cómo contribuye al sistema de gestión. Máximo 2 párrafos.`,
+        },
+        {
+          targetKey: 'notes',
+          buttonLabel: 'Indicadores sugeridos',
+          buildPrompt: (f) => `Eres un experto en KPIs para sistemas de gestión ISO. Para el objetivo:\nTítulo: ${f.title || '—'}, Meta: ${f.target || '—'}, Norma: ${f.standard || '—'}\n\nSugerí 3 indicadores de medición concretos con: nombre del indicador, fórmula de cálculo, frecuencia de medición y fuente de datos. Formato numerado.`,
+        },
+      ]}
     />
   );
 }

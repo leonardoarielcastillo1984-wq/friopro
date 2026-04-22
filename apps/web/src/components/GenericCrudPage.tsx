@@ -1,10 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, X, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, RefreshCw, Sparkles, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 export type FieldType = 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'checkbox';
+
+export interface AiFieldDef {
+  targetKey: string;
+  buttonLabel?: string;
+  buildPrompt: (form: Record<string, any>) => string;
+}
 
 export interface FieldDef {
   key: string;
@@ -27,11 +33,12 @@ export interface ColumnDef {
 interface Props {
   title: string;
   subtitle?: string;
-  endpoint: string; // e.g. '/actions'
+  endpoint: string;
   icon: any;
   fields: FieldDef[];
   columns: ColumnDef[];
   defaultValues?: Record<string, any>;
+  aiFields?: AiFieldDef[];
 }
 
 export default function GenericCrudPage({
@@ -42,6 +49,7 @@ export default function GenericCrudPage({
   fields,
   columns,
   defaultValues = {},
+  aiFields = [],
 }: Props) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +58,25 @@ export default function GenericCrudPage({
   const [editing, setEditing] = useState<any | null>(null);
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
+
+  async function runAi(aiField: AiFieldDef) {
+    setAiLoading(aiField.targetKey);
+    try {
+      const prompt = aiField.buildPrompt(form);
+      const res = await apiFetch<{ response?: string; text?: string }>('/ai/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: prompt }),
+      });
+      const text = res?.response || res?.text || '';
+      if (text) setForm(prev => ({ ...prev, [aiField.targetKey]: text }));
+    } catch (e: any) {
+      alert('Error IA: ' + (e?.message || 'desconocido'));
+    } finally {
+      setAiLoading(null);
+    }
+  }
 
   async function load() {
     try {
@@ -236,14 +263,28 @@ export default function GenericCrudPage({
                     {f.label} {f.required && <span className="text-red-500">*</span>}
                   </label>
                   {f.type === 'textarea' ? (
-                    <textarea
-                      value={form[f.key] ?? ''}
-                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      rows={3}
-                      placeholder={f.placeholder}
-                      required={f.required}
-                    />
+                    <div className="relative">
+                      {aiFields?.filter(a => a.targetKey === f.key).map(aiField => (
+                        <button
+                          key={aiField.targetKey}
+                          type="button"
+                          onClick={() => runAi(aiField)}
+                          disabled={aiLoading === f.key}
+                          className="absolute top-1 right-1 z-10 flex items-center gap-1 px-2 py-0.5 text-xs bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-50 disabled:opacity-50"
+                        >
+                          {aiLoading === f.key ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                          {aiField.buttonLabel || 'IA'}
+                        </button>
+                      ))}
+                      <textarea
+                        value={form[f.key] ?? ''}
+                        onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        rows={3}
+                        placeholder={f.placeholder}
+                        required={f.required}
+                      />
+                    </div>
                   ) : f.type === 'select' ? (
                     <select
                       value={form[f.key] ?? ''}

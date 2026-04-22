@@ -6,7 +6,7 @@ import {
   RefreshCw, Plus, X, CheckCircle, Clock, AlertTriangle,
   ChevronDown, FileText, User, Calendar, Filter, Search,
   ThumbsUp, ThumbsDown, Play, Check, Eye, Trash2, Edit,
-  ArrowRight, Shield, Leaf, Activity
+  ArrowRight, Shield, Leaf, Activity, Sparkles, Loader2
 } from 'lucide-react';
 
 interface Cambio {
@@ -97,6 +97,28 @@ export default function GestionCambiosPage() {
   const [saving, setSaving] = useState(false);
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [verificacion, setVerificacion] = useState('');
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
+
+  const runAi = async (field: 'riesgosIdentificados' | 'recursosNecesarios') => {
+    setAiLoading(field);
+    try {
+      const prompts: Record<string, string> = {
+        riesgosIdentificados: `Eres un consultor ISO experto en gestión del cambio. Para este cambio planificado:\nTítulo: ${form.titulo || '—'}\nDescripción: ${form.descripcion || '—'}\nTipo: ${form.tipo}, Origen: ${form.origen}\nImpacto Calidad: ${form.impactoCalidad}, SST: ${form.impactoSST}, Ambiental: ${form.impactoAmbiental}\n\nIdentificá los 4-5 riesgos más probables asociados a este cambio y para cada uno indicar nivel (Bajo/Medio/Alto). Formato: - [Riesgo]: [Nivel]. Sin introducción.`,
+        recursosNecesarios: `Eres un consultor ISO. Para este cambio:\nTítulo: ${form.titulo || '—'}\nDescripción: ${form.descripcion || '—'}\nTipo: ${form.tipo}\nRequiere capacitación: ${form.capacitacionRequerida ? 'Sí' : 'No'}\n\nListá los recursos típicamente necesarios para implementar este tipo de cambio: personas, tiempo, presupuesto estimado, equipamiento, capacitaciones. Una línea por recurso.`,
+      };
+      const res = await apiFetch<{ response?: string; text?: string }>('/ai/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: prompts[field] }),
+      });
+      const text = res?.response || res?.text || '';
+      if (text) setForm(prev => ({ ...prev, [field]: text }));
+    } catch (e: any) {
+      alert('Error IA: ' + e.message);
+    } finally {
+      setAiLoading(null);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -403,14 +425,26 @@ export default function GestionCambiosPage() {
                   placeholder="Ej: PG-001 Procedimiento de Compras, IT-005..." />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Riesgos identificados</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">Riesgos identificados</label>
+                  <button type="button" onClick={() => runAi('riesgosIdentificados')} disabled={aiLoading === 'riesgosIdentificados' || !form.titulo}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-50 disabled:opacity-50">
+                    {aiLoading === 'riesgosIdentificados' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Sugerir riesgos
+                  </button>
+                </div>
                 <textarea rows={2} value={form.riesgosIdentificados} onChange={e => setForm({ ...form, riesgosIdentificados: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="Describe los riesgos asociados al cambio..." />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Recursos necesarios</label>
-                <input value={form.recursosNecesarios} onChange={e => setForm({ ...form, recursosNecesarios: e.target.value })}
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">Recursos necesarios</label>
+                  <button type="button" onClick={() => runAi('recursosNecesarios')} disabled={aiLoading === 'recursosNecesarios' || !form.titulo}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-50 disabled:opacity-50">
+                    {aiLoading === 'recursosNecesarios' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Sugerir recursos
+                  </button>
+                </div>
+                <textarea rows={2} value={form.recursosNecesarios} onChange={e => setForm({ ...form, recursosNecesarios: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="Ej: 2 hs capacitación, actualización de software..." />
               </div>

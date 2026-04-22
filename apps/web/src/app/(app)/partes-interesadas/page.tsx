@@ -41,6 +41,23 @@ export default function PartesInteresadasPage() {
         { key: 'influence', label: 'Influencia' },
         { key: 'interest', label: 'Interés' },
       ]}
+      aiFields={[
+        {
+          targetKey: 'needs',
+          buttonLabel: 'Sugerir necesidades',
+          buildPrompt: (f) => `Eres un consultor ISO 9001/14001/45001. Para esta parte interesada:\nNombre: ${f.name || '—'}, Tipo: ${f.type || '—'}, Categoría: ${f.category || '—'}\n\nListá las 5 necesidades más típicas que tiene este tipo de parte interesada respecto a un Sistema de Gestión ISO. Una por línea, sin introducción.`,
+        },
+        {
+          targetKey: 'expectations',
+          buttonLabel: 'Sugerir expectativas',
+          buildPrompt: (f) => `Eres un consultor ISO. Para la parte interesada:\nNombre: ${f.name || '—'}, Tipo: ${f.type || '—'}, Categoría: ${f.category || '—'}\nNecesidades: ${f.needs || '—'}\n\nListá 4-5 expectativas concretas que esta parte interesada tiene sobre la organización y su SGI. Una por línea.`,
+        },
+        {
+          targetKey: 'requirements',
+          buttonLabel: 'Requisitos aplicables',
+          buildPrompt: (f) => `Eres un experto en normativa ISO. Para la parte interesada:\nNombre: ${f.name || '—'}, Categoría: ${f.category || '—'}\n\nIdentificá los requisitos legales, normativos o contractuales típicamente aplicables para este tipo de parte interesada en el contexto de un SGI ISO. Listálos concretamente.`,
+        },
+      ]}
     />
   );
 }

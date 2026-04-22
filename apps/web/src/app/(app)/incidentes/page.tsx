@@ -51,6 +51,23 @@ export default function IncidentesPage() {
         { key: 'location', label: 'Lugar' },
         { key: 'investigationStatus', label: 'Investigación' },
       ]}
+      aiFields={[
+        {
+          targetKey: 'rootCause',
+          buttonLabel: 'Sugerir causa raíz',
+          buildPrompt: (f) => `Eres un experto en seguridad y salud ocupacional ISO 45001. Dado este incidente/accidente:\nTipo: ${f.type || '—'}\nSeveridad: ${f.severity || '—'}\nLugar: ${f.location || '—'}\nDescripción: ${f.description || '—'}\nAcciones inmediatas: ${f.immediateActions || '—'}\n\nIdentificá la causa raíz más probable usando el método de los 5 Porqués. Sé conciso y directo.`,
+        },
+        {
+          targetKey: 'rootCauseAnalysis',
+          buttonLabel: 'Análisis 5 Porqués',
+          buildPrompt: (f) => `Eres un experto en seguridad industrial. Dado este incidente:\nDescripción: ${f.description || '—'}\nCausa raíz identificada: ${f.rootCause || '(pendiente)'}\n\nDesarrollá un análisis completo de 5 Porqués paso a paso y sugerí medidas correctivas y preventivas concretas para evitar recurrencia.`,
+        },
+        {
+          targetKey: 'immediateActions',
+          buttonLabel: 'Acciones inmediatas IA',
+          buildPrompt: (f) => `Eres un experto en seguridad ISO 45001. Para este incidente:\nTipo: ${f.type || '—'}, Severidad: ${f.severity || '—'}, Lugar: ${f.location || '—'}\nDescripción: ${f.description || '—'}\n\nSugerí 3 acciones inmediatas concretas que se deben tomar ahora para contener el incidente y proteger a las personas.`,
+        },
+      ]}
     />
   );
 }

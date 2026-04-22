@@ -8,7 +8,7 @@ import IndicatorErrorBoundary from '@/components/indicator-error-boundary';
 import {
   ArrowLeft, Edit3, Trash2, AlertCircle, BarChart3,
   TrendingUp, TrendingDown, Minus, Target, User,
-  Calendar, Plus,
+  Calendar, Plus, Sparkles, Loader2,
 } from 'lucide-react';
 
 const FREQ_LABELS: Record<string, string> = {
@@ -54,6 +54,29 @@ export default function IndicatorDetailPage() {
   const [linkingRiskId, setLinkingRiskId] = useState<string | null>(null);
   const [unlinkingLinkId, setUnlinkingLinkId] = useState<string | null>(null);
   const [applyingRiskId, setApplyingRiskId] = useState<string | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
+
+  async function runDeviationAnalysis() {
+    if (!indicator) return;
+    setAiAnalysisLoading(true);
+    setAiAnalysis(null);
+    try {
+      const measurements = indicator.measurements ?? [];
+      const last3 = measurements.slice(0, 3).map((m: any) => `${m.period}: ${m.value} ${indicator.unit}`).join(', ');
+      const prompt = `Eres un experto en sistemas de gestión ISO y análisis de indicadores. Para este indicador:\nNombre: ${indicator.name}\nProceso: ${indicator.process || '—'}\nValor actual: ${indicator.currentValue ?? '—'} ${indicator.unit}\nMeta: ${indicator.targetValue ?? '—'} ${indicator.unit}\nCumplimiento: ${Math.round(indicator.targetValue ? ((indicator.currentValue ?? 0) / indicator.targetValue) * 100 : 0)}%\nTendencia: ${indicator.trend}\nÚltimas mediciones: ${last3 || '(sin datos)'}\n\nAnalizá las posibles causas del desvío y sugerí 3 acciones concretas para retomar la meta. Formato: primero causas probables (2-3 bullets), luego acciones (numeradas).`;
+      const res = await apiFetch<{ response?: string; text?: string }>('/ai/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: prompt }),
+      });
+      setAiAnalysis(res?.response || res?.text || '');
+    } catch (e: any) {
+      alert('Error IA: ' + (e?.message || 'desconocido'));
+    } finally {
+      setAiAnalysisLoading(false);
+    }
+  }
 
   // All useEffect hooks must be here, BEFORE any conditional returns
   useEffect(() => { 
@@ -508,8 +531,8 @@ export default function IndicatorDetailPage() {
       </div>
 
       {/* Suggested Actions */}
-      {(canSuggestNcr || isOverdue) && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+      {(canSuggestNcr || isOverdue || isOffTarget) && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-amber-900">Acciones sugeridas</p>
@@ -519,15 +542,34 @@ export default function IndicatorDetailPage() {
                   : 'El indicador está fuera de meta de forma sostenida y podría requerir una NCR.'}
               </p>
             </div>
-            {canSuggestNcr && (
+            <div className="flex gap-2 flex-shrink-0">
               <button
-                onClick={() => setShowNcr(true)}
-                className="flex-shrink-0 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                onClick={runDeviationAnalysis}
+                disabled={aiAnalysisLoading}
+                className="flex items-center gap-1.5 rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-50"
               >
-                Crear NCR sugerida
+                {aiAnalysisLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Analizar desvío IA
               </button>
-            )}
+              {canSuggestNcr && (
+                <button
+                  onClick={() => setShowNcr(true)}
+                  className="flex-shrink-0 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                >
+                  Crear NCR sugerida
+                </button>
+              )}
+            </div>
           </div>
+          {aiAnalysis && (
+            <div className="bg-white rounded-lg border border-purple-100 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="h-4 w-4 text-purple-500" />
+                <span className="text-xs font-semibold text-purple-700">Análisis IA</span>
+              </div>
+              <p className="text-sm text-neutral-700 whitespace-pre-wrap">{aiAnalysis}</p>
+            </div>
+          )}
         </div>
       )}
 
