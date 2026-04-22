@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -61,7 +60,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function InformeDireccionPage() {
-  const router = useRouter();
   const { settings: companySettings } = useCompany();
   const [reviews, setReviews] = useState<ManagementReview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,8 +69,8 @@ export default function InformeDireccionPage() {
   const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
-    router.replace('/revision-direccion');
-  }, [router]);
+    loadReviews();
+  }, []);
 
   async function loadReviews() {
     try {
