@@ -1,42 +1,9 @@
 'use client';
-import { useState } from 'react';
-import { CheckSquare, GitBranch } from 'lucide-react';
+import { CheckSquare } from 'lucide-react';
 import GenericCrudPage from '@/components/GenericCrudPage';
-import GestionCambiosTab from '../gestion-cambios/page';
-
-const TABS = [
-  { id: 'capa', label: 'Acciones CAPA', icon: CheckSquare },
-  { id: 'cambios', label: 'Gestión de Cambios', icon: GitBranch },
-];
 
 export default function AccionesPage() {
-  const [activeTab, setActiveTab] = useState('capa');
-
   return (
-    <div className="flex flex-col h-full">
-      {/* Tabs header */}
-      <div className="border-b border-gray-200 bg-white px-6 pt-6">
-        <div className="flex items-end gap-1">
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg border border-b-0 transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-white border-gray-200 text-blue-600 -mb-px'
-                  : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab content */}
-      <div className="flex-1 overflow-auto">
-        {activeTab === 'capa' && (
           <GenericCrudPage
             title="Acciones"
             subtitle="Plan de acciones correctivas, preventivas y de mejora (CAPA)"
@@ -104,9 +71,5 @@ export default function AccionesPage() {
               },
             ]}
           />
-        )}
-        {activeTab === 'cambios' && <GestionCambiosTab />}
-      </div>
-    </div>
   );
 }

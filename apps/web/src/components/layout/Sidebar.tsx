@@ -40,7 +40,7 @@ const mainNav = [
   { label: 'Inicio', icon: LayoutDashboard, href: '/dashboard' },
   { label: 'Panel General', icon: BarChart3, href: '/panel' },
   { label: 'Calendario', icon: CalendarDays, href: '/calendario' },
-  { label: 'PROJECT360', icon: BarChart3, href: '/project360' },
+  { label: 'Proyectos', icon: BarChart3, href: '/project360' },
 
   // 2. Contexto estratégico (ISO §4, §6)
   { label: 'Contexto del SGI', icon: Compass, href: '/contexto-sgi' },
