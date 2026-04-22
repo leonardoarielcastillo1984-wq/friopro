@@ -824,7 +824,7 @@ export default function Project360Page() {
         <EditProjectModal
           project={selectedProject}
           onClose={() => setShowEditModal(false)}
-          onSave={async () => {
+          onSave={async (_updatedProject) => {
             await loadProjects();
             setShowEditModal(false);
           }}
