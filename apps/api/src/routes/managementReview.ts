@@ -673,6 +673,60 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
     },
   );
 
+  // POST /management-reviews/:id/sections - Crear sección libre (custom)
+  app.post(
+    '/management-reviews/:id/sections',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+      const { title, freeText, key: customKey } = req.body as any;
+      if (!title) return reply.code(400).send({ error: 'title is required' });
+
+      const section = await app.runWithDbContext(req, async (tx) => {
+        const review = await tx.managementReview.findFirst({
+          where: { id: req.params.id, tenantId, deletedAt: null },
+          include: { sections: { select: { key: true } } },
+        });
+        if (!review) return null;
+
+        // Generar key único si no se provee
+        const key = customKey || `custom_${Date.now()}`;
+
+        return tx.managementReviewSection.upsert({
+          where: { reportId_key: { reportId: req.params.id, key } },
+          create: { reportId: req.params.id, key, title, freeText: freeText || null },
+          update: { title, freeText: freeText || null },
+        });
+      });
+
+      if (!section) return reply.code(404).send({ error: 'Review not found' });
+      return reply.code(201).send({ section });
+    },
+  );
+
+  // DELETE /management-reviews/:id/sections/:sectionKey - Eliminar sección custom
+  app.delete(
+    '/management-reviews/:id/sections/:sectionKey',
+    async (req: FastifyRequest<{ Params: { id: string; sectionKey: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+      await app.runWithDbContext(req, async (tx) => {
+        const review = await tx.managementReview.findFirst({
+          where: { id: req.params.id, tenantId, deletedAt: null },
+        });
+        if (!review) return;
+
+        await tx.managementReviewSection.deleteMany({
+          where: { reportId: req.params.id, key: req.params.sectionKey },
+        });
+      });
+
+      return reply.code(204).send();
+    },
+  );
+
   // DELETE /management-reviews/:id - Delete management review
   app.delete(
     '/management-reviews/:id',

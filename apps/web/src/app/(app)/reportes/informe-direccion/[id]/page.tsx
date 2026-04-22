@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { 
   ChevronLeft, 
   Save, 
@@ -23,6 +24,12 @@ import {
   X,
   Copy,
   RefreshCw,
+  Plus,
+  Trash2,
+  ClipboardList,
+  UserCheck,
+  CalendarDays,
+  ArrowRight,
 } from 'lucide-react';
 import { useCompany } from '@/lib/company-context';
 import { exportToWord as exportToWordUtil } from '@/lib/exportToWordSimple';
@@ -94,6 +101,7 @@ const SECTION_ICONS: Record<string, any> = {
 
 export default function InformeDireccionDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const reviewId = params.id as string;
   const { settings: companySettings } = useCompany();
 
@@ -106,6 +114,16 @@ export default function InformeDireccionDetailPage() {
   const [editingSummary, setEditingSummary] = useState(false);
   const [summaryDraft, setSummaryDraft] = useState('');
   const [savingSummary, setSavingSummary] = useState(false);
+
+  // Sección libre
+  const [showAddSection, setShowAddSection] = useState(false);
+  const [newSectionTitle, setNewSectionTitle] = useState('');
+  const [addingSec, setAddingSec] = useState(false);
+
+  // Acta de reunión (sección especial key='meeting_minutes')
+  const [editingActa, setEditingActa] = useState(false);
+  const [actaForm, setActaForm] = useState({ fecha: '', lugar: '', asistentes: '', acuerdos: '', proxima: '' });
+  const [savingActa, setSavingActa] = useState(false);
 
   useEffect(() => {
     if (reviewId) {
@@ -185,6 +203,74 @@ export default function InformeDireccionDetailPage() {
     } finally {
       setSavingSummary(false);
     }
+  }
+
+  async function addCustomSection() {
+    if (!newSectionTitle.trim()) return;
+    setAddingSec(true);
+    try {
+      const res = await apiFetch(`/management-reviews/${reviewId}/sections`, {
+        method: 'POST',
+        json: { title: newSectionTitle.trim() },
+      }) as { section: ManagementReviewSection };
+      if (res.section && review) {
+        setReview({ ...review, sections: [...review.sections, res.section] });
+      }
+      setNewSectionTitle('');
+      setShowAddSection(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al agregar sección');
+    } finally {
+      setAddingSec(false);
+    }
+  }
+
+  async function deleteSection(sectionKey: string) {
+    if (!confirm('¿Eliminar esta sección?')) return;
+    try {
+      await apiFetch(`/management-reviews/${reviewId}/sections/${sectionKey}`, { method: 'DELETE' });
+      if (review) {
+        setReview({ ...review, sections: review.sections.filter(s => s.key !== sectionKey) });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al eliminar sección');
+    }
+  }
+
+  async function saveActa() {
+    setSavingActa(true);
+    try {
+      const freeText = JSON.stringify(actaForm);
+      const res = await apiFetch(`/management-reviews/${reviewId}/sections`, {
+        method: 'POST',
+        json: { key: 'meeting_minutes', title: 'Acta de Reunión', freeText },
+      }) as { section: ManagementReviewSection };
+      if (res.section && review) {
+        const existing = review.sections.find(s => s.key === 'meeting_minutes');
+        const sections = existing
+          ? review.sections.map(s => s.key === 'meeting_minutes' ? res.section : s)
+          : [...review.sections, res.section];
+        setReview({ ...review, sections });
+      }
+      setEditingActa(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar acta');
+    } finally {
+      setSavingActa(false);
+    }
+  }
+
+  function openActaEdit() {
+    const existing = review?.sections.find(s => s.key === 'meeting_minutes');
+    if (existing?.freeText) {
+      try { setActaForm(JSON.parse(existing.freeText)); } catch { setActaForm({ fecha: '', lugar: '', asistentes: '', acuerdos: '', proxima: '' }); }
+    }
+    setEditingActa(true);
+  }
+
+  function handleCreatePlanAcciones() {
+    const acuerdos = actaForm.acuerdos || review?.sections.find(s => s.key === 'meeting_minutes')?.freeText || '';
+    router.push(`/calidad?tab=acciones`);
   }
 
   async function aiSuggestSection(sectionKey: string): Promise<string> {
@@ -382,25 +468,183 @@ export default function InformeDireccionDetailPage() {
           )}
         </div>
 
-        {/* Sections */}
+        {/* Sections ISO (excluir meeting_minutes que va al acta) */}
         <div className="space-y-8">
-          {review.sections.map((section) => {
+          {review.sections.filter(s => s.key !== 'meeting_minutes').map((section) => {
             const Icon = SECTION_ICONS[section.key] || FileText;
+            const isCustom = section.key.startsWith('custom_');
             return (
-              <SectionEditor
-                key={section.key}
-                section={section}
-                Icon={Icon}
-                isEditing={editingSection === section.key}
-                onEdit={() => setEditingSection(section.key)}
-                onSave={(data) => updateSection(section.key, data)}
-                onCancel={() => setEditingSection(null)}
-                onAiSuggest={() => aiSuggestSection(section.key)}
-                disabled={review.status === 'FINAL'}
-                saving={saving}
-              />
+              <div key={section.key} className="relative">
+                {isCustom && review.status !== 'FINAL' && (
+                  <button
+                    onClick={() => deleteSection(section.key)}
+                    className="absolute -top-2 -right-2 z-10 p-1 bg-white border border-red-200 rounded-full text-red-400 hover:text-red-600 hover:border-red-400 shadow-sm print:hidden"
+                    title="Eliminar sección"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <SectionEditor
+                  section={section}
+                  Icon={Icon}
+                  isEditing={editingSection === section.key}
+                  onEdit={() => setEditingSection(section.key)}
+                  onSave={(data) => updateSection(section.key, data)}
+                  onCancel={() => setEditingSection(null)}
+                  onAiSuggest={() => aiSuggestSection(section.key)}
+                  disabled={review.status === 'FINAL'}
+                  saving={saving}
+                />
+              </div>
             );
           })}
+        </div>
+
+        {/* Botón agregar sección libre */}
+        {review.status !== 'FINAL' && (
+          <div className="print:hidden">
+            {!showAddSection ? (
+              <button
+                onClick={() => setShowAddSection(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 text-gray-500 rounded-xl hover:border-blue-400 hover:text-blue-600 transition-colors text-sm"
+              >
+                <Plus className="w-4 h-4" /> Agregar sección personalizada
+              </button>
+            ) : (
+              <div className="border-2 border-dashed border-blue-300 rounded-xl p-4 flex items-center gap-3 bg-blue-50">
+                <input
+                  autoFocus
+                  value={newSectionTitle}
+                  onChange={e => setNewSectionTitle(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') addCustomSection(); if (e.key === 'Escape') setShowAddSection(false); }}
+                  placeholder="Título de la nueva sección..."
+                  className="flex-1 px-3 py-2 border border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                />
+                <button
+                  onClick={addCustomSection}
+                  disabled={addingSec || !newSectionTitle.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {addingSec ? 'Agregando...' : 'Agregar'}
+                </button>
+                <button onClick={() => setShowAddSection(false)} className="p-2 text-gray-400 hover:text-gray-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ACTA DE REUNIÓN ─────────────────────────────────────── */}
+        <div className="border-2 border-gray-200 rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-gray-500" />
+              Acta de Reunión de la Dirección
+            </h2>
+            <div className="flex items-center gap-2 print:hidden">
+              {review.status !== 'FINAL' && !editingActa && (
+                <button
+                  onClick={openActaEdit}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  <Edit3 className="w-3.5 h-3.5" /> {review.sections.find(s => s.key === 'meeting_minutes') ? 'Editar acta' : 'Completar acta'}
+                </button>
+              )}
+              {editingActa && (
+                <>
+                  <button
+                    onClick={saveActa}
+                    disabled={savingActa}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5" /> {savingActa ? 'Guardando...' : 'Guardar'}
+                  </button>
+                  <button onClick={() => setEditingActa(false)} className="p-1.5 text-gray-500 hover:bg-gray-200 rounded-lg">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="p-6">
+            {editingActa ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Fecha de reunión</label>
+                    <input type="date" value={actaForm.fecha} onChange={e => setActaForm(p => ({ ...p, fecha: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Lugar / Modalidad</label>
+                    <input value={actaForm.lugar} onChange={e => setActaForm(p => ({ ...p, lugar: e.target.value }))} placeholder="Ej: Sala de reuniones / Zoom" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Asistentes</label>
+                  <textarea value={actaForm.asistentes} onChange={e => setActaForm(p => ({ ...p, asistentes: e.target.value }))} rows={3} placeholder="Nombre — Cargo&#10;..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Acuerdos y decisiones tomadas</label>
+                  <textarea value={actaForm.acuerdos} onChange={e => setActaForm(p => ({ ...p, acuerdos: e.target.value }))} rows={5} placeholder="1. ...&#10;2. ..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Próxima reunión de revisión</label>
+                  <input value={actaForm.proxima} onChange={e => setActaForm(p => ({ ...p, proxima: e.target.value }))} placeholder="Ej: Julio 2026" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+              </div>
+            ) : (() => {
+              const actaSec = review.sections.find(s => s.key === 'meeting_minutes');
+              let acta: any = null;
+              if (actaSec?.freeText) { try { acta = JSON.parse(actaSec.freeText); } catch { acta = null; } }
+
+              if (!acta) return (
+                <p className="text-sm text-gray-400 italic text-center py-4 print:hidden">
+                  El acta aún no fue completada. Hacé clic en "Completar acta" para registrar la reunión.
+                </p>
+              );
+
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-6">
+                    {acta.fecha && <div className="flex items-center gap-2 text-sm"><CalendarDays className="w-4 h-4 text-gray-400" /><span className="font-medium text-gray-600">Fecha:</span> <span>{new Date(acta.fecha + 'T00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div>}
+                    {acta.lugar && <div className="flex items-center gap-2 text-sm"><Settings className="w-4 h-4 text-gray-400" /><span className="font-medium text-gray-600">Lugar:</span> <span>{acta.lugar}</span></div>}
+                  </div>
+                  {acta.asistentes && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5"><UserCheck className="w-3.5 h-3.5" />Asistentes</h4>
+                      <p className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 rounded-lg px-4 py-3">{acta.asistentes}</p>
+                    </div>
+                  )}
+                  {acta.acuerdos && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5" />Acuerdos y decisiones</h4>
+                      <p className="text-sm text-gray-700 whitespace-pre-line bg-green-50 border border-green-100 rounded-lg px-4 py-3">{acta.acuerdos}</p>
+                    </div>
+                  )}
+                  {acta.proxima && (
+                    <div className="text-sm text-gray-500">
+                      <span className="font-medium">Próxima revisión:</span> {acta.proxima}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Botón Plan de Acciones */}
+            <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-between print:hidden">
+              <p className="text-sm text-gray-500">¿Los acuerdos requieren acciones correctivas o de mejora?</p>
+              <button
+                onClick={handleCreatePlanAcciones}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+              >
+                <ClipboardList className="w-4 h-4" />
+                Ir a Plan de Acciones
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
