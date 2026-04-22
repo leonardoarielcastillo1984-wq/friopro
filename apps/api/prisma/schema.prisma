@@ -3117,11 +3117,19 @@ model Stakeholder {
   contactEmail  String?
   notes         String?
   reviewDate    DateTime?  @db.Timestamptz
+  // Evaluación de cumplimiento (ISO 9001 cláusulas 4.2 y 9.1)
+  complianceStatus      String?   // COMPLIES, PARTIAL, NON_COMPLIANT
+  complianceLevel       Int?      // 0-100
+  lastEvaluationDate    DateTime? @db.Timestamptz
+  complianceEvidence    String?
+  indicatorId           String?   @db.Uuid
+  requiresAction        Boolean?  @default(false)
   deletedAt     DateTime?
   createdAt     DateTime  @default(now()) @db.Timestamptz
   updatedAt     DateTime  @updatedAt @db.Timestamptz
 
   @@index([tenantId])
+  @@index([complianceStatus])
   @@map("stakeholders")
 }
 
