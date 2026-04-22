@@ -343,9 +343,8 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                         </button>
                         <button
                           onClick={() => openStrategicPlanModal(key)}
-                          disabled={!data[key]}
                           title="Generar Plan de Acción Estratégico"
-                          className="flex items-center gap-1 px-2 py-1 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 shrink-0"
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 shrink-0"
                         >
                           <Target className="h-3 w-3 text-blue-500" />
                           Plan
@@ -545,7 +544,7 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                     <button onClick={() => setShowStrategicPlanModal(false)}
                       className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancelar</button>
                     <button
-                      disabled={creatingStrategicPlan || !strategicPlanForm.title || !strategicPlanForm.responsibleId}
+                      disabled={creatingStrategicPlan || !strategicPlanForm.title || !strategicPlanForm.responsible}
                       onClick={createStrategicPlan}
                       className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
                       {creatingStrategicPlan ? 'Creando...' : 'Crear Plan'}
