@@ -3116,7 +3116,6 @@ model Stakeholder {
   contactName   String?
   contactEmail  String?
   notes         String?
-  reviewDate    DateTime?  @db.Timestamptz
   // Evaluación de cumplimiento (ISO 9001 cláusulas 4.2 y 9.1)
   complianceStatus      String?   // COMPLIES, PARTIAL, NON_COMPLIANT
   complianceLevel       Int?      // 0-100
