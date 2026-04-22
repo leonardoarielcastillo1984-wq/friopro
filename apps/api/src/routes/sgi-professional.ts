@@ -50,6 +50,9 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
         }
       }
 
+      // Remove deprecated fields that may come from cached frontend
+      delete body?.reviewDate;
+
       const item = await app.runWithDbContext(req, async (tx: any) => {
         const data: any = { ...body, tenantId };
         // strip undefined / empty strings that might break date fields
@@ -121,6 +124,9 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
       const item = await app.runWithDbContext(req, async (tx: any) => {
         const existing = await tx[opts.model].findFirst({ where: { id, tenantId, deletedAt: null } });
         if (!existing) throw new Error('Not found');
+
+        // Remove deprecated fields that may come from cached frontend
+        delete body?.reviewDate;
 
         const data = { ...body };
         delete data.id;
