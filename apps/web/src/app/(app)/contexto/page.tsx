@@ -168,7 +168,6 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
           type: 'IMPROVEMENT',
           priority: strategicPlanForm.priority,
           sourceType: 'MANUAL',
-          responsible: strategicPlanForm.responsible,
           dueDate: strategicPlanForm.dueDate ? `${strategicPlanForm.dueDate}T00:00:00Z` : null,
           status: 'OPEN',
         },
@@ -380,7 +379,6 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                         type: 'IMPROVEMENT',
                         priority: 'MEDIUM',
                         sourceType: 'MANUAL',
-                        responsible: 'Asignar responsable',
                         status: 'OPEN',
                       },
                     });
