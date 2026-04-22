@@ -821,11 +821,11 @@ export default function Project360Page() {
 
       {/* Edit Project Modal */}
       {showEditModal && selectedProject && (
-        <EditProjectModal 
+        <EditProjectModal
           project={selectedProject}
           onClose={() => setShowEditModal(false)}
-          onSave={(updatedProject) => {
-            setProjects(projects.map(p => p.id === updatedProject.id ? updatedProject : p));
+          onSave={async () => {
+            await loadProjects();
             setShowEditModal(false);
           }}
         />

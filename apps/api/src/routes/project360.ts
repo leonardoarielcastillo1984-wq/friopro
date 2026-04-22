@@ -136,7 +136,8 @@ export default async function project360Routes(app: FastifyInstance) {
     if (data.progress !== undefined && data.progress !== existing.progress) {
       await logHistory(prisma, id, req.db.tenantId, 'PROGRESS_UPDATE', `Progreso: ${data.progress}%`, req.db.userId, req.db.userName);
     }
-    return reply.send({ project });
+    const [enriched] = await enrichProjects(prisma, [project]);
+    return reply.send({ project: enriched });
   });
 
   // DELETE /project360/projects/:id
