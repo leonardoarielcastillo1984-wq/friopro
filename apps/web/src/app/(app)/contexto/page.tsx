@@ -40,6 +40,7 @@ export default function ContextoPage() {
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [data, setData] = useState<Context>({ year: new Date().getFullYear() });
   const [foda, setFoda] = useState({ s: '', w: '', o: '', t: '' });
+  const [showSendModal, setShowSendModal] = useState(false);
 
   // Plan de Acción Estratégico desde DAFO
   const [showStrategicPlanModal, setShowStrategicPlanModal] = useState(false);
@@ -360,34 +361,7 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                 <p className="text-xs text-blue-600 mt-0.5">Enviá una debilidad, amenaza o estrategia directamente a Acciones CAPA para cerrar el ciclo.</p>
               </div>
               <button
-                onClick={async () => {
-                  if (!foda.w && !foda.t) {
-                    alert('No hay debilidades ni amenazas para enviar a acciones');
-                    return;
-                  }
-                  const key = `foda-action-sent-${year}`;
-                  if (localStorage.getItem(key)) {
-                    alert('Ya se envió una acción CAPA para este año. Revisa el módulo Acciones.');
-                    return;
-                  }
-                  try {
-                    await apiFetch('/actions', {
-                      method: 'POST',
-                      json: {
-                        title: `Tratamiento FODA ${year}`,
-                        description: `Origen: Análisis FODA ${year}\n\nDebilidades identificadas:\n${foda.w || '—'}\n\nAmenazas identificadas:\n${foda.t || '—'}`,
-                        type: 'IMPROVEMENT',
-                        priority: 'MEDIUM',
-                        sourceType: 'MANUAL',
-                        status: 'OPEN',
-                      },
-                    });
-                    localStorage.setItem(key, Date.now().toString());
-                    alert('Acción CAPA creada correctamente en el módulo Acciones');
-                  } catch (e: any) {
-                    alert('Error: ' + e.message);
-                  }
-                }}
+                onClick={() => setShowSendModal(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium shrink-0"
               >
                 <ArrowRight className="h-4 w-4" /> Enviar a Acciones
@@ -403,6 +377,83 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                 <Save className="h-4 w-4" /> {saving ? 'Guardando...' : 'Guardar contexto'}
               </button>
             </div>
+
+            {/* Modal enviar a acciones */}
+            {showSendModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col">
+                  <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <ArrowRight className="w-5 h-5 text-blue-600" />
+                      <h2 className="text-lg font-semibold text-gray-900">Enviar a Acciones CAPA</h2>
+                    </div>
+                    <button onClick={() => setShowSendModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <p className="text-sm text-gray-600">Seleccioná qué elementos del FODA querés enviar como acciones CAPA:</p>
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          id="send-weaknesses"
+                          checked={!!foda.w}
+                          disabled={!foda.w}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <span className="text-sm font-medium">Debilidades</span>
+                      </label>
+                      <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          id="send-threats"
+                          checked={!!foda.t}
+                          disabled={!foda.t}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <span className="text-sm font-medium">Amenazas</span>
+                      </label>
+                    </div>
+                    {!foda.w && !foda.t && (
+                      <p className="text-xs text-orange-600">No hay debilidades ni amenazas cargadas para enviar.</p>
+                    )}
+                  </div>
+                  <div className="p-6 border-t border-gray-200 flex gap-3">
+                    <button onClick={() => setShowSendModal(false)}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancelar</button>
+                    <button
+                      disabled={!foda.w && !foda.t}
+                      onClick={async () => {
+                        const key = `foda-action-sent-${year}`;
+                        if (localStorage.getItem(key)) {
+                          alert('Ya se envió una acción CAPA para este año. Revisa el módulo Acciones.');
+                          return;
+                        }
+                        try {
+                          await apiFetch('/actions', {
+                            method: 'POST',
+                            json: {
+                              title: `Tratamiento FODA ${year}`,
+                              description: `Origen: Análisis FODA ${year}\n\n${foda.w ? `Debilidades identificadas:\n${foda.w}\n\n` : ''}${foda.t ? `Amenazas identificadas:\n${foda.t}` : ''}`,
+                              type: 'IMPROVEMENT',
+                              priority: 'MEDIUM',
+                              sourceType: 'MANUAL',
+                              status: 'OPEN',
+                            },
+                          });
+                          localStorage.setItem(key, Date.now().toString());
+                          setShowSendModal(false);
+                          alert('Acción CAPA creada correctamente en el módulo Acciones');
+                        } catch (e: any) {
+                          alert('Error: ' + e.message);
+                        }
+                      }}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+                      Enviar a Acciones
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Modal Plan de Acción Estratégico desde DAFO */}
             {showStrategicPlanModal && (
