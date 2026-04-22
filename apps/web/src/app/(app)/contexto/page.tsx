@@ -57,11 +57,10 @@ export default function ContextoPage() {
     strategyText: '',
     title: '',
     description: '',
-    responsibleId: '',
+    responsible: '',
     dueDate: '',
     priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
   });
-  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([]);
   const [creatingStrategicPlan, setCreatingStrategicPlan] = useState(false);
 
   async function suggestDafo(quadrant: 'dafoFo' | 'dafoFa' | 'dafoDo' | 'dafoDa') {
@@ -124,10 +123,6 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
         o: arrayToTextarea(item.opportunities),
         t: arrayToTextarea(item.threats),
       });
-
-      // Cargar miembros para asignar responsable
-      const membersRes = await apiFetch<{ items: Array<{ id: string; name: string }> }>('/users');
-      if (membersRes?.items) setMembers(membersRes.items);
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -152,7 +147,7 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
       strategyText,
       title: `Plan Estratégico ${category} - ${year}`,
       description: `Estrategia: ${strategyText}\n\nOrigen: DAFO (${labels[quadrant]})\nAño: ${year}`,
-      responsibleId: '',
+      responsible: '',
       dueDate: '',
       priority: 'MEDIUM',
     });
@@ -160,7 +155,7 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
   }
 
   async function createStrategicPlan() {
-    if (!strategicPlanForm.title || !strategicPlanForm.responsibleId) {
+    if (!strategicPlanForm.title || !strategicPlanForm.responsible) {
       alert('Por favor completa el título y el responsable');
       return;
     }
@@ -178,11 +173,11 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
         method: 'POST',
         json: {
           title: strategicPlanForm.title,
-          description: `${strategicPlanForm.description}\n\n--- Trazabilidad ---\nOrigen: DAFO\nCategoría: ${category} (${labels[strategicPlanForm.quadrant]})\nAño: ${year}`,
+          description: `${strategicPlanForm.description}\n\n--- Trazabilidad ---\nOrigen: DAFO\nCategoría: ${category} (${labels[strategicPlanForm.quadrant]})\nAño: ${year}\nResponsable: ${strategicPlanForm.responsible}`,
           type: 'IMPROVEMENT',
           priority: strategicPlanForm.priority,
           sourceType: 'MANUAL',
-          responsibleId: strategicPlanForm.responsibleId,
+          responsible: strategicPlanForm.responsible,
           dueDate: strategicPlanForm.dueDate ? `${strategicPlanForm.dueDate}T00:00:00Z` : null,
           status: 'OPEN',
         },
@@ -513,16 +508,13 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Responsable *</label>
-                      <select
-                        value={strategicPlanForm.responsibleId}
-                        onChange={e => setStrategicPlanForm({ ...strategicPlanForm, responsibleId: e.target.value })}
+                      <input
+                        type="text"
+                        value={strategicPlanForm.responsible}
+                        onChange={e => setStrategicPlanForm({ ...strategicPlanForm, responsible: e.target.value })}
+                        placeholder="Nombre del responsable"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Seleccionar responsable...</option>
-                        {members.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
+                      />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
