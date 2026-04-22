@@ -62,6 +62,7 @@ const mainNav = [
   // 6. Calidad y mejora continua
   { label: 'Calidad / Mejora', icon: ClipboardCheck, href: '/calidad' },
   { label: 'Auditorías', icon: BrainCircuit, href: '/auditoria' },
+  { label: 'Revisión por la Dirección', icon: FileBarChart, href: '/revision-direccion' },
 
   // 7. Infraestructura
   { label: 'Infraestructura', icon: Package, href: '/infraestructura' },
@@ -94,6 +95,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/clientes': 'PROFESSIONAL',
   '/reportes': 'PROFESSIONAL',
   '/auditoria': 'PREMIUM',
+  '/revision-direccion': 'PROFESSIONAL',
   '/rrhh': 'PREMIUM',
 };
 
