@@ -128,7 +128,7 @@ export default function ActionDetailPage() {
         if (/Date$|At$/.test(k) && v) v = new Date(v).toISOString();
         body[k] = v;
       });
-      await apiFetch(`/actions/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      await apiFetch(`/actions/${id}`, { method: 'PATCH', json: body });
       await load();
     } catch (e: any) {
       setError(e?.message || 'Error al guardar');
@@ -142,7 +142,7 @@ export default function ActionDetailPage() {
     try {
       const res = await apiFetch<{ response?: string; text?: string }>('/ai/chat', {
         method: 'POST',
-        body: JSON.stringify({ message: prompt }),
+        json: { message: prompt },
       });
       const text = res?.response || res?.text || '';
       if (text) setForm(prev => ({ ...prev, [targetKey]: text }));

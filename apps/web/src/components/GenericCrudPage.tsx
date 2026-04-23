@@ -78,8 +78,7 @@ export default function GenericCrudPage({
       const prompt = aiField.buildPrompt(form);
       const res = await apiFetch<{ response?: string; text?: string }>('/ai/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message: prompt }),
+        json: { message: prompt },
       });
       const text = res?.response || res?.text || '';
       if (text) setForm(prev => ({ ...prev, [aiField.targetKey]: text }));
@@ -157,9 +156,9 @@ export default function GenericCrudPage({
         body[f.key] = v;
       }
       if (editing) {
-        await apiFetch(`${endpoint}/${editing.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+        await apiFetch(`${endpoint}/${editing.id}`, { method: 'PATCH', json: body });
       } else {
-        await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
+        await apiFetch(endpoint, { method: 'POST', json: body });
       }
       setShowForm(false);
       await load();
