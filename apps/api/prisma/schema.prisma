@@ -3607,12 +3607,7 @@ model Process {
   sites        String[]   @default([]) // multi-sede
   departmentId String?    @db.Uuid
 
-  // Legacy fields (mantenidos para compatibilidad)
-  indicatorsLegacy String?
-  documentsLegacy  String?
-  risksLegacy      String?
-
-  // Legacy fields originales (renombrados en Prisma, mantenidos en DB)
+  // Legacy fields (mapeados a columnas existentes en la DB)
   indicators   String?  @map("indicators_legacy")
   documents    String?  @map("documents_legacy")
   risks        String?  @map("risks_legacy")
