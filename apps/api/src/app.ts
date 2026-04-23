@@ -27,6 +27,7 @@ import gestionCambiosRoutes from './routes/gestion-cambios.js';
 import { registerAuditRoutes } from './routes/audits.js';
 import { registerManagementReviewRoutes } from './routes/managementReview.js';
 import { ncrRoutes } from './routes/ncr.js';
+import { settingsRoutes } from './routes/settings.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { indicadoresRoutes } from './routes/indicators.js';
 import { capacitacionesRoutes } from './routes/trainings.js';
