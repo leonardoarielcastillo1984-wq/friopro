@@ -38,7 +38,7 @@ export default function PartesContent() {
     if (d.requiresAction && d.complianceStatus === 'COMPLIES') { alert('No requiere acción si Cumple'); return; }
     setSaving(true);
     try {
-      if (d.id) await apiFetch(`/stakeholders/${d.id}`, { method:'PUT', json:d });
+      if (d.id) await apiFetch(`/stakeholders/${d.id}`, { method:'PATCH', json:d });
       else await apiFetch('/stakeholders', { method:'POST', json:d });
       setShowModal(false); load();
     } catch (e: any) { alert('Error: '+e.message); }
