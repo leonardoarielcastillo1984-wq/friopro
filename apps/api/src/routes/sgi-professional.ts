@@ -52,6 +52,8 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 
       // Remove deprecated fields that may come from cached frontend
       delete body?.reviewDate;
+      // Never accept id on create — Prisma generates UUID automatically
+      delete body?.id;
 
       const item = await app.runWithDbContext(req, async (tx: any) => {
         const data: any = { ...body, tenantId };
