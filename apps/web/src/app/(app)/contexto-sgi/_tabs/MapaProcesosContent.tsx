@@ -2,9 +2,10 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import {
-  Plus, Trash2, Pencil, X, ArrowRight, CheckCircle, Building2,
+  Plus, Trash2, Pencil, X, ArrowRight, ArrowDown, CheckCircle, Building2,
   Layers, Cog, Users, Target, Loader2, BarChart3, FileText, Shield,
-  MapPin, Filter
+  MapPin, Filter, MoreVertical, Eye, Factory, Package, Truck, Wrench,
+  ClipboardCheck, ShoppingCart, GraduationCap, AlertTriangle, Repeat
 } from 'lucide-react';
 
 interface Process {
@@ -43,6 +44,19 @@ const LAYER_CONFIG = {
   OPERATIONAL: { label: 'Operativos', icon: Cog, color: 'bg-green-50 border-green-200', badge: 'bg-green-100 text-green-700', iconColor: 'text-green-500' },
   SUPPORT: { label: 'Soporte', icon: Users, color: 'bg-orange-50 border-orange-200', badge: 'bg-orange-100 text-orange-700', iconColor: 'text-orange-500' },
 };
+
+function getProcessIcon(name: string) {
+  const n = name.toLowerCase();
+  if (n.includes('compra') || n.includes('adquis')) return ShoppingCart;
+  if (n.includes('venta') || n.includes('comercial') || n.includes('direcci')) return Target;
+  if (n.includes('calidad') || n.includes('control')) return ClipboardCheck;
+  if (n.includes('manten') || n.includes('equipo')) return Wrench;
+  if (n.includes('despach') || n.includes('envío') || n.includes('logíst')) return Truck;
+  if (n.includes('almac') || n.includes('invent') || n.includes('stock')) return Package;
+  if (n.includes('desarroll') || n.includes('proyect') || n.includes('ingenier')) return GraduationCap;
+  if (n.includes('producci') || n.includes('fabric')) return Factory;
+  return Cog;
+}
 
 const TABS = [
   { key: 'info', label: 'Información', icon: Building2 },
@@ -216,27 +230,38 @@ export default function MapaProcesosContent() {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Header del mapa */}
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-neutral-900">{selected.name}</h3>
-                {selected.description && <p className="text-sm text-neutral-500">{selected.description}</p>}
+              <div className="flex items-center gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-neutral-900">{selected.name}</h3>
+                  <span className="text-xs text-neutral-400">{selected.processes.length} procesos</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50">
+                  <Eye className="h-3.5 w-3.5" /> Ver como diagrama
+                </button>
+                <button onClick={() => openNewProcess('OPERATIONAL')} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+                  <Plus className="h-3.5 w-3.5" /> Nuevo proceso
+                </button>
               </div>
             </div>
 
             {/* Filtros */}
             <div className="flex flex-wrap items-center gap-2">
               <Filter className="h-4 w-4 text-neutral-400" />
-              <select value={filterLayer} onChange={e => setFilterLayer(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5">
+              <select value={filterLayer} onChange={e => setFilterLayer(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5 bg-white">
                 <option value="">Todas las capas</option>
                 <option value="STRATEGIC">Estratégicos</option>
                 <option value="OPERATIONAL">Operativos</option>
                 <option value="SUPPORT">Soporte</option>
               </select>
-              <select value={filterSite} onChange={e => setFilterSite(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5">
+              <select value={filterSite} onChange={e => setFilterSite(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5 bg-white">
                 <option value="">Todas las sedes</option>
                 {allSites().map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5">
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5 bg-white">
                 <option value="">Todos los estados</option>
                 <option value="active">Activos</option>
                 <option value="inactive">Inactivos</option>
@@ -247,18 +272,26 @@ export default function MapaProcesosContent() {
             </div>
 
             {/* Layout: entrada → capas → salida */}
-            <div className="flex gap-3 items-stretch">
+            <div className="flex gap-4 items-stretch">
               {/* Entrada */}
-              <div className="flex flex-col items-center justify-center w-24 flex-shrink-0">
-                <div className="bg-neutral-100 border border-neutral-200 rounded-lg px-3 py-4 text-center h-full flex items-center justify-center">
-                  <p className="text-xs font-medium text-neutral-500 leading-tight">{selected.inputLabel}</p>
+              <div className="flex flex-col items-center justify-center w-28 flex-shrink-0">
+                <div className="bg-white border border-neutral-200 rounded-xl px-3 py-5 text-center h-full flex flex-col items-center justify-center shadow-sm w-full">
+                  <CheckCircle className="h-5 w-5 text-neutral-400 mb-2" />
+                  <p className="text-xs font-medium text-neutral-600 leading-tight">{selected.inputLabel || 'Requisitos del cliente / PI'}</p>
+                  <div className="mt-2 text-[10px] text-neutral-400 text-left space-y-0.5">
+                    <p>• Necesidades</p>
+                    <p>• Expectativas</p>
+                    <p>• Requisitos legales y normativas</p>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center flex-shrink-0"><ArrowRight className="h-5 w-5 text-neutral-300" /></div>
+              <div className="flex flex-col items-center justify-center flex-shrink-0">
+                <ArrowRight className="h-5 w-5 text-neutral-300" />
+              </div>
 
               {/* Las 3 capas */}
-              <div className="flex-1 space-y-3">
-                {(['STRATEGIC', 'OPERATIONAL', 'SUPPORT'] as const).map(layer => {
+              <div className="flex-1 space-y-2">
+                {(['STRATEGIC', 'OPERATIONAL', 'SUPPORT'] as const).map((layer, layerIdx) => {
                   const cfg = LAYER_CONFIG[layer];
                   const LayerIcon = cfg.icon;
                   let layerProcesses = selected.processes.filter(p => p.layer === layer);
@@ -266,54 +299,69 @@ export default function MapaProcesosContent() {
                   if (filterSite) layerProcesses = layerProcesses.filter(p => p.sites?.includes(filterSite));
                   if (filterStatus) layerProcesses = layerProcesses.filter(p => p.status === filterStatus);
                   return (
-                    <div key={layer} className={`rounded-lg border-2 p-3 ${cfg.color}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <LayerIcon className={`h-4 w-4 ${cfg.iconColor}`} />
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.badge}`}>{cfg.label}</span>
-                          <span className="text-xs text-neutral-400 ml-1">{layerProcesses.length}</span>
+                    <div key={layer}>
+                      {/* Arrow between layers */}
+                      {layerIdx > 0 && (
+                        <div className="flex justify-center py-1">
+                          <ArrowDown className="h-4 w-4 text-neutral-300" />
                         </div>
-                        <button onClick={() => openNewProcess(layer)} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-700 px-2 py-1 rounded hover:bg-white/60 transition-colors">
-                          <Plus className="h-3 w-3" /> Agregar
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {layerProcesses.length === 0 && (
-                          <p className="text-xs text-neutral-400 italic py-1">Sin procesos aún</p>
-                        )}
-                        {layerProcesses.map(p => (
-                          <div key={p.id} className={`group relative bg-white border rounded-lg px-3 py-2 shadow-sm cursor-pointer hover:shadow-md transition-all min-w-[180px] ${p.status === 'inactive' ? 'opacity-60 border-neutral-200' : 'border-neutral-200 hover:border-brand-300'}`} onClick={() => openView(p)}>
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                  {p.code && <span className="text-[10px] font-mono bg-neutral-100 text-neutral-600 px-1 py-0.5 rounded">{p.code}</span>}
-                                  {p.status === 'inactive' && <span className="text-[10px] bg-red-50 text-red-600 px-1 py-0.5 rounded">INACTIVO</span>}
+                      )}
+                      <div className={`rounded-xl border-2 p-3 ${cfg.color}`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <LayerIcon className={`h-4 w-4 ${cfg.iconColor}`} />
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.badge}`}>{cfg.label}</span>
+                            <span className="text-xs text-neutral-400">{layerProcesses.length} {layerProcesses.length === 1 ? 'proceso' : 'procesos'}</span>
+                          </div>
+                          <button onClick={() => openNewProcess(layer)} className="p-1 rounded hover:bg-white/60 transition-colors text-neutral-400 hover:text-neutral-700">
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {layerProcesses.length === 0 && (
+                            <p className="text-xs text-neutral-400 italic py-1 col-span-full">Sin procesos aún</p>
+                          )}
+                          {layerProcesses.map(p => {
+                            const ProcessIcon = getProcessIcon(p.name);
+                            return (
+                              <div key={p.id} className={`group relative bg-white border rounded-xl px-4 py-3 shadow-sm cursor-pointer hover:shadow-md transition-all ${p.status === 'inactive' ? 'opacity-60 border-neutral-200' : 'border-neutral-200 hover:border-brand-300'}`} onClick={() => openView(p)}>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <div className={`p-1.5 rounded-lg ${cfg.color.replace('border-', 'bg-').replace('bg-', 'bg-opacity-20 ')}`}>
+                                      <ProcessIcon className={`h-4 w-4 ${cfg.iconColor}`} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold text-neutral-800 truncate">{p.name}</p>
+                                      {p.sites && p.sites.length > 0 && (
+                                        <p className="text-[11px] text-neutral-400 truncate">{p.sites[0]}{p.sites.length > 1 ? ` +${p.sites.length - 1}` : ''}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <button onClick={e => { e.stopPropagation(); }} className="p-1 rounded hover:bg-neutral-100 text-neutral-300 hover:text-neutral-500">
+                                    <MoreVertical className="h-3.5 w-3.5" />
+                                  </button>
                                 </div>
-                                <p className="text-sm font-medium text-neutral-800 truncate">{p.name}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  {p.owner && <p className="text-[11px] text-neutral-400 truncate">👤 {p.owner}</p>}
-                                  {p.sites && p.sites.length > 0 && (
-                                    <span className="flex items-center gap-0.5 text-[11px] text-neutral-500">
-                                      <MapPin className="h-3 w-3" />{p.sites.length}
+                                {/* KPI y estado */}
+                                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                  {p.indicators && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full">
+                                      <BarChart3 className="h-3 w-3" />
+                                      {p.indicators.split(',')[0].trim().substring(0, 20)}
                                     </span>
                                   )}
+                                  {p.processIndicators && p.processIndicators.length > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                                      <BarChart3 className="h-3 w-3" />KPI: {p.processIndicators.length}
+                                    </span>
+                                  )}
+                                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${p.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                                    {p.status === 'active' ? 'Activo' : 'Inactivo'}
+                                  </span>
                                 </div>
                               </div>
-                              <div className="hidden group-hover:flex gap-0.5">
-                                <button onClick={e => { e.stopPropagation(); openEdit(p); }} className="p-1 rounded hover:bg-neutral-100"><Pencil className="h-3 w-3 text-neutral-400" /></button>
-                                <button onClick={e => { e.stopPropagation(); deleteProcess(p.id); }} className="p-1 rounded hover:bg-red-50"><Trash2 className="h-3 w-3 text-red-400" /></button>
-                              </div>
-                            </div>
-                            {/* Indicadores / docs / riesgos badges */}
-                            {(p.processIndicators?.length || p.processDocuments?.length || p.processRisks?.length || p.indicators || p.documents || p.risks) && (
-                              <div className="flex gap-1 mt-1.5 pt-1.5 border-t border-neutral-100">
-                                {((p.processIndicators?.length || 0) > 0 || p.indicators) && <span className="flex items-center gap-0.5 text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded"><BarChart3 className="h-3 w-3" />KPI</span>}
-                                {((p.processDocuments?.length || 0) > 0 || p.documents) && <span className="flex items-center gap-0.5 text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded"><FileText className="h-3 w-3" />DOC</span>}
-                                {((p.processRisks?.length || 0) > 0 || p.risks) && <span className="flex items-center gap-0.5 text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded"><Shield className="h-3 w-3" />R</span>}
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   );
@@ -321,11 +369,28 @@ export default function MapaProcesosContent() {
               </div>
 
               {/* Salida */}
-              <div className="flex items-center flex-shrink-0"><ArrowRight className="h-5 w-5 text-neutral-300" /></div>
-              <div className="flex flex-col items-center justify-center w-24 flex-shrink-0">
-                <div className="bg-neutral-100 border border-neutral-200 rounded-lg px-3 py-4 text-center h-full flex items-center justify-center">
-                  <p className="text-xs font-medium text-neutral-500 leading-tight">{selected.outputLabel}</p>
+              <div className="flex flex-col items-center justify-center flex-shrink-0">
+                <ArrowRight className="h-5 w-5 text-neutral-300" />
+              </div>
+              <div className="flex flex-col items-center justify-center w-28 flex-shrink-0">
+                <div className="bg-white border border-neutral-200 rounded-xl px-3 py-5 text-center h-full flex flex-col items-center justify-center shadow-sm w-full">
+                  <CheckCircle className="h-5 w-5 text-neutral-400 mb-2" />
+                  <p className="text-xs font-medium text-neutral-600 leading-tight">{selected.outputLabel || 'Satisfacción del cliente / PI'}</p>
+                  <div className="mt-2 text-[10px] text-neutral-400 text-left space-y-0.5">
+                    <p>• Productos conformes</p>
+                    <p>• Entrega a tiempo</p>
+                    <p>• Mejora continua</p>
+                  </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Mejora continua - feedback loop */}
+            <div className="flex items-center justify-center py-2">
+              <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-full px-4 py-2">
+                <Repeat className="h-3.5 w-3.5" />
+                <span className="font-medium">Mejora continua</span>
+                <ArrowRight className="h-3 w-3 rotate-180" />
               </div>
             </div>
           </div>
@@ -380,17 +445,25 @@ export default function MapaProcesosContent() {
               </div>
             </div>
 
-            {/* Tabs */}
+            {/* Tabs con conteos */}
             <div className="flex border-b">
               {TABS.map(t => {
                 const TabIcon = t.icon;
+                const count = t.key === 'indicators'
+                  ? (drawer.processIndicators?.length || 0) + (drawer.indicators ? drawer.indicators.split(',').filter(Boolean).length : 0)
+                  : t.key === 'documents'
+                    ? (drawer.processDocuments?.length || 0) + (drawer.documents ? drawer.documents.split(',').filter(Boolean).length : 0)
+                    : t.key === 'risks'
+                      ? (drawer.processRisks?.length || 0) + (drawer.risks ? drawer.risks.split(',').filter(Boolean).length : 0)
+                      : 0;
                 return (
                   <button
                     key={t.key}
                     onClick={() => setActiveTab(t.key)}
                     className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${activeTab === t.key ? 'text-brand-600 border-b-2 border-brand-600 bg-brand-50' : 'text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50'}`}
                   >
-                    <TabIcon className="h-3.5 w-3.5" />{t.label}
+                    <TabIcon className="h-3.5 w-3.5" />
+                    {t.label}{count > 0 && <span className="text-[10px] bg-neutral-100 text-neutral-500 px-1 py-0 rounded-full ml-0.5">{count}</span>}
                   </button>
                 );
               })}
@@ -401,41 +474,134 @@ export default function MapaProcesosContent() {
                 activeTab === 'info' ? (
                   <>
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-full ${LAYER_CONFIG[drawer.layer as Process['layer']]?.badge}`}>
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${LAYER_CONFIG[drawer.layer as Process['layer']]?.badge}`}>
                         {drawer.layer && (() => { const L = LAYER_CONFIG[drawer.layer as Process['layer']].icon; return <L className="h-3 w-3" />; })()}
                         {LAYER_CONFIG[drawer.layer as Process['layer']]?.label}
                       </span>
-                      {drawer.status === 'inactive' && <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">Inactivo</span>}
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${drawer.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                        {drawer.status === 'active' ? 'Activo' : 'Inactivo'}
+                      </span>
                     </div>
                     <h2 className="text-lg font-bold text-neutral-900">{drawer.name}</h2>
-                    {drawer.code && <p className="text-xs font-mono text-neutral-500">Código: {drawer.code}</p>}
-                    {drawer.owner && <p className="text-sm text-neutral-500 flex items-center gap-1"><span className="text-base">👤</span>{drawer.owner}</p>}
-                    {drawer.departmentId && <p className="text-sm text-neutral-500">Departamento: {drawer.departmentId}</p>}
-                    {drawer.sites && drawer.sites.length > 0 && (
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <MapPin className="h-3.5 w-3.5 text-neutral-400" />
-                        {drawer.sites.map((s, i) => <span key={i} className="text-xs bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded">{s}</span>)}
+
+                    {/* Info rows */}
+                    <div className="space-y-3">
+                      {drawer.code && (
+                        <div className="flex items-start gap-3">
+                          <span className="text-xs text-neutral-400 w-28 flex-shrink-0 pt-0.5">Código</span>
+                          <span className="text-sm font-mono text-neutral-700">{drawer.code}</span>
+                        </div>
+                      )}
+                      {drawer.owner && (
+                        <div className="flex items-start gap-3">
+                          <span className="text-xs text-neutral-400 w-28 flex-shrink-0 pt-0.5">Responsable / Dueño</span>
+                          <span className="text-sm text-neutral-700">{drawer.owner}</span>
+                        </div>
+                      )}
+                      {drawer.sites && drawer.sites.length > 0 && (
+                        <div className="flex items-start gap-3">
+                          <span className="text-xs text-neutral-400 w-28 flex-shrink-0 pt-0.5">Sede(s)</span>
+                          <div className="flex flex-wrap gap-1">
+                            {drawer.sites.map((s, i) => <span key={i} className="text-xs bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded">{s}</span>)}
+                          </div>
+                        </div>
+                      )}
+                      {drawer.description && (
+                        <div className="flex items-start gap-3">
+                          <span className="text-xs text-neutral-400 w-28 flex-shrink-0 pt-0.5">Descripción</span>
+                          <span className="text-sm text-neutral-700">{drawer.description}</span>
+                        </div>
+                      )}
+                      {drawer.inputs && (
+                        <div className="flex items-start gap-3">
+                          <span className="text-xs text-neutral-400 w-28 flex-shrink-0 pt-0.5">Entradas</span>
+                          <div className="text-sm text-neutral-700 whitespace-pre-line">{drawer.inputs}</div>
+                        </div>
+                      )}
+                      {drawer.outputs && (
+                        <div className="flex items-start gap-3">
+                          <span className="text-xs text-neutral-400 w-28 flex-shrink-0 pt-0.5">Salidas</span>
+                          <div className="text-sm text-neutral-700 whitespace-pre-line">{drawer.outputs}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Legacy fields */}
+                    {drawer.indicators && (
+                      <div className="pt-3 border-t border-neutral-100">
+                        <p className="text-xs font-semibold text-neutral-500 mb-1.5">Indicadores vinculados</p>
+                        <div className="space-y-1.5">
+                          {drawer.indicators.split(',').map((ind, i) => ind.trim() && (
+                            <div key={i} className="flex items-center gap-2 text-sm text-neutral-700">
+                              <BarChart3 className="h-3.5 w-3.5 text-blue-500" />
+                              <span>{ind.trim()}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
-                    {drawer.description && <p className="text-sm text-neutral-600">{drawer.description}</p>}
-                    {drawer.inputs && <div><p className="text-xs font-semibold text-neutral-500 mb-1">📥 Entradas</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.inputs}</p></div>}
-                    {drawer.outputs && <div><p className="text-xs font-semibold text-neutral-500 mb-1">📤 Salidas</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.outputs}</p></div>}
-                    {/* Legacy fields */}
-                    {drawer.indicators && <div><p className="text-xs font-semibold text-neutral-500 mb-1">📊 Indicadores (legacy)</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.indicators}</p></div>}
-                    {drawer.documents && <div><p className="text-xs font-semibold text-neutral-500 mb-1">📄 Documentos (legacy)</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.documents}</p></div>}
-                    {drawer.risks && <div><p className="text-xs font-semibold text-neutral-500 mb-1">⚠️ Riesgos (legacy)</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.risks}</p></div>}
+                    {drawer.documents && (
+                      <div className="pt-3 border-t border-neutral-100">
+                        <p className="text-xs font-semibold text-neutral-500 mb-1.5">Documentos relacionados</p>
+                        <div className="space-y-1.5">
+                          {drawer.documents.split(',').map((doc, i) => doc.trim() && (
+                            <div key={i} className="flex items-center gap-2 text-sm text-neutral-700">
+                              <FileText className="h-3.5 w-3.5 text-green-500" />
+                              <span>{doc.trim()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {drawer.risks && (
+                      <div className="pt-3 border-t border-neutral-100">
+                        <p className="text-xs font-semibold text-neutral-500 mb-1.5">Riesgos asociados</p>
+                        <div className="space-y-1.5">
+                          {drawer.risks.split(',').map((risk, i) => risk.trim() && (
+                            <div key={i} className="flex items-center gap-2 text-sm text-neutral-700">
+                              <Shield className="h-3.5 w-3.5 text-orange-500" />
+                              <span>{risk.trim()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Auditorías / Hallazgos */}
+                    <div className="pt-3 border-t border-neutral-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-red-500">Auditorías / Hallazgos</p>
+                        <button className="text-[10px] text-brand-600 hover:underline">Ver todos</button>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-neutral-600">
+                        <AlertTriangle className="h-4 w-4 text-red-400" />
+                        <span>0 hallazgos abiertos</span>
+                      </div>
+                    </div>
                   </>
                 ) : activeTab === 'indicators' ? (
                   <>
-                    <p className="text-xs text-neutral-500 mb-2">Indicadores vinculados al proceso</p>
+                    <p className="text-xs text-neutral-500 mb-3">Indicadores vinculados al proceso</p>
                     {drawer.processIndicators && drawer.processIndicators.length > 0 ? (
                       <div className="space-y-2">
-                        {drawer.processIndicators.map((rel, i) => (
-                          <div key={rel.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2">
+                        {drawer.processIndicators.map((rel) => (
+                          <div key={rel.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2.5">
                             <div className="flex items-center gap-2">
                               <BarChart3 className="h-4 w-4 text-blue-500" />
                               <span className="text-sm text-neutral-700">ID: {rel.indicatorId}</span>
                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : drawer.indicators ? (
+                      <div className="space-y-2">
+                        {drawer.indicators.split(',').map((ind, i) => ind.trim() && (
+                          <div key={i} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <BarChart3 className="h-4 w-4 text-blue-500" />
+                              <span className="text-sm text-neutral-700">{ind.trim()}</span>
+                            </div>
+                            <span className="text-[10px] bg-neutral-200 text-neutral-600 px-1.5 py-0.5 rounded">Mensual</span>
                           </div>
                         ))}
                       </div>
@@ -448,15 +614,22 @@ export default function MapaProcesosContent() {
                   </>
                 ) : activeTab === 'documents' ? (
                   <>
-                    <p className="text-xs text-neutral-500 mb-2">Documentos relacionados al proceso</p>
+                    <p className="text-xs text-neutral-500 mb-3">Documentos relacionados al proceso</p>
                     {drawer.processDocuments && drawer.processDocuments.length > 0 ? (
                       <div className="space-y-2">
-                        {drawer.processDocuments.map((rel, i) => (
-                          <div key={rel.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <FileText className="h-4 w-4 text-green-500" />
-                              <span className="text-sm text-neutral-700">ID: {rel.documentId}</span>
-                            </div>
+                        {drawer.processDocuments.map((rel) => (
+                          <div key={rel.id} className="flex items-center gap-2 bg-neutral-50 rounded-lg px-3 py-2.5">
+                            <FileText className="h-4 w-4 text-green-500" />
+                            <span className="text-sm text-neutral-700">ID: {rel.documentId}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : drawer.documents ? (
+                      <div className="space-y-2">
+                        {drawer.documents.split(',').map((doc, i) => doc.trim() && (
+                          <div key={i} className="flex items-center gap-2 bg-neutral-50 rounded-lg px-3 py-2.5">
+                            <FileText className="h-4 w-4 text-green-500" />
+                            <span className="text-sm text-neutral-700">{doc.trim()}</span>
                           </div>
                         ))}
                       </div>
@@ -469,15 +642,27 @@ export default function MapaProcesosContent() {
                   </>
                 ) : (
                   <>
-                    <p className="text-xs text-neutral-500 mb-2">Riesgos asociados al proceso</p>
+                    <p className="text-xs text-neutral-500 mb-3">Riesgos asociados al proceso</p>
                     {drawer.processRisks && drawer.processRisks.length > 0 ? (
                       <div className="space-y-2">
-                        {drawer.processRisks.map((rel, i) => (
-                          <div key={rel.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2">
+                        {drawer.processRisks.map((rel) => (
+                          <div key={rel.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2.5">
                             <div className="flex items-center gap-2">
                               <Shield className="h-4 w-4 text-orange-500" />
                               <span className="text-sm text-neutral-700">ID: {rel.riskId}</span>
                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : drawer.risks ? (
+                      <div className="space-y-2">
+                        {drawer.risks.split(',').map((risk, i) => risk.trim() && (
+                          <div key={i} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <Shield className="h-4 w-4 text-orange-500" />
+                              <span className="text-sm text-neutral-700">{risk.trim()}</span>
+                            </div>
+                            <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">Medio</span>
                           </div>
                         ))}
                       </div>
