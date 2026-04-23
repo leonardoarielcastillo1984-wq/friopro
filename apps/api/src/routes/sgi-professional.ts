@@ -212,7 +212,7 @@ export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
           status: body.status || 'OPEN',
           sourceType: 'STAKEHOLDER',
           sourceId: id,
-          openDate: body.openDate || new Date(),
+          openDate: body.openDate ? new Date(body.openDate) : new Date(),
           dueDate: body.dueDate || new Date(Date.now() + 30 * 24 * 3600 * 1000),
         }
       });
