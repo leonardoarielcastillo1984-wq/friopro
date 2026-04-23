@@ -150,6 +150,21 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
+  // GET /indicadores/simple — Lista ligera para selects
+  app.get('/simple', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const tenantId = req.db.tenantId;
+    const indicators = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.indicator.findMany({
+        where: { tenantId, deletedAt: null },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true, code: true, name: true },
+      });
+    });
+    return reply.send({ indicators });
+  });
+
   // GET /indicadores/:id — Detalle
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);

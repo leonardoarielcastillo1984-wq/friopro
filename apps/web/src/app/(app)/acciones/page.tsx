@@ -107,6 +107,33 @@ export default function AccionesPage() {
                 buildPrompt: (f) => `Eres un consultor ISO experto en mejora continua. Para esta acción CAPA:\nTítulo: ${f.title || '—'}\nTipo: ${f.type || '—'}, Prioridad: ${f.priority || '—'}, Origen: ${f.sourceType || '—'}\n\nRedactá un plan de acción claro y completo que incluya: contexto del problema, objetivo de la acción, alcance y controles específicos. Máximo 3 párrafos.`,
               },
             ]}
+            filterFields={[
+              { key: 'status', label: 'Estado', type: 'select', options: [
+                { value: 'OPEN', label: 'Abierta' }, { value: 'IN_PROGRESS', label: 'En progreso' },
+                { value: 'VERIFICATION', label: 'Verificación' }, { value: 'CLOSED', label: 'Cerrada' },
+                { value: 'CANCELLED', label: 'Cancelada' },
+              ]},
+              { key: 'type', label: 'Tipo', type: 'select', options: [
+                { value: 'CORRECTIVE', label: 'Correctiva' }, { value: 'PREVENTIVE', label: 'Preventiva' },
+                { value: 'IMPROVEMENT', label: 'Mejora' },
+              ]},
+              { key: 'sourceType', label: 'Categoría', type: 'select', options: [
+                { value: 'MANUAL', label: 'Manual' }, { value: 'AUDIT', label: 'Auditoría' },
+                { value: 'NCR', label: 'No Conformidad' }, { value: 'INDICATOR', label: 'Indicador' },
+                { value: 'REVIEW', label: 'Revisión' }, { value: 'RISK', label: 'Riesgo' },
+                { value: 'STAKEHOLDER', label: 'Parte Interesada' },
+              ]},
+              { key: 'origin', label: 'Origen', type: 'select', options: [
+                { value: 'AUDIT', label: 'Auditoría' }, { value: 'CLIENT', label: 'Cliente' },
+                { value: 'PROCESS', label: 'Proceso' }, { value: 'STAKEHOLDER', label: 'Parte Interesada' },
+                { value: 'MANUAL', label: 'Manual' },
+              ]},
+              { key: 'priority', label: 'Prioridad', type: 'select', options: [
+                { value: 'LOW', label: 'Baja' }, { value: 'MEDIUM', label: 'Media' },
+                { value: 'HIGH', label: 'Alta' }, { value: 'CRITICAL', label: 'Crítica' },
+              ]},
+            ]}
+            showExport
           />
   );
 }

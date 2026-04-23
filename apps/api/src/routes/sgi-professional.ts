@@ -19,6 +19,7 @@ interface CrudOptions {
   model: ModelName;
   codePrefix?: string;
   listOrder?: any;
+  filterableFields?: string[];
 }
 
 function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
@@ -27,9 +28,18 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
     app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
       if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
       const tenantId = req.db.tenantId;
+      const query = req.query as Record<string, string>;
+      const where: any = { tenantId, deletedAt: null };
+      if (opts.filterableFields) {
+        for (const f of opts.filterableFields) {
+          if (query[f] !== undefined && query[f] !== '') {
+            where[f] = query[f];
+          }
+        }
+      }
       const items = await app.runWithDbContext(req, async (tx: any) => {
         return tx[opts.model].findMany({
-          where: { tenantId, deletedAt: null },
+          where,
           orderBy: opts.listOrder ?? { createdAt: 'desc' },
         });
       });
@@ -199,7 +209,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
   };
 }
 
-export const actionsRoutes = makeCrud('actions', { model: 'actionItem', codePrefix: 'ACT' });
+export const actionsRoutes = makeCrud('actions', { model: 'actionItem', codePrefix: 'ACT', filterableFields: ['status', 'type', 'sourceType', 'origin', 'priority'] });
 export const objectivesRoutes = makeCrud('objectives', { model: 'sgiObjective', codePrefix: 'OBJ' });
 export const stakeholdersRoutes = makeCrud('stakeholders', { model: 'stakeholder' });
 

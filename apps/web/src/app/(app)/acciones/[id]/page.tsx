@@ -67,8 +67,9 @@ export default function ActionDetailPage() {
   const [form, setForm] = useState<Partial<ActionItem>>({});
   const [error, setError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [indicators, setIndicators] = useState<{ id: string; code: string; name: string }[]>([]);
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { load(); loadIndicators(); }, [id]);
   useEffect(() => { if (item) setForm({ ...item }); }, [item]);
 
   async function load() {
@@ -81,6 +82,13 @@ export default function ActionDetailPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadIndicators() {
+    try {
+      const res = await apiFetch<{ indicators: { id: string; code: string; name: string }[] }>('/indicadores/simple');
+      setIndicators(res?.indicators || []);
+    } catch {}
   }
 
   async function saveSection(fields: string[]) {
@@ -300,10 +308,27 @@ export default function ActionDetailPage() {
 
         {/* TAB: Eficacia */}
         {activeTab === 'effectiveness' && (
-          <SectionCard title="6. Evaluación de Eficacia" fields={['verificationMethod','relatedIndicatorId','effectivenessResult','effectivenessEvaluatedAt']}>
+          <SectionCard title="6. Evaluación de Eficacia" fields={['verificationMethod','relatedIndicatorId','effectivenessResult','effectivenessEvaluatedAt']}
+            aiButton={{ key: 'verificationMethod', label: 'Sugerir indicador',
+              prompt: `Eres un consultor ISO 9001. Para verificar la eficacia de esta acción CAPA: "${item.title}". Descripción: "${item.description}". Causa raíz: "${form.rootCause || 'Por definir'}".\n\nSugerí UN indicador clave (KPI) que permita medir objetivamente si la acción fue efectiva. Incluí:\n1. Nombre del indicador\n2. Fórmula o método de medición\n3. Frecuencia sugerida\n4. Valor objetivo\n\nRespondé en español, conciso.` }}>
             <Field label="Método de verificación" k="verificationMethod" type="textarea" placeholder="¿Cómo se verificará que la acción fue efectiva?" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Indicador relacionado (UUID)" k="relatedIndicatorId" />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Indicador relacionado</label>
+                <select
+                  value={(form as any).relatedIndicatorId || ''}
+                  onChange={e => setForm({ ...form, relatedIndicatorId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="">Seleccionar indicador...</option>
+                  {indicators.map(ind => (
+                    <option key={ind.id} value={ind.id}>{ind.code} — {ind.name}</option>
+                  ))}
+                </select>
+                {indicators.length === 0 && (
+                  <p className="text-xs text-gray-400 mt-1">No hay indicadores disponibles. Creá uno primero.</p>
+                )}
+              </div>
               <Field label="Resultado" k="effectivenessResult" type="select" options={[
                 { value: 'EFFECTIVE', label: 'Eficaz' }, { value: 'NOT_EFFECTIVE', label: 'No Eficaz' },
               ]} />

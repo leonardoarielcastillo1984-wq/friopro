@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, X, RefreshCw, Sparkles, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, RefreshCw, Sparkles, Loader2, Download, Filter } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 export type FieldType = 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'checkbox';
@@ -30,6 +30,13 @@ export interface ColumnDef {
   render?: (item: any) => React.ReactNode;
 }
 
+interface FilterDef {
+  key: string;
+  label: string;
+  type: FieldType;
+  options?: { value: string; label: string }[];
+}
+
 interface Props {
   title: string;
   subtitle?: string;
@@ -39,6 +46,8 @@ interface Props {
   columns: ColumnDef[];
   defaultValues?: Record<string, any>;
   aiFields?: AiFieldDef[];
+  filterFields?: FilterDef[];
+  showExport?: boolean;
 }
 
 export default function GenericCrudPage({
@@ -50,6 +59,8 @@ export default function GenericCrudPage({
   columns,
   defaultValues = {},
   aiFields = [],
+  filterFields = [],
+  showExport = false,
 }: Props) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +70,7 @@ export default function GenericCrudPage({
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Record<string, string>>({});
 
   async function runAi(aiField: AiFieldDef) {
     setAiLoading(aiField.targetKey);
@@ -82,7 +94,10 @@ export default function GenericCrudPage({
     try {
       setLoading(true);
       setError(null);
-      const res = await apiFetch<{ items: any[] }>(endpoint);
+      const query = new URLSearchParams();
+      Object.entries(filters).forEach(([k, v]) => { if (v) query.set(k, v); });
+      const url = `${endpoint}${query.toString() ? '?' + query.toString() : ''}`;
+      const res = await apiFetch<{ items: any[] }>(url);
       setItems(res?.items || []);
     } catch (err: any) {
       setError(err?.message || 'Error al cargar');
@@ -91,7 +106,22 @@ export default function GenericCrudPage({
     }
   }
 
-  useEffect(() => { load(); }, [endpoint]);
+  function handleExport() {
+    if (!items.length) return;
+    const headers = columns.map(c => c.label).join(',');
+    const rows = items.map(it => columns.map(c => {
+      const val = c.render ? '' : (it[c.key] ?? '');
+      return `"${String(val).replace(/"/g, '""')}"`;
+    }).join(','));
+    const csv = [headers, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${title.toLowerCase().replace(/\s+/g, '_')}_export.csv`;
+    link.click();
+  }
+
+  useEffect(() => { load(); }, [endpoint, filters]);
 
   function openCreate() {
     setEditing(null);
@@ -164,6 +194,11 @@ export default function GenericCrudPage({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {showExport && (
+              <button onClick={handleExport} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-200" title="Exportar CSV">
+                <Download className="h-4 w-4" /> Exportar
+              </button>
+            )}
             <button
               onClick={load}
               className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -183,6 +218,47 @@ export default function GenericCrudPage({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {error && <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}
+
+        {filterFields.length > 0 && (
+          <div className="mb-4 bg-white border border-gray-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2 text-sm font-medium text-gray-700">
+              <Filter className="w-4 h-4" /> Filtros
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {filterFields.map(f => (
+                <div key={f.key} className="min-w-[160px]">
+                  <label className="block text-xs text-gray-500 mb-1">{f.label}</label>
+                  {f.type === 'select' ? (
+                    <select
+                      value={filters[f.key] || ''}
+                      onChange={e => setFilters({ ...filters, [f.key]: e.target.value })}
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                    >
+                      <option value="">Todas</option>
+                      {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={filters[f.key] || ''}
+                      onChange={e => setFilters({ ...filters, [f.key]: e.target.value })}
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                      placeholder="Buscar..."
+                    />
+                  )}
+                </div>
+              ))}
+              <div className="flex items-end">
+                <button
+                  onClick={() => setFilters({})}
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200"
+                >
+                  Limpiar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {loading ? (
