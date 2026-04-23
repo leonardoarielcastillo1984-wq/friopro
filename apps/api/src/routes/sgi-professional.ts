@@ -176,6 +176,49 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 export const actionsRoutes = makeCrud('actions', { model: 'actionItem', codePrefix: 'ACT' });
 export const objectivesRoutes = makeCrud('objectives', { model: 'sgiObjective', codePrefix: 'OBJ' });
 export const stakeholdersRoutes = makeCrud('stakeholders', { model: 'stakeholder' });
+
+// Endpoint adicional para generar acción CAPA desde stakeholder
+export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
+  app.post('/:id/generate-action', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const tenantId = req.db.tenantId;
+
+    const stakeholder = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.stakeholder.findFirst({ where: { id, tenantId, deletedAt: null } });
+    });
+    if (!stakeholder) return reply.code(404).send({ error: 'Stakeholder not found' });
+
+    const rawBody = req.body;
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody as any;
+
+    const action = await app.runWithDbContext(req, async (tx: any) => {
+      // Create action item
+      const newAction = await tx.actionItem.create({
+        data: {
+          tenantId,
+          title: body.title || `Acción ${stakeholder.name} - ${stakeholder.complianceStatus}`,
+          description: body.description || `Origen: Parte Interesada ${stakeholder.name}`,
+          type: body.type || (stakeholder.complianceStatus === 'NON_COMPLIANT' ? 'CORRECTIVE' : 'IMPROVEMENT'),
+          priority: body.priority || (stakeholder.complianceStatus === 'NON_COMPLIANT' ? 'HIGH' : 'MEDIUM'),
+          status: body.status || 'OPEN',
+          sourceType: 'STAKEHOLDER',
+          sourceId: id,
+          openDate: body.openDate || new Date(),
+          dueDate: body.dueDate || new Date(Date.now() + 30 * 24 * 3600 * 1000),
+        }
+      });
+      // Update stakeholder with action reference
+      await tx.stakeholder.update({
+        where: { id },
+        data: { actionItemId: newAction.id }
+      });
+      return newAction;
+    });
+
+    return reply.send({ action });
+  });
+};
 export const hazardsRoutes = makeCrud('hazards', { model: 'hazard', codePrefix: 'IPERC' });
 export const aspectsRoutes = makeCrud('aspects', { model: 'environmentalAspect', codePrefix: 'AMB' });
 export const incidentsRoutes = makeCrud('incidents', { model: 'incident', codePrefix: 'INC' });

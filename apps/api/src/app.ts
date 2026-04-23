@@ -57,7 +57,7 @@ import { registerCompanyRoutes } from './routes/register-company.js';
 import { startNormativeWorker, startAuditWorker } from './jobs/queue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import {
-  actionsRoutes, objectivesRoutes, stakeholdersRoutes,
+  actionsRoutes, objectivesRoutes, stakeholdersRoutes, stakeholderActionRoutes,
   hazardsRoutes, aspectsRoutes, incidentsRoutes,
   suppliersRoutes, equipmentRoutes, contextRoutes, calendarRoutes,
 } from './routes/sgi-professional.js';
@@ -215,6 +215,7 @@ export async function buildApp() {
   await app.register(actionsRoutes, { prefix: '/actions' });
   await app.register(objectivesRoutes, { prefix: '/objectives' });
   await app.register(stakeholdersRoutes, { prefix: '/stakeholders' });
+  await app.register(stakeholderActionRoutes, { prefix: '/stakeholders' });
   await app.register(contextRoutes, { prefix: '/context' });
   await app.register(hazardsRoutes, { prefix: '/hazards' });
   await app.register(aspectsRoutes, { prefix: '/aspects' });

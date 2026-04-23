@@ -52,16 +52,14 @@ export default function PartesContent() {
     if (!item.id) return;
     setGenAction(true);
     try {
-      const created = await apiFetch('/actions', { method:'POST', json:{
+      await apiFetch(`/stakeholders/${item.id}/generate-action`, { method:'POST', json:{
         title: `Acción ${item.name} - ${item.complianceStatus==='NON_COMPLIANT'?'No Cumple':'Parcial'}`,
         description: `Origen: Parte Interesada\n${item.name}\nEstado: ${item.complianceStatus}\nNivel: ${item.complianceLevel}%\nEvidencia: ${item.complianceEvidence||'—'}`,
         type: item.complianceStatus==='NON_COMPLIANT'?'CORRECTIVE':'IMPROVEMENT',
         priority: item.complianceStatus==='NON_COMPLIANT'?'HIGH':'MEDIUM',
-        sourceType:'STAKEHOLDER', sourceId:item.id, status:'OPEN',
+        status:'OPEN',
         openDate: new Date().toISOString().split('T')[0]
-      }}) as any;
-      // Save action reference back to stakeholder
-      await apiFetch(`/stakeholders/${item.id}`, { method:'PUT', json:{ ...item, actionItemId: created?.id || created?.action?.id || created } });
+      }});
       alert('Acción creada');
       load();
     } catch(e: any){ alert('Error: '+e.message); }
