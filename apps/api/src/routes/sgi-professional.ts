@@ -210,7 +210,6 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 }
 
 export const actionsRoutes = makeCrud('actions', { model: 'actionItem', codePrefix: 'ACT', filterableFields: ['status', 'type', 'sourceType', 'origin', 'priority'] });
-export const objectivesRoutes = makeCrud('objectives', { model: 'sgiObjective', codePrefix: 'OBJ' });
 export const stakeholdersRoutes = makeCrud('stakeholders', { model: 'stakeholder' });
 
 // Endpoint adicional para generar acción CAPA desde stakeholder

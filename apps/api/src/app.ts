@@ -37,7 +37,7 @@ import { reportRoutes } from './routes/reports.js';
 import { riskRoutes } from './routes/risks.js';
 import { exportRoutes } from './routes/export.js';
 import { integrationRoutes } from './routes/integrations.js';
-import { settingsRoutes } from './routes/settings.js';
+import { objectivesRoutes } from './routes/objectives.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
 import { registerCompanySettingsRoutes } from './routes/company-settings.js';
 import { registerLandingSettingsRoutes } from './routes/landing-settings.js';
@@ -57,7 +57,7 @@ import { registerCompanyRoutes } from './routes/register-company.js';
 import { startNormativeWorker, startAuditWorker } from './jobs/queue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import {
-  actionsRoutes, objectivesRoutes, stakeholdersRoutes, stakeholderActionRoutes,
+  actionsRoutes, stakeholdersRoutes, stakeholderActionRoutes,
   hazardsRoutes, aspectsRoutes, incidentsRoutes,
   suppliersRoutes, equipmentRoutes, contextRoutes, calendarRoutes,
 } from './routes/sgi-professional.js';

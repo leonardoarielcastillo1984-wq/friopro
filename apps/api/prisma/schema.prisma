@@ -3115,7 +3115,25 @@ model ActionItem {
   @@map("action_items")
 }
 
-// -------- 2. OBJETIVOS SGI --------
+// -------- 2. POLÍTICAS --------
+model Policy {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  name        String
+  content     String?
+  scope       String?  // Calidad, Ambiente, Seguridad, Integrado
+  active      Boolean  @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  sgiObjectives SgiObjective[]
+
+  @@index([tenantId])
+  @@map("policies")
+}
+
+// -------- 2b. OBJETIVOS SGI --------
 model SgiObjective {
   id            String    @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
@@ -3127,6 +3145,8 @@ model SgiObjective {
   target        String
   targetValue   Float?
   unit          String?
+  type          String?   @default("STRATEGIC") // STRATEGIC | OPERATIONAL
+  sites         String[]  @default([])
   responsibleId String?   @db.Uuid
   startDate     DateTime?
   endDate       DateTime?
@@ -3138,9 +3158,99 @@ model SgiObjective {
   createdAt     DateTime  @default(now()) @db.Timestamptz
   updatedAt     DateTime  @updatedAt @db.Timestamptz
 
+  // Relaciones
+  policyId      String?   @db.Uuid
+  policy        Policy?   @relation(fields: [policyId], references: [id], onDelete: SetNull)
+
+  processId     String?   @db.Uuid
+  process       Process?  @relation(fields: [processId], references: [id], onDelete: SetNull)
+
+  activities    ObjectiveActivity[]
+  indicators    ObjectiveIndicator[]
+  audits        ObjectiveAudit[]
+  capas         ObjectiveCAPA[]
+  risks         ObjectiveRisk[]
+
   @@index([tenantId])
   @@index([year])
+  @@index([policyId])
+  @@index([processId])
   @@map("sgi_objectives")
+}
+
+// -------- 2c. RELACIONES OBJETIVO --------
+model ObjectiveActivity {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  objectiveId   String    @db.Uuid
+  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  name          String
+  responsibleId String?   @db.Uuid
+  startDate     DateTime?
+  endDate       DateTime?
+  status        String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([objectiveId])
+  @@map("objective_activities")
+}
+
+model ObjectiveIndicator {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  objectiveId   String    @db.Uuid
+  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  indicatorId   String    @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([objectiveId])
+  @@index([indicatorId])
+  @@map("objective_indicators")
+}
+
+model ObjectiveAudit {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  objectiveId   String    @db.Uuid
+  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  auditId       String    @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([objectiveId])
+  @@index([auditId])
+  @@map("objective_audits")
+}
+
+model ObjectiveCAPA {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  objectiveId   String    @db.Uuid
+  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  capaId        String    @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([objectiveId])
+  @@index([capaId])
+  @@map("objective_capas")
+}
+
+model ObjectiveRisk {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  objectiveId   String    @db.Uuid
+  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  riskId        String    @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([objectiveId])
+  @@index([riskId])
+  @@map("objective_risks")
 }
 
 // -------- 3. PARTES INTERESADAS --------
@@ -3618,6 +3728,7 @@ model Process {
   processIndicators ProcessIndicator[]
   processDocuments  ProcessDocument[]
   processRisks      ProcessRisk[]
+  sgiObjectives     SgiObjective[]
 
   createdAt    DateTime  @default(now()) @db.Timestamptz
   updatedAt    DateTime  @updatedAt @db.Timestamptz

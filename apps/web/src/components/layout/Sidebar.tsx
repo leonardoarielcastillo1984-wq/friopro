@@ -33,6 +33,7 @@ import {
   Truck,
   CalendarDays,
   Package,
+  Target,
 } from 'lucide-react';
 
 const mainNav = [
@@ -43,6 +44,7 @@ const mainNav = [
 
   // 2. Contexto estratégico (ISO §4, §6)
   { label: 'Contexto del SGI', icon: Compass, href: '/contexto-sgi' },
+  { label: 'Objetivos SGI', icon: Target, href: '/objetivos' },
 
   // 3. Personas y proveedores
   { label: 'RRHH', icon: Users, href: '/rrhh' },
@@ -84,6 +86,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/panel': 'BASIC',
   '/documents': 'BASIC',
   '/contexto-sgi': 'BASIC',
+  '/objetivos': 'BASIC',
   '/calidad': 'BASIC',
   '/seguridad': 'BASIC',
   '/indicadores': 'BASIC',
