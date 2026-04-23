@@ -12,10 +12,14 @@ const mapSchema = z.object({
 const processSchema = z.object({
   layer: z.enum(['STRATEGIC', 'OPERATIONAL', 'SUPPORT']),
   name: z.string().min(1),
+  code: z.string().optional(),
+  status: z.enum(['active', 'inactive']).optional().default('active'),
   description: z.string().optional(),
   owner: z.string().optional(),
   inputs: z.string().optional(),
   outputs: z.string().optional(),
+  sites: z.array(z.string()).optional().default([]),
+  departmentId: z.string().uuid().optional().nullable(),
   indicators: z.string().optional(),
   documents: z.string().optional(),
   risks: z.string().optional(),
@@ -94,11 +98,19 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(201).send(process);
   });
 
-  // ── PUT /process-maps/:id/processes/:pid ──────────────────────
-  app.put('/:id/processes/:pid', async (req: FastifyRequest<{ Params: { id: string; pid: string } }>, reply: FastifyReply) => {
+  // ── PATCH /process-maps/:id/processes/:pid ──────────────────────
+  app.patch('/:id/processes/:pid', async (req: FastifyRequest<{ Params: { id: string; pid: string } }>, reply: FastifyReply) => {
     const body = processSchema.partial().parse(req.body);
     const process = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.process.update({ where: { id: req.params.pid }, data: body });
+      return tx.process.update({
+        where: { id: req.params.pid },
+        data: body,
+        include: {
+          processIndicators: true,
+          processDocuments: true,
+          processRisks: true,
+        },
+      });
     });
     return reply.send(process);
   });
@@ -107,6 +119,54 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
   app.delete('/:id/processes/:pid', async (req: FastifyRequest<{ Params: { id: string; pid: string } }>, reply: FastifyReply) => {
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.process.update({ where: { id: req.params.pid }, data: { deletedAt: new Date() } });
+    });
+    return reply.code(204).send();
+  });
+
+  // ── Relaciones: Indicadores ────────────────────────────────────
+  app.post('/:id/processes/:pid/indicators', async (req: FastifyRequest<{ Params: { id: string; pid: string } }>, reply: FastifyReply) => {
+    const { indicatorId } = z.object({ indicatorId: z.string().uuid() }).parse(req.body);
+    const rel = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processIndicator.create({ data: { processId: req.params.pid, indicatorId } });
+    });
+    return reply.code(201).send(rel);
+  });
+
+  app.delete('/:id/processes/:pid/indicators/:rid', async (req: FastifyRequest<{ Params: { id: string; pid: string; rid: string } }>, reply: FastifyReply) => {
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processIndicator.delete({ where: { id: req.params.rid } });
+    });
+    return reply.code(204).send();
+  });
+
+  // ── Relaciones: Documentos ─────────────────────────────────────
+  app.post('/:id/processes/:pid/documents', async (req: FastifyRequest<{ Params: { id: string; pid: string } }>, reply: FastifyReply) => {
+    const { documentId } = z.object({ documentId: z.string().uuid() }).parse(req.body);
+    const rel = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processDocument.create({ data: { processId: req.params.pid, documentId } });
+    });
+    return reply.code(201).send(rel);
+  });
+
+  app.delete('/:id/processes/:pid/documents/:rid', async (req: FastifyRequest<{ Params: { id: string; pid: string; rid: string } }>, reply: FastifyReply) => {
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processDocument.delete({ where: { id: req.params.rid } });
+    });
+    return reply.code(204).send();
+  });
+
+  // ── Relaciones: Riesgos ────────────────────────────────────────
+  app.post('/:id/processes/:pid/risks', async (req: FastifyRequest<{ Params: { id: string; pid: string } }>, reply: FastifyReply) => {
+    const { riskId } = z.object({ riskId: z.string().uuid() }).parse(req.body);
+    const rel = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processRisk.create({ data: { processId: req.params.pid, riskId } });
+    });
+    return reply.code(201).send(rel);
+  });
+
+  app.delete('/:id/processes/:pid/risks/:rid', async (req: FastifyRequest<{ Params: { id: string; pid: string; rid: string } }>, reply: FastifyReply) => {
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processRisk.delete({ where: { id: req.params.rid } });
     });
     return reply.code(204).send();
   });

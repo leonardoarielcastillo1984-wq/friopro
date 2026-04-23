@@ -2,22 +2,30 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import {
-  Plus, Trash2, Pencil, X, ChevronRight, ArrowRight,
-  Layers, Cog, Users, Target, Loader2, AlertCircle,
+  Plus, Trash2, Pencil, X, ArrowRight, CheckCircle, Building2,
+  Layers, Cog, Users, Target, Loader2, BarChart3, FileText, Shield,
+  MapPin, Filter
 } from 'lucide-react';
 
 interface Process {
   id: string;
   layer: 'STRATEGIC' | 'OPERATIONAL' | 'SUPPORT';
   name: string;
+  code?: string;
+  status: 'active' | 'inactive';
   description?: string;
   owner?: string;
   inputs?: string;
   outputs?: string;
+  sites: string[];
+  departmentId?: string;
   indicators?: string;
   documents?: string;
   risks?: string;
   order: number;
+  processIndicators?: { id: string; indicatorId: string }[];
+  processDocuments?: { id: string; documentId: string }[];
+  processRisks?: { id: string; riskId: string }[];
 }
 
 interface ProcessMap {
@@ -31,14 +39,22 @@ interface ProcessMap {
 }
 
 const LAYER_CONFIG = {
-  STRATEGIC: { label: 'Procesos Estratégicos', icon: Target, color: 'bg-blue-50 border-blue-200', badge: 'bg-blue-100 text-blue-700', iconColor: 'text-blue-500' },
-  OPERATIONAL: { label: 'Procesos Operativos', icon: Cog, color: 'bg-green-50 border-green-200', badge: 'bg-green-100 text-green-700', iconColor: 'text-green-500' },
-  SUPPORT: { label: 'Procesos de Soporte', icon: Users, color: 'bg-orange-50 border-orange-200', badge: 'bg-orange-100 text-orange-700', iconColor: 'text-orange-500' },
+  STRATEGIC: { label: 'Estratégicos', icon: Target, color: 'bg-blue-50 border-blue-200', badge: 'bg-blue-100 text-blue-700', iconColor: 'text-blue-500' },
+  OPERATIONAL: { label: 'Operativos', icon: Cog, color: 'bg-green-50 border-green-200', badge: 'bg-green-100 text-green-700', iconColor: 'text-green-500' },
+  SUPPORT: { label: 'Soporte', icon: Users, color: 'bg-orange-50 border-orange-200', badge: 'bg-orange-100 text-orange-700', iconColor: 'text-orange-500' },
 };
 
-const EMPTY_PROCESS: Omit<Process, 'id' | 'order'> = {
-  layer: 'OPERATIONAL', name: '', description: '', owner: '',
-  inputs: '', outputs: '', indicators: '', documents: '', risks: '',
+const TABS = [
+  { key: 'info', label: 'Información', icon: Building2 },
+  { key: 'indicators', label: 'Indicadores', icon: BarChart3 },
+  { key: 'documents', label: 'Documentos', icon: FileText },
+  { key: 'risks', label: 'Riesgos', icon: Shield },
+];
+
+const EMPTY_PROCESS: Partial<Process> = {
+  layer: 'OPERATIONAL', name: '', code: '', status: 'active', description: '', owner: '',
+  inputs: '', outputs: '', sites: [], departmentId: '',
+  indicators: '', documents: '', risks: '',
 };
 
 export default function MapaProcesosContent() {
@@ -57,6 +73,12 @@ export default function MapaProcesosContent() {
   const [drawer, setDrawer] = useState<Partial<Process> | null>(null);
   const [drawerMode, setDrawerMode] = useState<'view' | 'edit'>('view');
   const [editingPid, setEditingPid] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('info');
+
+  // Filters
+  const [filterLayer, setFilterLayer] = useState<string>('');
+  const [filterSite, setFilterSite] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
 
   async function load() {
     setLoading(true);
@@ -103,13 +125,15 @@ export default function MapaProcesosContent() {
     if (!selected || !drawer?.name) return;
     setSaving(true);
     try {
+      const body = { ...drawer };
       if (editingPid) {
-        await apiFetch(`/process-maps/${selected.id}/processes/${editingPid}`, { method: 'PUT', json: drawer });
+        await apiFetch(`/process-maps/${selected.id}/processes/${editingPid}`, { method: 'PATCH', json: body });
       } else {
-        await apiFetch(`/process-maps/${selected.id}/processes`, { method: 'POST', json: drawer });
+        await apiFetch(`/process-maps/${selected.id}/processes`, { method: 'POST', json: body });
       }
       setDrawer(null);
       setEditingPid(null);
+      setActiveTab('info');
       await load();
     } catch { setError('Error guardando proceso'); }
     finally { setSaving(false); }
@@ -125,18 +149,28 @@ export default function MapaProcesosContent() {
     setDrawer({ ...EMPTY_PROCESS, layer });
     setEditingPid(null);
     setDrawerMode('edit');
+    setActiveTab('info');
   }
 
   function openEdit(p: Process) {
     setDrawer({ ...p });
     setEditingPid(p.id);
     setDrawerMode('edit');
+    setActiveTab('info');
   }
 
   function openView(p: Process) {
     setDrawer({ ...p });
     setEditingPid(p.id);
     setDrawerMode('view');
+    setActiveTab('info');
+  }
+
+  function allSites() {
+    if (!selected) return [];
+    const s = new Set<string>();
+    selected.processes.forEach(p => p.sites?.forEach(site => s.add(site)));
+    return Array.from(s);
   }
 
   if (loading) return <div className="flex items-center gap-2 py-10 text-neutral-400"><Loader2 className="h-5 w-5 animate-spin" />Cargando mapas...</div>;
@@ -189,6 +223,29 @@ export default function MapaProcesosContent() {
               </div>
             </div>
 
+            {/* Filtros */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Filter className="h-4 w-4 text-neutral-400" />
+              <select value={filterLayer} onChange={e => setFilterLayer(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5">
+                <option value="">Todas las capas</option>
+                <option value="STRATEGIC">Estratégicos</option>
+                <option value="OPERATIONAL">Operativos</option>
+                <option value="SUPPORT">Soporte</option>
+              </select>
+              <select value={filterSite} onChange={e => setFilterSite(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5">
+                <option value="">Todas las sedes</option>
+                {allSites().map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5">
+                <option value="">Todos los estados</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Inactivos</option>
+              </select>
+              {(filterLayer || filterSite || filterStatus) && (
+                <button onClick={() => { setFilterLayer(''); setFilterSite(''); setFilterStatus(''); }} className="text-xs text-neutral-500 hover:text-neutral-700 underline">Limpiar</button>
+              )}
+            </div>
+
             {/* Layout: entrada → capas → salida */}
             <div className="flex gap-3 items-stretch">
               {/* Entrada */}
@@ -204,13 +261,17 @@ export default function MapaProcesosContent() {
                 {(['STRATEGIC', 'OPERATIONAL', 'SUPPORT'] as const).map(layer => {
                   const cfg = LAYER_CONFIG[layer];
                   const LayerIcon = cfg.icon;
-                  const layerProcesses = selected.processes.filter(p => p.layer === layer);
+                  let layerProcesses = selected.processes.filter(p => p.layer === layer);
+                  if (filterLayer && filterLayer !== layer) return null;
+                  if (filterSite) layerProcesses = layerProcesses.filter(p => p.sites?.includes(filterSite));
+                  if (filterStatus) layerProcesses = layerProcesses.filter(p => p.status === filterStatus);
                   return (
                     <div key={layer} className={`rounded-lg border-2 p-3 ${cfg.color}`}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5">
                           <LayerIcon className={`h-4 w-4 ${cfg.iconColor}`} />
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.badge}`}>{cfg.label}</span>
+                          <span className="text-xs text-neutral-400 ml-1">{layerProcesses.length}</span>
                         </div>
                         <button onClick={() => openNewProcess(layer)} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-700 px-2 py-1 rounded hover:bg-white/60 transition-colors">
                           <Plus className="h-3 w-3" /> Agregar
@@ -221,13 +282,36 @@ export default function MapaProcesosContent() {
                           <p className="text-xs text-neutral-400 italic py-1">Sin procesos aún</p>
                         )}
                         {layerProcesses.map(p => (
-                          <div key={p.id} className="group relative bg-white border border-neutral-200 rounded-lg px-3 py-2 shadow-sm cursor-pointer hover:shadow-md hover:border-brand-300 transition-all" onClick={() => openView(p)}>
-                            <p className="text-sm font-medium text-neutral-800">{p.name}</p>
-                            {p.owner && <p className="text-xs text-neutral-400">{p.owner}</p>}
-                            <div className="absolute -top-1.5 -right-1.5 hidden group-hover:flex gap-0.5 bg-white rounded shadow-sm border border-neutral-100 p-0.5">
-                              <button onClick={e => { e.stopPropagation(); openEdit(p); }} className="p-0.5 rounded hover:bg-neutral-50"><Pencil className="h-3 w-3 text-neutral-400" /></button>
-                              <button onClick={e => { e.stopPropagation(); deleteProcess(p.id); }} className="p-0.5 rounded hover:bg-neutral-50"><Trash2 className="h-3 w-3 text-red-400" /></button>
+                          <div key={p.id} className={`group relative bg-white border rounded-lg px-3 py-2 shadow-sm cursor-pointer hover:shadow-md transition-all min-w-[180px] ${p.status === 'inactive' ? 'opacity-60 border-neutral-200' : 'border-neutral-200 hover:border-brand-300'}`} onClick={() => openView(p)}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  {p.code && <span className="text-[10px] font-mono bg-neutral-100 text-neutral-600 px-1 py-0.5 rounded">{p.code}</span>}
+                                  {p.status === 'inactive' && <span className="text-[10px] bg-red-50 text-red-600 px-1 py-0.5 rounded">INACTIVO</span>}
+                                </div>
+                                <p className="text-sm font-medium text-neutral-800 truncate">{p.name}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  {p.owner && <p className="text-[11px] text-neutral-400 truncate">👤 {p.owner}</p>}
+                                  {p.sites && p.sites.length > 0 && (
+                                    <span className="flex items-center gap-0.5 text-[11px] text-neutral-500">
+                                      <MapPin className="h-3 w-3" />{p.sites.length}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="hidden group-hover:flex gap-0.5">
+                                <button onClick={e => { e.stopPropagation(); openEdit(p); }} className="p-1 rounded hover:bg-neutral-100"><Pencil className="h-3 w-3 text-neutral-400" /></button>
+                                <button onClick={e => { e.stopPropagation(); deleteProcess(p.id); }} className="p-1 rounded hover:bg-red-50"><Trash2 className="h-3 w-3 text-red-400" /></button>
+                              </div>
                             </div>
+                            {/* Indicadores / docs / riesgos badges */}
+                            {(p.processIndicators?.length || p.processDocuments?.length || p.processRisks?.length || p.indicators || p.documents || p.risks) && (
+                              <div className="flex gap-1 mt-1.5 pt-1.5 border-t border-neutral-100">
+                                {((p.processIndicators?.length || 0) > 0 || p.indicators) && <span className="flex items-center gap-0.5 text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded"><BarChart3 className="h-3 w-3" />KPI</span>}
+                                {((p.processDocuments?.length || 0) > 0 || p.documents) && <span className="flex items-center gap-0.5 text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded"><FileText className="h-3 w-3" />DOC</span>}
+                                {((p.processRisks?.length || 0) > 0 || p.risks) && <span className="flex items-center gap-0.5 text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded"><Shield className="h-3 w-3" />R</span>}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -283,7 +367,7 @@ export default function MapaProcesosContent() {
       {drawer && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawer(null)} />
-          <div className="relative bg-white w-full max-w-sm shadow-2xl flex flex-col h-full overflow-y-auto">
+          <div className="relative bg-white w-full max-w-md shadow-2xl flex flex-col h-full overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-semibold text-neutral-900">{drawerMode === 'edit' ? (editingPid ? 'Editar proceso' : 'Nuevo proceso') : 'Detalle del proceso'}</h3>
               <div className="flex items-center gap-2">
@@ -296,59 +380,183 @@ export default function MapaProcesosContent() {
               </div>
             </div>
 
+            {/* Tabs */}
+            <div className="flex border-b">
+              {TABS.map(t => {
+                const TabIcon = t.icon;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => setActiveTab(t.key)}
+                    className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${activeTab === t.key ? 'text-brand-600 border-b-2 border-brand-600 bg-brand-50' : 'text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50'}`}
+                  >
+                    <TabIcon className="h-3.5 w-3.5" />{t.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="flex-1 px-5 py-4 space-y-4">
               {drawerMode === 'view' ? (
-                <>
-                  <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-full ${LAYER_CONFIG[drawer.layer as Process['layer']]?.badge}`}>
-                    {drawer.layer && (() => { const L = LAYER_CONFIG[drawer.layer as Process['layer']].icon; return <L className="h-3 w-3" />; })()}
-                    {LAYER_CONFIG[drawer.layer as Process['layer']]?.label}
-                  </div>
-                  <h2 className="text-lg font-bold text-neutral-900">{drawer.name}</h2>
-                  {drawer.owner && <p className="text-sm text-neutral-500">👤 {drawer.owner}</p>}
-                  {drawer.description && <p className="text-sm text-neutral-600">{drawer.description}</p>}
-                  {[
-                    { k: 'inputs', label: '📥 Entradas' },
-                    { k: 'outputs', label: '📤 Salidas' },
-                    { k: 'indicators', label: '📊 Indicadores' },
-                    { k: 'documents', label: '📄 Documentos' },
-                    { k: 'risks', label: '⚠️ Riesgos' },
-                  ].map(({ k, label }) => (drawer as any)[k] ? (
-                    <div key={k}>
-                      <p className="text-xs font-semibold text-neutral-500 mb-1">{label}</p>
-                      <p className="text-sm text-neutral-700 whitespace-pre-line">{(drawer as any)[k]}</p>
+                activeTab === 'info' ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-full ${LAYER_CONFIG[drawer.layer as Process['layer']]?.badge}`}>
+                        {drawer.layer && (() => { const L = LAYER_CONFIG[drawer.layer as Process['layer']].icon; return <L className="h-3 w-3" />; })()}
+                        {LAYER_CONFIG[drawer.layer as Process['layer']]?.label}
+                      </span>
+                      {drawer.status === 'inactive' && <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">Inactivo</span>}
                     </div>
-                  ) : null)}
-                </>
+                    <h2 className="text-lg font-bold text-neutral-900">{drawer.name}</h2>
+                    {drawer.code && <p className="text-xs font-mono text-neutral-500">Código: {drawer.code}</p>}
+                    {drawer.owner && <p className="text-sm text-neutral-500 flex items-center gap-1"><span className="text-base">👤</span>{drawer.owner}</p>}
+                    {drawer.departmentId && <p className="text-sm text-neutral-500">Departamento: {drawer.departmentId}</p>}
+                    {drawer.sites && drawer.sites.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <MapPin className="h-3.5 w-3.5 text-neutral-400" />
+                        {drawer.sites.map((s, i) => <span key={i} className="text-xs bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded">{s}</span>)}
+                      </div>
+                    )}
+                    {drawer.description && <p className="text-sm text-neutral-600">{drawer.description}</p>}
+                    {drawer.inputs && <div><p className="text-xs font-semibold text-neutral-500 mb-1">📥 Entradas</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.inputs}</p></div>}
+                    {drawer.outputs && <div><p className="text-xs font-semibold text-neutral-500 mb-1">📤 Salidas</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.outputs}</p></div>}
+                    {/* Legacy fields */}
+                    {drawer.indicators && <div><p className="text-xs font-semibold text-neutral-500 mb-1">📊 Indicadores (legacy)</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.indicators}</p></div>}
+                    {drawer.documents && <div><p className="text-xs font-semibold text-neutral-500 mb-1">📄 Documentos (legacy)</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.documents}</p></div>}
+                    {drawer.risks && <div><p className="text-xs font-semibold text-neutral-500 mb-1">⚠️ Riesgos (legacy)</p><p className="text-sm text-neutral-700 whitespace-pre-line">{drawer.risks}</p></div>}
+                  </>
+                ) : activeTab === 'indicators' ? (
+                  <>
+                    <p className="text-xs text-neutral-500 mb-2">Indicadores vinculados al proceso</p>
+                    {drawer.processIndicators && drawer.processIndicators.length > 0 ? (
+                      <div className="space-y-2">
+                        {drawer.processIndicators.map((rel, i) => (
+                          <div key={rel.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <BarChart3 className="h-4 w-4 text-blue-500" />
+                              <span className="text-sm text-neutral-700">ID: {rel.indicatorId}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-neutral-400">
+                        <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">Sin indicadores vinculados</p>
+                      </div>
+                    )}
+                  </>
+                ) : activeTab === 'documents' ? (
+                  <>
+                    <p className="text-xs text-neutral-500 mb-2">Documentos relacionados al proceso</p>
+                    {drawer.processDocuments && drawer.processDocuments.length > 0 ? (
+                      <div className="space-y-2">
+                        {drawer.processDocuments.map((rel, i) => (
+                          <div key={rel.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-green-500" />
+                              <span className="text-sm text-neutral-700">ID: {rel.documentId}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-neutral-400">
+                        <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">Sin documentos relacionados</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-neutral-500 mb-2">Riesgos asociados al proceso</p>
+                    {drawer.processRisks && drawer.processRisks.length > 0 ? (
+                      <div className="space-y-2">
+                        {drawer.processRisks.map((rel, i) => (
+                          <div key={rel.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <Shield className="h-4 w-4 text-orange-500" />
+                              <span className="text-sm text-neutral-700">ID: {rel.riskId}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-neutral-400">
+                        <Shield className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">Sin riesgos asociados</p>
+                      </div>
+                    )}
+                  </>
+                )
               ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-neutral-600 mb-1">Capa</label>
-                    <select value={drawer.layer} onChange={e => setDrawer(p => ({ ...p, layer: e.target.value as any }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm">
-                      <option value="STRATEGIC">Estratégico</option>
-                      <option value="OPERATIONAL">Operativo</option>
-                      <option value="SUPPORT">Soporte</option>
-                    </select>
-                  </div>
-                  {[
-                    { k: 'name', label: 'Nombre *', rows: 1 },
-                    { k: 'owner', label: 'Responsable / Dueño', rows: 1 },
-                    { k: 'description', label: 'Descripción', rows: 2 },
-                    { k: 'inputs', label: 'Entradas', rows: 2 },
-                    { k: 'outputs', label: 'Salidas', rows: 2 },
-                    { k: 'indicators', label: 'Indicadores vinculados', rows: 2 },
-                    { k: 'documents', label: 'Documentos relacionados', rows: 2 },
-                    { k: 'risks', label: 'Riesgos asociados', rows: 2 },
-                  ].map(({ k, label, rows }) => (
-                    <div key={k}>
-                      <label className="block text-xs font-medium text-neutral-600 mb-1">{label}</label>
-                      {rows > 1 ? (
-                        <textarea value={(drawer as any)[k] ?? ''} onChange={e => setDrawer(p => ({ ...p, [k]: e.target.value }))} rows={rows} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-300" />
-                      ) : (
-                        <input value={(drawer as any)[k] ?? ''} onChange={e => setDrawer(p => ({ ...p, [k]: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
-                      )}
+                /* Edit mode */
+                activeTab === 'info' ? (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Capa</label>
+                      <select value={drawer.layer} onChange={e => setDrawer(p => ({ ...p, layer: e.target.value as any }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm">
+                        <option value="STRATEGIC">Estratégico</option>
+                        <option value="OPERATIONAL">Operativo</option>
+                        <option value="SUPPORT">Soporte</option>
+                      </select>
                     </div>
-                  ))}
-                </>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Código</label>
+                      <input value={drawer.code ?? ''} onChange={e => setDrawer(p => ({ ...p, code: e.target.value }))} placeholder="Ej: OP-01" className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Nombre *</label>
+                      <input value={drawer.name ?? ''} onChange={e => setDrawer(p => ({ ...p, name: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Estado</label>
+                      <select value={drawer.status ?? 'active'} onChange={e => setDrawer(p => ({ ...p, status: e.target.value as any }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm">
+                        <option value="active">Activo</option>
+                        <option value="inactive">Inactivo</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Responsable / Dueño</label>
+                      <input value={drawer.owner ?? ''} onChange={e => setDrawer(p => ({ ...p, owner: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Sedes (separadas por coma)</label>
+                      <input value={Array.isArray(drawer.sites) ? drawer.sites.join(', ') : drawer.sites ?? ''} onChange={e => setDrawer(p => ({ ...p, sites: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))} placeholder="Sede Central, Sede Norte" className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Departamento ID</label>
+                      <input value={drawer.departmentId ?? ''} onChange={e => setDrawer(p => ({ ...p, departmentId: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Descripción</label>
+                      <textarea value={drawer.description ?? ''} onChange={e => setDrawer(p => ({ ...p, description: e.target.value }))} rows={2} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Entradas</label>
+                      <textarea value={drawer.inputs ?? ''} onChange={e => setDrawer(p => ({ ...p, inputs: e.target.value }))} rows={2} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-600 mb-1">Salidas</label>
+                      <textarea value={drawer.outputs ?? ''} onChange={e => setDrawer(p => ({ ...p, outputs: e.target.value }))} rows={2} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                    </div>
+                  </>
+                ) : activeTab === 'indicators' ? (
+                  <>
+                    <p className="text-xs text-neutral-500 mb-2">Indicadores vinculados (legacy - se migrará a relaciones)</p>
+                    <textarea value={drawer.indicators ?? ''} onChange={e => setDrawer(p => ({ ...p, indicators: e.target.value }))} rows={4} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                  </>
+                ) : activeTab === 'documents' ? (
+                  <>
+                    <p className="text-xs text-neutral-500 mb-2">Documentos relacionados (legacy - se migrará a relaciones)</p>
+                    <textarea value={drawer.documents ?? ''} onChange={e => setDrawer(p => ({ ...p, documents: e.target.value }))} rows={4} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-neutral-500 mb-2">Riesgos asociados (legacy - se migrará a relaciones)</p>
+                    <textarea value={drawer.risks ?? ''} onChange={e => setDrawer(p => ({ ...p, risks: e.target.value }))} rows={4} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                  </>
+                )
               )}
             </div>
 

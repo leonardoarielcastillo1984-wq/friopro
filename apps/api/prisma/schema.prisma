@@ -3598,14 +3598,31 @@ model Process {
 
   layer        String     // STRATEGIC | OPERATIONAL | SUPPORT
   name         String
+  code         String?    // OP-01, PE-02, etc.
+  status       String     @default("active") // active | inactive
   description  String?
   owner        String?
   inputs       String?
   outputs      String?
-  indicators   String?
-  documents    String?
-  risks        String?
+  sites        String[]   @default([]) // multi-sede
+  departmentId String?    @db.Uuid
+
+  // Legacy fields (mantenidos para compatibilidad)
+  indicatorsLegacy String?
+  documentsLegacy  String?
+  risksLegacy      String?
+
+  // Legacy fields originales (renombrados en Prisma, mantenidos en DB)
+  indicators   String?  @map("indicators_legacy")
+  documents    String?  @map("documents_legacy")
+  risks        String?  @map("risks_legacy")
+
   order        Int        @default(0)
+
+  // Relaciones con entidades reales
+  processIndicators ProcessIndicator[]
+  processDocuments  ProcessDocument[]
+  processRisks      ProcessRisk[]
 
   createdAt    DateTime  @default(now()) @db.Timestamptz
   updatedAt    DateTime  @updatedAt @db.Timestamptz
@@ -3613,5 +3630,42 @@ model Process {
 
   @@index([processMapId])
   @@index([tenantId])
+  @@unique([tenantId, code])
   @@map("processes")
+}
+
+model ProcessIndicator {
+  id          String @id @default(uuid()) @db.Uuid
+  processId   String @db.Uuid
+  process     Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+  indicatorId String @db.Uuid
+
+  @@index([processId])
+  @@index([indicatorId])
+  @@unique([processId, indicatorId])
+  @@map("process_indicators")
+}
+
+model ProcessDocument {
+  id         String @id @default(uuid()) @db.Uuid
+  processId  String @db.Uuid
+  process    Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+  documentId String @db.Uuid
+
+  @@index([processId])
+  @@index([documentId])
+  @@unique([processId, documentId])
+  @@map("process_documents")
+}
+
+model ProcessRisk {
+  id        String @id @default(uuid()) @db.Uuid
+  processId String @db.Uuid
+  process   Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+  riskId    String @db.Uuid
+
+  @@index([processId])
+  @@index([riskId])
+  @@unique([processId, riskId])
+  @@map("process_risks")
 }
