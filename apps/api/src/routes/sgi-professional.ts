@@ -193,10 +193,18 @@ export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
     const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody as any;
 
     const action = await app.runWithDbContext(req, async (tx: any) => {
+      // Auto-generate action code like ACT-2026-001
+      const year = new Date().getFullYear();
+      const count = await tx.actionItem.count({
+        where: { tenantId, code: { startsWith: `ACT-${year}-` } }
+      });
+      const code = `ACT-${year}-${String(count + 1).padStart(3, '0')}`;
+
       // Create action item
       const newAction = await tx.actionItem.create({
         data: {
           tenantId,
+          code,
           title: body.title || `Acción ${stakeholder.name} - ${stakeholder.complianceStatus}`,
           description: body.description || `Origen: Parte Interesada ${stakeholder.name}`,
           type: body.type || (stakeholder.complianceStatus === 'NON_COMPLIANT' ? 'CORRECTIVE' : 'IMPROVEMENT'),
