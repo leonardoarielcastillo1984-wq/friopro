@@ -1,17 +1,15 @@
 'use client';
 import { Suspense } from 'react';
-import { Compass, UsersRound, Target, Layers } from 'lucide-react';
+import { Compass, UsersRound, Layers } from 'lucide-react';
 import PageTabs from '@/components/PageTabs';
 import ContextoContent from './_tabs/ContextoContent';
 import PartesContent from './_tabs/PartesContent';
-import ObjetivosContent from './_tabs/ObjetivosContent';
 import MapaProcesosContent from './_tabs/MapaProcesosContent';
 
 const TABS = [
   { key: 'contexto', label: 'Contexto / FODA', icon: Compass },
   { key: 'partes', label: 'Partes Interesadas', icon: UsersRound },
   { key: 'mapa', label: 'Mapa de Procesos', icon: Layers },
-  { key: 'objetivos', label: 'Objetivos SGI', icon: Target },
 ];
 
 export default function ContextoSgiPage() {
@@ -28,7 +26,6 @@ export default function ContextoSgiPage() {
               {active === 'contexto' && <ContextoContent />}
               {active === 'partes' && <PartesContent />}
               {active === 'mapa' && <MapaProcesosContent />}
-              {active === 'objetivos' && <ObjetivosContent />}
             </>
           )}
         </PageTabs>
