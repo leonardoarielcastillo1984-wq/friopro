@@ -1,12 +1,12 @@
 'use client';
-import { CheckSquare } from 'lucide-react';
+import { CheckSquare, ArrowRight } from 'lucide-react';
 import GenericCrudPage from '@/components/GenericCrudPage';
 
 export default function AccionesPage() {
   return (
           <GenericCrudPage
-            title="Acciones"
-            subtitle="Plan de acciones correctivas, preventivas y de mejora (CAPA) - Formato Matriz de Riesgos"
+            title="Acciones CAPA"
+            subtitle="Gestión de No Conformidades - 8D Simplificado (Identificación → Cierre)"
             endpoint="/actions"
             icon={CheckSquare}
             defaultValues={{ type: 'CORRECTIVE', priority: 'MEDIUM', sourceType: 'MANUAL', status: 'OPEN', openDate: new Date().toISOString().split('T')[0], initialProbability: 1, initialImpact: 1, residualProbability: 1, residualImpact: 1 }}
@@ -23,12 +23,22 @@ export default function AccionesPage() {
                 { value: 'RISK', label: 'Riesgo' },
                 { value: 'FODA', label: 'FODA' },
                 { value: 'DAFO', label: 'DAFO' },
+                { value: 'STAKEHOLDER', label: 'Parte Interesada' },
               ]},
               { key: 'type', label: 'Tipo', type: 'select', required: true, options: [
                 { value: 'CORRECTIVE', label: 'Correctiva' },
                 { value: 'PREVENTIVE', label: 'Preventiva' },
                 { value: 'IMPROVEMENT', label: 'Mejora' },
               ]},
+              { key: 'origin', label: 'Origen', type: 'select', options: [
+                { value: 'AUDIT', label: 'Auditoría' },
+                { value: 'CLIENT', label: 'Cliente' },
+                { value: 'PROCESS', label: 'Proceso' },
+                { value: 'STAKEHOLDER', label: 'Parte Interesada' },
+                { value: 'MANUAL', label: 'Manual' },
+              ]},
+              { key: 'affectedArea', label: 'Área Afectada', type: 'text' },
+              { key: 'detectedBy', label: 'Detectado por', type: 'text' },
               { key: 'initialProbability', label: 'Prob. Inicial (1-5)', type: 'number' },
               { key: 'initialImpact', label: 'Imp. Inicial (1-5)', type: 'number' },
               { key: 'initialRiskLevel', label: 'Nivel Inicial', type: 'select', options: [
@@ -62,20 +72,33 @@ export default function AccionesPage() {
             columns={[
               { key: 'code', label: 'Código' },
               { key: 'openDate', label: 'Fecha Ident.', render: (i) => i.openDate ? new Date(i.openDate).toLocaleDateString() : '—' },
-              { key: 'title', label: 'Descripción / Problema' },
+              { key: 'title', label: 'Descripción / Problema', render: (i) => (
+                <a href={`/acciones/${i.id}`} className="text-blue-600 hover:text-blue-800 hover:underline font-medium">
+                  {i.title}
+                </a>
+              )},
               { key: 'sourceType', label: 'Categoría' },
               { key: 'type', label: 'Tipo' },
-              { key: 'initialProbability', label: 'Prob. In.' },
-              { key: 'initialImpact', label: 'Imp. In.' },
-              { key: 'initialRiskLevel', label: 'Nivel In.' },
-              { key: 'residualProbability', label: 'Prob. Res.' },
-              { key: 'residualImpact', label: 'Imp. Res.' },
-              { key: 'residualRiskLevel', label: 'Nivel Res.' },
-              { key: 'riskReduction', label: '%', render: (i) => i.riskReduction ? `${i.riskReduction}%` : '—' },
+              { key: 'progress', label: 'Progreso', render: (i) => {
+                const pct = i.progress ?? 0;
+                let color = 'bg-red-500';
+                if (pct >= 80) color = 'bg-green-500';
+                else if (pct >= 50) color = 'bg-yellow-500';
+                else if (pct >= 20) color = 'bg-orange-500';
+                return (
+                  <div className="w-24">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs font-medium text-gray-600">{pct}%</span>
+                    </div>
+                  </div>
+                );
+              }},
               { key: 'status', label: 'Estado' },
               { key: 'assignedToId', label: 'Responsable' },
               { key: 'dueDate', label: 'Revisión', render: (i) => i.dueDate ? new Date(i.dueDate).toLocaleDateString() : '—' },
-              { key: 'completedAt', label: 'Cierre', render: (i) => i.completedAt ? new Date(i.completedAt).toLocaleDateString() : '—' },
             ]}
             aiFields={[
               {
