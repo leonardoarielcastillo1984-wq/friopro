@@ -52,15 +52,18 @@ export default function PartesContent() {
     if (!item.id) return;
     setGenAction(true);
     try {
-      await apiFetch('/actions', { method:'POST', json:{
+      const created = await apiFetch('/actions', { method:'POST', json:{
         title: `Acción ${item.name} - ${item.complianceStatus==='NON_COMPLIANT'?'No Cumple':'Parcial'}`,
         description: `Origen: Parte Interesada\n${item.name}\nEstado: ${item.complianceStatus}\nNivel: ${item.complianceLevel}%\nEvidencia: ${item.complianceEvidence||'—'}`,
         type: item.complianceStatus==='NON_COMPLIANT'?'CORRECTIVE':'IMPROVEMENT',
         priority: item.complianceStatus==='NON_COMPLIANT'?'HIGH':'MEDIUM',
         sourceType:'STAKEHOLDER', sourceId:item.id, status:'OPEN',
         openDate: new Date().toISOString().split('T')[0]
-      }});
+      }}) as any;
+      // Save action reference back to stakeholder
+      await apiFetch(`/stakeholders/${item.id}`, { method:'PUT', json:{ ...item, actionItemId: created?.id || created?.action?.id || created } });
       alert('Acción creada');
+      load();
     } catch(e: any){ alert('Error: '+e.message); }
     finally{ setGenAction(false); }
   };
@@ -94,8 +97,12 @@ export default function PartesContent() {
           <td className="px-4 py-3 text-sm flex items-center gap-2">{icon(i.complianceStatus)}{i.complianceStatus==='COMPLIES'?'Cumple':i.complianceStatus==='PARTIAL'?'Parcial':i.complianceStatus==='NON_COMPLIANT'?'No cumple':''}</td>
           <td className="px-4 py-3 text-sm">{i.complianceLevel?`${i.complianceLevel}%`:'—'}</td>
           <td className="px-4 py-3 text-sm">{i.requiresAction?'Sí':'No'}</td>
-          <td className="px-4 py-3 text-sm"><div className="flex gap-2">
-            {i.requiresAction&&<button onClick={()=>gen(i)} disabled={genAction} className="px-2 py-1 text-xs bg-green-600 text-white rounded disabled:opacity-50">Generar Acción</button>}
+          <td className="px-4 py-3 text-sm"><div className="flex gap-2 items-center">
+            {i.requiresAction&&(
+              i.actionItemId
+                ? <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded flex items-center gap-1"><CheckCircle className="w-3 h-3 text-green-500"/> Acción creada</span>
+                : <button onClick={()=>gen(i)} disabled={genAction} className="px-2 py-1 text-xs bg-green-600 text-white rounded disabled:opacity-50">Generar Acción</button>
+            )}
             <button onClick={()=>open(i)} className="p-1 hover:bg-gray-200 rounded"><Edit className="w-4 h-4"/></button>
             <button onClick={()=>del(i.id)} className="p-1 hover:bg-gray-200 rounded"><Trash2 className="w-4 h-4"/></button>
           </div></td>

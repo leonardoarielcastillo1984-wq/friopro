@@ -3123,6 +3123,7 @@ model Stakeholder {
   complianceEvidence    String?   @map("compliance_evidence")
   indicatorId           String?   @map("indicator_id") @db.Uuid
   requiresAction        Boolean?  @map("requires_action") @default(false)
+  actionItemId          String?   @map("action_item_id") @db.Uuid
   deletedAt     DateTime?
   createdAt     DateTime  @default(now()) @db.Timestamptz
   updatedAt     DateTime  @updatedAt @db.Timestamptz
