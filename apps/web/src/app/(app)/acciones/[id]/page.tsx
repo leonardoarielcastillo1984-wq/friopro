@@ -8,6 +8,32 @@ import {
   Loader2, FileText, Shield, Search, Wrench, Repeat, BarChart3, Lock
 } from 'lucide-react';
 
+const sourceTypeMap: Record<string, string> = {
+  MANUAL: 'Manual', AUDIT: 'Auditoría', NCR: 'No Conformidad',
+  INDICATOR: 'Indicador', REVIEW: 'Revisión Dirección', RISK: 'Riesgo',
+  FODA: 'FODA', DAFO: 'DAFO', STAKEHOLDER: 'Parte Interesada',
+};
+const typeMap: Record<string, string> = {
+  CORRECTIVE: 'Correctiva', PREVENTIVE: 'Preventiva', IMPROVEMENT: 'Mejora',
+};
+const statusMap: Record<string, string> = {
+  OPEN: 'Abierta', IN_PROGRESS: 'En progreso', VERIFICATION: 'Verificación',
+  CLOSED: 'Cerrada', CANCELLED: 'Cancelada',
+};
+const priorityMap: Record<string, string> = {
+  LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', CRITICAL: 'Crítica',
+};
+const originMap: Record<string, string> = {
+  AUDIT: 'Auditoría', CLIENT: 'Cliente', PROCESS: 'Proceso',
+  STAKEHOLDER: 'Parte Interesada', MANUAL: 'Manual',
+};
+
+function sourceTypeLabel(v?: string) { return sourceTypeMap[v || ''] || v || '—'; }
+function typeLabel(v?: string) { return typeMap[v || ''] || v || '—'; }
+function statusLabel(v?: string) { return statusMap[v || ''] || v || '—'; }
+function priorityLabel(v?: string) { return priorityMap[v || ''] || v || '—'; }
+function originLabel(v?: string) { return originMap[v || ''] || v || '—'; }
+
 type ActionItem = {
   id: string;
   code: string;
@@ -197,7 +223,7 @@ export default function ActionDetailPage() {
                   item.status === 'CLOSED' ? 'bg-green-100 text-green-700' :
                   item.status === 'OPEN' ? 'bg-yellow-100 text-yellow-700' :
                   'bg-blue-100 text-blue-700'
-                }`}>{item.status}</span>
+                }`}>{statusLabel(item.status)}</span>
               </div>
               <h1 className="text-xl font-bold text-gray-900">{item.title}</h1>
               <p className="text-sm text-gray-500 mt-1">{item.description}</p>
@@ -251,7 +277,7 @@ export default function ActionDetailPage() {
               <Field label="Detectado por" k="detectedBy" />
             </div>
             <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
-              <strong>Datos base:</strong> Tipo: {item.type}, Prioridad: {item.priority}, Origen sistema: {item.sourceType}
+              <strong>Datos base:</strong> Tipo: {typeLabel(item.type)}, Prioridad: {priorityLabel(item.priority)}, Origen sistema: {sourceTypeLabel(item.sourceType)}
             </div>
           </SectionCard>
         )}

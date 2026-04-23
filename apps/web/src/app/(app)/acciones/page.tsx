@@ -2,6 +2,32 @@
 import { CheckSquare, ArrowRight } from 'lucide-react';
 import GenericCrudPage from '@/components/GenericCrudPage';
 
+const sourceTypeMap: Record<string, string> = {
+  MANUAL: 'Manual', AUDIT: 'Auditoría', NCR: 'No Conformidad',
+  INDICATOR: 'Indicador', REVIEW: 'Revisión Dirección', RISK: 'Riesgo',
+  FODA: 'FODA', DAFO: 'DAFO', STAKEHOLDER: 'Parte Interesada',
+};
+const typeMap: Record<string, string> = {
+  CORRECTIVE: 'Correctiva', PREVENTIVE: 'Preventiva', IMPROVEMENT: 'Mejora',
+};
+const statusMap: Record<string, string> = {
+  OPEN: 'Abierta', IN_PROGRESS: 'En progreso', VERIFICATION: 'Verificación',
+  CLOSED: 'Cerrada', CANCELLED: 'Cancelada',
+};
+const originMap: Record<string, string> = {
+  AUDIT: 'Auditoría', CLIENT: 'Cliente', PROCESS: 'Proceso',
+  STAKEHOLDER: 'Parte Interesada', MANUAL: 'Manual',
+};
+const priorityMap: Record<string, string> = {
+  LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', CRITICAL: 'Crítica',
+};
+
+function sourceTypeLabel(v?: string) { return sourceTypeMap[v || ''] || v || '—'; }
+function typeLabel(v?: string) { return typeMap[v || ''] || v || '—'; }
+function statusLabel(v?: string) { return statusMap[v || ''] || v || '—'; }
+function originLabel(v?: string) { return originMap[v || ''] || v || '—'; }
+function priorityLabel(v?: string) { return priorityMap[v || ''] || v || '—'; }
+
 export default function AccionesPage() {
   return (
           <GenericCrudPage
@@ -77,8 +103,8 @@ export default function AccionesPage() {
                   {i.title}
                 </a>
               )},
-              { key: 'sourceType', label: 'Categoría' },
-              { key: 'type', label: 'Tipo' },
+              { key: 'sourceType', label: 'Categoría', render: (i) => sourceTypeLabel(i.sourceType) },
+              { key: 'type', label: 'Tipo', render: (i) => typeLabel(i.type) },
               { key: 'progress', label: 'Progreso', render: (i) => {
                 const pct = i.progress ?? 0;
                 let color = 'bg-red-500';
@@ -96,7 +122,7 @@ export default function AccionesPage() {
                   </div>
                 );
               }},
-              { key: 'status', label: 'Estado' },
+              { key: 'status', label: 'Estado', render: (i) => statusLabel(i.status) },
               { key: 'assignedToId', label: 'Responsable' },
               { key: 'dueDate', label: 'Revisión', render: (i) => i.dueDate ? new Date(i.dueDate).toLocaleDateString() : '—' },
             ]}
