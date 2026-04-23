@@ -11,6 +11,7 @@ export default function StakeholderClient() {
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('ALL');
   const [genAction, setGenAction] = useState(false);
+  const [original, setOriginal] = useState<any>(null);
 
   useEffect(() => { load(); }, []);
   const load = async () => {
@@ -20,7 +21,9 @@ export default function StakeholderClient() {
     finally { setLoading(false); }
   };
   const open = (item?: any) => {
-    setEditing(item || { name:'', type:'EXTERNAL', category:'CUSTOMER', influence:3, interest:3, complianceStatus:'COMPLIES', complianceLevel:100, requiresAction:false });
+    const base = item ? { ...item } : { name:'', type:'EXTERNAL', category:'CUSTOMER', influence:3, interest:3, complianceStatus:'COMPLIES', complianceLevel:100, requiresAction:false };
+    setEditing(base);
+    setOriginal(item ? { ...item } : null);
     setShowModal(true);
   };
   const save = async (e: React.FormEvent) => {
@@ -32,8 +35,23 @@ export default function StakeholderClient() {
     if (d.requiresAction && d.complianceStatus === 'COMPLIES') { alert('No requiere acción si Cumple'); return; }
     setSaving(true);
     try {
-      if (d.id) await apiFetch(`/stakeholders/${d.id}`, { method:'PUT', json:d });
-      else await apiFetch('/stakeholders', { method:'POST', json:d });
+      if (d.id) {
+        await apiFetch(`/stakeholders/${d.id}`, { method:'PATCH', json:d });
+        // Si cambiaron campos de cumplimiento y tiene CAPA vinculada, ofrecer reabrir
+        const relevantChanged = original && d.actionItemId && (
+          original.complianceStatus !== d.complianceStatus ||
+          original.complianceLevel !== d.complianceLevel ||
+          original.requiresAction !== d.requiresAction
+        );
+        if (relevantChanged) {
+          if (confirm('La evaluación de cumplimiento cambió y esta parte interesada tiene una acción CAPA vinculada. ¿Desea reabrir la acción para re-análisis?')) {
+            await apiFetch(`/actions/${d.actionItemId}`, { method:'PATCH', json:{ status:'IN_PROGRESS', closedAt:null } });
+            alert('Acción CAPA reabierta para re-análisis.');
+          }
+        }
+      } else {
+        await apiFetch('/stakeholders', { method:'POST', json:d });
+      }
       setShowModal(false); load();
     } catch (e: any) { alert('Error: '+e.message); }
     finally { setSaving(false); }
