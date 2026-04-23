@@ -719,11 +719,11 @@ export default function Objectives360Page() {
         </Button>
       </div>
 
-      <Dashboard />
-      <FiltersPanel />
-      <TableSection />
-      <FormDialog />
-      <DetailDialog />
+      {Dashboard()}
+      {FiltersPanel()}
+      {TableSection()}
+      {FormDialog()}
+      {DetailDialog()}
     </div>
   );
 }
