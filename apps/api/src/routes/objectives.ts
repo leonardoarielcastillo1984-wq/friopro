@@ -364,7 +364,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
         cancelled,
         atRisk: notAchieved,
         delayed: notAchieved,
-        averageProgress: Math.round(avgProgress._avg?.progress ?? 0),
+        avgProgress: Math.round(avgProgress._avg?.progress ?? 0),
       };
     });
     return reply.send(stats);
