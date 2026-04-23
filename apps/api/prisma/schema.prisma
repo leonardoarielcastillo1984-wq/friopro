@@ -3056,6 +3056,48 @@ model ActionItem {
   residualImpact     Int?    @default(1) // 1-5
   residualRiskLevel  String? // LOW, MEDIUM, HIGH, CRITICAL (calculado)
   riskReduction      Float?   // % de reducción (calculado)
+  // -------- SECCIÓN 1: IDENTIFICACIÓN --------
+  origin        String?   // AUDIT, CLIENT, PROCESS, STAKEHOLDER, MANUAL
+  affectedArea  String?
+  detectedBy    String?
+
+  // -------- SECCIÓN 2: CONTENCIÓN --------
+  containmentActions    String?
+  containmentResponsibleId String? @db.Uuid
+  containmentImplementedAt DateTime?
+  containmentResult     String?
+
+  // -------- SECCIÓN 3: CAUSA RAÍZ --------
+  rootCauseMethod       String?   // FIVE_WHY, ISHIKAWA, OTHER
+  rootCause             String?
+  rootCauseEvidence     String?
+
+  // -------- SECCIÓN 4: ACCIÓN CORRECTIVA --------
+  correctiveAction      String?
+  correctiveResponsibleId String? @db.Uuid
+  correctiveDueDate     DateTime?
+  correctiveResources   String?
+
+  // -------- SECCIÓN 5: ACCIÓN PREVENTIVA --------
+  preventiveAction      String?
+  processChanges        String?
+  documentationChanges  String?
+
+  // -------- SECCIÓN 6: EVALUACIÓN DE EFICACIA --------
+  verificationMethod    String?
+  relatedIndicatorId  String?   @db.Uuid
+  effectivenessResult String?   // EFFECTIVE, NOT_EFFECTIVE
+  effectivenessEvaluatedAt DateTime?
+
+  // -------- SECCIÓN 7: CIERRE --------
+  closedAt            DateTime?
+  approvedById        String?   @db.Uuid
+  closureComments     String?
+
+  // -------- PROGRESO --------
+  progress            Int       @default(0)
+
+  // Campos existentes (mantenidos)
   effectivenessCheck String?
   effectivenessVerifiedAt DateTime?
   effectivenessVerifiedById String? @db.Uuid
