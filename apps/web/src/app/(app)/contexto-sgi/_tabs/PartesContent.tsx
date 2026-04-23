@@ -90,7 +90,7 @@ export default function PartesContent() {
         {fi.map((i:any)=>(<tr key={i.id} className="hover:bg-gray-50">
           <td className="px-4 py-3 text-sm font-medium">{i.name}</td>
           <td className="px-4 py-3 text-sm">{i.type==='INTERNAL'?'Interna':'Externa'}</td>
-          <td className="px-4 py-3 text-sm">{i.category}</td>
+          <td className="px-4 py-3 text-sm">{i.category==='EMPLOYEE'?'Empleado':i.category==='CUSTOMER'?'Cliente':i.category==='SUPPLIER'?'Proveedor':i.category==='COMMUNITY'?'Comunidad':i.category==='REGULATOR'?'Regulador':i.category==='SHAREHOLDER'?'Accionista':i.category==='OTHER'?'Otro':i.category}</td>
           <td className="px-4 py-3 text-sm flex items-center gap-2">{icon(i.complianceStatus)}{i.complianceStatus==='COMPLIES'?'Cumple':i.complianceStatus==='PARTIAL'?'Parcial':i.complianceStatus==='NON_COMPLIANT'?'No cumple':''}</td>
           <td className="px-4 py-3 text-sm">{i.complianceLevel?`${i.complianceLevel}%`:'—'}</td>
           <td className="px-4 py-3 text-sm">{i.requiresAction?'Sí':'No'}</td>
