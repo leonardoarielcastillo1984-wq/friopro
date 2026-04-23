@@ -148,6 +148,32 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
           data.updatedById = req.auth?.userId ?? null;
         }
 
+        // ----- CAPA PROGRESS & VALIDATION (actionItem only) -----
+        if (opts.model === 'actionItem') {
+          const merged = { ...existing, ...data };
+          let progress = 0;
+          if (merged.origin || merged.affectedArea || merged.detectedBy) progress += 15;
+          if (merged.containmentActions || merged.containmentResult) progress += 15;
+          if (merged.rootCause) progress += 15;
+          if (merged.correctiveAction) progress += 15;
+          if (merged.preventiveAction || merged.processChanges || merged.documentationChanges) progress += 15;
+          if (merged.effectivenessResult) progress += 15;
+          if (merged.closedAt || merged.status === 'CLOSED') progress += 10;
+          data.progress = Math.min(100, progress);
+
+          // Validate closure requirements
+          if (data.status === 'CLOSED' || data.closedAt) {
+            const missing: string[] = [];
+            if (!merged.rootCause?.trim()) missing.push('causa raíz');
+            if (!merged.correctiveAction?.trim()) missing.push('acción correctiva');
+            if (!merged.effectivenessResult) missing.push('evaluación de eficacia');
+            if (missing.length > 0) {
+              throw new Error(`No se puede cerrar la acción. Faltan: ${missing.join(', ')}`);
+            }
+          }
+        }
+        // ----------------------------------------------------------
+
         return tx[opts.model].update({ where: { id }, data });
       });
       return reply.send({ item });
