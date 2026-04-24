@@ -38,7 +38,7 @@ export default function PoliciesPage() {
   const fetchPolicies = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/objectives/policies');
+      const res = await fetch('/api/objectives/policies', { credentials: 'include' });
       if (!res.ok) throw new Error('Error al cargar políticas');
       const data = await res.json();
       setPolicies(data);
@@ -63,6 +63,7 @@ export default function PoliciesPage() {
       const method = editingPolicy ? 'PATCH' : 'POST';
       const res = await fetch(url, {
         method,
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
@@ -80,7 +81,7 @@ export default function PoliciesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar esta política?')) return;
     try {
-      const res = await fetch(`/api/objectives/policies/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/objectives/policies/${id}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) throw new Error('Error al eliminar');
       alert('Política eliminada');
       fetchPolicies();
