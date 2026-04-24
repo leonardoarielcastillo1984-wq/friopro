@@ -495,13 +495,12 @@ export default function Objectives360Page() {
           </DialogHeader>
           <div className="w-full">
             <Tabs defaultValue="basic">
-              <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="basic">Información</TabsTrigger>
-              <TabsTrigger value="policy">Política</TabsTrigger>
-              <TabsTrigger value="indicators">Indicadores</TabsTrigger>
-              <TabsTrigger value="owner">Responsable</TabsTrigger>
-              <TabsTrigger value="details">Detalles</TabsTrigger>
-            </TabsList>
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="basic">Información</TabsTrigger>
+                <TabsTrigger value="indicators">Indicadores</TabsTrigger>
+                <TabsTrigger value="owner">Responsable</TabsTrigger>
+                <TabsTrigger value="details">Detalles</TabsTrigger>
+              </TabsList>
             <TabsContent value="basic" className="space-y-4 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2 md:col-span-2">
@@ -590,33 +589,9 @@ export default function Objectives360Page() {
                     <option value="CRITICAL">Crítica</option>
                   </select>
                 </div>
-              </div>
-            </TabsContent>
-            <TabsContent value="policy" className="space-y-4 py-4">
-              <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-2">
-                  <Label>Política asociada</Label>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                    value={formData.policyId || ''}
-                    onChange={(e) => update('policyId', e.target.value || undefined)}
-                  >
-                    <option value="">— Sin política —</option>
-                    {policies.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                  {policies.length === 0 && (
-                    <p className="text-xs text-muted-foreground">No hay políticas disponibles. Cree una política primero.</p>
-                  )}
-                </div>
-              </div>
-            </TabsContent>
-            <TabsContent value="indicators" className="space-y-4 py-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Meta</Label>
-                  <Input value={formData.target || ''} onChange={(e) => update('target', e.target.value)} />
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Meta *</Label>
+                  <Input value={formData.target || ''} onChange={(e) => update('target', e.target.value)} placeholder="Descripción de la meta" />
                 </div>
                 <div className="space-y-2">
                   <Label>Valor meta</Label>
@@ -624,13 +599,17 @@ export default function Objectives360Page() {
                 </div>
                 <div className="space-y-2">
                   <Label>Unidad</Label>
-                  <Input value={formData.unit || ''} onChange={(e) => update('unit', e.target.value)} />
+                  <Input value={formData.unit || ''} onChange={(e) => update('unit', e.target.value)} placeholder="Ej: %, días, unidades" />
                 </div>
                 <div className="space-y-2">
                   <Label>Progreso (%)</Label>
                   <Input type="number" min={0} max={100} value={formData.progress || 0} onChange={(e) => update('progress', Number(e.target.value))} />
                 </div>
-                <div className="space-y-2">
+              </div>
+            </TabsContent>
+            <TabsContent value="indicators" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
                   <Label>Nombre del KPI</Label>
                   <Input value={formData.kpiName || ''} onChange={(e) => update('kpiName', e.target.value)} />
                 </div>
