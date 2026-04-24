@@ -1174,16 +1174,6 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     });
   });
 
-  // GET /hr/employee-competencies
-  fastify.get('/employee-competencies', async (req, reply) => {
-    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
-    const items = await req.db.prisma.employeeCompetency.findMany({
-      where: { employee: { tenantId: req.db.tenantId } },
-      include: { employee: true, competency: true },
-    });
-    return reply.send(items);
-  });
-
   // POST /hr/employee-competencies (upsert)
   fastify.post('/employee-competencies', async (req, reply) => {
     if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
