@@ -51,6 +51,7 @@ interface Objective {
   targetValue?: number;
   unit?: string;
   type?: string;
+  scope?: string;
   sites?: string[];
   responsibleId?: string;
   startDate?: string;
@@ -61,6 +62,14 @@ interface Objective {
   notes?: string;
   policyId?: string;
   processId?: string;
+  priority?: string;
+  kpiName?: string;
+  kpiTarget?: number;
+  kpiUnit?: string;
+  owner?: string;
+  responsible?: string;
+  sede?: string;
+  tags?: string;
   policy?: { id: string; name: string } | null;
   process?: { id: string; name: string } | null;
   activities?: ObjectiveActivity[];
@@ -484,100 +493,190 @@ export default function Objectives360Page() {
           <DialogHeader>
             <DialogTitle>{editingObjective ? 'Editar objetivo' : 'Nuevo objetivo'}</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-            <div className="space-y-2 md:col-span-2">
-              <Label>Código</Label>
-              <Input value={formData.code || ''} onChange={(e) => update('code', e.target.value)} />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>Título</Label>
-              <Input value={formData.title || ''} onChange={(e) => update('title', e.target.value)} />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>Descripción</Label>
-              <Input value={formData.description || ''} onChange={(e) => update('description', e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Año</Label>
-              <Input type="number" value={formData.year || ''} onChange={(e) => update('year', Number(e.target.value))} />
-            </div>
-            <div className="space-y-2">
-              <Label>Norma</Label>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value={formData.standard || 'ISO 9001'}
-                onChange={(e) => update('standard', e.target.value)}
-              >
-                <option>ISO 9001</option>
-                <option>ISO 14001</option>
-                <option>ISO 45001</option>
-                <option>MULTIPLE</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value={formData.type || 'STRATEGIC'}
-                onChange={(e) => update('type', e.target.value)}
-              >
-                <option value="STRATEGIC">Estratégico</option>
-                <option value="OPERATIONAL">Operativo</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Meta</Label>
-              <Input value={formData.target || ''} onChange={(e) => update('target', e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Valor meta</Label>
-              <Input type="number" value={formData.targetValue || ''} onChange={(e) => update('targetValue', Number(e.target.value))} />
-            </div>
-            <div className="space-y-2">
-              <Label>Unidad</Label>
-              <Input value={formData.unit || ''} onChange={(e) => update('unit', e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Progreso (%)</Label>
-              <Input type="number" min={0} max={100} value={formData.progress || 0} onChange={(e) => update('progress', Number(e.target.value))} />
-            </div>
-            <div className="space-y-2">
-              <Label>Inicio</Label>
-              <Input type="date" value={formData.startDate || ''} onChange={(e) => update('startDate', e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Fin</Label>
-              <Input type="date" value={formData.endDate || ''} onChange={(e) => update('endDate', e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Estado</Label>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value={formData.status || 'PLANNED'}
-                onChange={(e) => update('status', e.target.value)}
-              >
-                {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Política</Label>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value={formData.policyId || ''}
-                onChange={(e) => update('policyId', e.target.value || undefined)}
-              >
-                <option value="">— Sin política —</option>
-                {policies.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>Notas</Label>
-              <Input value={formData.notes || ''} onChange={(e) => update('notes', e.target.value)} />
-            </div>
+          <div className="w-full">
+            <Tabs defaultValue="basic">
+              <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="basic">Información</TabsTrigger>
+              <TabsTrigger value="policy">Política</TabsTrigger>
+              <TabsTrigger value="indicators">Indicadores</TabsTrigger>
+              <TabsTrigger value="owner">Responsable</TabsTrigger>
+              <TabsTrigger value="details">Detalles</TabsTrigger>
+            </TabsList>
+            <TabsContent value="basic" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Código</Label>
+                  <Input value={formData.code || ''} onChange={(e) => update('code', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Título</Label>
+                  <Input value={formData.title || ''} onChange={(e) => update('title', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Descripción</Label>
+                  <Input value={formData.description || ''} onChange={(e) => update('description', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.type || 'STRATEGIC'}
+                    onChange={(e) => update('type', e.target.value)}
+                  >
+                    <option value="STRATEGIC">Estratégico</option>
+                    <option value="OPERATIONAL">Operativo</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Alcance</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.scope || 'QUALITY'}
+                    onChange={(e) => update('scope', e.target.value)}
+                  >
+                    <option value="QUALITY">Calidad</option>
+                    <option value="ENVIRONMENT">Medio Ambiente</option>
+                    <option value="SAFETY">Seguridad</option>
+                    <option value="INTEGRATED">Integrado</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Norma</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.standard || 'ISO 9001'}
+                    onChange={(e) => update('standard', e.target.value)}
+                  >
+                    <option>ISO 9001</option>
+                    <option>ISO 14001</option>
+                    <option>ISO 45001</option>
+                    <option>MULTIPLE</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Año</Label>
+                  <Input type="number" value={formData.year || ''} onChange={(e) => update('year', Number(e.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Inicio</Label>
+                  <Input type="date" value={formData.startDate || ''} onChange={(e) => update('startDate', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fin</Label>
+                  <Input type="date" value={formData.endDate || ''} onChange={(e) => update('endDate', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Estado</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.status || 'PLANNED'}
+                    onChange={(e) => update('status', e.target.value)}
+                  >
+                    {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Prioridad</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.priority || 'MEDIUM'}
+                    onChange={(e) => update('priority', e.target.value)}
+                  >
+                    <option value="LOW">Baja</option>
+                    <option value="MEDIUM">Media</option>
+                    <option value="HIGH">Alta</option>
+                    <option value="CRITICAL">Crítica</option>
+                  </select>
+                </div>
+              </div>
+            </TabsContent>
+            <TabsContent value="policy" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-2">
+                  <Label>Política asociada</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.policyId || ''}
+                    onChange={(e) => update('policyId', e.target.value || undefined)}
+                  >
+                    <option value="">— Sin política —</option>
+                    {policies.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  {policies.length === 0 && (
+                    <p className="text-xs text-muted-foreground">No hay políticas disponibles. Cree una política primero.</p>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+            <TabsContent value="indicators" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Meta</Label>
+                  <Input value={formData.target || ''} onChange={(e) => update('target', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor meta</Label>
+                  <Input type="number" value={formData.targetValue || ''} onChange={(e) => update('targetValue', Number(e.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Unidad</Label>
+                  <Input value={formData.unit || ''} onChange={(e) => update('unit', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Progreso (%)</Label>
+                  <Input type="number" min={0} max={100} value={formData.progress || 0} onChange={(e) => update('progress', Number(e.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nombre del KPI</Label>
+                  <Input value={formData.kpiName || ''} onChange={(e) => update('kpiName', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Meta del KPI</Label>
+                  <Input type="number" value={formData.kpiTarget || ''} onChange={(e) => update('kpiTarget', Number(e.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Unidad del KPI</Label>
+                  <Input value={formData.kpiUnit || ''} onChange={(e) => update('kpiUnit', e.target.value)} />
+                </div>
+              </div>
+            </TabsContent>
+            <TabsContent value="owner" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Proceso</Label>
+                  <Input value={formData.processId || ''} onChange={(e) => update('processId', e.target.value)} placeholder="ID del proceso" />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Responsable</Label>
+                  <Input value={formData.owner || ''} onChange={(e) => update('owner', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Responsable alternativo</Label>
+                  <Input value={formData.responsible || ''} onChange={(e) => update('responsible', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Sede</Label>
+                  <Input value={formData.sede || ''} onChange={(e) => update('sede', e.target.value)} />
+                </div>
+              </div>
+            </TabsContent>
+            <TabsContent value="details" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Notas</Label>
+                  <Input value={formData.notes || ''} onChange={(e) => update('notes', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Etiquetas</Label>
+                  <Input value={formData.tags || ''} onChange={(e) => update('tags', e.target.value)} placeholder="Separadas por comas" />
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
