@@ -1115,4 +1115,150 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       }
     };
   });
+
+  // ─── Competency Matrix Routes ───
+
+  // GET /hr/competencies/matrix - all data needed for the versatility matrix
+  fastify.get('/competencies/matrix', async (req, reply) => {
+    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+    const prisma = req.db.prisma;
+
+    const [employees, competencies, positionCompetencies, employeeCompetencies] = await Promise.all([
+      prisma.employee.findMany({
+        where: { tenantId, deletedAt: null },
+        include: { position: true, department: true },
+      }),
+      prisma.competency.findMany({
+        where: { tenantId, deletedAt: null },
+      }),
+      prisma.positionCompetency.findMany({
+        where: { position: { tenantId } },
+        include: { position: true },
+      }),
+      prisma.employeeCompetency.findMany({
+        where: { employee: { tenantId } },
+        include: { employee: true, competency: true },
+      }),
+    ]);
+
+    return reply.send({
+      employees: employees.map((e) => ({
+        id: e.id,
+        firstName: e.firstName,
+        lastName: e.lastName,
+        positionId: e.positionId,
+        departmentId: e.departmentId,
+        department: e.department ? { name: e.department.name } : null,
+        position: e.position ? { name: e.position.name } : null,
+      })),
+      competencies: competencies.map((c) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        category: c.category,
+      })),
+      positionCompetencies: positionCompetencies.map((pc) => ({
+        id: pc.id,
+        positionId: pc.positionId,
+        competencyId: pc.competencyId,
+        requiredLevel: pc.requiredLevel,
+      })),
+      employeeCompetencies: employeeCompetencies.map((ec) => ({
+        id: ec.id,
+        employeeId: ec.employeeId,
+        competencyId: ec.competencyId,
+        currentLevel: ec.currentLevel,
+      })),
+    });
+  });
+
+  // GET /hr/competencies
+  fastify.get('/competencies', async (req, reply) => {
+    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    const items = await req.db.prisma.competency.findMany({
+      where: { tenantId: req.db.tenantId, deletedAt: null },
+    });
+    return reply.send(items);
+  });
+
+  // GET /hr/employee-competencies
+  fastify.get('/employee-competencies', async (req, reply) => {
+    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    const items = await req.db.prisma.employeeCompetency.findMany({
+      where: { employee: { tenantId: req.db.tenantId } },
+      include: { employee: true, competency: true },
+    });
+    return reply.send(items);
+  });
+
+  // POST /hr/employee-competencies (upsert)
+  fastify.post('/employee-competencies', async (req, reply) => {
+    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    const body = req.body as any;
+    const { employeeId, competencyId, currentLevel } = body || {};
+    if (!employeeId || !competencyId || typeof currentLevel !== 'number') {
+      return reply.status(400).send({ error: 'Missing required fields' });
+    }
+    const prisma = req.db.prisma;
+    const tenantId = req.db.tenantId;
+
+    const existing = await prisma.employeeCompetency.findFirst({
+      where: { employeeId, competencyId, employee: { tenantId } },
+    });
+
+    if (existing) {
+      const updated = await prisma.employeeCompetency.update({
+        where: { id: existing.id },
+        data: { currentLevel },
+      });
+      return reply.send(updated);
+    }
+
+    const created = await prisma.employeeCompetency.create({
+      data: { employeeId, competencyId, currentLevel, updatedBy: req.auth?.userId || null },
+    });
+    return reply.status(201).send(created);
+  });
+
+  // GET /hr/position-competencies
+  fastify.get('/position-competencies', async (req, reply) => {
+    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    const items = await req.db.prisma.positionCompetency.findMany({
+      where: { position: { tenantId: req.db.tenantId } },
+      include: { position: true, competency: true },
+    });
+    return reply.send(items);
+  });
+
+  // POST /hr/position-competencies (upsert)
+  fastify.post('/position-competencies', async (req, reply) => {
+    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    const body = req.body as any;
+    const { positionId, competencyId, requiredLevel } = body || {};
+    if (!positionId || !competencyId || typeof requiredLevel !== 'number') {
+      return reply.status(400).send({ error: 'Missing required fields' });
+    }
+    const prisma = req.db.prisma;
+    const tenantId = req.db.tenantId;
+
+    const existing = await prisma.positionCompetency.findFirst({
+      where: { positionId, competencyId, position: { tenantId } },
+    });
+
+    if (existing) {
+      const updated = await prisma.positionCompetency.update({
+        where: { id: existing.id },
+        data: { requiredLevel },
+      });
+      return reply.send(updated);
+    }
+
+    const created = await prisma.positionCompetency.create({
+      data: { positionId, competencyId, requiredLevel, updatedBy: req.auth?.userId || null },
+    });
+    return reply.status(201).send(created);
+  });
+
 }
