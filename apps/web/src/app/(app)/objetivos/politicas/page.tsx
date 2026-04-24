@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileText, Plus, Pencil, Trash2, Shield, Save, X } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 interface Policy {
   id: string;
@@ -38,7 +39,7 @@ export default function PoliciesPage() {
   const fetchPolicies = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/objectives/policies', { credentials: 'include' });
+      const res = await apiFetch('/api/objectives/policies');
       if (!res.ok) throw new Error('Error al cargar políticas');
       const data = await res.json();
       setPolicies(data);
@@ -61,11 +62,9 @@ export default function PoliciesPage() {
     try {
       const url = editingPolicy ? `/api/objectives/policies/${editingPolicy.id}` : '/api/objectives/policies';
       const method = editingPolicy ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: formData,
       });
       if (!res.ok) throw new Error('Error al guardar');
       alert(editingPolicy ? 'Política actualizada' : 'Política creada');
@@ -81,7 +80,7 @@ export default function PoliciesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar esta política?')) return;
     try {
-      const res = await fetch(`/api/objectives/policies/${id}`, { method: 'DELETE', credentials: 'include' });
+      const res = await apiFetch(`/api/objectives/policies/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Error al eliminar');
       alert('Política eliminada');
       fetchPolicies();
