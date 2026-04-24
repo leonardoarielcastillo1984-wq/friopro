@@ -1174,15 +1174,6 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     });
   });
 
-  // GET /hr/competencies
-  fastify.get('/competencies', async (req, reply) => {
-    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
-    const items = await req.db.prisma.competency.findMany({
-      where: { tenantId: req.db.tenantId, deletedAt: null },
-    });
-    return reply.send(items);
-  });
-
   // GET /hr/employee-competencies
   fastify.get('/employee-competencies', async (req, reply) => {
     if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
