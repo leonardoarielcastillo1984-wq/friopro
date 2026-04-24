@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +13,6 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileText, Plus, Pencil, Trash2, Shield, Save, X } from 'lucide-react';
-import { toast } from 'sonner';
 
 interface Policy {
   id: string;
@@ -39,12 +37,15 @@ export default function PoliciesPage() {
 
   const fetchPolicies = useCallback(async () => {
     try {
+      setLoading(true);
       const res = await fetch('/api/policies');
       if (!res.ok) throw new Error('Error al cargar políticas');
       const data = await res.json();
       setPolicies(data);
     } catch {
-      toast.error('No se pudieron cargar las políticas');
+      alert('No se pudieron cargar las políticas');
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -54,7 +55,7 @@ export default function PoliciesPage() {
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
-      toast.error('El nombre de la política es obligatorio');
+      alert('El nombre de la política es obligatorio');
       return;
     }
     try {
@@ -66,13 +67,13 @@ export default function PoliciesPage() {
         body: JSON.stringify(formData),
       });
       if (!res.ok) throw new Error('Error al guardar');
-      toast.success(editingPolicy ? 'Política actualizada' : 'Política creada');
+      alert(editingPolicy ? 'Política actualizada' : 'Política creada');
       setDialogOpen(false);
       setEditingPolicy(null);
       setFormData({ name: '', content: '', scope: 'QUALITY', active: true });
       fetchPolicies();
     } catch {
-      toast.error('Error al guardar la política');
+      alert('Error al guardar la política');
     }
   };
 
@@ -81,10 +82,10 @@ export default function PoliciesPage() {
     try {
       const res = await fetch(`/api/policies/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Error al eliminar');
-      toast.success('Política eliminada');
+      alert('Política eliminada');
       fetchPolicies();
     } catch {
-      toast.error('Error al eliminar');
+      alert('Error al eliminar');
     }
   };
 
@@ -103,6 +104,16 @@ export default function PoliciesPage() {
     setEditingPolicy(null);
     setFormData({ name: '', content: '', scope: 'QUALITY', active: true });
     setDialogOpen(true);
+  };
+
+  const scopeLabel = (scope: string) => {
+    switch (scope) {
+      case 'QUALITY': return 'Calidad';
+      case 'ENVIRONMENT': return 'Medio Ambiente';
+      case 'SAFETY': return 'Seguridad';
+      case 'INTEGRATED': return 'Integrado';
+      default: return scope;
+    }
   };
 
   return (
@@ -151,10 +162,7 @@ export default function PoliciesPage() {
                 </div>
               </div>
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-muted w-fit">
-                {policy.scope === 'QUALITY' && 'Calidad'}
-                {policy.scope === 'ENVIRONMENT' && 'Medio Ambiente'}
-                {policy.scope === 'SAFETY' && 'Seguridad'}
-                {policy.scope === 'INTEGRATED' && 'Integrado'}
+                {scopeLabel(policy.scope)}
               </span>
             </CardHeader>
             <CardContent>
@@ -215,7 +223,8 @@ export default function PoliciesPage() {
             </div>
             <div className="space-y-2">
               <Label>Contenido</Label>
-              <Textarea
+              <textarea
+                className="flex min-h-[160px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                 placeholder="Redacte aquí el contenido de la política..."
