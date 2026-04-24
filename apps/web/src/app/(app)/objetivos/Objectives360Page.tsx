@@ -212,10 +212,10 @@ export default function Objectives360Page() {
 
   const loadPolicies = useCallback(async () => {
     try {
-      const res = await apiFetch('/objectives/policies') as { items?: Policy[] };
-      setPolicies(res.items || []);
-    } catch (e) {
-      console.error(e);
+      const res = (await apiFetch('/objectives/policies')) as Policy[];
+      setPolicies(Array.isArray(res) ? res : []);
+    } catch {
+      setPolicies([]);
     }
   }, []);
 
