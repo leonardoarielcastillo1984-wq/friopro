@@ -352,7 +352,7 @@ export default function Objectives360Page() {
       { label: 'Cumplidos', value: stats.achieved, icon: CheckCircle2, color: 'text-green-600' },
       { label: 'En riesgo', value: stats.atRisk, icon: AlertTriangle, color: 'text-red-600' },
       { label: 'Retrasados', value: stats.delayed, icon: XCircle, color: 'text-orange-600' },
-      { label: 'Progreso promedio', value: `${stats.averageProgress}%`, icon: TrendingUp, color: 'text-purple-600' },
+      { label: 'Progreso promedio', value: `${stats?.averageProgress ?? 0}%`, icon: TrendingUp, color: 'text-purple-600' },
     ];
     return (
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
@@ -589,6 +589,21 @@ export default function Objectives360Page() {
                     <option value="CRITICAL">Crítica</option>
                   </select>
                 </div>
+                {policies.length > 0 && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Política SGI</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      value={formData.policyId || ''}
+                      onChange={(e) => update('policyId', e.target.value || undefined)}
+                    >
+                      <option value="">— Sin política —</option>
+                      {policies.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="space-y-2 md:col-span-2">
                   <Label>Meta *</Label>
                   <Input value={formData.target || ''} onChange={(e) => update('target', e.target.value)} placeholder="Descripción de la meta" />
