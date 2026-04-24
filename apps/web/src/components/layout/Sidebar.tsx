@@ -45,6 +45,7 @@ const mainNav = [
   // 2. Contexto estratégico (ISO §4, §6)
   { label: 'Contexto del SGI', icon: Compass, href: '/contexto-sgi' },
   { label: 'Objetivos SGI', icon: Target, href: '/objetivos' },
+  { label: 'Políticas SGI', icon: FileText, href: '/objetivos/politicas' },
 
   // 3. Personas y proveedores
   { label: 'RRHH', icon: Users, href: '/rrhh' },
