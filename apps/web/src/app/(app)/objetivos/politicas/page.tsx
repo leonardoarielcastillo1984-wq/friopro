@@ -64,7 +64,7 @@ export default function PoliciesPage() {
       const method = editingPolicy ? 'PATCH' : 'POST';
       const res = await apiFetch(url, {
         method,
-        body: formData,
+        json: formData,
       });
       if (!res.ok) throw new Error('Error al guardar');
       alert(editingPolicy ? 'Política actualizada' : 'Política creada');

@@ -202,7 +202,20 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   }
 
   function isActive(href: string) {
-    return pathname === href || pathname.startsWith(href + '/');
+    if (pathname === href) return true;
+    if (pathname.startsWith(href + '/')) {
+      // Si existe un item de navegación más específico que también matchea,
+      // no marcar este como activo (para evitar que /objetivos se active en /objetivos/politicas)
+      const hasMoreSpecific = allPages.some(
+        (p) =>
+          p.href !== href &&
+          p.href !== '/' &&
+          (pathname === p.href || pathname.startsWith(p.href + '/'))
+      );
+      if (hasMoreSpecific) return false;
+      return true;
+    }
+    return false;
   }
 
   const userInitial = user?.email?.charAt(0)?.toUpperCase() || '?';
