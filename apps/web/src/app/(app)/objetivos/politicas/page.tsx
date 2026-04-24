@@ -78,8 +78,7 @@ export default function PoliciesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar esta política?')) return;
     try {
-      const res = await apiFetch(`/objectives/policies/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Error al eliminar');
+      await apiFetch(`/objectives/policies/${id}`, { method: 'DELETE' });
       alert('Política eliminada');
       fetchPolicies();
     } catch {
