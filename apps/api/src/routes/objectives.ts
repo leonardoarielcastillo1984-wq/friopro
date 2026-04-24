@@ -108,7 +108,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
         orderBy: { createdAt: 'desc' },
       });
     });
-    return reply.send({ items });
+    return reply.send(items);
   });
 
   app.post('/policies', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -119,7 +119,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.policy.create({ data: { tenantId, ...data } });
     });
-    return reply.code(201).send({ item });
+    return reply.code(201).send(item);
   });
 
   app.patch('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -130,7 +130,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.policy.update({ where: { id }, data });
     });
-    return reply.send({ item });
+    return reply.send(item);
   });
 
   app.delete('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
