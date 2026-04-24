@@ -39,9 +39,7 @@ export default function PoliciesPage() {
   const fetchPolicies = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await apiFetch('/objectives/policies');
-      if (!res.ok) throw new Error('Error al cargar políticas');
-      const data = await res.json();
+      const data = (await apiFetch('/objectives/policies')) as Policy[];
       setPolicies(data);
     } catch {
       alert('No se pudieron cargar las políticas');
@@ -62,11 +60,11 @@ export default function PoliciesPage() {
     try {
       const url = editingPolicy ? `/objectives/policies/${editingPolicy.id}` : '/objectives/policies';
       const method = editingPolicy ? 'PATCH' : 'POST';
-      const res = await apiFetch(url, {
+      await apiFetch(url, {
         method,
         json: formData,
       });
-      if (!res.ok) throw new Error('Error al guardar');
+
       alert(editingPolicy ? 'Política actualizada' : 'Política creada');
       setDialogOpen(false);
       setEditingPolicy(null);
