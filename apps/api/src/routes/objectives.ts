@@ -97,6 +97,51 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(201).send({ item });
   });
 
+  // === POLICIES (must be before /:id to avoid matching 'policies' as an id) ===
+  app.get('/policies', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const tenantId = req.db.tenantId;
+    const q = req.query as any;
+    const items = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.policy.findMany({
+        where: { tenantId, deletedAt: null, ...(q.scope ? { scope: q.scope } : {}) },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+    return reply.send({ items });
+  });
+
+  app.post('/policies', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const tenantId = req.db.tenantId;
+    const schema = z.object({ name: z.string().min(1), content: z.string().optional(), scope: z.string().optional(), active: z.boolean().optional() });
+    const data = schema.parse(req.body);
+    const item = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.policy.create({ data: { tenantId, ...data } });
+    });
+    return reply.code(201).send({ item });
+  });
+
+  app.patch('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    const schema = z.object({ name: z.string().optional(), content: z.string().optional(), scope: z.string().optional(), active: z.boolean().optional() });
+    const data = schema.parse(req.body);
+    const item = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.policy.update({ where: { id }, data });
+    });
+    return reply.send({ item });
+  });
+
+  app.delete('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.policy.update({ where: { id }, data: { deletedAt: new Date() } });
+    });
+    return reply.send({ success: true });
+  });
+
   // Get one
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
@@ -293,50 +338,6 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ success: true });
   });
 
-  // === POLICIES ===
-  app.get('/policies', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
-    const tenantId = req.db.tenantId;
-    const q = req.query as any;
-    const items = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.policy.findMany({
-        where: { tenantId, deletedAt: null, ...(q.scope ? { scope: q.scope } : {}) },
-        orderBy: { createdAt: 'desc' },
-      });
-    });
-    return reply.send({ items });
-  });
-
-  app.post('/policies', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
-    const tenantId = req.db.tenantId;
-    const schema = z.object({ name: z.string().min(1), content: z.string().optional(), scope: z.string().optional() });
-    const data = schema.parse(req.body);
-    const item = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.policy.create({ data: { tenantId, ...data } });
-    });
-    return reply.code(201).send({ item });
-  });
-
-  app.patch('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
-    const { id } = req.params as { id: string };
-    const schema = z.object({ name: z.string().optional(), content: z.string().optional(), scope: z.string().optional(), active: z.boolean().optional() });
-    const data = schema.parse(req.body);
-    const item = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.policy.update({ where: { id }, data });
-    });
-    return reply.send({ item });
-  });
-
-  app.delete('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
-    const { id } = req.params as { id: string };
-    await app.runWithDbContext(req, async (tx: any) => {
-      return tx.policy.update({ where: { id }, data: { deletedAt: new Date() } });
-    });
-    return reply.send({ success: true });
-  });
 
   // === DASHBOARD STATS ===
   app.get('/stats/summary', async (req: FastifyRequest, reply: FastifyReply) => {
