@@ -160,7 +160,7 @@ export default function EmployeesPage() {
 
   const handleCreateEmployee = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    
+
     try {
       const formEl = event.currentTarget;
       const formData = new FormData(formEl);
@@ -174,16 +174,27 @@ export default function EmployeesPage() {
         if (occupant?.id) supervisorId = occupant.id;
       }
 
-      const employeeData = {
+      // Helper to convert DD/MM/YYYY or ISO to ISO date string
+      const toISODate = (val: string | null) => {
+        if (!val) return undefined;
+        const str = val.trim();
+        if (str.includes('/')) {
+          const [d, m, y] = str.split('/');
+          return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+        return str;
+      };
+
+      const employeeData: any = {
         firstName: formData.get('firstName') as string,
         lastName: formData.get('lastName') as string,
         dni: formData.get('dni') as string,
-        birthDate: formData.get('birthDate') as string,
+        birthDate: toISODate(formData.get('birthDate') as string),
         address: formData.get('address') as string,
         phone: formData.get('phone') as string,
         email: formData.get('email') as string,
         cuil: (formData.get('cuil') as string | null)?.trim() || undefined,
-        hireDate: formData.get('hireDate') as string,
+        hireDate: toISODate(formData.get('hireDate') as string),
         contractType: formData.get('contractType') as string,
         departmentId: (formData.get('departmentId') as string | null)?.trim() || undefined,
         positionId: (formData.get('positionId') as string | null)?.trim() || undefined,
@@ -193,21 +204,38 @@ export default function EmployeesPage() {
         notes: (formData.get('notes') as string | null)?.trim() || undefined,
       };
 
-      await apiFetch('/hr/employees', {
-        method: 'POST',
-        json: employeeData
+      // Remove undefined/null fields to avoid sending them to Prisma
+      Object.keys(employeeData).forEach(key => {
+        if (employeeData[key] === undefined || employeeData[key] === null || employeeData[key] === '') {
+          delete employeeData[key];
+        }
       });
 
-      // Close modal and reload employees
+      // Use PATCH if editing an existing employee, POST for new employee
+      if (selectedEmployee?.id) {
+        await apiFetch(`/hr/employees/${selectedEmployee.id}`, {
+          method: 'PATCH',
+          json: employeeData
+        });
+      } else {
+        await apiFetch('/hr/employees', {
+          method: 'POST',
+          json: employeeData
+        });
+      }
+
+      // Close modals and reload employees
       setShowCreateModal(false);
+      setShowEditModal(false);
+      setSelectedEmployee(null);
       loadEmployees();
 
       // Reset form
       formEl?.reset();
 
     } catch (error) {
-      console.error('Error creating employee:', error);
-      alert('Error al crear empleado: ' + (error as Error).message);
+      console.error('Error saving employee:', error);
+      alert('Error al guardar empleado: ' + (error as Error).message);
     }
   };
 
