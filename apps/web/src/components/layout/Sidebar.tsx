@@ -47,7 +47,6 @@ const mainNav = [
   { label: 'Contexto del SGI', icon: Compass, href: '/contexto-sgi' },
   { label: 'Objetivos SGI', icon: Target, href: '/objetivos' },
   { label: 'Políticas SGI', icon: FileText, href: '/objetivos/politicas' },
-  { label: 'Matriz de Polivalencia', icon: Grid3X3, href: '/rrhh/competencias/matriz' },
 
   // 3. Personas y proveedores
   { label: 'RRHH', icon: Users, href: '/rrhh' },
