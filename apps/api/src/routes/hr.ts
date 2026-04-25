@@ -215,28 +215,46 @@ export default async function hrRoutes(fastify: FastifyInstance) {
 
   // Update employee
   fastify.patch('/employees/:id', async (request, reply) => {
-    const { tenantId, userId } = request;
-    const { id } = request.params as { id: string };
-    const data = updateEmployeeSchema.parse(request.body);
+    try {
+      const { tenantId, userId } = request;
+      const { id } = request.params as { id: string };
+      const data = updateEmployeeSchema.parse(request.body);
 
-    const employee = await fastify.prisma.employee.update({
-      where: { id, tenantId },
-      data: {
-        ...data,
-        ...(data.birthDate && { birthDate: new Date(data.birthDate) }),
-        ...(data.hireDate && { hireDate: new Date(data.hireDate) }),
-        updatedById: userId
-      },
-      include: {
-        department: true,
-        position: true,
-        supervisor: {
-          select: { id: true, firstName: true, lastName: true }
+      // Parse DD/MM/YYYY or ISO dates
+      const parseDate = (val: string) => {
+        if (!val) return undefined;
+        if (val.includes('/')) {
+          const [d, m, y] = val.split('/');
+          return new Date(`${y}-${m}-${d}`);
         }
-      }
-    });
+        return new Date(val);
+      };
 
-    return { employee };
+      const employee = await fastify.prisma.employee.update({
+        where: { id, tenantId },
+        data: {
+          ...data,
+          ...(data.birthDate && { birthDate: parseDate(data.birthDate) }),
+          ...(data.hireDate && { hireDate: parseDate(data.hireDate) }),
+          updatedById: userId
+        },
+        include: {
+          department: true,
+          position: true,
+          supervisor: {
+            select: { id: true, firstName: true, lastName: true }
+          }
+        }
+      });
+
+      return { employee };
+    } catch (error) {
+      console.error('[HR] Error updating employee:', error);
+      return reply.code(500).send({
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
   });
 
   // Delete employee (soft delete)
