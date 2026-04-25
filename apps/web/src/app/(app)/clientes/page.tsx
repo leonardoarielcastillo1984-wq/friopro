@@ -37,6 +37,10 @@ interface Customer {
   notes?: string;
   createdAt: string;
   _count?: { surveys: number };
+  avgSatisfaction?: number | null;
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  lastSurveyDate?: string | null;
+  lastSatisfactionScore?: number | null;
 }
 
 interface Survey {
@@ -57,8 +61,9 @@ interface CustomerStats {
   activeCustomers: number;
   totalSurveys: number;
   totalResponses: number;
-  avgSatisfaction: number;
-  responseRate: number;
+  avgSatisfaction: number | null;
+  highRiskCount: number;
+  withoutSurvey: number;
 }
 
 const DEFAULT_STATS: CustomerStats = {
@@ -66,8 +71,9 @@ const DEFAULT_STATS: CustomerStats = {
   activeCustomers: 0,
   totalSurveys: 0,
   totalResponses: 0,
-  avgSatisfaction: 0,
-  responseRate: 0,
+  avgSatisfaction: null,
+  highRiskCount: 0,
+  withoutSurvey: 0,
 };
 
 export default function ClientesPage() {
@@ -86,6 +92,15 @@ export default function ClientesPage() {
   const [showSurveyModal, setShowSurveyModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [editingSurvey, setEditingSurvey] = useState<Survey | null>(null);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [actionCustomer, setActionCustomer] = useState<Customer | null>(null);
+  const [actionType, setActionType] = useState<'NC' | 'CAPA' | 'PLAN'>('NC');
+  const [actionTitle, setActionTitle] = useState('');
+  const [actionDescription, setActionDescription] = useState('');
+  const [actionSeverity, setActionSeverity] = useState('MAJOR');
+  const [showAiAnalysis, setShowAiAnalysis] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -94,9 +109,10 @@ export default function ClientesPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [customersRes, surveysRes] = await Promise.all([
+      const [customersRes, surveysRes, statsRes] = await Promise.all([
         apiFetch<{ customers: Customer[] }>('/customers'),
         apiFetch<{ surveys: Survey[] }>('/surveys'),
+        apiFetch<{ stats: CustomerStats }>('/customers/stats').catch(() => null),
       ]);
 
       const customersData = customersRes?.customers || [];
@@ -105,18 +121,24 @@ export default function ClientesPage() {
       setCustomers(customersData);
       setSurveys(surveysData);
 
-      // Calculate stats
-      const activeCustomers = customersData.filter(c => c.status === 'ACTIVE').length;
-      const totalResponses = surveysData.reduce((acc, s) => acc + (s._count?.responses || 0), 0);
-      
-      setStats({
-        totalCustomers: customersData.length,
-        activeCustomers,
-        totalSurveys: surveysData.length,
-        totalResponses,
-        avgSatisfaction: 4.2, // Mock data
-        responseRate: 68, // Mock data
-      });
+      if (statsRes?.stats) {
+        setStats(statsRes.stats);
+      } else {
+        const activeCustomers = customersData.filter(c => c.status === 'ACTIVE').length;
+        const totalResponses = surveysData.reduce((acc, s) => acc + (s._count?.responses || 0), 0);
+        const avgSatisfaction = customersData.length > 0
+          ? (customersData.reduce((acc, c) => acc + (c.avgSatisfaction || 0), 0) / customersData.filter(c => c.avgSatisfaction !== null && c.avgSatisfaction !== undefined).length || null)
+          : null;
+        setStats({
+          totalCustomers: customersData.length,
+          activeCustomers,
+          totalSurveys: surveysData.length,
+          totalResponses,
+          avgSatisfaction: avgSatisfaction !== null && !isNaN(avgSatisfaction) ? avgSatisfaction : null,
+          highRiskCount: customersData.filter(c => c.riskLevel === 'HIGH').length,
+          withoutSurvey: 0,
+        });
+      }
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -141,6 +163,50 @@ export default function ClientesPage() {
       await loadData();
     } catch (err) {
       console.error('Error deleting survey:', err);
+    }
+  };
+
+  const openActionModal = (customer: Customer, type: 'NC' | 'CAPA' | 'PLAN' = 'NC') => {
+    setActionCustomer(customer);
+    setActionType(type);
+    setActionTitle(type === 'NC' ? `NC - ${customer.name}` : type === 'CAPA' ? `CAPA - ${customer.name}` : `Plan de Mejora - ${customer.name}`);
+    setActionDescription('');
+    setActionSeverity('MAJOR');
+    setShowActionModal(true);
+  };
+
+  const handleCreateAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!actionCustomer) return;
+    try {
+      await apiFetch(`/customers/${actionCustomer.id}/actions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          type: actionType,
+          title: actionTitle,
+          description: actionDescription,
+          severity: actionSeverity,
+        }),
+      });
+      setShowActionModal(false);
+      alert('Acción creada exitosamente');
+    } catch (err) {
+      console.error('Error creating action:', err);
+      alert('Error al crear la acción');
+    }
+  };
+
+  const handleAiAnalysis = async () => {
+    setAiLoading(true);
+    try {
+      const res = await apiFetch<{ analysis: any }>('/customers/analyze', { method: 'POST' });
+      setAiAnalysis(res?.analysis || null);
+      setShowAiAnalysis(true);
+    } catch (err) {
+      console.error('Error running AI analysis:', err);
+      alert('Error al ejecutar análisis');
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -197,6 +263,17 @@ export default function ClientesPage() {
       </div>
 
       {/* Stats Cards */}
+      <div className="flex items-center justify-end mb-4">
+        <button
+          onClick={handleAiAnalysis}
+          disabled={aiLoading}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+        >
+          <BarChart3 className="w-4 h-4" />
+          {aiLoading ? 'Analizando...' : 'Analizar con IA'}
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
@@ -232,20 +309,23 @@ export default function ClientesPage() {
           <div className="text-sm text-gray-600 mt-1">Encuestas Creadas</div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className={`rounded-xl border p-6 ${stats.highRiskCount > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-amber-100 rounded-lg">
-              <Star className="w-5 h-5 text-amber-600" />
+            <div className={`p-2 rounded-lg ${stats.highRiskCount > 0 ? 'bg-red-100' : 'bg-amber-100'}`}>
+              <AlertTriangle className={`w-5 h-5 ${stats.highRiskCount > 0 ? 'text-red-600' : 'text-amber-600'}`} />
             </div>
-            <span className="text-sm text-green-600 flex items-center">
-              <ArrowUpRight className="w-4 h-4 mr-1" />
-              5%
-            </span>
           </div>
-          <div className="text-2xl font-bold text-gray-900">{stats.avgSatisfaction.toFixed(1)}</div>
-          <div className="text-sm text-gray-600 mt-1">Satisfacción Promedio</div>
+          <div className={`text-2xl font-bold ${stats.highRiskCount > 0 ? 'text-red-900' : 'text-gray-900'}`}>{stats.highRiskCount}</div>
+          <div className={`text-sm mt-1 ${stats.highRiskCount > 0 ? 'text-red-600 font-medium' : 'text-gray-600'}`}>Clientes en Riesgo</div>
         </div>
       </div>
+
+      {stats.withoutSurvey > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600" />
+          <span className="text-amber-800 font-medium">{stats.withoutSurvey} clientes sin encuestas en los últimos 90 días</span>
+        </div>
+      )}
 
       {/* Tab Content */}
       {activeTab === 'customers' ? (
@@ -324,7 +404,9 @@ export default function ClientesPage() {
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Contacto</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Tipo</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Estado</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Encuestas</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Satisfacción</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Riesgo</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Última Encuesta</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Acciones</th>
                   </tr>
                 </thead>
@@ -372,12 +454,40 @@ export default function ClientesPage() {
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="text-sm text-gray-600">
-                          {customer._count?.surveys || 0} encuestas
-                        </span>
+                        {customer.avgSatisfaction !== null && customer.avgSatisfaction !== undefined ? (
+                          <div className="flex items-center gap-1">
+                            <Star className={`w-4 h-4 ${customer.avgSatisfaction >= 4 ? 'text-amber-500 fill-amber-500' : customer.avgSatisfaction >= 3 ? 'text-amber-400' : 'text-red-500'}`} />
+                            <span className="text-sm font-medium text-gray-700">{customer.avgSatisfaction.toFixed(1)}</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">Sin datos</span>
+                        )}
                       </td>
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
+                        {customer.riskLevel ? (
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            customer.riskLevel === 'LOW' ? 'bg-green-100 text-green-700' :
+                            customer.riskLevel === 'MEDIUM' ? 'bg-amber-100 text-amber-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {customer.riskLevel === 'LOW' ? 'Bajo' :
+                             customer.riskLevel === 'MEDIUM' ? 'Medio' : 'Alto'}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {customer.lastSurveyDate ? (
+                          <span className="text-sm text-gray-600">
+                            {new Date(customer.lastSurveyDate).toLocaleDateString('es-AR')}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">Sin encuestas</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1">
                           <Link
                             href={`/clientes/${customer.id}`}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -385,6 +495,20 @@ export default function ClientesPage() {
                           >
                             <Eye className="w-4 h-4" />
                           </Link>
+                          <button
+                            onClick={() => openActionModal(customer, 'NC')}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Generar NC"
+                          >
+                            <AlertCircle className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openActionModal(customer, 'PLAN')}
+                            className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Plan de Mejora"
+                          >
+                            <ClipboardList className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => {
                               setEditingCustomer(customer);
@@ -537,6 +661,196 @@ export default function ClientesPage() {
           }}
         />
       )}
+
+      {showActionModal && actionCustomer && (
+        <ActionModal
+          customer={actionCustomer}
+          type={actionType}
+          title={actionTitle}
+          description={actionDescription}
+          severity={actionSeverity}
+          onClose={() => setShowActionModal(false)}
+          onSubmit={handleCreateAction}
+          setTitle={setActionTitle}
+          setDescription={setActionDescription}
+          setType={setActionType}
+          setSeverity={setActionSeverity}
+        />
+      )}
+
+      {showAiAnalysis && aiAnalysis && (
+        <AiAnalysisModal
+          analysis={aiAnalysis}
+          onClose={() => setShowAiAnalysis(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Action Modal Component
+function ActionModal({
+  customer,
+  type,
+  title,
+  description,
+  severity,
+  onClose,
+  onSubmit,
+  setTitle,
+  setDescription,
+  setType,
+  setSeverity,
+}: {
+  customer: Customer;
+  type: 'NC' | 'CAPA' | 'PLAN';
+  title: string;
+  description: string;
+  severity: string;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+  setTitle: (v: string) => void;
+  setDescription: (v: string) => void;
+  setType: (v: 'NC' | 'CAPA' | 'PLAN') => void;
+  setSeverity: (v: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-lg">
+        <div className="border-b border-gray-200 p-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {type === 'NC' ? 'Generar No Conformidad' : type === 'CAPA' ? 'Generar CAPA' : 'Crear Plan de Mejora'} - {customer.name}
+          </h2>
+          <button onClick={onClose} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <form onSubmit={onSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de acción</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value as any)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="NC">No Conformidad</option>
+              <option value="CAPA">CAPA (Correctiva/Preventiva)</option>
+              <option value="PLAN">Plan de Mejora</option>
+            </select>
+          </div>
+          {(type === 'NC' || type === 'CAPA') && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Severidad</label>
+              <select
+                value={severity}
+                onChange={(e) => setSeverity(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="CRITICAL">Crítica</option>
+                <option value="MAJOR">Mayor</option>
+                <option value="MINOR">Menor</option>
+                <option value="OBSERVATION">Observación</option>
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+            <input
+              type="text"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+              Cancelar
+            </button>
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              Crear
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// AI Analysis Modal Component
+function AiAnalysisModal({
+  analysis,
+  onClose,
+}: {
+  analysis: any;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+        <div className="border-b border-gray-200 p-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">
+            <BarChart3 className="w-5 h-5 inline mr-2 text-indigo-600" />
+            Análisis de Clientes con IA
+          </h2>
+          <button onClick={onClose} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-6">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-blue-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-blue-900">{analysis.overallAvg?.toFixed(1) ?? 'N/A'}</div>
+              <div className="text-sm text-blue-700">Satisfacción Promedio</div>
+            </div>
+            <div className="bg-red-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-red-900">{analysis.highRiskCount ?? 0}</div>
+              <div className="text-sm text-red-700">Clientes en Riesgo</div>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-amber-900">{analysis.noSurvey90Days?.length ?? 0}</div>
+              <div className="text-sm text-amber-700">Sin encuesta 90 días</div>
+            </div>
+          </div>
+
+          {analysis.highRiskCustomers && analysis.highRiskCustomers.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Clientes con Riesgo Crítico</h3>
+              <div className="space-y-2">
+                {analysis.highRiskCustomers.map((c: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between bg-red-50 rounded-lg p-3">
+                    <span className="text-sm font-medium text-gray-900">Cliente #{i + 1}</span>
+                    <span className="text-sm font-bold text-red-600">{c.avgScore?.toFixed(1) ?? 'N/A'} ({c.count} respuestas)</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {analysis.recommendations && analysis.recommendations.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Recomendaciones</h3>
+              <div className="space-y-2">
+                {analysis.recommendations.map((r: string, i: number) => (
+                  <div key={i} className="flex items-start gap-2 bg-indigo-50 rounded-lg p-3">
+                    <CheckCircle className="w-4 h-4 text-indigo-600 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-indigo-900">{r}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
