@@ -2,7 +2,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Download, Edit3, Save, X } from 'lucide-react';
+import {
+  ChevronLeft, Download, Edit3, Save, X,
+  AlertTriangle, BookOpen, GraduationCap, Plus, Target, Zap,
+  ArrowRight, Clock, CalendarDays, Users
+} from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 // ─── Types ───
@@ -42,6 +46,17 @@ interface MatrixData {
   competencies: Competency[];
   positionCompetencies: PositionCompetency[];
   employeeCompetencies: EmployeeCompetency[];
+}
+
+interface Gap {
+  employeeId: string;
+  employeeName: string;
+  positionName: string;
+  competencyId: string;
+  competencyName: string;
+  requiredLevel: number;
+  actualLevel: number;
+  gapLevels: number;
 }
 
 // ─── Color helpers ───
@@ -125,6 +140,22 @@ export default function MatrizPolivalenciaPage() {
   const [compFilter, setCompFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'all' | 'competencias'>('competencias');
 
+  // Gap intelligence state
+  const [showGapModal, setShowGapModal] = useState(false);
+  const [selectedGap, setSelectedGap] = useState<Gap | null>(null);
+  const [showTrainingModal, setShowTrainingModal] = useState(false);
+  const [creatingTraining, setCreatingTraining] = useState(false);
+  const [trainingForm, setTrainingForm] = useState({
+    title: '',
+    description: '',
+    category: 'Competencias',
+    modality: 'PRESENCIAL',
+    durationHours: '4',
+    scheduledDate: '',
+    instructor: '',
+    location: '',
+  });
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -177,6 +208,84 @@ export default function MatrizPolivalenciaPage() {
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [data]);
+
+  // Compute all gaps (ES < DEBE) for operational intelligence
+  const allGaps = useMemo<Gap[]>(() => {
+    if (!data) return [];
+    const gaps: Gap[] = [];
+    filteredEmployees.forEach((emp) => {
+      filteredCompetencies.forEach((comp) => {
+        const req = getRequired(emp, comp.id);
+        const act = getActual(emp, comp.id);
+        if (req > 0 && act < req) {
+          gaps.push({
+            employeeId: emp.id,
+            employeeName: `${emp.firstName} ${emp.lastName}`,
+            positionName: emp.position?.name || '',
+            competencyId: comp.id,
+            competencyName: comp.name,
+            requiredLevel: req,
+            actualLevel: act,
+            gapLevels: req - act,
+          });
+        }
+      });
+    });
+    // Sort by biggest gap first
+    return gaps.sort((a, b) => b.gapLevels - a.gapLevels);
+  }, [data, filteredEmployees, filteredCompetencies]);
+
+  const openGapModal = (gap: Gap) => {
+    setSelectedGap(gap);
+    setTrainingForm({
+      title: `Capacitación: ${gap.competencyName}`,
+      description: `Brecha detectada en ${gap.competencyName}. Nivel requerido: ${gap.requiredLevel} (${getLevelLabel(gap.requiredLevel)}), Nivel actual: ${gap.actualLevel} (${getLevelLabel(gap.actualLevel)}).`,
+      category: 'Competencias',
+      modality: 'PRESENCIAL',
+      durationHours: String(gap.gapLevels * 4),
+      scheduledDate: '',
+      instructor: '',
+      location: '',
+    });
+    setShowGapModal(true);
+  };
+
+  const handleCreateTraining = async () => {
+    if (!selectedGap || !trainingForm.title) return;
+    setCreatingTraining(true);
+    try {
+      const res = await apiFetch('/trainings', {
+        method: 'POST',
+        json: {
+          title: trainingForm.title,
+          description: trainingForm.description || undefined,
+          category: trainingForm.category,
+          modality: trainingForm.modality,
+          durationHours: parseFloat(trainingForm.durationHours) || 4,
+          scheduledDate: trainingForm.scheduledDate ? new Date(trainingForm.scheduledDate).toISOString() : undefined,
+          instructor: trainingForm.instructor || undefined,
+          location: trainingForm.location || undefined,
+          expectedParticipants: 1,
+        },
+      });
+      // Add attendee
+      const trainingRes = res as any;
+      if (trainingRes?.training?.id) {
+        await apiFetch(`/trainings/${trainingRes.training.id}/attendees`, {
+          method: 'POST',
+          json: { employeeIds: [selectedGap.employeeId] },
+        });
+      }
+      setShowTrainingModal(false);
+      setShowGapModal(false);
+      setSelectedGap(null);
+      alert('Capacitación creada y empleado vinculado exitosamente');
+    } catch (e: any) {
+      alert(e?.message || 'Error al crear capacitación');
+    } finally {
+      setCreatingTraining(false);
+    }
+  };
 
   // Cell value getters
   const getRequired = (emp: Employee, compId: string): number => {
@@ -398,6 +507,53 @@ export default function MatrizPolivalenciaPage() {
         </div>
       </div>
 
+      {/* Gap Intelligence Panel */}
+      {allGaps.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              <h3 className="font-semibold text-amber-800">
+                Inteligencia Operativa — Brechas Detectadas
+              </h3>
+              <span className="bg-amber-200 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full">
+                {allGaps.length} brecha{allGaps.length > 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {allGaps.slice(0, 5).map((gap, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between bg-white rounded-md px-3 py-2 border border-amber-100 cursor-pointer hover:bg-amber-50 transition-colors"
+                onClick={() => openGapModal(gap)}
+              >
+                <div className="flex items-center gap-3">
+                  <Target className="w-4 h-4 text-amber-500" />
+                  <div>
+                    <span className="font-medium text-sm text-gray-800">{gap.employeeName}</span>
+                    <span className="text-xs text-gray-500 ml-2">({gap.positionName})</span>
+                  </div>
+                  <span className="text-sm text-gray-600">
+                    <span className="font-semibold text-red-600">{gap.competencyName}</span>
+                    <span className="mx-1">—</span>
+                    DEBE {gap.requiredLevel} vs ES {gap.actualLevel}
+                  </span>
+                </div>
+                <button className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-md font-medium hover:bg-amber-200 flex items-center gap-1">
+                  <Zap className="w-3 h-3" /> Acción sugerida
+                </button>
+              </div>
+            ))}
+            {allGaps.length > 5 && (
+              <div className="text-center text-xs text-amber-600 py-1">
+                + {allGaps.length - 5} brechas más…
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Legend */}
       <div className="flex items-center gap-4 text-sm">
         <span className="text-gray-500 font-medium">Niveles:</span>
@@ -504,12 +660,29 @@ export default function MatrizPolivalenciaPage() {
                               ))}
                             </select>
                           ) : (
-                            <span
-                              className={`inline-flex items-center justify-center w-8 h-8 rounded-full border text-sm font-semibold ${getLevelColor(act)} ${gap ? 'ring-2 ring-red-400 ring-offset-1' : ''}`}
-                              title={gap ? 'Brecha detectada' : getLevelLabel(act)}
+                            <button
+                              onClick={() => {
+                                if (gap) {
+                                  const comp = data?.competencies.find((c) => c.id === compId);
+                                  if (comp) {
+                                    openGapModal({
+                                      employeeId: emp.id,
+                                      employeeName: `${emp.firstName} ${emp.lastName}`,
+                                      positionName: emp.position?.name || '',
+                                      competencyId: compId,
+                                      competencyName: comp.name,
+                                      requiredLevel: req,
+                                      actualLevel: act,
+                                      gapLevels: req - act,
+                                    });
+                                  }
+                                }
+                              }}
+                              className={`inline-flex items-center justify-center w-8 h-8 rounded-full border text-sm font-semibold ${getLevelColor(act)} ${gap ? 'ring-2 ring-red-400 ring-offset-1 cursor-pointer hover:scale-110 transition-transform' : ''}`}
+                              title={gap ? 'Click para ver brecha y acción sugerida' : getLevelLabel(act)}
                             >
                               {act || '-'}
-                            </span>
+                            </button>
                           )}
                         </td>
                       );
@@ -565,9 +738,218 @@ export default function MatrizPolivalenciaPage() {
         </div>
         <div className="bg-amber-50 p-3 rounded-md">
           <div className="font-medium text-amber-800 mb-1">Consejo</div>
-          <div className="text-xs text-amber-700">Haz clic en los valores para ver el detalle de cada evaluación y evidencias asociadas.</div>
+          <div className="text-xs text-amber-700">Haz clic en los valores marcados con brecha para ver la acción sugerida y crear capacitaciones.</div>
         </div>
       </div>
+
+      {/* ─── Gap Detail Modal ─── */}
+      {showGapModal && selectedGap && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-6 h-6 text-amber-600" />
+                  <h2 className="text-xl font-bold text-gray-900">Brecha Detectada</h2>
+                </div>
+                <button
+                  onClick={() => { setShowGapModal(false); setSelectedGap(null); }}
+                  className="p-1 hover:bg-gray-100 rounded-md"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-gray-500" />
+                    <span className="font-medium text-gray-900">{selectedGap.employeeName}</span>
+                    <span className="text-sm text-gray-500">({selectedGap.positionName})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Target className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm text-gray-600">Competencia:</span>
+                    <span className="font-medium text-gray-900">{selectedGap.competencyName}</span>
+                  </div>
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-500">DEBE</span>
+                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full border text-xs font-bold ${getLevelColor(selectedGap.requiredLevel)}`}>
+                        {selectedGap.requiredLevel}
+                      </span>
+                      <span className="text-xs text-gray-500">({getLevelLabel(selectedGap.requiredLevel)})</span>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-gray-400" />
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-500">ES</span>
+                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full border text-xs font-bold ${getLevelColor(selectedGap.actualLevel)}`}>
+                        {selectedGap.actualLevel}
+                      </span>
+                      <span className="text-xs text-gray-500">({getLevelLabel(selectedGap.actualLevel)})</span>
+                    </div>
+                    <div className="ml-auto bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-md">
+                      Brecha: {selectedGap.gapLevels} nivel{selectedGap.gapLevels > 1 ? 'es' : ''}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="w-5 h-5 text-amber-600" />
+                    <h3 className="font-semibold text-amber-800">Acción sugerida</h3>
+                  </div>
+                  <p className="text-sm text-amber-700">
+                    Programar capacitación en <strong>{selectedGap.competencyName}</strong> para elevar el nivel desde {getLevelLabel(selectedGap.actualLevel)} ({selectedGap.actualLevel}) hasta {getLevelLabel(selectedGap.requiredLevel)} ({selectedGap.requiredLevel}).
+                  </p>
+                  <p className="text-sm text-amber-600 mt-1">
+                    Duración estimada: <strong>{selectedGap.gapLevels * 4} horas</strong>
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setShowTrainingModal(true)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                  >
+                    <GraduationCap className="w-4 h-4" />
+                    Crear Capacitación
+                  </button>
+                  <button
+                    onClick={() => { setShowGapModal(false); setSelectedGap(null); }}
+                    className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Training Creation Modal ─── */}
+      {showTrainingModal && selectedGap && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-6 h-6 text-primary" />
+                  <h2 className="text-xl font-bold text-gray-900">Nueva Capacitación</h2>
+                </div>
+                <button
+                  onClick={() => setShowTrainingModal(false)}
+                  className="p-1 hover:bg-gray-100 rounded-md"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    value={trainingForm.title}
+                    onChange={(e) => setTrainingForm((f) => ({ ...f, title: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                  <textarea
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm h-20"
+                    value={trainingForm.description}
+                    onChange={(e) => setTrainingForm((f) => ({ ...f, description: e.target.value }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Modalidad</label>
+                    <select
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      value={trainingForm.modality}
+                      onChange={(e) => setTrainingForm((f) => ({ ...f, modality: e.target.value }))}
+                    >
+                      <option value="PRESENCIAL">Presencial</option>
+                      <option value="VIRTUAL">Virtual</option>
+                      <option value="MIXTA">Mixta</option>
+                      <option value="E_LEARNING">E-Learning</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Duración (hs)</label>
+                    <input
+                      type="number"
+                      min="0.25"
+                      step="0.25"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      value={trainingForm.durationHours}
+                      onChange={(e) => setTrainingForm((f) => ({ ...f, durationHours: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Instructor</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="Nombre del instructor"
+                    value={trainingForm.instructor}
+                    onChange={(e) => setTrainingForm((f) => ({ ...f, instructor: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="Sala, sede o link virtual"
+                    value={trainingForm.location}
+                    onChange={(e) => setTrainingForm((f) => ({ ...f, location: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha programada</label>
+                  <input
+                    type="datetime-local"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    value={trainingForm.scheduledDate}
+                    onChange={(e) => setTrainingForm((f) => ({ ...f, scheduledDate: e.target.value }))}
+                  />
+                </div>
+
+                <div className="bg-gray-50 rounded-md p-3 text-sm">
+                  <div className="font-medium text-gray-700 mb-1">Participante vinculado</div>
+                  <div className="text-gray-600">{selectedGap.employeeName} — {selectedGap.positionName}</div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={handleCreateTraining}
+                    disabled={creatingTraining}
+                    className="flex-1 flex items-center justify-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {creatingTraining ? (
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                    ) : (
+                      <Plus className="w-4 h-4" />
+                    )}
+                    {creatingTraining ? 'Creando...' : 'Crear Capacitación'}
+                  </button>
+                  <button
+                    onClick={() => setShowTrainingModal(false)}
+                    className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
