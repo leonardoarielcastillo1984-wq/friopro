@@ -456,7 +456,11 @@ export default function MatrizPolivalenciaPage() {
                             value={req || ''}
                             onChange={(e) => {
                               const val = parseInt(e.target.value, 10);
-                              if (emp.positionId) updateRequired(emp.positionId, compId, val);
+                              if (!emp.positionId) {
+                                alert('El empleado no tiene un puesto asignado. Asigne un puesto primero en RRHH > Empleados.');
+                                return;
+                              }
+                              updateRequired(emp.positionId, compId, val);
                             }}
                           >
                             <option value="">-</option>

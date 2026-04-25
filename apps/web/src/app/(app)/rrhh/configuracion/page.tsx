@@ -48,7 +48,6 @@ const DEFAULT_COMPETENCY_LEVELS: CompetencyLevel[] = [
   { level: 2, name: 'Intermedio', description: 'Puede trabajar con supervisión ocasional' },
   { level: 3, name: 'Avanzado', description: 'Trabaja independientemente, resuelve problemas complejos' },
   { level: 4, name: 'Experto', description: 'Referente técnico, guía a otros' },
-  { level: 5, name: 'Maestro', description: 'Innova y transforma procesos, mentor de otros' },
 ];
 
 const DEFAULT_CONTRACT_TYPES: ContractType[] = [
