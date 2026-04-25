@@ -152,51 +152,41 @@ export default async function hrRoutes(fastify: FastifyInstance) {
 
       let supervisorId = data.supervisorId;
       if (!supervisorId && data.reportsToPositionId) {
-        const occupant = await fastify.prisma.employee.findFirst({
-          where: {
-            tenantId,
-            positionId: data.reportsToPositionId,
-            deletedAt: null,
-            status: 'ACTIVE',
-          },
-          select: { id: true },
-          orderBy: { createdAt: 'asc' },
-        });
-        supervisorId = occupant?.id;
-      }
-
       // Check for duplicate DNI or email
       const existing = await fastify.prisma.employee.findFirst({
         where: {
           OR: [
-            { dni: data.dni, tenantId },
-            { email: data.email, tenantId }
+            { dni: data.dni },
+            { email: data.email }
           ],
-          deletedAt: null
+          tenantId
         }
       });
 
       if (existing) {
-        return reply.code(400).send({ 
-          error: 'Employee with this DNI or email already exists' 
-        });
+        return reply.code(400).send({ error: 'Employee with this DNI or email already exists' });
       }
+
+      const supervisorId = data.supervisorId || null;
+
+      // Parse DD/MM/YYYY or ISO dates
+      const parseDate = (val: string) => {
+        if (!val) return undefined;
+        if (val.includes('/')) {
+          const [d, m, y] = val.split('/');
+          return new Date(`${y}-${m}-${d}`);
+        }
+        return new Date(val);
+      };
 
       const employee = await fastify.prisma.employee.create({
         data: {
           ...data,
           supervisorId,
-          birthDate: new Date(data.birthDate),
-          hireDate: new Date(data.hireDate),
+          birthDate: parseDate(data.birthDate),
+          hireDate: parseDate(data.hireDate),
           tenantId,
-          createdById: userId
-        },
-        include: {
-          department: true,
-          position: true,
-          reportsToPosition: {
-            select: { id: true, name: true }
-          },
+          createdById: userId,
           supervisor: {
             select: { id: true, firstName: true, lastName: true }
           }
