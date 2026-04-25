@@ -810,7 +810,7 @@ export default function MatrizPolivalenciaPage() {
                 <div className="flex gap-3 pt-2">
                   <button
                     onClick={() => setShowTrainingModal(true)}
-                    className="flex-1 flex items-center justify-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                    className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
                   >
                     <GraduationCap className="w-4 h-4" />
                     Crear Solicitud de Capacitación
