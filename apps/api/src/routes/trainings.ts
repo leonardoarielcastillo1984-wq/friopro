@@ -549,7 +549,7 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = z.object({
-      completionDate: z.string().datetime().optional(),
+      completionDate: z.string().optional(),
     }).parse(req.body);
 
     const training = await app.prisma.sgiTraining.findFirst({
@@ -557,11 +557,20 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!training) return reply.code(404).send({ error: 'Training not found' });
 
+    const parseDate = (val: string) => {
+      if (!val) return new Date();
+      if (val.includes('/')) {
+        const [d, m, y] = val.split('/');
+        return new Date(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T00:00:00`);
+      }
+      return new Date(val);
+    };
+
     const updated = await app.prisma.sgiTraining.update({
       where: { id },
       data: {
         status: 'COMPLETED',
-        completedDate: body.completionDate ? new Date(body.completionDate) : new Date(),
+        completedDate: body.completionDate ? parseDate(body.completionDate) : new Date(),
         completedById: req.auth?.userId ?? null,
       },
     });
