@@ -247,6 +247,8 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
       scheduledDate: z.string().datetime().optional(),
       expectedParticipants: z.number().int().min(0).optional(),
       standard: z.string().optional(),
+      competencyId: z.string().uuid().optional(),
+      gapLevel: z.number().int().min(1).max(5).optional(),
     });
 
     const body = schema.parse(req.body);
@@ -267,6 +269,8 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
           scheduledDate: body.scheduledDate ? new Date(body.scheduledDate) : null,
           expectedParticipants: body.expectedParticipants ?? 0,
           standard: body.standard ?? null,
+          competencyId: body.competencyId ?? null,
+          gapLevel: body.gapLevel ?? null,
           status: 'SCHEDULED',
           coordinatorId: req.auth?.userId ?? null,
           createdById: req.auth?.userId ?? null,
@@ -574,6 +578,55 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
         completedById: req.auth?.userId ?? null,
       },
     });
+
+    // If linked to a competency, auto-update employee competency levels
+    if (training.competencyId) {
+      const attendees = await app.prisma.sgiTrainingAttendee.findMany({
+        where: { trainingId: id, employeeId: { not: null } },
+        select: { employeeId: true },
+      });
+
+      for (const attendee of attendees) {
+        if (!attendee.employeeId) continue;
+
+        // Find employee's current position to get required level
+        const employee = await app.prisma.employee.findUnique({
+          where: { id: attendee.employeeId },
+          select: { positionId: true },
+        });
+
+        let targetLevel = training.gapLevel ?? 1;
+        if (employee?.positionId) {
+          const pc = await app.prisma.positionCompetency.findFirst({
+            where: {
+              positionId: employee.positionId,
+              competencyId: training.competencyId,
+            },
+            select: { requiredLevel: true },
+          });
+          if (pc?.requiredLevel) targetLevel = pc.requiredLevel;
+        }
+
+        await app.prisma.employeeCompetency.upsert({
+          where: {
+            employeeId_competencyId: {
+              employeeId: attendee.employeeId,
+              competencyId: training.competencyId,
+            },
+          },
+          create: {
+            employeeId: attendee.employeeId,
+            competencyId: training.competencyId,
+            currentLevel: targetLevel,
+            assessedAt: new Date(),
+          },
+          update: {
+            currentLevel: targetLevel,
+            assessedAt: new Date(),
+          },
+        });
+      }
+    }
 
     return reply.send({ training: updated, message: 'Capacitación completada exitosamente' });
   });

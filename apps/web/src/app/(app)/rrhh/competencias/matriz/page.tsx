@@ -283,6 +283,8 @@ export default function MatrizPolivalenciaPage() {
           instructor: trainingForm.instructor || undefined,
           location: trainingForm.location || undefined,
           expectedParticipants: 1,
+          competencyId: selectedGap.competencyId,
+          gapLevel: selectedGap.requiredLevel,
         },
       });
       // Add attendee
