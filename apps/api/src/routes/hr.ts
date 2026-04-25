@@ -19,8 +19,8 @@ const createEmployeeSchema = z.object({
   supervisorId: z.string().uuid().optional(),
   reportsToPositionId: z.string().uuid().optional(),
   notes: z.string().optional(),
-  employeeCompetencies: z.array(z.any()).optional(),
-  supervisorType: z.string().optional(),
+  employeeCompetencies: z.any().optional(),
+  supervisorType: z.any().optional(),
 });
 
 const createUserSchema = z.object({
