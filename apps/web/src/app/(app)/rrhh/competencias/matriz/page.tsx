@@ -209,6 +209,23 @@ export default function MatrizPolivalenciaPage() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [data]);
 
+  // Cell value getters
+  const getRequired = (emp: Employee, compId: string): number => {
+    if (!data || !emp.positionId) return 0;
+    const pc = data.positionCompetencies.find(
+      (p) => p.positionId === emp.positionId && p.competencyId === compId
+    );
+    return pc?.requiredLevel || 0;
+  };
+
+  const getActual = (emp: Employee, compId: string): number => {
+    if (!data) return 0;
+    const ec = data.employeeCompetencies.find(
+      (e) => e.employeeId === emp.id && e.competencyId === compId
+    );
+    return ec?.currentLevel || 0;
+  };
+
   // Compute all gaps (ES < DEBE) for operational intelligence
   const allGaps = useMemo<Gap[]>(() => {
     if (!data) return [];
@@ -285,23 +302,6 @@ export default function MatrizPolivalenciaPage() {
     } finally {
       setCreatingTraining(false);
     }
-  };
-
-  // Cell value getters
-  const getRequired = (emp: Employee, compId: string): number => {
-    if (!data || !emp.positionId) return 0;
-    const pc = data.positionCompetencies.find(
-      (p) => p.positionId === emp.positionId && p.competencyId === compId
-    );
-    return pc?.requiredLevel || 0;
-  };
-
-  const getActual = (emp: Employee, compId: string): number => {
-    if (!data) return 0;
-    const ec = data.employeeCompetencies.find(
-      (e) => e.employeeId === emp.id && e.competencyId === compId
-    );
-    return ec?.currentLevel || 0;
   };
 
   // Update actual level
