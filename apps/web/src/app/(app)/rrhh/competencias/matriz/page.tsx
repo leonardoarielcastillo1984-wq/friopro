@@ -279,7 +279,7 @@ export default function MatrizPolivalenciaPage() {
       setShowTrainingModal(false);
       setShowGapModal(false);
       setSelectedGap(null);
-      alert('Capacitación creada y empleado vinculado exitosamente');
+      alert('Solicitud de capacitación creada y empleado vinculado exitosamente');
     } catch (e: any) {
       alert(e?.message || 'Error al crear capacitación');
     } finally {
@@ -813,7 +813,7 @@ export default function MatrizPolivalenciaPage() {
                     className="flex-1 flex items-center justify-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg font-medium hover:bg-primary/90 transition-colors"
                   >
                     <GraduationCap className="w-4 h-4" />
-                    Crear Capacitación
+                    Crear Solicitud de Capacitación
                   </button>
                   <button
                     onClick={() => { setShowGapModal(false); setSelectedGap(null); }}
@@ -836,7 +836,7 @@ export default function MatrizPolivalenciaPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <BookOpen className="w-6 h-6 text-primary" />
-                  <h2 className="text-xl font-bold text-gray-900">Nueva Capacitación</h2>
+                  <h2 className="text-xl font-bold text-gray-900">Nueva Solicitud de Capacitación</h2>
                 </div>
                 <button
                   onClick={() => setShowTrainingModal(false)}
@@ -936,7 +936,7 @@ export default function MatrizPolivalenciaPage() {
                     ) : (
                       <Plus className="w-4 h-4" />
                     )}
-                    {creatingTraining ? 'Creando...' : 'Crear Capacitación'}
+                    {creatingTraining ? 'Creando...' : 'Crear Solicitud'}
                   </button>
                   <button
                     onClick={() => setShowTrainingModal(false)}
