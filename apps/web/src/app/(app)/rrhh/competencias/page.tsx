@@ -68,6 +68,7 @@ export default function CompetenciasPage() {
   const [showForm, setShowForm] = useState(false);
   const [showEvaluationForm, setShowEvaluationForm] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [activeTab, setActiveTab] = useState<'competencies' | 'employees' | 'matrix'>('competencies');
 
   useEffect(() => {
     loadData();
@@ -383,7 +384,9 @@ export default function CompetenciasPage() {
                                   <div
                                     key={level}
                                     className={`w-2 h-2 rounded-full ${
-                                      level <= ec.currentLevel ? 'bg-blue-500' : 'bg-gray-300'
+                                      level <= ec.currentLevel 
+                                        ? 'bg-blue-500' 
+                                        : 'bg-gray-300'
                                     }`}
                                   />
                                 ))}
@@ -396,7 +399,9 @@ export default function CompetenciasPage() {
                                   <div
                                     key={level}
                                     className={`w-2 h-2 rounded-full ${
-                                      level <= ec.requiredLevel ? 'bg-green-500' : 'bg-gray-300'
+                                      level <= ec.requiredLevel 
+                                        ? 'bg-green-500' 
+                                        : 'bg-gray-300'
                                     }`}
                                   />
                                 ))}
