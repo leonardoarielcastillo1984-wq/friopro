@@ -12,7 +12,7 @@ const createEmployeeSchema = z.object({
   email: z.string().email(),
   cuil: z.string().optional(),
   hireDate: z.string(),
-  contractType: z.enum(['PERMANENT', 'TEMPORARY', 'CONTRACTOR', 'INTERN', 'PART_TIME']),
+  contractType: z.enum(['PERMANENT', 'TEMPORARY', 'CONTRACTOR', 'INTERN', 'PART_TIME', 'FULL_TIME']),
   location: z.string().optional(),
   departmentId: z.string().uuid().optional(),
   positionId: z.string().uuid().optional(),
