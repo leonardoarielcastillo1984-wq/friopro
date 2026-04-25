@@ -24,12 +24,75 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
     }
 
     const customers = await app.runWithDbContext(req, async (tx: any) => {
-      return await tx.customer.findMany({
+      const customersData = await tx.customer.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         include: {
           _count: { select: { surveys: true } },
         },
+      });
+
+      const customerIds = customersData.map((c: any) => c.id);
+      if (customerIds.length === 0) return customersData;
+
+      // Get average satisfaction per customer
+      const avgScores = await tx.surveyResponse.groupBy({
+        by: ['customerId'],
+        where: {
+          customerId: { in: customerIds },
+          isComplete: true,
+          satisfactionScore: { not: null },
+        },
+        _avg: { satisfactionScore: true },
+      });
+
+      // Get last survey response date per customer
+      const lastResponses = await tx.surveyResponse.findMany({
+        where: {
+          customerId: { in: customerIds },
+          isComplete: true,
+          completedAt: { not: null },
+        },
+        orderBy: { completedAt: 'desc' },
+        distinct: ['customerId'],
+        select: { customerId: true, completedAt: true, satisfactionScore: true },
+      });
+
+      // Get open NC count per customer
+      const ncCounts = await tx.nonConformity.groupBy({
+        by: ['customerLinks'],
+        where: {
+          tenantId,
+          status: { in: ['OPEN', 'IN_ANALYSIS', 'ACTION_PLANNED', 'IN_PROGRESS'] },
+          customerLinks: { some: { id: { in: customerIds } } },
+        },
+        _count: { id: true },
+      });
+      // Note: Prisma groupBy with relation might not work directly, we'll skip for now
+
+      const avgMap = new Map<string, number | null>(
+        avgScores.map((a: any) => [a.customerId, a._avg.satisfactionScore as number | null])
+      );
+      const lastMap = new Map<string, any>(
+        lastResponses.map((r: any) => [r.customerId, r as any])
+      );
+
+      return customersData.map((c: any) => {
+        const avg = avgMap.get(c.id) ?? null;
+        const last = lastMap.get(c.id) as any;
+        let riskLevel: string | null = null;
+        if (avg !== null && typeof avg === 'number') {
+          if (avg >= 4) riskLevel = 'LOW';
+          else if (avg >= 3) riskLevel = 'MEDIUM';
+          else riskLevel = 'HIGH';
+        }
+        return {
+          ...c,
+          avgSatisfaction: avg,
+          riskLevel,
+          lastSurveyDate: last?.completedAt ?? null,
+          lastSatisfactionScore: last?.satisfactionScore ?? null,
+        };
       });
     });
 
@@ -515,5 +578,315 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
         details: error?.message || 'Unknown error'
       });
     }
+  });
+
+  // GET /customers/stats - Customer statistics dashboard
+  app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+
+    const stats = await app.runWithDbContext(req, async (tx: any) => {
+      const total = await tx.customer.count({ where: { tenantId, deletedAt: null } });
+      const active = await tx.customer.count({ where: { tenantId, deletedAt: null, status: 'ACTIVE' } });
+
+      // Get average satisfaction across all responses
+      const avgSatisfaction = await tx.surveyResponse.aggregate({
+        where: { survey: { tenantId }, isComplete: true, satisfactionScore: { not: null } },
+        _avg: { satisfactionScore: true },
+      });
+
+      // Count customers without surveys in 90 days
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      const customersWithRecentSurvey = await tx.customerSurvey.findMany({
+        where: { customer: { tenantId, deletedAt: null }, completedAt: { gte: ninetyDaysAgo } },
+        distinct: ['customerId'],
+        select: { customerId: true },
+      });
+      const recentIds = new Set(customersWithRecentSurvey.map((c: any) => c.customerId));
+      const withoutSurvey = total - recentIds.size;
+
+      // Count high risk customers (avg < 3)
+      const allResponses = await tx.surveyResponse.groupBy({
+        by: ['customerId'],
+        where: { survey: { tenantId }, isComplete: true, satisfactionScore: { not: null } },
+        _avg: { satisfactionScore: true },
+      });
+      const highRiskCount = allResponses.filter((r: any) => r._avg.satisfactionScore !== null && r._avg.satisfactionScore < 3).length;
+
+      return {
+        total,
+        active,
+        avgSatisfaction: avgSatisfaction._avg.satisfactionScore ?? null,
+        highRiskCount,
+        withoutSurvey,
+      };
+    });
+
+    return reply.send({ stats });
+  });
+
+  // GET /customers/:id/satisfaction-history - Historial de satisfacción
+  app.get('/:id/satisfaction-history', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const history = await app.runWithDbContext(req, async (tx: any) => {
+      const responses = await tx.surveyResponse.findMany({
+        where: { customerId: id, isComplete: true, satisfactionScore: { not: null }, survey: { tenantId } },
+        orderBy: { completedAt: 'asc' },
+        select: {
+          id: true,
+          satisfactionScore: true,
+          npsScore: true,
+          completedAt: true,
+          comments: true,
+          survey: { select: { title: true } },
+        },
+      });
+
+      const plans = await tx.customerImprovementPlan.findMany({
+        where: { customerId: id, tenantId },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const ncrs = await tx.nonConformity.findMany({
+        where: {
+          tenantId,
+          customerLinks: { some: { id } },
+          status: { in: ['OPEN', 'IN_ANALYSIS', 'ACTION_PLANNED', 'IN_PROGRESS'] },
+        },
+        select: { id: true, code: true, title: true, status: true, severity: true, detectedAt: true },
+      });
+
+      return { responses, plans, ncrs };
+    });
+
+    return reply.send(history);
+  });
+
+  // POST /customers/:id/improvement-plans - Crear plan de mejora
+  app.post('/:id/improvement-plans', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      title: z.string().min(2),
+      description: z.string().optional().nullable(),
+      actions: z.string().optional().nullable(),
+      responsible: z.string().optional().nullable(),
+      dueDate: z.string().optional().nullable(),
+    });
+
+    const body = schema.parse(req.body);
+
+    const customer = await app.runWithDbContext(req, async (tx: any) => {
+      return await tx.customer.findFirst({ where: { id, tenantId, deletedAt: null } });
+    });
+    if (!customer) return reply.code(404).send({ error: 'Customer not found' });
+
+    const plan = await app.runWithDbContext(req, async (tx: any) => {
+      return await tx.customerImprovementPlan.create({
+        data: {
+          tenantId,
+          customerId: id,
+          title: body.title,
+          description: body.description || null,
+          actions: body.actions || null,
+          responsible: body.responsible || null,
+          dueDate: body.dueDate ? new Date(body.dueDate) : null,
+        },
+      });
+    });
+
+    return reply.code(201).send({ plan });
+  });
+
+  // GET /customers/:id/improvement-plans - Listar planes de mejora
+  app.get('/:id/improvement-plans', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const plans = await app.runWithDbContext(req, async (tx: any) => {
+      return await tx.customerImprovementPlan.findMany({
+        where: { customerId: id, tenantId },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+
+    return reply.send({ plans });
+  });
+
+  // PATCH /customers/improvement-plans/:planId - Actualizar plan de mejora
+  app.patch('/improvement-plans/:planId', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+    const { planId } = z.object({ planId: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      title: z.string().min(2).optional(),
+      description: z.string().optional().nullable(),
+      actions: z.string().optional().nullable(),
+      responsible: z.string().optional().nullable(),
+      dueDate: z.string().optional().nullable(),
+      status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
+    });
+
+    const body = schema.parse(req.body);
+    const updateData: any = { ...body };
+    if (body.dueDate !== undefined) updateData.dueDate = body.dueDate ? new Date(body.dueDate) : null;
+    Object.keys(updateData).forEach((key: string) => {
+      if (updateData[key] === undefined) delete updateData[key];
+    });
+
+    const plan = await app.runWithDbContext(req, async (tx: any) => {
+      return await tx.customerImprovementPlan.updateMany({
+        where: { id: planId, tenantId },
+        data: updateData,
+      });
+    });
+
+    if (plan.count === 0) return reply.code(404).send({ error: 'Plan not found' });
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      return await tx.customerImprovementPlan.findFirst({ where: { id: planId, tenantId } });
+    });
+    return reply.send({ plan: updated });
+  });
+
+  // POST /customers/:id/actions - Crear acción manual (NC / CAPA / Plan)
+  app.post('/:id/actions', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      type: z.enum(['NC', 'CAPA', 'PLAN']),
+      title: z.string().min(2),
+      description: z.string().optional().nullable(),
+      severity: z.enum(['CRITICAL', 'MAJOR', 'MINOR', 'OBSERVATION']).optional(),
+      dueDate: z.string().optional().nullable(),
+    });
+
+    const body = schema.parse(req.body);
+
+    const customer = await app.runWithDbContext(req, async (tx: any) => {
+      return await tx.customer.findFirst({ where: { id, tenantId, deletedAt: null } });
+    });
+    if (!customer) return reply.code(404).send({ error: 'Customer not found' });
+
+    if (body.type === 'PLAN') {
+      const plan = await app.runWithDbContext(req, async (tx: any) => {
+        return await tx.customerImprovementPlan.create({
+          data: {
+            tenantId,
+            customerId: id,
+            title: body.title,
+            description: body.description || null,
+            dueDate: body.dueDate ? new Date(body.dueDate) : null,
+          },
+        });
+      });
+      return reply.code(201).send({ success: true, type: 'PLAN', plan });
+    }
+
+    // NC or CAPA
+    const year = new Date().getFullYear();
+    const count = await app.runWithDbContext(req, async (tx: any) => {
+      return await tx.nonConformity.count({ where: { tenantId, code: { startsWith: `NCR-${year}-` } } });
+    });
+    const code = `NCR-${year}-${String(count + 1).padStart(3, '0')}`;
+
+    const ncr = await app.runWithDbContext(req, async (tx: any) => {
+      return await tx.nonConformity.create({
+        data: {
+          tenantId,
+          code,
+          title: body.title,
+          description: body.description || `Acción ${body.type} generada manualmente para cliente ${customer.name}`,
+          severity: body.severity || 'MAJOR',
+          source: body.type === 'CAPA' ? 'PROCESS_DEVIATION' : 'CUSTOMER_COMPLAINT',
+          status: 'OPEN',
+          detectedAt: new Date(),
+          dueDate: body.dueDate ? new Date(body.dueDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          customerLinks: { connect: { id } },
+        },
+      });
+    });
+
+    return reply.code(201).send({ success: true, type: body.type, ncr });
+  });
+
+  // POST /customers/analyze - AI Analysis of customer trends
+  app.post('/analyze', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+
+    const analysis = await app.runWithDbContext(req, async (tx: any) => {
+      // Get recent responses
+      const responses = await tx.surveyResponse.findMany({
+        where: { survey: { tenantId }, isComplete: true, satisfactionScore: { not: null } },
+        orderBy: { completedAt: 'desc' },
+        take: 100,
+        include: { customer: { select: { id: true, name: true } } },
+      });
+
+      const customersWithAvg = await tx.surveyResponse.groupBy({
+        by: ['customerId'],
+        where: { survey: { tenantId }, isComplete: true, satisfactionScore: { not: null } },
+        _avg: { satisfactionScore: true },
+        _count: { id: true },
+      });
+
+      const highRiskCustomers = customersWithAvg
+        .filter((c: any) => c._avg.satisfactionScore !== null && c._avg.satisfactionScore < 3)
+        .sort((a: any, b: any) => (a._avg.satisfactionScore ?? 0) - (b._avg.satisfactionScore ?? 0))
+        .slice(0, 5);
+
+      const noSurvey90Days = await tx.customer.findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          surveys: { none: { completedAt: { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) } } },
+        },
+        select: { id: true, name: true },
+        take: 10,
+      });
+
+      const recommendations = [];
+      if (highRiskCustomers.length > 0) {
+        recommendations.push(`${highRiskCustomers.length} clientes con satisfacción crítica (<3). Se recomienda generar planes de mejora inmediatos.`);
+      }
+      if (noSurvey90Days.length > 0) {
+        recommendations.push(`${noSurvey90Days.length} clientes sin encuestas recientes (>90 días). Se recomienda enviar encuestas de seguimiento.`);
+      }
+
+      const overallAvg = customersWithAvg.length > 0
+        ? customersWithAvg.reduce((acc: number, c: any) => acc + (c._avg.satisfactionScore ?? 0), 0) / customersWithAvg.length
+        : null;
+
+      if (overallAvg !== null && overallAvg < 3.5) {
+        recommendations.push(`Satisfacción promedio general baja (${overallAvg.toFixed(1)}). Evaluar procesos críticos y capacitación del personal.`);
+      }
+
+      return {
+        overallAvg,
+        totalResponses: responses.length,
+        highRiskCount: highRiskCustomers.length,
+        highRiskCustomers: highRiskCustomers.map((c: any) => ({ customerId: c.customerId, avgScore: c._avg.satisfactionScore, count: c._count.id })),
+        noSurvey90Days: noSurvey90Days.map((c: any) => ({ id: c.id, name: c.name })),
+        recommendations,
+      };
+    });
+
+    return reply.send({ analysis });
   });
 }

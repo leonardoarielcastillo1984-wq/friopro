@@ -271,6 +271,7 @@ model Tenant {
   // Customer & Survey Relations
   customers         Customer[]
   surveys           Survey[]
+  improvementPlans  CustomerImprovementPlan[]
   
   // License & Billing Relations
   tenantSetup       TenantSetup?
@@ -2599,6 +2600,7 @@ model Customer {
   ncrLinks    NonConformity[] @relation("CustomerNCR")
   responses   SurveyResponse[]
   documents   Document[] @relation("CustomerDocuments")
+  improvementPlans CustomerImprovementPlan[]
 
   createdAt   DateTime @default(now()) @db.Timestamptz
   updatedAt   DateTime @updatedAt @db.Timestamptz
@@ -3774,4 +3776,30 @@ model ProcessRisk {
   @@index([riskId])
   @@unique([processId, riskId])
   @@map("process_risks")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Módulo de Clientes — Planes de Mejora
+// ═══════════════════════════════════════════════════════════
+model CustomerImprovementPlan {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  customerId String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  actions     String?
+  responsible String?
+  dueDate     DateTime? @db.Timestamptz
+  status      String   @default("OPEN") // OPEN, IN_PROGRESS, COMPLETED, CANCELLED
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([customerId])
+  @@map("customer_improvement_plans")
 }

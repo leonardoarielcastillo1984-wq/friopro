@@ -159,6 +159,152 @@ export default async function surveyPublicRoutes(app: FastifyInstance) {
       },
     });
 
+    // ── Operational Intelligence: Automatic NC generation for low satisfaction ──
+    if (body.isComplete && (satisfactionScore !== null && satisfactionScore !== undefined && satisfactionScore <= 3)) {
+      try {
+        const tenantId = customerSurvey.survey.tenantId;
+        const customerId = customerSurvey.customerId;
+
+        // Check for duplicate open NC in last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const existingNCR = await app.prisma.nonConformity.findFirst({
+          where: {
+            tenantId,
+            status: { in: ['OPEN', 'IN_ANALYSIS'] },
+            source: 'CUSTOMER_COMPLAINT',
+            detectedAt: { gte: thirtyDaysAgo },
+            customerLinks: {
+              some: { id: customerId }
+            }
+          },
+          orderBy: { detectedAt: 'desc' }
+        });
+
+        if (!existingNCR) {
+          const year = new Date().getFullYear();
+          const count = await app.prisma.nonConformity.count({
+            where: { tenantId, code: { startsWith: `NCR-${year}-` } },
+          });
+          const code = `NCR-${year}-${String(count + 1).padStart(3, '0')}`;
+
+          const severity = (satisfactionScore <= 2) ? 'CRITICAL' : 'MAJOR';
+
+          await app.prisma.nonConformity.create({
+            data: {
+              tenantId,
+              code,
+              title: `Baja satisfacción del cliente - ${customerSurvey.customer.name}`,
+              description: `Encuesta completada con puntuación de satisfacción ${satisfactionScore}. ${body.comments || ''}`,
+              severity,
+              source: 'CUSTOMER_COMPLAINT',
+              status: 'OPEN',
+              detectedAt: new Date(),
+              dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+              customerLinks: {
+                connect: { id: customerId }
+              },
+            },
+          });
+        }
+      } catch (ncError) {
+        console.error('Error creating automatic NCR:', ncError);
+        // Non-blocking: don't fail the survey response if NC creation fails
+      }
+    }
+
+    // ── Update Customer Satisfaction Indicator ──
+    if (body.isComplete && satisfactionScore !== null && satisfactionScore !== undefined) {
+      try {
+        const tenantId = customerSurvey.survey.tenantId;
+        const period = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+        // Find or create indicator
+        let indicator = await app.prisma.indicator.findFirst({
+          where: { tenantId, name: { contains: 'Satisfacción', mode: 'insensitive' }, deletedAt: null },
+        });
+
+        if (!indicator) {
+          const year = new Date().getFullYear();
+          const count = await app.prisma.indicator.count({
+            where: { tenantId, code: { startsWith: `IND-${year}-` } },
+          });
+          indicator = await app.prisma.indicator.create({
+            data: {
+              tenantId,
+              code: `IND-${year}-${String(count + 1).padStart(3, '0')}`,
+              name: 'Satisfacción del Cliente',
+              description: 'Indicador de satisfacción promedio de clientes basado en encuestas',
+              category: 'Clientes',
+              unit: 'puntos',
+              frequency: 'MONTHLY',
+              direction: 'HIGHER_BETTER',
+              targetValue: 4,
+              warningValue: 3,
+              criticalValue: 2,
+              ncrTriggerStreak: 2,
+              isActive: true,
+            },
+          });
+        }
+
+        // Calculate average satisfaction for the period
+        const avgResult = await app.prisma.surveyResponse.aggregate({
+          where: {
+            survey: { tenantId },
+            isComplete: true,
+            completedAt: {
+              gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+              lt: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1),
+            },
+            satisfactionScore: { not: null },
+          },
+          _avg: { satisfactionScore: true },
+        });
+
+        const avgValue = avgResult._avg.satisfactionScore ?? satisfactionScore;
+
+        // Upsert measurement
+        await app.prisma.indicatorMeasurement.upsert({
+          where: { indicatorId_period: { indicatorId: indicator.id, period } },
+          update: { value: avgValue, measuredAt: new Date() },
+          create: { indicatorId: indicator.id, period, value: avgValue },
+        });
+
+        // Update indicator current value and status
+        const prev = indicator.currentValue;
+        const trend = prev === null || prev === undefined
+          ? 'STABLE'
+          : avgValue > prev
+            ? 'UP'
+            : avgValue < prev
+              ? 'DOWN'
+              : 'STABLE';
+
+        const status = avgValue >= (indicator.targetValue ?? 4) ? 'ON_TARGET'
+          : avgValue >= (indicator.warningValue ?? 3) ? 'WARNING'
+            : 'OFF_TARGET';
+
+        const offTargetStreak = status === 'OFF_TARGET' ? (indicator.offTargetStreak ?? 0) + 1 : 0;
+
+        await app.prisma.indicator.update({
+          where: { id: indicator.id },
+          data: {
+            currentValue: avgValue,
+            trend,
+            status,
+            offTargetStreak,
+            lastMeasuredAt: new Date(),
+            nextDueAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        });
+      } catch (indError) {
+        console.error('Error updating satisfaction indicator:', indError);
+        // Non-blocking
+      }
+    }
+
     return reply.code(201).send({
       success: true,
       message: 'Response saved successfully',
