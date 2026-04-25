@@ -876,7 +876,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
           requiredLevel: requiredLevel,
           gap: gap,
           priority: gap >= 2 ? 'high' : gap >= 1 ? 'medium' : 'low',
-          lastEvaluated: ec.assessedAt?.toISOString() || ec.createdAt.toISOString(),
+          lastEvaluated: ec.assessedAt?.toISOString() || new Date().toISOString(),
           assessedBy: ec.assessedBy
         };
       });
@@ -1130,15 +1130,13 @@ export default async function hrRoutes(fastify: FastifyInstance) {
         where: { tenantId, deletedAt: null },
         include: { position: true, department: true },
       }),
-      prisma.competency.findMany({
-        where: { tenantId, deletedAt: null },
-      }),
+      prisma.competency.findMany({}),
       prisma.positionCompetency.findMany({
         where: { position: { tenantId } },
         include: { position: true },
       }),
       prisma.employeeCompetency.findMany({
-        where: { employee: { tenantId } },
+        where: { employee: { tenantId, deletedAt: null } },
         include: { employee: true, competency: true },
       }),
     ]);
@@ -1198,7 +1196,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     }
 
     const created = await prisma.employeeCompetency.create({
-      data: { employeeId, competencyId, currentLevel, updatedBy: req.auth?.userId || null },
+      data: { employeeId, competencyId, currentLevel, assessedBy: req.auth?.userId || null },
     });
     return reply.status(201).send(created);
   });
@@ -1237,7 +1235,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     }
 
     const created = await prisma.positionCompetency.create({
-      data: { positionId, competencyId, requiredLevel, updatedBy: req.auth?.userId || null },
+      data: { positionId, competencyId, requiredLevel },
     });
     return reply.status(201).send(created);
   });
