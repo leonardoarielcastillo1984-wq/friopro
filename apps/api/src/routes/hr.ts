@@ -180,11 +180,18 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       };
 
       // Exclude relation/unknown fields from create data
-      const { employeeCompetencies, supervisorType, ...employeeData } = data as any;
+      const { employeeCompetencies, supervisorType, contractType, ...employeeData } = data as any;
+
+      // Map frontend contractType values to Prisma enum values
+      const contractTypeMap: Record<string, string> = {
+        'FULL_TIME': 'PERMANENT',
+      };
+      const mappedContractType = contractTypeMap[contractType] || contractType;
 
       const employee = await fastify.prisma.employee.create({
         data: {
           ...employeeData,
+          ...(mappedContractType && { contractType: mappedContractType }),
           supervisorId,
           birthDate: parseDate(data.birthDate),
           hireDate: parseDate(data.hireDate),
@@ -221,12 +228,19 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       };
 
       // Exclude relation/unknown fields from update data
-      const { employeeCompetencies, supervisorType, ...employeeData } = data as any;
+      const { employeeCompetencies, supervisorType, contractType, ...employeeData } = data as any;
+
+      // Map frontend contractType values to Prisma enum values
+      const contractTypeMap: Record<string, string> = {
+        'FULL_TIME': 'PERMANENT',
+      };
+      const mappedContractType = contractTypeMap[contractType] || contractType;
 
       const employee = await fastify.prisma.employee.update({
         where: { id, tenantId },
         data: {
           ...employeeData,
+          ...(mappedContractType && { contractType: mappedContractType }),
           ...(data.birthDate && { birthDate: parseDate(data.birthDate) }),
           ...(data.hireDate && { hireDate: parseDate(data.hireDate) }),
           updatedById: userId
