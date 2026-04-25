@@ -588,7 +588,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   
   fastify.get('/competencies', async (request, reply) => {
     const competencies = await fastify.prisma.competency.findMany({
-      orderBy: { category: 'asc', name: 'asc' }
+      orderBy: [{ category: 'asc' }, { name: 'asc' }]
     });
 
     return { competencies };
