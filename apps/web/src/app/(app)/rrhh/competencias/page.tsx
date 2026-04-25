@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import MatrixView from './MatrixView';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 interface Employee {
   id: string;
