@@ -35,47 +35,47 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
       const customerIds = customersData.map((c: any) => c.id);
       if (customerIds.length === 0) return customersData;
 
-      // Get average satisfaction per customer
-      const avgScores = await tx.surveyResponse.groupBy({
-        by: ['customerId'],
-        where: {
-          customerId: { in: customerIds },
-          isComplete: true,
-          satisfactionScore: { not: null },
-        },
-        _avg: { satisfactionScore: true },
-      });
+      let avgMap = new Map<string, number | null>();
+      let lastMap = new Map<string, any>();
 
-      // Get last survey response date per customer
-      const lastResponses = await tx.surveyResponse.findMany({
-        where: {
-          customerId: { in: customerIds },
-          isComplete: true,
-          completedAt: { not: null },
-        },
-        orderBy: { completedAt: 'desc' },
-        distinct: ['customerId'],
-        select: { customerId: true, completedAt: true, satisfactionScore: true },
-      });
+      try {
+        // Get average satisfaction per customer
+        const avgScores = await tx.surveyResponse.groupBy({
+          by: ['customerId'],
+          where: {
+            customerId: { in: customerIds },
+            isComplete: true,
+            satisfactionScore: { not: null },
+          },
+          _avg: { satisfactionScore: true },
+        });
 
-      // Get open NC count per customer
-      const ncCounts = await tx.nonConformity.groupBy({
-        by: ['customerLinks'],
-        where: {
-          tenantId,
-          status: { in: ['OPEN', 'IN_ANALYSIS', 'ACTION_PLANNED', 'IN_PROGRESS'] },
-          customerLinks: { some: { id: { in: customerIds } } },
-        },
-        _count: { id: true },
-      });
-      // Note: Prisma groupBy with relation might not work directly, we'll skip for now
+        avgMap = new Map<string, number | null>(
+          avgScores.map((a: any) => [a.customerId, a._avg.satisfactionScore as number | null])
+        );
+      } catch (e) {
+        console.warn('Failed to compute avg satisfaction per customer:', e);
+      }
 
-      const avgMap = new Map<string, number | null>(
-        avgScores.map((a: any) => [a.customerId, a._avg.satisfactionScore as number | null])
-      );
-      const lastMap = new Map<string, any>(
-        lastResponses.map((r: any) => [r.customerId, r as any])
-      );
+      try {
+        // Get last survey response date per customer
+        const lastResponses = await tx.surveyResponse.findMany({
+          where: {
+            customerId: { in: customerIds },
+            isComplete: true,
+            completedAt: { not: null },
+          },
+          orderBy: { completedAt: 'desc' },
+          distinct: ['customerId'],
+          select: { customerId: true, completedAt: true, satisfactionScore: true },
+        });
+
+        lastMap = new Map<string, any>(
+          lastResponses.map((r: any) => [r.customerId, r as any])
+        );
+      } catch (e) {
+        console.warn('Failed to fetch last response per customer:', e);
+      }
 
       return customersData.map((c: any) => {
         const avg = avgMap.get(c.id) ?? null;
