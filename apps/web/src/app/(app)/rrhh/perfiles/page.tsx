@@ -170,6 +170,7 @@ export default function PerfilesPage() {
     requirements: [] as string[],
     keyFunctions: [] as string[],
   });
+  const [positionCompetencies, setPositionCompetencies] = useState<{competencyId: string; requiredLevel: number; name?: string; category?: string}[]>([]);
 
   useEffect(() => {
     loadData();
@@ -296,18 +297,40 @@ export default function PerfilesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const newPosition = {
-        ...formData,
-        id: editingPosition?.id || Date.now().toString(),
-        _count: { employees: 0 }
-      };
+      setError(null);
+      let savedPosition: Position;
 
       if (editingPosition) {
-        setPositions(positions.map(p => p.id === editingPosition.id ? newPosition : p));
+        const res = await apiFetch<{position: Position}>(`/hr/positions/${editingPosition.id}`, {
+          method: 'PUT',
+          json: formData,
+        });
+        savedPosition = res.position;
+        setPositions(positions.map(p => p.id === savedPosition.id ? { ...savedPosition, _count: p._count } : p));
       } else {
-        setPositions([...positions, newPosition]);
+        const res = await apiFetch<{position: Position}>('/hr/positions', {
+          method: 'POST',
+          json: formData,
+        });
+        savedPosition = res.position;
+        setPositions([...positions, { ...savedPosition, _count: { employees: 0 } }]);
       }
-      
+
+      // Save position competencies
+      if (positionCompetencies.length > 0) {
+        for (const pc of positionCompetencies) {
+          try {
+            await apiFetch(`/hr/positions/${savedPosition.id}/competencies`, {
+              method: 'POST',
+              json: { competencyId: pc.competencyId, requiredLevel: pc.requiredLevel },
+            });
+          } catch (err: any) {
+            // may already exist, continue
+            console.warn('Error saving competency:', err.message);
+          }
+        }
+      }
+
       setShowForm(false);
       setEditingPosition(null);
       setFormData({
@@ -321,6 +344,7 @@ export default function PerfilesPage() {
         requirements: [],
         keyFunctions: [],
       });
+      setPositionCompetencies([]);
     } catch (err: any) {
       setError(err?.message || 'Error al guardar perfil');
     }
@@ -864,7 +888,7 @@ export default function PerfilesPage() {
                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setEditingPosition(position);
                   setFormData({
                     name: position.name,
@@ -877,6 +901,18 @@ export default function PerfilesPage() {
                     requirements: position.requirements || [],
                     keyFunctions: position.keyFunctions || [],
                   });
+                  // Load position competencies
+                  try {
+                    const pcRes = await apiFetch<{positionCompetencies: any[]}>('/hr/positions/' + position.id + '/competencies');
+                    setPositionCompetencies((pcRes.positionCompetencies || []).map((pc: any) => ({
+                      competencyId: pc.competencyId,
+                      requiredLevel: pc.requiredLevel,
+                      name: pc.competency?.name,
+                      category: pc.competency?.category,
+                    })));
+                  } catch {
+                    setPositionCompetencies([]);
+                  }
                   setShowForm(true);
                 }}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1034,7 +1070,22 @@ export default function PerfilesPage() {
             </div>
 
             <button
-              onClick={() => setShowForm(true)}
+              onClick={() => {
+                setEditingPosition(null);
+                setFormData({
+                  name: '',
+                  code: '',
+                  category: '',
+                  level: '',
+                  mission: '',
+                  objective: '',
+                  responsibilities: [],
+                  requirements: [],
+                  keyFunctions: [],
+                });
+                setPositionCompetencies([]);
+                setShowForm(true);
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Plus className="h-4 w-4" />
@@ -1109,6 +1160,7 @@ export default function PerfilesPage() {
                       requirements: [],
                       keyFunctions: [],
                     });
+                    setPositionCompetencies([]);
                   }}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
@@ -1241,12 +1293,76 @@ export default function PerfilesPage() {
                 />
               </div>
 
+              {/* Competencies Assignment */}
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Competencias Requeridas
+                </label>
+                <div className="space-y-2">
+                  {positionCompetencies.map((pc, idx) => (
+                    <div key={pc.competencyId} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                      <span className="flex-1 text-sm">{pc.name || 'Competencia'}</span>
+                      <span className="text-xs text-gray-500">Nivel req.:</span>
+                      <select
+                        value={pc.requiredLevel}
+                        onChange={(e) => {
+                          const updated = [...positionCompetencies];
+                          updated[idx] = { ...pc, requiredLevel: parseInt(e.target.value) };
+                          setPositionCompetencies(updated);
+                        }}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                      >
+                        {[1, 2, 3, 4, 5].map(l => (
+                          <option key={l} value={l}>{l}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setPositionCompetencies(positionCompetencies.filter((_, i) => i !== idx))}
+                        className="p-1 hover:bg-red-100 rounded text-red-600"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <select
+                    id="add-competency-select"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    onChange={(e) => {
+                      const comp = competencies.find(c => c.id === e.target.value);
+                      if (comp && !positionCompetencies.find(pc => pc.competencyId === comp.id)) {
+                        setPositionCompetencies([...positionCompetencies, {
+                          competencyId: comp.id,
+                          requiredLevel: 1,
+                          name: comp.name,
+                          category: comp.category,
+                        }]);
+                      }
+                      e.target.value = '';
+                    }}
+                  >
+                    <option value="">+ Agregar competencia...</option>
+                    {competencies.filter(c => !positionCompetencies.find(pc => pc.competencyId === c.id)).map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.category})</option>
+                    ))}
+                  </select>
+                </div>
+                {competencies.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    No hay competencias disponibles. Creálas primero en Configuración RRHH &gt; Competencias.
+                  </p>
+                )}
+              </div>
+
               <div className="mt-6 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowForm(false);
                     setEditingPosition(null);
+                    setPositionCompetencies([]);
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >

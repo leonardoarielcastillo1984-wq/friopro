@@ -71,7 +71,7 @@ const DEFAULT_TRAINING_CATEGORIES: TrainingCategory[] = [
 ];
 
 export default function ConfiguracionRRHHPage() {
-  const [activeTab, setActiveTab] = useState<'departments' | 'positions' | 'contracts' | 'competencies' | 'training'>('departments');
+  const [activeTab, setActiveTab] = useState<'departments' | 'positions' | 'contracts' | 'competencyLevels' | 'competencies' | 'training'>('departments');
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positionCategories, setPositionCategories] = useState<PositionCategory[]>([]);
   const [contractTypes, setContractTypes] = useState<ContractType[]>(DEFAULT_CONTRACT_TYPES);
@@ -97,6 +97,12 @@ export default function ConfiguracionRRHHPage() {
   const [contractForm, setContractForm] = useState({ name: '', description: '', duration: '' });
   const [trainingCatForm, setTrainingCatForm] = useState({ name: '', description: '', standard: '' });
 
+  // Competencies
+  const [competenciesList, setCompetenciesList] = useState<{id: string; name: string; category: string; description?: string}[]>([]);
+  const [showCompetencyForm, setShowCompetencyForm] = useState(false);
+  const [editingCompetency, setEditingCompetency] = useState<{id: string; name: string; category: string; description?: string} | null>(null);
+  const [competencyForm, setCompetencyForm] = useState({ name: '', category: '', description: '' });
+
   useEffect(() => {
     loadData();
   }, []);
@@ -118,10 +124,60 @@ export default function ConfiguracionRRHHPage() {
         description: '',
         level: ''
       })));
+
+      // Load competencies
+      try {
+        const compRes = await apiFetch<{ competencies: any[] }>('/hr/competencies');
+        setCompetenciesList(compRes.competencies || []);
+      } catch (err) {
+        setCompetenciesList([]);
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Competency handlers
+  const handleCreateCompetency = async () => {
+    if (!competencyForm.name) return;
+    try {
+      await apiFetch('/hr/competencies', {
+        method: 'POST',
+        json: competencyForm,
+      });
+      setCompetencyForm({ name: '', category: '', description: '' });
+      setShowCompetencyForm(false);
+      loadData();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const handleUpdateCompetency = async () => {
+    if (!editingCompetency || !competencyForm.name) return;
+    try {
+      await apiFetch(`/hr/competencies/${editingCompetency.id}`, {
+        method: 'PUT',
+        json: competencyForm,
+      });
+      setEditingCompetency(null);
+      setCompetencyForm({ name: '', category: '', description: '' });
+      setShowCompetencyForm(false);
+      loadData();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const handleDeleteCompetency = async (id: string) => {
+    if (!confirm('¿Eliminar esta competencia?')) return;
+    try {
+      await apiFetch(`/hr/competencies/${id}`, { method: 'DELETE' });
+      loadData();
+    } catch (e: any) {
+      setError(e.message);
     }
   };
 
@@ -288,7 +344,8 @@ export default function ConfiguracionRRHHPage() {
         <TabButton active={activeTab === 'departments'} onClick={() => setActiveTab('departments')} icon={Building} label="Departamentos" />
         <TabButton active={activeTab === 'positions'} onClick={() => setActiveTab('positions')} icon={Briefcase} label="Categorías de Puestos" />
         <TabButton active={activeTab === 'contracts'} onClick={() => setActiveTab('contracts')} icon={FileText} label="Tipos de Contrato" />
-        <TabButton active={activeTab === 'competencies'} onClick={() => setActiveTab('competencies')} icon={Brain} label="Niveles de Competencia" />
+        <TabButton active={activeTab === 'competencyLevels'} onClick={() => setActiveTab('competencyLevels')} icon={Brain} label="Niveles de Competencia" />
+        <TabButton active={activeTab === 'competencies'} onClick={() => setActiveTab('competencies')} icon={Target} label="Competencias" />
         <TabButton active={activeTab === 'training'} onClick={() => setActiveTab('training')} icon={GraduationCap} label="Categorías de Capacitación" />
       </div>
 
@@ -584,7 +641,7 @@ export default function ConfiguracionRRHHPage() {
       )}
 
       {/* Competency Levels Tab */}
-      {activeTab === 'competencies' && (
+      {activeTab === 'competencyLevels' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-slate-900">Niveles de Competencia</h2>
@@ -638,6 +695,107 @@ export default function ConfiguracionRRHHPage() {
               Esta escala se utiliza para evaluar el nivel actual y requerido de competencias en empleados.
               La brecha entre niveles determina las necesidades de capacitación.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Competencies Tab */}
+      {activeTab === 'competencies' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900">Competencias</h2>
+            <button onClick={() => setShowCompetencyForm(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+              <Plus className="h-4 w-4" /> Nueva Competencia
+            </button>
+          </div>
+
+          {showCompetencyForm && (
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+              <h3 className="font-medium text-slate-900">{editingCompetency ? 'Editar' : 'Nueva'} Competencia</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input 
+                  placeholder="Nombre *" 
+                  value={competencyForm.name} 
+                  onChange={e => setCompetencyForm({ ...competencyForm, name: e.target.value })} 
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm" 
+                />
+                <input 
+                  placeholder="Categoría (ej: Técnica, Comportamental, Liderazgo)" 
+                  value={competencyForm.category} 
+                  onChange={e => setCompetencyForm({ ...competencyForm, category: e.target.value })} 
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm" 
+                />
+                <input 
+                  placeholder="Descripción" 
+                  value={competencyForm.description} 
+                  onChange={e => setCompetencyForm({ ...competencyForm, description: e.target.value })} 
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm" 
+                />
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={editingCompetency ? handleUpdateCompetency : handleCreateCompetency} 
+                  disabled={!competencyForm.name}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700"
+                >
+                  <Save className="h-4 w-4 inline mr-1" /> {editingCompetency ? 'Guardar' : 'Crear'}
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowCompetencyForm(false);
+                    setEditingCompetency(null);
+                    setCompetencyForm({ name: '', category: '', description: '' });
+                  }}
+                  className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium text-slate-700">Nombre</th>
+                  <th className="text-left px-4 py-3 font-medium text-slate-700">Categoría</th>
+                  <th className="text-left px-4 py-3 font-medium text-slate-700">Descripción</th>
+                  <th className="text-right px-4 py-3 font-medium text-slate-700 w-24">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {competenciesList.map(comp => (
+                  <tr key={comp.id}>
+                    <td className="px-4 py-3 font-medium text-slate-900">{comp.name}</td>
+                    <td className="px-4 py-3">
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">{comp.category}</span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{comp.description || '-'}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button 
+                          onClick={() => {
+                            setEditingCompetency(comp);
+                            setCompetencyForm({ name: comp.name, category: comp.category, description: comp.description || '' });
+                            setShowCompetencyForm(true);
+                          }}
+                          className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteCompetency(comp.id)}
+                          className="p-1.5 hover:bg-red-50 rounded-lg text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
