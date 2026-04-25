@@ -51,7 +51,7 @@ const createCompetencySchema = z.object({
   name: z.string().min(1),
   category: z.string().min(1),
   description: z.string().optional(),
-  levels: z.array(z.string()).optional(),
+  levels: z.array(z.string()).optional().default([]),
 });
 
 const createTrainingSchema = z.object({
@@ -598,7 +598,10 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     const data = createCompetencySchema.parse(request.body);
 
     const competency = await fastify.prisma.competency.create({
-      data
+      data: {
+        ...data,
+        levels: data.levels || []
+      }
     });
 
     return { competency };
