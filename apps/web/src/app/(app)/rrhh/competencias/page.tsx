@@ -7,10 +7,7 @@ import {
   ChevronDown, ChevronRight, Plus, Edit2, Trash2, X,
   Target, BarChart3, AlertCircle, CheckCircle, Clock
 } from 'lucide-react';
-import MatrixView from './MatrixView';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useRouter } from 'next/navigation';
 
 interface Employee {
   id: string;
@@ -362,6 +359,21 @@ export default function CompetenciasPage() {
                       
                       return (
                         <div key={ec.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-medium text-gray-900">{competency?.name}</p>
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${getGapColor(ec.gap)}`}>
+                                Gap: {ec.gap}
+                              </span>
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${getPriorityColor(ec.priority)}`}>
+                                {ec.priority}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600">{competency?.description}</p>
+                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                              <span>Última evaluación: {ec.lastEvaluated}</span>
+                              <span>Nivel actual: {ec.currentLevel}</span>
+                              <span>Nivel requerido: {ec.requiredLevel}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -453,6 +465,16 @@ export default function CompetenciasPage() {
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             Reintentar
+          </button>
+          <button
+            onClick={() => setActiveTab('matrix')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${
+              activeTab === 'matrix'
+                ? 'bg-primary text-white'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Ver en Matriz
           </button>
         </div>
       </div>
