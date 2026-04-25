@@ -55,6 +55,7 @@ import { publicRoutes } from './routes/publicRoutes.js';
 import { documentsPublicRoutes } from './routes/documentsPublic.js';
 import { processMapsRoutes } from './routes/processMaps.js';
 import { registerCompanyRoutes } from './routes/register-company.js';
+import { registerSupplierRoutes } from './routes/suppliers.js';
 import { startNormativeWorker, startAuditWorker } from './jobs/queue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import {
@@ -222,6 +223,7 @@ export async function buildApp() {
   await app.register(aspectsRoutes, { prefix: '/aspects' });
   await app.register(incidentsRoutes, { prefix: '/incidents' });
   await app.register(suppliersRoutes, { prefix: '/suppliers' });
+  await app.register(registerSupplierRoutes, { prefix: '/suppliers' });
   await app.register(equipmentRoutes, { prefix: '/equipment' });
   await app.register(calendarRoutes, { prefix: '/calendar' });
   await app.register(gestionCambiosRoutes, { prefix: '/gestion-cambios' });

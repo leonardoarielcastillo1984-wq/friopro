@@ -3590,6 +3590,7 @@ model Supplier {
   contactName   String?
   contactPosition String?
   status        String    @default("PENDING") // PENDING, APPROVED, CONDITIONAL, REJECTED, SUSPENDED
+  providerType  String?   // Estratégico, Crítico, Secundario
   isCritical    Boolean   @default(false)
   evaluationScore Float?
   lastEvaluationDate DateTime?
@@ -3612,10 +3613,11 @@ model SupplierEvaluation {
   supplier      Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   date          DateTime
   period        String?
-  qualityScore  Float     @default(0)
-  deliveryScore Float     @default(0)
-  priceScore    Float     @default(0)
-  serviceScore  Float     @default(0)
+  qualityScore  Float     @default(0) // calidad
+  deliveryScore Float     @default(0) // cumplimiento
+  priceScore    Float     @default(0) // precio
+  serviceScore  Float     @default(0) // servicio
+  documentationScore Float @default(0) // documentacion
   overallScore  Float     @default(0)
   result        String    // APPROVED, CONDITIONAL, REJECTED
   comments      String?
