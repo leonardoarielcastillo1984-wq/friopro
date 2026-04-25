@@ -652,8 +652,8 @@ export default function EmployeesPage() {
       </div>
 
       {/* Employees Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="overflow-x-visible">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
