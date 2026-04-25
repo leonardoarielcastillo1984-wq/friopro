@@ -179,9 +179,12 @@ export default async function hrRoutes(fastify: FastifyInstance) {
         return new Date(val);
       };
 
+      // Exclude relation/unknown fields from create data
+      const { employeeCompetencies, supervisorType, ...employeeData } = data as any;
+
       const employee = await fastify.prisma.employee.create({
         data: {
-          ...data,
+          ...employeeData,
           supervisorId,
           birthDate: parseDate(data.birthDate),
           hireDate: parseDate(data.hireDate),
@@ -217,10 +220,13 @@ export default async function hrRoutes(fastify: FastifyInstance) {
         return new Date(val);
       };
 
+      // Exclude relation/unknown fields from update data
+      const { employeeCompetencies, supervisorType, ...employeeData } = data as any;
+
       const employee = await fastify.prisma.employee.update({
         where: { id, tenantId },
         data: {
-          ...data,
+          ...employeeData,
           ...(data.birthDate && { birthDate: parseDate(data.birthDate) }),
           ...(data.hireDate && { hireDate: parseDate(data.hireDate) }),
           updatedById: userId
