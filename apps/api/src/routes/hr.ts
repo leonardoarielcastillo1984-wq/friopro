@@ -150,8 +150,6 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       const { tenantId, userId } = request;
       const data = createEmployeeSchema.parse(request.body);
 
-      let supervisorId = data.supervisorId;
-      if (!supervisorId && data.reportsToPositionId) {
       // Check for duplicate DNI or email
       const existing = await fastify.prisma.employee.findFirst({
         where: {
@@ -186,10 +184,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
           birthDate: parseDate(data.birthDate),
           hireDate: parseDate(data.hireDate),
           tenantId,
-          createdById: userId,
-          supervisor: {
-            select: { id: true, firstName: true, lastName: true }
-          }
+          createdById: userId
         }
       });
 
