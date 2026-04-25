@@ -471,16 +471,6 @@ export default function CompetenciasPage() {
           >
             Reintentar
           </button>
-          <button
-            onClick={() => setActiveTab('matrix')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              activeTab === 'matrix'
-                ? 'bg-primary text-white'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Ver en Matriz
-          </button>
         </div>
       </div>
     );
@@ -529,8 +519,48 @@ export default function CompetenciasPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Tabs */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2 py-3">
+            <button
+              onClick={() => setActiveTab('competencies')}
+              className={`px-4 py-2 rounded-md text-sm font-medium ${
+                activeTab === 'competencies'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Competencias
+            </button>
+            <button
+              onClick={() => setActiveTab('employees')}
+              className={`px-4 py-2 rounded-md text-sm font-medium ${
+                activeTab === 'employees'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Empleados
+            </button>
+            <button
+              onClick={() => setActiveTab('matrix')}
+              className={`px-4 py-2 rounded-md text-sm font-medium ${
+                activeTab === 'matrix'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Ver en Matriz
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {activeTab !== 'matrix' && (
+        <>
+          {/* Stats Cards */}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between">
@@ -619,6 +649,17 @@ export default function CompetenciasPage() {
           </div>
         )}
       </div>
+        </>
+      )}
+
+      {activeTab === 'matrix' && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <iframe
+            src="/rrhh/competencias/matriz"
+            style={{ width: '100%', height: '80vh', border: 'none' }}
+          />
+        </div>
+      )}
 
       {/* Evaluation Form Modal */}
       {showEvaluationForm && selectedEmployee && (
