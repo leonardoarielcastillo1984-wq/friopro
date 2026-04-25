@@ -541,4 +541,94 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
     return reply.send({ training: updated, message: 'Capacitación reprogramada exitosamente' });
   });
+
+  // POST /trainings/:id/complete — Marcar capacitación como completada
+  app.post('/:id/complete', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const body = z.object({
+      completionDate: z.string().datetime().optional(),
+    }).parse(req.body);
+
+    const training = await app.prisma.sgiTraining.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!training) return reply.code(404).send({ error: 'Training not found' });
+
+    const updated = await app.prisma.sgiTraining.update({
+      where: { id },
+      data: {
+        status: 'COMPLETED',
+        completedDate: body.completionDate ? new Date(body.completionDate) : new Date(),
+        completedById: req.auth?.userId ?? null,
+      },
+    });
+
+    return reply.send({ training: updated, message: 'Capacitación completada exitosamente' });
+  });
+
+  // POST /trainings/:id/cancel — Cancelar capacitación
+  app.post('/:id/cancel', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const body = z.object({
+      reason: z.string().min(1),
+    }).parse(req.body);
+
+    const training = await app.prisma.sgiTraining.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!training) return reply.code(404).send({ error: 'Training not found' });
+
+    const updated = await app.prisma.sgiTraining.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancellationReason: body.reason,
+        cancelledById: req.auth?.userId ?? null,
+      },
+    });
+
+    return reply.send({ training: updated, message: 'Capacitación cancelada exitosamente' });
+  });
+
+  // POST /trainings/:id/satisfaction — Evaluación de satisfacción
+  app.post('/:id/satisfaction', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const body = z.object({
+      contentRelevance: z.number().int().min(0).max(5).optional(),
+      instructorQuality: z.number().int().min(0).max(5).optional(),
+      materialsQuality: z.number().int().min(0).max(5).optional(),
+      methodologyQuality: z.number().int().min(0).max(5).optional(),
+      overallSatisfaction: z.number().int().min(0).max(5),
+      comments: z.string().optional(),
+    }).parse(req.body);
+
+    const training = await app.prisma.sgiTraining.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!training) return reply.code(404).send({ error: 'Training not found' });
+
+    const evaluation = await app.prisma.trainingSatisfaction.create({
+      data: {
+        trainingId: id,
+        contentRelevance: body.contentRelevance ?? null,
+        instructorQuality: body.instructorQuality ?? null,
+        materialsQuality: body.materialsQuality ?? null,
+        methodologyQuality: body.methodologyQuality ?? null,
+        overallSatisfaction: body.overallSatisfaction,
+        comments: body.comments ?? null,
+      },
+    });
+
+    return reply.send({ evaluation, message: 'Evaluación de satisfacción registrada' });
+  });
 };
