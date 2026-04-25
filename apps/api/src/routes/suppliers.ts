@@ -386,4 +386,91 @@ export async function registerSupplierRoutes(app: FastifyInstance) {
 
     return reply.send({ result });
   });
+
+  // POST /suppliers - Create
+  app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const tenantId = req.db.tenantId;
+    const rawBody = req.body;
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : (rawBody ?? {}) as any;
+
+    const supplier = await app.runWithDbContext(req, async (tx: any) => {
+      const year = new Date().getFullYear();
+      const count = await tx.supplier.count({
+        where: { tenantId, code: { startsWith: `PROV-${year}-` } },
+      });
+      const code = body.code || `PROV-${year}-${String(count + 1).padStart(3, '0')}`;
+      return tx.supplier.create({
+        data: {
+          tenantId,
+          code,
+          name: body.name,
+          legalName: body.legalName || null,
+          taxId: body.taxId || null,
+          email: body.email || null,
+          phone: body.phone || null,
+          address: body.address || null,
+          category: body.category || null,
+          contactName: body.contactName || null,
+          contactPosition: body.contactPosition || null,
+          status: body.status || 'PENDING',
+          providerType: body.providerType || null,
+          isCritical: body.isCritical ?? false,
+          notes: body.notes || null,
+          createdById: req.auth?.userId ?? null,
+        },
+      });
+    });
+
+    return reply.code(201).send({ supplier });
+  });
+
+  // PATCH /suppliers/:id - Update
+  app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const rawBody = req.body;
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : (rawBody ?? {}) as any;
+
+    const supplier = await app.runWithDbContext(req, async (tx: any) => {
+      const existing = await tx.supplier.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!existing) return reply.code(404).send({ error: 'Not found' });
+      return tx.supplier.update({
+        where: { id },
+        data: {
+          name: body.name ?? existing.name,
+          legalName: body.legalName !== undefined ? body.legalName : existing.legalName,
+          taxId: body.taxId !== undefined ? body.taxId : existing.taxId,
+          email: body.email !== undefined ? body.email : existing.email,
+          phone: body.phone !== undefined ? body.phone : existing.phone,
+          address: body.address !== undefined ? body.address : existing.address,
+          category: body.category !== undefined ? body.category : existing.category,
+          contactName: body.contactName !== undefined ? body.contactName : existing.contactName,
+          contactPosition: body.contactPosition !== undefined ? body.contactPosition : existing.contactPosition,
+          status: body.status ?? existing.status,
+          providerType: body.providerType !== undefined ? body.providerType : existing.providerType,
+          isCritical: body.isCritical ?? existing.isCritical,
+          notes: body.notes !== undefined ? body.notes : existing.notes,
+        },
+      });
+    });
+
+    return reply.send({ supplier });
+  });
+
+  // DELETE /suppliers/:id - Soft delete
+  app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    await app.runWithDbContext(req, async (tx: any) => {
+      const existing = await tx.supplier.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!existing) return reply.code(404).send({ error: 'Not found' });
+      return tx.supplier.update({ where: { id }, data: { deletedAt: new Date() } });
+    });
+
+    return reply.send({ success: true });
+  });
 }

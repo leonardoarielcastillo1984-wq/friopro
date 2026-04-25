@@ -61,7 +61,7 @@ import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import {
   actionsRoutes, stakeholdersRoutes, stakeholderActionRoutes,
   hazardsRoutes, aspectsRoutes, incidentsRoutes,
-  suppliersRoutes, equipmentRoutes, contextRoutes, calendarRoutes,
+  equipmentRoutes, contextRoutes, calendarRoutes,
 } from './routes/sgi-professional.js';
 
 export async function buildApp() {
@@ -222,7 +222,6 @@ export async function buildApp() {
   await app.register(hazardsRoutes, { prefix: '/hazards' });
   await app.register(aspectsRoutes, { prefix: '/aspects' });
   await app.register(incidentsRoutes, { prefix: '/incidents' });
-  await app.register(suppliersRoutes, { prefix: '/suppliers' });
   await app.register(registerSupplierRoutes, { prefix: '/suppliers' });
   await app.register(equipmentRoutes, { prefix: '/equipment' });
   await app.register(calendarRoutes, { prefix: '/calendar' });
