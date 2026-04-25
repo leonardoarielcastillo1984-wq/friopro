@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import MatrizPolivalenciaPage from './matriz/page';
 import { apiFetch } from '@/lib/api';
 import { 
   ArrowLeft, Search, Filter, TrendingUp, Users, Award, BookOpen,
@@ -68,7 +69,7 @@ export default function CompetenciasPage() {
   const [showForm, setShowForm] = useState(false);
   const [showEvaluationForm, setShowEvaluationForm] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [activeTab, setActiveTab] = useState<'competencies' | 'employees' | 'matrix'>('competencies');
+  const [activeTab, setActiveTab] = useState<'competencies' | 'employees' | 'matrix'>('employees');
 
   useEffect(() => {
     loadData();
@@ -524,16 +525,6 @@ export default function CompetenciasPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 py-3">
             <button
-              onClick={() => setActiveTab('competencies')}
-              className={`px-4 py-2 rounded-md text-sm font-medium ${
-                activeTab === 'competencies'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Competencias
-            </button>
-            <button
               onClick={() => setActiveTab('employees')}
               className={`px-4 py-2 rounded-md text-sm font-medium ${
                 activeTab === 'employees'
@@ -653,11 +644,8 @@ export default function CompetenciasPage() {
       )}
 
       {activeTab === 'matrix' && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <iframe
-            src="/rrhh/competencias/matriz"
-            style={{ width: '100%', height: '80vh', border: 'none' }}
-          />
+        <div className="-mt-4">
+          <MatrizPolivalenciaPage />
         </div>
       )}
 
