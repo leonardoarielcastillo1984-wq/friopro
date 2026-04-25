@@ -1177,14 +1177,14 @@ export default async function hrRoutes(fastify: FastifyInstance) {
 
   // POST /hr/employee-competencies (upsert)
   fastify.post('/employee-competencies', async (req, reply) => {
-    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    const tenantId = req.db?.tenantId || (req as any).tenant?.tenantId || req.auth?.tenantId;
+    if (!tenantId) return reply.status(403).send({ error: 'Tenant context required' });
     const body = req.body as any;
     const { employeeId, competencyId, currentLevel } = body || {};
     if (!employeeId || !competencyId || typeof currentLevel !== 'number') {
       return reply.status(400).send({ error: 'Missing required fields' });
     }
-    const prisma = req.db.prisma;
-    const tenantId = req.db.tenantId;
+    const prisma = req.db?.prisma || fastify.prisma;
 
     const existing = await prisma.employeeCompetency.findFirst({
       where: { employeeId, competencyId, employee: { tenantId } },
