@@ -55,6 +55,27 @@ interface Customer {
     status: string;
     severity: string;
   }>;
+  avgSatisfaction?: number | null;
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  lastSurveyDate?: string | null;
+}
+
+interface SurveyResponse {
+  id: string;
+  satisfactionScore: number | null;
+  npsScore: number | null;
+  completedAt: string;
+  comments: string | null;
+  survey: { title: string };
+}
+
+interface ImprovementPlan {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  dueDate: string | null;
+  createdAt: string;
 }
 
 interface Survey {
@@ -76,9 +97,15 @@ export default function CustomerDetailPage() {
   const [form, setForm] = useState<Partial<Customer>>({});
   const [availableSurveys, setAvailableSurveys] = useState<Survey[]>([]);
   const [showAssignSurvey, setShowAssignSurvey] = useState(false);
+  const [satisfactionHistory, setSatisfactionHistory] = useState<SurveyResponse[]>([]);
+  const [improvementPlans, setImprovementPlans] = useState<ImprovementPlan[]>([]);
+  const [showCreatePlan, setShowCreatePlan] = useState(false);
+  const [planForm, setPlanForm] = useState({ title: '', description: '', responsible: '', dueDate: '' });
 
   useEffect(() => {
     loadCustomer();
+    loadSatisfactionHistory();
+    loadImprovementPlans();
   }, [customerId]);
 
   const loadCustomer = async () => {
@@ -158,6 +185,42 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const loadSatisfactionHistory = async () => {
+    try {
+      const res = await apiFetch<{ responses: SurveyResponse[]; plans: ImprovementPlan[]; ncrs: any[] }>(`/customers/${customerId}/satisfaction-history`);
+      setSatisfactionHistory(res?.responses || []);
+      setImprovementPlans(res?.plans || []);
+    } catch (err) {
+      console.error('Error loading satisfaction history:', err);
+    }
+  };
+
+  const loadImprovementPlans = async () => {
+    try {
+      const res = await apiFetch<{ plans: ImprovementPlan[] }>(`/customers/${customerId}/improvement-plans`);
+      setImprovementPlans(res?.plans || []);
+    } catch (err) {
+      console.error('Error loading improvement plans:', err);
+    }
+  };
+
+  const handleCreatePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiFetch(`/customers/${customerId}/improvement-plans`, {
+        method: 'POST',
+        json: planForm,
+      });
+      setShowCreatePlan(false);
+      setPlanForm({ title: '', description: '', responsible: '', dueDate: '' });
+      await loadImprovementPlans();
+      await loadSatisfactionHistory();
+    } catch (err) {
+      console.error('Error creating plan:', err);
+      alert('Error al crear plan de mejora');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -198,6 +261,18 @@ export default function CustomerDetailPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{customer.name}</h1>
             <p className="text-gray-600">{customer.code} • {customer.legalName}</p>
+            {customer.riskLevel && (
+              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-2 ${
+                customer.riskLevel === 'LOW' ? 'bg-green-100 text-green-700' :
+                customer.riskLevel === 'MEDIUM' ? 'bg-amber-100 text-amber-700' :
+                'bg-red-100 text-red-700'
+              }`}>
+                Riesgo: {customer.riskLevel === 'LOW' ? 'Bajo' : customer.riskLevel === 'MEDIUM' ? 'Medio' : 'Alto'}
+                {customer.avgSatisfaction !== null && customer.avgSatisfaction !== undefined && (
+                  <span className="ml-1">({customer.avgSatisfaction.toFixed(1)})</span>
+                )}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex gap-3">
@@ -482,6 +557,86 @@ export default function CustomerDetailPage() {
               <p className="text-gray-900">{customer.notes || 'Sin notas'}</p>
             )}
           </div>
+
+          {/* Satisfaction History */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Historial de Satisfacción</h2>
+            {satisfactionHistory.length === 0 ? (
+              <p className="text-gray-600 text-sm">No hay respuestas registradas</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-end gap-2 h-40 pb-2 border-b border-gray-200">
+                  {satisfactionHistory.map((resp, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                      <div
+                        className={`w-full rounded-t ${
+                          (resp.satisfactionScore ?? 0) >= 4 ? 'bg-green-400' :
+                          (resp.satisfactionScore ?? 0) >= 3 ? 'bg-amber-400' :
+                          'bg-red-400'
+                        }`}
+                        style={{ height: `${Math.max((resp.satisfactionScore || 0) / 5 * 100, 5)}%` }}
+                        title={`${resp.satisfactionScore?.toFixed(1) ?? 'N/A'} - ${resp.survey.title}`}
+                      />
+                      <span className="text-xs text-gray-500 truncate w-full text-center">{new Date(resp.completedAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  {satisfactionHistory.slice().reverse().slice(0, 5).map((resp) => (
+                    <div key={resp.id} className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{resp.survey.title}</p>
+                        <p className="text-xs text-gray-500">{new Date(resp.completedAt).toLocaleDateString('es-AR')}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Star className={`w-4 h-4 ${(resp.satisfactionScore ?? 0) >= 4 ? 'text-amber-500 fill-amber-500' : (resp.satisfactionScore ?? 0) >= 3 ? 'text-amber-400' : 'text-red-500'}`} />
+                        <span className="text-sm font-bold text-gray-700">{resp.satisfactionScore?.toFixed(1) ?? 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Improvement Plans */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Planes de Mejora</h2>
+              <button
+                onClick={() => setShowCreatePlan(true)}
+                className="inline-flex items-center gap-1 text-sm px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
+              >
+                <ClipboardList className="w-4 h-4" />
+                Nuevo Plan
+              </button>
+            </div>
+            {improvementPlans.length === 0 ? (
+              <p className="text-gray-600 text-sm">No hay planes de mejora registrados</p>
+            ) : (
+              <div className="space-y-3">
+                {improvementPlans.map((plan) => (
+                  <div key={plan.id} className="border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-gray-900">{plan.title}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        plan.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                        plan.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
+                        plan.status === 'CANCELLED' ? 'bg-gray-100 text-gray-700' :
+                        'bg-amber-100 text-amber-700'
+                      }`}>
+                        {plan.status === 'COMPLETED' ? 'Completado' :
+                         plan.status === 'IN_PROGRESS' ? 'En Progreso' :
+                         plan.status === 'CANCELLED' ? 'Cancelado' : 'Abierto'}
+                      </span>
+                    </div>
+                    {plan.description && <p className="text-sm text-gray-600 mt-1">{plan.description}</p>}
+                    {plan.dueDate && <p className="text-xs text-gray-500 mt-1">Vence: {new Date(plan.dueDate).toLocaleDateString('es-AR')}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sidebar */}
@@ -593,6 +748,67 @@ export default function CustomerDetailPage() {
                 Cancelar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Improvement Plan Modal */}
+      {showCreatePlan && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg">
+            <div className="border-b border-gray-200 p-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Nuevo Plan de Mejora</h2>
+              <button onClick={() => setShowCreatePlan(false)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreatePlan} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+                <input
+                  type="text"
+                  required
+                  value={planForm.title}
+                  onChange={(e) => setPlanForm({ ...planForm, title: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                <textarea
+                  value={planForm.description}
+                  onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Responsable</label>
+                <input
+                  type="text"
+                  value={planForm.responsible}
+                  onChange={(e) => setPlanForm({ ...planForm, responsible: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha límite</label>
+                <input
+                  type="date"
+                  value={planForm.dueDate}
+                  onChange={(e) => setPlanForm({ ...planForm, dueDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button type="button" onClick={() => setShowCreatePlan(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                  Cancelar
+                </button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                  Crear Plan
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
