@@ -61,9 +61,10 @@ import { startNormativeWorker, startAuditWorker } from './jobs/queue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import {
   actionsRoutes, stakeholdersRoutes, stakeholderActionRoutes,
-  hazardsRoutes, aspectsRoutes, incidentsRoutes,
+  aspectsRoutes, incidentsRoutes,
   equipmentRoutes, contextRoutes, calendarRoutes,
 } from './routes/sgi-professional.js';
+import { hazardsRoutes } from './routes/hazards.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: true });

@@ -50,6 +50,10 @@ model NonConformity {
   riskId                 String?               @db.Uuid
   risk                   Risk?                 @relation("NcrRisk", fields: [riskId], references: [id], onDelete: SetNull)
 
+  // Trazabilidad desde IPERC (Peligros SST)
+  hazardId               String?               @db.Uuid
+  hazard                 Hazard?               @relation("NcrHazard", fields: [hazardId], references: [id], onDelete: SetNull)
+
   // Trazabilidad desde Clientes
   customerLinks          Customer[]            @relation("CustomerNCR")
 
@@ -3546,6 +3550,31 @@ model GestionCambioHistorial {
   @@map("gestion_cambio_historial")
 }
 
+enum HazardStatus {
+  OPEN
+  IN_TREATMENT
+  CONTROLLED
+  CLOSED
+}
+
+enum ReviewFrequency {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum RiskActionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum RiskActionEffectiveness {
+  EFFECTIVE
+  NOT_EFFECTIVE
+  PENDING
+}
+
 // -------- 5. IPERC (Peligros SST) --------
 model Hazard {
   id            String    @id @default(uuid()) @db.Uuid
@@ -3573,8 +3602,74 @@ model Hazard {
   createdAt     DateTime  @default(now()) @db.Timestamptz
   updatedAt     DateTime  @updatedAt @db.Timestamptz
 
+  // ISO 45001 extended fields
+  status            HazardStatus     @default(OPEN)
+  reviewFrequency   ReviewFrequency  @default(ANNUAL)
+
+  // Control implementation tracking
+  eliminationImplemented     Boolean? @default(false)
+  substitutionImplemented    Boolean? @default(false)
+  engineeringImplemented     Boolean? @default(false)
+  administrativeImplemented  Boolean? @default(false)
+  ppeImplemented           Boolean? @default(false)
+
+  // Control effectiveness
+  eliminationEffective     Boolean?
+  substitutionEffective    Boolean?
+  engineeringEffective     Boolean?
+  administrativeEffective  Boolean?
+  ppeEffective           Boolean?
+
+  // Control observations
+  eliminationObservation     String?
+  substitutionObservation    String?
+  engineeringObservation     String?
+  administrativeObservation  String?
+  ppeObservation           String?
+
+  // Relations
+  actions    RiskAction[]
+  reviews    RiskReview[]
+  nonConformities NonConformity[] @relation("NcrHazard")
+
   @@index([tenantId])
   @@map("hazards")
+}
+
+model RiskAction {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @db.Uuid
+  hazardId        String                @db.Uuid
+  description     String
+  responsibleId   String?               @db.Uuid
+  dueDate         DateTime?
+  status          RiskActionStatus      @default(PENDING)
+  effectiveness   RiskActionEffectiveness @default(PENDING)
+  evidence        String?
+  createdAt       DateTime              @default(now()) @db.Timestamptz
+  updatedAt       DateTime              @updatedAt @db.Timestamptz
+
+  hazard          Hazard                @relation(fields: [hazardId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([hazardId])
+  @@map("risk_actions")
+}
+
+model RiskReview {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  hazardId    String    @db.Uuid
+  reviewDate  DateTime  @default(now()) @db.Timestamptz
+  result      String    // CONTROLLED, NOT_CONTROLLED
+  comments    String?
+  reviewedById String?  @db.Uuid
+
+  hazard      Hazard    @relation(fields: [hazardId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([hazardId])
+  @@map("risk_reviews")
 }
 
 // -------- 6. ASPECTOS AMBIENTALES --------
