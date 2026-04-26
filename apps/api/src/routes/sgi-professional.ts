@@ -262,7 +262,6 @@ export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ action });
   });
 };
-export const hazardsRoutes = makeCrud('hazards', { model: 'hazard', codePrefix: 'IPERC' });
 export const aspectsRoutes = makeCrud('aspects', { model: 'environmentalAspect', codePrefix: 'AMB' });
 export const incidentsRoutes = makeCrud('incidents', { model: 'incident', codePrefix: 'INC' });
 export const suppliersRoutes = makeCrud('suppliers', { model: 'supplier', codePrefix: 'PROV' });

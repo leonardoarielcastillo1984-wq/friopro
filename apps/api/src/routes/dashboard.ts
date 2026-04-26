@@ -71,8 +71,8 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         app.prisma.sgiObjective.count({ where: { ...tenantFilter, deletedAt: null, status: { in: ['ON_TRACK', 'COMPLETED'] } } }).catch(() => 0),
         // IPERC total
         app.prisma.hazard.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
-        // IPERC críticos (riskLevel HIGH o CRITICAL)
-        app.prisma.hazard.count({ where: { ...tenantFilter, deletedAt: null, riskLevel: { in: ['HIGH', 'CRITICAL'] } } }).catch(() => 0),
+        // IPERC críticos (riskLevel >= 12 — SUBSTANTIAL / INTOLERABLE)
+        app.prisma.hazard.count({ where: { ...tenantFilter, deletedAt: null, riskLevel: { gte: 12 } } }).catch(() => 0),
         // Aspectos ambientales
         app.prisma.environmentalAspect.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
         // Aspectos significativos

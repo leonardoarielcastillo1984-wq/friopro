@@ -57,7 +57,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
         where,
         orderBy: { createdAt: 'desc' },
         include: {
-          actions: { where: { deletedAt: null }, orderBy: { createdAt: 'desc' } },
+          actions: { orderBy: { createdAt: 'desc' } },
           reviews: { orderBy: { reviewDate: 'desc' }, take: 1 },
           _count: { select: { actions: true, reviews: true, nonConformities: true } },
         },
@@ -76,7 +76,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       return tx.hazard.findUnique({
         where: { id, tenantId: tId, deletedAt: null },
         include: {
-          actions: { where: { deletedAt: null }, orderBy: { createdAt: 'desc' } },
+          actions: { orderBy: { createdAt: 'desc' } },
           reviews: { orderBy: { reviewDate: 'desc' } },
           nonConformities: { orderBy: { createdAt: 'desc' }, take: 5 },
         },
@@ -308,7 +308,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       return tx.hazard.findMany({
         where: { tenantId: tId, deletedAt: null },
         include: {
-          actions: { where: { deletedAt: null } },
+          actions: true,
           reviews: { orderBy: { reviewDate: 'desc' }, take: 1 },
           nonConformities: { where: { deletedAt: null } },
         },
@@ -421,7 +421,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     const hazard = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.findUnique({
         where: { id, tenantId: tId, deletedAt: null },
-        include: { actions: { where: { deletedAt: null } } },
+        include: { actions: true },
       });
     });
     if (!hazard) return reply.code(404).send({ error: 'Hazard not found' });

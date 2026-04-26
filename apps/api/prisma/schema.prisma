@@ -362,7 +362,6 @@ model PlatformUser {
   usersCreated PlatformUser[] @relation("UserCreatedBy")
   usersUpdated PlatformUser[] @relation("UserUpdatedBy")
 
-  documentsOwned Document[] @relation("DocumentOwner")
   reviewsCreated DocumentReview[] @relation("DocumentReviewCreatedBy")
 
   // RRHH Relations
@@ -1479,7 +1478,10 @@ model Employee {
   
   // Trainings
   trainingAssignments TrainingAssignment[]
-  
+
+  // Documents
+  documentsOwned Document[] @relation("DocumentOwner")
+
   // Audit
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
