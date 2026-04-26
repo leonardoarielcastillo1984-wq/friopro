@@ -335,7 +335,7 @@ export default function SimulacrosPage() {
           status: 'PLANNED'
         }
       });
-      setDrills([...drills, response]);
+      setDrills([...drills, response as DrillScenario]);
       setShowCreateModal(false);
       setNewItemName('');
       setNewItemDescription('');
@@ -909,20 +909,20 @@ export default function SimulacrosPage() {
                           </div>
                           <div className="flex items-center gap-1">
                             <Users className="w-4 h-4" />
-                            <span>{drill.scope.participants} participantes</span>
+                            <span>{drill.scope?.participants ?? 0} participantes</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <MapPin className="w-4 h-4" />
-                            <span>{drill.scope.areas.join(', ')}</span>
+                            <span>{drill.scope?.areas?.join(', ') || 'Sin áreas'}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <Phone className="w-4 h-4" />
-                            <span>{drill.coordinator.name}</span>
+                            <span>{drill.coordinator?.name || 'Sin coordinador'}</span>
                           </div>
                         </div>
 
                         {/* Objectives */}
-                        {drill.objectives.length > 0 && (
+                        {drill.objectives?.length > 0 && (
                           <div className="mt-3">
                             <h4 className="text-sm font-medium text-gray-700 mb-1">Objetivos:</h4>
                             <ul className="text-sm text-gray-600 list-disc list-inside">

@@ -1006,7 +1006,7 @@ export default function DrillDetailPage() {
                 <div>
                   <span className="text-sm text-gray-600">Áreas:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {drill.scope.areas.map((area, index) => (
+                    {(drill.scope?.areas || []).map((area, index) => (
                       <span key={index} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded">
                         {area}
                       </span>
@@ -1016,7 +1016,7 @@ export default function DrillDetailPage() {
                 <div>
                   <span className="text-sm text-gray-600">Departamentos:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {drill.scope.departments.map((dept, index) => (
+                    {(drill.scope?.departments || []).map((dept, index) => (
                       <span key={index} className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded">
                         {dept}
                       </span>
@@ -1026,7 +1026,7 @@ export default function DrillDetailPage() {
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-gray-500" />
                   <span className="text-sm text-gray-600">Participantes:</span>
-                  <span className="text-sm font-medium">{drill.scope.participants}</span>
+                  <span className="text-sm font-medium">{drill.scope?.participants ?? 0}</span>
                 </div>
               </div>
             )}
@@ -1156,11 +1156,11 @@ export default function DrillDetailPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {drill.resources.equipment.length > 0 && (
+                {(drill.resources?.equipment || []).length > 0 && (
                   <div>
                     <span className="text-sm text-gray-600">Equipos:</span>
                     <ul className="mt-1 space-y-1">
-                      {drill.resources.equipment.map((item, index) => (
+                      {(drill.resources?.equipment || []).map((item, index) => (
                         <li key={index} className="text-sm flex items-center justify-between">
                           <span>{item.name}</span>
                           <span className="text-gray-500">x{item.quantity}</span>
@@ -1169,11 +1169,11 @@ export default function DrillDetailPage() {
                     </ul>
                   </div>
                 )}
-                {drill.resources.personnel.length > 0 && (
+                {(drill.resources?.personnel || []).length > 0 && (
                   <div>
                     <span className="text-sm text-gray-600">Personal:</span>
                     <ul className="mt-1 space-y-1">
-                      {drill.resources.personnel.map((item, index) => (
+                      {(drill.resources?.personnel || []).map((item, index) => (
                         <li key={index} className="text-sm flex items-center justify-between">
                           <span>{item.role}</span>
                           <span className="text-gray-500">{item.assigned}/{item.required}</span>
