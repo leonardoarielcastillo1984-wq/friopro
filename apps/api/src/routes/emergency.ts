@@ -270,7 +270,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
           responsibleId: body.responsibleId || null,
           dueDate: body.dueDate,
           status: body.status || 'PENDING',
-          effectiveness: body.effectiveness || null,
+          effectiveness: body.effectiveness || 'PENDING',
         }
       });
     });
