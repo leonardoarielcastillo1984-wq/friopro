@@ -1,5 +1,7 @@
 'use client';
+
 import { Leaf } from 'lucide-react';
+import Link from 'next/link';
 import GenericCrudPage from '@/components/GenericCrudPage';
 
 export default function AspectosAmbientalesPage() {
@@ -9,7 +11,7 @@ export default function AspectosAmbientalesPage() {
       subtitle="Identificación y evaluación de aspectos e impactos ambientales (ISO 14001)"
       endpoint="/aspects"
       icon={Leaf}
-      defaultValues={{ condition: 'NORMAL', naturalness: 'DIRECT', magnitude: 3, severity: 3, frequency: 3, legalCompliance: 3, significance: 27 }}
+      defaultValues={{ condition: 'NORMAL', naturalness: 'DIRECT', magnitude: 3, severity: 3, frequency: 3, legalCompliance: 3, significance: 27, status: 'OPEN' }}
       fields={[
         { key: 'process', label: 'Proceso / Actividad', type: 'text', required: true },
         { key: 'aspect', label: 'Aspecto ambiental', type: 'textarea', required: true },
@@ -39,6 +41,17 @@ export default function AspectosAmbientalesPage() {
         { key: 'legalCompliance', label: 'Cumplimiento legal (1-5)', type: 'number' },
         { key: 'significance', label: 'Significancia', type: 'number', required: true },
         { key: 'isSignificant', label: 'Significativo', type: 'checkbox', placeholder: 'Marcar si es significativo' },
+        { key: 'status', label: 'Estado', type: 'select', options: [
+          { value: 'OPEN', label: 'Abierto' },
+          { value: 'IN_TREATMENT', label: 'En tratamiento' },
+          { value: 'CONTROLLED', label: 'Controlado' },
+          { value: 'CLOSED', label: 'Cerrado' },
+        ]},
+        { key: 'reviewFrequency', label: 'Frecuencia de revisión', type: 'select', options: [
+          { value: 'MONTHLY', label: 'Mensual' },
+          { value: 'QUARTERLY', label: 'Trimestral' },
+          { value: 'ANNUAL', label: 'Anual' },
+        ]},
         { key: 'currentControls', label: 'Controles actuales', type: 'textarea' },
         { key: 'improvementActions', label: 'Acciones de mejora', type: 'textarea' },
         { key: 'reviewDate', label: 'Próxima revisión', type: 'date' },
@@ -50,6 +63,15 @@ export default function AspectosAmbientalesPage() {
         { key: 'category', label: 'Categoría' },
         { key: 'significance', label: 'Significancia' },
         { key: 'isSignificant', label: '¿Significativo?', render: (i) => i.isSignificant ? 'Sí' : 'No' },
+        { key: 'status', label: 'Estado', render: (i) => {
+          const map: Record<string, string> = { OPEN: 'Abierto', IN_TREATMENT: 'En tratamiento', CONTROLLED: 'Controlado', CLOSED: 'Cerrado' };
+          return map[i.status] || i.status;
+        }},
+        { key: 'manage', label: 'Gestionar', render: (i) => (
+          <Link href={`/ambientales/${i.id}`} className="text-blue-600 hover:underline text-sm font-medium">
+            Ver
+          </Link>
+        )},
       ]}
     />
   );

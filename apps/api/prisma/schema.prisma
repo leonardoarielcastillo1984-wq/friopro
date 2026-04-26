@@ -54,6 +54,10 @@ model NonConformity {
   hazardId               String?               @db.Uuid
   hazard                 Hazard?               @relation("NcrHazard", fields: [hazardId], references: [id], onDelete: SetNull)
 
+  // Trazabilidad desde Aspectos Ambientales
+  environmentalAspectId   String?               @db.Uuid
+  environmentalAspect     EnvironmentalAspect?  @relation("NcrEnvironmentalAspect", fields: [environmentalAspectId], references: [id], onDelete: SetNull)
+
   // Trazabilidad desde Clientes
   customerLinks          Customer[]            @relation("CustomerNCR")
 
@@ -1481,6 +1485,11 @@ model Employee {
 
   // Documents
   documentsOwned Document[] @relation("DocumentOwner")
+
+  // Environmental (ISO 14001)
+  environmentalAspectsResponsible EnvironmentalAspect[] @relation("EnvironmentalAspectResponsible")
+  environmentalActionsAssigned    EnvironmentalAction[] @relation("EnvironmentalActionAssigned")
+  environmentalReviewsBy          EnvironmentalReview[] @relation("EnvironmentalReviewBy")
 
   // Audit
   createdAt DateTime @default(now()) @db.Timestamptz
@@ -3689,8 +3698,9 @@ model EnvironmentalAspect {
   severity      Int
   frequency     Int
   legalCompliance Int     @default(3)
-  significance  Int
-  isSignificant Boolean   @default(false)
+  significance      Int
+  initialSignificance Int?
+  isSignificant     Boolean   @default(false)
   currentControls String?
   improvementActions String?
   responsibleId String?   @db.Uuid
@@ -3699,8 +3709,80 @@ model EnvironmentalAspect {
   createdAt     DateTime  @default(now()) @db.Timestamptz
   updatedAt     DateTime  @updatedAt @db.Timestamptz
 
+  status        HazardStatus @default(OPEN)
+  reviewFrequency ReviewFrequency?
+
+  responsible     Employee? @relation("EnvironmentalAspectResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  actions         EnvironmentalAction[]
+  controls        EnvironmentalControl[]
+  reviews         EnvironmentalReview[]
+  nonConformities NonConformity[] @relation("NcrEnvironmentalAspect")
+
   @@index([tenantId])
+  @@index([status])
+  @@index([responsibleId])
   @@map("environmental_aspects")
+}
+
+model EnvironmentalAction {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  aspectId      String    @db.Uuid
+  description   String
+  responsibleId String?   @db.Uuid
+  dueDate       DateTime? @db.Timestamptz
+  status        RiskActionStatus @default(PENDING)
+  effectiveness RiskActionEffectiveness @default(PENDING)
+  evidence      String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  aspect      EnvironmentalAspect @relation(fields: [aspectId], references: [id], onDelete: Cascade)
+  responsible Employee? @relation("EnvironmentalActionAssigned", fields: [responsibleId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([aspectId])
+  @@index([status])
+  @@map("environmental_actions")
+}
+
+model EnvironmentalControl {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  aspectId    String    @db.Uuid
+  type        String    // OPERATIONAL, ENGINEERING, ADMINISTRATIVE
+  description String
+  implemented Boolean   @default(false)
+  effective   Boolean   @default(false)
+  observation String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+
+  aspect EnvironmentalAspect @relation(fields: [aspectId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([aspectId])
+  @@map("environmental_controls")
+}
+
+model EnvironmentalReview {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  aspectId     String    @db.Uuid
+  reviewDate   DateTime  @db.Timestamptz
+  result       String    // CONTROLLED, NOT_CONTROLLED
+  comments     String?
+  reviewedById String?   @db.Uuid
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @db.Timestamptz
+
+  aspect     EnvironmentalAspect @relation(fields: [aspectId], references: [id], onDelete: Cascade)
+  reviewedBy Employee? @relation("EnvironmentalReviewBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([aspectId])
+  @@index([reviewDate])
+  @@map("environmental_reviews")
 }
 
 // -------- 7. INCIDENTES / ACCIDENTES --------
