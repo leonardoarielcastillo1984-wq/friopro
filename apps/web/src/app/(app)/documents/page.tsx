@@ -62,6 +62,7 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false);
   const [departments, setDepartments] = useState<{id: string; name: string}[]>([]);
   const [normatives, setNormatives] = useState<{id: string; name: string; code: string}[]>([]);
+  const [employees, setEmployees] = useState<{id: string; firstName: string; lastName: string; email: string}[]>([]);
 
   // Estado para tipos de documento personalizados
   const [docTypeOptions, setDocTypeOptions] = useState([
@@ -106,10 +107,11 @@ export default function DocumentsPage() {
     setError(null);
     setLoading(true);
     try {
-      const [res, deptsRes, normsRes, storageRes] = await Promise.all([
+      const [res, deptsRes, normsRes, empsRes, storageRes] = await Promise.all([
         apiFetch<{ documents: DocumentRow[] }>('/documents').catch(() => ({ documents: [] })),
         apiFetch<{ departments: {id: string; name: string}[] }>('/hr/departments').catch(() => ({ departments: [] })),
         apiFetch<{ normativos: {id: string; name: string; code: string}[] }>('/normativos').catch(() => ({ normativos: [] })),
+        apiFetch<{ employees: {id: string; firstName: string; lastName: string; email: string}[] }>('/hr/employees').catch(() => ({ employees: [] })),
         fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/documents/list`).then(r => r.json()).catch(() => ({ documents: [] })),
       ]);
 
@@ -130,6 +132,7 @@ export default function DocumentsPage() {
       setDocs([...(res?.documents ?? []), ...storageDocuments]);
       setDepartments(deptsRes.departments ?? []);
       setNormatives(normsRes.normativos ?? []);
+      setEmployees(empsRes.employees ?? []);
     } catch (err: any) {
       const msg = err?.message ?? 'Error al cargar documentos';
       setError(msg);
@@ -403,8 +406,8 @@ export default function DocumentsPage() {
                 className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               >
                 <option value="">Sin asignar</option>
-                {departments.flatMap(d => []).map((u: any) => (
-                  <option key={u.id} value={u.id}>{u.email}</option>
+                {employees.map((e) => (
+                  <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.email})</option>
                 ))}
               </select>
             </div>

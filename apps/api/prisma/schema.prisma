@@ -945,7 +945,7 @@ model Document {
   // Control documental ISO
   process       String?
   ownerId       String?       @db.Uuid
-  owner         PlatformUser? @relation("DocumentOwner", fields: [ownerId], references: [id])
+  owner         Employee?     @relation("DocumentOwner", fields: [ownerId], references: [id])
   reviewDate        DateTime? @db.Timestamptz
   nextReviewDate    DateTime? @db.Timestamptz
   reviewStatus      DocumentReviewStatus? @default(APPROVED)

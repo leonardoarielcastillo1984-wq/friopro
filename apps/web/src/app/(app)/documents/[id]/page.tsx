@@ -51,8 +51,12 @@ export default function DocumentDetailPage() {
   const [editDepartmentId, setEditDepartmentId] = useState('');
   const [editNormativeIds, setEditNormativeIds] = useState<string[]>([]);
   const [editNormativeId, setEditNormativeId] = useState(''); // Mantener para compatibilidad
+  const [editOwnerId, setEditOwnerId] = useState('');
+  const [editProcess, setEditProcess] = useState('');
+  const [editNextReviewDate, setEditNextReviewDate] = useState('');
   const [departments, setDepartments] = useState<{id: string; name: string}[]>([]);
   const [normatives, setNormatives] = useState<{id: string; name: string; code: string}[]>([]);
+  const [employees, setEmployees] = useState<{id: string; firstName: string; lastName: string; email: string}[]>([]);
   const [showVersions, setShowVersions] = useState(false);
   const [versions, setVersions] = useState<any[]>([]);
   const [showNewVersion, setShowNewVersion] = useState(false);
@@ -131,6 +135,9 @@ export default function DocumentDetailPage() {
         setEditNormativeIds([]);
         setEditNormativeId('');
       }
+      setEditOwnerId(docRes.document.ownerId || '');
+      setEditProcess(docRes.document.process || '');
+      setEditNextReviewDate(docRes.document.nextReviewDate ? new Date(docRes.document.nextReviewDate).toISOString().split('T')[0] : '');
       
       // Load departments and normatives for editing
       await loadDepartmentsAndNormatives();
@@ -201,12 +208,14 @@ export default function DocumentDetailPage() {
 
   async function loadDepartmentsAndNormatives() {
     try {
-      const [deptsRes, normsRes] = await Promise.all([
+      const [deptsRes, normsRes, empsRes] = await Promise.all([
         apiFetch<{ departments: {id: string; name: string}[] }>('/hr/departments').catch(() => ({ departments: [] })),
         apiFetch<{ normativos: {id: string; name: string; code: string}[] }>('/normativos').catch(() => ({ normativos: [] })),
+        apiFetch<{ employees: {id: string; firstName: string; lastName: string; email: string}[] }>('/hr/employees').catch(() => ({ employees: [] })),
       ]);
       setDepartments(deptsRes.departments);
       setNormatives(normsRes.normativos);
+      setEmployees(empsRes.employees ?? []);
     } catch (err) {
       console.error('Error loading departments and normatives:', err);
     }
@@ -226,6 +235,9 @@ export default function DocumentDetailPage() {
           departmentId: editDepartmentId || null,
           normativeIds: editNormativeIds.length > 0 ? editNormativeIds : null,
           normativeId: editNormativeIds.length > 0 ? editNormativeIds[0] : null, // Para compatibilidad
+          ownerId: editOwnerId || null,
+          process: editProcess || null,
+          nextReviewDate: editNextReviewDate || null,
         },
       });
       setDoc(res.document);
@@ -716,6 +728,44 @@ export default function DocumentDetailPage() {
                   </div>
                   
                   <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Responsable</label>
+                    <select
+                      className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                      value={editOwnerId}
+                      onChange={(e) => setEditOwnerId(e.target.value)}
+                    >
+                      <option value="">Sin asignar</option>
+                      {employees.map((e) => (
+                        <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.email})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Proceso</label>
+                    <input
+                      className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                      placeholder="Ej: Gestión de Calidad"
+                      value={editProcess}
+                      onChange={(e) => setEditProcess(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Próxima revisión</label>
+                    <input
+                      type="date"
+                      className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                      value={editNextReviewDate}
+                      onChange={(e) => setEditNextReviewDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">Normativas aplicables</label>
                     <div className="space-y-2">
                       <div className="border border-neutral-300 rounded-lg p-3 max-h-40 overflow-y-auto">
@@ -831,7 +881,7 @@ export default function DocumentDetailPage() {
             {doc.owner && (
               <div>
                 <p className="text-xs text-neutral-500 mb-1">Responsable</p>
-                <p className="text-sm font-medium text-neutral-800">{doc.owner.email}</p>
+                <p className="text-sm font-medium text-neutral-800">{doc.owner.firstName} {doc.owner.lastName}</p>
               </div>
             )}
             {doc.reviewDate && (

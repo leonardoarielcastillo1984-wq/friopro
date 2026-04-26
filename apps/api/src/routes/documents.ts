@@ -32,7 +32,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           updatedAt: true,
           process: true,
           ownerId: true,
-          owner: { select: { id: true, email: true } },
+          owner: { select: { id: true, firstName: true, lastName: true, email: true } },
           reviewDate: true,
           nextReviewDate: true,
           reviewStatus: true,
@@ -70,7 +70,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         include: {
           department: { select: { id: true, name: true } },
           normative: { select: { id: true, name: true, code: true } },
-          owner: { select: { id: true, email: true } },
+          owner: { select: { id: true, firstName: true, lastName: true, email: true } },
           clauseMappings: {
             where: { deletedAt: null },
             include: {
