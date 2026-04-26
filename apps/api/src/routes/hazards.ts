@@ -219,17 +219,25 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    delete body.id; delete body.hazardId; delete body.tenantId; delete body.createdAt; delete body.updatedAt;
+    stripNulls(body);
+    parseDates(body);
 
-    const action = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.riskAction.create({
-        data: {
-          ...body,
-          tenantId: tId,
-          hazardId: id,
-        },
+    try {
+      const action = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.riskAction.create({
+          data: {
+            ...body,
+            tenantId: tId,
+            hazardId: id,
+          },
+        });
       });
-    });
-    return reply.send({ action });
+      return reply.send({ action });
+    } catch (e: any) {
+      app.log.error('Create action error:', e);
+      return reply.code(400).send({ error: 'Invalid action data', detail: e?.message });
+    }
   });
 
   // Update action
@@ -243,13 +251,18 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     stripNulls(body);
     parseDates(body);
 
-    const action = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.riskAction.update({
-        where: { id: actionId, hazardId, tenantId: tId, deletedAt: null },
-        data: body,
+    try {
+      const action = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.riskAction.update({
+          where: { id: actionId, hazardId, tenantId: tId },
+          data: body,
+        });
       });
-    });
-    return reply.send({ action });
+      return reply.send({ action });
+    } catch (e: any) {
+      app.log.error('Update action error:', e);
+      return reply.code(400).send({ error: 'Invalid action data', detail: e?.message });
+    }
   });
 
   // Delete action
@@ -285,17 +298,25 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    delete body.id; delete body.hazardId; delete body.tenantId; delete body.createdAt; delete body.updatedAt;
+    stripNulls(body);
+    parseDates(body);
 
-    const review = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.riskReview.create({
-        data: {
-          ...body,
-          tenantId: tId,
-          hazardId: id,
-        },
+    try {
+      const review = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.riskReview.create({
+          data: {
+            ...body,
+            tenantId: tId,
+            hazardId: id,
+          },
+        });
       });
-    });
-    return reply.send({ review });
+      return reply.send({ review });
+    } catch (e: any) {
+      app.log.error('Create review error:', e);
+      return reply.code(400).send({ error: 'Invalid review data', detail: e?.message });
+    }
   });
 
   // --- ALERTS SUMMARY ---
