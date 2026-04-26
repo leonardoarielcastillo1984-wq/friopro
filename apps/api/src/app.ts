@@ -22,6 +22,7 @@ import { authRoutes } from './routes/auth.js';
 import { documentRoutes } from './routes/documents.js';
 import { departmentRoutes } from './routes/departments.js';
 import { normativoRoutes, clauseMappingRoutes } from './routes/normativos.js';
+import { complianceEvidenceRoutes } from './routes/compliance-evidences.js';
 import { auditRoutes } from './routes/audit.js';
 import gestionCambiosRoutes from './routes/gestion-cambios.js';
 import { registerAuditRoutes } from './routes/audits.js';
@@ -182,6 +183,7 @@ export async function buildApp() {
   await app.register(clauseMappingRoutes, { prefix: '/documents' });
   await app.register(departmentRoutes, { prefix: '/departments' });
   await app.register(normativoRoutes, { prefix: '/normativos' });
+  await app.register(complianceEvidenceRoutes, { prefix: '/normativos' });
   await app.register(auditRoutes, { prefix: '/audit' });
   await app.register(registerAuditRoutes);
   await app.register(registerManagementReviewRoutes);

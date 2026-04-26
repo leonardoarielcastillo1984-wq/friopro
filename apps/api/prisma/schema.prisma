@@ -1219,6 +1219,7 @@ model NormativeClause {
   // Relaciones
   documentMappings DocumentClauseMapping[]
   aiFindings       AiFinding[]
+  clauseEvidences  ClauseEvidence[]
 
   @@unique([normativeId, clauseNumber])
   @@index([normativeId])
@@ -1250,6 +1251,27 @@ model DocumentClauseMapping {
   @@unique([documentId, clauseId])
   @@index([documentId])
   @@index([clauseId])
+}
+
+model ClauseEvidence {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+
+  clauseId      String    @db.Uuid
+  clause        NormativeClause @relation(fields: [clauseId], references: [id], onDelete: Cascade)
+
+  type          String    // DOCUMENT, MODULE, INDICATOR, ACTION
+  referenceId   String?   @db.Uuid // ID del registro en el módulo referenciado
+  referenceType String?   // ej: "suppliers", "customers", "kpi", "ncr", "audit", "capa"
+  description   String?
+  isActive      Boolean   @default(true)
+
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@index([clauseId])
+  @@index([tenantId])
+  @@map("clause_evidences")
 }
 
 // ──────────────────────────────────────────────────────────────
