@@ -27,6 +27,10 @@ function parseDates(data: any) {
   }
 }
 
+function isValidUUID(v: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(v);
+}
+
 export const emergencyRoutes: FastifyPluginAsync = async (app) => {
   const tenantId = (req: FastifyRequest) => (req as any).db?.tenantId;
 
@@ -180,6 +184,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
   // ========== DRILL RESULTS ==========
   app.get('/drills/:id/results', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { id } = req.params as { id: string };
     const items = await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillResult.findMany({ where: { drillId: id, tenantId: tId }, orderBy: { createdAt: 'desc' } });
@@ -189,6 +194,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/drills/:id/results', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { id } = req.params as { id: string };
     let body = parseBody(req);
     if (!body || !body.result) return reply.code(400).send({ error: 'result required' });
@@ -208,6 +214,8 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.put('/drills/:id/results/:resultId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { resultId } = req.params as { resultId: string };
     let body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
@@ -220,6 +228,8 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.delete('/drills/:id/results/:resultId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { resultId } = req.params as { resultId: string };
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillResult.delete({ where: { id: resultId } });
@@ -230,6 +240,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
   // ========== DRILL ACTIONS ==========
   app.get('/drills/:id/actions', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { id } = req.params as { id: string };
     const items = await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillAction.findMany({
@@ -243,9 +254,11 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/drills/:id/actions', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { id } = req.params as { id: string };
     let body = parseBody(req);
     if (!body || !body.description) return reply.code(400).send({ error: 'description required' });
+    if (body.responsibleId && !isValidUUID(body.responsibleId)) return reply.code(400).send({ error: 'responsibleId must be a valid UUID' });
     stripNulls(body);
     parseDates(body);
     const created = await app.runWithDbContext(req, async (tx: any) => {
@@ -254,10 +267,10 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
           tenantId: tId,
           drillId: id,
           description: body.description,
-          responsibleId: body.responsibleId,
+          responsibleId: body.responsibleId || null,
           dueDate: body.dueDate,
           status: body.status || 'PENDING',
-          effectiveness: body.effectiveness || 'PENDING',
+          effectiveness: body.effectiveness || null,
         }
       });
     });
@@ -265,6 +278,8 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.put('/drills/:id/actions/:actionId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { actionId } = req.params as { actionId: string };
     let body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
@@ -279,6 +294,8 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.delete('/drills/:id/actions/:actionId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { actionId } = req.params as { actionId: string };
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillAction.delete({ where: { id: actionId } });
@@ -289,6 +306,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
   // ========== DRILL PARTICIPANTS ==========
   app.get('/drills/:id/participants', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { id } = req.params as { id: string };
     const items = await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillParticipant.findMany({
@@ -301,9 +319,11 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/drills/:id/participants', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { id } = req.params as { id: string };
     let body = parseBody(req);
     if (!body || !body.employeeId) return reply.code(400).send({ error: 'employeeId required' });
+    if (!isValidUUID(body.employeeId)) return reply.code(400).send({ error: 'employeeId must be a valid UUID' });
     const created = await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillParticipant.create({
         data: { tenantId: tId, drillId: id, employeeId: body.employeeId }
@@ -313,6 +333,8 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.delete('/drills/:id/participants/:participantId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
     const { participantId } = req.params as { participantId: string };
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillParticipant.delete({ where: { id: participantId } });

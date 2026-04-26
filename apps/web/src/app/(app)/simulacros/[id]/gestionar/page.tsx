@@ -26,8 +26,12 @@ export default function DrillManagePage() {
   const [newResult, setNewResult] = useState({ result: 'SATISFACTORY', responseTime: '', observations: '', deviationsDetected: false });
   const [newAction, setNewAction] = useState({ description: '', responsibleId: '', dueDate: '', status: 'PENDING' });
   const [newParticipant, setNewParticipant] = useState({ employeeId: '' });
+  const [employees, setEmployees] = useState<any[]>([]);
 
   useEffect(() => { loadDrill(); }, [drillId]);
+  useEffect(() => {
+    apiFetch('/employees').then((data: any) => setEmployees(data.employees || [])).catch(() => setEmployees([]));
+  }, []);
   useEffect(() => { loadTab(); }, [activeTab, drillId]);
 
   const loadDrill = async () => {
@@ -73,7 +77,7 @@ export default function DrillManagePage() {
   };
 
   const deleteResult = async (id: string) => {
-    if (!confirm('Eliminar resultado?')) return;
+    if (!confirm('¿Eliminar resultado?')) return;
     await apiFetch(`/emergency/drills/${drillId}/results/${id}`, { method: 'DELETE' });
     loadTab();
   };
@@ -88,7 +92,7 @@ export default function DrillManagePage() {
   };
 
   const deleteAction = async (id: string) => {
-    if (!confirm('Eliminar accion?')) return;
+    if (!confirm('¿Eliminar acción?')) return;
     await apiFetch(`/emergency/drills/${drillId}/actions/${id}`, { method: 'DELETE' });
     loadTab();
   };
@@ -103,7 +107,7 @@ export default function DrillManagePage() {
   };
 
   const deleteParticipant = async (id: string) => {
-    if (!confirm('Eliminar participante?')) return;
+    if (!confirm('¿Eliminar participante?')) return;
     await apiFetch(`/emergency/drills/${drillId}/participants/${id}`, { method: 'DELETE' });
     loadTab();
   };
@@ -168,7 +172,7 @@ export default function DrillManagePage() {
           {items.map((item: any) => (
             <div key={item.id} className="bg-white border rounded-lg p-4 flex justify-between items-start">
               <div>
-                <div className="font-medium">{item.result}</div>
+                <div className="font-medium">{item.result === 'SATISFACTORY' ? 'Satisfactorio' : item.result === 'WITH_FAILURES' ? 'Con Fallas' : item.result === 'CRITICAL' ? 'Crítico' : item.result}</div>
                 <div className="text-sm text-gray-600">{item.observations}</div>
                 {item.responseTime && <div className="text-sm text-gray-500">Tiempo: {item.responseTime} min</div>}
               </div>
@@ -181,11 +185,22 @@ export default function DrillManagePage() {
       {!tabLoading && activeTab === 'actions' && (
         <div className="space-y-4">
           <div className="bg-white border rounded-lg p-4">
-            <h3 className="font-semibold mb-3">Nueva Accion</h3>
-            <input placeholder="Descripcion" value={newAction.description} onChange={(e) => setNewAction({...newAction, description: e.target.value})} className="w-full border rounded px-3 py-2 mb-2" />
-            <div className="grid grid-cols-2 gap-3">
-              <input placeholder="Responsable ID" value={newAction.responsibleId} onChange={(e) => setNewAction({...newAction, responsibleId: e.target.value})} className="border rounded px-3 py-2" />
+            <h3 className="font-semibold mb-3">Nueva Acción</h3>
+            <input placeholder="Descripción" value={newAction.description} onChange={(e) => setNewAction({...newAction, description: e.target.value})} className="w-full border rounded px-3 py-2 mb-2" />
+            <div className="grid grid-cols-3 gap-3">
+              <select value={newAction.responsibleId} onChange={(e) => setNewAction({...newAction, responsibleId: e.target.value})} className="border rounded px-3 py-2">
+                <option value="">Sin responsable</option>
+                {employees.map((emp: any) => (
+                  <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                ))}
+              </select>
               <input type="date" placeholder="Fecha limite" value={newAction.dueDate} onChange={(e) => setNewAction({...newAction, dueDate: e.target.value})} className="border rounded px-3 py-2" />
+              <select value={newAction.status} onChange={(e) => setNewAction({...newAction, status: e.target.value})} className="border rounded px-3 py-2">
+                <option value="PENDING">Pendiente</option>
+                <option value="IN_PROGRESS">En Progreso</option>
+                <option value="COMPLETED">Completado</option>
+                <option value="CANCELLED">Cancelado</option>
+              </select>
             </div>
             <button onClick={addAction} className="mt-2 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
               <Plus className="w-4 h-4" /> Agregar
@@ -196,7 +211,7 @@ export default function DrillManagePage() {
             <div key={item.id} className="bg-white border rounded-lg p-4 flex justify-between items-start">
               <div>
                 <div className="font-medium">{item.description}</div>
-                <div className="text-sm text-gray-600">Estado: {item.status}</div>
+                <div className="text-sm text-gray-600">Estado: {item.status === 'PENDING' ? 'Pendiente' : item.status === 'IN_PROGRESS' ? 'En Progreso' : item.status === 'COMPLETED' ? 'Completado' : item.status === 'CANCELLED' ? 'Cancelado' : item.status}</div>
                 {item.dueDate && <div className="text-sm text-gray-500">Vence: {new Date(item.dueDate).toLocaleDateString()}</div>}
               </div>
               <button onClick={() => deleteAction(item.id)} className="text-red-600 hover:text-red-800"><Trash2 className="w-4 h-4" /></button>
@@ -209,7 +224,12 @@ export default function DrillManagePage() {
         <div className="space-y-4">
           <div className="bg-white border rounded-lg p-4">
             <h3 className="font-semibold mb-3">Agregar Participante</h3>
-            <input placeholder="Employee ID" value={newParticipant.employeeId} onChange={(e) => setNewParticipant({...newParticipant, employeeId: e.target.value})} className="border rounded px-3 py-2 mr-2" />
+            <select value={newParticipant.employeeId} onChange={(e) => setNewParticipant({...newParticipant, employeeId: e.target.value})} className="border rounded px-3 py-2 mr-2">
+              <option value="">Seleccionar empleado</option>
+              {employees.map((emp: any) => (
+                <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+              ))}
+            </select>
             <button onClick={addParticipant} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
               <Plus className="w-4 h-4 inline" /> Agregar
             </button>
@@ -226,8 +246,8 @@ export default function DrillManagePage() {
 
       {!tabLoading && activeTab === 'ai' && (
         <div className="bg-white border rounded-lg p-4">
-          <h3 className="font-semibold mb-2">Analisis IA</h3>
-          {aiText ? <pre className="whitespace-pre-wrap text-sm">{aiText}</pre> : <p className="text-gray-500">Sin analisis</p>}
+          <h3 className="font-semibold mb-2">Análisis IA</h3>
+          {aiText ? <pre className="whitespace-pre-wrap text-sm">{aiText}</pre> : <p className="text-gray-500">Sin análisis</p>}
         </div>
       )}
 
