@@ -29,6 +29,10 @@ export default function NormativoDetailPage() {
   const [evidenceDescription, setEvidenceDescription] = useState('');
   const [modules, setModules] = useState<any[]>([]);
 
+  // Estados para análisis IA de cláusula
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
+  const [loadingAI, setLoadingAI] = useState(false);
+
   // Estados para sugerencias de IA
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -60,6 +64,7 @@ export default function NormativoDetailPage() {
 
   async function loadClauseDetail(clauseId: string) {
     setLoadingClause(true);
+    setAiAnalysis(null);
     try {
       const [detailRes, complianceRes, evidencesRes] = await Promise.all([
         apiFetch<{ clause: NormativeClause & { content: string; childClauses: NormativeClause[] } }>(`/normativos/${id}/clauses/${clauseId}`),
@@ -124,6 +129,20 @@ export default function NormativoDetailPage() {
       }
     } catch (err: any) {
       setError(err?.message ?? 'Error al eliminar evidencia');
+    }
+  }
+
+  async function loadAIAnalysis() {
+    if (!selectedClause) return;
+    setLoadingAI(true);
+    setAiAnalysis(null);
+    try {
+      const res = await apiFetch<any>(`/normativos/clauses/${selectedClause.id}/ai-analyze`, { method: 'POST' });
+      setAiAnalysis(res.aiAnalysis);
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al analizar con IA');
+    } finally {
+      setLoadingAI(false);
     }
   }
 
@@ -425,12 +444,22 @@ export default function NormativoDetailPage() {
               <div className="mt-4">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-neutral-800">Evidencias del sistema</h3>
-                  <button
-                    onClick={() => setShowAddEvidence(true)}
-                    className="flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
-                  >
-                    <Plus className="h-3 w-3" /> Agregar
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={loadAIAnalysis}
+                      disabled={loadingAI}
+                      className="flex items-center gap-1 rounded bg-purple-600 px-2 py-1 text-xs text-white hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {loadingAI ? 'Analizando...' : 'Analizar IA'}
+                    </button>
+                    <button
+                      onClick={() => setShowAddEvidence(true)}
+                      className="flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
+                    >
+                      <Plus className="h-3 w-3" /> Agregar
+                    </button>
+                  </div>
                 </div>
 
                 {evidences.length === 0 ? (
@@ -466,6 +495,64 @@ export default function NormativoDetailPage() {
                   </div>
                 )}
               </div>
+
+              {/* Resultados del análisis IA */}
+              {aiAnalysis && (
+                <div className="mt-4 rounded border border-purple-200 bg-purple-50 p-3">
+                  <h3 className="mb-2 text-sm font-semibold text-purple-900 flex items-center gap-1">
+                    <Sparkles className="h-3.5 w-3.5" /> Análisis IA
+                  </h3>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-purple-800">Evaluación:</span>
+                      <span className={`rounded px-2 py-0.5 font-medium ${
+                        aiAnalysis.assessment === 'CUMPLIMIENTO_TOTAL' ? 'bg-green-100 text-green-700' :
+                        aiAnalysis.assessment === 'CUMPLIMIENTO_PARCIAL' ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {aiAnalysis.assessment === 'CUMPLIMIENTO_TOTAL' ? 'Cumplimiento Total' :
+                         aiAnalysis.assessment === 'CUMPLIMIENTO_PARCIAL' ? 'Cumplimiento Parcial' :
+                         'No Cumplimiento'}
+                      </span>
+                    </div>
+                    <p className="text-purple-900"><span className="font-medium">Resumen:</span> {aiAnalysis.summary}</p>
+                    {aiAnalysis.gaps && aiAnalysis.gaps.length > 0 && (
+                      <div>
+                        <span className="font-medium text-purple-800">Brechas identificadas:</span>
+                        <ul className="ml-4 mt-1 list-disc text-purple-800">
+                          {aiAnalysis.gaps.map((gap: string, i: number) => <li key={i}>{gap}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {aiAnalysis.recommendations && aiAnalysis.recommendations.length > 0 && (
+                      <div>
+                        <span className="font-medium text-purple-800">Recomendaciones:</span>
+                        <div className="mt-1 space-y-1">
+                          {aiAnalysis.recommendations.map((rec: any, i: number) => (
+                            <div key={i} className="rounded bg-white p-2 border border-purple-100">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                  rec.priority === 'ALTA' ? 'bg-red-100 text-red-700' :
+                                  rec.priority === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-green-100 text-green-700'
+                                }`}>{rec.priority}</span>
+                                <span className="font-medium text-purple-900">{rec.action}</span>
+                              </div>
+                              <div className="text-[10px] text-purple-600">{rec.moduleOrDocument}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {aiAnalysis.documentsAnalysis && (
+                      <p className="text-purple-800"><span className="font-medium">Documentos:</span> {aiAnalysis.documentsAnalysis}</p>
+                    )}
+                    {aiAnalysis.modulesAnalysis && (
+                      <p className="text-purple-800"><span className="font-medium">Módulos:</span> {aiAnalysis.modulesAnalysis}</p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Documentos vinculados */}
               {(selectedClause as any).documentMappings && (selectedClause as any).documentMappings.length > 0 && (
