@@ -32,8 +32,26 @@ export type DocumentRow = {
   version: number;
   normativeId?: string | null;
   departmentId?: string | null;
+  process?: string | null;
+  ownerId?: string | null;
+  owner?: { id: string; email: string } | null;
+  reviewDate?: string | null;
+  nextReviewDate?: string | null;
+  reviewStatus?: 'APPROVED' | 'REQUIRES_UPDATE';
+  documentQualityStatus?: 'ADEQUATE' | 'IMPROVABLE' | 'NON_CONFORMING';
+  autoStatus?: 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' | 'SIN_FECHA';
   createdAt: string;
   updatedAt: string;
+};
+
+export type DocumentReview = {
+  id: string;
+  documentId: string;
+  reviewedAt: string;
+  result: 'APPROVED' | 'REQUIRES_UPDATE';
+  comments?: string | null;
+  reviewedBy?: { id: string; email: string } | null;
+  createdAt: string;
 };
 
 // ── Módulo de Cumplimiento Normativo ──

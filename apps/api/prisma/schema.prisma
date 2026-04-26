@@ -114,6 +114,17 @@ enum DocumentStatus {
   OBSOLETE
 }
 
+enum DocumentReviewStatus {
+  APPROVED
+  REQUIRES_UPDATE
+}
+
+enum DocumentQualityStatus {
+  ADEQUATE
+  IMPROVABLE
+  NON_CONFORMING
+}
+
 enum NCRStatus {
   OPEN
   IN_ANALYSIS
@@ -346,6 +357,9 @@ model PlatformUser {
 
   usersCreated PlatformUser[] @relation("UserCreatedBy")
   usersUpdated PlatformUser[] @relation("UserUpdatedBy")
+
+  documentsOwned Document[] @relation("DocumentOwner")
+  reviewsCreated DocumentReview[] @relation("DocumentReviewCreatedBy")
 
   // RRHH Relations
   employeesCreated Employee[] @relation("EmployeeCreatedBy")
@@ -928,6 +942,15 @@ model Document {
   status       DocumentStatus @default(DRAFT)
   version      Int            @default(1)
 
+  // Control documental ISO
+  process       String?
+  ownerId       String?       @db.Uuid
+  owner         PlatformUser? @relation("DocumentOwner", fields: [ownerId], references: [id])
+  reviewDate        DateTime? @db.Timestamptz
+  nextReviewDate    DateTime? @db.Timestamptz
+  reviewStatus      DocumentReviewStatus? @default(APPROVED)
+  documentQualityStatus DocumentQualityStatus? @default(ADEQUATE)
+
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
@@ -943,6 +966,7 @@ model Document {
   aiFindings     AiFinding[]
   auditRuns      AuditRun[]
   versions       DocumentVersion[]
+  reviews        DocumentReview[]
 
   @@index([tenantId])
   @@index([departmentId])
@@ -966,6 +990,23 @@ model DocumentVersion {
   
   createdAt    DateTime @default(now()) @db.Timestamptz
   
+  @@index([documentId])
+}
+
+model DocumentReview {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  reviewedAt DateTime @default(now()) @db.Timestamptz
+  result     DocumentReviewStatus
+  comments   String? @db.Text
+
+  reviewedById String?       @db.Uuid
+  reviewedBy   PlatformUser? @relation("DocumentReviewCreatedBy", fields: [reviewedById], references: [id])
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
   @@index([documentId])
 }
 

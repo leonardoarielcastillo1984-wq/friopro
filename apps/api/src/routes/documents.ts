@@ -8,6 +8,7 @@ import { extractTextFromPdf } from '../services/pdfParser.js';
 import { generateDocumentSummary } from '../services/aiService.js';
 import { requiresTenantContext, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { checkStorageQuota, incrementStorageUsed, decrementStorageUsed } from '../services/storage-usage.js';
+import { createLLMProvider } from '../services/llm/factory.js';
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -29,11 +30,32 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           departmentId: true,
           createdAt: true,
           updatedAt: true,
+          process: true,
+          ownerId: true,
+          owner: { select: { id: true, email: true } },
+          reviewDate: true,
+          nextReviewDate: true,
+          reviewStatus: true,
+          documentQualityStatus: true,
         },
       });
     });
 
-    return reply.send({ documents });
+    // Calcular estado automático de vigencia
+    const today = new Date();
+    const documentsWithAutoStatus = documents.map((d: any) => {
+      let autoStatus: 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' | 'SIN_FECHA' = 'SIN_FECHA';
+      if (d.nextReviewDate) {
+        const next = new Date(d.nextReviewDate);
+        const diffDays = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) autoStatus = 'VENCIDO';
+        else if (diffDays <= 15) autoStatus = 'POR_VENCER';
+        else autoStatus = 'VIGENTE';
+      }
+      return { ...d, autoStatus };
+    });
+
+    return reply.send({ documents: documentsWithAutoStatus });
   });
 
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -48,6 +70,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         include: {
           department: { select: { id: true, name: true } },
           normative: { select: { id: true, name: true, code: true } },
+          owner: { select: { id: true, email: true } },
           clauseMappings: {
             where: { deletedAt: null },
             include: {
@@ -60,6 +83,11 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
                 },
               },
             },
+          },
+          reviews: {
+            orderBy: { reviewedAt: 'desc' },
+            take: 10,
+            include: { reviewedBy: { select: { id: true, email: true } } },
           },
           createdBy: { select: { id: true, email: true } },
           updatedBy: { select: { id: true, email: true } },
@@ -98,13 +126,35 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       }
     }
     
+    // Calcular estado automático de vigencia
+    const today = new Date();
+    let autoStatus: 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' | 'SIN_FECHA' = 'SIN_FECHA';
+    let daysToExpiry: number | null = null;
+    if (doc.nextReviewDate) {
+      const next = new Date(doc.nextReviewDate);
+      daysToExpiry = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysToExpiry < 0) autoStatus = 'VENCIDO';
+      else if (daysToExpiry <= 15) autoStatus = 'POR_VENCER';
+      else autoStatus = 'VIGENTE';
+    }
+
+    // Flags de alerta
+    const alerts = [] as string[];
+    if (autoStatus === 'VENCIDO') alerts.push('Documento vencido');
+    if (autoStatus === 'POR_VENCER') alerts.push('Documento próximo a vencer');
+    if (!doc.reviewDate) alerts.push('Sin revisión registrada');
+    if (!doc.ownerId) alerts.push('Sin responsable asignado');
+
     // Return full document data including content and filePath
-    return reply.send({ 
+    return reply.send({
       document: {
         ...doc,
         content: extractedContent || doc.content,
         filePath: doc.filePath,
         fileUrl: doc.filePath ? `/documents/${doc.id}/download` : null,
+        autoStatus,
+        daysToExpiry,
+        alerts,
       }
     });
   });
@@ -120,12 +170,17 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       standardTags: z.unknown().optional(),
       departmentId: z.string().uuid().optional(),
       normativeId: z.string().uuid().optional(),
+      process: z.string().optional(),
+      ownerId: z.string().uuid().optional(),
+      reviewDate: z.string().datetime().optional(),
+      nextReviewDate: z.string().datetime().optional(),
+      reviewStatus: z.enum(['APPROVED', 'REQUIRES_UPDATE']).optional(),
     });
 
     const body = bodySchema.parse(req.body);
 
     const created = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.document.create({
+      const doc = await tx.document.create({
         data: {
           tenantId: (req.db!.tenantId as string),
           title: body.title,
@@ -133,12 +188,40 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           standardTags: body.standardTags as any,
           departmentId: body.departmentId,
           normativeId: body.normativeId,
+          process: body.process,
+          ownerId: body.ownerId,
+          reviewDate: body.reviewDate ? new Date(body.reviewDate) : null,
+          nextReviewDate: body.nextReviewDate ? new Date(body.nextReviewDate) : null,
+          reviewStatus: (body.reviewStatus as any) ?? 'APPROVED',
           status: 'DRAFT',
           version: 1,
           createdById: req.auth?.userId ?? null,
           updatedById: req.auth?.userId ?? null,
         },
       });
+
+      // Auto-link a cumplimiento si tiene normativa
+      if (body.normativeId) {
+        const clauses = await tx.normativeClause.findMany({
+          where: { normativeId: body.normativeId, deletedAt: null },
+          select: { id: true },
+        });
+        for (const clause of clauses) {
+          await tx.documentClauseMapping.upsert({
+            where: { documentId_clauseId: { documentId: doc.id, clauseId: clause.id } },
+            update: {},
+            create: {
+              documentId: doc.id,
+              clauseId: clause.id,
+              complianceType: 'REFERENCIA',
+              tenantId: req.db!.tenantId as string,
+              createdById: req.auth?.userId ?? null,
+            },
+          });
+        }
+      }
+
+      return doc;
     });
 
     return reply.code(201).send({ document: created });
@@ -158,6 +241,12 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       bumpVersion: z.boolean().optional(),
       departmentId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional(),
       normativeId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional(),
+      process: z.string().optional(),
+      ownerId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional(),
+      reviewDate: z.union([z.string().datetime(), z.literal(''), z.null()]).optional(),
+      nextReviewDate: z.union([z.string().datetime(), z.literal(''), z.null()]).optional(),
+      reviewStatus: z.enum(['APPROVED', 'REQUIRES_UPDATE']).optional(),
+      documentQualityStatus: z.enum(['ADEQUATE', 'IMPROVABLE', 'NON_CONFORMING']).optional(),
     });
 
     const body = bodySchema.parse(req.body);
@@ -166,7 +255,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       const existing = await tx.document.findFirst({ where: { id: params.id, deletedAt: null } });
       if (!existing) return null;
 
-      return tx.document.update({
+      const updated = await tx.document.update({
         where: { id: existing.id },
         data: {
           title: body.title ?? existing.title,
@@ -176,9 +265,38 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           version: body.bumpVersion ? existing.version + 1 : existing.version,
           departmentId: body.departmentId !== undefined ? body.departmentId : existing.departmentId,
           normativeId: body.normativeId !== undefined ? body.normativeId : existing.normativeId,
+          process: body.process !== undefined ? body.process : existing.process,
+          ownerId: body.ownerId !== undefined ? body.ownerId : existing.ownerId,
+          reviewDate: body.reviewDate !== undefined ? (body.reviewDate ? new Date(body.reviewDate) : null) : existing.reviewDate,
+          nextReviewDate: body.nextReviewDate !== undefined ? (body.nextReviewDate ? new Date(body.nextReviewDate) : null) : existing.nextReviewDate,
+          reviewStatus: (body.reviewStatus as any) ?? existing.reviewStatus,
+          documentQualityStatus: (body.documentQualityStatus as any) ?? existing.documentQualityStatus,
           updatedById: req.auth?.userId ?? null,
         },
       });
+
+      // Auto-link a cumplimiento si cambió la normativa
+      if (body.normativeId !== undefined && body.normativeId && body.normativeId !== existing.normativeId) {
+        const clauses = await tx.normativeClause.findMany({
+          where: { normativeId: body.normativeId as string, deletedAt: null },
+          select: { id: true },
+        });
+        for (const clause of clauses) {
+          await tx.documentClauseMapping.upsert({
+            where: { documentId_clauseId: { documentId: existing.id, clauseId: clause.id } },
+            update: {},
+            create: {
+              documentId: existing.id,
+              clauseId: clause.id,
+              complianceType: 'REFERENCIA',
+              tenantId: req.db!.tenantId as string,
+              createdById: req.auth?.userId ?? null,
+            },
+          });
+        }
+      }
+
+      return updated;
     });
 
     if (!updated) return reply.code(404).send({ error: 'Not found' });
@@ -306,9 +424,13 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const docType = (data.fields?.type as any)?.value || 'PROCEDURE';
     const departmentId = (data.fields?.departmentId as any)?.value || null;
     const normativeId = (data.fields?.normativeId as any)?.value || null;
+    const docProcess = (data.fields?.process as any)?.value || null;
+    const ownerId = (data.fields?.ownerId as any)?.value || null;
+    const reviewDate = (data.fields?.reviewDate as any)?.value || null;
+    const nextReviewDate = (data.fields?.nextReviewDate as any)?.value || null;
 
     const created = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.document.create({
+      const doc = await tx.document.create({
         data: {
           tenantId: effectiveTenantId,
           title,
@@ -317,12 +439,40 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           filePath,
           departmentId,
           normativeId,
+          process: docProcess,
+          ownerId,
+          reviewDate: reviewDate ? new Date(reviewDate) : null,
+          nextReviewDate: nextReviewDate ? new Date(nextReviewDate) : null,
+          reviewStatus: 'APPROVED',
           status: 'DRAFT',
           version: 1,
           createdById: req.auth?.userId ?? null,
           updatedById: req.auth?.userId ?? null,
         },
       });
+
+      // Auto-link a cumplimiento si tiene normativa
+      if (normativeId) {
+        const clauses = await tx.normativeClause.findMany({
+          where: { normativeId, deletedAt: null },
+          select: { id: true },
+        });
+        for (const clause of clauses) {
+          await tx.documentClauseMapping.upsert({
+            where: { documentId_clauseId: { documentId: doc.id, clauseId: clause.id } },
+            update: {},
+            create: {
+              documentId: doc.id,
+              clauseId: clause.id,
+              complianceType: 'REFERENCIA',
+              tenantId: effectiveTenantId,
+              createdById: req.auth?.userId ?? null,
+            },
+          });
+        }
+      }
+
+      return doc;
     });
 
     return reply.code(201).send({
@@ -554,6 +704,159 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     } catch (err) {
       app.log.error(err, 'Error reading version file');
       return reply.code(500).send({ error: 'Failed to read file' });
+    }
+  });
+
+  // ── GET /documents/:id/reviews — Listar revisiones ──
+  app.get('/:id/reviews', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const { id } = paramsSchema.parse(req.params);
+
+    const reviews = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.documentReview.findMany({
+        where: { documentId: id },
+        orderBy: { reviewedAt: 'desc' },
+        include: { reviewedBy: { select: { id: true, email: true } } },
+      });
+    });
+
+    return reply.send({ reviews });
+  });
+
+  // ── POST /documents/:id/reviews — Registrar revisión ──
+  app.post('/:id/reviews', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const { id } = paramsSchema.parse(req.params);
+
+    const bodySchema = z.object({
+      result: z.enum(['APPROVED', 'REQUIRES_UPDATE']),
+      comments: z.string().optional(),
+      nextReviewDate: z.string().datetime().optional(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const result = await app.runWithDbContext(req, async (tx: any) => {
+      const doc = await tx.document.findFirst({ where: { id, deletedAt: null } });
+      if (!doc) throw new Error('Document not found');
+
+      const review = await tx.documentReview.create({
+        data: {
+          documentId: id,
+          result: body.result,
+          comments: body.comments,
+          reviewedById: req.auth?.userId ?? null,
+        },
+      });
+
+      // Actualizar fechas de revisión en el documento
+      const now = new Date();
+      const nextDate = body.nextReviewDate ? new Date(body.nextReviewDate) : (doc.nextReviewDate ? new Date(doc.nextReviewDate) : null);
+      await tx.document.update({
+        where: { id },
+        data: {
+          reviewDate: now,
+          nextReviewDate: nextDate,
+          reviewStatus: body.result,
+          updatedById: req.auth?.userId ?? null,
+        },
+      });
+
+      return review;
+    });
+
+    return reply.code(201).send({ review: result });
+  });
+
+  // ── POST /documents/:id/ai-validation — Validación documental con IA ──
+  app.post('/:id/ai-validation', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const paramsSchema = z.object({ id: z.string().uuid() });
+    const { id } = paramsSchema.parse(req.params);
+
+    const doc = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.document.findFirst({
+        where: { id, deletedAt: null },
+        select: { id: true, title: true, content: true, type: true, status: true, reviewStatus: true },
+      });
+    });
+
+    if (!doc) return reply.code(404).send({ error: 'Document not found' });
+    if (!doc.content || doc.content.length < 50) {
+      return reply.send({
+        qualityStatus: 'IMPROVABLE',
+        summary: 'No hay contenido suficiente para validar.',
+        gaps: ['Contenido insuficiente o archivo no parseable'],
+        recommendations: [{ priority: 'ALTA', action: 'Verificar que el archivo sea legible y contenga texto.', moduleOrDocument: 'general' }],
+        complianceScore: 0,
+      });
+    }
+
+    try {
+      const prompt = `Sos un experto en control documental ISO 9001/14001/45001. Evaluá la calidad y conformidad del siguiente documento de gestión.
+
+=== DOCUMENTO ===
+Título: ${doc.title}
+Tipo: ${doc.type}
+Estado: ${doc.status}
+
+Contenido (primeros 3000 caracteres):
+${doc.content.slice(0, 3000)}
+
+Tu tarea:
+1. Evaluá la calidad del documento considerando:
+   - Claridad y redacción
+   - Estructura (título, alcance, responsabilidades, procedimiento, registros)
+   - Completitud de secciones ISO requeridas
+   - Definición de responsabilidades
+2. Detectá faltantes o deficiencias.
+3. Asigná un puntaje de conformidad del 0 al 100.
+4. Clasificá la calidad como: ADEQUATE (>=70), IMPROVABLE (40-69), NON_CONFORMING (<40).
+
+Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código):
+{
+  "qualityStatus": "ADEQUATE|IMPROVABLE|NON_CONFORMING",
+  "complianceScore": 0,
+  "summary": "Evaluación breve en 2-3 oraciones.",
+  "gaps": ["Faltante 1", "Faltante 2"],
+  "recommendations": [
+    {"priority": "ALTA|MEDIA|BAJA", "action": "Acción concreta", "moduleOrDocument": "qué sección o campo mejorar"}
+  ],
+  "structureAnalysis": "Análisis de la estructura del documento.",
+  "responsibilityAnalysis": "Análisis de si las responsabilidades están claras."
+}`;
+
+      const llm = createLLMProvider();
+      const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
+
+      let parsed;
+      try {
+        parsed = JSON.parse(response.text.trim().replace(/^```json\s*|\s*```$/g, ''));
+      } catch {
+        parsed = {
+          qualityStatus: 'IMPROVABLE',
+          complianceScore: 50,
+          summary: response.text.slice(0, 500),
+          gaps: ['No se pudo estructurar la validación.'],
+          recommendations: [{ priority: 'MEDIA', action: 'Revisar manualmente el documento.', moduleOrDocument: 'general' }],
+          structureAnalysis: '',
+          responsibilityAnalysis: '',
+        };
+      }
+
+      // Guardar qualityStatus en el documento
+      await app.runWithDbContext(req, async (tx: any) => {
+        await tx.document.update({
+          where: { id },
+          data: { documentQualityStatus: parsed.qualityStatus as any },
+        });
+      });
+
+      return reply.send({ ...parsed, model: response.model });
+    } catch (err: any) {
+      app.log.error('AI validation error:', err);
+      return reply.code(503).send({ error: err?.message || 'El servicio de IA no está disponible' });
     }
   });
 };

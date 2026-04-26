@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { apiFetch, getCsrfToken, tryRefreshToken } from '@/lib/api';
-import type { DocumentRow, DocumentClauseMapping, NormativeClause } from '@/lib/types';
+import type { DocumentRow, DocumentReview, DocumentClauseMapping, NormativeClause } from '@/lib/types';
 import ComboSelect from '@/components/ComboSelect';
 import {
   FileText, ArrowLeft, Download, Edit3, CheckCircle2,
@@ -68,6 +68,15 @@ export default function DocumentDetailPage() {
   const [linkingNotes, setLinkingNotes] = useState('');
   const [linking, setLinking] = useState(false);
 
+  // Document control panel
+  const [reviews, setReviews] = useState<DocumentReview[]>([]);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewResult, setReviewResult] = useState<'APPROVED' | 'REQUIRES_UPDATE'>('APPROVED');
+  const [reviewComments, setReviewComments] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+  const [aiValidation, setAiValidation] = useState<{ overallStatus: string; qualityScore: number; gaps: string[]; recommendations: string[] } | null>(null);
+  const [loadingAiValidation, setLoadingAiValidation] = useState(false);
+
   const docTypeOptions = [
     { value: 'POLICY', label: 'Política' },
     { value: 'PROCEDURE', label: 'Procedimiento' },
@@ -125,6 +134,7 @@ export default function DocumentDetailPage() {
       
       // Load departments and normatives for editing
       await loadDepartmentsAndNormatives();
+      await loadReviews();
     } catch (err: any) {
       setError(err?.message ?? 'Error al cargar documento');
       if (err?.message === 'Unauthorized') router.push('/login');
@@ -143,6 +153,49 @@ export default function DocumentDetailPage() {
       // Silently fail - summary is optional
     } finally {
       setLoadingSummary(false);
+    }
+  }
+
+  async function loadReviews() {
+    try {
+      const res = await apiFetch<{ reviews: DocumentReview[] }>(`/documents/${id}/reviews`).catch(() => ({ reviews: [] }));
+      setReviews(res?.reviews ?? []);
+    } catch (err) {
+      console.error('Error loading reviews:', err);
+    }
+  }
+
+  async function handleRegisterReview(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reviewResult) return;
+    setReviewing(true);
+    try {
+      const res = await apiFetch<{ review: DocumentReview }>(`/documents/${id}/reviews`, {
+        method: 'POST',
+        json: { result: reviewResult, comments: reviewComments || undefined },
+      });
+      setReviews(prev => [res.review, ...prev]);
+      setShowReviewModal(false);
+      setReviewComments('');
+      // Refresh document to update reviewStatus
+      const docRes = await apiFetch<{ document: DocumentDetail }>(`/documents/${id}`);
+      setDoc(docRes.document);
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al registrar revisión');
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  async function loadAiValidation() {
+    setLoadingAiValidation(true);
+    try {
+      const res = await apiFetch<{ overallStatus: string; qualityScore: number; gaps: string[]; recommendations: string[] }>(`/documents/${id}/ai-validation`, { method: 'POST' });
+      setAiValidation(res);
+    } catch (err: any) {
+      setError(err?.message ?? 'Error en validación IA');
+    } finally {
+      setLoadingAiValidation(false);
     }
   }
 
@@ -584,6 +637,19 @@ export default function DocumentDetailPage() {
           >
             <Upload className="h-4 w-4" /> Nueva Versión
           </button>
+          <button
+            onClick={() => setShowReviewModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-amber-600 hover:bg-amber-50"
+          >
+            <CheckCircle2 className="h-4 w-4" /> Registrar revisión
+          </button>
+          <button
+            onClick={loadAiValidation}
+            disabled={loadingAiValidation}
+            className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+          >
+            <Cpu className="h-4 w-4" /> {loadingAiValidation ? 'Analizando...' : 'Validar con IA'}
+          </button>
         </div>
       </div>
 
@@ -744,6 +810,160 @@ export default function DocumentDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Document Control Panel */}
+      {(doc.process || doc.owner || doc.reviewDate || doc.nextReviewDate || doc.reviewStatus || doc.documentQualityStatus || aiValidation) && (
+        <div className="bg-white rounded-xl border border-neutral-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-neutral-900 flex items-center gap-2">
+              <Shield className="h-4 w-4 text-blue-600" />
+              Control Documental
+            </h2>
+            <span className="text-xs text-neutral-500">ISO 9001</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {doc.process && (
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Proceso</p>
+                <p className="text-sm font-medium text-neutral-800">{doc.process}</p>
+              </div>
+            )}
+            {doc.owner && (
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Responsable</p>
+                <p className="text-sm font-medium text-neutral-800">{doc.owner.email}</p>
+              </div>
+            )}
+            {doc.reviewDate && (
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Última revisión</p>
+                <p className="text-sm font-medium text-neutral-800">{new Date(doc.reviewDate).toLocaleDateString('es-AR')}</p>
+              </div>
+            )}
+            {doc.nextReviewDate && (
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Próxima revisión</p>
+                <p className={`text-sm font-medium ${
+                  doc.autoStatus === 'VENCIDO' ? 'text-red-600' :
+                  doc.autoStatus === 'POR_VENCER' ? 'text-amber-600' :
+                  'text-neutral-800'
+                }`}>
+                  {new Date(doc.nextReviewDate).toLocaleDateString('es-AR')}
+                  {doc.autoStatus === 'VENCIDO' && <span className="ml-1 text-xs">(Vencido)</span>}
+                  {doc.autoStatus === 'POR_VENCER' && <span className="ml-1 text-xs">(Por vencer)</span>}
+                </p>
+              </div>
+            )}
+            {doc.reviewStatus && (
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Estado de revisión</p>
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  doc.reviewStatus === 'APPROVED'
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : 'bg-red-50 border-red-200 text-red-700'
+                }`}>
+                  {doc.reviewStatus === 'APPROVED' ? 'Aprobado' : 'Requiere actualización'}
+                </span>
+              </div>
+            )}
+            {doc.documentQualityStatus && (
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Calidad documental</p>
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  doc.documentQualityStatus === 'ADEQUATE'
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : doc.documentQualityStatus === 'IMPROVABLE'
+                    ? 'bg-amber-50 border-amber-200 text-amber-700'
+                    : 'bg-red-50 border-red-200 text-red-700'
+                }`}>
+                  {doc.documentQualityStatus === 'ADEQUATE' ? 'Adecuado' : doc.documentQualityStatus === 'IMPROVABLE' ? 'Mejorable' : 'No conforme'}
+                </span>
+              </div>
+            )}
+            {doc.autoStatus && doc.autoStatus !== 'SIN_FECHA' && (
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Vigencia</p>
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  doc.autoStatus === 'VIGENTE'
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : doc.autoStatus === 'POR_VENCER'
+                    ? 'bg-amber-50 border-amber-200 text-amber-700'
+                    : 'bg-red-50 border-red-200 text-red-700'
+                }`}>
+                  {doc.autoStatus === 'VIGENTE' ? 'Vigente' : doc.autoStatus === 'POR_VENCER' ? 'Por vencer' : 'Vencido'}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* AI Validation Results */}
+          {aiValidation && (
+            <div className="mt-4 pt-4 border-t border-neutral-100">
+              <div className="flex items-center gap-2 mb-2">
+                <Cpu className="h-4 w-4 text-indigo-600" />
+                <h3 className="text-sm font-semibold text-indigo-900">Validación IA</h3>
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  aiValidation.overallStatus === 'ADEQUATE'
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : aiValidation.overallStatus === 'IMPROVABLE'
+                    ? 'bg-amber-50 border-amber-200 text-amber-700'
+                    : 'bg-red-50 border-red-200 text-red-700'
+                }`}>
+                  {aiValidation.overallStatus === 'ADEQUATE' ? 'Adecuado' : aiValidation.overallStatus === 'IMPROVABLE' ? 'Mejorable' : 'No conforme'}
+                </span>
+                <span className="text-xs text-neutral-500">Score: {aiValidation.qualityScore}/100</span>
+              </div>
+              {aiValidation.gaps?.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-xs font-medium text-red-700 mb-1">Brechas detectadas:</p>
+                  <ul className="list-disc list-inside text-xs text-red-600 space-y-0.5">
+                    {aiValidation.gaps.map((gap, i) => (
+                      <li key={i}>{gap}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {aiValidation.recommendations?.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-amber-700 mb-1">Recomendaciones:</p>
+                  <ul className="list-disc list-inside text-xs text-amber-600 space-y-0.5">
+                    {aiValidation.recommendations.map((rec, i) => (
+                      <li key={i}>{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reviews history */}
+          {reviews.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-neutral-100">
+              <h3 className="text-sm font-semibold text-neutral-800 mb-2">Historial de revisiones</h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {reviews.map((review) => (
+                  <div key={review.id} className="flex items-center justify-between bg-neutral-50 rounded-lg p-3">
+                    <div>
+                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+                        review.result === 'APPROVED'
+                          ? 'bg-green-50 border-green-200 text-green-700'
+                          : 'bg-red-50 border-red-200 text-red-700'
+                      }`}>
+                        {review.result === 'APPROVED' ? 'Aprobado' : 'Requiere actualización'}
+                      </span>
+                      {review.comments && <p className="text-xs text-neutral-500 mt-1">{review.comments}</p>}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-neutral-500">{new Date(review.reviewedAt).toLocaleDateString('es-AR')}</p>
+                      {review.reviewedBy && <p className="text-xs text-neutral-400">{review.reviewedBy.email}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Content and Mappings */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1157,6 +1377,62 @@ export default function DocumentDetailPage() {
                 {linking ? 'Vinculando...' : `Vincular ${selectedClauses?.length || 0} cláusula${selectedClauses?.length > 1 ? 's' : ''}`}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Review Modal */}
+      {showReviewModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl border border-neutral-200 p-6 max-w-lg w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-neutral-900">Registrar revisión</h3>
+              <button
+                onClick={() => { setShowReviewModal(false); setReviewComments(''); }}
+                className="text-neutral-400 hover:text-neutral-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleRegisterReview} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Resultado de la revisión</label>
+                <select
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  value={reviewResult}
+                  onChange={(e) => setReviewResult(e.target.value as 'APPROVED' | 'REQUIRES_UPDATE')}
+                >
+                  <option value="APPROVED">Aprobado — Documento vigente y conforme</option>
+                  <option value="REQUIRES_UPDATE">Requiere actualización</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Comentarios (opcional)</label>
+                <textarea
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  rows={3}
+                  placeholder="Observaciones de la revisión..."
+                  value={reviewComments}
+                  onChange={(e) => setReviewComments(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowReviewModal(false); setReviewComments(''); }}
+                  className="flex-1 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={reviewing}
+                  className="flex-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {reviewing ? 'Guardando...' : 'Guardar revisión'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

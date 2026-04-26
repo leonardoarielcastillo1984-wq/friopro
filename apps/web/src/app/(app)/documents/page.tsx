@@ -8,7 +8,8 @@ import ComboSelect from '@/components/ComboSelect';
 import {
   FileText, Upload, Trash2, Search, Filter, ChevronDown,
   FileSpreadsheet, FileType, File, Clock, CheckCircle2, AlertCircle,
-  Plus, X, Download, Edit3, FileCheck, FileX, Files
+  Plus, X, Download, Edit3, FileCheck, FileX, Files, AlertTriangle,
+  Calendar, User, Shield, ShieldCheck
 } from 'lucide-react';
 
 const DOC_TYPES = [
@@ -26,6 +27,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   OBSOLETE: { label: 'Obsoleto', color: 'text-neutral-500', bg: 'bg-neutral-100 border-neutral-200' },
 };
 
+const AUTO_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+  VIGENTE: { label: 'Vigente', color: 'text-green-700', bg: 'bg-green-50 border-green-200', icon: ShieldCheck },
+  POR_VENCER: { label: 'Por vencer', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', icon: AlertTriangle },
+  VENCIDO: { label: 'Vencido', color: 'text-red-700', bg: 'bg-red-50 border-red-200', icon: Shield },
+  SIN_FECHA: { label: 'Sin fecha', color: 'text-neutral-500', bg: 'bg-neutral-50 border-neutral-200', icon: Calendar },
+};
+
 export default function DocumentsPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -38,6 +46,8 @@ export default function DocumentsPage() {
   const [filterType, setFilterType] = useState('ALL');
   const [filterNormative, setFilterNormative] = useState('ALL');
   const [filterDepartment, setFilterDepartment] = useState('ALL');
+  const [filterAutoStatus, setFilterAutoStatus] = useState('ALL');
+  const [filterReviewStatus, setFilterReviewStatus] = useState('ALL');
 
   // Upload form
   const [showUpload, setShowUpload] = useState(false);
@@ -45,6 +55,9 @@ export default function DocumentsPage() {
   const [uploadType, setUploadType] = useState('PROCEDURE');
   const [uploadDepartmentId, setUploadDepartmentId] = useState('');
   const [uploadNormativeId, setUploadNormativeId] = useState('');
+  const [uploadProcess, setUploadProcess] = useState('');
+  const [uploadOwnerId, setUploadOwnerId] = useState('');
+  const [uploadNextReviewDate, setUploadNextReviewDate] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [departments, setDepartments] = useState<{id: string; name: string}[]>([]);
@@ -80,8 +93,14 @@ export default function DocumentsPage() {
     if (filterDepartment !== 'ALL') {
       filtered = filtered.filter(d => d.departmentId === filterDepartment);
     }
+    if (filterAutoStatus !== 'ALL') {
+      filtered = filtered.filter(d => d.autoStatus === filterAutoStatus);
+    }
+    if (filterReviewStatus !== 'ALL') {
+      filtered = filtered.filter(d => d.reviewStatus === filterReviewStatus);
+    }
     return filtered;
-  }, [docs, searchTerm, filterType, filterNormative, filterDepartment]);
+  }, [docs, searchTerm, filterType, filterNormative, filterDepartment, filterAutoStatus, filterReviewStatus]);
 
   async function load() {
     setError(null);
@@ -124,6 +143,14 @@ export default function DocumentsPage() {
     load();
   }, []);
 
+  const autoStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = { VIGENTE: 0, POR_VENCER: 0, VENCIDO: 0, SIN_FECHA: 0 };
+    for (const d of docs) {
+      counts[d.autoStatus ?? 'SIN_FECHA'] = (counts[d.autoStatus ?? 'SIN_FECHA'] || 0) + 1;
+    }
+    return counts;
+  }, [docs]);
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     setSelectedFile(file);
@@ -154,6 +181,9 @@ export default function DocumentsPage() {
       formData.append('title', uploadTitle || selectedFile.name.replace(/\.(pdf|docx|xlsx|xls)$/i, ''));
       formData.append('departmentId', uploadDepartmentId);
       formData.append('normativeId', uploadNormativeId);
+      if (uploadProcess) formData.append('process', uploadProcess);
+      if (uploadOwnerId) formData.append('ownerId', uploadOwnerId);
+      if (uploadNextReviewDate) formData.append('nextReviewDate', uploadNextReviewDate);
 
       const apiBase = process.env.NEXT_PUBLIC_API_URL;
       if (!apiBase) throw new Error('NEXT_PUBLIC_API_URL is not set');
@@ -182,6 +212,9 @@ export default function DocumentsPage() {
       setUploadType('PROCEDURE');
       setUploadDepartmentId('');
       setUploadNormativeId('');
+      setUploadProcess('');
+      setUploadOwnerId('');
+      setUploadNextReviewDate('');
       setSelectedFile(null);
       if (fileRef.current) fileRef.current.value = '';
       await load();
@@ -235,22 +268,40 @@ export default function DocumentsPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <div className="bg-white rounded-xl border border-neutral-200 p-4">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-blue-50 p-2"><Files className="h-5 w-5 text-blue-600" /></div>
             <div>
-              <p className="text-sm text-neutral-500">Total Documentos</p>
+              <p className="text-sm text-neutral-500">Total</p>
               <p className="text-2xl font-bold text-neutral-900">{docs.length}</p>
             </div>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-neutral-200 p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-green-50 p-2"><FileCheck className="h-5 w-5 text-green-600" /></div>
+            <div className="rounded-lg bg-green-50 p-2"><ShieldCheck className="h-5 w-5 text-green-600" /></div>
             <div>
               <p className="text-sm text-neutral-500">Vigentes</p>
-              <p className="text-2xl font-bold text-neutral-900">{docs.filter(d => d.status === 'EFFECTIVE').length}</p>
+              <p className="text-2xl font-bold text-neutral-900">{autoStatusCounts.VIGENTE}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-neutral-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-amber-50 p-2"><AlertTriangle className="h-5 w-5 text-amber-600" /></div>
+            <div>
+              <p className="text-sm text-neutral-500">Por vencer</p>
+              <p className="text-2xl font-bold text-neutral-900">{autoStatusCounts.POR_VENCER}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-neutral-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-red-50 p-2"><Shield className="h-5 w-5 text-red-600" /></div>
+            <div>
+              <p className="text-sm text-neutral-500">Vencidos</p>
+              <p className="text-2xl font-bold text-neutral-900">{autoStatusCounts.VENCIDO}</p>
             </div>
           </div>
         </div>
@@ -335,6 +386,37 @@ export default function DocumentsPage() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Proceso</label>
+              <input
+                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                placeholder="Ej: Gestión de Calidad"
+                value={uploadProcess}
+                onChange={(e) => setUploadProcess(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Responsable</label>
+              <select
+                value={uploadOwnerId}
+                onChange={(e) => setUploadOwnerId(e.target.value)}
+                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+              >
+                <option value="">Sin asignar</option>
+                {departments.flatMap(d => []).map((u: any) => (
+                  <option key={u.id} value={u.id}>{u.email}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Próxima revisión</label>
+              <input
+                type="date"
+                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                value={uploadNextReviewDate}
+                onChange={(e) => setUploadNextReviewDate(e.target.value)}
+              />
+            </div>
           </div>
           <div className="mt-4">
             <label className="block text-sm font-medium text-neutral-700 mb-1">Archivo</label>
@@ -407,6 +489,26 @@ export default function DocumentsPage() {
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
+        <select
+          value={filterAutoStatus}
+          onChange={(e) => setFilterAutoStatus(e.target.value)}
+          className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm focus:border-brand-500 outline-none"
+        >
+          <option value="ALL">Todos los estados vigencia</option>
+          <option value="VIGENTE">Vigente</option>
+          <option value="POR_VENCER">Por vencer</option>
+          <option value="VENCIDO">Vencido</option>
+          <option value="SIN_FECHA">Sin fecha</option>
+        </select>
+        <select
+          value={filterReviewStatus}
+          onChange={(e) => setFilterReviewStatus(e.target.value)}
+          className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm focus:border-brand-500 outline-none"
+        >
+          <option value="ALL">Todas las revisiones</option>
+          <option value="APPROVED">Aprobado</option>
+          <option value="REQUIRES_UPDATE">Requiere actualización</option>
+        </select>
       </div>
 
       {/* Document List */}
@@ -442,6 +544,7 @@ export default function DocumentsPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Documento</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Tipo</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Estado</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Vigencia</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Versión</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Actualizado</th>
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-neutral-500">Acciones</th>
@@ -467,6 +570,18 @@ export default function DocumentsPage() {
                       <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${status.bg} ${status.color}`}>
                         {status.label}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {d.autoStatus && d.autoStatus !== 'SIN_FECHA' ? (
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${AUTO_STATUS_CONFIG[d.autoStatus]?.bg} ${AUTO_STATUS_CONFIG[d.autoStatus]?.color}`}>
+                          {(() => { const I = AUTO_STATUS_CONFIG[d.autoStatus]?.icon ?? Calendar; return <I className="h-3 w-3" />; })()}
+                          {AUTO_STATUS_CONFIG[d.autoStatus]?.label}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium bg-neutral-50 border-neutral-200 text-neutral-500">
+                          <Calendar className="h-3 w-3" /> Sin fecha
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-neutral-600">{d.version || '1.0'}</td>
                     <td className="px-4 py-3 text-sm text-neutral-600">
