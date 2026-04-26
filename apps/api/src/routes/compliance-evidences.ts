@@ -585,26 +585,23 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
     const { clauseId } = paramsSchema.parse(req.params);
 
     try {
-      const result = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
-        // 1. Obtener cláusula y normativa
+      // 1–5. Obtener todos los datos de BD en una transacción corta
+      const dbData = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
         const clause = await tx.normativeClause.findFirst({
           where: { id: clauseId, deletedAt: null },
           include: { normative: { select: { name: true, code: true } } },
         });
         if (!clause) throw new Error('Clause not found');
 
-        // 2. Documentos vinculados
         const docMappings = await tx.documentClauseMapping.findMany({
           where: { clauseId, deletedAt: null },
           include: { document: { select: { title: true, type: true, filePath: true } } },
         });
 
-        // 3. Evidencias dinámicas
         const evidences = await tx.clauseEvidence.findMany({
           where: { clauseId, tenantId, isActive: true },
         });
 
-        // 4. Datos reales de módulos vinculados
         const moduleDataSummaries: Record<string, any> = {};
         for (const ev of evidences) {
           if (ev.referenceType) {
@@ -613,22 +610,25 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
           }
         }
 
-        // 5. Calcular cumplimiento actual
         const compliance = await calculateClauseCompliance(tx, tenantId, clauseId);
+        return { clause, docMappings, evidences, moduleDataSummaries, compliance };
+      });
 
-        // 6. Construir prompt para IA
-        const documentsBlock = docMappings.length > 0
-          ? docMappings.map((d: any, i: number) => `  ${i + 1}. ${d.document?.title || 'Sin nombre'} (${d.document?.type || 'sin tipo'})`).join('\n')
-          : '  (Sin documentos vinculados)';
+      const { clause, docMappings, evidences, moduleDataSummaries, compliance } = dbData;
 
-        const modulesBlock = evidences.length > 0
-          ? evidences.map((e: any, i: number) => {
-              const md = moduleDataSummaries[e.id];
-              return `  ${i + 1}. ${e.type}${e.referenceType ? ` / ${e.referenceType}` : ''}${e.description ? ` — ${e.description}` : ''}\n     Estado: ${md?.stats?.score === 'active' ? 'Activo (tiene datos reales)' : 'Sin datos reales'}${md?.stats?.total !== undefined ? ` | Registros: ${md.stats.total}` : ''}`;
-            }).join('\n')
-          : '  (Sin módulos vinculados)';
+      // 6. Construir prompt para IA (fuera de transacción)
+      const documentsBlock = docMappings.length > 0
+        ? docMappings.map((d: any, i: number) => `  ${i + 1}. ${d.document?.title || 'Sin nombre'} (${d.document?.type || 'sin tipo'})`).join('\n')
+        : '  (Sin documentos vinculados)';
 
-        const prompt = `Sos un experto auditor ISO 9001, 14001 y 45001. Analizá el cumplimiento de la siguiente cláusula normativa comparando su contenido con los documentos y datos del sistema disponibles.
+      const modulesBlock = evidences.length > 0
+        ? evidences.map((e: any, i: number) => {
+            const md = moduleDataSummaries[e.id];
+            return `  ${i + 1}. ${e.type}${e.referenceType ? ` / ${e.referenceType}` : ''}${e.description ? ` — ${e.description}` : ''}\n     Estado: ${md?.stats?.score === 'active' ? 'Activo (tiene datos reales)' : 'Sin datos reales'}${md?.stats?.total !== undefined ? ` | Registros: ${md.stats.total}` : ''}`;
+          }).join('\n')
+        : '  (Sin módulos vinculados)';
+
+      const prompt = `Sos un experto auditor ISO 9001, 14001 y 45001. Analizá el cumplimiento de la siguiente cláusula normativa comparando su contenido con los documentos y datos del sistema disponibles.
 
 === CLÁUSULA ===
 Norma: ${clause.normative.code} — ${clause.normative.name}
@@ -664,34 +664,31 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
   "modulesAnalysis": "Análisis de los datos del sistema y su relevancia para la cláusula."
 }`;
 
-        // 7. Llamar a IA
-        const llm = createLLMProvider();
-        const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
+      // 7. Llamar a IA (fuera de transacción para evitar timeout)
+      const llm = createLLMProvider();
+      const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
 
-        let parsed;
-        try {
-          parsed = JSON.parse(response.text.trim().replace(/^```json\s*|\s*```$/g, ''));
-        } catch {
-          parsed = {
-            assessment: 'CUMPLIMIENTO_PARCIAL',
-            compliancePercentage: compliance.percentage,
-            summary: response.text.slice(0, 500),
-            gaps: ['No se pudo estructurar el análisis.'],
-            recommendations: [{ priority: 'MEDIA', action: 'Revisar manualmente el análisis.', moduleOrDocument: 'general' }],
-            documentsAnalysis: '',
-            modulesAnalysis: '',
-          };
-        }
-
-        return {
-          clause: { id: clause.id, clauseNumber: clause.clauseNumber, title: clause.title },
-          compliance,
-          aiAnalysis: parsed,
-          model: response.model,
+      let parsed;
+      try {
+        parsed = JSON.parse(response.text.trim().replace(/^```json\s*|\s*```$/g, ''));
+      } catch {
+        parsed = {
+          assessment: 'CUMPLIMIENTO_PARCIAL',
+          compliancePercentage: compliance.percentage,
+          summary: response.text.slice(0, 500),
+          gaps: ['No se pudo estructurar el análisis.'],
+          recommendations: [{ priority: 'MEDIA', action: 'Revisar manualmente el análisis.', moduleOrDocument: 'general' }],
+          documentsAnalysis: '',
+          modulesAnalysis: '',
         };
-      });
+      }
 
-      return reply.send(result);
+      return reply.send({
+        clause: { id: clause.id, clauseNumber: clause.clauseNumber, title: clause.title },
+        compliance,
+        aiAnalysis: parsed,
+        model: response.model,
+      });
     } catch (err: any) {
       app.log.error('AI clause analyze error:', err);
       return reply.code(503).send({ error: err?.message || 'El servicio de IA no está disponible' });
