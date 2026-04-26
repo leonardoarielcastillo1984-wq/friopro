@@ -30,7 +30,7 @@ export default function DrillManagePage() {
 
   useEffect(() => { loadDrill(); }, [drillId]);
   useEffect(() => {
-    apiFetch('/employees').then((data: any) => setEmployees(data.employees || [])).catch(() => setEmployees([]));
+    apiFetch('/hr/employees').then((data: any) => setEmployees(data.employees || [])).catch(() => setEmployees([]));
   }, []);
   useEffect(() => { loadTab(); }, [activeTab, drillId]);
 
