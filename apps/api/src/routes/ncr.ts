@@ -21,7 +21,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // GET /ncr — Listar no conformidades
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
     const tenantId = req.db.tenantId;
     const ncrs = await app.runWithDbContext(req, async (tx: any) => {
@@ -41,7 +41,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // GET /ncr/stats — Estadísticas
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
     const tenantId = req.db.tenantId;
     const ncrs = await app.runWithDbContext(req, async (tx: any) => {
@@ -86,7 +86,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // POST /ncr — Crear no conformidad
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const tenantId = req.db.tenantId;
 
     const body = createSchema.parse(req.body);
@@ -129,7 +129,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // GET /ncr/:id — Detalle
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const tenantId = req.db.tenantId;
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -143,14 +143,14 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    if (!ncr) return reply.code(404).send({ error: 'Resource not found' });
+    if (!ncr) return reply.code(404).send({ error: 'Recurso no encontrado' });
     return reply.send({ ncr });
   });
 
   // PATCH /ncr/:id — Actualizar no conformidad
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const tenantId = req.db.tenantId;
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -172,7 +172,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
       const existing = await tx.nonConformity.findFirst({
         where: { id, tenantId, deletedAt: null },
       });
-      if (!existing) throw new Error('NCR not found');
+      if (!existing) throw new Error('NCR no encontrada');
 
       // Si el estado cambia a CLOSED, registrar fecha de cierre
       const closedAt = body.status === 'CLOSED' && existing.status !== 'CLOSED'
@@ -199,7 +199,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /ncr/:id — Eliminar no conformidad (soft delete)
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const tenantId = req.db.tenantId;
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -217,7 +217,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
       return { kind: 'ok' as const };
     });
 
-    if (result.kind === 'not_found') return reply.code(404).send({ error: 'Resource not found' });
+    if (result.kind === 'not_found') return reply.code(404).send({ error: 'Recurso no encontrado' });
     return reply.send({ success: true, message: 'NCR eliminada' });
   });
 };

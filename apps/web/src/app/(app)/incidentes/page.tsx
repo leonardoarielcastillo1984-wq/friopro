@@ -2,6 +2,17 @@
 import { Siren } from 'lucide-react';
 import GenericCrudPage from '@/components/GenericCrudPage';
 
+const typeLabels: Record<string, string> = {
+  ACCIDENT: 'Accidente', INCIDENT: 'Incidente', NEAR_MISS: 'Casi-accidente', DANGEROUS_SITUATION: 'Situación peligrosa',
+};
+const severityLabels: Record<string, string> = {
+  NONE: 'Sin consecuencias', FIRST_AID: 'Primeros auxilios', MEDICAL_TREATMENT: 'Tratamiento médico',
+  LOST_TIME: 'Tiempo perdido', FATALITY: 'Fatalidad', PROPERTY_DAMAGE: 'Daño material', ENVIRONMENTAL: 'Ambiental',
+};
+const investigationLabels: Record<string, string> = {
+  PENDING: 'Pendiente', IN_PROGRESS: 'En curso', COMPLETED: 'Completada',
+};
+
 export default function IncidentesPage() {
   return (
     <GenericCrudPage
@@ -45,17 +56,17 @@ export default function IncidentesPage() {
       ]}
       columns={[
         { key: 'code', label: 'Código' },
-        { key: 'type', label: 'Tipo' },
-        { key: 'severity', label: 'Severidad' },
+        { key: 'type', label: 'Tipo', render: (i) => typeLabels[i.type] || i.type || '—' },
+        { key: 'severity', label: 'Severidad', render: (i) => severityLabels[i.severity] || i.severity || '—' },
         { key: 'date', label: 'Fecha', render: (i) => i.date ? new Date(i.date).toLocaleDateString() : '—' },
         { key: 'location', label: 'Lugar' },
-        { key: 'investigationStatus', label: 'Investigación' },
+        { key: 'investigationStatus', label: 'Investigación', render: (i) => investigationLabels[i.investigationStatus] || i.investigationStatus || '—' },
       ]}
       aiFields={[
         {
           targetKey: 'rootCause',
           buttonLabel: 'Sugerir causa raíz',
-          buildPrompt: (f) => `Eres un experto en seguridad y salud ocupacional ISO 45001. Dado este incidente/accidente:\nTipo: ${f.type || '—'}\nSeveridad: ${f.severity || '—'}\nLugar: ${f.location || '—'}\nDescripción: ${f.description || '—'}\nAcciones inmediatas: ${f.immediateActions || '—'}\n\nIdentificá la causa raíz más probable usando el método de los 5 Porqués. Sé conciso y directo.`,
+          buildPrompt: (f) => `Eres un experto en seguridad y salud ocupacional ISO 45001. Dado este incidente/accidente:\nTipo: ${typeLabels[f.type] || f.type || '—'}\nSeveridad: ${severityLabels[f.severity] || f.severity || '—'}\nLugar: ${f.location || '—'}\nDescripción: ${f.description || '—'}\nAcciones inmediatas: ${f.immediateActions || '—'}\n\nIdentificá la causa raíz más probable usando el método de los 5 Porqués. Sé conciso y directo.`,
         },
         {
           targetKey: 'rootCauseAnalysis',
@@ -65,7 +76,7 @@ export default function IncidentesPage() {
         {
           targetKey: 'immediateActions',
           buttonLabel: 'Acciones inmediatas IA',
-          buildPrompt: (f) => `Eres un experto en seguridad ISO 45001. Para este incidente:\nTipo: ${f.type || '—'}, Severidad: ${f.severity || '—'}, Lugar: ${f.location || '—'}\nDescripción: ${f.description || '—'}\n\nSugerí 3 acciones inmediatas concretas que se deben tomar ahora para contener el incidente y proteger a las personas.`,
+          buildPrompt: (f) => `Eres un experto en seguridad ISO 45001. Para este incidente:\nTipo: ${typeLabels[f.type] || f.type || '—'}, Severidad: ${severityLabels[f.severity] || f.severity || '—'}, Lugar: ${f.location || '—'}\nDescripción: ${f.description || '—'}\n\nSugerí 3 acciones inmediatas concretas que se deben tomar ahora para contener el incidente y proteger a las personas.`,
         },
       ]}
     />

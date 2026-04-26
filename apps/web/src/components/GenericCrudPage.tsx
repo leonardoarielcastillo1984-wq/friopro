@@ -116,7 +116,7 @@ export default function GenericCrudPage({
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `${title.toLowerCase().replace(/\s+/g, '_')}_export.csv`;
+    link.download = `${title.toLowerCase().replace(/\s+/g, '_')}_exportar.csv`;
     link.click();
   }
 

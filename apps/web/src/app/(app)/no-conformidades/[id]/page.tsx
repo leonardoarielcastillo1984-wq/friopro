@@ -28,6 +28,12 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 
 const STATUS_FLOW = ['OPEN', 'IN_ANALYSIS', 'ACTION_PLANNED', 'IN_PROGRESS', 'VERIFICATION', 'CLOSED'];
 
+const SOURCE_LABELS: Record<string, string> = {
+  INTERNAL_AUDIT: 'Auditoría interna', EXTERNAL_AUDIT: 'Auditoría externa',
+  CUSTOMER_COMPLAINT: 'Reclamo de cliente', PROCESS_DEVIATION: 'Desvío de proceso',
+  SUPPLIER_ISSUE: 'Problema de proveedor', AI_FINDING: 'Hallazgo IA', OTHER: 'Otro',
+};
+
 type NCRDetail = NonConformity & {
   rootCause?: string | null;
   correctiveAction?: string | null;
@@ -390,7 +396,7 @@ export default function NCRDetailPage() {
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-neutral-700">Análisis de causa raíz</label>
               <button type="button" onClick={() => runAi('rootCause',
-                `Eres un auditor ISO experto en análisis de causa raíz. Para esta No Conformidad:\nTítulo: ${ncr?.title || '—'}\nDescripción: ${ncr?.description || '—'}\nSeveridad: ${ncr?.severity || '—'}\nOrigen: ${ncr?.source || '—'}\n\nRealizá un análisis de causa raíz usando el método de los 5 Porqués. Identificá la causa raíz sistémica, no solo el síntoma. Sé específico y conciso.`)}
+                `Eres un auditor ISO experto en análisis de causa raíz. Para esta No Conformidad:\nTítulo: ${ncr?.title || '—'}\nDescripción: ${ncr?.description || '—'}\nSeveridad: ${SEVERITY_CONFIG[ncr?.severity || '']?.label || ncr?.severity || '—'}\nOrigen: ${SOURCE_LABELS[ncr?.source || ''] || ncr?.source || '—'}\n\nRealizá un análisis de causa raíz usando el método de los 5 Porqués. Identificá la causa raíz sistémica, no solo el síntoma. Sé específico y conciso.`)}
                 disabled={aiLoading === 'rootCause'}
                 className="flex items-center gap-1 px-2 py-0.5 text-xs bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-50 disabled:opacity-50">
                 {aiLoading === 'rootCause' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Sugerir causa raíz
@@ -408,7 +414,7 @@ export default function NCRDetailPage() {
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-neutral-700">Acción correctiva</label>
               <button type="button" onClick={() => runAi('correctiveAction',
-                `Eres un consultor ISO. Para esta No Conformidad:\nTítulo: ${ncr?.title || '—'}\nDescripción: ${ncr?.description || '—'}\nCausa raíz: ${editForm.rootCause || '(sin analizar aún)'}\n\nSugerí 3 acciones correctivas concretas, medibles y con responsable sugerido para eliminar la causa raíz y que no se repita. Formato numerado.`)}
+                `Eres un consultor ISO. Para esta No Conformidad:\nTítulo: ${ncr?.title || '—'}\nDescripción: ${ncr?.description || '—'}\nSeveridad: ${SEVERITY_CONFIG[ncr?.severity || '']?.label || ncr?.severity || '—'}\nCausa raíz: ${editForm.rootCause || '(sin analizar aún)'}\n\nSugerí 3 acciones correctivas concretas, medibles y con responsable sugerido para eliminar la causa raíz y que no se repita. Formato numerado.`)}
                 disabled={aiLoading === 'correctiveAction'}
                 className="flex items-center gap-1 px-2 py-0.5 text-xs bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-50 disabled:opacity-50">
                 {aiLoading === 'correctiveAction' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Sugerir acción correctiva
@@ -426,7 +432,7 @@ export default function NCRDetailPage() {
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-neutral-700">Acción preventiva</label>
               <button type="button" onClick={() => runAi('preventiveAction',
-                `Eres un consultor ISO experto en mejora continua. Para esta No Conformidad:\nTítulo: ${ncr?.title || '—'}\nCausa raíz: ${editForm.rootCause || '—'}\nAcción correctiva: ${editForm.correctiveAction || '—'}\n\nSugerí acciones preventivas sistémicas para evitar que esta situación o una similar ocurra en el futuro. Pensá en controles, procedimientos, capacitación. Formato numerado.`)}
+                `Eres un consultor ISO experto en mejora continua. Para esta No Conformidad:\nTítulo: ${ncr?.title || '—'}\nSeveridad: ${SEVERITY_CONFIG[ncr?.severity || '']?.label || ncr?.severity || '—'}\nCausa raíz: ${editForm.rootCause || '—'}\nAcción correctiva: ${editForm.correctiveAction || '—'}\n\nSugerí acciones preventivas sistémicas para evitar que esta situación o una similar ocurra en el futuro. Pensá en controles, procedimientos, capacitación. Formato numerado.`)}
                 disabled={aiLoading === 'preventiveAction'}
                 className="flex items-center gap-1 px-2 py-0.5 text-xs bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-50 disabled:opacity-50">
                 {aiLoading === 'preventiveAction' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Sugerir acción preventiva

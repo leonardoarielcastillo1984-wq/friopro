@@ -130,7 +130,7 @@ export default function AccionesPage() {
               {
                 targetKey: 'description',
                 buttonLabel: 'Plan de acción',
-                buildPrompt: (f) => `Eres un consultor ISO experto en mejora continua. Para esta acción CAPA:\nTítulo: ${f.title || '—'}\nTipo: ${f.type || '—'}, Prioridad: ${f.priority || '—'}, Origen: ${f.sourceType || '—'}\n\nRedactá un plan de acción claro y completo que incluya: contexto del problema, objetivo de la acción, alcance y controles específicos. Máximo 3 párrafos.`,
+                buildPrompt: (f) => `Eres un consultor ISO experto en mejora continua. Para esta acción CAPA:\nTítulo: ${f.title || '—'}\nTipo: ${typeMap[f.type] || f.type || '—'}, Prioridad: ${priorityMap[f.priority] || f.priority || '—'}, Origen: ${sourceTypeMap[f.sourceType] || f.sourceType || '—'}\n\nRedactá un plan de acción claro y completo que incluya: contexto del problema, objetivo de la acción, alcance y controles específicos. Máximo 3 párrafos.`,
               },
             ]}
             filterFields={[

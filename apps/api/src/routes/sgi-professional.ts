@@ -26,7 +26,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
   return async (app) => {
     // LIST
     app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
       const tenantId = req.db.tenantId;
       const query = req.query as Record<string, string>;
       const where: any = { tenantId, deletedAt: null };
@@ -48,7 +48,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 
     // CREATE
     app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
       const tenantId = req.db.tenantId;
       let body = req.body as any;
       // Parse body if it's a string JSON
@@ -56,7 +56,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
         try {
           body = JSON.parse(body);
         } catch (e) {
-          return reply.code(400).send({ error: 'Invalid JSON body' });
+          return reply.code(400).send({ error: 'Cuerpo JSON inválido' });
         }
       }
 
@@ -116,26 +116,26 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 
     // GET by id
     app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
       const tenantId = req.db.tenantId;
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
       const item = await app.runWithDbContext(req, async (tx: any) => {
         return tx[opts.model].findFirst({ where: { id, tenantId, deletedAt: null } });
       });
-      if (!item) return reply.code(404).send({ error: 'Not found' });
+      if (!item) return reply.code(404).send({ error: 'No encontrado' });
       return reply.send({ item });
     });
 
     // UPDATE
     app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
       const tenantId = req.db.tenantId;
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
       const body = req.body as any;
 
       const item = await app.runWithDbContext(req, async (tx: any) => {
         const existing = await tx[opts.model].findFirst({ where: { id, tenantId, deletedAt: null } });
-        if (!existing) throw new Error('Not found');
+        if (!existing) throw new Error('No encontrado');
 
         // Remove deprecated fields that may come from cached frontend
         delete body?.reviewDate;
@@ -191,7 +191,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 
     // DELETE (soft)
     app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
       const tenantId = req.db.tenantId;
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
@@ -201,7 +201,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
         await tx[opts.model].update({ where: { id }, data: { deletedAt: new Date() } });
         return { kind: 'ok' as const };
       });
-      if (result.kind === 'not_found') return reply.code(404).send({ error: 'Not found' });
+      if (result.kind === 'not_found') return reply.code(404).send({ error: 'No encontrado' });
       return reply.send({ success: true });
     });
 
@@ -215,14 +215,14 @@ export const stakeholdersRoutes = makeCrud('stakeholders', { model: 'stakeholder
 // Endpoint adicional para generar acción CAPA desde stakeholder
 export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:id/generate-action', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const tenantId = req.db.tenantId;
 
     const stakeholder = await app.runWithDbContext(req, async (tx: any) => {
       return tx.stakeholder.findFirst({ where: { id, tenantId, deletedAt: null } });
     });
-    if (!stakeholder) return reply.code(404).send({ error: 'Stakeholder not found' });
+    if (!stakeholder) return reply.code(404).send({ error: 'Parte interesada no encontrada' });
 
     const rawBody = req.body;
     const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody as any;
@@ -269,7 +269,7 @@ export const equipmentRoutes = makeCrud('equipment', { model: 'measuringEquipmen
 // -------- CONTEXTO ORGANIZACIONAL (singleton por año) --------
 export const contextRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:year', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { year } = z.object({ year: z.string() }).parse(req.params);
     const y = parseInt(year, 10);
     const tenantId = req.db.tenantId;
@@ -281,7 +281,7 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.put('/:year', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { year } = z.object({ year: z.string() }).parse(req.params);
     const y = parseInt(year, 10);
     const tenantId = req.db.tenantId;
@@ -304,7 +304,7 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
 // -------- CALENDARIO AGREGADOR --------
 export const calendarRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const tenantId = req.db.tenantId;
 
     const from = (req.query as any)?.from ? new Date((req.query as any).from) : new Date();

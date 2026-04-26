@@ -39,6 +39,8 @@ model Tenant {
   drills            DrillScenario[]
   risks             Risk[]
   surveys           Survey[]
+  actionItems       ActionItem[]
+  gestionCambios    GestionCambio[]
   
   @@map("tenants")
   @@index([status])
