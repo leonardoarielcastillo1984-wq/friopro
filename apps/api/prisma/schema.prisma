@@ -3713,18 +3713,6 @@ enum ReviewFrequency {
   ANNUAL
 }
 
-enum RiskActionStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-}
-
-enum RiskActionEffectiveness {
-  EFFECTIVE
-  NOT_EFFECTIVE
-  PENDING
-}
-
 // -------- 5. IPERC (Peligros SST) --------
 model Hazard {
   id            String    @id @default(uuid()) @db.Uuid
