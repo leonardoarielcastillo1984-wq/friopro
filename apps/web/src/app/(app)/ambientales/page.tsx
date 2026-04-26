@@ -60,7 +60,10 @@ export default function AspectosAmbientalesPage() {
         { key: 'code', label: 'Código' },
         { key: 'process', label: 'Proceso' },
         { key: 'aspect', label: 'Aspecto' },
-        { key: 'category', label: 'Categoría' },
+        { key: 'category', label: 'Categoría', render: (i) => {
+          const map: Record<string, string> = { EMISSIONS: 'Emisiones atmosféricas', WASTE: 'Residuos', ENERGY: 'Energía', WATER: 'Agua', SOIL: 'Suelo', BIODIVERSITY: 'Biodiversidad', NOISE: 'Ruido', OTHER: 'Otro' };
+          return map[i.category] || i.category;
+        } },
         { key: 'significance', label: 'Significancia' },
         { key: 'isSignificant', label: '¿Significativo?', render: (i) => i.isSignificant ? 'Sí' : 'No' },
         { key: 'status', label: 'Estado', render: (i) => {
