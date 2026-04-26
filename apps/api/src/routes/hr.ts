@@ -71,33 +71,39 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   // Get all employees
   fastify.get('/employees', async (request, reply) => {
     const tenantId = request.db?.tenantId;
+    console.log('🔵 GET /employees tenantId:', tenantId, 'headers:', JSON.stringify(request.headers));
     if (!tenantId) {
       return reply.code(400).send({ error: 'x-tenant-id is required for tenant-scoped requests' });
     }
     
-    const employees = await fastify.prisma.employee.findMany({
-      where: { tenantId, deletedAt: null },
-      include: {
-        department: true,
-        position: true,
-        supervisor: {
-          select: { id: true, firstName: true, lastName: true }
-        },
-        user: {
-          select: { id: true, email: true, status: true }
-        },
-        _count: {
-          select: {
-            subordinates: true,
-            employeeCompetencies: true,
-            trainingAssignments: true
+    try {
+      const employees = await fastify.prisma.employee.findMany({
+        where: { tenantId, deletedAt: null },
+        include: {
+          department: true,
+          position: true,
+          supervisor: {
+            select: { id: true, firstName: true, lastName: true }
+          },
+          user: {
+            select: { id: true, email: true, status: true }
+          },
+          _count: {
+            select: {
+              subordinates: true,
+              employeeCompetencies: true,
+              trainingAssignments: true
+            }
           }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    return { employees };
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      console.log('🔵 GET /employees count:', employees.length);
+      return { employees };
+    } catch (err: any) {
+      console.error('🔴 GET /employees error:', err?.message || err);
+      return reply.code(500).send({ error: 'Failed to load employees', detail: err?.message });
+    }
   });
 
   // Get employee by ID
