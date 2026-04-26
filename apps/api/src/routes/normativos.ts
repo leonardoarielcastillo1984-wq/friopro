@@ -5,6 +5,7 @@ import { getStorage, computeFileHash, buildStorageKey } from '../services/storag
 import { checkStorageQuota, incrementStorageUsed, decrementStorageUsed } from '../services/storage-usage.js';
 import { getNormativeQueue } from '../jobs/queue.js';
 import { requiresTenantContext, isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
+import { calculateClauseCompliance } from './compliance-evidences.js';
 
 const FEATURE_KEY = 'normativos_compliance';
 const MAX_PDF_SIZE = parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 1024;
@@ -44,7 +45,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ normativos });
   });
 
-  // ── GET /normativos/compliance-summary — Resumen de cumplimiento ──
+  // ── GET /normativos/compliance-summary — Resumen de cumplimiento ponderado ──
   app.get('/compliance-summary', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
@@ -55,68 +56,63 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: 'Tenant context required' });
     }
 
-    const prisma = app.prisma;
-
     try {
-      // Get all normatives for tenant
-      const normatives = await prisma.normativeStandard.findMany({
-        where: { 
-          tenantId: effectiveTenantId, 
-          deletedAt: null,
-          status: { not: 'ARCHIVED' }
-        },
-        select: { id: true, name: true, code: true, status: true }
-      });
+      const result = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+        const normatives = await tx.normativeStandard.findMany({
+          where: {
+            tenantId: effectiveTenantId,
+            deletedAt: null,
+            status: { not: 'ARCHIVED' }
+          },
+          select: { id: true, name: true, code: true, status: true }
+        });
 
-      // Calculate compliance for each normative
-      const complianceSummary = await Promise.all(
-        normatives.map(async (normative) => {
-          const allClauses = await prisma.normativeClause.count({
-            where: { 
-              normativeId: normative.id, 
-              deletedAt: null 
-            }
-          });
+        const complianceSummary = await Promise.all(
+          normatives.map(async (normative) => {
+            const clauses = await tx.normativeClause.findMany({
+              where: { normativeId: normative.id, deletedAt: null },
+              select: { id: true }
+            });
 
-          const mappedClauses = await prisma.documentClauseMapping.count({
-            where: { 
-              deletedAt: null,
-              clause: {
-                normativeId: normative.id,
-                deletedAt: null
+            const clauseResults = await Promise.all(
+              clauses.map((c: any) => calculateClauseCompliance(tx, effectiveTenantId, c.id))
+            );
+
+            const totalClauses = clauses.length;
+            const compliantCount = clauseResults.filter((c: any) => c.status === 'COMPLIANT').length;
+            const partialCount = clauseResults.filter((c: any) => c.status === 'PARTIAL').length;
+            const nonCompliantCount = clauseResults.filter((c: any) => c.status === 'NON_COMPLIANT').length;
+
+            const overallPercentage = totalClauses > 0
+              ? Math.round(clauseResults.reduce((sum: number, c: any) => sum + c.percentage, 0) / totalClauses)
+              : 0;
+
+            let complianceLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+            if (overallPercentage >= 80) complianceLevel = 'HIGH';
+            else if (overallPercentage >= 50) complianceLevel = 'MEDIUM';
+            else complianceLevel = 'LOW';
+
+            return {
+              normative,
+              compliance: {
+                totalClauses,
+                completedClauses: compliantCount + partialCount,
+                pendingClauses: nonCompliantCount,
+                compliancePercentage: overallPercentage,
+                complianceLevel
               }
-            }
-          });
+            };
+          })
+        );
 
-          const compliancePercentage = allClauses > 0 ? Math.round((mappedClauses / allClauses) * 100) : 0;
+        const totalAllClauses = complianceSummary.reduce((sum, item) => sum + item.compliance.totalClauses, 0);
+        const totalCompleted = complianceSummary.reduce((sum, item) => sum + item.compliance.completedClauses, 0);
+        const overallCompliance = totalAllClauses > 0 ? Math.round((totalCompleted / totalAllClauses) * 100) : 0;
 
-          let complianceLevel: 'LOW' | 'MEDIUM' | 'HIGH';
-          if (compliancePercentage >= 80) complianceLevel = 'HIGH';
-          else if (compliancePercentage >= 50) complianceLevel = 'MEDIUM';
-          else complianceLevel = 'LOW';
-
-          return {
-            normative,
-            compliance: {
-              totalClauses: allClauses,
-              completedClauses: mappedClauses,
-              pendingClauses: allClauses - mappedClauses,
-              compliancePercentage,
-              complianceLevel
-            }
-          };
-        })
-      );
-
-      // Calculate overall compliance
-      const totalAllClauses = complianceSummary.reduce((sum, item) => sum + item.compliance.totalClauses, 0);
-      const totalCompletedClauses = complianceSummary.reduce((sum, item) => sum + item.compliance.completedClauses, 0);
-      const overallCompliance = totalAllClauses > 0 ? Math.round((totalCompletedClauses / totalAllClauses) * 100) : 0;
-
-      return reply.send({
-        overallCompliance,
-        normatives: complianceSummary
+        return { overallCompliance, normatives: complianceSummary };
       });
+
+      return reply.send(result);
     } catch (error) {
       console.error('Error calculating compliance summary:', error);
       return reply.code(500).send({ error: 'Failed to calculate compliance summary' });

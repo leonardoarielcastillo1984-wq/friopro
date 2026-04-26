@@ -135,7 +135,7 @@ async function getModuleStats(
 // Cálculo de cumplimiento ponderado por cláusula
 // ──────────────────────────────────────────────────────────────
 
-async function calculateClauseCompliance(
+export async function calculateClauseCompliance(
   tx: Prisma.TransactionClient,
   tenantId: string,
   clauseId: string,
