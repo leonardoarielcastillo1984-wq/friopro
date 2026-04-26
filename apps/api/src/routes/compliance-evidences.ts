@@ -112,6 +112,74 @@ async function hasRealData(
       const count = await tx.department.count({ where: { tenantId } });
       return count > 0;
     }
+    case 'policies': {
+      if (referenceId) {
+        const p = await tx.policy.findFirst({ where: { id: referenceId, tenantId, deletedAt: null } });
+        return !!p;
+      }
+      const count = await tx.policy.count({ where: { tenantId, deletedAt: null } });
+      return count > 0;
+    }
+    case 'objectives': {
+      if (referenceId) {
+        const o = await tx.sgiObjective.findFirst({ where: { id: referenceId, tenantId } });
+        return !!o;
+      }
+      const count = await tx.sgiObjective.count({ where: { tenantId } });
+      return count > 0;
+    }
+    case 'management_reviews': {
+      if (referenceId) {
+        const m = await tx.managementReview.findFirst({ where: { id: referenceId, tenantId, deletedAt: null } });
+        return !!m;
+      }
+      const count = await tx.managementReview.count({ where: { tenantId, deletedAt: null } });
+      return count > 0;
+    }
+    case 'stakeholders': {
+      if (referenceId) {
+        const s = await tx.stakeholder.findFirst({ where: { id: referenceId, tenantId, deletedAt: null } });
+        return !!s;
+      }
+      const count = await tx.stakeholder.count({ where: { tenantId, deletedAt: null } });
+      return count > 0;
+    }
+    case 'organization_contexts': {
+      if (referenceId) {
+        const o = await tx.organizationContext.findFirst({ where: { id: referenceId, tenantId } });
+        return !!o;
+      }
+      const count = await tx.organizationContext.count({ where: { tenantId } });
+      return count > 0;
+    }
+    case 'environmental_aspects': {
+      if (referenceId) {
+        const e = await tx.environmentalAspect.findFirst({ where: { id: referenceId, tenantId, deletedAt: null } });
+        return !!e;
+      }
+      const count = await tx.environmentalAspect.count({ where: { tenantId, deletedAt: null } });
+      return count > 0;
+    }
+    case 'positions': {
+      if (referenceId) {
+        const p = await tx.position.findFirst({ where: { id: referenceId, tenantId, deletedAt: null } });
+        return !!p;
+      }
+      const count = await tx.position.count({ where: { tenantId, deletedAt: null } });
+      return count > 0;
+    }
+    case 'employee_competencies': {
+      if (referenceId) {
+        const ec = await tx.employeeCompetency.findFirst({
+          where: { id: referenceId, employee: { tenantId } },
+        });
+        return !!ec;
+      }
+      const count = await tx.employeeCompetency.count({
+        where: { employee: { tenantId } },
+      });
+      return count > 0;
+    }
     default:
       return false;
   }
@@ -172,6 +240,38 @@ async function getModuleStats(
     }
     case 'departments': {
       const total = await tx.department.count({ where: { tenantId } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'policies': {
+      const total = await tx.policy.count({ where: { tenantId, deletedAt: null } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'objectives': {
+      const total = await tx.sgiObjective.count({ where: { tenantId } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'management_reviews': {
+      const total = await tx.managementReview.count({ where: { tenantId, deletedAt: null } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'stakeholders': {
+      const total = await tx.stakeholder.count({ where: { tenantId, deletedAt: null } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'organization_contexts': {
+      const total = await tx.organizationContext.count({ where: { tenantId } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'environmental_aspects': {
+      const total = await tx.environmentalAspect.count({ where: { tenantId, deletedAt: null } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'positions': {
+      const total = await tx.position.count({ where: { tenantId, deletedAt: null } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'employee_competencies': {
+      const total = await tx.employeeCompetency.count({ where: { employee: { tenantId } } });
       return { total, score: total > 0 ? 'active' : 'empty' };
     }
     default:
@@ -453,14 +553,22 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
       { key: 'customers', label: 'Clientes', icon: 'Users' },
       { key: 'employees', label: 'RRHH / Empleados', icon: 'User' },
       { key: 'departments', label: 'Departamentos / Organización', icon: 'Building' },
+      { key: 'positions', label: 'RRHH / Puestos de trabajo', icon: 'Briefcase' },
+      { key: 'employee_competencies', label: 'RRHH / Matriz de polivalencia', icon: 'Grid3x3' },
+      { key: 'trainings', label: 'RRHH / Capacitaciones', icon: 'GraduationCap' },
       { key: 'kpi', label: 'Indicadores (KPI)', icon: 'BarChart' },
       { key: 'risks', label: 'Riesgos', icon: 'AlertTriangle' },
       { key: 'ncr', label: 'No Conformidades', icon: 'XCircle' },
       { key: 'capa', label: 'CAPA / Planes de mejora', icon: 'CheckCircle' },
       { key: 'audits', label: 'Auditorías', icon: 'ClipboardList' },
       { key: 'projects', label: 'Proyectos / Planes', icon: 'FolderOpen' },
-      { key: 'trainings', label: 'Capacitaciones / Entrenamientos', icon: 'GraduationCap' },
       { key: 'documents', label: 'Documentos del SGI', icon: 'FileText' },
+      { key: 'policies', label: 'Políticas SGI', icon: 'Shield' },
+      { key: 'objectives', label: 'Objetivos SGI', icon: 'Target' },
+      { key: 'management_reviews', label: 'Revisión por la Dirección', icon: 'Clipboard' },
+      { key: 'stakeholders', label: 'Contexto del SGI / Partes interesadas', icon: 'UsersRound' },
+      { key: 'organization_contexts', label: 'Contexto del SGI / FODA-PESTEL', icon: 'Globe' },
+      { key: 'environmental_aspects', label: 'Seguridad & Ambiente / Aspectos ambientales', icon: 'Leaf' },
     ];
 
     return reply.send({ modules });
