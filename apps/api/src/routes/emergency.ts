@@ -1,726 +1,691 @@
+/**
+ * Rutas dedicadas para Simulacros / Planes de Contingencia / Recursos de Emergencia (ISO 14001/45001).
+ */
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
-import { runWithDbContext } from '../middleware/dbContext.js';
+import { z } from 'zod';
+import { createLLMProvider } from '../services/llm/factory.js';
+
+function parseBody(req: FastifyRequest): any {
+  let body = req.body as any;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch { return null; }
+  }
+  return body;
+}
+
+function stripNulls(data: any) {
+  Object.keys(data).forEach((k) => {
+    if (data[k] === '' || data[k] === undefined) data[k] = null;
+  });
+}
+
+function parseDates(data: any) {
+  for (const k of Object.keys(data)) {
+    if (/Date$|At$/.test(k) && typeof data[k] === 'string' && data[k]) {
+      data[k] = new Date(data[k]);
+    }
+  }
+}
 
 export const emergencyRoutes: FastifyPluginAsync = async (app) => {
-  // GET /emergency/drills - Obtener todos los simulacros
+  const tenantId = (req: FastifyRequest) => (req as any).db?.tenantId;
+
+  // ========== DRILLS ==========
   app.get('/drills', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
-      }
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const query = req.query as Record<string, string>;
+    const where: any = { tenantId: tId, deletedAt: null };
+    if (query.status) where.status = query.status;
+    if (query.type) where.type = query.type;
+    if (query.severity) where.severity = query.severity;
 
-      const drills = await (app as any).prisma.drillScenario.findMany({
-        where: {
-          tenantId,
-          deletedAt: null
+    const items = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          responsible: { select: { id: true, firstName: true, lastName: true } },
+          risk: { select: { id: true, code: true } },
+          environmentalAspect: { select: { id: true, code: true } },
+          drillResults: { orderBy: { createdAt: 'desc' }, take: 1 },
+          drillActions: true,
+          participants: { include: { employee: { select: { id: true, firstName: true, lastName: true } } } },
+          _count: { select: { drillResults: true, drillActions: true, participants: true, nonConformities: true } },
         },
-        orderBy: { createdAt: 'desc' }
       });
-
-      return reply.send(drills);
-    } catch (error) {
-      app.log.error('Error fetching drills:', error);
-      return reply.code(500).send({ error: 'Failed to fetch drills' });
-    }
+    });
+    return reply.send({ drills: items });
   });
 
-  // GET /emergency/drills/:id - Obtener un simulacro específico
   app.get('/drills/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { id } = req.params as { id: string };
-
-      // Simulación simple - retornar mock basado en el ID
-      const mockDrill = {
-        id: id,
-        name: 'Simulacro de ' + id,
-        description: 'Descripción del simulacro ' + id,
-        type: 'FIRE',
-        severity: 'MEDIUM',
-        category: 'NATURAL_DISASTER',
-        status: 'PLANNED',
-        objectives: [
-          'Evaluar tiempos de respuesta',
-          'Verificar rutas de evacuación',
-          'Probar sistemas de comunicación'
-        ],
-        scope: {
-          areas: ['Área Principal', 'Oficinas', 'Estacionamiento'],
-          departments: ['Seguridad', 'RRHH', 'Operaciones'],
-          participants: 25,
-          external_agencies: ['Bomberos', 'Emergencias Médicas']
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    const item = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.findFirst({
+        where: { id, tenantId: tId, deletedAt: null },
+        include: {
+          responsible: { select: { id: true, firstName: true, lastName: true } },
+          risk: { select: { id: true, code: true, hazard: true, risk: true } },
+          environmentalAspect: { select: { id: true, code: true, aspect: true } },
+          drillResults: { orderBy: { createdAt: 'desc' } },
+          drillActions: { orderBy: { createdAt: 'desc' } },
+          participants: { include: { employee: { select: { id: true, firstName: true, lastName: true } } } },
+          nonConformities: { orderBy: { createdAt: 'desc' }, take: 5 },
         },
-        schedule: {
-          plannedDate: new Date().toISOString(),
-          duration: 2,
-          start_time: '09:00',
-          end_time: '11:00'
-        },
-        coordinator: {
-          id: 'coord-1',
-          name: 'Administrador',
-          email: 'admin@sgi360.com',
-          phone: '+123456789'
-        },
-        evaluators: [
-          { id: 'eval-1', name: 'Juan Pérez', role: 'Supervisor' },
-          { id: 'eval-2', name: 'María González', role: 'Seguridad' }
-        ],
-        resources: {
-          equipment: [
-            { name: 'Extintores', quantity: 10, status: 'AVAILABLE' },
-            { name: 'Alarmas', quantity: 5, status: 'AVAILABLE' },
-            { name: 'Radios', quantity: 8, status: 'AVAILABLE' }
-          ],
-          personnel: [
-            { role: 'Brigadistas', required: 10, assigned: 8 },
-            { role: 'Primeros Auxilios', required: 3, assigned: 3 },
-            { role: 'Comunicación', required: 2, assigned: 2 }
-          ],
-          facilities: [
-            { name: 'Punto de Reunión', location: 'Estacionamiento', capacity: 50 },
-            { name: 'Enfermería', location: 'Pb', capacity: 10 }
-          ]
-        },
-        procedures: [
-          {
-            id: 'proc-1',
-            step: 1,
-            action: 'Activar alarma de evacuación',
-            responsible: 'Coordinador',
-            estimated_time: 1,
-            dependencies: []
-          },
-          {
-            id: 'proc-2',
-            step: 2,
-            action: 'Desalojar personal por rutas designadas',
-            responsible: 'Brigadistas',
-            estimated_time: 5,
-            dependencies: ['proc-1']
-          },
-          {
-            id: 'proc-3',
-            step: 3,
-            action: 'Verificar que todos estén en punto de reunión',
-            responsible: 'Supervisores',
-            estimated_time: 3,
-            dependencies: ['proc-2']
-          }
-        ],
-        evaluation_criteria: [
-          {
-            criteria: 'Tiempo de evacuación',
-            weight: 0.4,
-            measurement_method: 'Cronómetro',
-            target_value: 5
-          },
-          {
-            criteria: 'Participación del personal',
-            weight: 0.3,
-            measurement_method: 'Lista de asistencia',
-            target_value: 100
-          },
-          {
-            criteria: 'Uso correcto de equipos',
-            weight: 0.3,
-            measurement_method: 'Observación',
-            target_value: 95
-          }
-        ],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        tenantId: 'test-tenant',
-        createdById: 'test-user'
-      };
-
-      return reply.send(mockDrill);
-    } catch (error) {
-      app.log.error('Error fetching drill:', error);
-      return reply.code(500).send({ error: 'Failed to fetch drill' });
-    }
-  });
-
-  // GET /emergency/contingency-plans - Obtener planes de contingencia
-  app.get('/contingency-plans', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
-      }
-
-      const plans = await (app as any).prisma.contingencyPlan.findMany({
-        where: {
-          tenantId,
-          deletedAt: null
-        },
-        orderBy: { createdAt: 'desc' }
       });
-
-      return reply.send(plans);
-    } catch (error) {
-      app.log.error('Error fetching contingency plans:', error);
-      return reply.code(500).send({ error: 'Failed to fetch contingency plans' });
-    }
+    });
+    if (!item) return reply.code(404).send({ error: 'Not found' });
+    return reply.send(item);
   });
 
-  // GET /emergency/contingency-plans/:id - Obtener plan específico
-  app.get('/contingency-plans/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { id } = req.params as { id: string };
-      
-      // Buscar en memoria o retornar mock
-      const plan = {
-        id: id,
-        name: 'Plan de Contingencia',
-        description: 'Descripción del plan',
-        type: 'EMERGENCY_RESPONSE',
-        category: 'OPERATIONAL',
-        status: 'DRAFT',
-        coverage: {
-          areas: ['Área Principal'],
-          departments: ['Seguridad'],
-          criticalProcesses: ['Operaciones críticas']
-        },
-        scenarios: [],
-        procedures: [],
-        resources: {
-          personnel: [],
-          equipment: [],
-          facilities: [],
-          externalResources: []
-        },
-        communication: {
-          internalContacts: [],
-          externalContacts: [],
-          communicationChannels: []
-        },
-        activation: {
-          triggerConditions: [],
-          activationLevels: [],
-          decisionMaker: 'Coordinador de Seguridad'
-        },
-        recovery: {
-          rto: '4 horas',
-          rpo: '1 hora',
-          prioritySystems: [],
-          recoverySteps: []
-        },
-        testing: {
-          lastTestDate: null,
-          testFrequency: 'Anual',
-          testResults: null,
-          nextTestDate: null
-        },
-        version: '1.0',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+  app.post('/drills', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    let body = parseBody(req);
+    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    stripNulls(body);
+    parseDates(body);
 
-      return reply.send({ plan });
-    } catch (error) {
-      app.log.error('Error fetching contingency plan:', error);
-      return reply.code(500).send({ error: 'Failed to fetch contingency plan' });
-    }
-  });
-
-  // GET /emergency/resources - Obtener recursos de emergencia
-  app.get('/resources', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
-      }
-
-      const resources = await (app as any).prisma.emergencyResource.findMany({
-        where: {
-          tenantId,
-          deletedAt: null
+    const created = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.create({
+        data: {
+          tenantId: tId,
+          name: body.name,
+          description: body.description,
+          type: body.type || 'OTHER',
+          severity: body.severity || 'MEDIUM',
+          category: body.category || 'NATURAL_DISASTER',
+          status: body.status || 'PLANNED',
+          scheduledDate: body.scheduledDate,
+          executionDate: body.executionDate,
+          responsibleId: body.responsibleId,
+          riskId: body.riskId,
+          environmentalAspectId: body.environmentalAspectId,
+          objectives: body.objectives ?? [],
+          scope: body.scope ?? {},
+          schedule: body.schedule ?? {},
+          coordinator: body.coordinator ?? {},
+          evaluators: body.evaluators ?? [],
+          resources: body.resources ?? {},
+          procedures: body.procedures ?? [],
+          evaluationCriteria: body.evaluationCriteria ?? [],
+          createdById: (req as any).auth?.userId,
         },
-        orderBy: { createdAt: 'desc' }
       });
+    });
+    return reply.code(201).send(created);
+  });
 
-      return reply.send(resources);
-    } catch (error) {
-      app.log.error('Error fetching resources:', error);
-      return reply.code(500).send({ error: 'Failed to fetch resources' });
+  app.put('/drills/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    let body = parseBody(req);
+    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    stripNulls(body);
+    parseDates(body);
+
+    const existing = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
+    });
+    if (!existing) return reply.code(404).send({ error: 'Not found' });
+
+    const data: any = {};
+    ['name','description','type','severity','category','status','scheduledDate','executionDate','responsibleId','riskId','environmentalAspectId','objectives','scope','schedule','coordinator','evaluators','resources','procedures','evaluationCriteria'].forEach((k) => {
+      if (body[k] !== undefined) data[k] = body[k];
+    });
+
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.update({ where: { id }, data });
+    });
+    return reply.send(updated);
+  });
+
+  app.delete('/drills/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    const existing = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
+    });
+    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.update({ where: { id }, data: { deletedAt: new Date() } });
+    });
+    return reply.code(204).send();
+  });
+
+  app.post('/drills/:id/start', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.update({ where: { id }, data: { status: 'IN_PROGRESS', startedAt: new Date() } });
+    });
+    return reply.send({ success: true, drill: updated });
+  });
+
+  app.post('/drills/:id/complete', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.update({ where: { id }, data: { status: 'COMPLETED', completedAt: new Date(), executionDate: new Date() } });
+    });
+    return reply.send({ success: true, drill: updated });
+  });
+
+  // ========== DRILL RESULTS ==========
+  app.get('/drills/:id/results', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    const { id } = req.params as { id: string };
+    const items = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillResult.findMany({ where: { drillId: id, tenantId: tId }, orderBy: { createdAt: 'desc' } });
+    });
+    return reply.send({ items });
+  });
+
+  app.post('/drills/:id/results', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    const { id } = req.params as { id: string };
+    let body = parseBody(req);
+    if (!body || !body.result) return reply.code(400).send({ error: 'result required' });
+    const created = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillResult.create({
+        data: {
+          tenantId: tId,
+          drillId: id,
+          result: body.result,
+          responseTime: body.responseTime ? Number(body.responseTime) : null,
+          observations: body.observations,
+          deviationsDetected: body.deviationsDetected ?? false,
+        }
+      });
+    });
+    return reply.code(201).send(created);
+  });
+
+  app.put('/drills/:id/results/:resultId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { resultId } = req.params as { resultId: string };
+    let body = parseBody(req);
+    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    const data: any = {};
+    ['result','responseTime','observations','deviationsDetected'].forEach((k) => { if (body[k] !== undefined) data[k] = body[k]; });
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillResult.update({ where: { id: resultId }, data });
+    });
+    return reply.send(updated);
+  });
+
+  app.delete('/drills/:id/results/:resultId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { resultId } = req.params as { resultId: string };
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillResult.delete({ where: { id: resultId } });
+    });
+    return reply.code(204).send();
+  });
+
+  // ========== DRILL ACTIONS ==========
+  app.get('/drills/:id/actions', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    const { id } = req.params as { id: string };
+    const items = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillAction.findMany({
+        where: { drillId: id, tenantId: tId },
+        orderBy: { createdAt: 'desc' },
+        include: { responsible: { select: { id: true, firstName: true, lastName: true } } }
+      });
+    });
+    return reply.send({ items });
+  });
+
+  app.post('/drills/:id/actions', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    const { id } = req.params as { id: string };
+    let body = parseBody(req);
+    if (!body || !body.description) return reply.code(400).send({ error: 'description required' });
+    stripNulls(body);
+    parseDates(body);
+    const created = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillAction.create({
+        data: {
+          tenantId: tId,
+          drillId: id,
+          description: body.description,
+          responsibleId: body.responsibleId,
+          dueDate: body.dueDate,
+          status: body.status || 'PENDING',
+          effectiveness: body.effectiveness || 'PENDING',
+        }
+      });
+    });
+    return reply.code(201).send(created);
+  });
+
+  app.put('/drills/:id/actions/:actionId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { actionId } = req.params as { actionId: string };
+    let body = parseBody(req);
+    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    stripNulls(body);
+    parseDates(body);
+    const data: any = {};
+    ['description','responsibleId','dueDate','status','effectiveness'].forEach((k) => { if (body[k] !== undefined) data[k] = body[k]; });
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillAction.update({ where: { id: actionId }, data });
+    });
+    return reply.send(updated);
+  });
+
+  app.delete('/drills/:id/actions/:actionId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { actionId } = req.params as { actionId: string };
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillAction.delete({ where: { id: actionId } });
+    });
+    return reply.code(204).send();
+  });
+
+  // ========== DRILL PARTICIPANTS ==========
+  app.get('/drills/:id/participants', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    const { id } = req.params as { id: string };
+    const items = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillParticipant.findMany({
+        where: { drillId: id, tenantId: tId },
+        include: { employee: { select: { id: true, firstName: true, lastName: true, email: true } } }
+      });
+    });
+    return reply.send({ items });
+  });
+
+  app.post('/drills/:id/participants', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    const { id } = req.params as { id: string };
+    let body = parseBody(req);
+    if (!body || !body.employeeId) return reply.code(400).send({ error: 'employeeId required' });
+    const created = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillParticipant.create({
+        data: { tenantId: tId, drillId: id, employeeId: body.employeeId }
+      });
+    });
+    return reply.code(201).send(created);
+  });
+
+  app.delete('/drills/:id/participants/:participantId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { participantId } = req.params as { participantId: string };
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillParticipant.delete({ where: { id: participantId } });
+    });
+    return reply.code(204).send();
+  });
+
+  // ========== AUTO NC ==========
+  app.post('/drills/:id/create-nc', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+
+    const drill = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.findFirst({
+        where: { id, tenantId: tId, deletedAt: null },
+        include: { drillResults: { orderBy: { createdAt: 'desc' }, take: 1 } }
+      });
+    });
+    if (!drill) return reply.code(404).send({ error: 'Drill not found' });
+
+    const latestResult = drill.drillResults?.[0];
+    if (!latestResult) return reply.send({ created: false, reason: 'Sin resultado registrado' });
+    if (latestResult.result !== 'WITH_FAILURES' && latestResult.result !== 'CRITICAL') {
+      return reply.send({ created: false, reason: 'Resultado no requiere NC' });
+    }
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const existing = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.nonConformity.findFirst({
+        where: {
+          tenantId: tId,
+          drillId: id,
+          createdAt: { gte: thirtyDaysAgo },
+          deletedAt: null,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+    if (existing) return reply.send({ created: false, reason: 'NC ya existe recientemente', existingNcrId: existing.id });
+
+    const count = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.nonConformity.count({ where: { tenantId: tId, deletedAt: null } });
+    });
+    const seq = count + 1;
+    const code = 'NCR-' + String(seq).padStart(4, '0');
+
+    const ncr = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.nonConformity.create({
+        data: {
+          tenantId: tId,
+          code,
+          title: 'NC por simulacro: ' + drill.name,
+          description: latestResult.observations || 'Simulacro con fallas/crítico',
+          severity: latestResult.result === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+          source: 'DRILL',
+          status: 'OPEN',
+          standard: 'ISO 14001 / ISO 45001',
+          drillId: id,
+          createdById: (req as any).auth?.userId,
+        }
+      });
+    });
+    return reply.send({ created: true, ncr });
+  });
+
+  // ========== AI ANALYSIS ==========
+  app.post('/drills/:id/ai-analyze', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+
+    const drill = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.findFirst({
+        where: { id, tenantId: tId, deletedAt: null },
+        include: { drillResults: { orderBy: { createdAt: 'desc' }, take: 1 }, drillActions: true, participants: true }
+      });
+    });
+    if (!drill) return reply.code(404).send({ error: 'Not found' });
+
+    try {
+      const llm = createLLMProvider();
+      const prompt = `Analiza el siguiente simulacro de emergencia y evalua su desempeño. Simulacro: ${drill.name}. Tipo: ${drill.type}. Estado: ${drill.status}. Resultado mas reciente: ${drill.drillResults?.[0]?.result || 'Sin resultado'}. Observaciones: ${drill.drillResults?.[0]?.observations || 'Ninguna'}. Acciones asociadas: ${drill.drillActions?.length || 0}. Participantes: ${drill.participants?.length || 0}. Proporciona: 1) Evaluacion de desempeño. 2) Deteccion de fallas. 3) Sugerencias de mejora. 4) Indicar si requiere revisión urgente. Responde en español.`;
+      const aiRes = await llm.chat([{ role: 'user', content: prompt }], 1500);
+      return reply.send({ analysis: aiRes?.text || 'Sin respuesta del modelo' });
+    } catch (e: any) {
+      return reply.code(500).send({ error: 'Error IA', details: e?.message });
     }
   });
 
-  // GET /emergency/stats - Obtener estadísticas
+  // ========== ALERTS ==========
+  app.get('/drills/alerts/summary', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const now = new Date();
+
+    const drills = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillScenario.findMany({
+        where: { tenantId: tId, deletedAt: null },
+        include: { drillResults: { orderBy: { createdAt: 'desc' }, take: 1 }, drillActions: true }
+      });
+    });
+
+    const alerts: any[] = [];
+    for (const d of drills) {
+      const flags: string[] = [];
+      if (d.status === 'PLANNED' && d.scheduledDate && new Date(d.scheduledDate) < now) {
+        flags.push('Simulacro vencido');
+      }
+      if (d.status === 'PLANNED' && !d.executionDate) {
+        flags.push('Simulacro sin ejecutar');
+      }
+      const latestResult = d.drillResults?.[0];
+      if (latestResult && (latestResult.result === 'WITH_FAILURES' || latestResult.result === 'CRITICAL')) {
+        flags.push('Simulacro con fallas');
+      }
+      const overdueActions = d.drillActions?.filter((a: any) => a.dueDate && new Date(a.dueDate) < now && a.status !== 'COMPLETED');
+      if (overdueActions && overdueActions.length > 0) flags.push('Acciones vencidas');
+      if (flags.length > 0) {
+        alerts.push({ drillId: d.id, drillName: d.name, flags });
+      }
+    }
+    return reply.send({ alerts, count: alerts.length });
+  });
+
+  // ========== STATS / DASHBOARD ==========
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
-      }
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
 
-      const tenantFilter = { tenantId, deletedAt: null };
-
-      const [totalDrills, completedDrills, plannedDrills, contingencyPlans, availableResources] = await Promise.all([
-        (app as any).prisma.drillScenario.count({ where: tenantFilter }),
-        (app as any).prisma.drillScenario.count({ where: { ...tenantFilter, status: 'COMPLETED' } }),
-        (app as any).prisma.drillScenario.count({ where: { ...tenantFilter, status: 'PLANNED' } }),
-        (app as any).prisma.contingencyPlan.count({ where: tenantFilter }),
-        (app as any).prisma.emergencyResource.count({ where: { ...tenantFilter, status: 'AVAILABLE' } })
+    const [totalDrills, completedDrills, inProgressDrills, plannedDrills, contingencyPlans, activePlans, operationalResources, totalResources, avgResponseTime] = await app.runWithDbContext(req, async (tx: any) => {
+      return Promise.all([
+        tx.drillScenario.count({ where: { tenantId: tId, deletedAt: null } }),
+        tx.drillScenario.count({ where: { tenantId: tId, deletedAt: null, status: 'COMPLETED' } }),
+        tx.drillScenario.count({ where: { tenantId: tId, deletedAt: null, status: 'IN_PROGRESS' } }),
+        tx.drillScenario.count({ where: { tenantId: tId, deletedAt: null, status: 'PLANNED' } }),
+        tx.contingencyPlan.count({ where: { tenantId: tId, deletedAt: null } }),
+        tx.contingencyPlan.count({ where: { tenantId: tId, deletedAt: null, status: 'ACTIVE' } }),
+        tx.emergencyResource.count({ where: { tenantId: tId, deletedAt: null, isOperational: true } }),
+        tx.emergencyResource.count({ where: { tenantId: tId, deletedAt: null } }),
+        tx.drillResult.aggregate({
+          where: { tenantId: tId, responseTime: { not: null } },
+          _avg: { responseTime: true }
+        }),
       ]);
+    });
 
-      return reply.send({
+    const failureDrills = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.drillResult.count({
+        where: { tenantId: tId, result: { in: ['WITH_FAILURES', 'CRITICAL'] } }
+      });
+    });
+
+    return reply.send({
+      stats: {
         total_drills: totalDrills,
         completed_drills: completedDrills,
+        in_progress_drills: inProgressDrills,
         planned_drills: plannedDrills,
+        failure_drills: failureDrills,
         contingency_plans: contingencyPlans,
-        active_plans: contingencyPlans,
-        resources_available: availableResources,
-        participation_rate: 0,
-        average_score: 0,
-        critical_issues: 0
-      });
-    } catch (error) {
-      app.log.error('Error fetching stats:', error);
-      return reply.code(500).send({ error: 'Failed to fetch stats' });
-    }
+        active_plans: activePlans,
+        resources_total: totalResources,
+        resources_operational: operationalResources,
+        operational_percent: totalResources > 0 ? Math.round((operationalResources / totalResources) * 100) : 0,
+        avg_response_time: avgResponseTime?._avg?.responseTime ?? 0,
+      }
+    });
   });
 
-  // POST /emergency/drills - Crear nuevo simulacro
-  app.post('/drills', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const body = req.body as any;
-
-      // Validar datos requeridos
-      if (!body.name || !body.type || !body.severity) {
-        return reply.code(400).send({ error: 'Missing required fields' });
-      }
-
-      // Simulación simple - retornar objeto mock con todos los campos necesarios
-      const newDrill = {
-        id: 'drill-' + Date.now(),
-        name: body.name,
-        description: body.description || '',
-        type: body.type,
-        severity: body.severity,
-        category: 'NATURAL_DISASTER',
-        status: 'PLANNED',
-        objectives: [],
-        scope: {
-          areas: ['Área Principal'],
-          departments: ['Seguridad'],
-          participants: 10,
-          external_agencies: []
-        },
-        schedule: {
-          plannedDate: new Date().toISOString(),
-          duration: 2,
-          start_time: '09:00',
-          end_time: '11:00'
-        },
-        coordinator: {
-          id: 'coord-1',
-          name: 'Administrador',
-          email: 'admin@sgi360.com',
-          phone: '+123456789'
-        },
-        evaluators: [],
-        resources: {
-          equipment: [],
-          personnel: [],
-          facilities: []
-        },
-        procedures: [],
-        evaluation_criteria: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        tenantId: 'test-tenant',
-        createdById: 'test-user'
-      };
-
-      return reply.code(201).send(newDrill);
-    } catch (error) {
-      app.log.error('Error creating drill:', error);
-      return reply.code(500).send({ error: 'Failed to create drill' });
-    }
+  // ========== CONTINGENCY PLANS ==========
+  app.get('/contingency-plans', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const items = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.contingencyPlan.findMany({
+        where: { tenantId: tId, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        include: { responsible: { select: { id: true, firstName: true, lastName: true } } }
+      });
+    });
+    return reply.send({ plans: items });
   });
 
-  // PUT /emergency/drills/:id - Actualizar simulacro
-  app.put('/drills/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      const { id } = req.params as { id: string };
-      const body = req.body as any;
-
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
-      }
-
-      // Verificar que el simulacro pertenece al tenant
-      const drill = await (app as any).prisma.drillScenario.findUnique({
-        where: { id }
-      });
-
-      if (!drill) {
-        return reply.code(404).send({ error: 'Drill not found' });
-      }
-
-      if (drill.tenantId !== tenantId) {
-        return reply.code(403).send({ error: 'Forbidden' });
-      }
-
-      const updatedDrill = await (app as any).prisma.drillScenario.update({
-        where: { id },
-        data: {
-          name: body.name || drill.name,
-          description: body.description !== undefined ? body.description : drill.description,
-          type: body.type || drill.type,
-          severity: body.severity || drill.severity,
-          status: body.status || drill.status,
-          objectives: body.objectives !== undefined ? body.objectives : drill.objectives,
-          scope: body.scope !== undefined ? body.scope : drill.scope,
-          schedule: body.schedule !== undefined ? body.schedule : drill.schedule,
-          coordinator: body.coordinator !== undefined ? body.coordinator : drill.coordinator,
-          evaluators: body.evaluators !== undefined ? body.evaluators : drill.evaluators,
-          resources: body.resources !== undefined ? body.resources : drill.resources,
-          procedures: body.procedures !== undefined ? body.procedures : drill.procedures,
-          evaluationCriteria: body.evaluation_criteria !== undefined ? body.evaluation_criteria : drill.evaluationCriteria,
-          results: body.results !== undefined ? body.results : drill.results
+  app.get('/contingency-plans/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    const item = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.contingencyPlan.findFirst({
+        where: { id, tenantId: tId, deletedAt: null },
+        include: {
+          responsible: { select: { id: true, firstName: true, lastName: true } },
+          versionHistory: { orderBy: { createdAt: 'desc' } }
         }
       });
-
-      return reply.send(updatedDrill);
-    } catch (error) {
-      app.log.error('Error updating drill:', error);
-      return reply.code(500).send({ error: 'Failed to update drill' });
-    }
+    });
+    if (!item) return reply.code(404).send({ error: 'Not found' });
+    return reply.send({ item });
   });
 
-  // DELETE /emergency/drills/:id - Eliminar simulacro
-  app.delete('/drills/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      const { id } = req.params as { id: string };
-
-      app.log.info(`DELETE /drills/${id} - tenantId: ${tenantId}`);
-
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized - no tenantId' });
-      }
-
-      // Si es un ID de mock (drill-xxx), simular eliminación exitosa
-      if (id.startsWith('drill-')) {
-        app.log.info(`Mock drill ${id} - simulating delete`);
-        return reply.code(204).send();
-      }
-
-      const drill = await (app as any).prisma.drillScenario.findUnique({
-        where: { id }
-      });
-
-      app.log.info(`Found drill: ${JSON.stringify(drill)}`);
-
-      if (!drill) {
-        return reply.code(404).send({ error: 'Drill not found' });
-      }
-
-      if (drill.tenantId !== tenantId) {
-        return reply.code(403).send({ error: 'Forbidden - tenant mismatch' });
-      }
-
-      await (app as any).prisma.drillScenario.update({
-        where: { id },
-        data: { deletedAt: new Date() }
-      });
-
-      app.log.info(`Drill ${id} soft deleted successfully`);
-      return reply.code(204).send();
-    } catch (error: any) {
-      app.log.error('Error deleting drill:', error);
-      return reply.code(500).send({ error: 'Failed to delete drill', details: error?.message });
-    }
-  });
-
-  // POST /emergency/drills/:id/start - Iniciar simulacro
-  app.post('/drills/:id/start', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      const { id } = req.params as { id: string };
-
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
-      }
-
-      const drill = await (app as any).prisma.drillScenario.findUnique({
-        where: { id }
-      });
-
-      if (!drill) {
-        return reply.code(404).send({ error: 'Drill not found' });
-      }
-
-      if (drill.tenantId !== tenantId) {
-        return reply.code(403).send({ error: 'Forbidden' });
-      }
-
-      const updatedDrill = await (app as any).prisma.drillScenario.update({
-        where: { id },
-        data: { status: 'IN_PROGRESS', startedAt: new Date() }
-      });
-
-      return reply.send(updatedDrill);
-    } catch (error) {
-      app.log.error('Error starting drill:', error);
-      return reply.code(500).send({ error: 'Failed to start drill' });
-    }
-  });
-
-  // POST /emergency/contingency-plans - Crear plan de contingencia
   app.post('/contingency-plans', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const body = req.body as any;
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    let body = parseBody(req);
+    if (!body || !body.name) return reply.code(400).send({ error: 'name required' });
+    stripNulls(body);
+    parseDates(body);
 
-      if (!body.name || !body.type) {
-        return reply.code(400).send({ error: 'Missing required fields' });
-      }
-
-      // Crear plan en memoria (sin Prisma)
-      const newPlan = {
-        id: 'plan-' + Date.now(),
-        name: body.name,
-        description: body.description || '',
-        type: body.type,
-        category: body.category || 'OPERATIONAL',
-        status: 'DRAFT',
-        coverage: {
-          areas: ['Área Principal'],
-          departments: ['Seguridad'],
-          criticalProcesses: ['Operaciones críticas']
-        },
-        scenarios: [],
-        procedures: [],
-        resources: {
-          personnel: [],
-          equipment: [],
-          facilities: [],
-          externalResources: []
-        },
-        communication: {
-          internalContacts: [],
-          externalContacts: [],
-          communicationChannels: []
-        },
-        activation: {
-          triggerConditions: [],
-          activationLevels: [],
-          decisionMaker: 'Coordinador de Seguridad'
-        },
-        recovery: {
-          rto: '4 horas',
-          rpo: '1 hora',
-          prioritySystems: [],
-          recoverySteps: []
-        },
-        testing: {
-          lastTestDate: null,
-          testFrequency: 'Anual',
-          testResults: null,
-          nextTestDate: null
-        },
-        version: '1.0',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      return reply.code(201).send({
-        success: true,
-        message: 'Plan de contingencia creado exitosamente',
-        plan: newPlan
-      });
-    } catch (error) {
-      app.log.error('Error creating contingency plan:', error);
-      return reply.code(500).send({ error: 'Failed to create contingency plan' });
-    }
-  });
-
-  // PUT /emergency/contingency-plans/:id - Actualizar plan de contingencia
-  app.put('/contingency-plans/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { id } = req.params as { id: string };
-      const body = req.body as any;
-
-      // Simular actualización - retornar plan actualizado
-      const updatedPlan = {
-        id: id,
-        name: body.name || 'Plan actualizado',
-        description: body.description || '',
-        type: body.type || 'EMERGENCY_RESPONSE',
-        category: body.category || 'OPERATIONAL',
-        status: body.status || 'DRAFT',
-        coverage: body.coverage || {
-          areas: ['Área Principal'],
-          departments: ['Seguridad'],
-          criticalProcesses: ['Operaciones críticas']
-        },
-        scenarios: body.scenarios || [],
-        procedures: body.procedures || [],
-        resources: body.resources || {
-          personnel: [],
-          equipment: [],
-          facilities: [],
-          externalResources: []
-        },
-        communication: body.communication || {
-          internalContacts: [],
-          externalContacts: [],
-          communicationChannels: []
-        },
-        activation: body.activation || {
-          triggerConditions: [],
-          activationLevels: [],
-          decisionMaker: 'Coordinador de Seguridad'
-        },
-        recovery: body.recovery || {
-          rto: '4 horas',
-          rpo: '1 hora',
-          prioritySystems: [],
-          recoverySteps: []
-        },
-        testing: body.testing || {
-          lastTestDate: null,
-          testFrequency: 'Anual',
-          testResults: null,
-          nextTestDate: null
-        },
-        version: '1.0',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      return reply.send({
-        success: true,
-        message: 'Plan de contingencia actualizado exitosamente',
-        plan: updatedPlan
-      });
-    } catch (error) {
-      app.log.error('Error updating contingency plan:', error);
-      return reply.code(500).send({ error: 'Failed to update contingency plan' });
-    }
-  });
-
-  // POST /emergency/resources - Crear recurso de emergencia
-  app.post('/resources', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      const userId = (req as any).auth?.userId;
-
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
-      }
-
-      const body = req.body as any;
-
-      if (!body.name || !body.type) {
-        return reply.code(400).send({ error: 'Missing required fields' });
-      }
-
-      const resource = await (app as any).prisma.emergencyResource.create({
+    const created = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.contingencyPlan.create({
         data: {
-          tenantId,
+          tenantId: tId,
           name: body.name,
-          description: body.description || null,
-          type: body.type,
-          category: body.category || null,
-          quantity: body.quantity || 1,
-          location: body.location || null,
-          status: 'AVAILABLE',
-          contactInfo: body.contactInfo || null,
-          specifications: body.specifications || null,
-          maintenanceSchedule: body.maintenanceSchedule || null,
-          createdById: userId || null
+          description: body.description,
+          type: body.type || 'OTHER',
+          status: body.status || 'ACTIVE',
+          version: body.version || '1.0',
+          responsibleId: body.responsibleId,
+          reviewDate: body.reviewDate,
+          nextReviewDate: body.nextReviewDate,
+          objectives: body.objectives ?? [],
+          triggers: body.triggers ?? [],
+          responsibilities: body.responsibilities ?? {},
+          procedures: body.procedures ?? [],
+          resources: body.resources ?? {},
+          communications: body.communications ?? {},
+          timeline: body.timeline ?? {},
+          createdById: (req as any).auth?.userId,
         }
       });
-
-      return reply.code(201).send(resource);
-    } catch (error: any) {
-      app.log.error('Error creating emergency resource:', error);
-      return reply.code(500).send({ error: 'Failed to create emergency resource', details: error?.message });
-    }
+    });
+    return reply.code(201).send({ success: true, plan: created });
   });
 
-  // DELETE /emergency/contingency-plans/:id - Eliminar plan de contingencia
+  app.put('/contingency-plans/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    let body = parseBody(req);
+    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    stripNulls(body);
+    parseDates(body);
+
+    const existing = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.contingencyPlan.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
+    });
+    if (!existing) return reply.code(404).send({ error: 'Not found' });
+
+    const data: any = {};
+    ['name','description','type','status','version','responsibleId','reviewDate','nextReviewDate','objectives','triggers','responsibilities','procedures','resources','communications','timeline'].forEach((k) => {
+      if (body[k] !== undefined) data[k] = body[k];
+    });
+
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.contingencyPlan.update({ where: { id }, data });
+    });
+    return reply.send({ success: true, plan: updated });
+  });
+
   app.delete('/contingency-plans/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      const { id } = req.params as { id: string };
-
-      app.log.info(`DELETE /contingency-plans/${id} - tenantId: ${tenantId}`);
-
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized - no tenantId' });
-      }
-
-      // Si es un ID de mock (plan-xxx), simular eliminación exitosa
-      if (id.startsWith('plan-')) {
-        app.log.info(`Mock plan ${id} - simulating delete`);
-        return reply.code(204).send();
-      }
-
-      const plan = await (app as any).prisma.contingencyPlan.findUnique({
-        where: { id }
-      });
-
-      if (!plan) {
-        return reply.code(404).send({ error: 'Plan not found' });
-      }
-
-      if (plan.tenantId !== tenantId) {
-        return reply.code(403).send({ error: 'Forbidden - tenant mismatch' });
-      }
-
-      await (app as any).prisma.contingencyPlan.update({
-        where: { id },
-        data: { deletedAt: new Date() }
-      });
-
-      app.log.info(`Plan ${id} soft deleted successfully`);
-      return reply.code(204).send();
-    } catch (error: any) {
-      app.log.error('Error deleting contingency plan:', error);
-      return reply.code(500).send({ error: 'Failed to delete contingency plan', details: error?.message });
-    }
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    const existing = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.contingencyPlan.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
+    });
+    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.contingencyPlan.update({ where: { id }, data: { deletedAt: new Date() } });
+    });
+    return reply.code(204).send();
   });
 
-  // DELETE /emergency/resources/:id - Eliminar recurso de emergencia
+  // ========== EMERGENCY RESOURCES ==========
+  app.get('/resources', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const items = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.emergencyResource.findMany({
+        where: { tenantId: tId, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        include: { responsible: { select: { id: true, firstName: true, lastName: true } } }
+      });
+    });
+    return reply.send({ resources: items });
+  });
+
+  app.get('/resources/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    const item = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.emergencyResource.findFirst({
+        where: { id, tenantId: tId, deletedAt: null },
+        include: { responsible: { select: { id: true, firstName: true, lastName: true } } }
+      });
+    });
+    if (!item) return reply.code(404).send({ error: 'Not found' });
+    return reply.send({ item });
+  });
+
+  app.post('/resources', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    let body = parseBody(req);
+    if (!body || !body.name) return reply.code(400).send({ error: 'name required' });
+    stripNulls(body);
+    parseDates(body);
+
+    const created = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.emergencyResource.create({
+        data: {
+          tenantId: tId,
+          name: body.name,
+          description: body.description,
+          type: body.type || 'EQUIPMENT',
+          category: body.category,
+          quantity: body.quantity ? Number(body.quantity) : null,
+          location: body.location,
+          status: body.status || 'AVAILABLE',
+          isOperational: body.isOperational !== undefined ? body.isOperational : true,
+          maintenanceDate: body.maintenanceDate,
+          expirationDate: body.expirationDate,
+          responsibleId: body.responsibleId,
+          contactInfo: body.contactInfo ?? {},
+          specifications: body.specifications ?? {},
+          maintenanceSchedule: body.maintenanceSchedule ?? {},
+          createdById: (req as any).auth?.userId,
+        }
+      });
+    });
+    return reply.code(201).send(created);
+  });
+
+  app.put('/resources/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    let body = parseBody(req);
+    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    stripNulls(body);
+    parseDates(body);
+
+    const existing = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.emergencyResource.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
+    });
+    if (!existing) return reply.code(404).send({ error: 'Not found' });
+
+    const data: any = {};
+    ['name','description','type','category','quantity','location','status','isOperational','maintenanceDate','expirationDate','responsibleId','contactInfo','specifications','maintenanceSchedule'].forEach((k) => {
+      if (body[k] !== undefined) data[k] = body[k];
+    });
+
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.emergencyResource.update({ where: { id }, data });
+    });
+    return reply.send(updated);
+  });
+
   app.delete('/resources/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      const { id } = req.params as { id: string };
-
-      app.log.info(`DELETE /resources/${id} - tenantId: ${tenantId}`);
-
-      if (!tenantId) {
-        return reply.code(401).send({ error: 'Unauthorized - no tenantId' });
-      }
-
-      const resource = await (app as any).prisma.emergencyResource.findUnique({
-        where: { id }
-      });
-
-      if (!resource) {
-        return reply.code(404).send({ error: 'Resource not found' });
-      }
-
-      if (resource.tenantId !== tenantId) {
-        return reply.code(403).send({ error: 'Forbidden - tenant mismatch' });
-      }
-
-      await (app as any).prisma.emergencyResource.update({
-        where: { id },
-        data: { deletedAt: new Date() }
-      });
-
-      app.log.info(`Resource ${id} soft deleted successfully`);
-      return reply.code(204).send();
-    } catch (error: any) {
-      app.log.error('Error deleting emergency resource:', error);
-      return reply.code(500).send({ error: 'Failed to delete emergency resource', details: error?.message });
-    }
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    const { id } = req.params as { id: string };
+    const existing = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.emergencyResource.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
+    });
+    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.emergencyResource.update({ where: { id }, data: { deletedAt: new Date() } });
+    });
+    return reply.code(204).send();
   });
 };

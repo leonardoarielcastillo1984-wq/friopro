@@ -58,6 +58,10 @@ model NonConformity {
   environmentalAspectId   String?               @db.Uuid
   environmentalAspect     EnvironmentalAspect?  @relation("NcrEnvironmentalAspect", fields: [environmentalAspectId], references: [id], onDelete: SetNull)
 
+  // Trazabilidad desde Simulacros
+  drillId                 String?               @db.Uuid
+  drill                   DrillScenario?        @relation("NcrDrill", fields: [drillId], references: [id], onDelete: SetNull)
+
   // Trazabilidad desde Clientes
   customerLinks          Customer[]            @relation("CustomerNCR")
 
@@ -76,6 +80,7 @@ model NonConformity {
   @@index([tenantId])
   @@index([status])
   @@index([severity])
+  @@index([drillId])
 }
 
 datasource db {
@@ -1491,6 +1496,13 @@ model Employee {
   environmentalActionsAssigned    EnvironmentalAction[] @relation("EnvironmentalActionAssigned")
   environmentalReviewsBy          EnvironmentalReview[] @relation("EnvironmentalReviewBy")
 
+  // Emergency (ISO 14001/45001)
+  drillsResponsible               DrillScenario[]         @relation("DrillResponsible")
+  drillParticipants               DrillParticipant[]      @relation("DrillParticipantEmployee")
+  drillActionsAssigned            DrillAction[]           @relation("DrillActionResponsible")
+  contingencyPlansResponsible     ContingencyPlan[]       @relation("ContingencyPlanResponsible")
+  emergencyResourcesResponsible   EmergencyResource[]     @relation("EmergencyResourceResponsible")
+
   // Audit
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -2550,7 +2562,16 @@ model DrillScenario {
   procedures  Json? // Array of procedures
   evaluationCriteria Json? // Array of evaluation criteria
 
-  results     Json? // Drill results and findings
+  results     Json? // Drill results and findings (legacy)
+
+  // Execution tracking (ISO 14001/45001)
+  scheduledDate   DateTime? @db.Timestamptz
+  executionDate   DateTime? @db.Timestamptz
+  responsibleId   String?  @db.Uuid
+
+  // Linkages
+  riskId                   String? @db.Uuid
+  environmentalAspectId    String? @db.Uuid
 
   createdAt   DateTime @default(now()) @db.Timestamptz
   updatedAt   DateTime @updatedAt @db.Timestamptz
@@ -2562,11 +2583,79 @@ model DrillScenario {
 
   deletedAt   DateTime? @db.Timestamptz
 
+  // Relations
+  responsible           Employee?          @relation("DrillResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  risk                  Hazard?            @relation("DrillHazard", fields: [riskId], references: [id], onDelete: SetNull)
+  environmentalAspect   EnvironmentalAspect? @relation("DrillEnvironmentalAspect", fields: [environmentalAspectId], references: [id], onDelete: SetNull)
+  participants          DrillParticipant[]
+  drillResults          DrillResult[]
+  drillActions          DrillAction[]
+  nonConformities       NonConformity[]    @relation("NcrDrill")
+
   @@index([tenantId])
   @@index([status])
   @@index([type])
   @@index([severity])
+  @@index([responsibleId])
+  @@index([riskId])
+  @@index([environmentalAspectId])
   @@map("drill_scenarios")
+}
+
+model DrillParticipant {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @db.Uuid
+  drillId     String @db.Uuid
+  employeeId  String @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+
+  drill       DrillScenario @relation(fields: [drillId], references: [id], onDelete: Cascade)
+  employee    Employee      @relation("DrillParticipantEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([drillId, employeeId])
+  @@index([tenantId])
+  @@index([drillId])
+  @@index([employeeId])
+  @@map("drill_participants")
+}
+
+model DrillResult {
+  id                String @id @default(uuid()) @db.Uuid
+  tenantId          String @db.Uuid
+  drillId           String @db.Uuid
+  result            String // SUCCESSFUL, WITH_FAILURES, CRITICAL
+  responseTime      Int? // minutes
+  observations      String? @db.Text
+  deviationsDetected Boolean @default(false)
+  createdAt         DateTime @default(now()) @db.Timestamptz
+  updatedAt         DateTime @updatedAt @db.Timestamptz
+
+  drill             DrillScenario @relation(fields: [drillId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([drillId])
+  @@map("drill_results")
+}
+
+model DrillAction {
+  id              String @id @default(uuid()) @db.Uuid
+  tenantId        String @db.Uuid
+  drillId         String @db.Uuid
+  description     String
+  responsibleId   String? @db.Uuid
+  dueDate         DateTime? @db.Timestamptz
+  status          RiskActionStatus @default(PENDING)
+  effectiveness   RiskActionEffectiveness @default(PENDING)
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  drill           DrillScenario @relation(fields: [drillId], references: [id], onDelete: Cascade)
+  responsible     Employee? @relation("DrillActionResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([drillId])
+  @@index([status])
+  @@map("drill_actions")
 }
 
 model ContingencyPlan {
@@ -2577,7 +2666,12 @@ model ContingencyPlan {
   name        String
   description String? @db.Text
   type        String // e.g., NATURAL_DISASTER, FIRE, SECURITY, etc.
-  status      String @default("DRAFT")
+  status      String @default("ACTIVE") // ACTIVE, OBSOLETE
+  version     String @default("1.0")
+
+  responsibleId String? @db.Uuid
+  reviewDate    DateTime? @db.Timestamptz
+  nextReviewDate DateTime? @db.Timestamptz
 
   objectives  Json? // Array of objectives
   triggers    Json? // Conditions that activate the plan
@@ -2595,9 +2689,30 @@ model ContingencyPlan {
 
   deletedAt   DateTime? @db.Timestamptz
 
+  // Relations
+  responsible        Employee?               @relation("ContingencyPlanResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  versionHistory     ContingencyPlanVersion[]
+
   @@index([tenantId])
   @@index([status])
+  @@index([responsibleId])
   @@map("contingency_plans")
+}
+
+model ContingencyPlanVersion {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @db.Uuid
+  planId      String @db.Uuid
+  version     String
+  content     Json // snapshot of plan data
+  createdById String? @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+
+  plan        ContingencyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([planId])
+  @@map("contingency_plan_versions")
 }
 
 model EmergencyResource {
@@ -2614,6 +2729,12 @@ model EmergencyResource {
   location    String?
   status      String @default("AVAILABLE") // AVAILABLE, IN_USE, MAINTENANCE, UNAVAILABLE
 
+  // ISO 14001/45001 operational status
+  isOperational   Boolean @default(true)
+  maintenanceDate   DateTime? @db.Timestamptz
+  expirationDate    DateTime? @db.Timestamptz
+  responsibleId   String? @db.Uuid
+
   contactInfo Json? // {name, phone, email}
   specifications Json? // Additional specs or details
   maintenanceSchedule Json? // Maintenance dates and history
@@ -2626,9 +2747,13 @@ model EmergencyResource {
 
   deletedAt   DateTime? @db.Timestamptz
 
+  // Relations
+  responsible Employee? @relation("EmergencyResourceResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+
   @@index([tenantId])
   @@index([type])
   @@index([status])
+  @@index([responsibleId])
   @@map("emergency_resources")
 }
 
@@ -3642,6 +3767,7 @@ model Hazard {
   actions    RiskAction[]
   reviews    RiskReview[]
   nonConformities NonConformity[] @relation("NcrHazard")
+  drills     DrillScenario[] @relation("DrillHazard")
 
   @@index([tenantId])
   @@map("hazards")
@@ -3717,6 +3843,7 @@ model EnvironmentalAspect {
   controls        EnvironmentalControl[]
   reviews         EnvironmentalReview[]
   nonConformities NonConformity[] @relation("NcrEnvironmentalAspect")
+  drills          DrillScenario[] @relation("DrillEnvironmentalAspect")
 
   @@index([tenantId])
   @@index([status])

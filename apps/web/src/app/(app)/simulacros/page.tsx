@@ -966,6 +966,13 @@ export default function SimulacrosPage() {
                         >
                           <Eye className="w-4 h-4" />
                         </Link>
+                        <Link 
+                          href={`/simulacros/${drill.id}/gestionar`}
+                          className="p-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg"
+                          title="Gestionar resultados, acciones, participantes, IA y alertas"
+                        >
+                          <Settings className="w-4 h-4" />
+                        </Link>
                         <button 
                           onClick={() => handleDeleteDrill(drill.id)}
                           className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"

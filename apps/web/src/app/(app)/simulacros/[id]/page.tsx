@@ -104,6 +104,13 @@ export default function DrillDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<DrillScenario | null>(null);
   const [saving, setSaving] = useState(false);
+  const [activeSection, setActiveSection] = useState<'info' | 'results' | 'actions' | 'participants' | 'ai' | 'alerts'>('info');
+  const [results, setResults] = useState<any[]>([]);
+  const [actions, setActions] = useState<any[]>([]);
+  const [participants, setParticipants] = useState<any[]>([]);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [sectionLoading, setSectionLoading] = useState(false);
 
   useEffect(() => {
     if (drillId) {
@@ -205,6 +212,66 @@ export default function DrillDetailPage() {
       setLoading(false);
     }
   };
+
+  const loadResults = async () => {
+    if (!drillId) return;
+    setSectionLoading(true);
+    try {
+      const data = await apiFetch(`/emergency/drills/${drillId}/results`) as any;
+      setResults(data.items || []);
+    } catch (e) { setResults([]); }
+    setSectionLoading(false);
+  };
+
+  const loadActions = async () => {
+    if (!drillId) return;
+    setSectionLoading(true);
+    try {
+      const data = await apiFetch(`/emergency/drills/${drillId}/actions`) as any;
+      setActions(data.items || []);
+    } catch (e) { setActions([]); }
+    setSectionLoading(false);
+  };
+
+  const loadParticipants = async () => {
+    if (!drillId) return;
+    setSectionLoading(true);
+    try {
+      const data = await apiFetch(`/emergency/drills/${drillId}/participants`) as any;
+      setParticipants(data.items || []);
+    } catch (e) { setParticipants([]); }
+    setSectionLoading(false);
+  };
+
+  const loadAiAnalysis = async () => {
+    if (!drillId) return;
+    setSectionLoading(true);
+    try {
+      const data = await apiFetch(`/emergency/drills/${drillId}/ai-analyze`, { method: 'POST' }) as any;
+      setAiAnalysis(data.analysis || '');
+    } catch (e) { setAiAnalysis('Error al obtener análisis'); }
+    setSectionLoading(false);
+  };
+
+  const loadAlerts = async () => {
+    if (!drillId) return;
+    setSectionLoading(true);
+    try {
+      const data = await apiFetch(`/emergency/drills/alerts/summary`) as any;
+      const mine = (data.alerts || []).filter((a: any) => a.drillId === drillId);
+      setAlerts(mine);
+    } catch (e) { setAlerts([]); }
+    setSectionLoading(false);
+  };
+
+  useEffect(() => {
+    if (!drillId) return;
+    if (activeSection === 'results') loadResults();
+    if (activeSection === 'actions') loadActions();
+    if (activeSection === 'participants') loadParticipants();
+    if (activeSection === 'ai') loadAiAnalysis();
+    if (activeSection === 'alerts') loadAlerts();
+  }, [activeSection, drillId]);
 
   const updateEditForm = (field: string, value: any) => {
     if (!editForm) return;
@@ -574,6 +641,13 @@ export default function DrillDetailPage() {
               Pausar
             </button>
           )}
+          <Link
+            href={`/simulacros/${drill.id}/gestionar`}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          >
+            <Activity className="w-4 h-4" />
+            Gestionar
+          </Link>
         </div>
       </div>
 
