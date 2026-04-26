@@ -80,6 +80,38 @@ async function hasRealData(
       const count = await tx.audit.count({ where: { tenantId } });
       return count > 0;
     }
+    case 'projects': {
+      if (referenceId) {
+        const p = await tx.project360.findFirst({ where: { id: referenceId, tenantId, deletedAt: null } });
+        return !!p;
+      }
+      const count = await tx.project360.count({ where: { tenantId, deletedAt: null } });
+      return count > 0;
+    }
+    case 'trainings': {
+      if (referenceId) {
+        const t = await tx.training.findFirst({ where: { id: referenceId, tenantId } });
+        return !!t;
+      }
+      const count = await tx.training.count({ where: { tenantId } });
+      return count > 0;
+    }
+    case 'documents': {
+      if (referenceId) {
+        const d = await tx.document.findFirst({ where: { id: referenceId, tenantId, deletedAt: null } });
+        return !!d;
+      }
+      const count = await tx.document.count({ where: { tenantId, deletedAt: null } });
+      return count > 0;
+    }
+    case 'departments': {
+      if (referenceId) {
+        const d = await tx.department.findFirst({ where: { id: referenceId, tenantId } });
+        return !!d;
+      }
+      const count = await tx.department.count({ where: { tenantId } });
+      return count > 0;
+    }
     default:
       return false;
   }
@@ -124,6 +156,22 @@ async function getModuleStats(
     }
     case 'audits': {
       const total = await tx.audit.count({ where: { tenantId } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'projects': {
+      const total = await tx.project360.count({ where: { tenantId, deletedAt: null } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'trainings': {
+      const total = await tx.training.count({ where: { tenantId } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'documents': {
+      const total = await tx.document.count({ where: { tenantId, deletedAt: null } });
+      return { total, score: total > 0 ? 'active' : 'empty' };
+    }
+    case 'departments': {
+      const total = await tx.department.count({ where: { tenantId } });
       return { total, score: total > 0 ? 'active' : 'empty' };
     }
     default:
@@ -404,11 +452,15 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
       { key: 'suppliers', label: 'Proveedores', icon: 'Truck' },
       { key: 'customers', label: 'Clientes', icon: 'Users' },
       { key: 'employees', label: 'RRHH / Empleados', icon: 'User' },
+      { key: 'departments', label: 'Departamentos / Organización', icon: 'Building' },
       { key: 'kpi', label: 'Indicadores (KPI)', icon: 'BarChart' },
       { key: 'risks', label: 'Riesgos', icon: 'AlertTriangle' },
       { key: 'ncr', label: 'No Conformidades', icon: 'XCircle' },
       { key: 'capa', label: 'CAPA / Planes de mejora', icon: 'CheckCircle' },
       { key: 'audits', label: 'Auditorías', icon: 'ClipboardList' },
+      { key: 'projects', label: 'Proyectos / Planes', icon: 'FolderOpen' },
+      { key: 'trainings', label: 'Capacitaciones / Entrenamientos', icon: 'GraduationCap' },
+      { key: 'documents', label: 'Documentos del SGI', icon: 'FileText' },
     ];
 
     return reply.send({ modules });
