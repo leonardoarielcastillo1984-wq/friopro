@@ -111,7 +111,10 @@ export default function DocumentsPage() {
         apiFetch<{ documents: DocumentRow[] }>('/documents').catch(() => ({ documents: [] })),
         apiFetch<{ departments: {id: string; name: string}[] }>('/hr/departments').catch(() => ({ departments: [] })),
         apiFetch<{ normativos: {id: string; name: string; code: string}[] }>('/normativos').catch(() => ({ normativos: [] })),
-        apiFetch<{ employees: {id: string; firstName: string; lastName: string; email: string}[] }>('/hr/employees').catch(() => ({ employees: [] })),
+        apiFetch<{ employees: {id: string; firstName: string; lastName: string; email: string}[] }>('/hr/employees').catch((err) => {
+          console.error('Error loading employees:', err);
+          return { employees: [] };
+        }),
         fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/documents/list`).then(r => r.json()).catch(() => ({ documents: [] })),
       ]);
 
@@ -410,6 +413,9 @@ export default function DocumentsPage() {
                   <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.email})</option>
                 ))}
               </select>
+              {employees.length === 0 && (
+                <p className="text-xs text-red-500 mt-1">No hay empleados cargados. Verificá que tengas empleados en RRHH o revisá la consola del navegador (F12).</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Próxima revisión</label>
