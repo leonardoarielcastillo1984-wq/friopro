@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { requiresTenantContext } from '../utils/tenant-bypass.js';
+import { createLLMProvider } from '../services/llm/factory.js';
 
 const FEATURE_KEY = 'normativos_compliance';
 
@@ -572,5 +573,128 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
     ];
 
     return reply.send({ modules });
+  });
+
+  // ── POST /clauses/:clauseId/ai-analyze — Análisis IA de cumplimiento ──
+  app.post('/clauses/:clauseId/ai-analyze', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+
+    const tenantId = req.db!.tenantId;
+    const paramsSchema = z.object({ clauseId: z.string().uuid() });
+    const { clauseId } = paramsSchema.parse(req.params);
+
+    try {
+      const result = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+        // 1. Obtener cláusula y normativa
+        const clause = await tx.normativeClause.findFirst({
+          where: { id: clauseId, deletedAt: null },
+          include: { normative: { select: { name: true, code: true } } },
+        });
+        if (!clause) throw new Error('Clause not found');
+
+        // 2. Documentos vinculados
+        const docMappings = await tx.documentClauseMapping.findMany({
+          where: { clauseId, deletedAt: null },
+          include: { document: { select: { title: true, type: true, filePath: true } } },
+        });
+
+        // 3. Evidencias dinámicas
+        const evidences = await tx.clauseEvidence.findMany({
+          where: { clauseId, tenantId, isActive: true },
+        });
+
+        // 4. Datos reales de módulos vinculados
+        const moduleDataSummaries: Record<string, any> = {};
+        for (const ev of evidences) {
+          if (ev.referenceType) {
+            const stats = await getModuleStats(tx, tenantId, ev.referenceType as string);
+            moduleDataSummaries[ev.id] = { type: ev.referenceType, description: ev.description, stats };
+          }
+        }
+
+        // 5. Calcular cumplimiento actual
+        const compliance = await calculateClauseCompliance(tx, tenantId, clauseId);
+
+        // 6. Construir prompt para IA
+        const documentsBlock = docMappings.length > 0
+          ? docMappings.map((d: any, i: number) => `  ${i + 1}. ${d.document?.title || 'Sin nombre'} (${d.document?.type || 'sin tipo'})`).join('\n')
+          : '  (Sin documentos vinculados)';
+
+        const modulesBlock = evidences.length > 0
+          ? evidences.map((e: any, i: number) => {
+              const md = moduleDataSummaries[e.id];
+              return `  ${i + 1}. ${e.type}${e.referenceType ? ` / ${e.referenceType}` : ''}${e.description ? ` — ${e.description}` : ''}\n     Estado: ${md?.stats?.score === 'active' ? 'Activo (tiene datos reales)' : 'Sin datos reales'}${md?.stats?.total !== undefined ? ` | Registros: ${md.stats.total}` : ''}`;
+            }).join('\n')
+          : '  (Sin módulos vinculados)';
+
+        const prompt = `Sos un experto auditor ISO 9001, 14001 y 45001. Analizá el cumplimiento de la siguiente cláusula normativa comparando su contenido con los documentos y datos del sistema disponibles.
+
+=== CLÁUSULA ===
+Norma: ${clause.normative.code} — ${clause.normative.name}
+Cláusula ${clause.clauseNumber || 'N/A'}: ${clause.title || 'Sin título'}
+Contenido:\n${(clause.content || '').slice(0, 2000)}
+
+=== DOCUMENTOS VINCULADOS ===
+${documentsBlock}
+
+=== MÓDULOS DEL SISTEMA VINCULADOS ===
+${modulesBlock}
+
+=== CUMPLIMIENTO CALCULADO ===
+Porcentaje: ${compliance.percentage}%
+Estado: ${compliance.status}
+
+Tu tarea:
+1. Evaluá si los documentos y módulos vinculados cubren los requisitos de la cláusula.
+2. Indicá qué falta para alcanzar cumplimiento total.
+3. Clasificá el cumplimiento como: CUMPLIMIENTO_TOTAL, CUMPLIMIENTO_PARCIAL, NO_CUMPLIMIENTO.
+4. Proporcioná recomendaciones concretas y priorizadas (máximo 5).
+
+Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código):
+{
+  "assessment": "CUMPLIMIENTO_TOTAL|CUMPLIMIENTO_PARCIAL|NO_CUMPLIMIENTO",
+  "compliancePercentage": ${compliance.percentage},
+  "summary": "Análisis breve en 2-3 oraciones.",
+  "gaps": ["Brecha 1", "Brecha 2"],
+  "recommendations": [
+    {"priority": "ALTA|MEDIA|BAJA", "action": "Acción concreta a realizar", "moduleOrDocument": "qué módulo o documento crear/vincular"}
+  ],
+  "documentsAnalysis": "Análisis de los documentos vinculados y su adecuación.",
+  "modulesAnalysis": "Análisis de los datos del sistema y su relevancia para la cláusula."
+}`;
+
+        // 7. Llamar a IA
+        const llm = createLLMProvider();
+        const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
+
+        let parsed;
+        try {
+          parsed = JSON.parse(response.text.trim().replace(/^```json\s*|\s*```$/g, ''));
+        } catch {
+          parsed = {
+            assessment: 'CUMPLIMIENTO_PARCIAL',
+            compliancePercentage: compliance.percentage,
+            summary: response.text.slice(0, 500),
+            gaps: ['No se pudo estructurar el análisis.'],
+            recommendations: [{ priority: 'MEDIA', action: 'Revisar manualmente el análisis.', moduleOrDocument: 'general' }],
+            documentsAnalysis: '',
+            modulesAnalysis: '',
+          };
+        }
+
+        return {
+          clause: { id: clause.id, clauseNumber: clause.clauseNumber, title: clause.title },
+          compliance,
+          aiAnalysis: parsed,
+          model: response.model,
+        };
+      });
+
+      return reply.send(result);
+    } catch (err: any) {
+      app.log.error('AI clause analyze error:', err);
+      return reply.code(503).send({ error: err?.message || 'El servicio de IA no está disponible' });
+    }
   });
 };
