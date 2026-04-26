@@ -417,7 +417,6 @@ export async function registerSupplierRoutes(app: FastifyInstance) {
           providerType: body.providerType || null,
           isCritical: body.isCritical ?? false,
           notes: body.notes || null,
-          createdById: req.auth?.userId ?? null,
         },
       });
     });
