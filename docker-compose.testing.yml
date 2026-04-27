@@ -72,7 +72,7 @@ services:
       - sh
       - -c
       - |
-        echo "Running Prisma DB push..." && npx prisma db push --accept-data-loss 2>&1 | tail -20 && echo "Starting API..." && npx tsx src/main.ts
+        echo "Generating Prisma Client..." && npx prisma generate 2>&1 | tail -10 && echo "Running Prisma DB push..." && npx prisma db push --accept-data-loss 2>&1 | tail -20 && echo "Starting API..." && npx tsx src/main.ts
     networks:
       - sgi-testing-network
 
