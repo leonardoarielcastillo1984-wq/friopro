@@ -20,7 +20,7 @@ const objectiveSchema = z.object({
   progress: z.number().int().min(0).max(100).optional(),
   indicatorId: z.string().optional(),
   notes: z.string().optional(),
-  policyId: z.string().optional(),
+  policyId: z.string().nullable().optional(),
   processId: z.string().optional(),
 });
 
@@ -83,15 +83,19 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
     const tenantId = req.db.tenantId;
     const data = objectiveSchema.parse(req.body);
+    // Convert empty policyId to null to prevent Prisma errors
+    const policyId = data.policyId === '' ? null : data.policyId;
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.sgiObjective.create({
         data: {
           tenantId,
           ...data,
-          startDate: parseDate(data.startDate),
-          endDate: parseDate(data.endDate),
+          policyId,
+          startDate: data.startDate ? parseDate(data.startDate) : null,
+          endDate: data.endDate ? parseDate(data.endDate) : null,
           sites: data.sites ?? [],
         },
+        include: { policy: true, process: true },
       });
     });
     return reply.code(201).send({ item });
@@ -171,6 +175,8 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = req.db.tenantId;
     const { id } = req.params as { id: string };
     const body = objectiveSchema.partial().parse(req.body);
+    // Convert empty policyId to null to prevent Prisma errors
+    if (body.policyId === '') body.policyId = null;
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.sgiObjective.update({
         where: { id },
