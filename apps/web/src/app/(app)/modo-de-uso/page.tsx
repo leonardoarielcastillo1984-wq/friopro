@@ -2,22 +2,32 @@
 
 import { useState, useMemo } from 'react';
 import {
-  HelpCircle, Search, BookOpen, LayoutDashboard, BarChart3, FileText,
+  Search, BookOpen, LayoutDashboard, BarChart3, FileText,
   BrainCircuit, AlertTriangle, Shield, TrendingUp, GraduationCap,
   ClipboardCheck, Users, Headphones, CreditCard, FileBarChart, Settings,
-  Bell, Puzzle, Play,
+  Bell, Puzzle, Play, ChevronRight, Sparkles, ArrowRight,
+  CheckCircle, AlertOctagon, Flame, Wrench, Truck, Scale,
+  Compass, Target, Package, Award, Gauge, Lock,
+  MessageCircle,
 } from 'lucide-react';
+
+interface GuideAction { name: string; description: string; }
+interface GuideStep { title: string; description: string; }
 
 interface ModuleGuide {
   id: string;
   title: string;
   icon: any;
-  screenshot?: string;
-  screenshots?: { src: string; caption: string }[];
   purpose: string;
-  mainFeatures: string[];
-  actions: { name: string; description: string }[];
+  features?: string[];
+  mainFeatures?: string[];
+  actions: GuideAction[];
+  steps?: GuideStep[];
+  related?: string[];
+  tips?: string[];
   tip?: string;
+  screenshots?: { src: string; caption: string }[];
+  screenshot?: string;
 }
 
 const guides: ModuleGuide[] = [
@@ -365,310 +375,188 @@ const guides: ModuleGuide[] = [
   },
 ];
 
-// Mapping of module id -> screenshot file in /public/manual/
-const SCREENSHOT_MAP: Record<string, string | string[]> = {
-  inicio: '/manual/inicio.png',
-  panel: '/manual/panel.png',
-  project360: '/manual/project360.png',
-  mantenimiento: '/manual/mantenimiento.png',
-  simulacros: '/manual/simulacros.png',
-  documentos: '/manual/documentos.png',
-  normativos: '/manual/normativos.png',
-  'auditoria-ia': '/manual/auditoria-ia.png',
-  'auditorias-iso': '/manual/auditorias-iso.png',
-  'no-conformidades': '/manual/no-conformidades.png',
-  riesgos: '/manual/riesgos.png',
-  indicadores: '/manual/indicadores.png',
-  capacitaciones: '/manual/capacitaciones.png',
-  rrhh: ['/manual/rrhh.png', '/manual/rrhh-empleados.png', '/manual/rrhh-competencias.png', '/manual/rrhh-organigrama.png'],
-  clientes: ['/manual/clientes.png', '/manual/clientes-encuestas.png'],
-  licencias: '/manual/licencias.png',
-  reportes: '/manual/reportes.png',
-  notificaciones: '/manual/notificaciones.png',
-  configuracion: '/manual/configuracion.png',
-  integraciones: '/manual/integraciones.png',
-  empresa: '/manual/empresa.png',
-};
 
-const SCREENSHOT_CAPTIONS: Record<string, string[]> = {
-  rrhh: ['Panel principal de RRHH', 'Lista de empleados', 'Gestión de competencias', 'Organigrama'],
-  clientes: ['Gestión de clientes', 'Encuestas de satisfacción'],
-};
+function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${q})`, 'gi'));
+  return <>{parts.map((p, i) => p.toLowerCase() === query.toLowerCase() ? <mark key={i} className="bg-yellow-200 rounded px-0.5">{p}</mark> : <span key={i}>{p}</span>)}</>;
+}
 
-// Step-by-step flows. Each step has a screenshot and a caption.
-interface FlowStep { src: string; caption: string; }
-interface Flow { title: string; steps: FlowStep[]; }
-
-const FLOWS: Record<string, Flow[]> = {
-  documentos: [
-    {
-      title: 'Subir un documento al repositorio',
-      steps: [
-        { src: '/manual/flows/documentos-01.png', caption: '1. Entrá al módulo "Documentos" desde el sidebar.' },
-        { src: '/manual/flows/documentos-02.png', caption: '2. Click en "Subir" y completá título, tipo, departamento y archivo. Luego presioná "Subir documento".' },
-      ],
-    },
-  ],
-  'no-conformidades': [
-    {
-      title: 'Registrar una no conformidad',
-      steps: [
-        { src: '/manual/flows/nc-01.png', caption: '1. Abrí el módulo "No Conformidades".' },
-        { src: '/manual/flows/nc-02.png', caption: '2. Click en "Nueva" y completá descripción, origen, severidad y responsable.' },
-      ],
-    },
-  ],
-  riesgos: [
-    {
-      title: 'Registrar un riesgo',
-      steps: [
-        { src: '/manual/flows/riesgos-01.png', caption: '1. Entrá a "Riesgos" en el sidebar.' },
-        { src: '/manual/flows/riesgos-02.png', caption: '2. Click en "Nuevo riesgo" y completá proceso, descripción, probabilidad e impacto.' },
-      ],
-    },
-  ],
-  clientes: [
-    {
-      title: 'Alta de un cliente',
-      steps: [
-        { src: '/manual/flows/clientes-01.png', caption: '1. Abrí el módulo "Clientes".' },
-        { src: '/manual/flows/clientes-02.png', caption: '2. Click en "Nuevo Cliente". Completá nombre, razón social, email, tipo y datos de contacto. Guardá.' },
-      ],
-    },
-    {
-      title: 'Crear una encuesta de satisfacción',
-      steps: [
-        { src: '/manual/flows/encuestas-01.png', caption: '1. En "Clientes", cambiá a la pestaña "Encuestas".' },
-        { src: '/manual/flows/encuestas-02.png', caption: '2. Ya ves la lista de encuestas existentes. Click en "Nueva Encuesta".' },
-        { src: '/manual/flows/encuestas-03.png', caption: '3. Completá título, descripción, tipo (satisfacción, NPS, etc.) y opciones. Click "Crear Encuesta" y luego diseñá las preguntas.' },
-      ],
-    },
-  ],
-  rrhh: [
-    {
-      title: 'Alta de un empleado',
-      steps: [
-        { src: '/manual/flows/empleados-01.png', caption: '1. Entrá a "RRHH" y luego a "Empleados".' },
-        { src: '/manual/flows/empleados-02.png', caption: '2. Click en "Nuevo Empleado". Completá datos personales, puesto y departamento. Guardá.' },
-      ],
-    },
-  ],
-  'auditoria-ia': [
-    {
-      title: 'Analizar un documento con IA',
-      steps: [
-        { src: '/manual/flows/audit-01.png', caption: '1. Entrá a "Auditoría IA" desde el sidebar.' },
-        { src: '/manual/flows/audit-02.png', caption: '2. Seleccioná el documento y la norma contra la cual analizarlo. Iniciá el análisis; la IA devuelve hallazgos y recomendaciones.' },
-      ],
-    },
-  ],
-  'auditorias-iso': [
-    {
-      title: 'Crear una auditoría ISO',
-      steps: [
-        { src: '/manual/flows/audiso-01.png', caption: '1. Abrí el módulo "Auditorías ISO".' },
-        { src: '/manual/flows/audiso-02.png', caption: '2. Click en "Nueva auditoría". Definí alcance, norma, fechas y equipo auditor. Luego completá el checklist.' },
-      ],
-    },
-  ],
-  indicadores: [
-    {
-      title: 'Registrar un indicador',
-      steps: [
-        { src: '/manual/flows/indicadores-01.png', caption: '1. Entrá a "Indicadores".' },
-        { src: '/manual/flows/indicadores-02.png', caption: '2. Click en "Nuevo indicador". Definí nombre, fórmula, unidad, meta y frecuencia de medición.' },
-      ],
-    },
-  ],
-};
-
-export default function ModoDeUsoPage() {
+export default function CentroDeAyudaPage() {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState<string>(guides[0].id);
+  const [tab, setTab] = useState<'info'|'pasos'|'relaciones'>('info');
 
+  const q = query.trim().toLowerCase();
   const filtered = useMemo(() => {
-    if (!query.trim()) return guides;
-    const q = query.toLowerCase();
-    return guides.filter(
-      (g) =>
-        g.title.toLowerCase().includes(q) ||
-        g.purpose.toLowerCase().includes(q) ||
-        g.mainFeatures.some((f) => f.toLowerCase().includes(q)) ||
-        g.actions.some((a) => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q))
+    if (!q) return guides;
+    return guides.filter(g =>
+      g.title.toLowerCase().includes(q) ||
+      g.purpose.toLowerCase().includes(q) ||
+      (g.features || g.mainFeatures || []).some(f => f.toLowerCase().includes(q)) ||
+      g.actions.some(a => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q)) ||
+      (g.steps || []).some(s => s.title.toLowerCase().includes(q) || s.description.toLowerCase().includes(q))
     );
-  }, [query]);
+  }, [q]);
 
-  const current = guides.find((g) => g.id === active) || guides[0];
+  const current = guides.find(g => g.id === active) || guides[0];
   const CurrentIcon = current.icon;
+  const feat = current.features || current.mainFeatures || [];
+  const steps = current.steps || [];
+  const related = current.related || [];
+  const tips = current.tips || (current.tip ? [current.tip] : []);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
-              <BookOpen className="h-6 w-6 text-blue-600" />
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                <BookOpen className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Centro de Ayuda</h1>
+                <p className="text-sm text-gray-500">Guías paso a paso, funcionalidades y buenas prácticas de cada módulo.</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Modo de Uso</h1>
-              <p className="text-sm text-gray-500">
-                Guía paso a paso de cada módulo del sistema. Pensada para usuarios nuevos.
-              </p>
+            <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2 max-w-md w-full">
+              <Search className="h-4 w-4 text-gray-400 shrink-0" />
+              <input
+                value={query}
+                onChange={e => { setQuery(e.target.value); setTab('info'); }}
+                placeholder="Buscar en el sistema..."
+                className="bg-transparent text-sm w-full outline-none text-gray-800 placeholder:text-gray-400"
+              />
+              {query && <button onClick={() => setQuery('')} className="text-gray-400 hover:text-gray-600 text-xs">Limpiar</button>}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6">
-        {/* Sidebar de módulos */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6">
         <aside className="bg-white border border-gray-200 rounded-xl p-4 h-fit sticky top-6">
-          <div className="relative mb-3">
-            <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar módulo..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
-          </div>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-2">Módulos ({filtered.length})</h2>
           <nav className="space-y-1 max-h-[70vh] overflow-y-auto pr-1">
-            {filtered.length === 0 && (
-              <p className="text-xs text-gray-500 px-3 py-2">Sin resultados</p>
-            )}
-            {filtered.map((g) => {
+            {filtered.length === 0 && <p className="text-xs text-gray-500 px-3 py-2">Sin resultados</p>}
+            {filtered.map(g => {
               const Icon = g.icon;
               return (
-                <button
-                  key={g.id}
-                  onClick={() => setActive(g.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors ${
-                    active === g.id
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <Icon className="h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">{g.title}</span>
+                <button key={g.id} onClick={() => { setActive(g.id); setTab('info'); }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors ${active === g.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate"><Highlight text={g.title} query={query} /></span>
                 </button>
               );
             })}
           </nav>
         </aside>
 
-        {/* Contenido */}
-        <section className="bg-white border border-gray-200 rounded-xl p-6 md:p-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
-              <CurrentIcon className="h-5 w-5" />
+        <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-6 pt-6 pb-2 border-b border-gray-100">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                <CurrentIcon className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">{current.title}</h2>
+                <p className="text-sm text-gray-500">{current.purpose}</p>
+              </div>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900">{current.title}</h2>
+            <div className="flex gap-1">
+              {(['info','pasos','relaciones'] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${tab === t ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
+                  {t === 'info' ? 'Información' : t === 'pasos' ? 'Pasos de uso' : 'Relaciones'}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                ¿Para qué sirve?
-              </h3>
-              <p className="text-gray-800 leading-relaxed">{current.purpose}</p>
-            </div>
-
-            {(() => {
-              const shots = SCREENSHOT_MAP[current.id];
-              if (!shots) return null;
-              const list = Array.isArray(shots) ? shots : [shots];
-              const captions = SCREENSHOT_CAPTIONS[current.id] || [];
-              return (
+          <div className="p-6">
+            {tab === 'info' && (
+              <div className="space-y-6">
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                    Así se ve
-                  </h3>
-                  <div className={list.length > 1 ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : ''}>
-                    {list.map((src, i) => (
-                      <figure key={src} className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                        <img
-                          src={src}
-                          alt={captions[i] || `${current.title} - captura ${i + 1}`}
-                          className="w-full h-auto block"
-                          loading="lazy"
-                        />
-                        {captions[i] && (
-                          <figcaption className="px-3 py-2 text-xs text-gray-600 bg-white border-t border-gray-200">
-                            {captions[i]}
-                          </figcaption>
-                        )}
-                      </figure>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Propósito</h3>
+                  <p className="text-gray-800 leading-relaxed">{current.purpose}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Funcionalidades principales</h3>
+                  <ul className="space-y-2">
+                    {feat.map((f, i) => (
+                      <li key={i} className="flex items-start gap-2 text-gray-800">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 shrink-0" />
+                        <span><Highlight text={f} query={query} /></span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Botones y acciones</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {current.actions.map((a, i) => (
+                      <div key={i} className="border border-gray-200 rounded-lg p-3 bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center gap-2 font-medium text-gray-900 text-sm">
+                          <Play className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          <Highlight text={a.name} query={query} />
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1 ml-5"><Highlight text={a.description} query={query} /></p>
+                      </div>
                     ))}
                   </div>
                 </div>
-              );
-            })()}
-
-            <div>
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Funciones principales
-              </h3>
-              <ul className="space-y-2">
-                {current.mainFeatures.map((f, i) => (
-                  <li key={i} className="flex items-start gap-2 text-gray-800">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Botones y acciones
-              </h3>
-              <div className="space-y-3">
-                {current.actions.map((a, i) => (
-                  <div key={i} className="border border-gray-200 rounded-lg p-3">
-                    <div className="flex items-center gap-2 font-medium text-gray-900">
-                      <Play className="h-3.5 w-3.5 text-blue-500" />
-                      {a.name}
+                {tips.length > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
+                    <Sparkles className="h-5 w-5 text-yellow-600 shrink-0 mt-0.5" />
+                    <div className="text-sm text-yellow-900">
+                      <strong className="block mb-1">Buena práctica</strong>
+                      {tips.map((t, i) => <p key={i}>{t}</p>)}
                     </div>
-                    <p className="text-sm text-gray-600 mt-1 ml-5">{a.description}</p>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {FLOWS[current.id]?.map((flow, fIdx) => (
-              <div key={fIdx}>
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  Paso a paso: {flow.title}
-                </h3>
-                <ol className="space-y-4">
-                  {flow.steps.map((step, sIdx) => (
-                    <li
-                      key={sIdx}
-                      className="border border-gray-200 rounded-lg overflow-hidden bg-white"
-                    >
-                      <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border-b border-blue-100 text-sm text-blue-900">
-                        <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">
-                          {sIdx + 1}
-                        </div>
-                        <span className="font-medium">{step.caption}</span>
-                      </div>
-                      <img
-                        src={step.src}
-                        alt={step.caption}
-                        className="w-full h-auto block"
-                        loading="lazy"
-                      />
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            ))}
-
-            {current.tip && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
-                <HelpCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-yellow-900">
-                  <strong>Tip:</strong> {current.tip}
+                )}
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-start gap-3">
+                  <MessageCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                  <div className="text-sm text-blue-900">
+                    <strong className="block mb-1">¿Tenés dudas?</strong>
+                    <p>Usá el botón flotante de ayuda (esquina inferior derecha) para consultar con el asistente de IA contextual en cualquier pantalla del sistema.</p>
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {tab === 'pasos' && (
+              <div className="space-y-4">
+                {steps.length > 0 ? steps.map((s, i) => (
+                  <div key={i} className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shrink-0">{i+1}</div>
+                      {i < steps.length - 1 && <div className="w-0.5 bg-blue-200 flex-1 mt-1" />}
+                    </div>
+                    <div className="pb-5">
+                      <h4 className="font-medium text-gray-900"><Highlight text={s.title} query={query} /></h4>
+                      <p className="text-sm text-gray-600 mt-1"><Highlight text={s.description} query={query} /></p>
+                    </div>
+                  </div>
+                )) : <p className="text-sm text-gray-500">No hay pasos detallados para este módulo.</p>}
+              </div>
+            )}
+
+            {tab === 'relaciones' && (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">Este módulo se integra con los siguientes módulos del sistema:</p>
+                {related.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {related.map((r, i) => (
+                      <div key={i} className="flex items-center gap-3 border border-gray-200 rounded-lg p-3 bg-gray-50/50">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                          <ArrowRight className="h-4 w-4" />
+                        </div>
+                        <span className="text-sm font-medium text-gray-800">{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="text-sm text-gray-500">No hay relaciones documentadas para este módulo.</p>}
               </div>
             )}
           </div>

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import { ChevronLeft, Edit2, FileText, CheckCircle, Clock, AlertCircle, Calendar } from 'lucide-react';
+import { ChevronLeft, Edit2, FileText, CheckCircle, Clock, AlertCircle, Calendar, Play } from 'lucide-react';
 
 type Audit = {
   id: string;
@@ -252,6 +252,13 @@ export default function AuditDetailPage() {
           <p className="text-gray-600">{audit.title}</p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href={`/auditorias/${auditId}/execute`}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Play className="w-4 h-4" />
+            Ejecutar
+          </Link>
           <button
             onClick={openEdit}
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"

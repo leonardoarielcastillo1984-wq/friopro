@@ -72,7 +72,7 @@ const mainNav = [
 
   // 8. Admin
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
-  { label: 'Modo de Uso', icon: HelpCircle, href: '/modo-de-uso' },
+  { label: 'Centro de Ayuda', icon: HelpCircle, href: '/modo-de-uso' },
 ];
 
 const bottomNav = [

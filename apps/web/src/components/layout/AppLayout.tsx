@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense, lazy } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { Loader2 } from 'lucide-react';
 import { LicenseBanner } from '@/components/LicenseBanner';
+
+const FloatingHelpBot = lazy(() => import('@/components/FloatingHelpBot'));
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -64,6 +66,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
           {children}
         </main>
       </div>
+
+      {/* Global help bot - lazy loaded */}
+      <Suspense fallback={null}>
+        <FloatingHelpBot />
+      </Suspense>
     </div>
   );
 }

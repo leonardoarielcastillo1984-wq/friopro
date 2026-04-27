@@ -1,5 +1,6 @@
 FROM node:20-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN apk add --no-cache openssl
 WORKDIR /app
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
@@ -10,8 +11,6 @@ RUN pnpm install --no-frozen-lockfile
 
 RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
-
-RUN pnpm --filter api exec prisma generate
 
 FROM node:20-slim AS runner
 RUN corepack enable && corepack prepare pnpm@latest --activate

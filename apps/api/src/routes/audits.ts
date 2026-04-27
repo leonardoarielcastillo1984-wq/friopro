@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getStorage } from '../services/storage.js';
 import { randomUUID } from 'node:crypto';
+import { createLLMProvider } from '../services/llm/factory.js';
 
 const storage = getStorage();
 
@@ -968,10 +969,368 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // ──────────────────────────────────────────────────────────────
+  // AUDIT360 — EJECUCIÓN / EQUIPO / CRONOGRAMA
+  // ──────────────────────────────────────────────────────────────
+
+  // GET audit completo con relaciones (para pantalla ejecutar)
+  app.get(
+    '/audit/audits/:id/full',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const audit = await app.runWithDbContext(req, async (tx) => {
+        return tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+          include: {
+            checklist: { orderBy: { order: 'asc' } },
+            findings: { where: { deletedAt: null }, orderBy: { detectedAt: 'desc' } },
+            team: true,
+            schedule: { orderBy: { plannedDate: 'asc' } },
+            report: true,
+          },
+        });
+      });
+
+      if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.send({ audit });
+    },
+  );
+
+  // EXECUTE — Iniciar o avanzar auditoría
+  app.post(
+    '/audit/audits/:id/execute',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const body = (req.body ?? {}) as any;
+
+      const audit = await app.runWithDbContext(req, async (tx) => {
+        const existing = await tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+          include: { checklist: true },
+        });
+        if (!existing) return null;
+
+        const data: any = {};
+
+        // Cambio de estado según transición válida
+        const targetStatus = body.status;
+        const currentStatus = existing.status;
+        const validTransitions: Record<string, string[]> = {
+          DRAFT: ['PLANNED'],
+          PLANNED: ['SCHEDULED', 'IN_PROGRESS'],
+          SCHEDULED: ['IN_PROGRESS'],
+          IN_PROGRESS: ['PENDING_REPORT', 'COMPLETED'],
+          PENDING_REPORT: ['COMPLETED'],
+          COMPLETED: ['CLOSED'],
+        };
+        if (targetStatus && targetStatus !== currentStatus) {
+          const allowed = validTransitions[currentStatus] ?? [];
+          if (!allowed.includes(targetStatus)) {
+            return { kind: 'bad_transition' as const, currentStatus, targetStatus };
+          }
+          data.status = targetStatus;
+        }
+
+        // Guardar resultado si se envía
+        if (body.result && ['CONFORME', 'PARCIAL', 'NO_CONFORME'].includes(body.result)) {
+          data.result = body.result;
+        }
+
+        // Calcular score automático desde checklist
+        if (existing.checklist && existing.checklist.length > 0) {
+          const answered = existing.checklist.filter((i: any) => i.response != null);
+          const compliant = answered.filter((i: any) => i.response === 'COMPLIES').length;
+          const na = answered.filter((i: any) => i.response === 'NOT_APPLICABLE').length;
+          const denom = Math.max(1, answered.length - na);
+          data.complianceScore = Math.round((compliant / denom) * 10000) / 100;
+        }
+
+        if (Object.keys(data).length === 0) return { kind: 'no_changes' as const, audit: existing };
+
+        const updated = await tx.audit.update({
+          where: { id: req.params.id, tenantId },
+          data,
+        });
+        return { kind: 'ok' as const, audit: updated };
+      });
+
+      if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      if (audit.kind === 'bad_transition') {
+        return reply.code(400).send({
+          error: `Transición inválida: ${audit.currentStatus} → ${audit.targetStatus}`,
+        });
+      }
+      return reply.send({ audit: audit.audit });
+    },
+  );
+
+  // TEAM — Gestión de equipo de auditoría
+  app.get(
+    '/audit/audits/:id/team',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const team = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+          select: { id: true },
+        });
+        if (!audit) return null;
+        return tx.auditTeam.findMany({
+          where: { auditId: req.params.id, tenantId },
+          include: { auditor: true },
+          orderBy: { createdAt: 'asc' },
+        });
+      });
+
+      if (team === null) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.send({ team });
+    },
+  );
+
+  app.post(
+    '/audit/audits/:id/team',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const body = (req.body ?? {}) as any;
+      if (!body.userId || typeof body.userId !== 'string') {
+        return reply.code(400).send({ error: 'userId es requerido' });
+      }
+      const role = body.role ?? 'AUDITOR';
+      if (!['LEADER', 'AUDITOR', 'OBSERVER'].includes(role)) {
+        return reply.code(400).send({ error: 'Rol inválido. Use LEADER, AUDITOR u OBSERVER' });
+      }
+
+      const result = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+          select: { id: true },
+        });
+        if (!audit) return { kind: 'not_found' as const };
+
+        // Verificar si ya existe
+        const existing = await tx.auditTeam.findUnique({
+          where: { auditId_userId: { auditId: req.params.id, userId: body.userId } },
+        });
+        if (existing) {
+          const updated = await tx.auditTeam.update({
+            where: { id: existing.id },
+            data: { role, auditorId: body.auditorId || existing.auditorId },
+          });
+          return { kind: 'ok' as const, member: updated, action: 'updated' };
+        }
+
+        const member = await tx.auditTeam.create({
+          data: {
+            tenantId,
+            auditId: req.params.id,
+            userId: body.userId,
+            auditorId: body.auditorId || null,
+            role,
+          },
+        });
+        return { kind: 'ok' as const, member, action: 'created' };
+      });
+
+      if (result.kind === 'not_found') return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.code(result.action === 'created' ? 201 : 200).send({ member: result.member, action: result.action });
+    },
+  );
+
+  app.delete(
+    '/audit/audits/:id/team/:userId',
+    async (req: FastifyRequest<{ Params: { id: string; userId: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const result = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+          select: { id: true },
+        });
+        if (!audit) return { kind: 'not_found' as const };
+
+        const member = await tx.auditTeam.findUnique({
+          where: { auditId_userId: { auditId: req.params.id, userId: req.params.userId } },
+        });
+        if (!member) return { kind: 'not_found_member' as const };
+
+        await tx.auditTeam.delete({ where: { id: member.id } });
+        return { kind: 'ok' as const };
+      });
+
+      if (result.kind === 'not_found') return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      if (result.kind === 'not_found_member') return reply.code(404).send({ error: 'Miembro no encontrado en el equipo' });
+      return reply.send({ success: true, message: 'Miembro eliminado del equipo' });
+    },
+  );
+
+  // SCHEDULE — Cronograma de fases de auditoría
+  app.get(
+    '/audit/audits/:id/schedule',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const schedule = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+          select: { id: true },
+        });
+        if (!audit) return null;
+        return tx.auditSchedule.findMany({
+          where: { auditId: req.params.id, tenantId },
+          orderBy: { plannedDate: 'asc' },
+        });
+      });
+
+      if (schedule === null) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.send({ schedule });
+    },
+  );
+
+  app.post(
+    '/audit/audits/:id/schedule',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const body = (req.body ?? {}) as any;
+      if (!body.phase || typeof body.phase !== 'string') {
+        return reply.code(400).send({ error: 'phase es requerida' });
+      }
+
+      const result = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+          select: { id: true },
+        });
+        if (!audit) return { kind: 'not_found' as const };
+
+        const data: any = {
+          tenantId,
+          auditId: req.params.id,
+          phase: body.phase,
+          plannedDate: body.plannedDate ? new Date(body.plannedDate) : null,
+          actualDate: body.actualDate ? new Date(body.actualDate) : null,
+          duration: body.duration ?? null,
+          location: body.location || null,
+          notes: body.notes || null,
+        };
+
+        if (body.id) {
+          const updated = await tx.auditSchedule.update({
+            where: { id: body.id },
+            data,
+          });
+          return { kind: 'ok' as const, item: updated, action: 'updated' };
+        }
+
+        const item = await tx.auditSchedule.create({ data });
+        return { kind: 'ok' as const, item, action: 'created' };
+      });
+
+      if (result.kind === 'not_found') return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.code(result.action === 'created' ? 201 : 200).send({ item: result.item, action: result.action });
+    },
+  );
+
+  app.delete(
+    '/audit/audits/:id/schedule/:scheduleId',
+    async (req: FastifyRequest<{ Params: { id: string; scheduleId: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const result = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({
+          where: { id: req.params.id, tenantId },
+          select: { id: true },
+        });
+        if (!audit) return { kind: 'not_found' as const };
+
+        const item = await tx.auditSchedule.findFirst({
+          where: { id: req.params.scheduleId, auditId: req.params.id, tenantId },
+        });
+        if (!item) return { kind: 'not_found_item' as const };
+
+        await tx.auditSchedule.delete({ where: { id: item.id } });
+        return { kind: 'ok' as const };
+      });
+
+      if (result.kind === 'not_found') return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      if (result.kind === 'not_found_item') return reply.code(404).send({ error: 'Fase no encontrada' });
+      return reply.send({ success: true, message: 'Fase eliminada del cronograma' });
+    },
+  );
+
+  // INTEGRACIÓN NCR — Crear NC desde hallazgo
+  app.post(
+    '/audit/iso-findings/:id/create-ncr',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const body = (req.body ?? {}) as any;
+
+      const result = await app.runWithDbContext(req, async (tx) => {
+        const finding = await tx.auditFinding.findFirst({
+          where: { id: req.params.id, tenantId, deletedAt: null },
+          include: { audit: true },
+        });
+        if (!finding) return { kind: 'not_found' as const };
+        if (finding.ncrId) return { kind: 'already_linked' as const, ncrId: finding.ncrId };
+
+        const severityMap: Record<string, string> = {
+          MAJOR: 'MAJOR',
+          MINOR: 'MINOR',
+          CRITICAL: 'CRITICAL',
+          OBSERVATION: 'MINOR',
+          OPPORTUNITY: 'MINOR',
+        };
+
+        const ncr = await tx.nonConformity.create({
+          data: {
+            tenantId,
+            code: body.code || `NC-AUDIT-${finding.code}`,
+            title: body.title || `Hallazgo auditoría ${finding.audit.code}: ${finding.clause || 'N/A'}`,
+            description: finding.description,
+            severity: (severityMap[finding.severity] || 'MINOR') as any,
+            source: 'AUDIT' as any,
+            status: 'OPEN' as any,
+            standard: finding.audit.isoStandard?.[0] || null,
+            clause: finding.clause || null,
+            assignedToId: finding.responsibleId || req.auth!.userId,
+            createdById: req.auth!.userId,
+          },
+        });
+
+        await tx.auditFinding.update({
+          where: { id: finding.id },
+          data: { ncrId: ncr.id },
+        });
+
+        return { kind: 'ok' as const, ncr };
+      });
+
+      if (result.kind === 'not_found') return reply.code(404).send({ error: 'Hallazgo no encontrado' });
+      if (result.kind === 'already_linked') {
+        return reply.code(409).send({ error: 'Hallazgo ya vinculado a una NC', ncrId: result.ncrId });
+      }
+      return reply.code(201).send({ ncr: result.ncr });
+    },
+  );
+
   // STATS
   app.get('/audit/stats', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
     const stats = await app.runWithDbContext(req, async (tx) => {
       const [
@@ -999,4 +1358,273 @@ export async function registerAuditRoutes(app: FastifyInstance) {
 
     return reply.send({ stats });
   });
+
+  // ═════════════════════════════════════════════════════════════
+  // FASE 4 — AI / INTEGRACIÓN INTELIGENTE AUDIT360
+  // ═════════════════════════════════════════════════════════════
+
+  // POST /audit/audits/:id/generate-checklist — Generar checklist con IA
+  app.post(
+    '/audit/audits/:id/generate-checklist',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      try {
+        const llm = createLLMProvider();
+        const audit = await app.runWithDbContext(req, async (tx) => {
+          return tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
+        });
+        if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+
+        const isoStandards = (audit.isoStandard as string[]) || ['ISO_9001'];
+        const prompt = `Eres un auditor experto ISO. Genera una lista de verificación (checklist) detallada para una auditoría interna ${isoStandards.join(', ')}.
+Auditoría: ${audit.title || ''}
+Área/Proceso: ${audit.area || ''} / ${audit.process || ''}
+Alcance: ${audit.scope || 'N/A'}
+Objetivo: ${audit.objective || 'Verificar conformidad y efectividad del sistema de gestión'}
+
+Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
+{
+  "items": [
+    {
+      "clause": "4.1",
+      "requirement": "Entender la organización y su contexto",
+      "whatToCheck": "Verificar análisis de contexto externo e interno documentado"
+    }
+  ],
+  "summary": "Breve resumen de la cobertura de la checklist generada"
+}`;
+
+        const response = await llm.chat([{ role: 'user', content: prompt }]);
+        const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return reply.code(500).send({ error: 'La IA no devolvió un formato JSON válido' });
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const items = (parsed.items || []).filter((i: any) => i && typeof i === 'object');
+
+        if (items.length === 0) return reply.code(500).send({ error: 'La IA no generó ítems de checklist' });
+
+        const created = await app.runWithDbContext(req, async (tx) => {
+          const existingCount = await tx.auditChecklistItem.count({ where: { auditId: audit.id } });
+          const data = items.map((i: any, idx: number) => ({
+            auditId: audit.id,
+            clause: String(i.clause || '').slice(0, 50),
+            requirement: String(i.requirement || '').slice(0, 500),
+            whatToCheck: String(i.whatToCheck || '').slice(0, 500) || null,
+            weight: 1,
+            order: existingCount + idx,
+          }));
+          await tx.auditChecklistItem.createMany({ data });
+          return tx.auditChecklistItem.findMany({ where: { auditId: audit.id }, orderBy: { order: 'asc' } });
+        });
+
+        return reply.send({ items: created, aiSummary: String(parsed.summary || 'Checklist generada por IA') });
+      } catch (err: any) {
+        console.error('Error generando checklist con IA:', err.message);
+        return reply.code(500).send({ error: 'Error al generar checklist con IA', details: err.message });
+      }
+    },
+  );
+
+  // POST /audit/iso-findings/:id/classify — Clasificar hallazgo con IA
+  app.post(
+    '/audit/iso-findings/:id/classify',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      try {
+        const llm = createLLMProvider();
+        const finding = await app.runWithDbContext(req, async (tx) => {
+          return tx.auditFinding.findFirst({
+            where: { id: req.params.id, tenantId, deletedAt: null },
+            include: { audit: true },
+          });
+        });
+        if (!finding) return reply.code(404).send({ error: 'Hallazgo no encontrado' });
+
+        const prompt = `Eres un auditor experto ISO. Clasifica el siguiente hallazgo de auditoría y sugiere acciones correctivas.
+
+Hallazgo: ${finding.code}
+Descripción: ${finding.description}
+Cláusula: ${finding.clause || 'N/A'}
+Norma: ${(finding.audit.isoStandard as string[] || []).join(', ') || 'ISO 9001'}
+
+Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
+{
+  "type": "NON_CONFORMITY",
+  "severity": "MINOR",
+  "classificationRationale": "Justificación de la clasificación",
+  "suggestedActions": ["Acción 1", "Acción 2"],
+  "riskIfNotAddressed": "Descripción del riesgo",
+  "recommendedDeadlineDays": 30
+}`;
+
+        const response = await llm.chat([{ role: 'user', content: prompt }]);
+        const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return reply.code(500).send({ error: 'La IA no devolvió un formato JSON válido' });
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const type = ['NON_CONFORMITY', 'OBSERVATION', 'OPPORTUNITY', 'POSITIVE_PRACTICE'].includes(parsed.type) ? parsed.type : finding.type;
+        const severity = ['MAJOR', 'MINOR', 'CRITICAL', 'OBSERVATION', 'OPPORTUNITY'].includes(parsed.severity) ? parsed.severity : finding.severity;
+
+        return reply.send({
+          classification: {
+            type,
+            severity,
+            rationale: String(parsed.classificationRationale || ''),
+            suggestedActions: Array.isArray(parsed.suggestedActions) ? parsed.suggestedActions.map(String) : [],
+            riskIfNotAddressed: String(parsed.riskIfNotAddressed || ''),
+            recommendedDeadlineDays: Number(parsed.recommendedDeadlineDays) || 30,
+          },
+          finding: {
+            id: finding.id,
+            currentType: finding.type,
+            currentSeverity: finding.severity,
+          },
+        });
+      } catch (err: any) {
+        console.error('Error clasificando hallazgo con IA:', err.message);
+        return reply.code(500).send({ error: 'Error al clasificar con IA', details: err.message });
+      }
+    },
+  );
+
+  // POST /audit/audits/:id/report/ai-draft — Borrador de informe con IA
+  app.post(
+    '/audit/audits/:id/report/ai-draft',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      try {
+        const llm = createLLMProvider();
+        const auditData = await app.runWithDbContext(req, async (tx) => {
+          const audit = await tx.audit.findUnique({
+            where: { id: req.params.id, tenantId },
+            include: {
+              checklist: { orderBy: { order: 'asc' } },
+              findings: { where: { deletedAt: null }, orderBy: { detectedAt: 'desc' } },
+              team: { include: { auditor: { select: { name: true } } } },
+            },
+          });
+          return audit;
+        });
+        if (!auditData) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+
+        const checklistSummary = auditData.checklist.map((c: any, i: number) =>
+          `${i + 1}. ${c.clause}: ${c.requirement} → ${c.response || 'Sin respuesta'}${c.comment ? ` (${c.comment})` : ''}`
+        ).join('\n');
+
+        const findingsSummary = auditData.findings.map((f: any) =>
+          `- ${f.code} (${f.severity}): ${f.description}`
+        ).join('\n');
+
+        const teamNames = auditData.team.map((t: any) => t.auditor?.name || 'Auditor').join(', ');
+
+        const prompt = `Eres un auditor líder experto ISO. Redacta un borrador profesional de Informe de Auditoría en español.
+
+DATOS DE LA AUDITORÍA:
+Código: ${auditData.code}
+Título: ${auditData.title || ''}
+Tipo: ${auditData.type}
+Área/Proceso: ${auditData.area} / ${auditData.process || 'N/A'}
+Normas: ${(auditData.isoStandard as string[] || []).join(', ')}
+Alcance: ${auditData.scope || 'N/A'}
+Objetivo: ${auditData.objective || 'Verificar conformidad'}
+Equipo: ${teamNames || 'No asignado'}
+
+CHECKLIST (${auditData.checklist.length} ítems):
+${checklistSummary}
+
+HALLAZGOS (${auditData.findings.length} hallazgos):
+${findingsSummary || 'Sin hallazgos registrados'}
+
+Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
+{
+  "executiveSummary": "Resumen ejecutivo en 2-3 párrafos",
+  "conclusion": "Conclusión y juicio global de conformidad",
+  "strengths": ["Fortaleza 1", "Fortaleza 2"],
+  "weaknesses": ["Debilidad 1", "Debilidad 2"],
+  "recommendations": ["Recomendación 1", "Recomendación 2"],
+  "overallScore": 85,
+  "complianceLevel": "PARCIAL"
+}`;
+
+        const response = await llm.chat([{ role: 'user', content: prompt }]);
+        const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return reply.code(500).send({ error: 'La IA no devolvió un formato JSON válido' });
+
+        const parsed = JSON.parse(jsonMatch[0]);
+
+        const draft = {
+          executiveSummary: String(parsed.executiveSummary || ''),
+          conclusion: String(parsed.conclusion || ''),
+          strengths: Array.isArray(parsed.strengths) ? parsed.strengths.map(String) : [],
+          weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses.map(String) : [],
+          recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.map(String) : [],
+          overallScore: Number(parsed.overallScore) || null,
+          complianceLevel: ['CONFORME', 'PARCIAL', 'NO_CONFORME'].includes(parsed.complianceLevel) ? parsed.complianceLevel : null,
+          generatedAt: new Date().toISOString(),
+        };
+
+        return reply.send({ draft });
+      } catch (err: any) {
+        console.error('Error generando borrador de informe con IA:', err.message);
+        return reply.code(500).send({ error: 'Error al generar informe con IA', details: err.message });
+      }
+    },
+  );
+
+  // POST /audit/audits/:id/chat — Chat de análisis normativo durante ejecución
+  app.post(
+    '/audit/audits/:id/chat',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      const body = (req.body ?? {}) as any;
+      if (!body.message || typeof body.message !== 'string') {
+        return reply.code(400).send({ error: 'message es requerido' });
+      }
+
+      try {
+        const llm = createLLMProvider();
+        const auditData = await app.runWithDbContext(req, async (tx) => {
+          return tx.audit.findUnique({
+            where: { id: req.params.id, tenantId },
+            include: {
+              checklist: { orderBy: { order: 'asc' } },
+              findings: { where: { deletedAt: null }, orderBy: { detectedAt: 'desc' } },
+            },
+          });
+        });
+        if (!auditData) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+
+        const context = `CONTEXTO DE AUDITORÍA ISO:
+Código: ${auditData.code}
+Título: ${auditData.title || ''}
+Tipo: ${auditData.type}
+Normas: ${(auditData.isoStandard as string[] || []).join(', ')}
+Área: ${auditData.area} / ${auditData.process || ''}
+Checklist: ${auditData.checklist.length} ítems (${auditData.checklist.filter((c: any) => c.response === 'COMPLIES').length} conformes, ${auditData.checklist.filter((c: any) => c.response === 'DOES_NOT_COMPLY').length} no conformes)
+Hallazgos: ${auditData.findings.length} hallazgos registrados.
+
+El usuario es un auditor ejecutando la auditoría y necesita asesoramiento normativo.`;
+
+        const messages = [
+          { role: 'user' as const, content: context },
+          ...(Array.isArray(body.history) ? body.history.map((h: any) => ({ role: h.role as 'user' | 'assistant', content: String(h.content || '') })) : []),
+          { role: 'user' as const, content: body.message },
+        ];
+
+        const response = await llm.chat(messages);
+        return reply.send({ reply: response.text, tokensUsed: response.tokensUsed, model: response.model });
+      } catch (err: any) {
+        console.error('Error en chat de auditoría:', err.message);
+        return reply.code(500).send({ error: 'Error en chat de auditoría', details: err.message });
+      }
+    },
+  );
 }
