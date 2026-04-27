@@ -92,8 +92,6 @@ model NonConformity {
 
   @@unique([tenantId, code])
   @@index([tenantId])
-  @@index([status])
-  @@index([severity])
   @@index([drillId])
 }
 
