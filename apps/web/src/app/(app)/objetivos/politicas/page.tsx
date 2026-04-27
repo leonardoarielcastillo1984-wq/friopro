@@ -40,9 +40,11 @@ export default function PoliciesPage() {
     try {
       setLoading(true);
       const data = (await apiFetch('/objectives/policies')) as Policy[];
-      setPolicies(data);
+      // Ensure data is always an array
+      setPolicies(Array.isArray(data) ? data : []);
     } catch {
       alert('No se pudieron cargar las políticas');
+      setPolicies([]);
     } finally {
       setLoading(false);
     }
