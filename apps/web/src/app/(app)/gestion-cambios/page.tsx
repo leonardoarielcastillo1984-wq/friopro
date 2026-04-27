@@ -122,8 +122,13 @@ export default function GestionCambiosPage() {
 
   useEffect(() => {
     load();
-    apiFetch<{ members: any[] }>('/settings/members')
-      .then(r => setMembers((r?.members || []).map((m: any) => ({ id: m.userId, name: m.name || m.email }))))
+    apiFetch<{ employees: any[] }>('/hr/employees')
+      .then(r => setMembers((r?.employees || []).map((e: any) => {
+        const id = e.id || '';
+        const name = `${e.firstName || ''} ${e.lastName || ''}`.trim()
+          || e.email || `ID: ${id}`;
+        return { id, name };
+      })))
       .catch(() => {});
   }, []);
 
