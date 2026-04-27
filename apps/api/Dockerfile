@@ -12,8 +12,9 @@ RUN pnpm install --no-frozen-lockfile
 
 RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
+RUN cp /app/prisma/schema.prisma /app/apps/api/prisma/
 
-RUN cd /app && pnpm exec prisma generate --schema=prisma/schema.prisma
+RUN pnpm --filter api exec prisma generate
 
 FROM node:20-slim AS runner
 RUN corepack enable && corepack prepare pnpm@latest --activate
