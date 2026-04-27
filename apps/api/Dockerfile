@@ -12,8 +12,10 @@ RUN pnpm install --no-frozen-lockfile
 
 RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
-RUN rm -f /app/apps/api/prisma/schema.prisma && cp /app/prisma/schema.prisma /app/apps/api/prisma/
-RUN pnpm --filter api exec prisma generate --schema=/app/prisma/schema.prisma
+RUN cat /app/prisma/schema.prisma > /app/apps/api/prisma/schema.prisma && \
+    cat /app/apps/api/prisma/schema-saas.prisma >> /app/apps/api/prisma/schema.prisma && \
+    cat /app/apps/api/prisma/schema-project360.prisma >> /app/apps/api/prisma/schema.prisma
+RUN pnpm --filter api exec prisma generate
 
 FROM node:20-slim AS runner
 RUN corepack enable && corepack prepare pnpm@latest --activate
