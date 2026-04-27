@@ -12,7 +12,7 @@ RUN pnpm install --no-frozen-lockfile
 
 RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
-RUN cp /app/prisma/schema.prisma /app/apps/api/prisma/
+RUN rm -f /app/apps/api/prisma/schema.prisma && cp /app/prisma/schema.prisma /app/apps/api/prisma/
 
 RUN pnpm --filter api exec prisma generate
 
