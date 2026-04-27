@@ -6,13 +6,14 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/api/prisma apps/api/prisma/
+COPY prisma/schema.prisma prisma/
 
 RUN pnpm install --no-frozen-lockfile
 
 RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
 
-RUN pnpm --filter api exec prisma generate
+RUN cd /app && npx prisma generate --schema=prisma/schema.prisma
 
 FROM node:20-slim AS runner
 RUN corepack enable && corepack prepare pnpm@latest --activate
