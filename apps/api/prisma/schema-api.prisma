@@ -8,6 +8,51 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Enums for NonConformity
+enum NCRSeverity {
+  CRITICAL
+  MAJOR
+  MINOR
+  OBSERVATION
+}
+
+enum NCRSource {
+  AUDIT
+  INCIDENT
+  COMPLAINT
+  MONITORING
+  SUPPLIER
+  OTHER
+}
+
+enum NCRStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_VERIFICATION
+  CLOSED
+  CANCELLED
+}
+
+// Tenant model for SaaS
+model Tenant {
+  id                String    @id @default(uuid()) @db.Uuid
+  name              String
+  slug              String    @unique
+  adminEmail        String    @unique
+  adminName         String
+  status            String    @default("ACTIVE")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  sgiObjectives     SgiObjective[]
+  policies          Policy[]
+  nonConformities   NonConformity[]
+
+  @@index([slug])
+  @@index([status])
+}
+
 model NonConformity {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @db.Uuid
