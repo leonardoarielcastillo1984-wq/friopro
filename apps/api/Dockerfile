@@ -12,8 +12,8 @@ RUN pnpm install --no-frozen-lockfile
 
 RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
-# Use the complete API schema with datasource
-RUN cp /app/apps/api/prisma/schema-api.prisma /app/apps/api/prisma/schema.prisma
+# Merge all schemas into one complete schema
+RUN chmod +x /app/apps/api/prisma/merge-schemas.sh && /app/apps/api/prisma/merge-schemas.sh
 RUN pnpm --filter api exec prisma generate
 
 FROM node:20-slim AS runner

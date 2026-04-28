@@ -212,7 +212,7 @@ model PaymentTransaction {
   mercadoPagoId     String    @unique
   amount            Float
   currency          String    @default("ARS")
-  status            PaymentStatus
+  status            SubscriptionPaymentStatus
   
   // Fechas
   paymentDate       DateTime  @default(now())
@@ -255,7 +255,7 @@ enum BillingCycle {
   ANNUAL            // 10% descuento
 }
 
-enum PaymentStatus {
+enum SubscriptionPaymentStatus {
   PENDING           // Pendiente de pago
   APPROVED          // Pago aprobado
   REJECTED          // Pago rechazado
