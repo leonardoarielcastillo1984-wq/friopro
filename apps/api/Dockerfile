@@ -12,12 +12,12 @@ RUN pnpm install --no-frozen-lockfile
 
 RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
-# Merge schemas: root (generator+datasource) + API models (no generator) + saas + project360
+# Merge schemas: root (generator+datasource+enums) + API models (no generator, no enums) + saas (no enums) + project360 (no enums)
 RUN cat /app/prisma/schema.prisma > /app/apps/api/prisma/schema.prisma && \
     echo "" >> /app/apps/api/prisma/schema.prisma && \
-    sed '/^generator client {/,/^}/d' /app/apps/api/prisma/schema-api.prisma >> /app/apps/api/prisma/schema.prisma && \
-    cat /app/apps/api/prisma/schema-saas.prisma >> /app/apps/api/prisma/schema.prisma && \
-    cat /app/apps/api/prisma/schema-project360.prisma >> /app/apps/api/prisma/schema.prisma
+    sed '/^generator client {/,/^}/d; /^enum [A-Za-z0-9_]+ {/,/^}/d' /app/apps/api/prisma/schema-api.prisma >> /app/apps/api/prisma/schema.prisma && \
+    sed '/^enum [A-Za-z0-9_]+ {/,/^}/d' /app/apps/api/prisma/schema-saas.prisma >> /app/apps/api/prisma/schema.prisma && \
+    sed '/^enum [A-Za-z0-9_]+ {/,/^}/d' /app/apps/api/prisma/schema-project360.prisma >> /app/apps/api/prisma/schema.prisma
 RUN pnpm --filter api exec prisma generate
 
 FROM node:20-slim AS runner
