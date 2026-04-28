@@ -233,7 +233,7 @@ export async function buildApp() {
   await app.register(gestionCambiosRoutes, { prefix: '/gestion-cambios' });
   await app.register(registerHelpRoutes, { prefix: '/help' });
 
-  // Endpoint genérico de IA para módulos del frontend
+  // Endpoint genérico de IA para módulos del frontend - respuestas rápidas
   app.post('/ai/chat', async (req: any, reply: any) => {
     try {
       const rawBody = req.body;
@@ -241,10 +241,18 @@ export async function buildApp() {
       const message: string = body?.message || body?.prompt || '';
       if (!message) return reply.code(400).send({ error: 'message requerido' });
       const llm = createLLMProvider();
-      const result = await llm.chat([{ role: 'user', content: message }]);
+      // Usar solo 512 tokens para respuestas rápidas (evitar timeout 504)
+      const result = await llm.chat([{ role: 'user', content: message }], 512);
       return reply.send({ response: result.text });
     } catch (err: any) {
-      return reply.code(500).send({ error: err?.message || 'Error IA' });
+      if (err?.code === 'LLM_NOT_CONFIGURED' || err?.statusCode === 503) {
+        return reply.code(503).send({ 
+          error: 'IA no configurada',
+          response: 'El asistente de IA no está disponible. Contacte al administrador.' 
+        });
+      }
+      app.log.error('IA chat error:', err);
+      return reply.code(500).send({ error: 'Error al procesar la consulta. Intentá nuevamente.' });
     }
   });
 

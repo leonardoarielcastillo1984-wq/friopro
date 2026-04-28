@@ -3,9 +3,10 @@
 import { useEffect, useState, Suspense, lazy } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { getTenantId } from '@/lib/api';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 import { LicenseBanner } from '@/components/LicenseBanner';
 
 const FloatingHelpBot = lazy(() => import('@/components/FloatingHelpBot'));
@@ -18,6 +19,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const tenantId = getTenantId();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -38,6 +40,28 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   if (!user) {
     return null;
+  }
+
+  // Verificar que SUPER_ADMIN tenga un tenant seleccionado
+  const isSuperAdmin = user?.globalRole === 'SUPER_ADMIN';
+  if (isSuperAdmin && !tenantId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-100/50 p-4">
+        <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 text-center">
+          <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-neutral-900 mb-2">Tenant requerido</h2>
+          <p className="text-neutral-600 mb-4">
+            Como Super Admin, necesitás seleccionar una empresa para trabajar.
+          </p>
+          <button
+            onClick={() => router.push('/select-tenant')}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Seleccionar empresa
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
