@@ -300,9 +300,11 @@ model Tenant {
 }
 
 model PlatformUser {
-  id           String @id @default(uuid()) @db.Uuid
-  email        String @unique
+  id           String  @id @default(uuid()) @db.Uuid
+  email        String  @unique
   passwordHash String
+  firstName    String?
+  lastName     String?
 
   globalRole GlobalRole?
 
