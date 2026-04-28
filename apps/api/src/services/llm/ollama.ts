@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { LLMMessage, LLMProvider, LLMResponse } from './types.js';
+import type { LLMMessage, LLMProvider, LLMResponse, LLMStreamChunk } from './types.js';
 
 /**
  * Ollama provider — uses the OpenAI-compatible API at localhost:11434
@@ -40,5 +40,29 @@ export class OllamaProvider implements LLMProvider {
       tokensUsed: response.usage?.total_tokens || 0,
       model: this.model,
     };
+  }
+
+  async *chatStream(
+    messages: LLMMessage[],
+    maxTokens: number = 1024,
+  ): AsyncGenerator<LLMStreamChunk> {
+    const stream = await this.client.chat.completions.create({
+      model: this.model,
+      max_tokens: maxTokens,
+      messages: messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || '';
+      if (content) {
+        yield { text: content, done: false };
+      }
+    }
+
+    yield { text: '', done: true };
   }
 }

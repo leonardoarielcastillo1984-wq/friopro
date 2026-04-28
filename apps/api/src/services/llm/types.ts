@@ -9,6 +9,12 @@ export interface LLMResponse {
   model: string;
 }
 
+export interface LLMStreamChunk {
+  text: string;
+  done: boolean;
+}
+
 export interface LLMProvider {
   chat(messages: LLMMessage[], maxTokens?: number): Promise<LLMResponse>;
+  chatStream?(messages: LLMMessage[], maxTokens?: number): AsyncGenerator<LLMStreamChunk>;
 }

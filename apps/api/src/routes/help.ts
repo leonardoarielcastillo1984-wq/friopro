@@ -17,6 +17,78 @@ const AskSchema = z.object({
 });
 
 export async function registerHelpRoutes(app: FastifyInstance) {
+  // Endpoint de streaming SSE para respuestas tipo chat
+  app.post('/ask/stream', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const parsed = AskSchema.safeParse(body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'Invalid request', details: parsed.error.errors });
+      }
+
+      const { message, context, history = [] } = parsed.data;
+      const ctx = context || {};
+      const moduleName = ctx.module || detectModuleFromPath(ctx.pathname || '/');
+      const screenName = ctx.screen || ctx.subModule || moduleName;
+
+      const systemPrompt = buildSystemPrompt(moduleName, screenName);
+
+      const messages: { role: 'user' | 'assistant'; content: string }[] = [
+        { role: 'user', content: `[Contexto del sistema]\n${systemPrompt}\n\n[Pregunta del usuario]` },
+        ...history.slice(-6).map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
+        { role: 'user', content: message },
+      ];
+
+      const llm = createLLMProvider();
+
+      // Verificar si soporta streaming
+      if (!llm.chatStream) {
+        // Fallback a respuesta normal
+        const result = await llm.chat(messages, 1500);
+        return reply.send({
+          response: result.text,
+          context: { module: moduleName, screen: screenName },
+          tokensUsed: result.tokensUsed,
+          model: result.model,
+          stream: false,
+        });
+      }
+
+      // Configurar headers para SSE
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      // Enviar metadata inicial
+      reply.raw.write(`data: ${JSON.stringify({ type: 'meta', module: moduleName, screen: screenName })}\n\n`);
+
+      // Stream de la respuesta
+      let fullText = '';
+      for await (const chunk of llm.chatStream(messages, 1500)) {
+        if (chunk.done) {
+          reply.raw.write(`data: ${JSON.stringify({ type: 'done', fullText })}\n\n`);
+        } else {
+          fullText += chunk.text;
+          reply.raw.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk.text })}\n\n`);
+        }
+      }
+
+      reply.raw.end();
+    } catch (err: any) {
+      if (err?.code === 'LLM_NOT_CONFIGURED' || err?.statusCode === 503) {
+        return reply.code(503).send({
+          error: 'IA no configurada',
+          response: 'El asistente de IA no está disponible. Contacte al administrador para configurar OpenAI u Ollama.',
+        });
+      }
+      app.log.error(err);
+      return reply.code(500).send({ error: err?.message || 'Error del asistente' });
+    }
+  });
+
+  // Endpoint tradicional (mantener compatibilidad)
   app.post('/ask', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
