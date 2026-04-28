@@ -245,7 +245,10 @@ export default function DocumentDetailPage() {
       setDoc(res.document);
       setEditing(false);
     } catch (err: any) {
-      setError(err?.message ?? 'Error al guardar');
+      console.error('❌ Error saving document:', err);
+      const errorMsg = err?.message ?? 'Error al guardar';
+      setError(errorMsg);
+      alert('Error al guardar: ' + errorMsg);
     } finally {
       setSaving(false);
     }
