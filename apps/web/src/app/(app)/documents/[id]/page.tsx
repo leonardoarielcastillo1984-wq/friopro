@@ -237,7 +237,9 @@ export default function DocumentDetailPage() {
           normativeId: editNormativeIds.length > 0 ? editNormativeIds[0] : null, // Para compatibilidad
           ownerId: editOwnerId || null,
           process: editProcess || null,
-          nextReviewDate: editNextReviewDate ? new Date(editNextReviewDate).toISOString() : null,
+          nextReviewDate: editNextReviewDate && editNextReviewDate.trim() !== '' 
+            ? new Date(editNextReviewDate).toISOString() 
+            : null,
         },
       });
       setDoc(res.document);
