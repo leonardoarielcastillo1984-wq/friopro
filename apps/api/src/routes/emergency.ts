@@ -54,8 +54,8 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
           environmentalAspect: { select: { id: true, code: true } },
           drillResults: { orderBy: { createdAt: 'desc' }, take: 1 },
           drillActions: true,
-          participants: { include: { employee: { select: { id: true, firstName: true, lastName: true } } } },
-          _count: { select: { drillResults: true, drillActions: true, participants: true, nonConformities: true } },
+          drillParticipants: { include: { employee: { select: { id: true, firstName: true, lastName: true } } } },
+          _count: { select: { drillResults: true, drillActions: true, drillParticipants: true, nonConformities: true } },
         },
       });
     });
@@ -75,7 +75,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
           environmentalAspect: { select: { id: true, code: true, aspect: true } },
           drillResults: { orderBy: { createdAt: 'desc' } },
           drillActions: { orderBy: { createdAt: 'desc' } },
-          participants: { include: { employee: { select: { id: true, firstName: true, lastName: true } } } },
+          drillParticipants: { include: { employee: { select: { id: true, firstName: true, lastName: true } } } },
           nonConformities: { orderBy: { createdAt: 'desc' }, take: 5 },
         },
       });
@@ -412,14 +412,14 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     const drill = await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillScenario.findFirst({
         where: { id, tenantId: tId, deletedAt: null },
-        include: { drillResults: { orderBy: { createdAt: 'desc' }, take: 1 }, drillActions: true, participants: true }
+        include: { drillResults: { orderBy: { createdAt: 'desc' }, take: 1 }, drillActions: true, drillParticipants: true }
       });
     });
     if (!drill) return reply.code(404).send({ error: 'Not found' });
 
     try {
       const llm = createLLMProvider();
-      const prompt = `Analiza el siguiente simulacro de emergencia y evalua su desempeño. Simulacro: ${drill.name}. Tipo: ${drill.type}. Estado: ${drill.status}. Resultado mas reciente: ${drill.drillResults?.[0]?.result || 'Sin resultado'}. Observaciones: ${drill.drillResults?.[0]?.observations || 'Ninguna'}. Acciones asociadas: ${drill.drillActions?.length || 0}. Participantes: ${drill.participants?.length || 0}. Proporciona: 1) Evaluacion de desempeño. 2) Deteccion de fallas. 3) Sugerencias de mejora. 4) Indicar si requiere revisión urgente. Responde en español.`;
+      const prompt = `Analiza el siguiente simulacro de emergencia y evalua su desempeño. Simulacro: ${drill.name}. Tipo: ${drill.type}. Estado: ${drill.status}. Resultado mas reciente: ${drill.drillResults?.[0]?.result || 'Sin resultado'}. Observaciones: ${drill.drillResults?.[0]?.observations || 'Ninguna'}. Acciones asociadas: ${drill.drillActions?.length || 0}. Participantes: ${drill.drillParticipants?.length || 0}. Proporciona: 1) Evaluacion de desempeño. 2) Deteccion de fallas. 3) Sugerencias de mejora. 4) Indicar si requiere revisión urgente. Responde en español.`;
       const aiRes = await llm.chat([{ role: 'user', content: prompt }], 1500);
       return reply.send({ analysis: aiRes?.text || 'Sin respuesta del modelo' });
     } catch (e: any) {
@@ -530,7 +530,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
         where: { id, tenantId: tId, deletedAt: null },
         include: {
           responsible: { select: { id: true, firstName: true, lastName: true } },
-          versionHistory: { orderBy: { createdAt: 'desc' } }
+          contingencyPlanVersions: { orderBy: { createdAt: 'desc' } }
         }
       });
     });

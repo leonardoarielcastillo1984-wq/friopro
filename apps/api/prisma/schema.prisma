@@ -64,6 +64,7 @@ model NonConformity {
   deletedAt            DateTime?             @db.Timestamptz
   environmentalAspects EnvironmentalAspect[] @relation("NcrEnvironmentalAspect")
   hazards              Hazard[]              @relation("NcrHazard")
+  drillScenarios       DrillScenario[]       @relation("DrillNcr")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -509,6 +510,7 @@ model Risk {
   updatedBy   PlatformUser? @relation("RiskUpdatedBy", fields: [updatedById], references: [id])
 
   deletedAt DateTime? @db.Timestamptz
+  drills    DrillScenario[] @relation("DrillRisk")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -1439,6 +1441,8 @@ model Employee {
   environmentalActions EnvironmentalAction[] @relation("EnvironmentalActionAssigned")
   environmentalAspects EnvironmentalAspect[] @relation("EnvironmentalAspectResponsible")
   environmentalReviews EnvironmentalReview[] @relation("EnvironmentalReviewBy")
+  drillsResponsible    DrillScenario[]       @relation("DrillResponsible")
+  plansResponsible     ContingencyPlan[]     @relation("PlanResponsible")
 
   @@unique([tenantId, dni])
   @@unique([tenantId, email])
@@ -2489,6 +2493,15 @@ model DrillScenario {
   scope      Json? // {areas: [], departments: [], participants: number, external_agencies: []}
   schedule   Json? // {plannedDate, duration, start_time, end_time}
 
+  responsibleId String?   @db.Uuid
+  responsible   Employee? @relation("DrillResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+
+  riskId               String?              @db.Uuid
+  risk                 Risk?                @relation("DrillRisk", fields: [riskId], references: [id], onDelete: SetNull)
+
+  environmentalAspectId String?              @db.Uuid
+  environmentalAspect   EnvironmentalAspect? @relation("DrillAspect", fields: [environmentalAspectId], references: [id], onDelete: SetNull)
+
   coordinator        Json? // {id, name, email, phone}
   evaluators         Json? // Array of evaluator info
   resources          Json? // {equipment: [], personnel: [], facilities: []}
@@ -2496,6 +2509,10 @@ model DrillScenario {
   evaluationCriteria Json? // Array of evaluation criteria
 
   results Json? // Drill results and findings
+
+  scheduledDate DateTime? @db.Timestamptz
+  executionDate DateTime? @db.Timestamptz
+  responseTime  Int?      // in minutes
 
   createdAt   DateTime  @default(now()) @db.Timestamptz
   updatedAt   DateTime  @updatedAt @db.Timestamptz
@@ -2509,6 +2526,7 @@ model DrillScenario {
   drillActions         DrillAction[]
   drillParticipants    DrillParticipant[]
   drillResults         DrillResult[]
+  nonConformities      NonConformity[]       @relation("DrillNcr")
   environmentalAspects EnvironmentalAspect[] @relation("DrillEnvironmentalAspect")
   hazards              Hazard[]              @relation("DrillHazard")
 
@@ -2528,6 +2546,10 @@ model ContingencyPlan {
   description String? @db.Text
   type        String // e.g., NATURAL_DISASTER, FIRE, SECURITY, etc.
   status      String  @default("DRAFT")
+  version     String  @default("1.0")
+
+  responsibleId String?   @db.Uuid
+  responsible   Employee? @relation("PlanResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
 
   objectives       Json? // Array of objectives
   triggers         Json? // Conditions that activate the plan
@@ -2536,6 +2558,9 @@ model ContingencyPlan {
   resources        Json? // {equipment: [], personnel: [], locations: []}
   communications   Json? // Notification protocols and contact lists
   timeline         Json? // Timeline estimates for different phases
+
+  reviewDate     DateTime? @db.Timestamptz
+  nextReviewDate DateTime? @db.Timestamptz
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -3565,6 +3590,7 @@ model EnvironmentalAspect {
   reviews         EnvironmentalReview[]
   nonConformities NonConformity[]        @relation("NcrEnvironmentalAspect")
   drills          DrillScenario[]        @relation("DrillEnvironmentalAspect")
+  drillAspects    DrillScenario[]        @relation("DrillAspect")
 
   @@index([tenantId])
   @@index([status])
