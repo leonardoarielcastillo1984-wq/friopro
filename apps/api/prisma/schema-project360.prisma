@@ -263,7 +263,7 @@ enum MaintenanceAssetCategory {
   OTHER
 }
 
-enum WorkOrderStatus {
+enum MaintenanceWorkOrderStatus {
   PENDING
   IN_PROGRESS
   COMPLETED
@@ -360,7 +360,7 @@ model WorkOrder {
   title             String
   description       String?
   type              WorkOrderType @default(PREVENTIVE)
-  status            WorkOrderStatus @default(PENDING)
+  status            MaintenanceWorkOrderStatus @default(PENDING)
   priority          Priority  @default(MEDIUM)
   
   // Fechas
