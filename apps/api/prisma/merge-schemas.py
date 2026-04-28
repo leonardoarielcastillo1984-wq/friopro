@@ -34,7 +34,7 @@ def extract_models_and_enums(content):
                 brace_count += line.count('{') - line.count('}')
                 i += 1
             models[name] = '\n'.join(block_lines)
-            continue
+            continue  # Skip the i += 1 at the end of the outer loop
         
         # Check for enum definition
         enum_match = re.match(r'^(enum)\s+(\w+)\s*\{', line)
@@ -115,11 +115,13 @@ def main():
     root_models, root_enums = extract_models_and_enums(root_content)
     header = extract_header(root_content)
     print(f"✓ Extracted {len(root_models)} models and {len(root_enums)} enums from root schema")
+    print(f"  Root models: {list(root_models.keys())}")
     
     # Extract from partial schemas
     api_models, api_enums = extract_models_and_enums(api_content)
     saas_models, saas_enums = extract_models_and_enums(saas_content)
     p360_models, p360_enums = extract_models_and_enums(p360_content)
+    print(f"✓ API: {len(api_models)} models, SaaS: {len(saas_models)} models, P360: {len(p360_models)} models")
     
     # Combine: root takes precedence, add unique models from partials
     all_models = dict(root_models)  # Start with root
