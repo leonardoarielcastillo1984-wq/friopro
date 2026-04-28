@@ -3385,7 +3385,7 @@ model Calibration {
 
 model Client {
   id      String  @id @default(uuid()) @db.Uuid
-  userId  String  @map("user_id")
+  userId  String @db.Uuid  @map("user_id")
   name    String
   phone   String?
   email   String?
@@ -3441,7 +3441,7 @@ model CustomerImprovementPlan {
 }
 
 model Diagnosis {
-  workOrderId       String  @id @map("workorder_id")
+  workOrderId       String @db.Uuid  @id @map("workorder_id")
   aiHypotheses      Json?   @map("ai_hypotheses")
   aiRecommendations String? @map("ai_recommendations")
   aiClientSummary   String? @map("ai_client_summary")
@@ -3613,8 +3613,8 @@ model EnvironmentalReview {
 
 model Equipment {
   id              String        @id @default(uuid()) @db.Uuid
-  userId          String        @map("user_id")
-  clientId        String?       @map("client_id")
+  userId          String @db.Uuid        @map("user_id")
+  clientId        String? @db.Uuid       @map("client_id")
   type            EquipmentType
   customType      String?       @map("custom_type")
   brand           String?
@@ -3649,7 +3649,7 @@ enum EquipmentType {
 
 model EvidencePhoto {
   id          String   @id @default(uuid()) @db.Uuid
-  workOrderId String   @map("workorder_id")
+  workOrderId String @db.Uuid   @map("workorder_id")
   category    String?
   fileUrl     String   @map("file_url")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -3852,8 +3852,8 @@ model Incident {
 
 model License {
   id        String        @id @default(uuid()) @db.Uuid
-  userId    String        @map("user_id")
-  planId    String        @map("plan_id")
+  userId    String @db.Uuid        @map("user_id")
+  planId    String @db.Uuid        @map("plan_id")
   startsAt  DateTime      @map("starts_at")
   expiresAt DateTime      @map("expires_at")
   active    Boolean       @default(true)
@@ -3931,7 +3931,7 @@ enum MaintenanceWorkOrderStatus {
 }
 
 model Measurements {
-  workOrderId       String  @id @map("workorder_id")
+  workOrderId       String @db.Uuid  @id @map("workorder_id")
   suctionPressure   Float?  @map("suction_pressure")
   dischargePressure Float?  @map("discharge_pressure")
   returnTemp        Float?  @map("return_temp")
@@ -3987,9 +3987,9 @@ enum MilestoneStatus {
 
 model NotificationLog {
   id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @map("user_id")
-  clientId    String?  @map("client_id")
-  equipmentId String?  @map("equipment_id")
+  userId      String @db.Uuid   @map("user_id")
+  clientId    String? @db.Uuid  @map("client_id")
+  equipmentId String? @db.Uuid  @map("equipment_id")
   channel     String
   to          String
   content     String
@@ -4152,7 +4152,7 @@ model PaymentTransaction {
 }
 
 model PdfReport {
-  workOrderId String @id @map("workorder_id")
+  workOrderId String @db.Uuid @id @map("workorder_id")
   fileUrl     String @map("file_url")
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
@@ -4546,7 +4546,7 @@ model QualityRelation {
 
 model QuoteItem {
   id          String  @id @default(uuid()) @db.Uuid
-  workOrderId String  @map("workorder_id")
+  workOrderId String @db.Uuid  @map("workorder_id")
   category    String?
   description String
   qty         Int     @default(1)
@@ -4667,7 +4667,7 @@ model SgiObjective {
 }
 
 model Signature {
-  workOrderId      String   @id @map("workorder_id")
+  workOrderId      String @db.Uuid   @id @map("workorder_id")
   signerName       String   @map("signer_name")
   signatureFileUrl String   @map("signature_file_url")
   signedAt         DateTime @map("signed_at")
@@ -4710,7 +4710,7 @@ model Stakeholder {
 
 model Subscription {
   id       String @id @default(uuid()) @db.Uuid
-  tenantId String @unique
+  tenantId String @db.Uuid @unique
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Plan actual
@@ -4851,7 +4851,7 @@ enum TenantStatus {
 
 model UsageEvent {
   id        String         @id @default(uuid()) @db.Uuid
-  licenseId String         @map("license_id")
+  licenseId String @db.Uuid         @map("license_id")
   type      UsageEventType
   createdAt DateTime       @default(now()) @map("created_at")
   meta      Json?
