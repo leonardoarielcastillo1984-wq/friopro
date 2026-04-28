@@ -270,8 +270,8 @@ export default function DocumentDetailPage() {
       });
       
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        throw new Error(errorData.error || `HTTP ${res.status}`);
+        const errorData = await res.json().catch(() => ({ error: `Error HTTP ${res.status}` }));
+        throw new Error(errorData.error || `Error HTTP ${res.status}`);
       }
       
       const blob = await res.blob();
@@ -528,7 +528,7 @@ export default function DocumentDetailPage() {
       const res = await fetch(`${apiBase}/documents/${id}/versions/${versionId}/download`, {
         credentials: 'include',
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
       
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);

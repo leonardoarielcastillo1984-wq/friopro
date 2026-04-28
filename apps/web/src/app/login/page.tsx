@@ -49,7 +49,7 @@ export default function LoginPage() {
       console.log('=== END LOGIN DEBUG ===');
 
       if (!res.ok) {
-        throw new Error((data as any)?.error || `HTTP ${res.status}`);
+        throw new Error((data as any)?.error || `Error HTTP ${res.status}`);
       }
 
       const accessToken = (data as any)?.accessToken ?? (data as any)?.token;
