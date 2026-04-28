@@ -1,1871 +1,6 @@
 generator client {
   provider = "prisma-client-js"
 }
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
-}
-
-enum AuditChecklistResponse {
-  COMPLIES
-  DOES_NOT_COMPLY
-  NOT_APPLICABLE
-}
-
-enum AuditFindingSeverity {
-  MAJOR
-  MINOR
-  CRITICAL
-  OBSERVATION
-  OPPORTUNITY
-}
-
-enum AuditFindingStatus {
-  OPEN
-  IN_PROGRESS
-  CLOSED
-  CANCELLED
-}
-
-enum AuditFindingType {
-  NON_CONFORMITY
-  OBSERVATION
-  OPPORTUNITY
-  POSITIVE_PRACTICE
-}
-
-enum AuditResult {
-  CONFORME
-  PARCIAL
-  NO_CONFORME
-}
-
-enum AuditStatus {
-  DRAFT
-  PLANNED
-  SCHEDULED
-  IN_PROGRESS
-  PENDING_REPORT
-  COMPLETED
-  CLOSED
-}
-
-enum AuditTeamRole {
-  LEADER
-  AUDITOR
-  OBSERVER
-}
-
-enum AuditType {
-  INTERNAL
-  EXTERNAL
-  SUPPLIER
-  CUSTOMER
-  CERTIFICATION
-  RECERTIFICATION
-  SURVEILLANCE
-}
-
-enum AuditorType {
-  INTERNAL
-  EXTERNAL
-}
-
-enum BillingCycle {
-  MONTHLY
-  ANNUAL            // 10% descuento
-}
-
-enum DrillStatus {
-  PLANNED
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
-enum DrillType {
-  NATURAL_DISASTER
-  FIRE
-  SECURITY_INCIDENT
-  MEDICAL_EMERGENCY
-  INFRASTRUCTURE_FAILURE
-  PANDEMIC
-  OTHER
-}
-
-enum EquipmentType {
-  SPLIT_INVERTER
-  SPLIT_ON_OFF
-  VENTANA
-  HELADERA
-  FREEZER
-  CAMARA
-  OTRO
-}
-
-enum FeatureKey {
-  // Core
-  DASHBOARD_BASIC
-  USERS_MANAGEMENT
-  
-  // Módulos básicos (Starter)
-  AUDITS_BASIC
-  DOCUMENTS_BASIC
-  INDICATORS_BASIC
-  
-  // Módulos avanzados (Professional)
-  PROJECT360
-  MAINTENANCE
-  DRILLS
-  RISKS
-  INDICATORS_ADVANCED
-  
-  // Enterprise
-  BUSINESS_INTELLIGENCE
-  REPORTS_AUTO
-  AI_FEATURES
-  MULTI_BRANCH
-  
-  // Addons
-  AUDIT360
-  HSE360
-  
-  // Límites
-  USER_LIMIT
-  STORAGE_LIMIT
-  API_CALLS_LIMIT
-}
-
-enum HazardStatus {
-  OPEN
-  IN_TREATMENT
-  CONTROLLED
-  CLOSED
-}
-
-enum ImpactLevel {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum LicenseNotificationType {
-  SETUP_REQUIRED
-  TRIAL_STARTED
-  TRIAL_ENDING_SOON
-  TRIAL_ENDED
-  SUBSCRIPTION_EXPIRING_7D
-  SUBSCRIPTION_EXPIRING_3D
-  SUBSCRIPTION_EXPIRING_1D
-  SUBSCRIPTION_EXPIRED
-  GRACE_PERIOD_STARTED
-  GRACE_PERIOD_ENDING
-  MODULE_BLOCKED
-  UPGRADE_SUGGESTED
-  PAYMENT_FAILED
-  PAYMENT_SUCCESS
-}
-
-enum LicenseStatus {
-  ACTIVE
-  SUSPENDED
-  EXPIRED
-}
-
-enum MaintenanceAssetCategory {
-  MACHINERY
-  VEHICLE
-  TOOL
-  INFRASTRUCTURE
-  ELECTRONIC
-  SAFETY
-  OTHER
-}
-
-enum MaintenanceAssetStatus {
-  ACTIVE
-  INACTIVE
-  MAINTENANCE
-  RETIRED
-}
-
-enum MaintenancePlanStatus {
-  ACTIVE
-  PAUSED
-  INACTIVE
-}
-
-enum MaintenanceWorkOrderStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-  OVERDUE
-}
-
-enum MilestoneStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
-enum NCRSeverity {
-  CRITICAL
-  MAJOR
-  MINOR
-  OBSERVATION
-}
-
-enum NCRSource {
-  AUDIT
-  INCIDENT
-  COMPLAINT
-  MONITORING
-  SUPPLIER
-  OTHER
-}
-
-enum NCRStatus {
-  OPEN
-  IN_PROGRESS
-  PENDING_VERIFICATION
-  CLOSED
-  CANCELLED
-}
-
-enum OriginType {
-  AUDIT_FINDING      // Hallazgo de auditoría
-  NON_CONFORMITY    // No conformidad
-  INCIDENT          // Incidente
-  DRILL_DEVIATION    // Desvío en simulacro
-  MAINTENANCE_ISSUE  // Problema de mantenimiento
-  RISK_DETECTED      // Riesgo detectado
-  MANAGEMENT_OBJECTIVE // Objetivo de dirección
-  MANUAL            // Creación manual
-}
-
-enum PaymentStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  REFUNDED
-  DISPUTED
-}
-
-enum PlanCode {
-  FREE
-  PRO
-  PRO_PLUS
-}
-
-enum Priority {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum ProjectStatus {
-  PENDING           // Pendiente de iniciar
-  IN_PROGRESS       // En ejecución
-  AT_RISK           // En riesgo (próximo a vencer)
-  OVERDUE           // Vencido
-  COMPLETED         // Completado
-  CANCELLED         // Cancelado
-  ON_HOLD           // En pausa
-}
-
-enum ReviewFrequency {
-  MONTHLY
-  QUARTERLY
-  ANNUAL
-}
-
-enum RiskActionEffectiveness {
-  PENDING
-  EFFECTIVE
-  NOT_EFFECTIVE
-  PARTIAL
-}
-
-enum RiskActionStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
-enum RiskLevel {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum SetupStatus {
-  PENDING
-  PAID
-  WAIVED
-  REFUNDED
-}
-
-enum SeverityLevel {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum SubscriptionPaymentStatus {
-  PENDING           // Pendiente de pago
-  APPROVED          // Pago aprobado
-  REJECTED          // Pago rechazado
-  CANCELLED         // Pago cancelado
-  REFUNDED          // Reembolsado
-}
-
-enum SubscriptionStatus {
-  TRIAL             // Período de prueba
-  ACTIVE            // Activo y pagando
-  PAST_DUE          // Vencido
-  CANCELLED         // Cancelado
-  SUSPENDED         // Suspendido
-}
-
-enum TaskStatus {
-  PENDING
-  IN_PROGRESS
-  BLOCKED
-  COMPLETED
-  CANCELLED
-}
-
-enum TenantStatus {
-  SETUP             // En configuración inicial
-  TRIAL             // Período de prueba
-  ACTIVE            // Activo y pagando
-  SUSPENDED         // Suspendido por falta de pago
-  CANCELLED         // Cancelado
-}
-
-enum UsageEventType {
-  WORKORDER_CREATED
-  PDF_GENERATED
-  AI_CALL
-}
-
-enum UserRole {
-  SUPER_ADMIN
-  TECHNICIAN
-}
-
-enum UserStatus {
-  ACTIVE
-  SUSPENDED
-  DELETED
-}
-
-enum WorkOrderServiceType {
-  FALLA
-  MANTENIMIENTO
-  INSTALACION
-}
-
-enum WorkOrderStatus {
-  DRAFT
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
-enum WorkOrderType {
-  PREVENTIVE
-  CORRECTIVE
-  PREDICTIVE
-  EMERGENCY
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String  @map("user_id")
-  type              String
-  provider          String
-  providerAccountId String  @map("provider_account_id")
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-  @@index([userId])
-  @@map("accounts")
-}
-
-model ActionItem {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  code          String
-  title         String
-  description   String
-  type          String    // CORRECTIVE, PREVENTIVE, IMPROVEMENT
-  priority      String    @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
-  status        String    @default("OPEN") // OPEN, IN_PROGRESS, VERIFICATION, CLOSED, CANCELLED
-  sourceType    String    // MANUAL, AUDIT, NCR, INDICATOR, REVIEW, RISK, INCIDENT, SUGGESTION
-  sourceId      String?   @db.Uuid
-  assignedToId  String?   @db.Uuid
-  openDate      DateTime?  @db.Timestamptz
-  dueDate       DateTime?
-  completedAt   DateTime?
-  // Campos de evaluación de riesgo (estilo Matriz de Riesgos)
-  initialProbability Int?      @default(1) // 1-5
-  initialImpact     Int?      @default(1) // 1-5
-  initialRiskLevel  String?   // LOW, MEDIUM, HIGH, CRITICAL (calculado)
-  residualProbability Int?    @default(1) // 1-5
-  residualImpact     Int?    @default(1) // 1-5
-  residualRiskLevel  String? // LOW, MEDIUM, HIGH, CRITICAL (calculado)
-  riskReduction      Float?   // % de reducción (calculado)
-  // -------- SECCIÓN 1: IDENTIFICACIÓN --------
-  origin        String?   // AUDIT, CLIENT, PROCESS, STAKEHOLDER, MANUAL
-  affectedArea  String?
-  detectedBy    String?
-
-  // -------- SECCIÓN 2: CONTENCIÓN --------
-  containmentActions    String?
-  containmentResponsibleId String? @db.Uuid
-  containmentImplementedAt DateTime?
-  containmentResult     String?
-
-  // -------- SECCIÓN 3: CAUSA RAÍZ --------
-  rootCauseMethod       String?   // FIVE_WHY, ISHIKAWA, OTHER
-  rootCause             String?
-  rootCauseEvidence     String?
-
-  // -------- SECCIÓN 4: ACCIÓN CORRECTIVA --------
-  correctiveAction      String?
-  correctiveResponsibleId String? @db.Uuid
-  correctiveDueDate     DateTime?
-  correctiveResources   String?
-
-  // -------- SECCIÓN 5: ACCIÓN PREVENTIVA --------
-  preventiveAction      String?
-  processChanges        String?
-  documentationChanges  String?
-
-  // -------- SECCIÓN 6: EVALUACIÓN DE EFICACIA --------
-  verificationMethod    String?
-  relatedIndicatorId  String?   @db.Uuid
-  effectivenessResult String?   // EFFECTIVE, NOT_EFFECTIVE
-  effectivenessEvaluatedAt DateTime?
-
-  // -------- SECCIÓN 7: CIERRE --------
-  closedAt            DateTime?
-  approvedById        String?   @db.Uuid
-  closureComments     String?
-
-  // -------- PROGRESO --------
-  progress            Int       @default(0)
-
-  // Campos existentes (mantenidos)
-  effectivenessCheck String?
-  effectivenessVerifiedAt DateTime?
-  effectivenessVerifiedById String? @db.Uuid
-  notes         String?
-  createdById   String?   @db.Uuid
-  updatedById   String?   @db.Uuid
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([status])
-  @@index([assignedToId])
-  @@index([sourceType, sourceId])
-  @@map("action_items")
-}
-
-model ActionProject {
-  id                String    @id @default(cuid())
-  code              String    @unique // AUTO-GEN: PROJ-2026-001
-  name              String
-  description       String?
-  origin            OriginType
-  originModule      String    // módulo que generó
-  originEntityId    String?   // ID de entidad origen
-  originReference   String?   // referencia legible
-  
-  // Asignación y Responsabilidad
-  tenantId          String
-  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  responsibleId    String
-  responsible       PlatformUser @relation(fields: [responsibleId], references: [id])
-  
-  // Temporalidad
-  startDate         DateTime @default(now())
-  targetDate        DateTime
-  completedAt       DateTime?
-  
-  // Estado y Prioridad
-  status            ProjectStatus @default(PENDING)
-  priority          Priority @default(MEDIUM)
-  progress          Float @default(0) // 0-100
-  
-  // Métricas y KPIs
-  indicatorId        String?
-  indicator         Indicator? @relation(fields: [indicatorId], references: [id])
-  targetValue       Float?
-  currentValue      Float?
-  
-  // Impacto y Riesgo
-  impactLevel       ImpactLevel @default(MEDIUM)
-  riskLevel         RiskLevel @default(MEDIUM)
-  
-  // Metadata
-  tags              String[]
-  metadata          Json? // datos adicionales específicos del origen
-  
-  // Auditoría
-  createdBy         String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  // Relaciones
-  tasks             ActionTask[]
-  milestones         ProjectMilestone[]
-  evidences          ProjectEvidence[]
-  comments          ProjectComment[]
-  
-  @@map("action_projects")
-  @@index([tenantId])
-  @@index([status])
-  @@index([responsibleId])
-  @@index([origin, originModule])
-  @@index([targetDate])
-}
-
-model ActionTask {
-  id                String    @id @default(cuid())
-  projectId         String
-  project           ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  // Información básica
-  title             String
-  description       String?
-  
-  // Asignación
-  responsibleId     String
-  responsible       PlatformUser @relation(fields: [responsibleId], references: [id])
-  
-  // Temporalidad
-  dueDate           DateTime
-  completedAt       DateTime?
-  estimatedHours    Float?
-  actualHours       Float?
-  
-  // Estado
-  status            TaskStatus @default(PENDING)
-  progress          Float @default(0)
-  
-  // Validación
-  checklist         Json? // array de items con estado
-  requirements       String[] // requisitos para completar
-  
-  // Evidencia
-  evidenceRequired  Boolean @default(false)
-  evidenceFiles     Json? // array de archivos de evidencia
-  
-  // Dependencias
-  dependencies      String[] // IDs de tareas que deben completarse primero
-  
-  // Metadata
-  tags              String[]
-  
-  // Auditoría
-  createdBy         String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  @@map("action_tasks")
-  @@index([projectId])
-  @@index([responsibleId])
-  @@index([status])
-  @@index([dueDate])
-}
-
-model Addon {
-  id                String    @id @default(cuid())
-  name              String    @unique
-  slug              String    @unique
-  description       String
-  
-  // Precios
-  monthlyPrice      Float
-  annualPrice       Float
-  
-  // Características
-  features          Json      // Array de funcionalidades
-  
-  // Estado
-  isActive          Boolean   @default(true)
-  sortOrder         Int       @default(0)
-  
-  // Relaciones
-  subscriptions     SubscriptionAddon[]
-  
-  @@map("addons")
-  @@index([isActive])
-}
-
-model AdminNotification {
-  id          String   @id @default(uuid()) @db.Uuid
-  
-  type        String   // PAYMENT_RECEIVED, INVOICE_REQUIRED, SYSTEM_ALERT, etc.
-  title       String
-  message     String
-  
-  // Datos adicionales en JSON
-  data        Json?
-  
-  // Estado
-  isRead      Boolean  @default(false)
-  readAt      DateTime? @db.Timestamptz
-  
-  // Link para acción (opcional)
-  actionLink  String?
-  actionLabel String?
-  
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  
-  @@index([type])
-  @@index([isRead])
-  @@index([createdAt])
-  @@map("admin_notifications")
-}
-
-model Audit {
-  id                String   @id @default(uuid()) @db.Uuid
-  tenantId          String   @db.Uuid
-  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  programId         String?  @db.Uuid
-  program           AuditProgram? @relation(fields: [programId], references: [id], onDelete: SetNull)
-  code              String
-  title             String
-  description       String?
-  type              AuditType
-  status            AuditStatus @default(DRAFT)
-  plannedStartDate  DateTime? @db.Timestamptz
-  plannedEndDate    DateTime? @db.Timestamptz
-  duration          Int?
-  leadAuditorId     String?  @db.Uuid
-  area              String
-  process           String?
-  isoStandard       String[]
-  scope             String?
-  objective         String?
-  interviewees      String?
-  result            AuditResult?
-  complianceScore   Float?
-  createdById       String?  @db.Uuid
-  deletedAt         DateTime? @db.Timestamptz
-  createdAt         DateTime @default(now()) @db.Timestamptz
-  updatedAt         DateTime @updatedAt @db.Timestamptz
-
-  findings      AuditFinding[]
-  checklist     AuditChecklistItem[]
-  report        AuditReport?
-  team          AuditTeam[]
-  schedule      AuditSchedule[]
-
-  @@index([tenantId])
-  @@index([status])
-  @@unique([tenantId, code])
-  @@map("audits")
-}
-
-model AuditChecklistItem {
-  id            String   @id @default(uuid()) @db.Uuid
-  auditId       String   @db.Uuid
-  audit         Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
-  clause        String
-  requirement   String
-  whatToCheck   String?
-  weight        Int      @default(1)
-  order         Int      @default(0)
-  response      AuditChecklistResponse?
-  comment       String?
-  evidence      String?
-  createdAt     DateTime @default(now()) @db.Timestamptz
-  updatedAt     DateTime @updatedAt @db.Timestamptz
-
-  @@index([auditId])
-  @@map("audit_checklist_items")
-}
-
-model AuditFinding {
-  id            String   @id @default(uuid()) @db.Uuid
-  tenantId      String   @db.Uuid
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  auditId       String   @db.Uuid
-  audit         Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
-  code          String
-  type          AuditFindingType @default(NON_CONFORMITY)
-  severity      AuditFindingSeverity @default(MINOR)
-  status        AuditFindingStatus @default(OPEN)
-  description   String
-  evidence      String?
-  clause        String?
-  requirement   String?
-  area          String?
-  process       String?
-  responsibleId String?  @db.Uuid
-  ncrId         String?  @db.Uuid
-  ncr           NonConformity? @relation(fields: [ncrId], references: [id], onDelete: SetNull)
-  detectedAt    DateTime @default(now()) @db.Timestamptz
-  closedAt      DateTime? @db.Timestamptz
-  createdById   String?  @db.Uuid
-  deletedAt     DateTime? @db.Timestamptz
-  createdAt     DateTime @default(now()) @db.Timestamptz
-  updatedAt     DateTime @updatedAt @db.Timestamptz
-
-  actions AuditFindingAction[]
-
-  @@index([tenantId])
-  @@index([auditId])
-  @@index([status])
-  @@map("audit_findings")
-}
-
-model AuditFindingAction {
-  id            String   @id @default(uuid()) @db.Uuid
-  findingId     String   @db.Uuid
-  finding       AuditFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
-  description   String
-  rootCause     String?
-  type          String   @default("CORRECTIVE")
-  status        String   @default("PENDING")
-  responsibleId String?  @db.Uuid
-  plannedDate   DateTime? @db.Timestamptz
-  completedDate DateTime? @db.Timestamptz
-  evidence      String?
-  isEffective   Boolean?
-  createdAt     DateTime @default(now()) @db.Timestamptz
-  updatedAt     DateTime @updatedAt @db.Timestamptz
-
-  @@index([findingId])
-  @@map("audit_finding_actions")
-}
-
-model AuditProgram {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  year        Int
-  name        String
-  description String?
-  createdById String?  @db.Uuid
-  deletedAt   DateTime? @db.Timestamptz
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-
-  audits Audit[]
-
-  @@index([tenantId])
-  @@map("audit_programs")
-}
-
-model AuditReport {
-  id                String   @id @default(uuid()) @db.Uuid
-  auditId           String   @unique @db.Uuid
-  audit             Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
-  executiveSummary  String?  @db.Text
-  objective         String?
-  scope             String?
-  processesAudited  String[]
-  overallScore      Float?
-  totalItems        Int?
-  compliantItems    Int?
-  nonCompliantItems Int?
-  totalFindings     Int?
-  openFindings      Int?
-  closedFindings    Int?
-  conclusion        String?  @db.Text
-  generatedById     String?  @db.Uuid
-  createdAt         DateTime @default(now()) @db.Timestamptz
-  updatedAt         DateTime @updatedAt @db.Timestamptz
-
-  @@map("audit_reports")
-}
-
-model AuditSchedule {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  auditId     String   @db.Uuid
-  audit       Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
-  phase       String
-  plannedDate DateTime? @db.Timestamptz
-  actualDate  DateTime? @db.Timestamptz
-  duration    Int?
-  location    String?
-  notes       String?
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([auditId])
-  @@map("audit_schedules")
-}
-
-model AuditTeam {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  auditId   String   @db.Uuid
-  audit     Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
-  userId    String   @db.Uuid
-  auditorId String?  @db.Uuid
-  auditor   Auditor? @relation(fields: [auditorId], references: [id], onDelete: SetNull)
-  role      AuditTeamRole @default(AUDITOR)
-  createdAt DateTime @default(now()) @db.Timestamptz
-  updatedAt DateTime @updatedAt @db.Timestamptz
-
-  @@unique([auditId, userId])
-  @@index([tenantId])
-  @@index([auditId])
-  @@map("audit_teams")
-}
-
-model Auditor {
-  id                    String   @id @default(uuid()) @db.Uuid
-  tenantId              String   @db.Uuid
-  tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  type                  AuditorType
-  name                  String
-  email                 String
-  phone                 String?
-  company               String?
-  employeeId            String?  @db.Uuid
-  normativeCompetencies String[]
-  isActive              Boolean  @default(true)
-  createdById           String?  @db.Uuid
-  deletedAt             DateTime? @db.Timestamptz
-  createdAt             DateTime @default(now()) @db.Timestamptz
-  updatedAt             DateTime @updatedAt @db.Timestamptz
-
-  documents   AuditorDocument[]
-  auditTeams  AuditTeam[]
-
-  @@index([tenantId])
-  @@map("auditors")
-}
-
-model AuditorDocument {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  auditorId   String   @db.Uuid
-  auditor     Auditor  @relation(fields: [auditorId], references: [id], onDelete: Cascade)
-  title       String
-  description String?
-  filePath    String
-  fileSize    Int?
-  mimeType    String   @default("application/pdf")
-  issueDate   DateTime? @db.Timestamptz
-  expiryDate  DateTime? @db.Timestamptz
-  issuer      String?
-  deletedAt   DateTime? @db.Timestamptz
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([auditorId])
-  @@map("auditor_documents")
-}
-
-model Calibration {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  equipmentId   String    @db.Uuid
-  equipment     MeasuringEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  date          DateTime
-  provider      String?
-  certificateNumber String?
-  certificateUrl String?
-  result        String    // CONFORMING, CONFORMING_WITH_ADJUSTMENT, NON_CONFORMING
-  notes         String?
-  nextCalibrationDate DateTime?
-  cost          Float?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  @@index([equipmentId])
-  @@index([tenantId])
-  @@map("calibrations")
-}
-
-model Client {
-  id      String @id @default(cuid())
-  userId  String @map("user_id")
-  name    String
-  phone   String?
-  email   String?
-  address String?
-  notes   String?
-
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  equipments Equipment[]
-  workOrders WorkOrder[]
-  notificationLogs NotificationLog[]
-
-  @@index([userId])
-  @@map("clients")
-}
-
-model CompanyRegistration {
-  id          String   @id @default(uuid()) @db.Uuid
-  companyName String
-  socialReason String?
-  rut         String   @unique
-  email       String
-  phone       String
-  website     String?
-  address     String
-  primaryColor String  @default("#3B82F6")
-  module      String   @default("sgi360")
-  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  
-  // ID de tenant cuando se aprueba (sin relación compleja)
-  tenantId    String?  @db.Uuid
-  
-  // Datos de quien aprobó y cuándo
-  approvedBy  String?  @db.Uuid
-  approvedAt  DateTime?
-  notes       String?
-  
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-  
-  @@index([status])
-  @@index([email])
-  @@index([tenantId])
-  @@map("company_registrations")
-}
-
-model ContingencyPlan {
-  id          String @id @default(uuid()) @db.Uuid
-  tenantId    String @db.Uuid
-  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  name        String
-  description String? @db.Text
-  type        String // e.g., NATURAL_DISASTER, FIRE, SECURITY, etc.
-  status      String @default("ACTIVE") // ACTIVE, OBSOLETE
-  version     String @default("1.0")
-
-  responsibleId String? @db.Uuid
-  reviewDate    DateTime? @db.Timestamptz
-  nextReviewDate DateTime? @db.Timestamptz
-
-  objectives  Json? // Array of objectives
-  triggers    Json? // Conditions that activate the plan
-  responsibilities Json? // {role: [responsibilities]}
-  procedures  Json? // Array of step-by-step procedures
-  resources   Json? // {equipment: [], personnel: [], locations: []}
-  communications Json? // Notification protocols and contact lists
-  timeline    Json? // Timeline estimates for different phases
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-
-  createdById String? @db.Uuid
-  createdBy   PlatformUser? @relation("PlanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-
-  deletedAt   DateTime? @db.Timestamptz
-
-  // Relations
-  responsible        Employee?               @relation("ContingencyPlanResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
-  versionHistory     ContingencyPlanVersion[]
-
-  @@index([tenantId])
-  @@index([status])
-  @@index([responsibleId])
-  @@map("contingency_plans")
-}
-
-model ContingencyPlanVersion {
-  id          String @id @default(uuid()) @db.Uuid
-  tenantId    String @db.Uuid
-  planId      String @db.Uuid
-  version     String
-  content     Json // snapshot of plan data
-  createdById String? @db.Uuid
-  createdAt   DateTime @default(now()) @db.Timestamptz
-
-  plan        ContingencyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([planId])
-  @@map("contingency_plan_versions")
-}
-
-model Customer {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @db.Uuid
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  code        String    // CLI-{YYYY}-{NNN}
-  name        String
-  legalName   String?   // Razón social
-  taxId       String?   // CUIT/RUT/NIF
-  email       String?
-  phone       String?
-  mobile      String?
-  website     String?
-
-  // Address
-  address     String?
-  city        String?
-  state       String?
-  country     String?
-  zipCode     String?
-
-  // Contact person
-  contactName     String?
-  contactEmail    String?
-  contactPhone    String?
-  contactPosition String?
-
-  // Classification
-  type        String @default("CLIENT") // CLIENT, SUPPLIER, PARTNER, PROSPECT
-  status      String @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
-  category    String? // A, B, C classification
-
-  // Business info
-  industry    String?
-  employeesCount Int?
-  annualRevenue  Float?
-
-  // Notes
-  notes       String?
-
-  // Relations
-  surveys     CustomerSurvey[]
-  ncrLinks    NonConformity[] @relation("CustomerNCR")
-  responses   SurveyResponse[]
-  documents   Document[] @relation("CustomerDocuments")
-  improvementPlans CustomerImprovementPlan[]
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-  createdById String? @db.Uuid
-  createdBy   PlatformUser? @relation("CustomerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedById String? @db.Uuid
-  updatedBy   PlatformUser? @relation("CustomerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  deletedAt   DateTime? @db.Timestamptz
-
-  @@unique([tenantId, code])
-  @@index([tenantId])
-  @@index([tenantId, status])
-  @@index([tenantId, type])
-  @@map("customers")
-}
-
-model CustomerImprovementPlan {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  customerId String   @db.Uuid
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-
-  title       String
-  description String?
-  actions     String?
-  responsible String?
-  dueDate     DateTime? @db.Timestamptz
-  status      String   @default("OPEN") // OPEN, IN_PROGRESS, COMPLETED, CANCELLED
-
-  createdAt DateTime @default(now()) @db.Timestamptz
-  updatedAt DateTime @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([customerId])
-  @@map("customer_improvement_plans")
-}
-
-model CustomerSurvey {
-  id          String    @id @default(uuid()) @db.Uuid
-  customerId  String    @db.Uuid
-  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  surveyId    String    @db.Uuid
-  survey      Survey    @relation(fields: [surveyId], references: [id], onDelete: Cascade)
-
-  status      String @default("PENDING") // PENDING, SENT, COMPLETED, EXPIRED
-  sentAt      DateTime?
-  completedAt DateTime?
-  token       String    @unique // Unique token for survey link
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-
-  @@unique([customerId, surveyId])
-  @@index([customerId])
-  @@index([surveyId])
-  @@index([token])
-  @@map("customer_surveys")
-}
-
-model Diagnosis {
-  workOrderId       String @id @map("workorder_id")
-  aiHypotheses      Json?  @map("ai_hypotheses")
-  aiRecommendations String? @map("ai_recommendations")
-  aiClientSummary   String? @map("ai_client_summary")
-  aiAlerts          String? @map("ai_alerts")
-  technicianNotes   String? @map("technician_notes")
-
-  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-
-  @@map("diagnoses")
-}
-
-model DrillAction {
-  id              String @id @default(uuid()) @db.Uuid
-  tenantId        String @db.Uuid
-  drillId         String @db.Uuid
-  description     String
-  responsibleId   String? @db.Uuid
-  dueDate         DateTime? @db.Timestamptz
-  status          RiskActionStatus @default(PENDING)
-  effectiveness   RiskActionEffectiveness @default(PENDING)
-  createdAt       DateTime @default(now()) @db.Timestamptz
-  updatedAt       DateTime @updatedAt @db.Timestamptz
-
-  drill           DrillScenario @relation(fields: [drillId], references: [id], onDelete: Cascade)
-  responsible     Employee? @relation("DrillActionResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId])
-  @@index([drillId])
-  @@index([status])
-  @@map("drill_actions")
-}
-
-model DrillParticipant {
-  id          String @id @default(uuid()) @db.Uuid
-  tenantId    String @db.Uuid
-  drillId     String @db.Uuid
-  employeeId  String @db.Uuid
-  createdAt   DateTime @default(now()) @db.Timestamptz
-
-  drill       DrillScenario @relation(fields: [drillId], references: [id], onDelete: Cascade)
-  employee    Employee      @relation("DrillParticipantEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-
-  @@unique([drillId, employeeId])
-  @@index([tenantId])
-  @@index([drillId])
-  @@index([employeeId])
-  @@map("drill_participants")
-}
-
-model DrillResult {
-  id                String @id @default(uuid()) @db.Uuid
-  tenantId          String @db.Uuid
-  drillId           String @db.Uuid
-  result            String // SUCCESSFUL, WITH_FAILURES, CRITICAL
-  responseTime      Int? // minutes
-  observations      String? @db.Text
-  deviationsDetected Boolean @default(false)
-  createdAt         DateTime @default(now()) @db.Timestamptz
-  updatedAt         DateTime @updatedAt @db.Timestamptz
-
-  drill             DrillScenario @relation(fields: [drillId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([drillId])
-  @@map("drill_results")
-}
-
-model DrillScenario {
-  id          String @id @default(uuid()) @db.Uuid
-  tenantId    String @db.Uuid
-  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  name        String
-  description String? @db.Text
-  type        DrillType
-  severity    SeverityLevel
-  category    String @default("NATURAL_DISASTER")
-  status      DrillStatus @default(PLANNED)
-
-  objectives  Json? // Array of objectives
-  scope       Json? // {areas: [], departments: [], participants: number, external_agencies: []}
-  schedule    Json? // {plannedDate, duration, start_time, end_time}
-
-  coordinator Json? // {id, name, email, phone}
-  evaluators  Json? // Array of evaluator info
-  resources   Json? // {equipment: [], personnel: [], facilities: []}
-  procedures  Json? // Array of procedures
-  evaluationCriteria Json? // Array of evaluation criteria
-
-  results     Json? // Drill results and findings (legacy)
-
-  // Execution tracking (ISO 14001/45001)
-  scheduledDate   DateTime? @db.Timestamptz
-  executionDate   DateTime? @db.Timestamptz
-  responsibleId   String?  @db.Uuid
-
-  // Linkages
-  riskId                   String? @db.Uuid
-  environmentalAspectId    String? @db.Uuid
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-  startedAt   DateTime? @db.Timestamptz
-  completedAt DateTime? @db.Timestamptz
-
-  createdById String? @db.Uuid
-  createdBy   PlatformUser? @relation("DrillCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-
-  deletedAt   DateTime? @db.Timestamptz
-
-  // Relations
-  responsible           Employee?          @relation("DrillResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
-  risk                  Hazard?            @relation("DrillHazard", fields: [riskId], references: [id], onDelete: SetNull)
-  environmentalAspect   EnvironmentalAspect? @relation("DrillEnvironmentalAspect", fields: [environmentalAspectId], references: [id], onDelete: SetNull)
-  participants          DrillParticipant[]
-  drillResults          DrillResult[]
-  drillActions          DrillAction[]
-  nonConformities       NonConformity[]    @relation("NcrDrill")
-
-  @@index([tenantId])
-  @@index([status])
-  @@index([type])
-  @@index([severity])
-  @@index([responsibleId])
-  @@index([riskId])
-  @@index([environmentalAspectId])
-  @@map("drill_scenarios")
-}
-
-model EmergencyResource {
-  id          String @id @default(uuid()) @db.Uuid
-  tenantId    String @db.Uuid
-  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  name        String
-  description String? @db.Text
-  type        String // e.g., EQUIPMENT, PERSONNEL, FACILITY, SUPPLY
-  category    String? // e.g., MEDICAL, RESCUE, COMMUNICATION
-
-  quantity    Int?
-  location    String?
-  status      String @default("AVAILABLE") // AVAILABLE, IN_USE, MAINTENANCE, UNAVAILABLE
-
-  // ISO 14001/45001 operational status
-  isOperational   Boolean @default(true)
-  maintenanceDate   DateTime? @db.Timestamptz
-  expirationDate    DateTime? @db.Timestamptz
-  responsibleId   String? @db.Uuid
-
-  contactInfo Json? // {name, phone, email}
-  specifications Json? // Additional specs or details
-  maintenanceSchedule Json? // Maintenance dates and history
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-
-  createdById String? @db.Uuid
-  createdBy   PlatformUser? @relation("ResourceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-
-  deletedAt   DateTime? @db.Timestamptz
-
-  // Relations
-  responsible Employee? @relation("EmergencyResourceResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId])
-  @@index([type])
-  @@index([status])
-  @@index([responsibleId])
-  @@map("emergency_resources")
-}
-
-model EnvironmentalAction {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  aspectId      String    @db.Uuid
-  description   String
-  responsibleId String?   @db.Uuid
-  dueDate       DateTime? @db.Timestamptz
-  status        RiskActionStatus @default(PENDING)
-  effectiveness RiskActionEffectiveness @default(PENDING)
-  evidence      String?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  aspect      EnvironmentalAspect @relation(fields: [aspectId], references: [id], onDelete: Cascade)
-  responsible Employee? @relation("EnvironmentalActionAssigned", fields: [responsibleId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId])
-  @@index([aspectId])
-  @@index([status])
-  @@map("environmental_actions")
-}
-
-model EnvironmentalAspect {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  code          String
-  process       String
-  aspect        String
-  impact        String
-  category      String    // EMISSIONS, WASTE, ENERGY, WATER, SOIL, BIODIVERSITY, NOISE, OTHER
-  condition     String    @default("NORMAL") // NORMAL, ABNORMAL, EMERGENCY
-  naturalness   String    @default("DIRECT") // DIRECT, INDIRECT
-  magnitude     Int
-  severity      Int
-  frequency     Int
-  legalCompliance Int     @default(3)
-  significance      Int
-  initialSignificance Int?
-  isSignificant     Boolean   @default(false)
-  currentControls String?
-  improvementActions String?
-  responsibleId String?   @db.Uuid
-  reviewDate    DateTime?
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  status        HazardStatus @default(OPEN)
-  reviewFrequency ReviewFrequency?
-
-  responsible     Employee? @relation("EnvironmentalAspectResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
-  actions         EnvironmentalAction[]
-  controls        EnvironmentalControl[]
-  reviews         EnvironmentalReview[]
-  nonConformities NonConformity[] @relation("NcrEnvironmentalAspect")
-  drills          DrillScenario[] @relation("DrillEnvironmentalAspect")
-
-  @@index([tenantId])
-  @@index([status])
-  @@index([responsibleId])
-  @@map("environmental_aspects")
-}
-
-model EnvironmentalControl {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @db.Uuid
-  aspectId    String    @db.Uuid
-  type        String    // OPERATIONAL, ENGINEERING, ADMINISTRATIVE
-  description String
-  implemented Boolean   @default(false)
-  effective   Boolean   @default(false)
-  observation String?
-  createdAt   DateTime  @default(now()) @db.Timestamptz
-  updatedAt   DateTime  @updatedAt @db.Timestamptz
-
-  aspect EnvironmentalAspect @relation(fields: [aspectId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([aspectId])
-  @@map("environmental_controls")
-}
-
-model EnvironmentalReview {
-  id           String    @id @default(uuid()) @db.Uuid
-  tenantId     String    @db.Uuid
-  aspectId     String    @db.Uuid
-  reviewDate   DateTime  @db.Timestamptz
-  result       String    // CONTROLLED, NOT_CONTROLLED
-  comments     String?
-  reviewedById String?   @db.Uuid
-  createdAt    DateTime  @default(now()) @db.Timestamptz
-  updatedAt    DateTime  @updatedAt @db.Timestamptz
-
-  aspect     EnvironmentalAspect @relation(fields: [aspectId], references: [id], onDelete: Cascade)
-  reviewedBy Employee? @relation("EnvironmentalReviewBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-
-  @@index([tenantId])
-  @@index([aspectId])
-  @@index([reviewDate])
-  @@map("environmental_reviews")
-}
-
-model Equipment {
-  id             String        @id @default(cuid())
-  userId         String        @map("user_id")
-  clientId       String?       @map("client_id")
-  type           EquipmentType
-  customType     String?       @map("custom_type")
-  brand          String?
-  model          String?
-  serial         String?
-  refrigerant    String?
-  capacity       String?
-  locationAddress String?      @map("location_address")
-  publicId       String        @unique @map("public_id")
-
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  client    Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  workOrders WorkOrder[]
-  maintenancePlan MaintenancePlan?
-  notificationLogs NotificationLog[]
-
-  @@index([userId])
-  @@index([clientId])
-  @@map("equipments")
-}
-
-model EvidencePhoto {
-  id         String   @id @default(cuid())
-  workOrderId String  @map("workorder_id")
-  category   String?
-  fileUrl    String   @map("file_url")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-
-  @@index([workOrderId])
-  @@map("evidence_photos")
-}
-
-model GestionCambio {
-  id              String    @id @default(uuid()) @db.Uuid
-  tenantId        String    @db.Uuid
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  code            String
-  titulo          String
-  descripcion     String
-  tipo            String    // PROCESO | ORGANIZACIONAL | PRODUCTO_SERVICIO | INFRAESTRUCTURA | PROVEEDOR | NORMATIVO | OTRO
-  origen          String    // AUDITORIA | NO_CONFORMIDAD | MEJORA | CLIENTE | LEGAL | INTERNO | OTRO
-  impactoCalidad  String    // BAJO | MEDIO | ALTO
-  impactoSST      String    // BAJO | MEDIO | ALTO
-  impactoAmbiental String   // BAJO | MEDIO | ALTO
-  status          String    @default("SOLICITADO") // SOLICITADO | EN_REVISION | APROBADO | RECHAZADO | IMPLEMENTADO | VERIFICADO | CERRADO
-  responsableId   String?   @db.Uuid
-  aprobadorId     String?   @db.Uuid
-  fechaSolicitud  DateTime  @default(now()) @db.Timestamptz
-  fechaPrevista   DateTime? @db.Timestamptz
-  fechaAprobacion DateTime? @db.Timestamptz
-  fechaCierre     DateTime? @db.Timestamptz
-  motivoRechazo   String?
-  recursosNecesarios String?
-  capacitacionRequerida Boolean @default(false)
-  documentosAfectados String?
-  riesgosIdentificados String?
-  verificacion    String?
-  creadoPor       String?
-  deletedAt       DateTime? @db.Timestamptz
-  createdAt       DateTime  @default(now()) @db.Timestamptz
-  updatedAt       DateTime  @updatedAt @db.Timestamptz
-
-  historial       GestionCambioHistorial[]
-
-  @@map("gestion_cambio")
-}
-
-model GestionCambioHistorial {
-  id        String   @id @default(uuid()) @db.Uuid
-  cambioId  String   @db.Uuid
-  tenantId  String   @db.Uuid
-  accion    String
-  detalle   String?
-  userId    String?  @db.Uuid
-  userName  String?
-  createdAt DateTime @default(now()) @db.Timestamptz
-
-  cambio    GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
-
-  @@map("gestion_cambio_historial")
-}
-
-model Hazard {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  code          String
-  area          String
-  activity      String
-  hazard        String
-  risk          String
-  probability   Int
-  severity      Int
-  exposure      Int       @default(1)
-  riskLevel     Int
-  riskCategory  String    // TOLERABLE, MODERATE, SUBSTANTIAL, INTOLERABLE
-  elimination   String?
-  substitution  String?
-  engineering   String?
-  administrative String?
-  ppe           String?
-  residualRiskLevel    Int?
-  residualRiskCategory String?
-  responsibleId String?   @db.Uuid
-  reviewDate    DateTime?
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  // ISO 45001 extended fields
-  status            HazardStatus     @default(OPEN)
-  reviewFrequency   ReviewFrequency  @default(ANNUAL)
-
-  // Control implementation tracking
-  eliminationImplemented     Boolean? @default(false)
-  substitutionImplemented    Boolean? @default(false)
-  engineeringImplemented     Boolean? @default(false)
-  administrativeImplemented  Boolean? @default(false)
-  ppeImplemented           Boolean? @default(false)
-
-  // Control effectiveness
-  eliminationEffective     Boolean?
-  substitutionEffective    Boolean?
-  engineeringEffective     Boolean?
-  administrativeEffective  Boolean?
-  ppeEffective           Boolean?
-
-  // Control observations
-  eliminationObservation     String?
-  substitutionObservation    String?
-  engineeringObservation     String?
-  administrativeObservation  String?
-  ppeObservation           String?
-
-  // Relations
-  actions    RiskAction[]
-  reviews    RiskReview[]
-  nonConformities NonConformity[] @relation("NcrHazard")
-  drills     DrillScenario[] @relation("DrillHazard")
-
-  @@index([tenantId])
-  @@map("hazards")
-}
-
-model Incident {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  code          String
-  type          String    // ACCIDENT, INCIDENT, NEAR_MISS, DANGEROUS_SITUATION
-  severity      String    // NONE, FIRST_AID, MEDICAL_TREATMENT, LOST_TIME, FATALITY, PROPERTY_DAMAGE, ENVIRONMENTAL
-  date          DateTime
-  time          String?
-  location      String
-  description   String
-  immediateActions String?
-  affectedPerson String?
-  position      String?
-  daysLost      Int?      @default(0)
-  investigationStatus String @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
-  rootCause     String?
-  rootCauseAnalysis String?
-  witnesses     String?
-  reportedById  String?   @db.Uuid
-  investigatedById String? @db.Uuid
-  closedAt      DateTime?
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([date])
-  @@index([type])
-  @@map("incidents")
-}
-
-model License {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  planId    String   @map("plan_id")
-  startsAt  DateTime @map("starts_at")
-  expiresAt DateTime @map("expires_at")
-  active    Boolean  @default(true)
-  status    LicenseStatus @default(ACTIVE)
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan Plan @relation(fields: [planId], references: [id], onDelete: Restrict)
-
-  usageEvents UsageEvent[]
-
-  @@index([userId])
-  @@index([planId])
-  @@index([expiresAt])
-  @@index([status])
-  @@map("licenses")
-}
-
-model LicenseAccessAttempt {
-  id       String @id @default(uuid()) @db.Uuid
-  tenantId String @db.Uuid
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  userId   String       @db.Uuid
-  user     PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  module   String   // Nombre del módulo intentado
-  path     String   // Ruta completa
-  count    Int      @default(1)
-  
-  lastAttemptAt DateTime @default(now()) @db.Timestamptz
-
-  createdAt DateTime @default(now()) @db.Timestamptz
-  updatedAt DateTime @updatedAt @db.Timestamptz
-
-  @@unique([tenantId, userId, module])
-  @@index([tenantId])
-  @@index([userId])
-  @@map("license_access_attempts")
-}
-
-model LicenseNotification {
-  id       String @id @default(uuid()) @db.Uuid
-  tenantId String @db.Uuid
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  userId   String?       @db.Uuid
-  user     PlatformUser? @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  type     LicenseNotificationType
-  title    String
-  message  String
-  
-  // Mostrar hasta
-  expiresAt DateTime? @db.Timestamptz
-  
-  // Estado
-  isRead    Boolean  @default(false)
-  readAt    DateTime? @db.Timestamptz
-  
-  // Acción tomada
-  actionTaken String? // "UPGRADE", "DISMISS", etc.
-
-  createdAt DateTime @default(now()) @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([userId])
-  @@index([type])
-  @@map("license_notifications")
-}
-
-model MaintenanceAsset {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  code        String   @unique
-  name        String
-  description String?
-  category    String   @default("OTHER") // MACHINERY, VEHICLE, TOOL, INFRASTRUCTURE, ELECTRONIC, SAFETY, OTHER
-  status      String   @default("ACTIVE") // ACTIVE, INACTIVE, MAINTENANCE
-
-  location    String?
-  department  String?
-  manufacturer String?
-  model       String?
-  serialNumber String?
-
-  purchaseDate     DateTime?
-  warrantyDate     DateTime?
-  acquisitionCost  Float    @default(0)
-
-  totalMaintenanceCost Float @default(0)
-  lastMaintenanceDate  DateTime?
-  nextMaintenanceDate  DateTime?
-
-  workOrders   WorkOrder[]
-  plans        MaintenancePlan[]
-  costs        MaintenanceCost[]
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([code])
-  @@map("maintenance_assets")
-}
-
-model MaintenanceCost {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  costType    String   @default("PREVENTIVE") // PREVENTIVE, CORRECTIVE, PREDICTIVE, EMERGENCY
-  amount      Float
-  description String?
-  date        DateTime @default(now())
-
-  assetId     String   @db.Uuid
-  asset       MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
-
-  workOrderId String?  @db.Uuid
-  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([assetId])
-  @@index([workOrderId])
-  @@map("maintenance_costs")
-}
-
-model MaintenancePlan {
-  id             String   @id @default(cuid())
-  equipmentId    String   @unique @map("equipment_id")
-  nextDate       DateTime @map("next_date")
-  notifyEmail    Boolean  @default(false) @map("notify_email")
-  notifyMessage  Boolean  @default(false) @map("notify_message")
-  daysBefore     Int      @default(7) @map("days_before")
-  lastNotifiedAt DateTime? @map("last_notified_at")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-
-  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-
-  @@index([nextDate])
-  @@index([lastNotifiedAt])
-  @@map("maintenance_plans")
-}
-
-model MaintenancePlanExecution {
-  id                String    @id @default(cuid())
-  executedAt        DateTime  @default(now())
-  notes             String?
-  
-  // Relaciones
-  planId            String
-  plan              MaintenancePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-  
-  workOrderId       String?
-  workOrder         WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
-  
-  // Auditoría
-  createdAt         DateTime  @default(now())
-  
-  @@map("maintenance_plan_executions")
-  @@index([planId])
-  @@index([workOrderId])
-}
-
-model MaintenanceSparePart {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  code        String   @unique
-  name        String
-  description String?
-  category    String?
-
-  currentStock Int    @default(0)
-  minStock     Int    @default(0)
-  maxStock     Int?
-  unitCost     Float  @default(0)
-
-  supplier     String?
-  supplierCode String?
-  location     String?
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([code])
-  @@map("maintenance_spare_parts")
-}
-
-model MaintenanceTechnician {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  code        String   @unique
-  name        String
-  email       String?
-  phone       String?
-  specialization String?
-  certification  String?
-
-  isActive    Boolean  @default(true)
-  availabilityStatus String @default("AVAILABLE") // AVAILABLE, BUSY, OFF
-
-  workOrders  WorkOrder[]
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([code])
-  @@map("maintenance_technicians")
-}
-
-model Measurements {
-  workOrderId        String  @id @map("workorder_id")
-  suctionPressure    Float?  @map("suction_pressure")
-  dischargePressure  Float?  @map("discharge_pressure")
-  returnTemp         Float?  @map("return_temp")
-  supplyTemp         Float?  @map("supply_temp")
-  compressorCurrent  Float?  @map("compressor_current")
-  voltage            Float?
-  ambientTemp        Float?  @map("ambient_temp")
-  vacuumValue        Float?  @map("vacuum_value")
-  vacuumTime         Int?    @map("vacuum_time")
-  pipingLength       Float?  @map("piping_length")
-  leakTest           String? @map("leak_test")
-  notes              String?
-
-  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-
-  @@map("measurements")
-}
-
-model MeasuringEquipment {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  code          String
-  name          String
-  type          String?
-  brand         String?
-  model         String?
-  serialNumber  String?
-  location      String?
-  responsibleId String?   @db.Uuid
-  status        String    @default("ACTIVE") // ACTIVE, OUT_OF_SERVICE, RETIRED
-  calibrationFrequency String @default("YEARLY") // MONTHLY, QUARTERLY, BIANNUAL, YEARLY, OTHER
-  lastCalibrationDate DateTime?
-  nextCalibrationDate DateTime?
-  acquisitionDate DateTime?
-  notes         String?
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  calibrations  Calibration[]
-
-  @@index([tenantId])
-  @@index([nextCalibrationDate])
-  @@map("measuring_equipment")
-}
-
-model MercadoPagoConfig {
-  id          String   @id @default(uuid()) @db.Uuid
-  
-  accessToken String
-  publicKey   String?
-  webhookSecret String?
-  
-  isActive    Boolean  @default(true)
-  
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-  
-  @@map("mercadopago_config")
-}
 
 model NonConformity {
   id       String @id @default(uuid()) @db.Uuid
@@ -1878,16 +13,16 @@ model NonConformity {
 
   severity NCRSeverity
   source   NCRSource
-  status   NCRStatus @default(OPEN)
+  status   NCRStatus   @default(OPEN)
 
-  standard       String?
-  clause         String?
-  rootCause      String?
-  analysisMethod String?
+  standard         String?
+  clause           String?
+  rootCause        String?
+  analysisMethod   String?
   correctiveAction String?
   preventiveAction String?
 
-  detectedAt DateTime @default(now()) @db.Timestamptz
+  detectedAt DateTime  @default(now()) @db.Timestamptz
   dueDate    DateTime? @db.Timestamptz
   closedAt   DateTime? @db.Timestamptz
 
@@ -1911,23 +46,11 @@ model NonConformity {
   indicatorMeasurement   IndicatorMeasurement? @relation("NcrIndicatorMeasurement", fields: [indicatorMeasurementId], references: [id], onDelete: SetNull)
 
   // Trazabilidad desde Riesgos
-  riskId                 String?               @db.Uuid
-  risk                   Risk?                 @relation("NcrRisk", fields: [riskId], references: [id], onDelete: SetNull)
-
-  // Trazabilidad desde IPERC (Peligros SST)
-  hazardId               String?               @db.Uuid
-  hazard                 Hazard?               @relation("NcrHazard", fields: [hazardId], references: [id], onDelete: SetNull)
-
-  // Trazabilidad desde Aspectos Ambientales
-  environmentalAspectId   String?               @db.Uuid
-  environmentalAspect     EnvironmentalAspect?  @relation("NcrEnvironmentalAspect", fields: [environmentalAspectId], references: [id], onDelete: SetNull)
-
-  // Trazabilidad desde Simulacros
-  drillId                 String?               @db.Uuid
-  drill                   DrillScenario?        @relation("NcrDrill", fields: [drillId], references: [id], onDelete: SetNull)
+  riskId String? @db.Uuid
+  risk   Risk?   @relation("NcrRisk", fields: [riskId], references: [id], onDelete: SetNull)
 
   // Trazabilidad desde Clientes
-  customerLinks          Customer[]            @relation("CustomerNCR")
+  customerLinks Customer[] @relation("CustomerNCR")
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -1940,942 +63,2586 @@ model NonConformity {
 
   deletedAt DateTime? @db.Timestamptz
 
-  isoStandard       String?
-  sstImpact         Boolean? @default(false)
-  environmentalImpact Boolean? @default(false)
-  relatedIds        String?
-  aiAnalysis        String?  @db.Text
-  aiRecommendation  String?  @db.Text
-  aiPriority        String?
-  aiSuggestedCapaId String?  @db.Uuid
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([status])
+  @@index([severity])
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GlobalRole {
+  SUPER_ADMIN
+}
+
+enum TenantRole {
+  TENANT_ADMIN
+  TENANT_USER
+}
+
+enum PlanTier {
+  BASIC
+  PROFESSIONAL
+  PREMIUM
+}
+
+enum FindingSeverity {
+  MUST
+  SHOULD
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIAL
+}
+
+enum DocumentStatus {
+  DRAFT
+  EFFECTIVE
+  OBSOLETE
+}
+
+enum NCRStatus {
+  OPEN
+  IN_ANALYSIS
+  ACTION_PLANNED
+  IN_PROGRESS
+  VERIFICATION
+  CLOSED
+  CANCELLED
+}
+
+enum NCRSeverity {
+  CRITICAL
+  MAJOR
+  MINOR
+  OBSERVATION
+}
+
+enum NCRSource {
+  INTERNAL_AUDIT
+  EXTERNAL_AUDIT
+  CUSTOMER_COMPLAINT
+  PROCESS_DEVIATION
+  SUPPLIER_ISSUE
+  AI_FINDING
+  OTHER
+}
+
+enum NormativeStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  ERROR
+  ARCHIVED
+}
+
+enum ClauseStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RiskStatus {
+  IDENTIFIED
+  ASSESSED
+  MITIGATING
+  MONITORED
+  CLOSED
+}
+
+enum IndicatorFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum IndicatorTrend {
+  UP
+  DOWN
+  STABLE
+}
+
+enum IndicatorDirection {
+  HIGHER_BETTER
+  LOWER_BETTER
+}
+
+enum IndicatorStatus {
+  ON_TARGET
+  WARNING
+  OFF_TARGET
+  NO_DATA
+}
+
+enum SgiTrainingStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SgiTrainingModality {
+  PRESENCIAL
+  VIRTUAL
+  MIXTA
+  E_LEARNING
+}
+
+enum NotificationType {
+  NCR_ASSIGNED
+  NCR_STATUS_CHANGED
+  NCR_OVERDUE
+  RISK_CRITICAL
+  AUDIT_COMPLETED
+  AUDIT_FAILED
+  FINDING_NEW
+  TRAINING_SCHEDULED
+  TRAINING_REMINDER
+  MEMBER_INVITED
+  SYSTEM_ALERT
+}
+
+enum WebhookProvider {
+  slack
+  teams
+  custom
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("TenantCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("TenantUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  memberships        TenantMembership[]
+  subscriptions      TenantSubscription[]
+  features           TenantFeature[]
+  auditEvents        AuditEvent[]
+  aiFindings         AiFinding[]
+  auditRuns          AuditRun[]
+  documents          Document[]
+  normativeStandards NormativeStandard[]
+  departments        Department[]
+  nonConformities    NonConformity[]
+  risks              Risk[]
+  indicators         Indicator[]
+  notifications      Notification[]
+  webhookConfigs     WebhookConfig[]
+  sgiTrainings       SgiTraining[]
+
+  // RRHH Relations
+  trainings Training[]
+  employees Employee[]
+  positions Position[]
+
+  // Indicator↔Risk Links
+  indicatorRiskLinks IndicatorRiskLink[]
+
+  // Emergency & Disaster Management
+  drillScenarios     DrillScenario[]
+  contingencyPlans   ContingencyPlan[]
+  emergencyResources EmergencyResource[]
+
+  // Customer & Survey Relations
+  customers Customer[]
+  surveys   Survey[]
+
+  // License & Billing Relations
+  tenantSetup           TenantSetup?
+  payments              Payment[]
+  invoices              Invoice[]
+  paymentPreferences    PaymentPreference[]
+  licenseAccessAttempts LicenseAccessAttempt[]
+  licenseNotifications  LicenseNotification[]
+
+  // Maintenance Relations
+  maintenanceAssets      MaintenanceAsset[]
+  maintenanceTechnicians MaintenanceTechnician[]
+  maintenancePlans       MaintenancePlan[]
+  maintenanceSpareParts  MaintenanceSparePart[]
+  workOrders             WorkOrder[]
+  maintenanceCosts       MaintenanceCost[]
+}
+
+model PlatformUser {
+  id           String @id @default(uuid()) @db.Uuid
+  email        String @unique
+  passwordHash String
+
+  globalRole GlobalRole?
+
+  refreshTokenVersion Int @default(0)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("UserCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("UserUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  memberships TenantMembership[]
+  auditEvents AuditEvent[]       @relation("AuditActor")
+
+  tenantsCreated Tenant[] @relation("TenantCreatedBy")
+  tenantsUpdated Tenant[] @relation("TenantUpdatedBy")
+
+  membershipsCreated TenantMembership[] @relation("MembershipCreatedBy")
+  membershipsUpdated TenantMembership[] @relation("MembershipUpdatedBy")
+
+  documentsCreated Document[] @relation("DocumentCreatedBy")
+  documentsUpdated Document[] @relation("DocumentUpdatedBy")
+
+  ncrsAssigned NonConformity[] @relation("NcrAssignedTo")
+  ncrsCreated  NonConformity[] @relation("NcrCreatedBy")
+  ncrsUpdated  NonConformity[] @relation("NcrUpdatedBy")
+
+  aiFindingsCreated AiFinding[] @relation("AiFindingCreatedBy")
+  aiFindingsUpdated AiFinding[] @relation("AiFindingUpdatedBy")
+
+  auditRunsCreated AuditRun[] @relation("AuditRunCreatedBy")
+
+  normativesCreated     NormativeStandard[]     @relation("NormativeCreatedBy")
+  normativesUpdated     NormativeStandard[]     @relation("NormativeUpdatedBy")
+  clauseMappingsCreated DocumentClauseMapping[] @relation("ClauseMappingCreatedBy")
+
+  departmentsCreated       Department[]       @relation("DepartmentCreatedBy")
+  departmentsUpdated       Department[]       @relation("DepartmentUpdatedBy")
+  departmentMemberships    DepartmentMember[] @relation("DepartmentMemberUser")
+  departmentMembersCreated DepartmentMember[] @relation("DepartmentMemberCreatedBy")
+
+  usersCreated PlatformUser[] @relation("UserCreatedBy")
+  usersUpdated PlatformUser[] @relation("UserUpdatedBy")
+
+  // RRHH Relations
+  employeesCreated Employee[] @relation("EmployeeCreatedBy")
+  employeesUpdated Employee[] @relation("EmployeeUpdatedBy")
+  positionsCreated Position[] @relation("PositionCreatedBy")
+  positionsUpdated Position[] @relation("PositionUpdatedBy")
+  trainingsCreated Training[] @relation("TrainingCreatedBy")
+  trainingsUpdated Training[] @relation("TrainingUpdatedBy")
+
+  // SGI Relations
+  risksOwned   Risk[] @relation("RiskOwner")
+  risksCreated Risk[] @relation("RiskCreatedBy")
+  risksUpdated Risk[] @relation("RiskUpdatedBy")
+
+  indicatorsOwned   Indicator[] @relation("IndicatorOwner")
+  indicatorsCreated Indicator[] @relation("IndicatorCreatedBy")
+  indicatorsUpdated Indicator[] @relation("IndicatorUpdatedBy")
+
+  notifications Notification[] @relation("NotificationUser")
+
+  webhooksCreated WebhookConfig[] @relation("WebhookCreatedBy")
+  webhooksUpdated WebhookConfig[] @relation("WebhookUpdatedBy")
+
+  sgiTrainingsCoordinated SgiTraining[] @relation("SgiTrainingCoordinator")
+  sgiTrainingsCreated     SgiTraining[] @relation("SgiTrainingCreatedBy")
+  sgiTrainingsUpdated     SgiTraining[] @relation("SgiTrainingUpdatedBy")
+
+  sgiTrainingAttendances SgiTrainingAttendee[]
+
+  // License & Billing Relations
+  licenseAccessAttempts LicenseAccessAttempt[]
+  licenseNotifications  LicenseNotification[]
+
+  // Emergency & Disaster Management
+  drillsCreated    DrillScenario[]     @relation("DrillCreatedBy")
+  plansCreated     ContingencyPlan[]   @relation("PlanCreatedBy")
+  resourcesCreated EmergencyResource[] @relation("ResourceCreatedBy")
+
+  // Two-Factor Authentication
+  twoFactorAuth         TwoFactorAuth?
+  twoFactorSessions     TwoFactorSession[]
+  twoFactorAuthsCreated TwoFactorAuth[]    @relation("2FACreatedBy")
+
+  // Document Versions
+  documentVersionsCreated DocumentVersion[] @relation("DocumentVersionCreatedBy")
+
+  // Customer & Survey Relations
+  customersCreated Customer[] @relation("CustomerCreatedBy")
+  customersUpdated Customer[] @relation("CustomerUpdatedBy")
+  surveysCreated   Survey[]   @relation("SurveyCreatedBy")
+  surveysUpdated   Survey[]   @relation("SurveyUpdatedBy")
+
+  // Invoice Relations
+  invoicesCreated Invoice[] @relation("InvoiceCreatedBy")
+
+  // Password History Relations
+  passwordHistory     PasswordHistory[]
+  passwordChangesMade PasswordHistory[] @relation("PasswordChangedBy")
+}
+
+model TenantMembership {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String       @db.Uuid
+  user   PlatformUser @relation(fields: [userId], references: [id])
+
+  role   TenantRole
+  status MembershipStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("MembershipCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("MembershipUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@index([tenantId])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Módulos SGI (Riesgos / Indicadores / Notificaciones / Integraciones)
+// ──────────────────────────────────────────────────────────────
+
+model Risk {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code        String
+  title       String
+  description String
+  category    String
+  process     String?
+  standard    String?
+
+  // Fechas importantes para gestión de riesgos
+  identificationDate DateTime  @default(now()) @db.Timestamptz // Fecha cuando se identificó el riesgo
+  reviewDate         DateTime? @db.Timestamptz // Fecha de última revisión/evaluación
+  closureDate        DateTime? @db.Timestamptz // Fecha de cierre del riesgo
+
+  probability Int
+  impact      Int
+  riskLevel   Int
+
+  inherentProbability Int? // Probabilidad inherente (antes de controles)
+  inherentImpact      Int? // Impacto inherente (antes de controles)
+
+  residualProb   Int?
+  residualImpact Int?
+  residualLevel  Int?
+
+  treatmentPlan String?
+  controls      String?
+
+  status RiskStatus @default(IDENTIFIED)
+
+  // Campos específicos por norma ISO 14001, 9001, 45001, IATF 16949
+  requirement         String? // Requisito normativo específico (ej: "ISO 14001:2015 - Cláusula 6.1.2")
+  aspectType          RiskAspectType? // Tipo de aspecto (Ambiental, Calidad, Seguridad, etc.)
+  hazard              String? // Peligro identificado (ISO 45001)
+  environmentalAspect String? // Aspecto ambiental (ISO 14001)
+  legalRequirement    Boolean?        @default(false) // Indica si hay requisito legal
+  legalReference      String? // Referencia legal específica
+  riskSource          String? // Origen del riesgo (interno/externo)
+  strategy            RiskStrategy? // Estrategia de tratamiento (ISO 31000)
+  responsible         String? // Nombre del responsable
+  effectiveness       Int? // Eficacia de controles (0-100%)
+
+  ownerId String?       @db.Uuid
+  owner   PlatformUser? @relation("RiskOwner", fields: [ownerId], references: [id])
+
+  // Relations
+  indicatorLinks IndicatorRiskLink[]
+  ncrs           NonConformity[]     @relation("NcrRisk")
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("RiskCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("RiskUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
 
   @@unique([tenantId, code])
   @@index([tenantId])
-  @@index([drillId])
-}
-
-model NotificationLog {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  clientId    String?  @map("client_id")
-  equipmentId String?  @map("equipment_id")
-  channel     String
-  to          String
-  content     String
-  status      String
-  error       String?
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  client    Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  equipment Equipment? @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
-
-  @@index([userId])
-  @@index([clientId])
-  @@index([equipmentId])
-  @@index([channel])
   @@index([status])
-  @@map("notification_logs")
+  @@index([riskLevel])
+  @@index([identificationDate])
+  @@index([closureDate])
+  @@index([aspectType])
 }
 
-model ObjectiveActivity {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  objectiveId   String    @db.Uuid
-  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
-  name          String
-  responsibleId String?   @db.Uuid
-  startDate     DateTime?
-  endDate       DateTime?
-  status        String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([objectiveId])
-  @@map("objective_activities")
+// Tipo de aspecto para diferentes normas ISO
+enum RiskAspectType {
+  AMBIENTAL // ISO 14001
+  CALIDAD // ISO 9001
+  SEGURIDAD // ISO 45001
+  LEGAL // Requisitos legales
+  IATF // IATF 16949 (automotriz)
+  TECNOLOGICO
+  FINANCIERO
+  REPUTACIONAL
 }
 
-model ObjectiveAudit {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  objectiveId   String    @db.Uuid
-  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
-  auditId       String    @db.Uuid
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([objectiveId])
-  @@index([auditId])
-  @@map("objective_audits")
+// Estrategia de tratamiento según ISO 31000
+enum RiskStrategy {
+  EVITAR
+  MITIGAR
+  TRANSFERIR
+  ACEPTAR
 }
 
-model ObjectiveCAPA {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  objectiveId   String    @db.Uuid
-  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
-  capaId        String    @db.Uuid
-  createdAt     DateTime  @default(now()) @db.Timestamptz
+model Indicator {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  code        String
+  name        String
+  description String?
+  category    String
+  process     String?
+  standard    String?
+
+  currentValue Float?
+  targetValue  Float?
+  minValue     Float?
+  maxValue     Float?
+  unit         String
+
+  direction IndicatorDirection @default(HIGHER_BETTER)
+
+  // Umbral de alerta (amarillo). Si no se define, se usa targetValue como límite.
+  warningValue  Float?
+  criticalValue Float?
+
+  status IndicatorStatus @default(NO_DATA)
+
+  lastMeasuredAt DateTime? @db.Timestamptz
+  nextDueAt      DateTime? @db.Timestamptz
+
+  offTargetStreak  Int @default(0)
+  ncrTriggerStreak Int @default(2)
+
+  frequency IndicatorFrequency
+  trend     IndicatorTrend     @default(STABLE)
+  isActive  Boolean            @default(true)
+
+  ownerId String?       @db.Uuid
+  owner   PlatformUser? @relation("IndicatorOwner", fields: [ownerId], references: [id])
+
+  measurements IndicatorMeasurement[]
+  ncrs         NonConformity[]        @relation("NcrIndicator")
+  riskLinks    IndicatorRiskLink[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("IndicatorCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("IndicatorUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([tenantId, code])
   @@index([tenantId])
-  @@index([objectiveId])
-  @@index([capaId])
-  @@map("objective_capas")
 }
 
-model ObjectiveIndicator {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  objectiveId   String    @db.Uuid
-  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
-  indicatorId   String    @db.Uuid
-  createdAt     DateTime  @default(now()) @db.Timestamptz
+model IndicatorMeasurement {
+  id          String    @id @default(uuid()) @db.Uuid
+  indicatorId String    @db.Uuid
+  indicator   Indicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId])
-  @@index([objectiveId])
+  value      Float
+  period     String
+  notes      String?
+  measuredAt DateTime @default(now()) @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  ncrs NonConformity[] @relation("NcrIndicatorMeasurement")
+
+  @@unique([indicatorId, period])
   @@index([indicatorId])
-  @@map("objective_indicators")
 }
 
-model ObjectiveRisk {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  objectiveId   String    @db.Uuid
-  objective     SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
-  riskId        String    @db.Uuid
-  createdAt     DateTime  @default(now()) @db.Timestamptz
+model IndicatorRiskLink {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  indicatorId String    @db.Uuid
+  indicator   Indicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+
+  riskId String @db.Uuid
+  risk   Risk   @relation(fields: [riskId], references: [id], onDelete: Cascade)
+
+  // Cuánto ajusta la probabilidad sugerida (NP) cuando el indicador está fuera de meta
+  offTargetProbDelta Int  @default(1)
+  warningProbDelta   Int  @default(1)
+  minSuggestedProb   Int? // opcional (ej: al menos 4 si hay NCR abierta)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, indicatorId, riskId])
+  @@index([tenantId])
+  @@index([indicatorId])
+  @@index([riskId])
+}
+
+model Notification {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String       @db.Uuid
+  user   PlatformUser @relation("NotificationUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  type       NotificationType
+  title      String
+  message    String
+  link       String?
+  entityType String?
+  entityId   String?
+
+  isRead Boolean   @default(false)
+  readAt DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  deletedAt DateTime? @db.Timestamptz
 
   @@index([tenantId])
-  @@index([objectiveId])
-  @@index([riskId])
-  @@map("objective_risks")
-}
-
-model OrganizationContext {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  year          Int
-  strengths     Json?
-  weaknesses    Json?
-  opportunities Json?
-  threats       Json?
-  political     String?
-  economic      String?
-  social        String?
-  technological String?
-  environmental String?
-  legal         String?
-  mission       String?
-  vision        String?
-  values        String?
-  dafoFo        String?
-  dafoFa        String?
-  dafoDo        String?
-  dafoDa        String?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  @@unique([tenantId, year])
-  @@map("organization_context")
-}
-
-model PasswordHistory {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @db.Uuid
-  user        PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Contraseña hasheada
-  passwordHash String
-  
-  // Tipo de cambio
-  changeType   String   @default("USER_CHANGE") // USER_CHANGE, ADMIN_RESET, TEMPORARY, INITIAL
-  
-  // Quién realizó el cambio
-  changedBy    String?  @db.Uuid
-  changedByUser PlatformUser? @relation("PasswordChangedBy", fields: [changedBy], references: [id])
-  
-  // Metadatos
-  reason       String?
-  ipAddress    String?
-  userAgent    String?
-  
-  createdAt    DateTime @default(now()) @db.Timestamptz
-  
   @@index([userId])
-  @@index([changedBy])
-  @@index([createdAt])
-  @@map("password_history")
+  @@index([isRead])
 }
 
-model Payment {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  planCode    PlanCode @map("plan_code")
-  amount      Decimal  @db.Decimal(12, 2)
-  currency    String
-  status      String
-  provider    String
-  providerRef String?  @map("provider_ref")
-  createdAt   DateTime @default(now()) @map("created_at")
+model WebhookConfig {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  provider WebhookProvider
+  name     String
+  url      String
+  isActive Boolean         @default(true)
+  events   String[]
+
+  lastSentAt  DateTime? @db.Timestamptz
+  lastError   String?
+  totalSent   Int       @default(0)
+  totalErrors Int       @default(0)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("WebhookCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("WebhookUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([isActive])
+}
+
+model SgiTraining {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code           String
+  title          String
+  description    String?
+  category       String
+  modality       SgiTrainingModality
+  instructor     String?
+  instructorType String? // INTERNAL | EXTERNAL
+  location       String?
+
+  // ISO 9001:2015 - 7.2 Competencia
+  objectives         String? // Objetivos de aprendizaje
+  contentProgram     String? // Contenido programático
+  methodologyDetails String? // Metodología detallada
+  evaluationCriteria String? // Criterios de evaluación
+
+  // Vinculación con Competencias (brechas identificadas)
+  competencyId String?     @db.Uuid
+  competency   Competency? @relation(fields: [competencyId], references: [id])
+  gapLevel     Int? // Nivel de brecha que cubre (1-5)
+
+  // Control de documentación ISO
+  materialUrl         String? // Material didáctico
+  certificateTemplate String? // Template de certificado
+
+  durationHours Float
+  scheduledDate DateTime? @db.Timestamptz
+  // Gestión del ciclo de vida de la capacitación
+  completedDate DateTime? @db.Timestamptz
+  completedById String?   @db.Uuid // Quién marcó como completada
+
+  // Reprogramación
+  rescheduledDate  DateTime? @db.Timestamptz // Nueva fecha programada
+  rescheduleReason String? // Motivo de reprogramación
+  rescheduledById  String?   @db.Uuid // Quién reprogramó
+
+  // Cancelación
+  cancelledAt        DateTime? @db.Timestamptz
+  cancellationReason String? // Motivo de cancelación
+  cancelledById      String?   @db.Uuid // Quién canceló
+
+  status   SgiTrainingStatus @default(SCHEDULED)
+  standard String?
+
+  expectedParticipants Int @default(0)
+
+  coordinatorId String?       @db.Uuid
+  coordinator   PlatformUser? @relation("SgiTrainingCoordinator", fields: [coordinatorId], references: [id])
+
+  attendees SgiTrainingAttendee[]
+
+  // Evaluaciones ISO
+  satisfactionEvaluations  TrainingSatisfaction[]
+  effectivenessEvaluations TrainingEffectiveness[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("SgiTrainingCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("SgiTrainingUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model SgiTrainingAttendee {
+  id         String      @id @default(uuid()) @db.Uuid
+  trainingId String      @db.Uuid
+  training   SgiTraining @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+
+  // Soporte para empleados de RRHH (principal) o usuarios del sistema
+  employeeId String? @db.Uuid
+
+  userId String?       @db.Uuid
+  user   PlatformUser? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ISO 9001:2015 - Control de asistencia
+  attended             Boolean   @default(false)
+  signatureData        String?
+  attendanceNotes      String?
+  attendanceMarkedAt   DateTime? @db.Timestamptz
+  attendanceMarkedById String?   @db.Uuid
+
+  // Evaluación de aprendizaje (Quiz)
+  quizScore       Int?
+  quizPassed      Boolean   @default(false)
+  quizCompletedAt DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@unique([trainingId, employeeId])
+  @@index([trainingId])
+  @@index([employeeId])
+  @@index([userId])
+}
+
+// ISO 9001:2015 - Evaluación de satisfacción post-capacitación
+model TrainingSatisfaction {
+  id         String      @id @default(uuid()) @db.Uuid
+  trainingId String      @db.Uuid
+  training   SgiTraining @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+
+  attendeeId String? @db.Uuid
+
+  // Evaluación Likert 1-5
+  contentRelevance    Int? // Relevancia del contenido
+  instructorQuality   Int? // Calidad del instructor
+  materialsQuality    Int? // Calidad de materiales
+  methodologyQuality  Int? // Calidad de metodología
+  overallSatisfaction Int? // Satisfacción general
+
+  comments String? // Comentarios adicionales
+
+  evaluatedAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([trainingId])
+}
+
+// ISO 9001:2015 - Evaluación de efectividad (30-90 días post)
+model TrainingEffectiveness {
+  id         String      @id @default(uuid()) @db.Uuid
+  trainingId String      @db.Uuid
+  training   SgiTraining @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+
+  attendeeId  String? @db.Uuid
+  evaluatorId String? @db.Uuid // Quién evalúa (supervisor/RRHH)
+
+  // Indicadores de efectividad
+  knowledgeApplication   Int? // Aplicación de conocimientos (1-5)
+  performanceImprovement Int? // Mejora en desempeño (1-5)
+  competencyGapReduction Int? // Reducción de brecha (1-5)
+
+  // Evidencias
+  evidenceDescription String? // Descripción de evidencias
+  evidenceDocuments   String[] // URLs de documentos evidencia
+
+  evaluationDate    DateTime? @db.Timestamptz // Fecha de evaluación
+  daysAfterTraining Int? // Días después de la capacitación
+
+  approved     Boolean   @default(false) // Aprobada por supervisor
+  approvedById String?   @db.Uuid
+  approvedAt   DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([trainingId])
+  @@index([attendeeId])
+}
+
+model Department {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name        String
+  description String?
+  color       String  @default("#3B82F6") // Default blue
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("DepartmentUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  documents Document[]
+  members   DepartmentMember[]
+
+  // RRHH Relations
+  employees Employee[] @relation("EmployeeDepartment")
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model DepartmentMember {
+  id           String     @id @default(uuid()) @db.Uuid
+  departmentId String     @db.Uuid
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  userId String       @db.Uuid
+  user   PlatformUser @relation("DepartmentMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  role     String   @default("MEMBER") // MANAGER, MEMBER
+  joinedAt DateTime @default(now()) @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("DepartmentMemberCreatedBy", fields: [createdById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([departmentId, userId])
+  @@index([departmentId])
+  @@index([userId])
+}
+
+model Document {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  departmentId String?     @db.Uuid
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  normativeId String?            @db.Uuid
+  normative   NormativeStandard? @relation(fields: [normativeId], references: [id], onDelete: SetNull)
+
+  customerId String?   @db.Uuid
+  customer   Customer? @relation("CustomerDocuments", fields: [customerId], references: [id], onDelete: SetNull)
+
+  title        String
+  type         String
+  content      String?        @db.Text
+  filePath     String?
+  standardTags Json?
+  status       DocumentStatus @default(DRAFT)
+  version      Int            @default(1)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("DocumentUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  clauseMappings DocumentClauseMapping[]
+  aiFindings     AiFinding[]
+  auditRuns      AuditRun[]
+  versions       DocumentVersion[]
+
+  @@index([tenantId])
+  @@index([departmentId])
+  @@index([normativeId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model DocumentVersion {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  version      Int
+  filePath     String
+  originalName String?
+  fileSize     Int?
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("DocumentVersionCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([documentId])
+}
+
+model Plan {
+  id   String   @id @default(uuid()) @db.Uuid
+  tier PlanTier @unique
+  name String
+
+  // Definición de módulos/habilitaciones y límites a nivel plan
+  features Json
+  limits   Json?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  subscriptions TenantSubscription[]
+  payments      Payment[]
+}
+
+model TenantSubscription {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  planId String @db.Uuid
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  status    SubscriptionStatus @default(TRIAL)
+  startedAt DateTime           @default(now()) @db.Timestamptz
+  endsAt    DateTime?          @db.Timestamptz
+  price     Decimal?           @db.Decimal(10, 2) // Precio personalizado de la suscripción
+
+  // Integración futura con proveedor (Stripe/etc.)
+  provider    String?
+  providerRef String?
+
+  // Relaciones
+  payments Payment[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+}
+
+model TenantFeature {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  key     String
+  enabled Boolean @default(true)
+  config  Json?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}
+
+model AuditEvent {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  actorUserId String?       @db.Uuid
+  actorUser   PlatformUser? @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+}
+
+model AiFinding {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  severity    FindingSeverity
+  standard    String
+  clause      String
+  title       String
+  description String
+  relatedRefs Json?
+
+  // Motor de IA Auditora
+  auditRunId String?   @db.Uuid
+  auditRun   AuditRun? @relation(fields: [auditRunId], references: [id], onDelete: SetNull)
+
+  auditType String? // "document_vs_norma", "tenant_audit", "chat"
+
+  documentId String?   @db.Uuid
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  normativeId String?            @db.Uuid
+  normative   NormativeStandard? @relation(fields: [normativeId], references: [id], onDelete: SetNull)
+
+  clauseId  String?          @db.Uuid
+  clauseRef NormativeClause? @relation(fields: [clauseId], references: [id], onDelete: SetNull)
+
+  confidence       Float? // Score 0-1 de la IA
+  evidence         String? // Evidencia extraída del documento
+  suggestedActions Json? // Array de acciones correctivas
+
+  status    String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("AiFindingCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("AiFindingUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([auditRunId])
+  @@index([documentId])
+  @@index([normativeId])
+  @@index([status])
+}
+
+model AuditRun {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  type   String // "document_vs_norma", "tenant_audit"
+  status String @default("QUEUED") // QUEUED, RUNNING, COMPLETED, FAILED
+
+  // Para auditorías doc vs norma
+  documentId  String?            @db.Uuid
+  document    Document?          @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  normativeId String?            @db.Uuid
+  normative   NormativeStandard? @relation(fields: [normativeId], references: [id], onDelete: SetNull)
+
+  // Resultados
+  totalClauses   Int @default(0)
+  coveredClauses Int @default(0)
+  missingClauses Int @default(0)
+  findingsCount  Int @default(0)
+
+  // Job tracking
+  jobId String?
+  error String?
+
+  startedAt   DateTime  @default(now()) @db.Timestamptz
+  completedAt DateTime? @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("AuditRunCreatedBy", fields: [createdById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  // Relaciones
+  findings AiFinding[]
+
+  @@index([tenantId])
+  @@index([status])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Módulo de Cumplimiento Normativo (multinorma)
+// ──────────────────────────────────────────────────────────────
+
+model NormativeStandard {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Metadatos de la norma
+  name        String // ej: "ISO 9001:2015"
+  code        String // ej: "ISO9001-2015" (unique por tenant)
+  version     String // ej: "2015"
+  description String?
+
+  // Archivo PDF subido
+  originalFileName String
+  fileSize         Int // bytes
+  filePath         String // storage key (local path o S3 key)
+  fileHash         String // SHA-256 para deduplicación
+
+  // Estado de procesamiento
+  status          NormativeStatus @default(UPLOADING)
+  processingJobId String? // BullMQ job ID
+  errorMessage    String?
+
+  // Resultado del procesamiento
+  totalClauses Int       @default(0)
+  extractedAt  DateTime? @db.Timestamptz
+
+  // Auditoría
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("NormativeCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("NormativeUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  // Relaciones
+  clauses    NormativeClause[]
+  aiFindings AiFinding[]
+  auditRuns  AuditRun[]
+  documents  Document[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([status])
+}
+
+model NormativeClause {
+  id          String            @id @default(uuid()) @db.Uuid
+  normativeId String            @db.Uuid
+  normative   NormativeStandard @relation(fields: [normativeId], references: [id], onDelete: Cascade)
+
+  // Identificación de la cláusula
+  clauseNumber String // ej: "4.1", "4.1.1", "A.1"
+  title        String
+  content      String // Texto completo de la cláusula
+
+  // Jerarquía
+  parentClauseId String?           @db.Uuid
+  parentClause   NormativeClause?  @relation("ClauseHierarchy", fields: [parentClauseId], references: [id], onDelete: SetNull)
+  childClauses   NormativeClause[] @relation("ClauseHierarchy")
+
+  level           Int // Profundidad jerárquica (0 = sección principal)
+  extractionOrder Int // Posición en el documento
+  pageNumber      Int? // Página del PDF original
+
+  // Metadatos de búsqueda
+  keywords Json? // Array JSON de palabras clave
+
+  status ClauseStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  // Relaciones
+  documentMappings DocumentClauseMapping[]
+  aiFindings       AiFinding[]
+
+  @@unique([normativeId, clauseNumber])
+  @@index([normativeId])
+  @@index([clauseNumber])
+}
+
+model DocumentClauseMapping {
+  id String @id @default(uuid()) @db.Uuid
+
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  clauseId String          @db.Uuid
+  clause   NormativeClause @relation(fields: [clauseId], references: [id], onDelete: Cascade)
+
+  // Tipo de relación entre documento y cláusula
+  complianceType String // "CUMPLE", "REFERENCIA", "IMPLEMENTA", "NO_APLICA"
+  notes          String? // Notas de evidencia
+
+  // Auditoría
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("ClauseMappingCreatedBy", fields: [createdById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([documentId, clauseId])
+  @@index([documentId])
+  @@index([clauseId])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Two-Factor Authentication (2FA)
+// ──────────────────────────────────────────────────────────────
+
+model TwoFactorAuth {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String       @db.Uuid
+  user   PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // TOTP secret (encrypted in production)
+  secret String @db.Text
+
+  // QR code URL (generated from secret)
+  qrCodeUrl String? @db.Text
+
+  // Status flags
+  isEnabled   Boolean   @default(false) // Is 2FA active for this user?
+  isConfirmed Boolean   @default(false) // Has user confirmed 2FA setup?
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  enabledAt   DateTime? @db.Timestamptz // When 2FA was enabled
+  disabledAt  DateTime? @db.Timestamptz // When 2FA was disabled
+
+  // Recovery codes
+  recoveryCodes TwoFactorRecoveryCode[]
+
+  // Audit trail
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("2FACreatedBy", fields: [createdById], references: [id])
+
+  @@unique([userId])
+  @@index([userId])
+  @@index([isEnabled])
+}
+
+model TwoFactorRecoveryCode {
+  id String @id @default(uuid()) @db.Uuid
+
+  twoFactorAuthId String        @db.Uuid
+  twoFactorAuth   TwoFactorAuth @relation(fields: [twoFactorAuthId], references: [id], onDelete: Cascade)
+
+  // Recovery code (hashed)
+  code String @unique
+
+  // Has this code been used?
+  used   Boolean   @default(false)
+  usedAt DateTime? @db.Timestamptz
+  usedBy String?   @db.Text // IP address or user agent
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([twoFactorAuthId])
+  @@index([used])
+}
+
+model TwoFactorSession {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String       @db.Uuid
+  user   PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Temporary session state during 2FA verification
+  sessionToken String  @unique // Token that grants temporary access
+  verified     Boolean @default(false) // Has user verified TOTP?
+
+  // Context
+  ipAddress String?
+  userAgent String?
+
+  // Expiration
+  expiresAt DateTime @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([userId])
+  @@index([verified])
+  @@index([expiresAt])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Módulo de Recursos Humanos (RRHH)
+// ──────────────────────────────────────────────────────────────
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+enum ContractType {
+  PERMANENT
+  TEMPORARY
+  CONTRACTOR
+  INTERN
+  PART_TIME
+}
+
+enum TrainingType {
+  INTERNAL
+  EXTERNAL
+  ONLINE
+  WORKSHOP
+  CERTIFICATION
+}
+
+enum TrainingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+model Employee {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  departmentId String?     @db.Uuid
+  department   Department? @relation("EmployeeDepartment", fields: [departmentId], references: [id])
+
+  positionId String?   @db.Uuid
+  position   Position? @relation(fields: [positionId], references: [id])
+
+  supervisorId String?    @db.Uuid
+  supervisor   Employee?  @relation("EmployeeHierarchy", fields: [supervisorId], references: [id])
+  subordinates Employee[] @relation("EmployeeHierarchy")
+
+  reportsToPositionId String?   @db.Uuid
+  reportsToPosition   Position? @relation("EmployeeReportsToPosition", fields: [reportsToPositionId], references: [id])
+
+  // Personal Data
+  firstName String
+  lastName  String
+  dni       String
+  birthDate DateTime @db.Timestamptz
+  address   String
+  phone     String
+  email     String
+  cuil      String?
+
+  // Work Data
+  hireDate     DateTime       @db.Timestamptz
+  contractType ContractType
+  location     String?
+  status       EmployeeStatus @default(ACTIVE)
+
+  // Profile
+  profilePhoto String?
+  notes        String?
+
+  // System Access (1:1 relationship)
+  user User?
+
+  // Competencies
+  employeeCompetencies EmployeeCompetency[]
+
+  // Trainings
+  trainingAssignments TrainingAssignment[]
+
+  // Audit
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("EmployeeCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([tenantId, dni])
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([departmentId])
+  @@index([positionId])
+  @@index([supervisorId])
+  @@index([reportsToPositionId])
+  @@index([status])
+}
+
+model User {
+  id         String   @id @default(uuid()) @db.Uuid
+  employeeId String   @unique @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  email    String @unique
+  password String // Hashed password
+  status   String @default("ACTIVE") // ACTIVE, INACTIVE, LOCKED
+
+  // Auth tracking
+  lastLoginAt   DateTime? @db.Timestamptz
+  loginAttempts Int       @default(0)
+  lockedUntil   DateTime? @db.Timestamptz
+
+  // Roles
+  roles UserRole[]
+
+  // Granular permissions per module (JSON: { "dashboard": "view", "documents": "edit", ... })
+  permissions Json?
+
+  // Audit
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([email])
+  @@index([status])
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  permissions String[] // JSON array of permissions
+  status      String   @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Relations
+  users UserRole[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("roles")
+}
+
+model UserRole {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  roleId String @db.Uuid
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model Position {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name     String
+  code     String?
+  category String?
+  level    String? // Seniority level
+
+  // Profile Definition
+  objective        String?
+  responsibilities String[] // JSON array
+  tasks            String[] // JSON array
+  requirements     String[] // JSON array
+
+  // KPIs and Risks
+  kpis  String[] // JSON array
+  risks String[] // JSON array (ISO 39001 risks)
+
+  // Relations
+  employees            Employee[]
+  reportsToEmployees   Employee[]           @relation("EmployeeReportsToPosition")
+  positionCompetencies PositionCompetency[]
+
+  // Audit
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("PositionCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("PositionUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Competency {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  category    String
+  description String?
+  levels      String[] // JSON array of level descriptions
+
+  // Relations
+  positionCompetencies PositionCompetency[]
+  employeeCompetencies EmployeeCompetency[]
+  trainings            SgiTraining[] // Capacitaciones que cubren esta competencia
+
+  // Audit
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("competencies")
+}
+
+model PositionCompetency {
+  id            String @id @default(uuid()) @db.Uuid
+  positionId    String @db.Uuid
+  competencyId  String @db.Uuid
+  requiredLevel Int // 1-5 scale
+
+  position   Position   @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  competency Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@unique([positionId, competencyId])
+  @@map("position_competencies")
+}
+
+model EmployeeCompetency {
+  id           String    @id @default(uuid()) @db.Uuid
+  employeeId   String    @db.Uuid
+  competencyId String    @db.Uuid
+  currentLevel Int // 1-5 scale
+  assessedBy   String?
+  assessedAt   DateTime? @db.Timestamptz
+  notes        String?
+
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  competency Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, competencyId])
+  @@map("employee_competencies")
+}
+
+model Training {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  type        TrainingType
+  duration    Int? // in hours
+  cost        Decimal?     @db.Decimal(10, 2)
+
+  // Competency Link
+  competencyIds String[] // JSON array of competency IDs
+
+  // Relations
+  assignments TrainingAssignment[]
+
+  // Audit
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("TrainingCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("TrainingUpdatedBy", fields: [updatedById], references: [id])
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+}
+
+model TrainingAssignment {
+  id         String   @id @default(uuid()) @db.Uuid
+  trainingId String   @db.Uuid
+  training   Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+
+  employeeId String   @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  // Assignment tracking
+  status      TrainingStatus @default(PENDING)
+  assignedAt  DateTime       @default(now()) @db.Timestamptz
+  completedAt DateTime?      @db.Timestamptz
+  dueDate     DateTime?      @db.Timestamptz
+  score       Decimal?       @db.Decimal(5, 2)
+  certificate String?
+
+  @@unique([trainingId, employeeId])
+  @@map("training_assignments")
+}
+
+// ==================== ISO AUDIT MODULE ====================
+
+enum AuditType {
+  INTERNAL
+  EXTERNAL
+  SUPPLIER
+  CUSTOMER
+  CERTIFICATION
+  RECERTIFICATION
+  SURVEILLANCE
+}
+
+enum AuditStatus {
+  DRAFT
+  PLANNED
+  SCHEDULED
+  IN_PROGRESS
+  PENDING_REPORT
+  COMPLETED
+  CLOSED
+  CANCELLED
+}
+
+enum ProgramStatus {
+  ACTIVE
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum FindingType {
+  NON_CONFORMITY
+  OPPORTUNITY
+  COMMENDATION
+}
+
+enum AuditFindingSeverity {
+  CRITICAL
+  MAJOR
+  MINOR
+  TRIVIAL
+}
+
+enum FindingStatus {
+  OPEN
+  IN_ANALYSIS
+  IN_ACTION
+  PENDING_VALIDATION
+  CLOSED
+  REOPENED
+}
+
+enum ChecklistResponseStatus {
+  COMPLIES
+  DOES_NOT_COMPLY
+  NOT_APPLICABLE
+}
+
+enum ActionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  VALIDATED
+  REJECTED
+}
+
+enum AuditorType {
+  INTERNAL
+  EXTERNAL
+}
+
+enum IsoStandard {
+  ISO_9001
+  ISO_14001
+  ISO_45001
+  ISO_39001
+  IATF_16949
+  ISO_27001
+  ISO_50001
+  CUSTOM
+}
+
+// Company Settings (Logo and branding)
+model CompanySettings {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @db.Uuid
+
+  // Company Info
+  companyName String
+  legalName   String?
+  taxId       String?
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+
+  // Logo and Branding
+  logoUrl     String? // URL to logo image (stored in S3 or local)
+  logoDarkUrl String? // Dark mode logo variant
+  faviconUrl  String?
+
+  // Report Settings
+  headerText   String? // Custom text for report headers
+  footerText   String? // Custom text for report footers
+  primaryColor String? @default("#2563eb") // Brand color
+
+  // Metadata
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  updatedById String   @db.Uuid
+
+  @@index([tenantId])
+  @@map("company_settings")
+}
+
+// Audit Program (Annual Program)
+model AuditProgram {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  year        Int
+  name        String
+  description String?
+  status      ProgramStatus @default(ACTIVE)
+
+  // Metadata
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  deletedAt   DateTime? @db.Timestamptz
+
+  @@unique([tenantId, year])
+  @@index([tenantId])
   @@index([status])
-  @@index([createdAt])
+  @@map("audit_programs")
+}
+
+// Individual Audit
+model Audit {
+  id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @db.Uuid
+  programId String @db.Uuid
+
+  code        String
+  title       String
+  description String?
+  type        AuditType
+  status      AuditStatus @default(DRAFT)
+
+  // Planning
+  plannedStartDate DateTime? @db.Timestamptz
+  plannedEndDate   DateTime? @db.Timestamptz
+  actualStartDate  DateTime? @db.Timestamptz
+  actualEndDate    DateTime? @db.Timestamptz
+  duration         Int? // in hours
+
+  // Audit Team
+  leadAuditorId String @db.Uuid
+
+  // Scope
+  area         String
+  process      String?
+  isoStandard  IsoStandard[]
+  scope        String?
+  objective    String?
+  interviewees String?       @db.Text
+
+  // Metadata
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  deletedAt   DateTime? @db.Timestamptz
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([programId])
+  @@index([status])
+  @@index([plannedStartDate])
+  @@map("audits")
+}
+
+// Auditor Management
+model Auditor {
+  id         String  @id @default(uuid()) @db.Uuid
+  tenantId   String  @db.Uuid
+  employeeId String? @db.Uuid
+
+  type    AuditorType
+  name    String
+  email   String
+  phone   String?
+  company String?
+
+  // Competencies
+  normativeCompetencies IsoStandard[]
+  isActive              Boolean       @default(true)
+
+  // Relations
+  documents AuditorDocument[]
+
+  // Metadata
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  deletedAt   DateTime? @db.Timestamptz
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([employeeId])
+  @@map("auditors")
+}
+
+// Auditor Documents (Certificates, Diplomas)
+model AuditorDocument {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @db.Uuid
+  auditorId String  @db.Uuid
+  auditor   Auditor @relation(fields: [auditorId], references: [id], onDelete: Cascade)
+
+  title       String // e.g., "Certificado ISO 9001 Lead Auditor"
+  description String?
+  filePath    String // Path to PDF file
+  fileSize    Int?
+  mimeType    String  @default("application/pdf")
+
+  // Document metadata
+  issueDate  DateTime? @db.Timestamptz
+  expiryDate DateTime? @db.Timestamptz
+  issuer     String? // Organization that issued the certificate
+
+  // Soft delete
+  deletedAt DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([auditorId])
+  @@map("auditor_documents")
+}
+
+// Many-to-many: Audit <-> Auditor (team members)
+model AuditAuditor {
+  id        String  @id @default(uuid()) @db.Uuid
+  auditId   String  @db.Uuid
+  auditorId String  @db.Uuid
+  role      String?
+
+  @@unique([auditId, auditorId])
+  @@index([auditId])
+  @@index([auditorId])
+  @@map("audit_auditors")
+}
+
+// Checklist Template (reusable)
+model AuditTemplate {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  name              String
+  description       String?
+  normativeStandard IsoStandard
+  version           Int         @default(1)
+  isActive          Boolean     @default(true)
+
+  // Metadata
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  deletedAt   DateTime? @db.Timestamptz
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId])
+  @@map("audit_templates")
+}
+
+model AuditTemplateItem {
+  id         String @id @default(uuid()) @db.Uuid
+  templateId String @db.Uuid
+
+  clause      String
+  requirement String
+  whatToCheck String
+  guidance    String?
+  weight      Decimal @default(1) @db.Decimal(5, 2)
+  order       Int     @default(0)
+
+  @@index([templateId])
+  @@map("audit_template_items")
+}
+
+// Checklist Items (instances from template)
+model AuditChecklistItem {
+  id      String @id @default(uuid()) @db.Uuid
+  auditId String @db.Uuid
+
+  templateItemId String? @db.Uuid
+
+  clause      String
+  requirement String
+  whatToCheck String
+  weight      Decimal @default(1) @db.Decimal(5, 2)
+  order       Int     @default(0)
+
+  // Response
+  response ChecklistResponseStatus?
+  comment  String?
+  evidence String? // URL or file path
+
+  // AI suggestions
+  aiSuggestedFinding Boolean @default(false)
+  aiSuggestion       String?
+
+  @@index([auditId])
+  @@map("audit_checklist_items")
+}
+
+// Findings (Hallazgos)
+model AuditFinding {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  auditId  String @db.Uuid
+
+  // Identification
+  code     String
+  type     FindingType
+  severity AuditFindingSeverity
+  status   FindingStatus        @default(OPEN)
+
+  // Description
+  description String
+  evidence    String? // URL or file path
+  clause      String // Norm clause reference
+  requirement String // Specific requirement
+
+  // Location
+  area    String
+  process String?
+
+  // Assignment
+  responsibleId String   @db.Uuid
+  detectedAt    DateTime @default(now()) @db.Timestamptz
+
+  // Integration with other modules (solo IDs, no relaciones)
+  ncrId       String? @db.Uuid
+  riskId      String? @db.Uuid
+  indicatorId String? @db.Uuid
+
+  // Recurrence tracking
+  isRecurrence      Boolean @default(false)
+  previousFindingId String? @db.Uuid
+  recurrenceCount   Int     @default(0)
+
+  // AI analysis
+  aiSuggestedActions String?
+  aiImpactLevel      String? // HIGH, MEDIUM, LOW
+
+  // Metadata
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  deletedAt   DateTime? @db.Timestamptz
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([auditId])
+  @@index([status])
+  @@index([responsibleId])
+  @@map("audit_findings")
+}
+
+// Corrective Actions from Findings
+model AuditFindingAction {
+  id        String @id @default(uuid()) @db.Uuid
+  findingId String @db.Uuid
+
+  // Action details
+  description String // What will be done
+  rootCause   String? // Root cause analysis (5 Whys, Ishikawa)
+  type        String // CORRECTIVE, PREVENTIVE, IMPROVEMENT
+
+  // Assignment
+  responsibleId String @db.Uuid
+
+  // Planning
+  plannedDate   DateTime  @db.Timestamptz
+  completedDate DateTime? @db.Timestamptz
+
+  // Status
+  status ActionStatus @default(PENDING)
+
+  // Effectiveness validation
+  isEffective     Boolean?
+  validatedById   String?   @db.Uuid
+  validatedAt     DateTime? @db.Timestamptz
+  validationNotes String?
+
+  // Evidence
+  evidence String? // URL or file path
+
+  // AI suggestions
+  aiSuggested Boolean @default(false)
+  aiRationale String?
+
+  // Metadata
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([findingId])
+  @@index([responsibleId])
+  @@index([status])
+  @@map("audit_finding_actions")
+}
+
+// Audit Report
+model AuditReport {
+  id      String @id @default(uuid()) @db.Uuid
+  auditId String @unique @db.Uuid
+
+  // Report content
+  executiveSummary String
+  objective        String
+  scope            String
+  processesAudited String[]
+
+  // Results
+  overallScore      Decimal? @db.Decimal(5, 2) // % compliance
+  totalItems        Int      @default(0)
+  compliantItems    Int      @default(0)
+  nonCompliantItems Int      @default(0)
+
+  // Findings summary
+  totalFindings  Int @default(0)
+  openFindings   Int @default(0)
+  closedFindings Int @default(0)
+
+  // Conclusion
+  conclusion      String
+  recommendations String?
+
+  // Signatures
+  auditorSignedAt      DateTime? @db.Timestamptz
+  auditorSignature     String? // Digital signature or name
+  responsibleSignedAt  DateTime? @db.Timestamptz
+  responsibleSignature String?
+
+  // Export files
+  pdfUrl  String?
+  wordUrl String?
+
+  // Metadata
+  generatedAt   DateTime  @default(now()) @db.Timestamptz
+  generatedById String    @db.Uuid
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+  deletedAt     DateTime? @db.Timestamptz
+
+  @@map("audit_reports")
+}
+
+// Management Review (Informes para la Dirección)
+model ManagementReview {
+  id            String                 @id @default(uuid()) @db.Uuid
+  tenantId      String                 @db.Uuid
+  title         String
+  summary       String?                @db.Text
+  periodStart   DateTime               @db.Timestamptz
+  periodEnd     DateTime               @db.Timestamptz
+  standards     IsoStandard[]
+  status        ManagementReviewStatus @default(DRAFT)
+  generatedAt   DateTime               @default(now()) @db.Timestamptz
+  generatedById String                 @db.Uuid
+  createdAt     DateTime               @default(now()) @db.Timestamptz
+  updatedAt     DateTime               @updatedAt @db.Timestamptz
+  deletedAt     DateTime?              @db.Timestamptz
+
+  sections ManagementReviewSection[]
+
+  @@unique([tenantId, title])
+  @@index([tenantId])
+  @@index([status])
+  @@index([periodStart])
+  @@index([periodEnd])
+  @@map("management_reviews")
+}
+
+model ManagementReviewSection {
+  id         String   @id @default(uuid()) @db.Uuid
+  reportId   String   @db.Uuid
+  key        String // e.g., 'audit_results', 'nonconformities', 'kpi_performance'
+  title      String
+  systemData Json? // Auto-generated data from the system
+  freeText   String?  @db.Text // Manual text input
+  outputs    String?  @db.Text // Output for each input
+  decisions  Json? // Decisions, actions, responsible, dates
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @updatedAt @db.Timestamptz
+
+  report ManagementReview @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, key])
+  @@index([reportId])
+  @@map("management_review_sections")
+}
+
+enum ManagementReviewStatus {
+  DRAFT
+  FINAL
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Sistema de Licencias y Facturación
+// ═══════════════════════════════════════════════════════════════
+
+// Setup Inicial - Pago único de USD 200 para activar el sistema
+model TenantSetup {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  amount   Float       @default(200.00)
+  currency String      @default("USD")
+  status   SetupStatus @default(PENDING)
+
+  // Fechas
+  requestedAt DateTime  @default(now()) @db.Timestamptz
+  paidAt      DateTime? @db.Timestamptz
+
+  // Referencia de pago (Stripe/PayPal/etc)
+  provider    String?
+  providerRef String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("tenant_setups")
+}
+
+// Historial de Pagos de Suscripción
+model Payment {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  subscriptionId String             @db.Uuid
+  subscription   TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  // Relación con Plan (faltaba)
+  planId String @db.Uuid
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  // Detalles del pago
+  amount   Float
+  currency String   @default("USD")
+  period   String // "monthly" | "annual"
+  planTier PlanTier
+
+  // Estados
+  status PaymentStatus @default(PENDING)
+
+  // Fechas
+  periodStart DateTime? @db.Timestamptz
+  periodEnd   DateTime? @db.Timestamptz
+  paidAt      DateTime? @db.Timestamptz
+
+  // Referencia de pago externo
+  provider    String?
+  providerRef String?
+
+  // Metadata
+  receiptUrl String?
+  notes      String?
+
+  // Relaciones inversas
+  invoice Invoice?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([subscriptionId])
+  @@index([planId])
+  @@index([status])
   @@map("payments")
 }
 
+// Factura asociada a un pago
+model Invoice {
+  id        String  @id @default(uuid()) @db.Uuid
+  paymentId String  @unique @db.Uuid
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Datos de la factura
+  invoiceNumber String    @unique // Número de factura (F-001, F-002, etc.)
+  invoiceDate   DateTime  @default(now()) @db.Timestamptz
+  dueDate       DateTime? @db.Timestamptz
+
+  // Montos
+  subtotal  Float
+  taxAmount Float  @default(0)
+  total     Float
+  currency  String @default("USD")
+
+  // Datos fiscales del cliente
+  customerName    String
+  customerTaxId   String?
+  customerAddress String?
+
+  // Archivo PDF de la factura
+  pdfPath String?
+  pdfUrl  String?
+
+  // Estado
+  status String @default("ISSUED") // ISSUED, SENT, PAID, CANCELLED
+
+  // Metadata
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @db.Timestamptz
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId])
+  @@index([paymentId])
+  @@index([status])
+  @@map("invoices")
+}
+
+// Preferencia de pago (para MercadoPago checkout)
 model PaymentPreference {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  userId    String?  @db.Uuid
-  
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String? @db.Uuid
+
   // Plan seleccionado
-  planTier  String
-  period    String   @default("monthly") // monthly, annual
-  amount    Float
-  currency  String   @default("USD")
-  
+  planTier String
+  period   String @default("monthly") // monthly, annual
+  amount   Float
+  currency String @default("USD")
+
   // MercadoPago
   mpPreferenceId String? @unique
   mpInitPoint    String?
-  
+
   // Estado
-  status    String   @default("PENDING") // PENDING, COMPLETED, CANCELLED, EXPIRED
-  
+  status String @default("PENDING") // PENDING, COMPLETED, CANCELLED, EXPIRED
+
   // Metadatos del pago
-  paymentData    Json?    // Datos del pago cuando se completa
-  
-  createdAt      DateTime @default(now()) @db.Timestamptz
-  updatedAt      DateTime @updatedAt @db.Timestamptz
-  expiresAt      DateTime? @db.Timestamptz
-  
+  paymentData Json? // Datos del pago cuando se completa
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  expiresAt DateTime? @db.Timestamptz
+
   @@index([tenantId])
   @@index([status])
   @@index([mpPreferenceId])
   @@map("payment_preferences")
 }
 
-model PaymentTransaction {
-  id                String    @id @default(cuid())
-  tenantId          String
-  
-  // Información de pago
-  mercadoPagoId     String    @unique
-  amount            Float
-  currency          String    @default("ARS")
-  status            SubscriptionPaymentStatus
-  
-  // Fechas
-  paymentDate       DateTime  @default(now())
-  periodStart       DateTime
-  periodEnd         DateTime
-  
-  // Detalles
-  planId            String
-  addons            Json?     // IDs de addons incluidos
-  billingCycle      BillingCycle
-  
-  // Metadata
-  metadata          Json?     // Respuesta completa de MercadoPago
-  
-  @@map("payment_transactions")
+// Notificaciones para administradores (pagos, alertas)
+model AdminNotification {
+  id String @id @default(uuid()) @db.Uuid
+
+  type    String // PAYMENT_RECEIVED, INVOICE_REQUIRED, SYSTEM_ALERT, etc.
+  title   String
+  message String
+
+  // Datos adicionales en JSON
+  data Json?
+
+  // Estado
+  isRead Boolean   @default(false)
+  readAt DateTime? @db.Timestamptz
+
+  // Link para acción (opcional)
+  actionLink  String?
+  actionLabel String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("admin_notifications")
+}
+
+// Configuración de MercadoPago
+model MercadoPagoConfig {
+  id String @id @default(uuid()) @db.Uuid
+
+  accessToken   String
+  publicKey     String?
+  webhookSecret String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("mercadopago_config")
+}
+
+model LicenseAccessAttempt {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String       @db.Uuid
+  user   PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  module String // Nombre del módulo intentado
+  path   String // Ruta completa
+  count  Int    @default(1)
+
+  lastAttemptAt DateTime @default(now()) @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, userId, module])
   @@index([tenantId])
-  @@index([mercadoPagoId])
-  @@index([paymentDate])
+  @@index([userId])
+  @@map("license_access_attempts")
 }
 
-model PdfReport {
-  workOrderId String @id @map("workorder_id")
-  fileUrl     String @map("file_url")
+// Notificaciones de licencia (vencimientos, período de gracia, etc.)
+model LicenseNotification {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  userId String?       @db.Uuid
+  user   PlatformUser? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("pdf_reports")
+  type    LicenseNotificationType
+  title   String
+  message String
+
+  // Mostrar hasta
+  expiresAt DateTime? @db.Timestamptz
+
+  // Estado
+  isRead Boolean   @default(false)
+  readAt DateTime? @db.Timestamptz
+
+  // Acción tomada
+  actionTaken String? // "UPGRADE", "DISMISS", etc.
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([type])
+  @@map("license_notifications")
 }
 
-model Plan {
-  id                   String   @id @default(cuid())
-  code                 PlanCode @unique
-  name                 String
-  maxWorkOrdersPerMonth Int     @map("max_workorders_per_month")
-  maxEquipments        Int      @map("max_equipments")
-  aiEnabled            Boolean  @default(false) @map("ai_enabled")
-  pdfEnabled           Boolean  @default(false) @map("pdf_enabled")
-  qrEnabled            Boolean  @default(false) @map("qr_enabled")
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  licenses License[]
-
-  @@map("plans")
+// Enums para el sistema de licencias
+enum SetupStatus {
+  PENDING
+  PAID
+  WAIVED
+  REFUNDED
 }
 
-model PlanFeature {
-  id                String    @id @default(cuid())
-  planId            String
-  plan              Plan      @relation(fields: [planId], references: [id], onDelete: Cascade)
-  
-  featureKey        String    // Clave única de la funcionalidad
-  featureName       String    // Nombre visible
-  description       String?
-  isEnabled         Boolean   @default(true)
-  limit             Int?      // Límite si aplica (ej: 5 usuarios)
-  
-  @@map("plan_features")
-  @@index([planId])
-  @@index([featureKey])
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  DISPUTED
 }
 
-model Policy {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
+enum LicenseNotificationType {
+  SETUP_REQUIRED
+  TRIAL_STARTED
+  TRIAL_ENDING_SOON
+  TRIAL_ENDED
+  SUBSCRIPTION_EXPIRING_7D
+  SUBSCRIPTION_EXPIRING_3D
+  SUBSCRIPTION_EXPIRING_1D
+  SUBSCRIPTION_EXPIRED
+  GRACE_PERIOD_STARTED
+  GRACE_PERIOD_ENDING
+  MODULE_BLOCKED
+  UPGRADE_SUGGESTED
+  PAYMENT_FAILED
+  PAYMENT_SUCCESS
+}
+
+// Emergency & Disaster Management Models
+enum DrillStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum DrillType {
+  NATURAL_DISASTER
+  FIRE
+  SECURITY_INCIDENT
+  MEDICAL_EMERGENCY
+  INFRASTRUCTURE_FAILURE
+  PANDEMIC
+  OTHER
+}
+
+enum SeverityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model DrillScenario {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   name        String
-  content     String?
-  scope       String?  // Calidad, Ambiente, Seguridad, Integrado
-  active      Boolean  @default(true)
-  deletedAt   DateTime?
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
+  description String?       @db.Text
+  type        DrillType
+  severity    SeverityLevel
+  category    String        @default("NATURAL_DISASTER")
+  status      DrillStatus   @default(PLANNED)
 
-  sgiObjectives SgiObjective[]
+  objectives Json? // Array of objectives
+  scope      Json? // {areas: [], departments: [], participants: number, external_agencies: []}
+  schedule   Json? // {plannedDate, duration, start_time, end_time}
 
-  @@index([tenantId])
-  @@map("policies")
-}
+  coordinator        Json? // {id, name, email, phone}
+  evaluators         Json? // Array of evaluator info
+  resources          Json? // {equipment: [], personnel: [], facilities: []}
+  procedures         Json? // Array of procedures
+  evaluationCriteria Json? // Array of evaluation criteria
 
-model Process {
-  id           String     @id @default(uuid()) @db.Uuid
-  tenantId     String     @db.Uuid
-  processMapId String     @db.Uuid
-  processMap   ProcessMap @relation(fields: [processMapId], references: [id], onDelete: Cascade)
-
-  layer        String     // STRATEGIC | OPERATIONAL | SUPPORT
-  name         String
-  code         String?    // OP-01, PE-02, etc.
-  status       String     @default("active") // active | inactive
-  description  String?
-  owner        String?
-  inputs       String?
-  outputs      String?
-  sites        String[]   @default([]) // multi-sede
-  departmentId String?    @db.Uuid
-
-  // Legacy fields (mapeados a columnas existentes en la DB)
-  indicators   String?  @map("indicators_legacy")
-  documents    String?  @map("documents_legacy")
-  risks        String?  @map("risks_legacy")
-
-  order        Int        @default(0)
-
-  // Relaciones con entidades reales
-  processIndicators ProcessIndicator[]
-  processDocuments  ProcessDocument[]
-  processRisks      ProcessRisk[]
-  sgiObjectives     SgiObjective[]
-
-  createdAt    DateTime  @default(now()) @db.Timestamptz
-  updatedAt    DateTime  @updatedAt @db.Timestamptz
-  deletedAt    DateTime? @db.Timestamptz
-
-  @@index([processMapId])
-  @@index([tenantId])
-  @@unique([tenantId, code])
-  @@map("processes")
-}
-
-model ProcessDocument {
-  id         String @id @default(uuid()) @db.Uuid
-  processId  String @db.Uuid
-  process    Process @relation(fields: [processId], references: [id], onDelete: Cascade)
-  documentId String @db.Uuid
-
-  @@index([processId])
-  @@index([documentId])
-  @@unique([processId, documentId])
-  @@map("process_documents")
-}
-
-model ProcessIndicator {
-  id          String @id @default(uuid()) @db.Uuid
-  processId   String @db.Uuid
-  process     Process @relation(fields: [processId], references: [id], onDelete: Cascade)
-  indicatorId String @db.Uuid
-
-  @@index([processId])
-  @@index([indicatorId])
-  @@unique([processId, indicatorId])
-  @@map("process_indicators")
-}
-
-model ProcessMap {
-  id          String  @id @default(uuid()) @db.Uuid
-  tenantId    String  @db.Uuid
-  tenant      Tenant  @relation(fields: [tenantId], references: [id])
-
-  name        String
-  description String?
-  scope       String?
-  inputLabel  String? @default("Requisitos del cliente / PI")
-  outputLabel String? @default("Satisfacción del cliente / PI")
+  results Json? // Drill results and findings
 
   createdAt   DateTime  @default(now()) @db.Timestamptz
   updatedAt   DateTime  @updatedAt @db.Timestamptz
-  deletedAt   DateTime? @db.Timestamptz
+  startedAt   DateTime? @db.Timestamptz
+  completedAt DateTime? @db.Timestamptz
 
   createdById String?       @db.Uuid
-  createdBy   PlatformUser? @relation("ProcessMapCreatedBy", fields: [createdById], references: [id])
+  createdBy   PlatformUser? @relation("DrillCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
-  processes   Process[]
+  deletedAt DateTime? @db.Timestamptz
 
-  @@index([tenantId])
-  @@map("process_maps")
-}
-
-model ProcessRisk {
-  id        String @id @default(uuid()) @db.Uuid
-  processId String @db.Uuid
-  process   Process @relation(fields: [processId], references: [id], onDelete: Cascade)
-  riskId    String @db.Uuid
-
-  @@index([processId])
-  @@index([riskId])
-  @@unique([processId, riskId])
-  @@map("process_risks")
-}
-
-model Project360 {
-  id            String              @id @default(uuid()) @db.Uuid
-  tenantId      String              @db.Uuid
-  code          String
-  name          String
-  description   String?
-  origin        String
-  originModule  String              @default("PROJECT360")
-  originEntityId String?
-  responsibleId String              @db.Uuid
-  targetDate    DateTime            @db.Timestamptz
-  startDate     DateTime            @default(now()) @db.Timestamptz
-  status        String              @default("PENDING")
-  priority      String              @default("MEDIUM")
-  progress      Int                 @default(0)
-  tags          Json                @default("[]")
-  indicatorId   String?             @db.Uuid
-  targetValue   Float?
-  createdById   String?             @db.Uuid
-  createdAt     DateTime            @default(now()) @db.Timestamptz
-  updatedAt     DateTime            @updatedAt @db.Timestamptz
-  deletedAt     DateTime?           @db.Timestamptz
-
-  tasks         Project360Task[]
-  attachments   Project360Attachment[]
-  reminders     Project360Reminder[]
-  history       Project360History[]
-
-  @@map("project360")
-}
-
-model Project360Attachment {
-  id          String    @id @default(uuid()) @db.Uuid
-  projectId   String    @db.Uuid
-  taskId      String?   @db.Uuid
-  tenantId    String    @db.Uuid
-  name        String
-  url         String
-  size        Int       @default(0)
-  type        String    @default("application/octet-stream")
-  uploadedById String?  @db.Uuid
-  createdAt   DateTime  @default(now()) @db.Timestamptz
-
-  project     Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@map("project360_attachment")
-}
-
-model Project360Comment {
-  id          String    @id @default(uuid()) @db.Uuid
-  taskId      String    @db.Uuid
-  tenantId    String    @db.Uuid
-  text        String
-  authorId    String?   @db.Uuid
-  authorName  String?
-  createdAt   DateTime  @default(now()) @db.Timestamptz
-
-  task        Project360Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@map("project360_comment")
-}
-
-model Project360History {
-  id          String    @id @default(uuid()) @db.Uuid
-  projectId   String    @db.Uuid
-  tenantId    String    @db.Uuid
-  action      String
-  details     String?
-  userId      String?   @db.Uuid
-  userName    String?
-  createdAt   DateTime  @default(now()) @db.Timestamptz
-
-  project     Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@map("project360_history")
-}
-
-model Project360Reminder {
-  id            String    @id @default(uuid()) @db.Uuid
-  projectId     String    @db.Uuid
-  tenantId      String    @db.Uuid
-  title         String
-  description   String?
-  reminderDate  DateTime  @db.Timestamptz
-  userId        String?   @db.Uuid
-  isCompleted   Boolean   @default(false)
-  completedAt   DateTime? @db.Timestamptz
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-
-  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@map("project360_reminder")
-}
-
-model Project360Task {
-  id            String    @id @default(uuid()) @db.Uuid
-  projectId     String    @db.Uuid
-  tenantId      String    @db.Uuid
-  title         String
-  description   String?
-  responsibleId String?   @db.Uuid
-  status        String    @default("PENDING")
-  priority      String    @default("MEDIUM")
-  dueDate       DateTime? @db.Timestamptz
-  completedAt   DateTime? @db.Timestamptz
-  order         Int       @default(0)
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-  deletedAt     DateTime? @db.Timestamptz
-
-  project       Project360  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  comments      Project360Comment[]
-
-  @@map("project360_task")
-}
-
-model ProjectComment {
-  id                String    @id @default(cuid())
-  projectId         String
-  project           ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taskId            String?
-  task              ActionTask? @relation(fields: [taskId], references: [id])
-  
-  content           String
-  authorId          String
-  author            PlatformUser @relation(fields: [authorId], references: [id])
-  
-  // Referencia a otros comentarios
-  parentCommentId   String?
-  parentComment     ProjectComment? @relation("CommentReplies", fields: [parentCommentId], references: [id])
-  replies           ProjectComment[] @relation("CommentReplies")
-  
-  // Auditoría
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  @@map("project_comments")
-  @@index([projectId])
-  @@index([taskId])
-  @@index([authorId])
-}
-
-model ProjectEvidence {
-  id                String    @id @default(cuid())
-  projectId         String
-  project           ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taskId            String?
-  task              ActionTask? @relation(fields: [taskId], references: [id])
-  
-  // Información del archivo
-  fileName          String
-  originalName      String
-  mimeType          String
-  fileSize          Int
-  filePath          String
-  thumbnailPath     String?
-  
-  // Metadatos
-  description       String?
-  tags              String[]
-  uploadedBy        String
-  uploadedAt        DateTime @default(now())
-  
-  @@map("project_evidences")
-  @@index([projectId])
-  @@index([taskId])
-}
-
-model ProjectMilestone {
-  id                String    @id @default(cuid())
-  projectId         String
-  project           ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  title             String
-  description       String?
-  targetDate        DateTime
-  completedAt       DateTime?
-  status            MilestoneStatus @default(PENDING)
-  
-  // Condiciones de cumplimiento
-  conditions        Json? // array de condiciones para marcar como completado
-  
-  // Auditoría
-  createdBy         String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  @@map("project_milestones")
-  @@index([projectId])
-  @@index([targetDate])
-}
-
-model QualityAlert {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  moduleType  String
-  recordId    String   @db.Uuid
-  alertType   String
-  message     String
-  status      String   @default("PENDING")
-  sentAt      DateTime? @db.Timestamptz
-  readAt      DateTime? @db.Timestamptz
-  createdAt   DateTime @default(now()) @db.Timestamptz
-
-  @@index([tenantId, moduleType, recordId])
-  @@index([tenantId, status])
-  @@index([tenantId])
-  @@map("quality_alerts")
-}
-
-model QualityRelation {
-  id           String   @id @default(uuid()) @db.Uuid
-  tenantId     String   @db.Uuid
-  sourceType   String
-  sourceId     String   @db.Uuid
-  targetType   String
-  targetId     String   @db.Uuid
-  relationType String   @default("RELATED")
-  description  String?
-  createdById  String?  @db.Uuid
-  createdAt    DateTime @default(now()) @db.Timestamptz
-
-  @@index([tenantId, sourceType, sourceId])
-  @@index([tenantId, targetType, targetId])
-  @@index([tenantId])
-  @@map("quality_relations")
-}
-
-model QuoteItem {
-  id          String  @id @default(cuid())
-  workOrderId String  @map("workorder_id")
-  category    String?
-  description String
-  qty         Int     @default(1)
-  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
-  subtotal    Decimal @db.Decimal(12, 2)
-
-  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-
-  @@index([workOrderId])
-  @@map("quote_items")
-}
-
-model RiskAction {
-  id              String                @id @default(uuid()) @db.Uuid
-  tenantId        String                @db.Uuid
-  hazardId        String                @db.Uuid
-  description     String
-  responsibleId   String?               @db.Uuid
-  dueDate         DateTime?
-  status          RiskActionStatus      @default(PENDING)
-  effectiveness   RiskActionEffectiveness @default(PENDING)
-  evidence        String?
-  createdAt       DateTime              @default(now()) @db.Timestamptz
-  updatedAt       DateTime              @updatedAt @db.Timestamptz
-
-  hazard          Hazard                @relation(fields: [hazardId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([hazardId])
-  @@map("risk_actions")
-}
-
-model RiskReview {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @db.Uuid
-  hazardId    String    @db.Uuid
-  reviewDate  DateTime  @default(now()) @db.Timestamptz
-  result      String    // CONTROLLED, NOT_CONTROLLED
-  comments    String?
-  reviewedById String?  @db.Uuid
-
-  hazard      Hazard    @relation(fields: [hazardId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([hazardId])
-  @@map("risk_reviews")
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique @map("session_token")
-  userId       String   @map("user_id")
-  expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("sessions")
-}
-
-model SgiObjective {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  code          String
-  title         String
-  description   String?
-  year          Int
-  standard      String?
-  target        String
-  targetValue   Float?
-  unit          String?
-  type          String?   @default("STRATEGIC") // STRATEGIC | OPERATIONAL
-  sites         String[]  @default([])
-  responsibleId String?   @db.Uuid
-  startDate     DateTime?
-  endDate       DateTime?
-  status        String    @default("PLANNED") // PLANNED, IN_PROGRESS, ACHIEVED, NOT_ACHIEVED, CANCELLED
-  progress      Int       @default(0)
-  indicatorId   String?   @db.Uuid
-  notes         String?
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  // Relaciones
-  policyId      String?   @db.Uuid
-  policy        Policy?   @relation(fields: [policyId], references: [id], onDelete: SetNull)
-
-  processId     String?   @db.Uuid
-  process       Process?  @relation(fields: [processId], references: [id], onDelete: SetNull)
-
-  activities    ObjectiveActivity[]
-  indicators    ObjectiveIndicator[]
-  audits        ObjectiveAudit[]
-  capas         ObjectiveCAPA[]
-  risks         ObjectiveRisk[]
-
-  @@index([tenantId])
-  @@index([year])
-  @@index([policyId])
-  @@index([processId])
-  @@map("sgi_objectives")
-}
-
-model Signature {
-  workOrderId       String   @id @map("workorder_id")
-  signerName        String   @map("signer_name")
-  signatureFileUrl  String   @map("signature_file_url")
-  signedAt          DateTime @map("signed_at")
-
-  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-
-  @@map("signatures")
-}
-
-model Stakeholder {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  name          String
-  type          String    // INTERNAL, EXTERNAL
-  category      String    // EMPLOYEE, CUSTOMER, SUPPLIER, COMMUNITY, REGULATOR, SHAREHOLDER, OTHER
-  needs         String?
-  expectations  String?
-  requirements  String?
-  influence     Int       @default(3)
-  interest      Int       @default(3)
-  contactName   String?
-  contactEmail  String?
-  notes         String?
-  // Evaluación de cumplimiento (ISO 9001 cláusulas 4.2 y 9.1)
-  complianceStatus      String?   @map("compliance_status") // COMPLIES, PARTIAL, NON_COMPLIANT
-  complianceLevel       Int?      @map("compliance_level") // 0-100
-  lastEvaluationDate    DateTime? @map("last_evaluation_date") @db.Timestamptz
-  complianceEvidence    String?   @map("compliance_evidence")
-  indicatorId           String?   @map("indicator_id") @db.Uuid
-  requiresAction        Boolean?  @map("requires_action") @default(false)
-  actionItemId          String?   @map("action_item_id") @db.Uuid
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  @@index([tenantId])
-  @@index([complianceStatus])
-  @@map("stakeholders")
-}
-
-model Subscription {
-  id                String    @id @default(cuid())
-  tenantId          String    @unique
-  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  // Plan actual
-  planId            String
-  plan              Plan      @relation(fields: [planId], references: [id])
-  addons            SubscriptionAddon[]
-  
-  // Estado y facturación
-  status            SubscriptionStatus @default(TRIAL)
-  startDate         DateTime  @default(now())
-  endDate           DateTime?
-  nextBillingDate   DateTime
-  billingCycle      BillingCycle @default(MONTHLY)
-  
-  // Precios
-  basePrice         Float     // Precio base del plan
-  addonsPrice       Float     @default(0) // Suma de addons
-  totalPrice        Float     // Precio total mensual/anual
-  
-  // Límites y uso
-  userLimit         Int
-  currentUsers      Int       @default(0)
-  storageLimit      Int       @default(1000) // MB
-  currentStorage    Int       @default(0)
-  
-  // Integración con pagos
-  mercadoPagoId     String?   // ID de suscripción en MercadoPago
-  lastPaymentDate   DateTime?
-  lastPaymentAmount Float?
-  nextPaymentDue    DateTime
-  
-  // Metadata
-  metadata          Json?     // Datos adicionales del plan
-  
-  @@map("subscriptions")
   @@index([tenantId])
   @@index([status])
-  @@index([nextBillingDate])
+  @@index([type])
+  @@index([severity])
+  @@map("drill_scenarios")
 }
 
-model SubscriptionAddon {
-  id                String    @id @default(cuid())
-  subscriptionId    String
-  subscription      Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  addonId           String
-  addon             Addon      @relation(fields: [addonId], references: [id])
-  
-  // Precios al momento de contratación
-  monthlyPrice      Float
-  annualPrice      Float
-  
-  // Estado
-  isActive          Boolean   @default(true)
-  startDate         DateTime  @default(now())
-  
-  @@map("subscription_addons")
-  @@index([subscriptionId])
-  @@index([addonId])
+model ContingencyPlan {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String? @db.Text
+  type        String // e.g., NATURAL_DISASTER, FIRE, SECURITY, etc.
+  status      String  @default("DRAFT")
+
+  objectives       Json? // Array of objectives
+  triggers         Json? // Conditions that activate the plan
+  responsibilities Json? // {role: [responsibilities]}
+  procedures       Json? // Array of step-by-step procedures
+  resources        Json? // {equipment: [], personnel: [], locations: []}
+  communications   Json? // Notification protocols and contact lists
+  timeline         Json? // Timeline estimates for different phases
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("PlanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("contingency_plans")
 }
 
-model Supplier {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  code          String
-  name          String
-  legalName     String?
-  taxId         String?
-  category      String?
-  email         String?
-  phone         String?
-  address       String?
-  contactName   String?
+model EmergencyResource {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String? @db.Text
+  type        String // e.g., EQUIPMENT, PERSONNEL, FACILITY, SUPPLY
+  category    String? // e.g., MEDICAL, RESCUE, COMMUNICATION
+
+  quantity Int?
+  location String?
+  status   String  @default("AVAILABLE") // AVAILABLE, IN_USE, MAINTENANCE, UNAVAILABLE
+
+  contactInfo         Json? // {name, phone, email}
+  specifications      Json? // Additional specs or details
+  maintenanceSchedule Json? // Maintenance dates and history
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("ResourceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([type])
+  @@index([status])
+  @@map("emergency_resources")
+}
+
+// Customer / Cliente model
+model Customer {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code      String // CLI-{YYYY}-{NNN}
+  name      String
+  legalName String? // Razón social
+  taxId     String? // CUIT/RUT/NIF
+  email     String?
+  phone     String?
+  mobile    String?
+  website   String?
+
+  // Address
+  address String?
+  city    String?
+  state   String?
+  country String?
+  zipCode String?
+
+  // Contact person
+  contactName     String?
+  contactEmail    String?
+  contactPhone    String?
   contactPosition String?
-  status        String    @default("PENDING") // PENDING, APPROVED, CONDITIONAL, REJECTED, SUSPENDED
-  providerType  String?   // Estratégico, Crítico, Secundario
-  isCritical    Boolean   @default(false)
-  evaluationScore Float?
-  lastEvaluationDate DateTime?
-  nextEvaluationDate DateTime?
-  notes         String?
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
 
-  evaluations   SupplierEvaluation[]
+  // Classification
+  type     String  @default("CLIENT") // CLIENT, SUPPLIER, PARTNER, PROSPECT
+  status   String  @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+  category String? // A, B, C classification
 
-  @@index([tenantId])
-  @@map("suppliers")
-}
+  // Business info
+  industry       String?
+  employeesCount Int?
+  annualRevenue  Float?
 
-model SupplierEvaluation {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  supplierId    String    @db.Uuid
-  supplier      Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  date          DateTime
-  period        String?
-  qualityScore  Float     @default(0) // calidad
-  deliveryScore Float     @default(0) // cumplimiento
-  priceScore    Float     @default(0) // precio
-  serviceScore  Float     @default(0) // servicio
-  documentationScore Float @default(0) // documentacion
-  overallScore  Float     @default(0)
-  result        String    // APPROVED, CONDITIONAL, REJECTED
-  comments      String?
-  evaluatedById String?   @db.Uuid
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
-
-  @@index([supplierId])
-  @@index([tenantId])
-  @@map("supplier_evaluations")
-}
-
-model Survey {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @db.Uuid
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  code        String    // SRV-{YYYY}-{NNN}
-  title       String
-  description String?
-  type        String @default("SATISFACTION") // SATISFACTION, NPS, CUSTOM, POST_SERVICE
-
-  // Configuration
-  isActive    Boolean @default(true)
-  isAnonymous Boolean @default(false)
-  allowMultipleResponses Boolean @default(false)
-  sendEmail   Boolean @default(false)
-  emailSubject String?
-  emailBody    String?
-
-  // Scheduling
-  startDate   DateTime?
-  endDate     DateTime?
+  // Notes
+  notes String?
 
   // Relations
-  questions   SurveyQuestion[]
-  responses   SurveyResponse[]
-  customers   CustomerSurvey[]
+  surveys   CustomerSurvey[]
+  ncrLinks  NonConformity[]  @relation("CustomerNCR")
+  responses SurveyResponse[]
+  documents Document[]       @relation("CustomerDocuments")
 
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
-  createdById String? @db.Uuid
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @db.Timestamptz
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("CustomerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("CustomerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  deletedAt   DateTime?     @db.Timestamptz
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@map("customers")
+}
+
+// Survey / Encuesta model
+model Survey {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code        String // SRV-{YYYY}-{NNN}
+  title       String
+  description String?
+  type        String  @default("SATISFACTION") // SATISFACTION, NPS, CUSTOM, POST_SERVICE
+
+  // Configuration
+  isActive               Boolean @default(true)
+  isAnonymous            Boolean @default(false)
+  allowMultipleResponses Boolean @default(false)
+  sendEmail              Boolean @default(false)
+  emailSubject           String?
+  emailBody              String?
+
+  // Scheduling
+  startDate DateTime?
+  endDate   DateTime?
+
+  // Relations
+  questions SurveyQuestion[]
+  responses SurveyResponse[]
+  customers CustomerSurvey[]
+
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @db.Timestamptz
+  createdById String?       @db.Uuid
   createdBy   PlatformUser? @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedById String? @db.Uuid
+  updatedById String?       @db.Uuid
   updatedBy   PlatformUser? @relation("SurveyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  deletedAt   DateTime? @db.Timestamptz
+  deletedAt   DateTime?     @db.Timestamptz
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -2883,77 +2650,81 @@ model Survey {
   @@map("surveys")
 }
 
-model SurveyAnswer {
-  id          String    @id @default(uuid()) @db.Uuid
-  responseId  String    @db.Uuid
-  response    SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
-
-  questionId  String    @db.Uuid
-  questionText String   // Snapshot of question text at time of response
-
-  // Answer value (flexible storage)
-  value       String?   // String value
-  numericValue Float?   // Numeric value (for ratings, NPS, etc.)
-  textValue   String?   // Text response
-  selectedOptions Json? // Array of selected option IDs
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-
-  @@index([responseId])
-  @@index([questionId])
-  @@map("survey_answers")
-}
-
-model SurveyOption {
-  id          String    @id @default(uuid()) @db.Uuid
-  questionId  String    @db.Uuid
-  question    SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
-
-  order       Int       @default(0)
-  value       String
-  label       String
-
-  createdAt   DateTime @default(now()) @db.Timestamptz
-
-  @@index([questionId])
-  @@index([questionId, order])
-  @@map("survey_options")
-}
-
+// Survey Question / Pregunta de encuesta
 model SurveyQuestion {
-  id          String    @id @default(uuid()) @db.Uuid
-  surveyId    String    @db.Uuid
-  survey      Survey    @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  id       String @id @default(uuid()) @db.Uuid
+  surveyId String @db.Uuid
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
-  order       Int       @default(0)
+  order       Int     @default(0)
   text        String
   description String?
-  type        String    // RATING, SINGLE_CHOICE, MULTIPLE_CHOICE, TEXT, NPS, YES_NO, SCALE
+  type        String // RATING, SINGLE_CHOICE, MULTIPLE_CHOICE, TEXT, NPS, YES_NO, SCALE
 
   // Configuration
   isRequired  Boolean @default(true)
-  minValue    Int?      // For RATING/SCALE
-  maxValue    Int?      // For RATING/SCALE
-  scaleLabels Json?     // {min: "Muy insatisfecho", max: "Muy satisfecho"}
+  minValue    Int? // For RATING/SCALE
+  maxValue    Int? // For RATING/SCALE
+  scaleLabels Json? // {min: "Muy insatisfecho", max: "Muy satisfecho"}
 
   // Options for choice questions
-  options     SurveyOption[]
+  options SurveyOption[]
 
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
 
   @@index([surveyId])
   @@index([surveyId, order])
   @@map("survey_questions")
 }
 
-model SurveyResponse {
-  id          String    @id @default(uuid()) @db.Uuid
-  surveyId    String    @db.Uuid
-  survey      Survey    @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+// Survey Option / Opción de respuesta
+model SurveyOption {
+  id         String         @id @default(uuid()) @db.Uuid
+  questionId String         @db.Uuid
+  question   SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
-  customerId  String?   @db.Uuid
-  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order Int    @default(0)
+  value String
+  label String
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([questionId])
+  @@index([questionId, order])
+  @@map("survey_options")
+}
+
+// Customer Survey Link / Vinculación cliente-encuesta
+model CustomerSurvey {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  surveyId   String   @db.Uuid
+  survey     Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  status      String    @default("PENDING") // PENDING, SENT, COMPLETED, EXPIRED
+  sentAt      DateTime?
+  completedAt DateTime?
+  token       String    @unique // Unique token for survey link
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@unique([customerId, surveyId])
+  @@index([customerId])
+  @@index([surveyId])
+  @@index([token])
+  @@map("customer_surveys")
+}
+
+// Survey Response / Respuesta a encuesta
+model SurveyResponse {
+  id       String @id @default(uuid()) @db.Uuid
+  surveyId String @db.Uuid
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  customerId String?   @db.Uuid
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   // Anonymous response info
   respondentName  String?
@@ -2961,18 +2732,18 @@ model SurveyResponse {
   respondentPhone String?
 
   // Response data
-  answers     SurveyAnswer[]
-  npsScore    Int?      // 0-10 for NPS
+  answers           SurveyAnswer[]
+  npsScore          Int? // 0-10 for NPS
   satisfactionScore Float? // Calculated from answers
-  comments    String?
+  comments          String?
 
   // Status
-  isComplete  Boolean @default(false)
+  isComplete  Boolean   @default(false)
   completedAt DateTime?
   ipAddress   String?
   userAgent   String?
 
-  createdAt   DateTime @default(now()) @db.Timestamptz
+  createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([surveyId])
   @@index([customerId])
@@ -2980,122 +2751,271 @@ model SurveyResponse {
   @@map("survey_responses")
 }
 
-model Tenant {
-  id                String    @id @default(uuid()) @db.Uuid
-  name              String
-  slug              String    @unique
-  adminEmail        String    @unique
-  adminName         String
-  status            String    @default("ACTIVE")
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+// Survey Answer / Respuesta individual
+model SurveyAnswer {
+  id         String         @id @default(uuid()) @db.Uuid
+  responseId String         @db.Uuid
+  response   SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
 
-  // Relations
-  sgiObjectives     SgiObjective[]
-  policies          Policy[]
-  nonConformities   NonConformity[]
+  questionId   String @db.Uuid
+  questionText String // Snapshot of question text at time of response
 
-  @@index([slug])
-  @@index([status])
+  // Answer value (flexible storage)
+  value           String? // String value
+  numericValue    Float? // Numeric value (for ratings, NPS, etc.)
+  textValue       String? // Text response
+  selectedOptions Json? // Array of selected option IDs
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([responseId])
+  @@index([questionId])
+  @@map("survey_answers")
 }
 
-model UsageEvent {
-  id        String         @id @default(cuid())
-  licenseId String         @map("license_id")
-  type      UsageEventType
-  createdAt DateTime       @default(now()) @map("created_at")
-  meta      Json?
+// ═══════════════════════════════════════════════════════════════
+// Módulo de Mantenimiento Industrial
+// ═══════════════════════════════════════════════════════════════
 
-  license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+model MaintenanceAsset {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@index([licenseId])
-  @@index([type, createdAt])
-  @@map("usage_events")
-}
+  code        String  @unique
+  name        String
+  description String?
+  category    String  @default("OTHER") // MACHINERY, VEHICLE, TOOL, INFRASTRUCTURE, ELECTRONIC, SAFETY, OTHER
+  status      String  @default("ACTIVE") // ACTIVE, INACTIVE, MAINTENANCE
 
-model UsageMetrics {
-  id                String    @id @default(cuid())
-  tenantId          String
-  metric            String    // users, storage, api_calls, etc.
-  currentValue      Int       @default(0)
-  maxValue          Int
-  period            String    // daily, monthly, yearly
-  recordedAt        DateTime  @default(now())
-  
-  @@map("usage_metrics")
-  @@index([tenantId])
-  @@index([metric])
-  @@index([recordedAt])
-}
+  location     String?
+  department   String?
+  manufacturer String?
+  model        String?
+  serialNumber String?
 
-model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  role         UserRole @default(TECHNICIAN)
-  status       UserStatus @default(ACTIVE)
+  purchaseDate    DateTime?
+  warrantyDate    DateTime?
+  acquisitionCost Float     @default(0)
 
-  emailVerified DateTime? @map("email_verified")
-  image         String?
+  totalMaintenanceCost Float     @default(0)
+  lastMaintenanceDate  DateTime?
+  nextMaintenanceDate  DateTime?
 
-  phone    String?
-  logoUrl  String? @map("logo_url")
-  address  String?
-  currency String? @default("USD")
-
-  createdAt DateTime  @default(now()) @map("created_at")
-  lastLogin DateTime? @map("last_login")
-
-  accounts  Account[]
-  sessions  Session[]
-
-  clients    Client[]
-  equipments Equipment[]
   workOrders WorkOrder[]
-  licenses   License[]
-  notificationLogs NotificationLog[]
-  payments Payment[]
+  plans      MaintenancePlan[]
+  costs      MaintenanceCost[]
 
-  @@map("users")
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([code])
+  @@map("maintenance_assets")
 }
 
-model VerificationToken {
-  identifier String
-  token      String
-  expires    DateTime
+model MaintenanceTechnician {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([identifier, token])
-  @@map("verification_tokens")
+  code           String  @unique
+  name           String
+  email          String?
+  phone          String?
+  specialization String?
+  certification  String?
+
+  isActive           Boolean @default(true)
+  availabilityStatus String  @default("AVAILABLE") // AVAILABLE, BUSY, OFF
+
+  workOrders WorkOrder[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([code])
+  @@map("maintenance_technicians")
+}
+
+model MaintenancePlan {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code        String  @unique
+  title       String
+  description String?
+  type        String  @default("PREVENTIVE") // PREVENTIVE, CORRECTIVE, PREDICTIVE, EMERGENCY
+  status      String  @default("ACTIVE") // ACTIVE, PAUSED, INACTIVE
+
+  assetId String?           @db.Uuid
+  asset   MaintenanceAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  frequencyValue Int    @default(30)
+  frequencyUnit  String @default("DAYS") // DAYS, WEEKS, MONTHS, YEARS
+
+  nextExecutionDate DateTime?
+  lastExecutionDate DateTime?
+  totalExecutions   Int       @default(0)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([assetId])
+  @@map("maintenance_plans")
+}
+
+model MaintenanceSparePart {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code        String  @unique
+  name        String
+  description String?
+  category    String?
+
+  currentStock Int   @default(0)
+  minStock     Int   @default(0)
+  maxStock     Int?
+  unitCost     Float @default(0)
+
+  supplier     String?
+  supplierCode String?
+  location     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([code])
+  @@map("maintenance_spare_parts")
 }
 
 model WorkOrder {
-  id          String              @id @default(cuid())
-  userId      String              @map("user_id")
-  clientId    String              @map("client_id")
-  equipmentId String              @map("equipment_id")
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  serviceType WorkOrderServiceType @map("service_type")
-  status      WorkOrderStatus      @default(DRAFT)
-  symptoms    Json                 @default("[]")
-  notes       String?
+  code        String  @unique
+  title       String
+  description String?
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  type     String @default("CORRECTIVE") // PREVENTIVE, CORRECTIVE, PREDICTIVE, EMERGENCY
+  priority String @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  status   String @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, CANCELLED, ON_HOLD
 
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  client    Client    @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  assetId String           @db.Uuid
+  asset   MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
-  measurements Measurements?
-  evidencePhotos EvidencePhoto[]
-  diagnosis     Diagnosis?
-  quoteItems    QuoteItem[]
-  signature     Signature?
-  pdfReport     PdfReport?
+  technicianId String?                @db.Uuid
+  technician   MaintenanceTechnician? @relation(fields: [technicianId], references: [id], onDelete: SetNull)
+
+  scheduledDate DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  estimatedDuration Int? // hours
+  actualDuration    Int? // hours
+
+  laborCost Float @default(0)
+  partsCost Float @default(0)
+  totalCost Float @default(0)
+
+  costs MaintenanceCost[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([assetId])
+  @@index([technicianId])
+  @@index([status])
+  @@map("work_orders")
+}
+
+model MaintenanceCost {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  costType    String   @default("PREVENTIVE") // PREVENTIVE, CORRECTIVE, PREDICTIVE, EMERGENCY
+  amount      Float
+  description String?
+  date        DateTime @default(now())
+
+  assetId String           @db.Uuid
+  asset   MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  workOrderId String?    @db.Uuid
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([assetId])
+  @@index([workOrderId])
+  @@map("maintenance_costs")
+}
+
+model CompanyRegistration {
+  id           String  @id @default(uuid()) @db.Uuid
+  companyName  String
+  socialReason String?
+  rut          String  @unique
+  email        String
+  phone        String
+  website      String?
+  address      String
+  primaryColor String  @default("#3B82F6")
+  module       String  @default("sgi360")
+  status       String  @default("PENDING") // PENDING, APPROVED, REJECTED
+
+  // ID de tenant cuando se aprueba (sin relación compleja)
+  tenantId String? @db.Uuid
+
+  // Datos de quien aprobó y cuándo
+  approvedBy String?   @db.Uuid
+  approvedAt DateTime?
+  notes      String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([status])
+  @@index([email])
+  @@index([tenantId])
+  @@map("company_registrations")
+}
+
+// Historial de contraseñas de usuarios
+model PasswordHistory {
+  id     String       @id @default(uuid()) @db.Uuid
+  userId String       @db.Uuid
+  user   PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Contraseña hasheada
+  passwordHash String
+
+  // Tipo de cambio
+  changeType String @default("USER_CHANGE") // USER_CHANGE, ADMIN_RESET, TEMPORARY, INITIAL
+
+  // Quién realizó el cambio
+  changedBy     String?       @db.Uuid
+  changedByUser PlatformUser? @relation("PasswordChangedBy", fields: [changedBy], references: [id])
+
+  // Metadatos
+  reason    String?
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([userId])
-  @@index([clientId])
-  @@index([equipmentId])
-  @@map("work_orders")
+  @@index([changedBy])
+  @@index([createdAt])
+  @@map("password_history")
 }
