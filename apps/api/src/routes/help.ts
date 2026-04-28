@@ -17,7 +17,7 @@ const AskSchema = z.object({
 });
 
 export async function registerHelpRoutes(app: FastifyInstance) {
-  app.post('/help/ask', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.post('/ask', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const parsed = AskSchema.safeParse(body);
@@ -59,7 +59,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get('/help/modules', async (_req: FastifyRequest, reply: FastifyReply) => {
+  app.get('/modules', async (_req: FastifyRequest, reply: FastifyReply) => {
     return reply.send({ modules: moduleList });
   });
 }
