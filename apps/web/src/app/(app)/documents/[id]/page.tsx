@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { apiFetch, getCsrfToken, tryRefreshToken } from '@/lib/api';
+import { apiFetch, tryRefreshToken } from '@/lib/api';
 import type { DocumentRow, DocumentReview, DocumentClauseMapping, NormativeClause } from '@/lib/types';
 import ComboSelect from '@/components/ComboSelect';
 import {
@@ -308,18 +308,7 @@ export default function DocumentDetailPage() {
   async function handleDelete() {
     if (!confirm('¿Estás seguro de eliminar este documento?')) return;
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {};
-      if (csrfToken) headers['x-csrf-token'] = csrfToken;
-      
-      const res = await fetch(`${apiBase}/documents/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers,
-      });
-      
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await apiFetch(`/documents/${id}`, { method: 'DELETE' });
       router.push('/documents');
     } catch (err: any) {
       setError(err?.message ?? 'Error al eliminar');
@@ -353,24 +342,10 @@ export default function DocumentDetailPage() {
       const uploadFormData = new FormData();
       uploadFormData.append('file', file);
       
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {};
-      if (csrfToken) headers['x-csrf-token'] = csrfToken;
-      
-      const res = await fetch(`${apiBase}/documents/${id}/versions`, {
+      await apiFetch(`/documents/${id}/versions`, {
         method: 'POST',
         body: uploadFormData,
-        credentials: 'include',
-        headers,
       });
-      
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText);
-      }
-      
-      const result = await res.json();
       
       // Reload versions
       await loadVersions();
@@ -528,21 +503,10 @@ export default function DocumentDetailPage() {
     try {
       console.log('🗑️ Unlinking clause mapping:', mappingId);
       
-      // Direct fetch without apiFetch layer
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/documents/${id}/clause-mappings/${mappingId}`, {
+      const result = await apiFetch(`/documents/${id}/clause-mappings/${mappingId}`, {
         method: 'DELETE',
-        headers: {
-          'Origin': 'http://localhost:3000'
-        }
       });
       
-      console.log('🗑️ Delete response status:', response.status);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const result = await response.json();
       console.log('✅ Clause unlinked successfully:', result);
       
       // Refresh mappings

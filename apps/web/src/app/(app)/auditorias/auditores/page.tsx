@@ -240,18 +240,11 @@ export default function AuditorsPage() {
       const formData = new FormData();
       formData.append('file', file);
       
-      // Subir archivo al servidor (usando proxy de Next.js)
-      const uploadRes = await fetch(`/api/audit/auditors/${editingAuditor.id}/upload`, {
+      // Subir archivo al servidor
+      const { filePath } = await apiFetch<{ filePath: string }>(`/audit/auditors/${editingAuditor.id}/upload`, {
         method: 'POST',
         body: formData,
       });
-
-      if (!uploadRes.ok) {
-        const errorData = await uploadRes.json().catch(() => ({ error: 'Error uploading file' }));
-        throw new Error(errorData.error || 'Error uploading file');
-      }
-
-      const { filePath } = await uploadRes.json();
 
       // Crear registro del documento
       const docRes = await apiFetch(`/audit/auditors/${editingAuditor.id}/documents`, {

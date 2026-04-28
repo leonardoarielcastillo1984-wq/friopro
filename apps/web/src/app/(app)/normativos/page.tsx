@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch, getCsrfToken } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import type { NormativeStandard, NormativeProcessingStatus } from '@/lib/types';
 import {
   BookOpen, Upload, Search, Loader2, CheckCircle2, AlertCircle,
@@ -143,18 +143,10 @@ export default function NormativosPage() {
       formData.append('version', uploadVersion);
       if (uploadDescription) formData.append('description', uploadDescription);
 
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {};
-      if (csrfToken) headers['x-csrf-token'] = csrfToken;
-
-      const res = await fetch(`${apiBase}/normativos/upload`, {
-        method: 'POST', body: formData, credentials: 'include', headers,
+      await apiFetch('/normativos/upload', {
+        method: 'POST',
+        body: formData,
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Error ${res.status}`);
-      }
       setUploadName(''); setUploadCode(''); setUploadVersion('');
       setUploadDescription(''); setUploadFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -291,18 +283,10 @@ export default function NormativosPage() {
       formData.append('version', revisionVersion);
       if (revisionDescription) formData.append('description', revisionDescription);
 
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {};
-      if (csrfToken) headers['x-csrf-token'] = csrfToken;
-
-      const res = await fetch(`${apiBase}/normativos/${revisionNormative.id}/revision`, {
-        method: 'POST', body: formData, credentials: 'include', headers,
+      await apiFetch(`/normativos/${revisionNormative.id}/revision`, {
+        method: 'POST',
+        body: formData,
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Error ${res.status}`);
-      }
       setRevisionNormative(null);
       setRevisionVersion('');
       setRevisionDescription('');
