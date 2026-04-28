@@ -12,8 +12,9 @@ RUN pnpm install --no-frozen-lockfile
 
 RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
-# Merge all schemas into one complete schema
-RUN chmod +x /app/apps/api/prisma/merge-schemas.sh && /app/apps/api/prisma/merge-schemas.sh
+# Merge all schemas into one complete schema using Python
+RUN apk add --no-cache python3
+RUN python3 /app/apps/api/prisma/merge-schemas.py
 RUN pnpm --filter api exec prisma generate
 
 FROM node:20-slim AS runner
