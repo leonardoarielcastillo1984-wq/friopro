@@ -31,6 +31,9 @@ COPY --from=builder /app/pnpm-workspace.yaml ./
 
 RUN mkdir -p /app/apps/api/uploads
 
+# Regenerate Prisma Client in runner to ensure correct paths
+RUN pnpm --filter api exec prisma generate
+
 EXPOSE 3002
 
 WORKDIR /app/apps/api
