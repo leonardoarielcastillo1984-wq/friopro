@@ -23,6 +23,18 @@ export function createLLMProvider(): LLMProvider {
   const provider = process.env.LLM_PROVIDER?.toLowerCase() || 'openai';
 
   switch (provider) {
+    case 'groq': {
+      const apiKey = process.env.GROQ_API_KEY;
+      if (!apiKey) {
+        throw new LLMConfigError(
+          'IA no configurada: falta GROQ_API_KEY. Configurá la variable de entorno para habilitar el asistente IA.'
+        );
+      }
+      const model = process.env.GROQ_MODEL || 'llama3-8b-8192';
+      // Groq usa API compatible con OpenAI
+      providerInstance = new OpenAIProvider(apiKey, 'https://api.groq.com/openai/v1', model);
+      break;
+    }
     case 'openai': {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
@@ -42,7 +54,7 @@ export function createLLMProvider(): LLMProvider {
     case 'anthropic':
     default: {
       throw new LLMConfigError(
-        `LLM_PROVIDER '${provider}' no está disponible. Usa 'openai' u 'ollama'.`
+        `LLM_PROVIDER '${provider}' no está disponible. Usa 'groq', 'openai' u 'ollama'.`
       );
     }
   }

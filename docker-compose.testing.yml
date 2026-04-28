@@ -57,9 +57,9 @@ services:
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: /app/uploads
       EMAIL_PROVIDER: console
-      LLM_PROVIDER: ollama
-      OLLAMA_BASE_URL: http://ollama:11434/v1
-      OLLAMA_MODEL: mistral
+      LLM_PROVIDER: groq
+      GROQ_MODEL: llama3-8b-8192
+      # GROQ_API_KEY: configurar en .env.local o variables de entorno del servidor
     ports:
       - "4002:4002"
     healthcheck:
@@ -72,6 +72,7 @@ services:
     depends_on:
       - postgres
       - redis
+      # Ollama desactivado - usando Groq API
       - ollama
     command: ["npx", "tsx", "src/main.ts"]
     networks:
