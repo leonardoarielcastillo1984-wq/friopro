@@ -1,5 +1,6 @@
 import 'dotenv/config';
 
+import { PrismaClient } from '@prisma/client';
 import { buildApp } from './app.js';
 import { shutdownQueue } from './jobs/queue.js';
 import { systemMonitor } from './services/systemMonitor.js';
@@ -8,6 +9,12 @@ import { healthMonitor, HealthMonitor } from './services/healthMonitor.js';
 import { databaseMonitor } from './services/databaseMonitor.js';
 
 const app = await buildApp();
+
+// Initialize app.prisma for compatibility with routes using app.prisma directly
+if (!(app as any).prisma) {
+  (app as any).prisma = new PrismaClient();
+  app.log.info('Initialized app.prisma manually for backward compatibility');
+}
 
 const port = Number(process.env.PORT ?? 3001);
 
