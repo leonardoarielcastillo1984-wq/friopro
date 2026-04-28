@@ -12,10 +12,10 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/health')) return true;
   if (url.startsWith('/webhooks/mercadopago')) return true;
   if (url.startsWith('/docs')) return true;
-  if (url.startsWith('/api/auth/login')) return true;
-  if (url.startsWith('/api/auth/register')) return true;
-  if (url.startsWith('/api/auth/refresh')) return true;
-  if (url.startsWith('/api/register-company')) return true; // Public route: company registration
+  if (url.startsWith('/api/auth/login') || url.startsWith('/auth/login')) return true;
+  if (url.startsWith('/api/auth/register') || url.startsWith('/auth/register')) return true;
+  if (url.startsWith('/api/auth/refresh') || url.startsWith('/auth/refresh')) return true;
+  if (url.startsWith('/api/register-company') || url.startsWith('/register-company')) return true;
   if (url.startsWith('/documents/upload')) return true;
   if (url.startsWith('/normativos/upload')) return true;
   if (url.startsWith('/audit/auditors') && url.includes('/upload')) return true;
