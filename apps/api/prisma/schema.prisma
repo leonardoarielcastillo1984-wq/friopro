@@ -1455,6 +1455,7 @@ model Employee {
   environmentalReviews EnvironmentalReview[] @relation("EnvironmentalReviewBy")
   drillsResponsible    DrillScenario[]       @relation("DrillResponsible")
   plansResponsible     ContingencyPlan[]     @relation("PlanResponsible")
+  resourcesResponsible EmergencyResource[]   @relation("ResourceResponsible")
 
   @@unique([tenantId, dni])
   @@unique([tenantId, email])
@@ -2601,6 +2602,14 @@ model EmergencyResource {
   quantity Int?
   location String?
   status   String  @default("AVAILABLE") // AVAILABLE, IN_USE, MAINTENANCE, UNAVAILABLE
+
+  isOperational Boolean @default(true)
+
+  responsibleId String?   @db.Uuid
+  responsible   Employee? @relation("ResourceResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+
+  maintenanceDate DateTime? @db.Timestamptz
+  expirationDate  DateTime? @db.Timestamptz
 
   contactInfo         Json? // {name, phone, email}
   specifications      Json? // Additional specs or details
