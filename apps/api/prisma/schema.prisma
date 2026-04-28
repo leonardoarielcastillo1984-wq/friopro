@@ -225,12 +225,13 @@ enum WebhookProvider {
 }
 
 model Tenant {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  status    String   @default("ACTIVE")
-  createdAt DateTime @default(now()) @db.Timestamptz
-  updatedAt DateTime @updatedAt @db.Timestamptz
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  status      String   @default("ACTIVE")
+  storageUsed Int      @default(0) @map("storage_used")
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
 
   createdById String?       @db.Uuid
   createdBy   PlatformUser? @relation("TenantCreatedBy", fields: [createdById], references: [id])

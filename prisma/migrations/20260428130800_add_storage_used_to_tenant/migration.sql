@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "storage_used" INTEGER NOT NULL DEFAULT 0;
