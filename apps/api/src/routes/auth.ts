@@ -345,22 +345,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(401).send({ error: 'Invalid credentials' });
     }
 
-    // SUPER_ADMIN case
-    if (user.globalRole === 'SUPER_ADMIN') {
-      const accessToken = app.signAccessToken({ userId: user.id, globalRole: 'SUPER_ADMIN' });
-      const refreshToken = app.signRefreshToken({ userId: user.id, refreshTokenVersion: user.refreshTokenVersion });
-
-      setAuthCookies(reply, { accessToken, refreshToken });
-      const csrfToken = await app.issueCsrfCookie(reply);
-
-      return reply.send({
-        accessToken,
-        user: { id: user.id, email: user.email, globalRole: user.globalRole },
-        csrfToken,
-      });
-    }
-
-    // Regular user case - load tenant memberships
+    // Load tenant memberships for all users (including SUPER_ADMIN)
     const memberships = await app.prisma.tenantMembership.findMany({
       where: {
         userId: user.id,
@@ -371,6 +356,34 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       include: { tenant: true },
       orderBy: { createdAt: 'asc' },
     });
+
+    // SUPER_ADMIN case
+    if (user.globalRole === 'SUPER_ADMIN') {
+      let activeTenant = null;
+      let tenantRole = null;
+      if (memberships.length > 0) {
+        activeTenant = { id: memberships[0].tenant.id, name: memberships[0].tenant.name, slug: memberships[0].tenant.slug };
+        tenantRole = memberships[0].role;
+      }
+
+      const accessToken = app.signAccessToken({
+        userId: user.id,
+        globalRole: 'SUPER_ADMIN',
+        ...(activeTenant && { tenantId: activeTenant.id, tenantRole: tenantRole || undefined }),
+      });
+      const refreshToken = app.signRefreshToken({ userId: user.id, refreshTokenVersion: user.refreshTokenVersion });
+
+      setAuthCookies(reply, { accessToken, refreshToken });
+      const csrfToken = await app.issueCsrfCookie(reply);
+
+      return reply.send({
+        accessToken,
+        user: { id: user.id, email: user.email, globalRole: user.globalRole },
+        activeTenant,
+        tenantRole,
+        csrfToken,
+      });
+    }
 
     if (memberships.length === 0) {
       return reply.code(403).send({ error: 'No active tenant memberships' });
