@@ -12,12 +12,8 @@ RUN pnpm install --no-frozen-lockfile
 
 RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
-# Merge schemas: minimal root (generator+datasource) + API (no generator) + saas + project360
-RUN cat /app/apps/api/prisma/schema-root.prisma > /app/apps/api/prisma/schema.prisma && \
-    echo "" >> /app/apps/api/prisma/schema.prisma && \
-    sed '/^generator client {/,/^}/d' /app/apps/api/prisma/schema-api.prisma >> /app/apps/api/prisma/schema.prisma && \
-    cat /app/apps/api/prisma/schema-saas.prisma >> /app/apps/api/prisma/schema.prisma && \
-    cat /app/apps/api/prisma/schema-project360.prisma >> /app/apps/api/prisma/schema.prisma
+# Use the complete API schema with datasource
+RUN cp /app/apps/api/prisma/schema-api.prisma /app/apps/api/prisma/schema.prisma
 RUN pnpm --filter api exec prisma generate
 
 FROM node:20-slim AS runner
