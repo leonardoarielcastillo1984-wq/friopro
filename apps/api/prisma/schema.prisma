@@ -331,6 +331,7 @@ model PlatformUser {
 
   documentsCreated Document[] @relation("DocumentCreatedBy")
   documentsUpdated Document[] @relation("DocumentUpdatedBy")
+  documentsOwned   Document[] @relation("DocumentOwner")
 
   ncrsAssigned NonConformity[] @relation("NcrAssignedTo")
   ncrsCreated  NonConformity[] @relation("NcrCreatedBy")
@@ -936,6 +937,15 @@ model Document {
   standardTags Json?
   status       DocumentStatus @default(DRAFT)
   version      Int            @default(1)
+  process      String?
+
+  ownerId String?       @db.Uuid
+  owner   PlatformUser? @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  reviewDate             DateTime? @db.Timestamptz
+  nextReviewDate         DateTime? @db.Timestamptz
+  reviewStatus           String?
+  documentQualityStatus  String?
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
