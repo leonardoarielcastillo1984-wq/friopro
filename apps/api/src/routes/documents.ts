@@ -278,41 +278,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
-      // Auto-link a cumplimiento si cambió la normativa (soporta múltiples normativas)
-      const effectiveNormativeIds = body.normativeIds !== undefined
-        ? body.normativeIds
-        : (body.normativeId !== undefined && body.normativeId ? [body.normativeId] : []);
-      
-      const existingNormativeId = existing.normativeId;
-      const hasNormativeChanged = effectiveNormativeIds.length > 0 && 
-        (existingNormativeId === null || !effectiveNormativeIds.includes(existingNormativeId));
-      
-      if (hasNormativeChanged) {
-        // Obtener cláusulas de todas las normativas seleccionadas
-        const clauses = await tx.normativeClause.findMany({
-          where: { normativeId: { in: effectiveNormativeIds }, deletedAt: null },
-          select: { id: true },
-        });
-        
-        // Insertar mappings en batch para mejor performance
-        if (clauses.length > 0) {
-          const createdById = req.auth?.userId ?? null;
-          
-          for (const clause of clauses) {
-            await tx.documentClauseMapping.upsert({
-              where: { documentId_clauseId: { documentId: existing.id, clauseId: clause.id } },
-              update: {},
-              create: {
-                documentId: existing.id,
-                clauseId: clause.id,
-                complianceType: 'REFERENCIA',
-                createdById,
-              },
-            });
-          }
-        }
-      }
-
+      // Las cláusulas se vinculan manualmente, no automáticamente
       return updated;
     });
 
