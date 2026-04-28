@@ -231,7 +231,7 @@ export async function buildApp() {
   await app.register(equipmentRoutes, { prefix: '/equipment' });
   await app.register(calendarRoutes, { prefix: '/calendar' });
   await app.register(gestionCambiosRoutes, { prefix: '/gestion-cambios' });
-  await app.register(registerHelpRoutes, { prefix: '/help' });
+  await app.register(registerHelpRoutes, { prefix: '/api/help' });
 
   // Endpoint genérico de IA para módulos del frontend
   app.post('/ai/chat', async (req: any, reply: any) => {

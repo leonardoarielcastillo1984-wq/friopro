@@ -244,11 +244,11 @@ export default function DocumentDetailPage() {
       });
       setDoc(res.document);
       setEditing(false);
+      // Recargar para mostrar cláusulas vinculadas actualizadas
+      await loadDocument();
     } catch (err: any) {
       console.error('❌ Error saving document:', err);
-      const errorMsg = err?.message ?? 'Error al guardar';
-      setError(errorMsg);
-      alert('Error al guardar: ' + errorMsg);
+      setError(err?.message ?? 'Error al guardar');
     } finally {
       setSaving(false);
     }
