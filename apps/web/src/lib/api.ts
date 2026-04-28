@@ -8,6 +8,15 @@ let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
 function normalizePath(path: string) {
+  const base = apiBase();
+  // Only prepend /api to auth paths if the base URL is NOT already /api (to avoid /api/api/...)
+  if (base === '/api') {
+    // Base already includes /api, so just return auth paths as-is
+    if (path === '/auth') return '/auth';
+    if (path.startsWith('/auth/')) return path;
+    return path;
+  }
+  // For absolute base URLs (e.g. http://localhost:3002), prepend /api to auth paths
   if (path === '/auth') return '/api/auth';
   if (path.startsWith('/auth/')) return `/api${path}`;
   return path;
