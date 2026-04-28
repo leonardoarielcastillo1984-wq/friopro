@@ -3153,7 +3153,7 @@ model ActionItem {
 }
 
 model ActionProject {
-  id              String     @id @default(cuid())
+  id              String     @id @default(uuid()) @db.Uuid
   code            String     @unique // AUTO-GEN: PROJ-2026-001
   name            String
   description     String?
@@ -3212,7 +3212,7 @@ model ActionProject {
 }
 
 model ActionTask {
-  id        String        @id @default(cuid())
+  id        String        @id @default(uuid()) @db.Uuid
   projectId String @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -3263,7 +3263,7 @@ model ActionTask {
 }
 
 model Addon {
-  id          String @id @default(cuid())
+  id          String @id @default(uuid()) @db.Uuid
   name        String @unique
   slug        String @unique
   description String
@@ -3384,7 +3384,7 @@ model Calibration {
 }
 
 model Client {
-  id      String  @id @default(cuid())
+  id      String  @id @default(uuid()) @db.Uuid
   userId  String  @map("user_id")
   name    String
   phone   String?
@@ -3612,7 +3612,7 @@ model EnvironmentalReview {
 }
 
 model Equipment {
-  id              String        @id @default(cuid())
+  id              String        @id @default(uuid()) @db.Uuid
   userId          String        @map("user_id")
   clientId        String?       @map("client_id")
   type            EquipmentType
@@ -3648,7 +3648,7 @@ enum EquipmentType {
 }
 
 model EvidencePhoto {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid()) @db.Uuid
   workOrderId String   @map("workorder_id")
   category    String?
   fileUrl     String   @map("file_url")
@@ -3851,7 +3851,7 @@ model Incident {
 }
 
 model License {
-  id        String        @id @default(cuid())
+  id        String        @id @default(uuid()) @db.Uuid
   userId    String        @map("user_id")
   planId    String        @map("plan_id")
   startsAt  DateTime      @map("starts_at")
@@ -3897,7 +3897,7 @@ enum MaintenanceAssetStatus {
 }
 
 model MaintenancePlanExecution {
-  id         String   @id @default(cuid())
+  id         String   @id @default(uuid()) @db.Uuid
   executedAt DateTime @default(now())
   notes      String?
 
@@ -3986,7 +3986,7 @@ enum MilestoneStatus {
 }
 
 model NotificationLog {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid()) @db.Uuid
   userId      String   @map("user_id")
   clientId    String?  @map("client_id")
   equipmentId String?  @map("equipment_id")
@@ -4123,7 +4123,7 @@ enum OriginType {
 }
 
 model PaymentTransaction {
-  id       String @id @default(cuid())
+  id       String @id @default(uuid()) @db.Uuid
   tenantId String @db.Uuid
 
   // Información de pago
@@ -4167,7 +4167,7 @@ enum PlanCode {
 }
 
 model PlanFeature {
-  id     String @id @default(cuid())
+  id     String @id @default(uuid()) @db.Uuid
   planId String @db.Uuid
   plan   Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
 
@@ -4423,7 +4423,7 @@ model Project360Task {
 }
 
 model ProjectComment {
-  id        String        @id @default(cuid())
+  id        String        @id @default(uuid()) @db.Uuid
   projectId String @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   taskId    String? @db.Uuid
@@ -4449,7 +4449,7 @@ model ProjectComment {
 }
 
 model ProjectEvidence {
-  id        String        @id @default(cuid())
+  id        String        @id @default(uuid()) @db.Uuid
   projectId String @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   taskId    String? @db.Uuid
@@ -4475,7 +4475,7 @@ model ProjectEvidence {
 }
 
 model ProjectMilestone {
-  id        String        @id @default(cuid())
+  id        String        @id @default(uuid()) @db.Uuid
   projectId String @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -4545,7 +4545,7 @@ model QualityRelation {
 }
 
 model QuoteItem {
-  id          String  @id @default(cuid())
+  id          String  @id @default(uuid()) @db.Uuid
   workOrderId String  @map("workorder_id")
   category    String?
   description String
@@ -4709,7 +4709,7 @@ model Stakeholder {
 }
 
 model Subscription {
-  id       String @id @default(cuid())
+  id       String @id @default(uuid()) @db.Uuid
   tenantId String @unique
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -4752,7 +4752,7 @@ model Subscription {
 }
 
 model SubscriptionAddon {
-  id             String       @id @default(cuid())
+  id             String       @id @default(uuid()) @db.Uuid
   subscriptionId String @db.Uuid
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   addonId        String @db.Uuid
@@ -4850,7 +4850,7 @@ enum TenantStatus {
 }
 
 model UsageEvent {
-  id        String         @id @default(cuid())
+  id        String         @id @default(uuid()) @db.Uuid
   licenseId String         @map("license_id")
   type      UsageEventType
   createdAt DateTime       @default(now()) @map("created_at")
@@ -4870,7 +4870,7 @@ enum UsageEventType {
 }
 
 model UsageMetrics {
-  id           String   @id @default(cuid())
+  id           String   @id @default(uuid()) @db.Uuid
   tenantId     String @db.Uuid
   metric       String // users, storage, api_calls, etc.
   currentValue Int      @default(0)
