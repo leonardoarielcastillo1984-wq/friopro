@@ -289,7 +289,7 @@ export default function RiesgosPage() {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(text || `HTTP ${res.status}`);
+        throw new Error(text || `Error HTTP ${res.status}`);
       }
 
       const blob = await res.blob();
@@ -329,7 +329,7 @@ export default function RiesgosPage() {
 
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(data?.error || `HTTP ${res.status}`);
+        throw new Error(data?.error || `Error HTTP ${res.status}`);
       }
 
       const result = data?.result;
