@@ -241,6 +241,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       bumpVersion: z.boolean().optional(),
       departmentId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional(),
       normativeId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional(),
+      normativeIds: z.array(z.string().uuid()).optional(),
       process: z.string().optional(),
       ownerId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional(),
       reviewDate: z.union([z.string().datetime(), z.literal(''), z.null()]).optional(),
@@ -264,7 +265,9 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           status: (body.status as any) ?? existing.status,
           version: body.bumpVersion ? existing.version + 1 : existing.version,
           departmentId: body.departmentId !== undefined ? body.departmentId : existing.departmentId,
-          normativeId: body.normativeId !== undefined ? body.normativeId : existing.normativeId,
+          normativeId: body.normativeIds !== undefined 
+            ? (body.normativeIds.length > 0 ? body.normativeIds[0] : null)
+            : (body.normativeId !== undefined ? body.normativeId : existing.normativeId),
           process: body.process !== undefined ? body.process : existing.process,
           ownerId: body.ownerId !== undefined ? body.ownerId : existing.ownerId,
           reviewDate: body.reviewDate !== undefined ? (body.reviewDate ? new Date(body.reviewDate) : null) : existing.reviewDate,
@@ -275,24 +278,40 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
-      // Auto-link a cumplimiento si cambió la normativa
-      if (body.normativeId !== undefined && body.normativeId && body.normativeId !== existing.normativeId) {
+      // Auto-link a cumplimiento si cambió la normativa (soporta múltiples normativas)
+      const effectiveNormativeIds = body.normativeIds !== undefined
+        ? body.normativeIds
+        : (body.normativeId !== undefined && body.normativeId ? [body.normativeId] : []);
+      
+      const existingNormativeId = existing.normativeId;
+      const hasNormativeChanged = effectiveNormativeIds.length > 0 && 
+        (existingNormativeId === null || !effectiveNormativeIds.includes(existingNormativeId));
+      
+      if (hasNormativeChanged) {
+        // Obtener cláusulas de todas las normativas seleccionadas
         const clauses = await tx.normativeClause.findMany({
-          where: { normativeId: body.normativeId as string, deletedAt: null },
+          where: { normativeId: { in: effectiveNormativeIds }, deletedAt: null },
           select: { id: true },
         });
-        for (const clause of clauses) {
-          await tx.documentClauseMapping.upsert({
-            where: { documentId_clauseId: { documentId: existing.id, clauseId: clause.id } },
-            update: {},
-            create: {
-              documentId: existing.id,
-              clauseId: clause.id,
-              complianceType: 'REFERENCIA',
-              tenantId: req.db!.tenantId as string,
-              createdById: req.auth?.userId ?? null,
-            },
-          });
+        
+        // Insertar mappings en batch para mejor performance
+        if (clauses.length > 0) {
+          const tenantId = req.db!.tenantId as string;
+          const createdById = req.auth?.userId ?? null;
+          
+          for (const clause of clauses) {
+            await tx.documentClauseMapping.upsert({
+              where: { documentId_clauseId: { documentId: existing.id, clauseId: clause.id } },
+              update: {},
+              create: {
+                documentId: existing.id,
+                clauseId: clause.id,
+                complianceType: 'REFERENCIA',
+                tenantId,
+                createdById,
+              },
+            });
+          }
         }
       }
 
