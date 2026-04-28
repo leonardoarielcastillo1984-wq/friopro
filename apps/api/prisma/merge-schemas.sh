@@ -9,13 +9,14 @@ cat /app/prisma/schema.prisma > "$OUTPUT"
 # Add a newline
 echo "" >> "$OUTPUT"
 
-# Add schema API models (skip the generator block)
-sed '/^generator client {/,/^}/d' /app/apps/api/prisma/schema-api.prisma >> "$OUTPUT"
+# Add schema API models (skip generator AND datasource blocks)
+sed '/^generator client {/,/^}/d' /app/apps/api/prisma/schema-api.prisma | \
+sed '/^datasource db {/,/^}/d' >> "$OUTPUT"
 
-# Add schema-saas models
-cat /app/apps/api/prisma/schema-saas.prisma >> "$OUTPUT"
+# Add schema-saas models (skip datasource block)
+sed '/^datasource db {/,/^}/d' /app/apps/api/prisma/schema-saas.prisma >> "$OUTPUT"
 
-# Add schema-project360 models
-cat /app/apps/api/prisma/schema-project360.prisma >> "$OUTPUT"
+# Add schema-project360 models (skip datasource block)
+sed '/^datasource db {/,/^}/d' /app/apps/api/prisma/schema-project360.prisma >> "$OUTPUT"
 
 echo "Schema merged successfully"
