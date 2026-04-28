@@ -1473,12 +1473,10 @@ model User {
   // Audit
   createdAt        DateTime          @default(now()) @db.Timestamptz
   updatedAt        DateTime          @updatedAt @db.Timestamptz
-  accounts         Account[]
   clients          Client[]
   equipments       Equipment[]
   licenses         License[]
   notificationLogs NotificationLog[]
-  sessions         Session[]
 
   @@index([email])
   @@index([status])
@@ -3071,27 +3069,6 @@ model PasswordHistory {
   @@map("password_history")
 }
 
-model Account {
-  id                String  @id @default(cuid())
-  userId            String  @map("user_id")
-  type              String
-  provider          String
-  providerAccountId String  @map("provider_account_id")
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-  @@index([userId])
-  @@map("accounts")
-}
-
 model ActionItem {
   id                  String    @id @default(uuid()) @db.Uuid
   tenantId            String    @db.Uuid
@@ -4645,18 +4622,6 @@ model RiskReview {
   @@map("risk_reviews")
 }
 
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique @map("session_token")
-  userId       String   @map("user_id")
-  expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("sessions")
-}
-
 model SgiObjective {
   id            String    @id @default(uuid()) @db.Uuid
   tenantId      String    @db.Uuid
@@ -4923,15 +4888,6 @@ enum UserStatus {
   ACTIVE
   SUSPENDED
   DELETED
-}
-
-model VerificationToken {
-  identifier String
-  token      String
-  expires    DateTime
-
-  @@unique([identifier, token])
-  @@map("verification_tokens")
 }
 
 enum WorkOrderServiceType {
