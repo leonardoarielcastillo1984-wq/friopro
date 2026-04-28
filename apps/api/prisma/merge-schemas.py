@@ -9,41 +9,45 @@ import sys
 
 def extract_models_and_enums(content):
     """Extract all model and enum definitions from schema content."""
-    # Pattern to match model or enum blocks
-    pattern = r'^(model|enum)\s+(\w+)\s*\{[^}]*\}'
-    # For models with nested blocks, we need a more complex pattern
-    
     models = {}
     enums = {}
     
     lines = content.split('\n')
     i = 0
-    while i < len(lines):
+    total_lines = len(lines)
+    
+    while i < total_lines:
         line = lines[i]
+        stripped = line.strip()
         
-        # Check for model definition
-        model_match = re.match(r'^(model)\s+(\w+)\s*\{', line)
+        # Skip empty lines and comments
+        if not stripped or stripped.startswith('//') or stripped.startswith('/*') or stripped.startswith('*'):
+            i += 1
+            continue
+        
+        # Check for model definition (must start at beginning of line)
+        model_match = re.match(r'^model\s+(\w+)\s*\{', line)
         if model_match:
-            name = model_match.group(2)
+            name = model_match.group(1)
             block_lines = [line]
             brace_count = line.count('{') - line.count('}')
             i += 1
-            while i < len(lines) and brace_count > 0:
+            while i < total_lines and brace_count > 0:
                 line = lines[i]
                 block_lines.append(line)
                 brace_count += line.count('{') - line.count('}')
                 i += 1
             models[name] = '\n'.join(block_lines)
-            continue  # Skip the i += 1 at the end of the outer loop
+            continue
         
-        # Check for enum definition
-        enum_match = re.match(r'^(enum)\s+(\w+)\s*\{', line)
+        # Check for enum definition (must start at beginning of line)
+        enum_match = re.match(r'^enum\s+(\w+)\s*\{', line)
         if enum_match:
-            name = enum_match.group(2)
+            name = enum_match.group(1)
             block_lines = [line]
             brace_count = line.count('{') - line.count('}')
             i += 1
-            while i < len(lines) and brace_count > 0:
+            while i < total_lines and brace_count > 0:
                 line = lines[i]
                 block_lines.append(line)
                 brace_count += line.count('{') - line.count('}')
