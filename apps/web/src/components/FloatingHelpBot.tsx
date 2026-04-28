@@ -27,8 +27,20 @@ export default function FloatingHelpBot() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  const [currentModule, setCurrentModule] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+
+  // Resetear conversación al cambiar de módulo
+  useEffect(() => {
+    const ctx = detectModule();
+    if (currentModule && currentModule !== ctx.module) {
+      // Cambió de módulo - resetear conversación
+      setMessages([]);
+      setInput('');
+    }
+    setCurrentModule(ctx.module);
+  }, [pathname]);
 
   useEffect(() => {
     if (scrollRef.current) {
