@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch, getCsrfToken } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import type { DocumentRow } from '@/lib/types';
 import ComboSelect from '@/components/ComboSelect';
 import {
@@ -188,26 +188,11 @@ export default function DocumentsPage() {
       if (uploadOwnerId) formData.append('ownerId', uploadOwnerId);
       if (uploadNextReviewDate) formData.append('nextReviewDate', uploadNextReviewDate);
 
-      const apiBase = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiBase) throw new Error('NEXT_PUBLIC_API_URL is not set');
-
-      const headers: Record<string, string> = {
-        'Accept': 'application/json',
-      };
-      const csrf = getCsrfToken();
-      if (csrf) headers['x-csrf-token'] = csrf;
-
-      const res = await fetch(`${apiBase}/documents/upload`, {
+      const data = await apiFetch<{ document: { title: string }; extractedChars: number }>('/documents/upload', {
         method: 'POST',
-        headers,
-        credentials: 'include',
+        headers: { Accept: 'application/json' },
         body: formData,
       });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       setSuccess(`Documento "${data.document.title}" subido correctamente — ${data.extractedChars.toLocaleString()} caracteres extraídos`);
       setShowUpload(false);
