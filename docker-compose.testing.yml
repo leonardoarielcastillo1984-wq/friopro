@@ -62,6 +62,11 @@ services:
       OLLAMA_MODEL: llama3.2
     ports:
       - "4002:4002"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     volumes:
       - /data/sgi360/uploads:/app/uploads
     depends_on:
