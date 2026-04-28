@@ -50,10 +50,10 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
-    const effectiveTenantId = headerTenantId || req.db?.tenantId || 'f20f0bfe-c1d8-40f6-8d36-97734881ffde';
+    const effectiveTenantId = headerTenantId || req.db?.tenantId;
 
-    if (requiresTenantContext(req) && !effectiveTenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+    if (!effectiveTenantId) {
+      return reply.code(400).send({ error: 'Tenant requerido' });
     }
 
     try {
