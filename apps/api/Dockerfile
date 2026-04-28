@@ -7,6 +7,7 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/api/prisma apps/api/prisma/
 COPY prisma/schema.prisma prisma/
+COPY prisma/migrations prisma/migrations/
 
 RUN pnpm install --no-frozen-lockfile
 
