@@ -28,6 +28,7 @@ COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api ./apps/api
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/prisma/migrations ./apps/api/prisma/migrations/
 
 RUN mkdir -p /app/apps/api/uploads
 
