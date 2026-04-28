@@ -30,7 +30,7 @@ export function createLLMProvider(): LLMProvider {
           'IA no configurada: falta GROQ_API_KEY. Configurá la variable de entorno para habilitar el asistente IA.'
         );
       }
-      const model = process.env.GROQ_MODEL || 'llama3-8b-8192';
+      const model = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
       // Groq usa API compatible con OpenAI
       providerInstance = new OpenAIProvider(apiKey, 'https://api.groq.com/openai/v1', model);
       break;

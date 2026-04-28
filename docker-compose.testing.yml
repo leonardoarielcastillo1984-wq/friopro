@@ -58,7 +58,7 @@ services:
       STORAGE_LOCAL_PATH: /app/uploads
       EMAIL_PROVIDER: console
       LLM_PROVIDER: groq
-      GROQ_MODEL: llama3-8b-8192
+      GROQ_MODEL: llama-3.1-8b-instant
       # GROQ_API_KEY: configurar en .env.local o variables de entorno del servidor
     ports:
       - "4002:4002"
