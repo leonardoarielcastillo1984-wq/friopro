@@ -15,6 +15,7 @@ export class OllamaProvider implements LLMProvider {
     this.client = new OpenAI({
       apiKey: 'ollama', // Ollama doesn't need a real key
       baseURL,
+      timeout: 20000, // 20 segundos máximo
     });
     this.model = model;
   }
