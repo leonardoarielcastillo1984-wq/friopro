@@ -3163,9 +3163,9 @@ model ActionProject {
   originReference String? // referencia legible
 
   // Asignación y Responsabilidad
-  tenantId      String
+  tenantId      String @db.Uuid
   tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  responsibleId String
+  responsibleId String @db.Uuid
   responsible   PlatformUser @relation(fields: [responsibleId], references: [id])
 
   // Temporalidad
@@ -3179,7 +3179,7 @@ model ActionProject {
   progress Float         @default(0) // 0-100
 
   // Métricas y KPIs
-  indicatorId  String?
+  indicatorId  String? @db.Uuid
   indicator    Indicator? @relation(fields: [indicatorId], references: [id])
   targetValue  Float?
   currentValue Float?
@@ -3213,7 +3213,7 @@ model ActionProject {
 
 model ActionTask {
   id        String        @id @default(cuid())
-  projectId String
+  projectId String @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   // Información básica
@@ -3221,7 +3221,7 @@ model ActionTask {
   description String?
 
   // Asignación
-  responsibleId String
+  responsibleId String @db.Uuid
   responsible   PlatformUser @relation(fields: [responsibleId], references: [id])
 
   // Temporalidad
@@ -3902,10 +3902,10 @@ model MaintenancePlanExecution {
   notes      String?
 
   // Relaciones
-  planId String
+  planId String @db.Uuid
   plan   MaintenancePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  workOrderId String?
+  workOrderId String? @db.Uuid
   workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
 
   // Auditoría
@@ -4124,7 +4124,7 @@ enum OriginType {
 
 model PaymentTransaction {
   id       String @id @default(cuid())
-  tenantId String
+  tenantId String @db.Uuid
 
   // Información de pago
   mercadoPagoId String                    @unique
@@ -4138,7 +4138,7 @@ model PaymentTransaction {
   periodEnd   DateTime
 
   // Detalles
-  planId       String
+  planId       String @db.Uuid
   addons       Json? // IDs de addons incluidos
   billingCycle BillingCycle
 
@@ -4168,7 +4168,7 @@ enum PlanCode {
 
 model PlanFeature {
   id     String @id @default(cuid())
-  planId String
+  planId String @db.Uuid
   plan   Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   featureKey  String // Clave única de la funcionalidad
@@ -4424,17 +4424,17 @@ model Project360Task {
 
 model ProjectComment {
   id        String        @id @default(cuid())
-  projectId String
+  projectId String @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taskId    String?
+  taskId    String? @db.Uuid
   task      ActionTask?   @relation(fields: [taskId], references: [id])
 
   content  String
-  authorId String
+  authorId String @db.Uuid
   author   PlatformUser @relation(fields: [authorId], references: [id])
 
   // Referencia a otros comentarios
-  parentCommentId String?
+  parentCommentId String? @db.Uuid
   parentComment   ProjectComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
   replies         ProjectComment[] @relation("CommentReplies")
 
@@ -4450,9 +4450,9 @@ model ProjectComment {
 
 model ProjectEvidence {
   id        String        @id @default(cuid())
-  projectId String
+  projectId String @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taskId    String?
+  taskId    String? @db.Uuid
   task      ActionTask?   @relation(fields: [taskId], references: [id])
 
   // Información del archivo
@@ -4476,7 +4476,7 @@ model ProjectEvidence {
 
 model ProjectMilestone {
   id        String        @id @default(cuid())
-  projectId String
+  projectId String @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   title       String
@@ -4714,7 +4714,7 @@ model Subscription {
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Plan actual
-  planId String
+  planId String @db.Uuid
   plan   Plan                @relation(fields: [planId], references: [id])
   addons SubscriptionAddon[]
 
@@ -4753,9 +4753,9 @@ model Subscription {
 
 model SubscriptionAddon {
   id             String       @id @default(cuid())
-  subscriptionId String
+  subscriptionId String @db.Uuid
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  addonId        String
+  addonId        String @db.Uuid
   addon          Addon        @relation(fields: [addonId], references: [id])
 
   // Precios al momento de contratación
@@ -4871,7 +4871,7 @@ enum UsageEventType {
 
 model UsageMetrics {
   id           String   @id @default(cuid())
-  tenantId     String
+  tenantId     String @db.Uuid
   metric       String // users, storage, api_calls, etc.
   currentValue Int      @default(0)
   maxValue     Int
