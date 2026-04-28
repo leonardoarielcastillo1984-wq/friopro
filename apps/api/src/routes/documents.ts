@@ -296,7 +296,6 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         
         // Insertar mappings en batch para mejor performance
         if (clauses.length > 0) {
-          const tenantId = req.db!.tenantId as string;
           const createdById = req.auth?.userId ?? null;
           
           for (const clause of clauses) {
@@ -307,7 +306,6 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
                 documentId: existing.id,
                 clauseId: clause.id,
                 complianceType: 'REFERENCIA',
-                tenantId,
                 createdById,
               },
             });
