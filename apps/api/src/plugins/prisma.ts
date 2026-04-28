@@ -12,20 +12,25 @@ declare module 'fastify' {
 export const prismaPlugin = fp(async (app: FastifyInstance) => {
   const prisma = new PrismaClient();
 
-  const auditorUrl = process.env.DATABASE_URL_AUDITOR;
-  if (!auditorUrl) throw new Error('DATABASE_URL_AUDITOR is required');
-  const prismaAuditor = new PrismaClient({
-    datasourceUrl: auditorUrl,
-  });
-
   await prisma.$connect();
-  await prismaAuditor.$connect();
-
   app.decorate('prisma', prisma);
-  app.decorate('prismaAuditor', prismaAuditor);
+
+  const auditorUrl = process.env.DATABASE_URL_AUDITOR;
+  if (auditorUrl) {
+    const prismaAuditor = new PrismaClient({
+      datasourceUrl: auditorUrl,
+    });
+    await prismaAuditor.$connect();
+    app.decorate('prismaAuditor', prismaAuditor);
+    app.addHook('onClose', async () => {
+      await prismaAuditor.$disconnect();
+    });
+  } else {
+    app.decorate('prismaAuditor', prisma);
+    app.log.warn('DATABASE_URL_AUDITOR not set, using default prisma client as auditor fallback');
+  }
 
   app.addHook('onClose', async () => {
     await prisma.$disconnect();
-    await prismaAuditor.$disconnect();
   });
 });
