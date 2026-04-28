@@ -22,53 +22,53 @@ interface DepartmentConfig {
 // Sample departments with colors
 const DEPARTMENTS: DepartmentConfig[] = [
   {
-    name: 'IT & Technology',
-    description: 'Information Technology and Digital Infrastructure',
+    name: 'Tecnología e Informática',
+    description: 'Infraestructura tecnológica y sistemas de información',
     color: '#3B82F6', // Blue
   },
   {
-    name: 'Human Resources',
-    description: 'Personnel Management and Development',
+    name: 'Recursos Humanos',
+    description: 'Gestión y desarrollo del personal',
     color: '#8B5CF6', // Purple
   },
   {
-    name: 'Finance & Accounting',
-    description: 'Financial Planning and Accounting Management',
+    name: 'Finanzas y Contabilidad',
+    description: 'Planificación financiera y gestión contable',
     color: '#10B981', // Green
   },
   {
-    name: 'Operations',
-    description: 'Operational Excellence and Process Management',
+    name: 'Operaciones',
+    description: 'Excelencia operativa y gestión de procesos',
     color: '#F59E0B', // Amber
   },
   {
-    name: 'Quality & Compliance',
-    description: 'Quality Assurance and Regulatory Compliance',
+    name: 'Calidad y Cumplimiento',
+    description: 'Aseguramiento de la calidad y cumplimiento normativo',
     color: '#EF4444', // Red
   },
   {
-    name: 'Marketing & Communications',
-    description: 'Marketing Strategy and Communications',
+    name: 'Marketing y Comunicaciones',
+    description: 'Estrategia de marketing y comunicaciones',
     color: '#EC4899', // Pink
   },
   {
-    name: 'Sales & Business Development',
-    description: 'Sales Operations and Business Development',
+    name: 'Ventas y Desarrollo Comercial',
+    description: 'Operaciones de venta y desarrollo de negocios',
     color: '#06B6D4', // Cyan
   },
   {
-    name: 'Research & Development',
-    description: 'Innovation and Research',
+    name: 'Investigación y Desarrollo',
+    description: 'Innovación e investigación',
     color: '#14B8A6', // Teal
   },
   {
-    name: 'Safety & Environment',
-    description: 'Occupational Safety and Environmental Health',
+    name: 'Seguridad y Medio Ambiente',
+    description: 'Seguridad ocupacional y salud ambiental',
     color: '#6366F1', // Indigo
   },
   {
-    name: 'Customer Service',
-    description: 'Customer Support and Relations',
+    name: 'Atención al Cliente',
+    description: 'Soporte y relaciones con clientes',
     color: '#F97316', // Orange
   },
 ];

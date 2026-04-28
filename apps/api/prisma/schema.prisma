@@ -331,9 +331,10 @@ model PlatformUser {
   membershipsCreated TenantMembership[] @relation("MembershipCreatedBy")
   membershipsUpdated TenantMembership[] @relation("MembershipUpdatedBy")
 
-  documentsCreated Document[] @relation("DocumentCreatedBy")
-  documentsUpdated Document[] @relation("DocumentUpdatedBy")
-  documentsOwned   Document[] @relation("DocumentOwner")
+  documentsCreated  Document[]       @relation("DocumentCreatedBy")
+  documentsUpdated  Document[]       @relation("DocumentUpdatedBy")
+  documentsOwned    Document[]       @relation("DocumentOwner")
+  documentReviews   DocumentReview[] @relation("DocumentReviewBy")
 
   ncrsAssigned NonConformity[] @relation("NcrAssignedTo")
   ncrsCreated  NonConformity[] @relation("NcrCreatedBy")
@@ -964,6 +965,7 @@ model Document {
   aiFindings     AiFinding[]
   auditRuns      AuditRun[]
   versions       DocumentVersion[]
+  reviews        DocumentReview[]
 
   @@index([tenantId])
   @@index([departmentId])
@@ -988,6 +990,22 @@ model DocumentVersion {
   createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([documentId])
+}
+
+model DocumentReview {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  result     String // APPROVED, REQUIRES_UPDATE
+  comments   String? @db.Text
+  reviewedAt DateTime @default(now()) @db.Timestamptz
+
+  reviewedById String?       @db.Uuid
+  reviewedBy   PlatformUser? @relation("DocumentReviewBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@map("document_reviews")
 }
 
 model Plan {
