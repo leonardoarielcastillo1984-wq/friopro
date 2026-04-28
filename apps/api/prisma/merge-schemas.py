@@ -84,6 +84,21 @@ def extract_header(content):
     return '\n'.join(header_lines)
 
 def main():
+    import os
+    
+    # Check files exist
+    files_to_check = [
+        '/app/prisma/schema.prisma',
+        '/app/apps/api/prisma/schema-api.prisma',
+        '/app/apps/api/prisma/schema-saas.prisma',
+        '/app/apps/api/prisma/schema-project360.prisma'
+    ]
+    for f in files_to_check:
+        if not os.path.exists(f):
+            print(f"ERROR: File not found: {f}")
+            sys.exit(1)
+        print(f"✓ Found: {f}")
+    
     # Read root schema
     with open('/app/prisma/schema.prisma', 'r') as f:
         root_content = f.read()
@@ -99,6 +114,7 @@ def main():
     # Extract from root schema
     root_models, root_enums = extract_models_and_enums(root_content)
     header = extract_header(root_content)
+    print(f"✓ Extracted {len(root_models)} models and {len(root_enums)} enums from root schema")
     
     # Extract from partial schemas
     api_models, api_enums = extract_models_and_enums(api_content)
