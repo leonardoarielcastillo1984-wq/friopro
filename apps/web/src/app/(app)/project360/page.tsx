@@ -120,8 +120,13 @@ export default function Project360Page() {
 
   useEffect(() => {
     loadProjects();
-    apiFetch<{ members: any[] }>('/settings/members')
-      .then(res => setMembers((res?.members || []).map((m: any) => ({ id: m.userId, name: m.name || m.email, email: m.email }))))
+    // Cargar empleados de RRHH como responsables (tienen firstName/lastName obligatorios)
+    apiFetch<{ employees: any[] }>('/hr/employees')
+      .then(res => setMembers((res?.employees || []).map((e: any) => ({
+        id: e.id,
+        name: `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.email,
+        email: e.email,
+      }))))
       .catch(() => {});
   }, []);
 
