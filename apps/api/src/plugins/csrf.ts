@@ -12,6 +12,7 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/health')) return true;
   if (url.startsWith('/webhooks/mercadopago')) return true;
   if (url.startsWith('/docs')) return true;
+  if (url.startsWith('/help/ask')) return true; // TEMP: testing assistant IA
   if (url.startsWith('/api/auth/login') || url.startsWith('/auth/login')) return true;
   if (url.startsWith('/api/auth/register') || url.startsWith('/auth/register')) return true;
   if (url.startsWith('/api/auth/refresh') || url.startsWith('/auth/refresh')) return true;
