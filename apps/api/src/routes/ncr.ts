@@ -10,7 +10,7 @@ const createSchema = z.object({
   source: z.enum(['INTERNAL_AUDIT', 'EXTERNAL_AUDIT', 'CUSTOMER_COMPLAINT', 'PROCESS_DEVIATION', 'SUPPLIER_ISSUE', 'AI_FINDING', 'OTHER', 'STAKEHOLDER']),
   standard: z.string().optional(),
   clause: z.string().optional(),
-  dueDate: z.string().datetime().optional(),
+  dueDate: z.string().optional(),
   assignedToId: z.string().uuid().optional(),
 
   indicatorId: z.string().uuid().optional(),
