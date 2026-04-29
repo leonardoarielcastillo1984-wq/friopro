@@ -139,20 +139,29 @@ export default function StakeholderClient() {
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Evidencia</label><textarea rows={3} value={editing.complianceEvidence||''} onChange={e=>setEditing({...editing,complianceEvidence:e.target.value})} placeholder="Ej: indicadores, auditorías" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Indicador asociado</label><input type="text" value={editing.indicatorId||''} onChange={e=>setEditing({...editing,indicatorId:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="flex items-center gap-2 flex-wrap"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere acción CAPA?</label>
-              {editing.id && (
-                <button type="button" onClick={()=>{
-                  const today = new Date().toISOString().split('T')[0];
-                  const due = new Date(Date.now()+30*24*3600*1000).toISOString().split('T')[0];
-                  setNcForm({
-                    title: `NC vinculada a: ${editing.name}`,
-                    description: `Origen: Parte Interesada\nNombre: ${editing.name}\nTipo: ${editing.type}\nCategoría: ${editing.category}\nEstado de cumplimiento: ${editing.complianceStatus||'—'}\nNivel: ${editing.complianceLevel||'—'}%\nEvidencia: ${editing.complianceEvidence||'—'}`,
-                    severity: 'MAJOR',
-                    detectedAt: today,
-                    dueDate: due,
-                  });
-                  setShowNcModal(true);
-                }} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"><AlertTriangle className="w-3.5 h-3.5"/>Crear NC</button>
-              )}
+              <button type="button" disabled={ncSaving} onClick={async ()=>{
+                let current = editing;
+                if(!current.id){
+                  setNcSaving(true);
+                  try{
+                    const saved = await apiFetch('/stakeholders',{method:'POST',json:current}) as any;
+                    current = { ...current, id: saved.item.id };
+                    setEditing(current);
+                    setItems(prev=>[saved.item,...prev]);
+                  }catch(e:any){alert('Error guardando Parte Interesada: '+(e.message||''));setNcSaving(false);return;}
+                  finally{setNcSaving(false);}
+                }
+                const today = new Date().toISOString().split('T')[0];
+                const due = new Date(Date.now()+30*24*3600*1000).toISOString().split('T')[0];
+                setNcForm({
+                  title: `NC vinculada a: ${current.name}`,
+                  description: `Origen: Parte Interesada\nNombre: ${current.name}\nTipo: ${current.type}\nCategoría: ${current.category}\nEstado de cumplimiento: ${current.complianceStatus||'—'}\nNivel: ${current.complianceLevel||'—'}%\nEvidencia: ${current.complianceEvidence||'—'}`,
+                  severity: 'MAJOR',
+                  detectedAt: today,
+                  dueDate: due,
+                });
+                setShowNcModal(true);
+              }} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"><AlertTriangle className="w-3.5 h-3.5"/>Crear NC</button>
             </div>
             </div>
 
