@@ -139,6 +139,7 @@ export default function StakeholderClient() {
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Evidencia</label><textarea rows={3} value={editing.complianceEvidence||''} onChange={e=>setEditing({...editing,complianceEvidence:e.target.value})} placeholder="Ej: indicadores, auditorías" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Indicador asociado</label><input type="text" value={editing.indicatorId||''} onChange={e=>setEditing({...editing,indicatorId:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="flex items-center gap-2"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere acción CAPA?</label></div>
+            <div className="mt-2 p-3 bg-red-100 border border-red-500 text-red-700 font-bold text-center rounded">TEST: Button should appear below this</div>
             <div className="mt-2">
               <button type="button" onClick={()=>{
                 const today = new Date().toISOString().split('T')[0];
