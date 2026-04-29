@@ -11,6 +11,7 @@ const createSchema = z.object({
   standard: z.string().optional(),
   clause: z.string().optional(),
   dueDate: z.string().optional(),
+  detectedAt: z.string().optional(),
   assignedToId: z.string().uuid().optional(),
 
   indicatorId: z.string().uuid().optional(),
