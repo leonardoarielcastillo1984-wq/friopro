@@ -72,6 +72,10 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
           Object.keys(data).forEach((k) => {
             if (data[k] === '' || data[k] === undefined) data[k] = null;
           });
+          // strip relation arrays that Prisma can't accept in create data
+          Object.keys(data).forEach((k) => {
+            if (Array.isArray(data[k])) delete data[k];
+          });
 
           // Convert date strings
           for (const k of Object.keys(data)) {
