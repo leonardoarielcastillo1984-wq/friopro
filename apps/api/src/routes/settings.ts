@@ -65,7 +65,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
       return tx.tenantMembership.findMany({
         where: { tenantId: req.db!.tenantId, deletedAt: null },
         include: {
-          user: { select: { id: true, email: true, isActive: true, createdAt: true } },
+          user: { select: { id: true, firstName: true, lastName: true, email: true, isActive: true, createdAt: true } },
         },
         orderBy: { createdAt: 'desc' },
       });

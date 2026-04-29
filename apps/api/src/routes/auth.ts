@@ -526,7 +526,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const user = await app.prisma.platformUser.findUnique({
       where: { id: req.auth.userId },
-      select: { id: true, email: true, globalRole: true, isActive: true, deletedAt: true },
+      select: { id: true, firstName: true, lastName: true, email: true, globalRole: true, isActive: true, deletedAt: true },
     });
 
     if (!user || !user.isActive || user.deletedAt) {
@@ -588,7 +588,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return reply.send({
-      user: { id: user.id, email: user.email, globalRole: user.globalRole },
+      user: {
+        id: user.id,
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        email: user.email,
+        globalRole: user.globalRole,
+      },
       activeTenant,
       tenantRole,
     });
