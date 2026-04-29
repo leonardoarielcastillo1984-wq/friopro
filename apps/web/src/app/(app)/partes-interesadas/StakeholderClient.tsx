@@ -138,7 +138,8 @@ export default function StakeholderClient() {
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Fecha última evaluación</label><input type="date" value={editing.lastEvaluationDate||''} onChange={e=>setEditing({...editing,lastEvaluationDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Evidencia</label><textarea rows={3} value={editing.complianceEvidence||''} onChange={e=>setEditing({...editing,complianceEvidence:e.target.value})} placeholder="Ej: indicadores, auditorías" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Indicador asociado</label><input type="text" value={editing.indicatorId||''} onChange={e=>setEditing({...editing,indicatorId:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-            <div className="flex items-center gap-2 flex-wrap"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere acción CAPA?</label>
+            <div className="flex items-center gap-2"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere acción CAPA?</label></div>
+            <div className="mt-2">
               <button type="button" disabled={ncSaving} onClick={async ()=>{
                 let current = editing;
                 if(!current.id){
@@ -161,7 +162,7 @@ export default function StakeholderClient() {
                   dueDate: due,
                 });
                 setShowNcModal(true);
-              }} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"><AlertTriangle className="w-3.5 h-3.5"/>Crear NC</button>
+              }} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 shadow-sm"><AlertTriangle className="w-4 h-4"/>Crear No Conformidad desde esta Parte Interesada</button>
             </div>
             </div>
 
