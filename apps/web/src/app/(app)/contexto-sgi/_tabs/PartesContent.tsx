@@ -33,6 +33,10 @@ export default function PartesContent() {
     if (!editing?.name?.trim()) { alert('Nombre requerido'); return; }
     const d = { ...editing };
     delete d.reviewDate;
+    // Strip auto-managed audit fields that Prisma rejects on create
+    delete d.createdAt;
+    delete d.updatedAt;
+    delete d.deletedAt;
     // No enviar id vacío o inválido en POST
     if (!d.id || typeof d.id !== 'string' || d.id.trim() === '' || d.id.startsWith('%')) {
       delete d.id;

@@ -34,6 +34,9 @@ export default function StakeholderClient() {
     if (!editing?.name?.trim()) { alert('Nombre requerido'); return; }
     const d = { ...editing };
     delete d.reviewDate;
+    delete d.createdAt;
+    delete d.updatedAt;
+    delete d.deletedAt;
     if (d.complianceLevel !== undefined && (d.complianceLevel < 0 || d.complianceLevel > 100)) { alert('Nivel 0-100'); return; }
     if (d.requiresAction && d.complianceStatus === 'COMPLIES') { alert('No requiere acción si Cumple'); return; }
     setSaving(true);
