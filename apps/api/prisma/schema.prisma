@@ -41,7 +41,7 @@ model NonConformity {
 
   // Trazabilidad desde Partes Interesadas
   stakeholderId String? @db.Uuid
-  stakeholder   Stakeholder? @relation(fields: [stakeholderId], references: [id], onDelete: SetNull)
+  stakeholder   Stakeholder? @relation("NcrStakeholder", fields: [stakeholderId], references: [id], onDelete: SetNull)
 
   // Trazabilidad desde Indicadores (KPI)
   indicatorId            String?               @db.Uuid
