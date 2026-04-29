@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 export default function StakeholderClient() {
@@ -12,6 +12,9 @@ export default function StakeholderClient() {
   const [filter, setFilter] = useState('ALL');
   const [genAction, setGenAction] = useState(false);
   const [original, setOriginal] = useState<any>(null);
+  const [showNcModal, setShowNcModal] = useState(false);
+  const [ncSaving, setNcSaving] = useState(false);
+  const [ncForm, setNcForm] = useState({ title: '', description: '', severity: 'MAJOR', detectedAt: '', dueDate: '' });
 
   useEffect(() => { load(); }, []);
   const load = async () => {
@@ -135,7 +138,22 @@ export default function StakeholderClient() {
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Fecha última evaluación</label><input type="date" value={editing.lastEvaluationDate||''} onChange={e=>setEditing({...editing,lastEvaluationDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Evidencia</label><textarea rows={3} value={editing.complianceEvidence||''} onChange={e=>setEditing({...editing,complianceEvidence:e.target.value})} placeholder="Ej: indicadores, auditorías" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Indicador asociado</label><input type="text" value={editing.indicatorId||''} onChange={e=>setEditing({...editing,indicatorId:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-            <div className="flex items-center gap-2"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere acción CAPA?</label></div>
+            <div className="flex items-center gap-2"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere acción CAPA?</label>
+              {editing.id && editing.requiresAction && (
+                <button type="button" onClick={()=>{
+                  const today = new Date().toISOString().split('T')[0];
+                  const due = new Date(Date.now()+30*24*3600*1000).toISOString().split('T')[0];
+                  setNcForm({
+                    title: `NC vinculada a: ${editing.name}`,
+                    description: `Origen: Parte Interesada\nNombre: ${editing.name}\nTipo: ${editing.type}\nCategoría: ${editing.category}\nEstado de cumplimiento: ${editing.complianceStatus||'—'}\nNivel: ${editing.complianceLevel||'—'}%\nEvidencia: ${editing.complianceEvidence||'—'}`,
+                    severity: 'MAJOR',
+                    detectedAt: today,
+                    dueDate: due,
+                  });
+                  setShowNcModal(true);
+                }} className="ml-3 inline-flex items-center gap-1 px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"><AlertTriangle className="w-3 h-3"/>Crear NC</button>
+              )}
+            </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 border-t pt-4">
@@ -155,6 +173,46 @@ export default function StakeholderClient() {
           </form>
         </div>
       </div>}
+
+      {showNcModal && editing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto flex flex-col">
+            <div className="flex justify-between p-6 border-b">
+              <div className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-600"/><h2 className="text-lg font-semibold">Crear No Conformidad</h2></div>
+              <button onClick={()=>setShowNcModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><XCircle className="w-5 h-5"/></button>
+            </div>
+            <form onSubmit={async (e)=>{
+              e.preventDefault();
+              if(!ncForm.title.trim()){alert('Título requerido');return;}
+              setNcSaving(true);
+              try{
+                await apiFetch(`/stakeholders/${editing.id}/create-nc`,{method:'POST',json:{
+                  title:ncForm.title.trim(),
+                  description:ncForm.description.trim(),
+                  severity:ncForm.severity,
+                  dueDate:ncForm.dueDate?new Date(ncForm.dueDate).toISOString():undefined,
+                }});
+                alert('No Conformidad creada correctamente');
+                setShowNcModal(false);
+              }catch(err:any){alert('Error: '+(err.message||'Error al crear NC'));}
+              finally{setNcSaving(false);}
+            }} className="p-6 space-y-4">
+              <div><label className="block text-sm font-medium mb-1">Título</label><input className="w-full px-3 py-2 border rounded-lg text-sm" value={ncForm.title} onChange={e=>setNcForm({...ncForm,title:e.target.value})} required/></div>
+              <div><label className="block text-sm font-medium mb-1">Descripción</label><textarea rows={4} className="w-full px-3 py-2 border rounded-lg text-sm" value={ncForm.description} onChange={e=>setNcForm({...ncForm,description:e.target.value})} required/></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium mb-1">Severidad</label><select className="w-full px-3 py-2 border rounded-lg text-sm" value={ncForm.severity} onChange={e=>setNcForm({...ncForm,severity:e.target.value})}>
+                  <option value="CRITICAL">Crítica</option><option value="MAJOR">Mayor</option><option value="MINOR">Menor</option><option value="OBSERVATION">Observación</option>
+                </select></div>
+                <div><label className="block text-sm font-medium mb-1">Fecha límite</label><input type="date" className="w-full px-3 py-2 border rounded-lg text-sm" value={ncForm.dueDate} onChange={e=>setNcForm({...ncForm,dueDate:e.target.value})}/></div>
+              </div>
+              <div className="p-6 border-t flex gap-3">
+                <button type="button" onClick={()=>setShowNcModal(false)} className="flex-1 px-4 py-2 border rounded-lg text-sm">Cancelar</button>
+                <button type="submit" disabled={ncSaving} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50 text-sm">{ncSaving?'Guardando...':'Crear NC'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

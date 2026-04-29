@@ -261,6 +261,52 @@ export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
 
     return reply.send({ action });
   });
+
+  app.post('/:id/create-nc', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const tenantId = req.db.tenantId;
+
+    const stakeholder = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.stakeholder.findFirst({ where: { id, tenantId, deletedAt: null } });
+    });
+    if (!stakeholder) return reply.code(404).send({ error: 'Parte interesada no encontrada' });
+
+    const rawBody = req.body;
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody as any;
+
+    const ncr = await app.runWithDbContext(req, async (tx: any) => {
+      const year = new Date().getFullYear();
+      const count = await tx.nonConformity.count({
+        where: { tenantId, code: { startsWith: `NCR-${year}-` } }
+      });
+      const code = `NCR-${year}-${String(count + 1).padStart(3, '0')}`;
+
+      return tx.nonConformity.create({
+        data: {
+          tenantId,
+          code,
+          title: body.title || `NC vinculada a Parte Interesada: ${stakeholder.name}`,
+          description: body.description || `Origen: Parte Interesada\nNombre: ${stakeholder.name}\nTipo: ${stakeholder.type}\nCategoría: ${stakeholder.category}\nEstado de cumplimiento: ${stakeholder.complianceStatus || '—'}\nNivel: ${stakeholder.complianceLevel || '—'}%\nEvidencia: ${stakeholder.complianceEvidence || '—'}`,
+          severity: body.severity || 'MAJOR',
+          source: 'STAKEHOLDER',
+          status: 'OPEN',
+          standard: body.standard || null,
+          clause: body.clause || null,
+          dueDate: body.dueDate ? new Date(body.dueDate) : new Date(Date.now() + 30 * 24 * 3600 * 1000),
+          stakeholderId: id,
+          createdById: req.auth?.userId ?? null,
+          updatedById: req.auth?.userId ?? null,
+        },
+        include: {
+          assignedTo: { select: { id: true, email: true } },
+          createdBy: { select: { id: true, email: true } },
+        },
+      });
+    });
+
+    return reply.code(201).send({ ncr });
+  });
 };
 export const incidentsRoutes = makeCrud('incidents', { model: 'incident', codePrefix: 'INC' });
 export const suppliersRoutes = makeCrud('suppliers', { model: 'supplier', codePrefix: 'PROV' });

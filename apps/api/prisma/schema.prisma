@@ -39,6 +39,10 @@ model NonConformity {
   processId String? @db.Uuid
   process   String? // Nombre del proceso para análisis IA
 
+  // Trazabilidad desde Partes Interesadas
+  stakeholderId String? @db.Uuid
+  stakeholder   Stakeholder? @relation(fields: [stakeholderId], references: [id], onDelete: SetNull)
+
   // Trazabilidad desde Indicadores (KPI)
   indicatorId            String?               @db.Uuid
   indicator              Indicator?            @relation("NcrIndicator", fields: [indicatorId], references: [id], onDelete: SetNull)
@@ -140,6 +144,7 @@ enum NCRSource {
   PROCESS_DEVIATION
   SUPPLIER_ISSUE
   AI_FINDING
+  STAKEHOLDER
   OTHER
 }
 
@@ -4768,6 +4773,8 @@ model Stakeholder {
   deletedAt          DateTime?
   createdAt          DateTime  @default(now()) @db.Timestamptz
   updatedAt          DateTime  @updatedAt @db.Timestamptz
+
+  ncrs NonConformity[] @relation("NcrStakeholder")
 
   @@index([tenantId])
   @@index([complianceStatus])
