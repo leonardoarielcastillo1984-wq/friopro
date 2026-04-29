@@ -65,53 +65,58 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
       // Never accept id on create — Prisma generates UUID automatically
       delete body?.id;
 
-      const item = await app.runWithDbContext(req, async (tx: any) => {
-        const data: any = { ...body, tenantId };
-        // strip undefined / empty strings that might break date fields
-        Object.keys(data).forEach((k) => {
-          if (data[k] === '' || data[k] === undefined) data[k] = null;
+      try {
+        const item = await app.runWithDbContext(req, async (tx: any) => {
+          const data: any = { ...body, tenantId };
+          // strip undefined / empty strings that might break date fields
+          Object.keys(data).forEach((k) => {
+            if (data[k] === '' || data[k] === undefined) data[k] = null;
+          });
+
+          // Convert date strings
+          for (const k of Object.keys(data)) {
+            if (/Date$|At$/.test(k) && typeof data[k] === 'string' && data[k]) {
+              data[k] = new Date(data[k]);
+            }
+          }
+
+          // Auto code
+          if (opts.codePrefix && !data.code) {
+            const year = new Date().getFullYear();
+            const count = await tx[opts.model].count({
+              where: { tenantId, code: { startsWith: `${opts.codePrefix}-${year}-` } },
+            });
+            data.code = `${opts.codePrefix}-${year}-${String(count + 1).padStart(3, '0')}`;
+          }
+
+          // Soft audit fields where schema supports it
+          if ('createdById' in (await tx[opts.model].fields ?? {}) || true) {
+            // fall back: try-catch on create
+          }
+          try {
+            data.createdById = req.auth?.userId ?? null;
+            data.updatedById = req.auth?.userId ?? null;
+          } catch {}
+
+          // Remove audit fields if model doesn't have them
+          const itemKeys = new Set(Object.keys(data));
+          // We don't know model fields dynamically, so Prisma will throw if invalid.
+          // Safer: only keep audit fields for specific models.
+          const MODELS_WITH_AUDIT = new Set(['actionItem']);
+          if (!MODELS_WITH_AUDIT.has(opts.model)) {
+            delete data.createdById;
+            delete data.updatedById;
+          }
+          void itemKeys;
+
+          return tx[opts.model].create({ data });
         });
 
-        // Convert date strings
-        for (const k of Object.keys(data)) {
-          if (/Date$|At$/.test(k) && typeof data[k] === 'string' && data[k]) {
-            data[k] = new Date(data[k]);
-          }
-        }
-
-        // Auto code
-        if (opts.codePrefix && !data.code) {
-          const year = new Date().getFullYear();
-          const count = await tx[opts.model].count({
-            where: { tenantId, code: { startsWith: `${opts.codePrefix}-${year}-` } },
-          });
-          data.code = `${opts.codePrefix}-${year}-${String(count + 1).padStart(3, '0')}`;
-        }
-
-        // Soft audit fields where schema supports it
-        if ('createdById' in (await tx[opts.model].fields ?? {}) || true) {
-          // fall back: try-catch on create
-        }
-        try {
-          data.createdById = req.auth?.userId ?? null;
-          data.updatedById = req.auth?.userId ?? null;
-        } catch {}
-
-        // Remove audit fields if model doesn't have them
-        const itemKeys = new Set(Object.keys(data));
-        // We don't know model fields dynamically, so Prisma will throw if invalid.
-        // Safer: only keep audit fields for specific models.
-        const MODELS_WITH_AUDIT = new Set(['actionItem']);
-        if (!MODELS_WITH_AUDIT.has(opts.model)) {
-          delete data.createdById;
-          delete data.updatedById;
-        }
-        void itemKeys;
-
-        return tx[opts.model].create({ data });
-      });
-
-      return reply.code(201).send({ item });
+        return reply.code(201).send({ item });
+      } catch (err: any) {
+        req.log.error({ err, body, model: opts.model }, 'Error en makeCrud POST');
+        return reply.code(500).send({ error: 'Internal server error', detail: err.message, model: opts.model });
+      }
     });
 
     // GET by id
