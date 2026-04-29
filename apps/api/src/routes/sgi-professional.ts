@@ -76,6 +76,10 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
           Object.keys(data).forEach((k) => {
             if (Array.isArray(data[k])) delete data[k];
           });
+          // strip relation objects/nulls that Prisma can't accept
+          Object.keys(data).forEach((k) => {
+            if (data[k] !== null && typeof data[k] === 'object' && !Array.isArray(data[k])) delete data[k];
+          });
 
           // Convert date strings
           for (const k of Object.keys(data)) {
@@ -93,25 +97,8 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
             data.code = `${opts.codePrefix}-${year}-${String(count + 1).padStart(3, '0')}`;
           }
 
-          // Soft audit fields where schema supports it
-          if ('createdById' in (await tx[opts.model].fields ?? {}) || true) {
-            // fall back: try-catch on create
-          }
-          try {
-            data.createdById = req.auth?.userId ?? null;
-            data.updatedById = req.auth?.userId ?? null;
-          } catch {}
-
-          // Remove audit fields if model doesn't have them
-          const itemKeys = new Set(Object.keys(data));
-          // We don't know model fields dynamically, so Prisma will throw if invalid.
-          // Safer: only keep audit fields for specific models.
-          const MODELS_WITH_AUDIT = new Set(['actionItem']);
-          if (!MODELS_WITH_AUDIT.has(opts.model)) {
-            delete data.createdById;
-            delete data.updatedById;
-          }
-          void itemKeys;
+          console.log(`[makeCrud POST ${opts.model}] data keys:`, Object.keys(data));
+          console.log(`[makeCrud POST ${opts.model}] full data:`, JSON.stringify(data));
 
           return tx[opts.model].create({ data });
         });
@@ -119,6 +106,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
         return reply.code(201).send({ item });
       } catch (err: any) {
         req.log.error({ err, body, model: opts.model }, 'Error en makeCrud POST');
+        console.error(`[makeCrud POST ${opts.model}] ERROR:`, err.message, err.code, err.meta);
         return reply.code(500).send({ error: 'Internal server error', detail: err.message, model: opts.model });
       }
     });

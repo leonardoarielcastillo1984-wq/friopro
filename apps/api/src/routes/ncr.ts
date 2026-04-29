@@ -3,6 +3,8 @@ import { z } from 'zod';
 
 const FEATURE_KEY = 'no_conformidades';
 
+const uuidOrEmpty = z.preprocess((val) => (val === '' || val === null ? undefined : val), z.string().uuid().optional());
+
 const createSchema = z.object({
   title: z.string().min(2),
   description: z.string().min(5),
@@ -12,11 +14,11 @@ const createSchema = z.object({
   clause: z.string().optional(),
   dueDate: z.string().optional(),
   detectedAt: z.string().optional(),
-  assignedToId: z.string().uuid().optional(),
+  assignedToId: uuidOrEmpty,
 
-  indicatorId: z.string().uuid().optional(),
-  indicatorMeasurementId: z.string().uuid().optional(),
-  stakeholderId: z.string().uuid().optional(),
+  indicatorId: uuidOrEmpty,
+  indicatorMeasurementId: uuidOrEmpty,
+  stakeholderId: uuidOrEmpty,
 });
 
 export const ncrRoutes: FastifyPluginAsync = async (app) => {
@@ -91,8 +93,15 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const tenantId = req.db.tenantId;
 
-    const body = createSchema.parse(req.body);
+    let body: any;
+    try {
+      body = createSchema.parse(req.body);
+    } catch (e: any) {
+      console.error('[NCR CREATE] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
+      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+    }
 
+    try {
     const ncr = await app.runWithDbContext(req, async (tx: any) => {
       const year = new Date().getFullYear();
       const count = await tx.nonConformity.count({
@@ -127,6 +136,10 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return reply.code(201).send({ ncr });
+    } catch (err: any) {
+      console.error('[NCR CREATE] Prisma error:', err.message, err.code, err.meta);
+      return reply.code(500).send({ error: 'Database error', details: err.message });
+    }
   });
 
   // GET /ncr/:id — Detalle
