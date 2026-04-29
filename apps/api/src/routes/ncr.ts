@@ -7,7 +7,7 @@ const createSchema = z.object({
   title: z.string().min(2),
   description: z.string().min(5),
   severity: z.enum(['CRITICAL', 'MAJOR', 'MINOR', 'OBSERVATION']),
-  source: z.enum(['INTERNAL_AUDIT', 'EXTERNAL_AUDIT', 'CUSTOMER_COMPLAINT', 'PROCESS_DEVIATION', 'SUPPLIER_ISSUE', 'AI_FINDING', 'OTHER']),
+  source: z.enum(['INTERNAL_AUDIT', 'EXTERNAL_AUDIT', 'CUSTOMER_COMPLAINT', 'PROCESS_DEVIATION', 'SUPPLIER_ISSUE', 'AI_FINDING', 'OTHER', 'STAKEHOLDER']),
   standard: z.string().optional(),
   clause: z.string().optional(),
   dueDate: z.string().datetime().optional(),
@@ -15,6 +15,7 @@ const createSchema = z.object({
 
   indicatorId: z.string().uuid().optional(),
   indicatorMeasurementId: z.string().uuid().optional(),
+  stakeholderId: z.string().uuid().optional(),
 });
 
 export const ncrRoutes: FastifyPluginAsync = async (app) => {
@@ -113,6 +114,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
           assignedToId: body.assignedToId ?? null,
           indicatorId: body.indicatorId ?? null,
           indicatorMeasurementId: body.indicatorMeasurementId ?? null,
+          stakeholderId: body.stakeholderId ?? null,
           createdById: req.auth?.userId ?? null,
           updatedById: req.auth?.userId ?? null,
         },
