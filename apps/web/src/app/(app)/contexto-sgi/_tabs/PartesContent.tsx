@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 export default function PartesContent() {
@@ -11,6 +11,9 @@ export default function PartesContent() {
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('ALL');
   const [genAction, setGenAction] = useState(false);
+  const [showNcModal, setShowNcModal] = useState(false);
+  const [ncForm, setNcForm] = useState<any>({ title:'', description:'', severity:'MAJOR', detectedAt:'', dueDate:'', standard:'', clause:'', assignedToId:'' });
+  const [ncSaving, setNcSaving] = useState(false);
 
   useEffect(() => { load(); }, []);
   const load = async () => {
@@ -129,6 +132,23 @@ export default function PartesContent() {
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Evidencia</label><textarea rows={3} value={editing.complianceEvidence||''} onChange={e=>setEditing({...editing,complianceEvidence:e.target.value})} placeholder="Ej: indicadores, auditorías" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Indicador asociado</label><input type="text" value={editing.indicatorId||''} onChange={e=>setEditing({...editing,indicatorId:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="flex items-center gap-2"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere acción CAPA?</label></div>
+            <div className="mt-2">
+              <button type="button" onClick={()=>{
+                const today = new Date().toISOString().split('T')[0];
+                const due = new Date(Date.now()+30*24*3600*1000).toISOString().split('T')[0];
+                setNcForm({
+                  title: `NC vinculada a: ${editing.name}`,
+                  description: `Origen: Parte Interesada\nNombre: ${editing.name}\nTipo: ${editing.type}\nCategoría: ${editing.category}\nEstado: ${editing.complianceStatus||'—'}\nNivel: ${editing.complianceLevel||'—'}%\nEvidencia: ${editing.complianceEvidence||'—'}`,
+                  severity: 'MAJOR',
+                  detectedAt: today,
+                  dueDate: due,
+                  standard: '',
+                  clause: '',
+                  assignedToId: ''
+                });
+                setShowNcModal(true);
+              }} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm"><AlertTriangle className="w-4 h-4"/>Crear No Conformidad</button>
+            </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 border-t pt-4">
@@ -144,6 +164,32 @@ export default function PartesContent() {
             <div className="p-6 border-t flex gap-3">
               <button type="button" onClick={()=>setShowModal(false)} className="flex-1 px-4 py-2 border rounded-lg text-sm">Cancelar</button>
               <button type="submit" disabled={saving} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 text-sm">{saving?'Guardando...':'Guardar'}</button>
+            </div>
+          </form>
+        </div>
+      </div>}
+
+      {showNcModal&&<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+          <div className="flex justify-between p-6 border-b"><div className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-600"/><h2 className="text-lg font-semibold">Crear No Conformidad</h2></div><button onClick={()=>setShowNcModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><XCircle className="w-5 h-5"/></button></div>
+          <form onSubmit={async(e)=>{e.preventDefault();setNcSaving(true);try{await apiFetch('/ncr',{method:'POST',json:{...ncForm,stakeholderId:editing?.id,source:'OTHER'}});alert('NC creada');setShowNcModal(false);load();}catch(err:any){alert('Error: '+(err.message||''));}finally{setNcSaving(false);}}} className="p-6 space-y-4">
+            <div><label className="block text-sm font-medium mb-1">Título</label><input type="text" value={ncForm.title} onChange={e=>setNcForm({...ncForm,title:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" required/></div>
+            <div><label className="block text-sm font-medium mb-1">Descripción</label><textarea rows={4} value={ncForm.description} onChange={e=>setNcForm({...ncForm,description:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" required/></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium mb-1">Severidad</label><select value={ncForm.severity} onChange={e=>setNcForm({...ncForm,severity:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"><option value="CRITICAL">Crítica</option><option value="MAJOR">Mayor</option><option value="MINOR">Menor</option><option value="OBSERVATION">Observación</option></select></div>
+              <div><label className="block text-sm font-medium mb-1">Fecha de detección</label><input type="date" value={ncForm.detectedAt} onChange={e=>setNcForm({...ncForm,detectedAt:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium mb-1">Fecha límite</label><input type="date" value={ncForm.dueDate} onChange={e=>setNcForm({...ncForm,dueDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div><label className="block text-sm font-medium mb-1">Estándar</label><input type="text" value={ncForm.standard} onChange={e=>setNcForm({...ncForm,standard:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium mb-1">Cláusula</label><input type="text" value={ncForm.clause} onChange={e=>setNcForm({...ncForm,clause:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div><label className="block text-sm font-medium mb-1">Responsable (ID)</label><input type="text" value={ncForm.assignedToId} onChange={e=>setNcForm({...ncForm,assignedToId:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+            </div>
+            <div className="flex gap-3 border-t pt-4">
+              <button type="button" onClick={()=>setShowNcModal(false)} className="flex-1 px-4 py-2 border rounded-lg text-sm">Cancelar</button>
+              <button type="submit" disabled={ncSaving} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50 text-sm">{ncSaving?'Creando...':'Crear NC'}</button>
             </div>
           </form>
         </div>
