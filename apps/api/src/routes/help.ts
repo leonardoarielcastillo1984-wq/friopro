@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { createLLMProvider } from '../services/llm/factory.js';
+import { availableTools, executeTool } from '../services/assistant-tools.js';
 
 const AskSchema = z.object({
   message: z.string().min(1).max(2000),
@@ -88,7 +89,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
     }
   });
 
-  // Endpoint tradicional (mantener compatibilidad)
+  // Endpoint tradicional con Function Calling pragmático
   app.post('/ask', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -102,7 +103,10 @@ export async function registerHelpRoutes(app: FastifyInstance) {
       const moduleName = ctx.module || detectModuleFromPath(ctx.pathname || '/');
       const screenName = ctx.screen || ctx.subModule || moduleName;
 
-      const systemPrompt = buildSystemPrompt(moduleName, screenName);
+      // Detectar intención y ejecutar herramientas si aplica
+      const toolResult = await detectAndExecuteTool(message, moduleName, req);
+
+      const systemPrompt = buildSystemPrompt(moduleName, screenName, toolResult);
 
       const messages: { role: 'user' | 'assistant'; content: string }[] = [
         { role: 'user', content: `[Contexto del sistema]\n${systemPrompt}\n\n[Pregunta del usuario]` },
@@ -118,6 +122,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
         context: { module: moduleName, screen: screenName },
         tokensUsed: result.tokensUsed,
         model: result.model,
+        toolUsed: toolResult?.toolName || null,
       });
     } catch (err: any) {
       if (err?.code === 'LLM_NOT_CONFIGURED' || err?.statusCode === 503) {
@@ -186,12 +191,17 @@ function detectModuleFromPath(pathname: string): string {
   return map[first] || first;
 }
 
-function buildSystemPrompt(moduleName: string, screenName: string): string {
+function buildSystemPrompt(moduleName: string, screenName: string, toolResult?: { toolName: string; summary: string } | null): string {
+  let toolContext = '';
+  if (toolResult) {
+    toolContext = `\n\n## Datos del sistema (consulta automática)\n${toolResult.summary}\n\nUsá estos datos reales para responder la pregunta del usuario. No inventes información adicional.`;
+  }
+
   return `Sos un asistente de ayuda experto del sistema SGI 360 (Sistema de Gestión Integral). Respondé siempre en español, claro y conciso. Usá listas numeradas para pasos, negrita para conceptos clave.
 
 ## Contexto actual
 - Módulo: ${moduleName}
-- Pantalla: ${screenName}
+- Pantalla: ${screenName}${toolContext}
 
 ## Reglas
 1. Si pregunta cómo usar una funcionalidad: pasos numerados.
@@ -200,6 +210,54 @@ function buildSystemPrompt(moduleName: string, screenName: string): string {
 4. Incluí siempre una recomendación o buena práctica al final.
 5. Si no tenés información específica, orientá al Centro de Ayuda (/modo-de-uso).
 6. Nunca inventés datos de la empresa del usuario.`;
+}
+
+async function detectAndExecuteTool(
+  message: string,
+  moduleName: string,
+  req: FastifyRequest
+): Promise<{ toolName: string; summary: string } | null> {
+  const msg = message.toLowerCase();
+  const tenantId = req.headers['x-tenant-id'] as string || req.db?.tenantId;
+  if (!tenantId) return null;
+
+  const prisma = (req.server as any).prisma;
+  if (!prisma) return null;
+
+  const ctx = { prisma, tenantId, userId: req.auth?.userId };
+
+  // Detectar intenciones por módulo y palabras clave
+  if (msg.includes('norma') || msg.includes('normativ') || msg.includes('iso') || msg.includes('cláusula')) {
+    const result = await executeTool('query_normativos', { limit: 10 }, ctx);
+    if (result.success) return { toolName: 'query_normativos', summary: result.summary || '' };
+  }
+
+  if (msg.includes('no conformidad') || msg.includes('nc') || msg.includes('ncr') || msg.includes('disconformidad')) {
+    const result = await executeTool('query_nc', { limit: 5 }, ctx);
+    if (result.success) return { toolName: 'query_nc', summary: result.summary || '' };
+  }
+
+  if (msg.includes('documento') || msg.includes('archivo') || msg.includes('procedimiento') || msg.includes('instrucción')) {
+    const result = await executeTool('query_documents', { limit: 5 }, ctx);
+    if (result.success) return { toolName: 'query_documents', summary: result.summary || '' };
+  }
+
+  if (msg.includes('indicador') || msg.includes('kpi') || msg.includes('métrica') || msg.includes('medición')) {
+    const result = await executeTool('query_indicators', { limit: 5 }, ctx);
+    if (result.success) return { toolName: 'query_indicators', summary: result.summary || '' };
+  }
+
+  if (msg.includes('auditoría') || msg.includes('audit') || msg.includes('revisión')) {
+    const result = await executeTool('query_audits', { limit: 5 }, ctx);
+    if (result.success) return { toolName: 'query_audits', summary: result.summary || '' };
+  }
+
+  if (msg.includes('cumplimiento') || msg.includes('compliance') || msg.includes('cumple')) {
+    const result = await executeTool('query_compliance', {}, ctx);
+    if (result.success) return { toolName: 'query_compliance', summary: result.summary || '' };
+  }
+
+  return null;
 }
 
 const moduleList = [
