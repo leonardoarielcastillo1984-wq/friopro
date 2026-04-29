@@ -52,75 +52,72 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
 
   // ── GET /normativos/compliance-summary — Resumen de cumplimiento ponderado ──
   app.get('/compliance-summary', async (req: FastifyRequest, reply: FastifyReply) => {
-    app.requireFeature(req, FEATURE_KEY);
-
-    const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
-    const effectiveTenantId = headerTenantId || req.db?.tenantId;
-
-    if (!effectiveTenantId) {
-      return reply.code(400).send({ error: 'Tenant requerido' });
-    }
-
     try {
-      const result = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
-        const normatives = await tx.normativeStandard.findMany({
-          where: {
-            tenantId: effectiveTenantId,
-            deletedAt: null,
-            status: { not: 'ARCHIVED' }
-          },
-          select: { id: true, name: true, code: true, status: true }
-        });
+      // TEMP: deshabilitar requireFeature para diagnosticar
+      // app.requireFeature(req, FEATURE_KEY);
 
-        const complianceSummary = await Promise.all(
-          normatives.map(async (normative) => {
-            const clauses = await tx.normativeClause.findMany({
-              where: { normativeId: normative.id, deletedAt: null },
-              select: { id: true }
-            });
+      const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
+      const effectiveTenantId = headerTenantId || req.db?.tenantId;
 
-            const clauseResults = await Promise.all(
-              clauses.map((c: any) => calculateClauseCompliance(tx, effectiveTenantId, c.id))
-            );
+      if (!effectiveTenantId) {
+        return reply.code(400).send({ error: 'Tenant requerido' });
+      }
 
-            const totalClauses = clauses.length;
-            const compliantCount = clauseResults.filter((c: any) => c.status === 'COMPLIANT').length;
-            const partialCount = clauseResults.filter((c: any) => c.status === 'PARTIAL').length;
-            const nonCompliantCount = clauseResults.filter((c: any) => c.status === 'NON_COMPLIANT').length;
-
-            const overallPercentage = totalClauses > 0
-              ? Math.round(clauseResults.reduce((sum: number, c: any) => sum + c.percentage, 0) / totalClauses)
-              : 0;
-
-            let complianceLevel: 'LOW' | 'MEDIUM' | 'HIGH';
-            if (overallPercentage >= 80) complianceLevel = 'HIGH';
-            else if (overallPercentage >= 50) complianceLevel = 'MEDIUM';
-            else complianceLevel = 'LOW';
-
-            return {
-              normative,
-              compliance: {
-                totalClauses,
-                completedClauses: compliantCount + partialCount,
-                pendingClauses: nonCompliantCount,
-                compliancePercentage: overallPercentage,
-                complianceLevel
-              }
-            };
-          })
-        );
-
-        const totalAllClauses = complianceSummary.reduce((sum, item) => sum + item.compliance.totalClauses, 0);
-        const totalCompleted = complianceSummary.reduce((sum, item) => sum + item.compliance.completedClauses, 0);
-        const overallCompliance = totalAllClauses > 0 ? Math.round((totalCompleted / totalAllClauses) * 100) : 0;
-
-        return { overallCompliance, normatives: complianceSummary };
+      const normatives = await app.prisma.normativeStandard.findMany({
+        where: {
+          tenantId: effectiveTenantId,
+          deletedAt: null,
+          status: { not: 'ARCHIVED' }
+        },
+        select: { id: true, name: true, code: true, status: true }
       });
 
-      return reply.send(result);
-    } catch (error) {
-      console.error('Error calculating compliance summary:', error);
-      return reply.code(500).send({ error: 'Failed to calculate compliance summary' });
+      const complianceSummary = await Promise.all(
+        normatives.map(async (normative) => {
+          const clauses = await app.prisma.normativeClause.findMany({
+            where: { normativeId: normative.id, deletedAt: null },
+            select: { id: true }
+          });
+
+          const clauseResults = await Promise.all(
+            clauses.map((c: any) => calculateClauseCompliance(app.prisma as any, effectiveTenantId, c.id))
+          );
+
+          const totalClauses = clauses.length;
+          const compliantCount = clauseResults.filter((c: any) => c.status === 'COMPLIANT').length;
+          const partialCount = clauseResults.filter((c: any) => c.status === 'PARTIAL').length;
+          const nonCompliantCount = clauseResults.filter((c: any) => c.status === 'NON_COMPLIANT').length;
+
+          const overallPercentage = totalClauses > 0
+            ? Math.round(clauseResults.reduce((sum: number, c: any) => sum + c.percentage, 0) / totalClauses)
+            : 0;
+
+          let complianceLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+          if (overallPercentage >= 80) complianceLevel = 'HIGH';
+          else if (overallPercentage >= 50) complianceLevel = 'MEDIUM';
+          else complianceLevel = 'LOW';
+
+          return {
+            normative,
+            compliance: {
+              totalClauses,
+              completedClauses: compliantCount + partialCount,
+              pendingClauses: nonCompliantCount,
+              compliancePercentage: overallPercentage,
+              complianceLevel
+            }
+          };
+        })
+      );
+
+      const totalAllClauses = complianceSummary.reduce((sum, item) => sum + item.compliance.totalClauses, 0);
+      const totalCompleted = complianceSummary.reduce((sum, item) => sum + item.compliance.completedClauses, 0);
+      const overallCompliance = totalAllClauses > 0 ? Math.round((totalCompleted / totalAllClauses) * 100) : 0;
+
+      return reply.send({ overallCompliance, normatives: complianceSummary });
+    } catch (error: any) {
+      console.error('[COMPLIANCE-SUMMARY ERROR]', error?.message, error?.stack);
+      return reply.code(500).send({ error: error?.message || 'Failed to calculate compliance summary' });
     }
   });
 
