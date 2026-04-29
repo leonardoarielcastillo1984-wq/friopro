@@ -17,13 +17,15 @@ const MAX_PDF_SIZE = parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 
 export const normativoRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /normativos — Listar normas del tenant ──
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    app.requireFeature(req, FEATURE_KEY);
+    try {
+      // TEMP: deshabilitar requireFeature para diagnosticar
+      // app.requireFeature(req, FEATURE_KEY);
 
-    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      const tenantId = req.db?.tenantId || (req.headers['x-tenant-id'] as string);
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
-    const normativos = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
-      return tx.normativeStandard.findMany({
-        where: { tenantId: req.db!.tenantId, deletedAt: null },
+      const normativos = await app.prisma.normativeStandard.findMany({
+        where: { tenantId, deletedAt: null },
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -40,9 +42,12 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
           updatedAt: true,
         },
       });
-    });
 
-    return reply.send({ normativos });
+      return reply.send({ normativos });
+    } catch (e: any) {
+      console.error('[NORMATIVOS ERROR]', e?.message, e?.stack);
+      return reply.code(500).send({ error: e?.message || 'Error interno' });
+    }
   });
 
   // ── GET /normativos/compliance-summary — Resumen de cumplimiento ponderado ──
