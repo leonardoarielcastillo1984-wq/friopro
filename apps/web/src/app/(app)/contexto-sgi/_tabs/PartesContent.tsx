@@ -67,7 +67,6 @@ export default function PartesContent() {
         status:'OPEN',
         openDate: new Date().toISOString().split('T')[0]
       }});
-      alert('Acción creada');
       load();
     } catch(e: any){ alert('Error: '+e.message); }
     finally{ setGenAction(false); }
@@ -176,7 +175,7 @@ export default function PartesContent() {
       {showNcModal&&<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
           <div className="flex justify-between p-6 border-b"><div className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-600"/><h2 className="text-lg font-semibold">Crear No Conformidad</h2></div><button onClick={()=>setShowNcModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><XCircle className="w-5 h-5"/></button></div>
-          <form onSubmit={async(e)=>{e.preventDefault();setNcSaving(true);try{await apiFetch('/ncr',{method:'POST',json:{...ncForm,stakeholderId:editing?.id,source:'STAKEHOLDER'}});alert('NC creada');setShowNcModal(false);load();}catch(err:any){alert('Error: '+(err.message||''));}finally{setNcSaving(false);}}} className="p-6 space-y-4">
+          <form onSubmit={async(e)=>{e.preventDefault();setNcSaving(true);try{await apiFetch('/ncr',{method:'POST',json:{...ncForm,stakeholderId:editing?.id,source:'STAKEHOLDER'}});setShowNcModal(false);load();}catch(err:any){alert('Error: '+(err.message||''));}finally{setNcSaving(false);}}} className="p-6 space-y-4">
             <div><label className="block text-sm font-medium mb-1">Título</label><input type="text" value={ncForm.title} onChange={e=>setNcForm({...ncForm,title:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" required/></div>
             <div><label className="block text-sm font-medium mb-1">Descripción</label><textarea rows={4} value={ncForm.description} onChange={e=>setNcForm({...ncForm,description:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm" required/></div>
             <div className="grid grid-cols-2 gap-4">

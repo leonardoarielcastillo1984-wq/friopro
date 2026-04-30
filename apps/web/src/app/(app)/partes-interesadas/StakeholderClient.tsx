@@ -78,7 +78,6 @@ export default function StakeholderClient() {
         sourceType:'STAKEHOLDER', sourceId:item.id, status:'OPEN',
         openDate: new Date().toISOString().split('T')[0]
       }});
-      alert('Acción creada');
     } catch(e: any){ alert('Error: '+e.message); }
     finally{ setGenAction(false); }
   };
@@ -195,7 +194,6 @@ export default function StakeholderClient() {
                   severity:ncForm.severity,
                   dueDate:ncForm.dueDate?new Date(ncForm.dueDate).toISOString():undefined,
                 }});
-                alert('No Conformidad creada correctamente');
                 setShowNcModal(false);
               }catch(err:any){alert('Error: '+(err.message||'Error al crear NC'));}
               finally{setNcSaving(false);}
