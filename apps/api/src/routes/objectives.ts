@@ -128,8 +128,14 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   app.post('/policies', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
     const tenantId = req.db.tenantId;
-    const schema = z.object({ name: z.string().min(1), content: z.string().optional(), scope: z.string().optional(), active: z.boolean().optional() });
-    const data = schema.parse(req.body);
+    const schema = z.object({ name: z.string().min(1), content: emptyToUndefined(z.string().optional()), scope: emptyToUndefined(z.string().optional()), active: z.boolean().optional() });
+    let data;
+    try {
+      data = schema.parse(req.body);
+    } catch (e: any) {
+      console.error('[policies POST] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
+      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+    }
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.policy.create({ data: { tenantId, ...data } });
     });
@@ -139,8 +145,14 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   app.patch('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
     const { id } = req.params as { id: string };
-    const schema = z.object({ name: z.string().optional(), content: z.string().optional(), scope: z.string().optional(), active: z.boolean().optional() });
-    const data = schema.parse(req.body);
+    const schema = z.object({ name: z.string().optional(), content: emptyToUndefined(z.string().optional()), scope: emptyToUndefined(z.string().optional()), active: z.boolean().optional() });
+    let data;
+    try {
+      data = schema.parse(req.body);
+    } catch (e: any) {
+      console.error('[policies PATCH] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
+      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+    }
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.policy.update({ where: { id }, data });
     });

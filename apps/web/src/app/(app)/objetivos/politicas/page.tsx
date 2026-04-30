@@ -62,18 +62,24 @@ export default function PoliciesPage() {
     try {
       const url = editingPolicy ? `/objectives/policies/${editingPolicy.id}` : '/objectives/policies';
       const method = editingPolicy ? 'PATCH' : 'POST';
+      // Clean payload: strip empty strings and relation fields
+      const payload: any = { ...formData };
+      const normalize = (val: any) => (val === '' || val === null ? undefined : val);
+      payload.content = normalize(payload.content);
+      payload.scope = normalize(payload.scope);
       await apiFetch(url, {
         method,
-        json: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
 
-      alert(editingPolicy ? 'Política actualizada' : 'Política creada');
       setDialogOpen(false);
       setEditingPolicy(null);
       setFormData({ name: '', content: '', scope: 'QUALITY', active: true });
       fetchPolicies();
-    } catch {
-      alert('Error al guardar la política');
+    } catch (e: any) {
+      console.error(e);
+      alert('Error al guardar la política: ' + (e?.message || ''));
     }
   };
 
