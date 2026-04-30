@@ -77,6 +77,7 @@ export default function PoliciesPage() {
       setEditingPolicy(null);
       setFormData({ name: '', content: '', scope: 'QUALITY', active: true });
       fetchPolicies();
+      // Removed success alert — silent save
     } catch (e: any) {
       console.error(e);
       alert('Error al guardar la política: ' + (e?.message || ''));

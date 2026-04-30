@@ -15,15 +15,15 @@ const objectiveSchema = z.object({
   unit: emptyToUndefined(z.string().optional()),
   type: emptyToUndefined(z.string().optional()),
   sites: z.array(z.string()).optional(),
-  responsibleId: emptyToUndefined(z.string().uuid().optional()),
+  responsibleId: emptyToUndefined(z.string().optional()),
   startDate: emptyToUndefined(z.string().optional()),
   endDate: emptyToUndefined(z.string().optional()),
   status: emptyToUndefined(z.string().optional()),
   progress: z.number().int().min(0).max(100).optional(),
-  indicatorId: emptyToUndefined(z.string().uuid().optional()),
+  indicatorId: emptyToUndefined(z.string().optional()),
   notes: emptyToUndefined(z.string().optional()),
   policyId: emptyToUndefined(z.string().uuid().nullable().optional()),
-  processId: emptyToUndefined(z.string().uuid().optional()),
+  processId: emptyToUndefined(z.string().optional()),
 });
 
 const activitySchema = z.object({
