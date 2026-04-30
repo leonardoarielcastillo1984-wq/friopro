@@ -9,20 +9,22 @@ const mapSchema = z.object({
   outputLabel: z.string().optional(),
 });
 
+const emptyToUndefined = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((val) => (val === '' || val === null ? undefined : val), schema);
+
 const processSchema = z.object({
   layer: z.enum(['STRATEGIC', 'OPERATIONAL', 'SUPPORT']),
   name: z.string().min(1),
-  code: z.string().optional(),
+  code: emptyToUndefined(z.string().optional()),
   status: z.enum(['active', 'inactive']).optional().default('active'),
-  description: z.string().optional(),
-  owner: z.string().optional(),
-  inputs: z.string().optional(),
-  outputs: z.string().optional(),
+  description: emptyToUndefined(z.string().optional()),
+  owner: emptyToUndefined(z.string().optional()),
+  inputs: emptyToUndefined(z.string().optional()),
+  outputs: emptyToUndefined(z.string().optional()),
   sites: z.array(z.string()).optional().default([]),
-  departmentId: z.string().uuid().optional().nullable(),
-  indicators: z.string().optional(),
-  documents: z.string().optional(),
-  risks: z.string().optional(),
+  departmentId: emptyToUndefined(z.string().uuid().optional().nullable()),
+  indicators: emptyToUndefined(z.string().optional()),
+  documents: emptyToUndefined(z.string().optional()),
+  risks: emptyToUndefined(z.string().optional()),
   order: z.number().int().optional(),
 });
 
@@ -91,7 +93,13 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
     if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
 
-    const body = processSchema.parse(req.body);
+    let body;
+    try {
+      body = processSchema.parse(req.body);
+    } catch (e: any) {
+      console.error('[processMaps POST processes] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
+      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+    }
     const process = await app.runWithDbContext(req, async (tx: any) => {
       return tx.process.create({ data: { ...body, tenantId, processMapId: req.params.id } });
     });

@@ -139,7 +139,22 @@ export default function MapaProcesosContent() {
     if (!selected || !drawer?.name) return;
     setSaving(true);
     try {
-      const body = { ...drawer };
+      const body: any = { ...drawer };
+      // Strip UI-only / relation fields not accepted by Prisma create
+      delete body.id;
+      delete body.processIndicators;
+      delete body.processDocuments;
+      delete body.processRisks;
+      // Convert empty strings to undefined for optional nullable fields
+      if (body.departmentId === '' || body.departmentId === null) body.departmentId = undefined;
+      if (body.code === '') body.code = undefined;
+      if (body.description === '') body.description = undefined;
+      if (body.owner === '') body.owner = undefined;
+      if (body.inputs === '') body.inputs = undefined;
+      if (body.outputs === '') body.outputs = undefined;
+      if (body.indicators === '') body.indicators = undefined;
+      if (body.documents === '') body.documents = undefined;
+      if (body.risks === '') body.risks = undefined;
       if (editingPid) {
         await apiFetch(`/process-maps/${selected.id}/processes/${editingPid}`, { method: 'PATCH', json: body });
       } else {
@@ -149,7 +164,7 @@ export default function MapaProcesosContent() {
       setEditingPid(null);
       setActiveTab('info');
       await load();
-    } catch { setError('Error guardando proceso'); }
+    } catch (e: any) { setError('Error guardando proceso: ' + (e?.message || '')); console.error(e); }
     finally { setSaving(false); }
   }
 
