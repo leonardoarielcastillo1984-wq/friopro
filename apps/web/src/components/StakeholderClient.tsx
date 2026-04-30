@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { t } from '@/lib/dictionary';
 
 export default function StakeholderClient() {
   const [items, setItems] = useState<any[]>([]);
@@ -86,9 +87,9 @@ export default function StakeholderClient() {
         </tr></thead><tbody className="divide-y">
         {fi.map(i=>(<tr key={i.id} className="hover:bg-gray-50">
           <td className="px-4 py-3 text-sm font-medium">{i.name}</td>
-          <td className="px-4 py-3 text-sm">{i.type==='INTERNAL'?'Interna':'Externa'}</td>
-          <td className="px-4 py-3 text-sm">{i.category}</td>
-          <td className="px-4 py-3 text-sm flex items-center gap-2">{icon(i.complianceStatus)}{i.complianceStatus==='COMPLIES'?'Cumple':i.complianceStatus==='PARTIAL'?'Parcial':i.complianceStatus==='NON_COMPLIANT'?'No cumple':''}</td>
+          <td className="px-4 py-3 text-sm">{t('stakeholderType', i.type)}</td>
+          <td className="px-4 py-3 text-sm">{t('stakeholderCategory', i.category)}</td>
+          <td className="px-4 py-3 text-sm flex items-center gap-2">{icon(i.complianceStatus)}{t('complianceStatus', i.complianceStatus)}</td>
           <td className="px-4 py-3 text-sm">{i.complianceLevel?`${i.complianceLevel}%`:'—'}</td>
           <td className="px-4 py-3 text-sm">{i.requiresAction?'Sí':'No'}</td>
           <td className="px-4 py-3 text-sm"><div className="flex gap-2">

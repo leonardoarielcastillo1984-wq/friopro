@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { t } from '@/lib/dictionary';
 
 export default function StakeholderClient() {
   const [items, setItems] = useState<any[]>([]);
@@ -106,9 +107,9 @@ export default function StakeholderClient() {
         </tr></thead><tbody className="divide-y">
         {fi.map(i=>(<tr key={i.id} className="hover:bg-gray-50">
           <td className="px-4 py-3 text-sm font-medium">{i.name}</td>
-          <td className="px-4 py-3 text-sm">{i.type==='INTERNAL'?'Interna':'Externa'}</td>
-          <td className="px-4 py-3 text-sm">{i.category}</td>
-          <td className="px-4 py-3 text-sm flex items-center gap-2">{icon(i.complianceStatus)}{i.complianceStatus==='COMPLIES'?'Cumple':i.complianceStatus==='PARTIAL'?'Parcial':i.complianceStatus==='NON_COMPLIANT'?'No cumple':''}</td>
+          <td className="px-4 py-3 text-sm">{t('stakeholderType', i.type)}</td>
+          <td className="px-4 py-3 text-sm">{t('stakeholderCategory', i.category)}</td>
+          <td className="px-4 py-3 text-sm flex items-center gap-2">{icon(i.complianceStatus)}{t('complianceStatus', i.complianceStatus)}</td>
           <td className="px-4 py-3 text-sm">{i.complianceLevel?`${i.complianceLevel}%`:'—'}</td>
           <td className="px-4 py-3 text-sm">{i.requiresAction?'Sí':'No'}</td>
           <td className="px-4 py-3 text-sm"><div className="flex gap-2">
@@ -148,7 +149,7 @@ export default function StakeholderClient() {
                 const due = new Date(Date.now()+30*24*3600*1000).toISOString().split('T')[0];
                 setNcForm({
                   title: `NC vinculada a: ${editing.name}`,
-                  description: `Origen: Parte Interesada\nNombre: ${editing.name}\nTipo: ${editing.type}\nCategoría: ${editing.category}\nEstado de cumplimiento: ${editing.complianceStatus||'—'}\nNivel: ${editing.complianceLevel||'—'}%\nEvidencia: ${editing.complianceEvidence||'—'}`,
+                  description: `Origen: Parte Interesada\nNombre: ${editing.name}\nTipo: ${t('stakeholderType', editing.type)}\nCategoría: ${t('stakeholderCategory', editing.category)}\nEstado: ${t('complianceStatus', editing.complianceStatus)}\nNivel: ${editing.complianceLevel||'—'}%\nEvidencia: ${editing.complianceEvidence||'—'}`,
                   severity: 'MAJOR',
                   detectedAt: today,
                   dueDate: due,
