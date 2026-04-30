@@ -47,6 +47,8 @@ services:
       context: .
       dockerfile: ./apps/api/Dockerfile
     container_name: sgi-api-testing
+    env_file:
+      - .env.testing
     environment:
       NODE_ENV: production
       PORT: 4002
@@ -59,6 +61,8 @@ services:
       EMAIL_PROVIDER: console
       LLM_PROVIDER: groq
       GROQ_MODEL: llama-3.1-8b-instant
+      APP_URL: http://46.62.253.81:4000
+      MERCADOPAGO_ACCESS_TOKEN: APP_USR-4473975081608854-040416-fcaec1d4ed41d106c268c51f17ac271c-75716951
       # GROQ_API_KEY: configurar en .env.local o variables de entorno del servidor
     ports:
       - "4002:4002"
