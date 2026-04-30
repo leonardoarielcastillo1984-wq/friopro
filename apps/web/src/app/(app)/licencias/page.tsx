@@ -81,15 +81,50 @@ export default function LicensesPanel() {
           planTier: 'PREMIUM',
           period: selectedPeriod
         }
-      }) as { initPoint?: string };
+      }) as { initPoint?: string; mock?: boolean };
 
       if (response.initPoint) {
         // Redirigir a MercadoPago
         window.open(response.initPoint, '_blank');
+      } else if (response.mock) {
+        // En testing sin MercadoPago configurado, ofrecer activación directa
+        const confirm = window.confirm(
+          'MercadoPago no está configurado en este entorno.\n\n' +
+          '¿Deseas activar el plan PREMIUM en modo testing?'
+        );
+        if (confirm) {
+          await handleActivateTesting();
+        }
       }
     } catch (error) {
       console.error('Error creating payment:', error);
       alert('Error al crear el pago. Intenta nuevamente.');
+    } finally {
+      setProcessingPayment(false);
+    }
+  }
+
+  async function handleActivateTesting() {
+    try {
+      setProcessingPayment(true);
+      
+      const response = await apiFetch('/license/activate', {
+        method: 'POST',
+        json: {
+          planTier: 'PREMIUM',
+          period: selectedPeriod
+        }
+      }) as { success?: boolean; message?: string };
+
+      if (response.success) {
+        alert('Plan PREMIUM activado exitosamente en modo testing');
+        loadData(); // Recargar datos
+      } else {
+        alert('Error al activar el plan: ' + (response.message || 'Error desconocido'));
+      }
+    } catch (error: any) {
+      console.error('Error activating plan:', error);
+      alert('Error al activar el plan. Intenta nuevamente.');
     } finally {
       setProcessingPayment(false);
     }

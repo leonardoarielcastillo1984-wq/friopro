@@ -1449,10 +1449,12 @@ export async function licenseRoutes(app: FastifyInstance) {
         app.log.warn('Could not save payment preference to DB');
       }
 
+      const isMock = checkoutResponse.preferenceId.startsWith('mock_');
       return reply.send({
         preferenceId: checkoutResponse.preferenceId,
-        initPoint: checkoutResponse.initPoint,
-        sandboxInitPoint: checkoutResponse.sandboxInitPoint,
+        initPoint: isMock ? null : checkoutResponse.initPoint,
+        sandboxInitPoint: isMock ? null : checkoutResponse.sandboxInitPoint,
+        mock: isMock,
         amount,
         planTier,
         period
@@ -1461,6 +1463,87 @@ export async function licenseRoutes(app: FastifyInstance) {
     } catch (error: any) {
       app.log.error(error);
       return reply.code(500).send({ error: 'Error creando checkout', details: error.message });
+    }
+  });
+
+  // POST /license/activate - Activar plan directamente (testing/dev)
+  app.post('/activate', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const auth = (req as any).auth;
+      if (!auth?.userId) {
+        return reply.code(401).send({ error: 'No autorizado' });
+      }
+
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      const tenantId = req.db.tenantId;
+
+      const body = req.body as any;
+      const planTier = body.planTier || 'PREMIUM';
+      const period = body.period || 'monthly';
+
+      // Calcular fechas
+      const now = new Date();
+      const endDate = new Date(now);
+      if (period === 'monthly') {
+        endDate.setMonth(endDate.getMonth() + 1);
+      } else {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      }
+
+      // Actualizar o crear suscripción
+      await app.prisma.tenantSubscription.upsert({
+        where: { tenantId },
+        update: {
+          planTier,
+          period,
+          status: 'ACTIVE',
+          startsAt: now,
+          endsAt: endDate,
+          updatedAt: now
+        },
+        create: {
+          tenantId,
+          planTier,
+          period,
+          status: 'ACTIVE',
+          startsAt: now,
+          endsAt: endDate
+        }
+      });
+
+      // Guardar pago simulado
+      try {
+        await (app.prisma as any).payment.create({
+          data: {
+            tenantId,
+            userId: auth.userId,
+            planTier,
+            period,
+            amount: PLAN_PRICES[period as keyof typeof PLAN_PRICES]?.[planTier as keyof (typeof PLAN_PRICES)['monthly']] || 99,
+            currency: 'USD',
+            status: 'COMPLETED',
+            paidAt: now,
+            provider: 'manual',
+            providerPaymentId: `manual_${Date.now()}`,
+            invoiceNumber: `INV-TEST-${Date.now()}`,
+            invoiceDate: now,
+            invoicePdfUrl: null
+          }
+        });
+      } catch (e) {
+        app.log.warn('Could not save test payment to DB');
+      }
+
+      return reply.send({
+        success: true,
+        message: 'Plan activado correctamente',
+        planTier,
+        period,
+        endsAt: endDate
+      });
+    } catch (error: any) {
+      app.log.error(error);
+      return reply.code(500).send({ error: 'Error activando plan', details: error.message });
     }
   });
 
