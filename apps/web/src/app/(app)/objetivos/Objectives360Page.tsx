@@ -297,6 +297,10 @@ export default function Objectives360Page() {
       payload.indicatorId = normalize(payload.indicatorId);
       payload.policyId = normalize(payload.policyId);
       payload.processId = normalize(payload.processId);
+      // Convert numeric fields from strings to numbers for Zod schema
+      payload.year = payload.year ? Number(payload.year) : undefined;
+      payload.targetValue = payload.targetValue !== '' && payload.targetValue !== undefined ? Number(payload.targetValue) : undefined;
+      payload.progress = payload.progress !== undefined ? Number(payload.progress) : undefined;
       if (editingObjective) {
         await apiFetch(`/objectives/${editingObjective.id}`, {
           method: 'PATCH',
