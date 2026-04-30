@@ -33,8 +33,8 @@ interface Payment {
 }
 
 const PLAN_PRICES = {
-  monthly: { BASIC: 35, PROFESSIONAL: 69, PREMIUM: 99 },
-  annual: { BASIC: 399, PROFESSIONAL: 786, PREMIUM: 1128 }
+  monthly: { PREMIUM: 99 },
+  annual: { PREMIUM: 1128 }
 };
 
 export default function LicensesPanel() {
@@ -43,7 +43,6 @@ export default function LicensesPanel() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<'BASIC' | 'PROFESSIONAL' | 'PREMIUM'>('BASIC');
   const [selectedPeriod, setSelectedPeriod] = useState<'monthly' | 'annual'>('monthly');
 
   useEffect(() => {
@@ -79,7 +78,7 @@ export default function LicensesPanel() {
       const response = await apiFetch('/license/checkout', {
         method: 'POST',
         json: {
-          planTier: selectedPlan,
+          planTier: 'PREMIUM',
           period: selectedPeriod
         }
       }) as { initPoint?: string };
@@ -163,24 +162,27 @@ export default function LicensesPanel() {
           Renovar o Cambiar Plan
         </h2>
 
-        {/* Selector de Plan */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          {(['BASIC', 'PROFESSIONAL', 'PREMIUM'] as const).map((plan) => (
-            <button
-              key={plan}
-              onClick={() => setSelectedPlan(plan)}
-              className={`p-4 rounded-lg border transition-all ${
-                selectedPlan === plan
-                  ? 'bg-blue-500/20 border-blue-500 text-white'
-                  : 'bg-slate-700/50 border-slate-600 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              <div className="font-semibold">{plan}</div>
-              <div className="text-sm text-slate-400 mt-1">
-                ${PLAN_PRICES[selectedPeriod][plan]}/{selectedPeriod === 'monthly' ? 'mes' : 'año'}
+        {/* Plan PREMIUM */}
+        <div className="mb-6">
+          <div className="p-5 rounded-xl border-2 border-blue-500 bg-gradient-to-br from-blue-600/20 to-blue-900/30 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-lg font-bold">PREMIUM</div>
+                <div className="text-sm text-blue-200 mt-1">
+                  ${PLAN_PRICES[selectedPeriod].PREMIUM} {selectedPeriod === 'monthly' ? 'USD / mes' : 'USD / año'}
+                </div>
               </div>
-            </button>
-          ))}
+              <div className="bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">
+                Único Plan Disponible
+              </div>
+            </div>
+            <ul className="mt-4 text-sm text-blue-100 space-y-1 list-disc list-inside">
+              <li>Módulos ilimitados</li>
+              <li>Consultas IA incluidas</li>
+              <li>Soporte prioritario</li>
+              <li>Backups diarios</li>
+            </ul>
+          </div>
         </div>
 
         {/* Selector de Período */}
@@ -218,7 +220,7 @@ export default function LicensesPanel() {
           ) : (
             <CreditCard className="h-5 w-5" />
           )}
-          {processingPayment ? 'Procesando...' : `Pagar $${PLAN_PRICES[selectedPeriod][selectedPlan]} USD`}
+          {processingPayment ? 'Procesando...' : `Pagar $${PLAN_PRICES[selectedPeriod].PREMIUM} USD`}
         </button>
         <p className="text-sm text-slate-400 mt-2 text-center">
           Serás redirigido a MercadoPago para completar el pago de forma segura.

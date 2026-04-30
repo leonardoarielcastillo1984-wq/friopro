@@ -211,6 +211,9 @@ export default function LegalesPage() {
             <li>El usuario es el único responsable de revisar, validar y aprobar todo contenido generado mediante IA antes de su uso oficial.</li>
           </ul>
           <p>
+            Las consultas a la inteligencia artificial tienen un límite mensual definido según el plan contratado. No son ilimitadas y, una vez superado el cupo, el acceso quedará bloqueado hasta el siguiente ciclo de facturación.
+          </p>
+          <p>
             SGI 360 no garantiza que el contenido generado por IA cumpla con ninguna norma ISO ni con ningún requisito legal o regulatorio específico.
           </p>
         </Section>
