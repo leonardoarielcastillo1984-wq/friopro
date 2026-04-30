@@ -164,7 +164,7 @@ export default function LicensesPanel() {
 
         {/* Plan PREMIUM */}
         <div className="mb-6">
-          <div className="p-5 rounded-xl border-2 border-blue-500 bg-gradient-to-br from-blue-600/20 to-blue-900/30 text-white">
+          <div className="p-5 rounded-xl border-2 border-blue-400 bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg shadow-blue-900/50">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-lg font-bold">PREMIUM</div>
