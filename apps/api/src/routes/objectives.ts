@@ -182,10 +182,10 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
           policy: true,
           process: true,
           activities: true,
-          indicators: { include: { indicator: true } },
-          audits: { include: { audit: true } },
-          capas: { include: { capa: true } },
-          risks: { include: { risk: true } },
+          indicators: true,
+          audits: true,
+          capas: true,
+          risks: true,
         },
       });
     });
