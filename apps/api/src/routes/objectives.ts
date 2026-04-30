@@ -40,6 +40,8 @@ const relationSchema = z.object({
 
 // -------- HELPERS --------
 const parseDate = (v: string | undefined) => v ? new Date(v) : undefined;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const cleanUUID = (v: string | undefined | null) => (v && UUID_RE.test(v)) ? v : undefined;
 
 // -------- ROUTES --------
 export const objectivesRoutes: FastifyPluginAsync = async (app) => {
@@ -91,16 +93,16 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
       console.error('[objectives POST] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
       return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
     }
-    // Normalize undefined/null for optional UUID fields
+    // Normalize undefined/null for optional UUID fields (strip invalid UUIDs to prevent Prisma errors)
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.sgiObjective.create({
         data: {
           tenantId,
           ...data,
-          policyId: data.policyId ?? null,
-          processId: data.processId ?? null,
-          indicatorId: data.indicatorId ?? null,
-          responsibleId: data.responsibleId ?? null,
+          policyId: cleanUUID(data.policyId) ?? null,
+          processId: cleanUUID(data.processId) ?? null,
+          indicatorId: cleanUUID(data.indicatorId) ?? null,
+          responsibleId: cleanUUID(data.responsibleId) ?? null,
           startDate: data.startDate ? parseDate(data.startDate) : null,
           endDate: data.endDate ? parseDate(data.endDate) : null,
           sites: data.sites ?? [],
