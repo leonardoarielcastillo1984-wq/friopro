@@ -2,6 +2,11 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 // Validation schemas
+const emptyToUndefined = (val: unknown) => (val === '' || val === null || val === undefined ? undefined : val);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const cleanUUID = (v: string | undefined | null) => (v && UUID_RE.test(v)) ? v : undefined;
+
 const createEmployeeSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
@@ -13,11 +18,11 @@ const createEmployeeSchema = z.object({
   cuil: z.string().optional(),
   hireDate: z.string(),
   contractType: z.enum(['PERMANENT', 'TEMPORARY', 'CONTRACTOR', 'INTERN', 'PART_TIME', 'FULL_TIME']),
-  location: z.string().optional(),
-  departmentId: z.string().uuid().optional(),
-  positionId: z.string().uuid().optional(),
-  supervisorId: z.string().uuid().optional(),
-  reportsToPositionId: z.string().uuid().optional(),
+  location: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  departmentId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  positionId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  supervisorId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  reportsToPositionId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   notes: z.string().optional(),
   employeeCompetencies: z.any().optional(),
   supervisorType: z.any().optional(),
@@ -26,7 +31,7 @@ const createEmployeeSchema = z.object({
 const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
-  roleId: z.string().uuid().optional(),
+  roleId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
 });
 
 const createRoleSchema = z.object({
@@ -150,7 +155,13 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   fastify.post('/employees', async (request, reply) => {
     try {
       const { tenantId, userId } = request;
-      const data = createEmployeeSchema.parse(request.body);
+      let data;
+    try {
+      data = createEmployeeSchema.parse(request.body);
+    } catch (e: any) {
+      console.error('[hr POST /employees] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(request.body || {}));
+      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+    }
 
       // Check for duplicate DNI or email
       const existing = await fastify.prisma.employee.findFirst({
@@ -167,7 +178,10 @@ export default async function hrRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({ error: 'Employee with this DNI or email already exists' });
       }
 
-      const supervisorId = data.supervisorId || null;
+      const supervisorId = cleanUUID(data.supervisorId) ?? null;
+      const departmentId = cleanUUID(data.departmentId) ?? null;
+      const positionId = cleanUUID(data.positionId) ?? null;
+      const reportsToPositionId = cleanUUID(data.reportsToPositionId) ?? null;
 
       // Parse DD/MM/YYYY or ISO dates
       const parseDate = (val: string) => {
@@ -193,6 +207,9 @@ export default async function hrRoutes(fastify: FastifyInstance) {
           ...employeeData,
           ...(mappedContractType && { contractType: mappedContractType }),
           supervisorId,
+          departmentId,
+          positionId,
+          reportsToPositionId,
           birthDate: parseDate(data.birthDate),
           hireDate: parseDate(data.hireDate),
           tenantId,
@@ -710,10 +727,16 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   // Assign training to employee
   fastify.post('/trainings/:id/assignments', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const data = z.object({
-      employeeId: z.string().uuid(),
-      dueDate: z.string().optional()
-    }).parse(request.body);
+    let data;
+    try {
+      data = z.object({
+        employeeId: z.string().uuid(),
+        dueDate: z.string().optional()
+      }).parse(request.body);
+    } catch (e: any) {
+      console.error('[hr POST /trainings/:id/assignments] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(request.body || {}));
+      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+    }
 
     const assignment = await fastify.prisma.trainingAssignment.create({
       data: {
@@ -792,11 +815,17 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   fastify.post('/employees/:id/competencies', async (request, reply) => {
     const { id } = request.params as { id: string };
     const { userId } = request;
-    const data = z.object({
-      competencyId: z.string().uuid(),
-      currentLevel: z.number().min(1).max(5),
-      notes: z.string().optional()
-    }).parse(request.body);
+    let data;
+    try {
+      data = z.object({
+        competencyId: z.string().uuid(),
+        currentLevel: z.number().min(1).max(5),
+        notes: z.string().optional()
+      }).parse(request.body);
+    } catch (e: any) {
+      console.error('[hr POST /employees/:id/competencies] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(request.body || {}));
+      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+    }
 
     const employeeCompetency = await fastify.prisma.employeeCompetency.create({
       data: {
@@ -941,10 +970,16 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   // Add competency requirement to position
   fastify.post('/positions/:id/competencies', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const data = z.object({
-      competencyId: z.string().uuid(),
-      requiredLevel: z.number().min(1).max(5)
-    }).parse(request.body);
+    let data;
+    try {
+      data = z.object({
+        competencyId: z.string().uuid(),
+        requiredLevel: z.number().min(1).max(5)
+      }).parse(request.body);
+    } catch (e: any) {
+      console.error('[hr POST /positions/:id/competencies] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(request.body || {}));
+      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+    }
 
     const positionCompetency = await fastify.prisma.positionCompetency.create({
       data: {
