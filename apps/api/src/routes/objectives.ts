@@ -2,26 +2,28 @@ import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 
 // -------- SCHEMAS --------
+const emptyToUndefined = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((val) => (val === '' || val === null ? undefined : val), schema);
+
 const objectiveSchema = z.object({
   code: z.string().min(1),
   title: z.string().min(1),
-  description: z.string().optional(),
+  description: emptyToUndefined(z.string().optional()),
   year: z.number().int(),
-  standard: z.string().optional(),
+  standard: emptyToUndefined(z.string().optional()),
   target: z.string().min(1),
   targetValue: z.number().optional(),
-  unit: z.string().optional(),
-  type: z.string().optional(),
+  unit: emptyToUndefined(z.string().optional()),
+  type: emptyToUndefined(z.string().optional()),
   sites: z.array(z.string()).optional(),
-  responsibleId: z.string().optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  status: z.string().optional(),
+  responsibleId: emptyToUndefined(z.string().uuid().optional()),
+  startDate: emptyToUndefined(z.string().optional()),
+  endDate: emptyToUndefined(z.string().optional()),
+  status: emptyToUndefined(z.string().optional()),
   progress: z.number().int().min(0).max(100).optional(),
-  indicatorId: z.string().optional(),
-  notes: z.string().optional(),
-  policyId: z.string().nullable().optional(),
-  processId: z.string().optional(),
+  indicatorId: emptyToUndefined(z.string().uuid().optional()),
+  notes: emptyToUndefined(z.string().optional()),
+  policyId: emptyToUndefined(z.string().uuid().nullable().optional()),
+  processId: emptyToUndefined(z.string().uuid().optional()),
 });
 
 const activitySchema = z.object({
@@ -82,15 +84,23 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
     const tenantId = req.db.tenantId;
-    const data = objectiveSchema.parse(req.body);
-    // Convert empty policyId to null to prevent Prisma errors
-    const policyId = data.policyId === '' ? null : data.policyId;
+    let data;
+    try {
+      data = objectiveSchema.parse(req.body);
+    } catch (e: any) {
+      console.error('[objectives POST] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
+      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+    }
+    // Normalize undefined/null for optional UUID fields
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.sgiObjective.create({
         data: {
           tenantId,
           ...data,
-          policyId,
+          policyId: data.policyId ?? null,
+          processId: data.processId ?? null,
+          indicatorId: data.indicatorId ?? null,
+          responsibleId: data.responsibleId ?? null,
           startDate: data.startDate ? parseDate(data.startDate) : null,
           endDate: data.endDate ? parseDate(data.endDate) : null,
           sites: data.sites ?? [],

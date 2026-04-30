@@ -271,10 +271,32 @@ export default function Objectives360Page() {
 
   const handleSave = async () => {
     try {
-      const payload = {
-        ...formData,
-        sites: formData.sites || [],
-      };
+      const payload: any = { ...formData, sites: formData.sites || [] };
+      // Strip relation objects and auto-managed fields
+      delete payload.id;
+      delete payload.policy;
+      delete payload.process;
+      delete payload.activities;
+      delete payload.indicators;
+      delete payload.audits;
+      delete payload.capas;
+      delete payload.risks;
+      delete payload.createdAt;
+      delete payload.updatedAt;
+      // Normalize empty strings to undefined for optional nullable fields
+      const normalize = (val: any) => (val === '' || val === null ? undefined : val);
+      payload.description = normalize(payload.description);
+      payload.standard = normalize(payload.standard);
+      payload.unit = normalize(payload.unit);
+      payload.type = normalize(payload.type);
+      payload.status = normalize(payload.status);
+      payload.notes = normalize(payload.notes);
+      payload.startDate = normalize(payload.startDate);
+      payload.endDate = normalize(payload.endDate);
+      payload.responsibleId = normalize(payload.responsibleId);
+      payload.indicatorId = normalize(payload.indicatorId);
+      payload.policyId = normalize(payload.policyId);
+      payload.processId = normalize(payload.processId);
       if (editingObjective) {
         await apiFetch(`/objectives/${editingObjective.id}`, {
           method: 'PATCH',
@@ -291,9 +313,9 @@ export default function Objectives360Page() {
       setShowForm(false);
       loadObjectives();
       loadStats();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('Error al guardar objetivo');
+      alert('Error al guardar objetivo: ' + (e?.message || ''));
     }
   };
 
