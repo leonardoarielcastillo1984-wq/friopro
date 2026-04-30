@@ -1481,6 +1481,22 @@ export async function licenseRoutes(app: FastifyInstance) {
       const planTier = body.planTier || 'PREMIUM';
       const period = body.period || 'monthly';
 
+      // Buscar o crear el plan
+      let plan = await app.prisma.plan.findUnique({
+        where: { tier: planTier }
+      });
+
+      if (!plan) {
+        plan = await app.prisma.plan.create({
+          data: {
+            tier: planTier,
+            name: planTier.charAt(0) + planTier.slice(1).toLowerCase(),
+            features: PLAN_LIMITS[planTier],
+            limits: { maxUsers: PLAN_LIMITS[planTier].maxUsers }
+          }
+        });
+      }
+
       // Calcular fechas
       const now = new Date();
       const endDate = new Date(now);
@@ -1490,24 +1506,22 @@ export async function licenseRoutes(app: FastifyInstance) {
         endDate.setFullYear(endDate.getFullYear() + 1);
       }
 
-      // Actualizar o crear suscripción
-      await app.prisma.tenantSubscription.upsert({
+      // Desactivar suscripciones anteriores
+      await app.prisma.tenantSubscription.updateMany({
         where: { tenantId },
-        update: {
-          planTier,
-          period,
-          status: 'ACTIVE',
-          startsAt: now,
-          endsAt: endDate,
-          updatedAt: now
-        },
-        create: {
+        data: { status: 'CANCELED' }
+      });
+
+      // Crear nueva suscripción
+      await app.prisma.tenantSubscription.create({
+        data: {
           tenantId,
-          planTier,
-          period,
+          planId: plan.id,
           status: 'ACTIVE',
-          startsAt: now,
-          endsAt: endDate
+          startedAt: now,
+          endsAt: endDate,
+          price: PLAN_PRICES[period as keyof typeof PLAN_PRICES]?.[planTier as keyof (typeof PLAN_PRICES)['monthly']] || 99,
+          provider: 'manual'
         }
       });
 
@@ -1517,8 +1531,7 @@ export async function licenseRoutes(app: FastifyInstance) {
           data: {
             tenantId,
             userId: auth.userId,
-            planTier,
-            period,
+            planId: plan.id,
             amount: PLAN_PRICES[period as keyof typeof PLAN_PRICES]?.[planTier as keyof (typeof PLAN_PRICES)['monthly']] || 99,
             currency: 'USD',
             status: 'COMPLETED',
