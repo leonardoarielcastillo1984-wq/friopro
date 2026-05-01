@@ -1250,24 +1250,6 @@ export async function licenseRoutes(app: FastifyInstance) {
     }
   });
 
-  // Obtener pagos del tenant
-  app.get('/payments', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
-
-      const payments = await (app.prisma as any).payment.findMany({
-        where: { tenantId },
-        orderBy: { paidAt: 'desc' }
-      });
-
-      return reply.send({ payments });
-    } catch (error: any) {
-      app.log.error(error);
-      return reply.code(500).send({ error: 'Error obteniendo pagos' });
-    }
-  });
-
   // Subir archivo PDF de factura
   app.post('/invoices/:id/pdf', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
