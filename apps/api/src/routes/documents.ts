@@ -236,6 +236,19 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       const existing = await tx.document.findFirst({ where: { id: params.id, deletedAt: null } });
       if (!existing) return null;
 
+      // Validar ownerId - si no existe en PlatformUser, usar null
+      let validOwnerId = body.ownerId !== undefined ? (body.ownerId || null) : existing.ownerId;
+      if (validOwnerId) {
+        const ownerExists = await tx.platformUser.findUnique({
+          where: { id: validOwnerId },
+          select: { id: true }
+        });
+        if (!ownerExists) {
+          console.log('[DOCUMENTS_PATCH] ownerId no existe, usando null:', validOwnerId);
+          validOwnerId = null;
+        }
+      }
+
       const updated = await tx.document.update({
         where: { id: existing.id },
         data: {
@@ -249,7 +262,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
             ? (body.normativeIds.length > 0 ? body.normativeIds[0] : null)
             : (body.normativeId !== undefined ? body.normativeId : existing.normativeId),
           process: body.process !== undefined ? body.process : existing.process,
-          ownerId: body.ownerId !== undefined ? (body.ownerId || null) : existing.ownerId,
+          ownerId: validOwnerId,
           reviewDate: body.reviewDate !== undefined ? (body.reviewDate ? new Date(body.reviewDate) : null) : existing.reviewDate,
           nextReviewDate: body.nextReviewDate !== undefined ? (body.nextReviewDate ? new Date(body.nextReviewDate) : null) : existing.nextReviewDate,
           reviewStatus: (body.reviewStatus as any) ?? existing.reviewStatus,
@@ -523,8 +536,16 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       // Generar resumen con IA
       const summary = await generateDocumentSummary(doc.content, doc.title, doc.type);
       return reply.send(summary);
-    } catch (err) {
+    } catch (err: any) {
       app.log.error(err, 'Error generating summary');
+      if (err.code === 'LLM_NOT_CONFIGURED' || err.message?.includes('GROQ_API_KEY')) {
+        return reply.code(503).send({
+          summary: 'Resumen con IA no disponible. El servicio de IA no está configurado en este entorno.',
+          keyPoints: [],
+          topics: [],
+          _llmUnavailable: true,
+        });
+      }
       return reply.code(500).send({ error: 'Failed to generate summary' });
     }
   });
