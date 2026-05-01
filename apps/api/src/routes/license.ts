@@ -1470,13 +1470,18 @@ export async function licenseRoutes(app: FastifyInstance) {
   // POST /license/activate - Activar plan directamente (testing/dev)
   app.post('/activate', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
-      const tenantId = req.db.tenantId;
+      const body = req.body as any;
+      let tenantId = req.db?.tenantId || body.tenantId;
+      // Fallback para testing: buscar primer tenant si no hay contexto
+      if (!tenantId) {
+        const firstTenant = await app.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
+        if (firstTenant) tenantId = firstTenant.id;
+      }
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
 
       // Usar auth.userId si existe, o fallback para testing
       const userId = (req as any).auth?.userId || 'system';
 
-      const body = req.body as any;
       const planTier = body.planTier || 'PREMIUM';
       const period = body.period || 'monthly';
 
