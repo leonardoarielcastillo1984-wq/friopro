@@ -1372,11 +1372,12 @@ export async function licenseRoutes(app: FastifyInstance) {
               name: user.email.split('@')[0]
             },
             back_urls: {
-              success: `${process.env.APP_URL || 'http://localhost:3000'}/licencia/planes?status=success`,
-              failure: `${process.env.APP_URL || 'http://localhost:3000'}/licencia/planes?status=failure`,
-              pending: `${process.env.APP_URL || 'http://localhost:3000'}/licencia/planes?status=pending`
+              success: `${process.env.APP_URL || 'http://localhost:3000'}/cumplimiento?tab=licencias&status=success`,
+              failure: `${process.env.APP_URL || 'http://localhost:3000'}/cumplimiento?tab=licencias&status=failure`,
+              pending: `${process.env.APP_URL || 'http://localhost:3000'}/cumplimiento?tab=licencias&status=pending`
             },
-            external_reference: `${tenantId}_${planTier}_${period}_${Date.now()}`,
+            notification_url: `http://46.62.253.81:4002/license/webhook/mercadopago`,
+            external_reference: `${tenantId}_${planTier}_${period}`,
             statement_descriptor: "SGI360",
             metadata: {
               tenant_id: tenantId,
@@ -1651,33 +1652,127 @@ export async function licenseRoutes(app: FastifyInstance) {
     }
   });
 
-  // Webhook para recibir notificaciones de pago
+  // Webhook para recibir notificaciones de pago de MercadoPago
   app.post('/webhook/mercadopago', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = req.body as any;
-      app.log.info({ body }, 'Webhook received');
+      app.log.info({ body }, '[MP WEBHOOK] Notificación recibida');
 
-      // Procesar pago según el tipo de notificación
+      // Responder inmediatamente a MercadoPago (200 OK)
+      reply.send({ received: true });
+
+      // Procesar asíncronamente si es notificación de pago
       if (body.type === 'payment' && body.data?.id) {
-        // Aquí procesaríamos el pago real con MercadoPago
-        // Por ahora simulamos un pago exitoso
+        const paymentId = body.data.id;
+        const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
 
-        // Crear notificación para admin
-        await (app.prisma as any).adminNotification.create({
-          data: {
-            type: 'PAYMENT_RECEIVED',
-            title: 'Nuevo pago recibido',
-            message: `Pago de $${body.data?.amount || '0'} recibido. Revisa el panel para subir la factura.`,
-            data: JSON.stringify(body),
-            isRead: false
+        if (!accessToken) {
+          app.log.warn('[MP WEBHOOK] No hay access token configurado');
+          return;
+        }
+
+        try {
+          // Consultar estado del pago en MercadoPago
+          const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+
+          if (!mpResponse.ok) {
+            app.log.error(`[MP WEBHOOK] Error consultando pago ${paymentId}: ${mpResponse.status}`);
+            return;
           }
-        });
-      }
 
-      return reply.send({ success: true });
+          const payment = await mpResponse.json();
+          app.log.info({ paymentId, status: payment.status, external_reference: payment.external_reference }, '[MP WEBHOOK] Pago consultado');
+
+          if (payment.status !== 'approved') {
+            app.log.info(`[MP WEBHOOK] Pago ${paymentId} no aprobado: ${payment.status}`);
+            return;
+          }
+
+          // Extraer datos del external_reference: tenantId_planTier_period
+          const externalRef = payment.external_reference || '';
+          const parts = externalRef.split('_');
+          if (parts.length < 3) {
+            app.log.warn(`[MP WEBHOOK] External reference inválido: ${externalRef}`);
+            return;
+          }
+
+          const tenantId = parts[0];
+          const planTier = parts[1];
+          const period = parts[2];
+
+          app.log.info(`[MP WEBHOOK] Activando plan ${planTier} para tenant ${tenantId}, período ${period}`);
+
+          // Buscar o crear plan
+          let plan = await app.prisma.plan.findUnique({ where: { tier: planTier } });
+          if (!plan) {
+            plan = await app.prisma.plan.create({
+              data: {
+                tier: planTier,
+                name: planTier.charAt(0) + planTier.slice(1).toLowerCase(),
+                features: PLAN_LIMITS[planTier],
+                limits: { maxUsers: PLAN_LIMITS[planTier].maxUsers }
+              }
+            });
+          }
+
+          // Calcular fechas
+          const now = new Date();
+          const endsAt = new Date(now);
+          if (period === 'monthly') {
+            endsAt.setMonth(endsAt.getMonth() + 1);
+          } else {
+            endsAt.setFullYear(endsAt.getFullYear() + 1);
+          }
+
+          // Cancelar suscripciones anteriores
+          await app.prisma.tenantSubscription.updateMany({
+            where: { tenantId },
+            data: { status: 'CANCELED' }
+          });
+
+          // Crear nueva suscripción activa
+          const newSub = await app.prisma.tenantSubscription.create({
+            data: {
+              tenantId,
+              planId: plan.id,
+              status: 'ACTIVE',
+              startedAt: now,
+              endsAt,
+              price: PLAN_PRICES[period as keyof typeof PLAN_PRICES]?.[planTier as keyof (typeof PLAN_PRICES)['monthly']] || 99,
+              provider: 'mercadopago'
+            }
+          });
+
+          // Guardar pago
+          await (app.prisma as any).payment.create({
+            data: {
+              tenantId,
+              subscriptionId: newSub.id,
+              planId: plan.id,
+              amount: payment.transaction_amount || 99,
+              currency: payment.currency_id || 'USD',
+              status: 'COMPLETED',
+              period: period === 'annual' ? 'annual' : 'monthly',
+              planTier: planTier,
+              paidAt: new Date(payment.date_approved || Date.now()),
+              providerRef: String(paymentId),
+              provider: 'mercadopago'
+            }
+          });
+
+          app.log.info(`[MP WEBHOOK] ✅ Plan ${planTier} activado para tenant ${tenantId}`);
+        } catch (procError: any) {
+          app.log.error(`[MP WEBHOOK] Error procesando pago: ${procError.message}`);
+        }
+      }
     } catch (error: any) {
       app.log.error(error);
-      return reply.code(500).send({ error: 'Error procesando webhook' });
+      // Siempre responder 200 a MercadoPago para evitar reintentos
+      if (!reply.sent) {
+        return reply.send({ received: true });
+      }
     }
   });
 }
