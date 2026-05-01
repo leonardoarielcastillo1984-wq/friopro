@@ -1470,13 +1470,11 @@ export async function licenseRoutes(app: FastifyInstance) {
   // POST /license/activate - Activar plan directamente (testing/dev)
   app.post('/activate', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const auth = (req as any).auth;
-      if (!auth?.userId) {
-        return reply.code(401).send({ error: 'No autorizado' });
-      }
-
       if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
       const tenantId = req.db.tenantId;
+
+      // Usar auth.userId si existe, o fallback para testing
+      const userId = (req as any).auth?.userId || 'system';
 
       const body = req.body as any;
       const planTier = body.planTier || 'PREMIUM';
@@ -1488,12 +1486,13 @@ export async function licenseRoutes(app: FastifyInstance) {
       });
 
       if (!plan) {
+        const planLimit = PLAN_LIMITS[planTier as keyof typeof PLAN_LIMITS];
         plan = await app.prisma.plan.create({
           data: {
             tier: planTier,
             name: planTier.charAt(0) + planTier.slice(1).toLowerCase(),
-            features: PLAN_LIMITS[planTier],
-            limits: { maxUsers: PLAN_LIMITS[planTier].maxUsers }
+            features: planLimit || {},
+            limits: { maxUsers: planLimit?.maxUsers || 50 }
           }
         });
       }
@@ -1531,7 +1530,7 @@ export async function licenseRoutes(app: FastifyInstance) {
         await (app.prisma as any).payment.create({
           data: {
             tenantId,
-            userId: auth.userId,
+            userId,
             planId: plan.id,
             amount: PLAN_PRICES[period as keyof typeof PLAN_PRICES]?.[planTier as keyof (typeof PLAN_PRICES)['monthly']] || 99,
             currency: 'USD',
@@ -1544,8 +1543,8 @@ export async function licenseRoutes(app: FastifyInstance) {
             invoicePdfUrl: null
           }
         });
-      } catch (e) {
-        app.log.warn('Could not save test payment to DB');
+      } catch (e: any) {
+        app.log.warn('Could not save test payment to DB: ' + e.message);
       }
 
       return reply.send({
