@@ -59,9 +59,9 @@ services:
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: /app/uploads
       EMAIL_PROVIDER: console
-      LLM_PROVIDER: ollama
-      OLLAMA_MODEL: mistral
-      OLLAMA_BASE_URL: http://ollama:11434/v1
+      LLM_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: llama-3.1-8b-instant
       APP_URL: http://46.62.253.81:4000
       MERCADOPAGO_ACCESS_TOKEN: APP_USR-4473975081608854-040416-fcaec1d4ed41d106c268c51f17ac271c-75716951
       # GROQ_API_KEY: configurar en .env.local o variables de entorno del servidor
