@@ -111,7 +111,7 @@ export default function Home() {
             {NAV_LINKS.map(l => (
               <a key={l.label} href={l.href} style={{ color: '#777770', textDecoration: 'none', fontSize: 14, fontFamily: "'Syne', sans-serif", fontWeight: 500 }}>{l.label}</a>
             ))}
-            <a href="/login" style={{ color: '#777770', textDecoration: 'none', fontSize: 14, fontFamily: "'Syne', sans-serif" }}>Ingresar</a>
+            <a href="/suite" style={{ color: '#777770', textDecoration: 'none', fontSize: 14, fontFamily: "'Syne', sans-serif" }}>Ingresar</a>
             <button className="btn-primary-light" onClick={() => setShowModal(true)}>Empezar gratis</button>
           </div>
         </div>
