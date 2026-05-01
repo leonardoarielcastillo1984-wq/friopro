@@ -249,7 +249,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
             ? (body.normativeIds.length > 0 ? body.normativeIds[0] : null)
             : (body.normativeId !== undefined ? body.normativeId : existing.normativeId),
           process: body.process !== undefined ? body.process : existing.process,
-          ownerId: body.ownerId !== undefined ? body.ownerId : existing.ownerId,
+          ownerId: body.ownerId !== undefined ? (body.ownerId || null) : existing.ownerId,
           reviewDate: body.reviewDate !== undefined ? (body.reviewDate ? new Date(body.reviewDate) : null) : existing.reviewDate,
           nextReviewDate: body.nextReviewDate !== undefined ? (body.nextReviewDate ? new Date(body.nextReviewDate) : null) : existing.nextReviewDate,
           reviewStatus: (body.reviewStatus as any) ?? existing.reviewStatus,
