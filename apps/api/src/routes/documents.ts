@@ -200,27 +200,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
-      // Auto-link a cumplimiento si tiene normativa
-      if (body.normativeId) {
-        const clauses = await tx.normativeClause.findMany({
-          where: { normativeId: body.normativeId, deletedAt: null },
-          select: { id: true },
-        });
-        for (const clause of clauses) {
-          await tx.documentClauseMapping.upsert({
-            where: { documentId_clauseId: { documentId: doc.id, clauseId: clause.id } },
-            update: {},
-            create: {
-              documentId: doc.id,
-              clauseId: clause.id,
-              complianceType: 'REFERENCIA',
-              tenantId: req.db!.tenantId as string,
-              createdById: req.auth?.userId ?? null,
-            },
-          });
-        }
-      }
-
+      // No auto-link clauses — user links them manually via the UI
       return doc;
     });
 
@@ -459,25 +439,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
-      // Auto-link a cumplimiento si tiene normativa
-      if (normativeId) {
-        const clauses = await tx.normativeClause.findMany({
-          where: { normativeId, deletedAt: null },
-          select: { id: true },
-        });
-        for (const clause of clauses) {
-          await tx.documentClauseMapping.upsert({
-            where: { documentId_clauseId: { documentId: doc.id, clauseId: clause.id } },
-            update: {},
-            create: {
-              documentId: doc.id,
-              clauseId: clause.id,
-              complianceType: 'REFERENCIA',
-            },
-          });
-        }
-      }
-
+      // No auto-link clauses — user links them manually via the UI
       return doc;
     });
 
