@@ -421,9 +421,21 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const departmentId = (data.fields?.departmentId as any)?.value || null;
     const normativeId = (data.fields?.normativeId as any)?.value || null;
     const docProcess = (data.fields?.process as any)?.value || null;
-    const ownerId = (data.fields?.ownerId as any)?.value || null;
+    let ownerId = (data.fields?.ownerId as any)?.value || null;
     const reviewDate = (data.fields?.reviewDate as any)?.value || null;
     const nextReviewDate = (data.fields?.nextReviewDate as any)?.value || null;
+
+    // Validar ownerId - si no existe en PlatformUser, usar null
+    if (ownerId) {
+      const ownerExists = await (app.prisma as any).platformUser.findUnique({
+        where: { id: ownerId },
+        select: { id: true }
+      });
+      if (!ownerExists) {
+        console.log('[DOCUMENTS_UPLOAD] ownerId no existe, usando null:', ownerId);
+        ownerId = null;
+      }
+    }
 
     const created = await app.runWithDbContext(req, async (tx: any) => {
       const doc = await tx.document.create({
