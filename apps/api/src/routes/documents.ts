@@ -319,32 +319,45 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
   // ── POST /documents/upload — Subir PDF y extraer contenido ──
   app.post('/upload', async (req: FastifyRequest, reply: FastifyReply) => {
-    app.requireFeature(req, 'documentos');
+    try {
+      app.requireFeature(req, 'documentos');
 
-    console.log('[DOCUMENTS_UPLOAD] Request received:', {
-      url: req.url,
-      method: req.method,
-      hasTenantId: !!req.db?.tenantId,
-      tenantId: req.db?.tenantId,
-      userId: req.auth?.userId,
-      globalRole: req.auth?.globalRole
-    });
+      console.log('[DOCUMENTS_UPLOAD] Request received:', {
+        url: req.url,
+        method: req.method,
+        hasTenantId: !!req.db?.tenantId,
+        tenantId: req.db?.tenantId,
+        userId: req.auth?.userId,
+        globalRole: req.auth?.globalRole
+      });
 
-    if (requiresTenantContext(req) && !req.db?.tenantId) {
-      console.log('[DOCUMENTS_UPLOAD] Tenant context required - no tenantId and not superadmin');
-      return reply.code(400).send({ error: 'Tenant context required' });
-    }
+      if (requiresTenantContext(req) && !req.db?.tenantId) {
+        console.log('[DOCUMENTS_UPLOAD] Tenant context required - no tenantId and not superadmin');
+        return reply.code(400).send({ error: 'Tenant context required' });
+      }
 
-    const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);
-    console.log('[DOCUMENTS_UPLOAD] Effective tenantId:', effectiveTenantId);
-    
-    if (!effectiveTenantId) {
-      console.log('[DOCUMENTS_UPLOAD] No tenant available for operation');
-      return reply.code(400).send({ error: 'No tenant available for operation' });
-    }
+      const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);
+      console.log('[DOCUMENTS_UPLOAD] Effective tenantId:', effectiveTenantId);
+      
+      if (!effectiveTenantId) {
+        console.log('[DOCUMENTS_UPLOAD] No tenant available for operation');
+        return reply.code(400).send({ error: 'No tenant available for operation' });
+      }
 
-    const data = await req.file();
-    if (!data) return reply.code(400).send({ error: 'No file uploaded' });
+      let data;
+      try {
+        data = await req.file();
+      } catch (fileErr: any) {
+        console.error('[DOCUMENTS_UPLOAD] Error getting file from request:', fileErr.message);
+        return reply.code(400).send({ error: 'Error reading uploaded file: ' + fileErr.message });
+      }
+      
+      if (!data) {
+        console.log('[DOCUMENTS_UPLOAD] No file data received');
+        return reply.code(400).send({ error: 'No file uploaded' });
+      }
+      
+      console.log('[DOCUMENTS_UPLOAD] File received:', { filename: data.filename, mimetype: data.mimetype, size: '...' });
 
     const allowedMimes = [
       'application/pdf',
@@ -462,6 +475,10 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       document: created,
       extractedChars: content.length,
     });
+    } catch (error: any) {
+      console.error('[DOCUMENTS_UPLOAD] Unexpected error:', error.message, error.stack);
+      return reply.code(500).send({ error: 'Error processing upload: ' + error.message });
+    }
   });
 
   // ── GET /documents/:id/download — Descargar archivo ──
