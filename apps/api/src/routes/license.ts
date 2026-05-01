@@ -1518,7 +1518,7 @@ export async function licenseRoutes(app: FastifyInstance) {
       });
 
       // Crear nueva suscripción
-      await app.prisma.tenantSubscription.create({
+      const newSub = await app.prisma.tenantSubscription.create({
         data: {
           tenantId,
           planId: plan.id,
@@ -1532,20 +1532,19 @@ export async function licenseRoutes(app: FastifyInstance) {
 
       // Guardar pago simulado
       try {
-        await (app.prisma as any).payment.create({
+        await app.prisma.payment.create({
           data: {
             tenantId,
-            userId,
+            subscriptionId: newSub.id,
             planId: plan.id,
             amount: PLAN_PRICES[period as keyof typeof PLAN_PRICES]?.[planTier as keyof (typeof PLAN_PRICES)['monthly']] || 99,
             currency: 'USD',
-            status: 'COMPLETED',
+            period: period === 'annual' ? 'annual' : 'monthly',
+            planTier: planTier as any,
+            status: 'COMPLETED' as any,
             paidAt: now,
             provider: 'manual',
-            providerPaymentId: `manual_${Date.now()}`,
-            invoiceNumber: `INV-TEST-${Date.now()}`,
-            invoiceDate: now,
-            invoicePdfUrl: null
+            providerRef: `manual_${Date.now()}`
           }
         });
       } catch (e: any) {
