@@ -1,0 +1,11 @@
+{
+  "name": "sgi-help-screenshots",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "capture": "node capture.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}
