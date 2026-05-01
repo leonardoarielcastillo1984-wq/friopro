@@ -342,7 +342,7 @@ export default function LicensesPanel() {
                     <CheckCircle2 className="h-5 w-5 text-green-600" />
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900">{payment.planTier} · {payment.period}</p>
+                    <p className="font-medium text-gray-900">{payment.planTier} · {payment.period === 'monthly' ? 'Mensual' : payment.period === 'annual' ? 'Anual' : payment.period}</p>
                     <p className="text-sm text-gray-600">
                       {payment.paidAt ? new Date(payment.paidAt).toLocaleDateString() : 'Pendiente'}
                     </p>
