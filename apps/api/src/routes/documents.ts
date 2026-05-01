@@ -473,8 +473,6 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
               documentId: doc.id,
               clauseId: clause.id,
               complianceType: 'REFERENCIA',
-              tenantId: effectiveTenantId,
-              createdById: req.auth?.userId ?? null,
             },
           });
         }
