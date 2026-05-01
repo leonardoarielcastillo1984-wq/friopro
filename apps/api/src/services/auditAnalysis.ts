@@ -69,7 +69,9 @@ export class AuditAnalysisService {
       },
     ]);
 
+    console.log(`[AuditAnalysis] Raw LLM response length: ${response.text?.length || 0}, preview: ${(response.text || '').substring(0, 200)}...`);
     const result = this.parseAnalysisResponse(response.text);
+    console.log(`[AuditAnalysis] Parsed ${result.findings.length} findings, covered=${result.coveredCount}, missing=${result.missingCount}`);
     return result;
   }
 
@@ -172,17 +174,54 @@ Responde EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código)
    */
   private parseAnalysisResponse(text: string): DocumentAnalysisResult {
     try {
-      // Intenta extraer JSON directo
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+      const raw = text || '';
+
+      // Strategy 1: Try markdown code block ```json ... ```
+      const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        try {
+          const parsed = JSON.parse(codeBlockMatch[1].trim());
+          return this.validateAndNormalizeResult(parsed);
+        } catch (e) {
+          console.log('[AuditAnalysis] Markdown block parse failed, trying next strategy');
+        }
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
-      return this.validateAndNormalizeResult(parsed);
+      // Strategy 2: Find first { to last } (greedy)
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return this.validateAndNormalizeResult(parsed);
+        } catch (e) {
+          console.log('[AuditAnalysis] Greedy JSON parse failed, trying next strategy');
+        }
+      }
+
+      // Strategy 3: Try to find JSON by looking for the findings array
+      const findingsMatch = raw.match(/"findings"\s*:\s*(\[[\s\S]*?\])/);
+      if (findingsMatch) {
+        try {
+          const findings = JSON.parse(findingsMatch[1]);
+          const summaryMatch = raw.match(/"summary"\s*:\s*"([^"]+)"/);
+          return this.validateAndNormalizeResult({
+            findings,
+            summary: summaryMatch ? summaryMatch[1] : 'Analysis completed',
+          });
+        } catch (e) {
+          console.log('[AuditAnalysis] Findings-only parse failed');
+        }
+      }
+
+      console.error('[AuditAnalysis] All JSON parsing strategies failed. Raw response:', raw.substring(0, 500));
+      return {
+        findings: [],
+        summary: 'Error: LLM response not in expected JSON format',
+        coveredCount: 0,
+        missingCount: 0,
+      };
     } catch (error: any) {
-      console.error('Failed to parse analysis response:', error.message);
-      // Retorna resultado vacío en caso de error
+      console.error('[AuditAnalysis] Unexpected parse error:', error.message);
       return {
         findings: [],
         summary: 'Error during analysis',

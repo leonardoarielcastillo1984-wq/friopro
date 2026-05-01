@@ -191,7 +191,7 @@ export async function processDocumentVsNormaJob(job: Job<ProcessDocumentVsNormaP
       data: {
         status: 'COMPLETED',
         completedAt: new Date(),
-        totalClauses: analysisResult.findings.length,
+        totalClauses: totalClausesCount,
         coveredClauses: analysisResult.coveredCount,
         missingClauses: analysisResult.missingCount,
         findingsCount: findingsToCreate.length,
