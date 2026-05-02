@@ -22,6 +22,7 @@ export const featuresPlugin = fp(async (app: FastifyInstance) => {
   app.decorate('featureAccessService', new FeatureAccessService(app));
 
   app.decorate('requireFeature', (req: FastifyRequest, key: string) => {
+    if (req.auth?.globalRole === 'SUPER_ADMIN') return;
     const enabled = Boolean(req.features?.effective?.[key]);
     if (!enabled) {
       const err: any = new Error('Feature not available on your current plan');
