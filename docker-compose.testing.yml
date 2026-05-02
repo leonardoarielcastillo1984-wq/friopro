@@ -90,6 +90,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: /api
         BUILD_DATE: ${BUILD_DATE:-unknown}
+        SOURCE_TIMESTAMP: ${SOURCE_TIMESTAMP:-unknown}
     container_name: sgi-web-testing
     environment:
       NEXT_PUBLIC_API_URL: /api

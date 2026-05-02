@@ -7,7 +7,11 @@ COPY apps/web/package.json apps/web/
 
 RUN pnpm install --frozen-lockfile
 
+ARG SOURCE_TIMESTAMP=unknown
+RUN echo "Source timestamp: $SOURCE_TIMESTAMP"
 COPY apps/web apps/web/
+
+RUN echo "Source timestamp: $SOURCE_TIMESTAMP"
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
