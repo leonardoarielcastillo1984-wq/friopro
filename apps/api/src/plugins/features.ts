@@ -25,7 +25,7 @@ export const featuresPlugin = fp(async (app: FastifyInstance) => {
     if (req.auth?.globalRole === 'SUPER_ADMIN') return;
     const enabled = Boolean(req.features?.effective?.[key]);
     if (!enabled) {
-      const err: any = new Error('Feature not available on your current plan');
+      const err: any = new Error('Funcionalidad no disponible en tu plan actual');
       err.statusCode = 402;
       err.code = 'FEATURE_NOT_AVAILABLE';
       err.details = { key };
