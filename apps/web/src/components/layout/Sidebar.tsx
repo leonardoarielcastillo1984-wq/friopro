@@ -78,7 +78,7 @@ const mainNav = [
 const bottomNav = [
   { label: 'Notificaciones', icon: Bell, href: '/notificaciones' },
   { label: 'Configuración', icon: Settings, href: '/configuracion' },
-  { label: 'Integraciones', icon: Puzzle, href: '/integraciones' },
+  // { label: 'Integraciones', icon: Puzzle, href: '/integraciones' },
   { label: 'Configuración de la empresa', icon: Settings, href: '/configuracion/empresa' },
 ];
 
