@@ -63,6 +63,15 @@ export function useAuth(): AuthContextType {
       setSessionToken(null);
       localStorage.setItem('accessToken', data.accessToken);
       localStorage.setItem('user', JSON.stringify(data.user));
+      if (data.activeTenant) {
+        localStorage.setItem('activeTenant', JSON.stringify(data.activeTenant));
+      }
+      if (data.tenantRole) {
+        localStorage.setItem('tenantRole', data.tenantRole);
+      }
+      if (data.user?.globalRole) {
+        localStorage.setItem('globalRole', data.user.globalRole);
+      }
       // Note: Caller should handle redirect to app/dashboard
       return {
         requires2FA: false

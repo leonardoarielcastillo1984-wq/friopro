@@ -73,7 +73,19 @@ export function getTenantId() {
     const stored = window.localStorage.getItem('tenantId');
     if (stored) return stored;
     
-    // Try to get from user object in localStorage
+    // Try to get from activeTenant object in localStorage
+    try {
+      const activeTenant = JSON.parse(localStorage.getItem('activeTenant') || 'null');
+      if (activeTenant?.id) {
+        tenantId = activeTenant.id as string;
+        localStorage.setItem('tenantId', tenantId);
+        return tenantId;
+      }
+    } catch (e) {
+      // Ignore parsing errors
+    }
+    
+    // Fallback: try to get from user object in localStorage (legacy)
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       if (user?.activeTenant?.id) {
