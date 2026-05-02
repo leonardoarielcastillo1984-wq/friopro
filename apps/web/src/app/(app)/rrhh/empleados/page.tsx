@@ -73,10 +73,6 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // DEBUG: Add console log to see what's happening
-  console.log('🔵 EmployeesPage render - employees count:', employees.length);
-  console.log('🔵 First employee sample:', employees[0]);
-
   useEffect(() => {
     loadEmployees();
     loadDepartments();
@@ -411,30 +407,44 @@ export default function EmployeesPage() {
     if (!selectedEmployeeForUser) return;
     
     try {
-      // Transform permissions from { module: { view: bool, edit: bool } } to { module: 'none'|'view'|'edit' }
+      setIsUpdating(true);
+      
+      // Transform permissions to API format: { module: 'none'|'view'|'edit' }
       const transformedPermissions: Record<string, 'none' | 'view' | 'edit'> = {};
       
       modules.forEach((mod) => {
-        const perms = permissions[mod.key] || { view: false, edit: false };
-        if (perms.edit) {
-          transformedPermissions[mod.key] = 'edit';
-        } else if (perms.view) {
-          transformedPermissions[mod.key] = 'view';
-        } else {
-          transformedPermissions[mod.key] = 'none';
-        }
+        const perms = permissions[mod.key] || { access: 'none' };
+        transformedPermissions[mod.key] = perms.access || 'none';
       });
       
-      // Save to localStorage
-      localStorage.setItem(`permissions_${selectedEmployeeForUser.id}`, JSON.stringify(transformedPermissions));
+      // Save to backend API
+      const response = await apiFetch<{ success: boolean; permissions: any }>(
+        `/hr/employees/${selectedEmployeeForUser.id}/users/permissions`,
+        {
+          method: 'POST',
+          json: { permissions: transformedPermissions }
+        }
+      );
       
-      // Close modal
-      setShowPermissionsModal(false);
-      setSelectedEmployeeForUser(null);
-      setPermissions({});
+      if (response?.success) {
+        // Show success feedback
+        alert('✅ Permisos guardados correctamente');
+        
+        // Close modal
+        setShowPermissionsModal(false);
+        setSelectedEmployeeForUser(null);
+        setPermissions({});
+        
+        // Refresh employees list to update state
+        await loadEmployees();
+      } else {
+        throw new Error('La API no confirmó el guardado');
+      }
     } catch (error) {
       console.error('Error saving permissions:', error);
-      alert('Error al guardar permisos: ' + (error as Error).message);
+      alert('❌ Error al guardar permisos: ' + (error as Error).message);
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -442,32 +452,33 @@ export default function EmployeesPage() {
     if (!employee?.user) {
       const defaultPerms: any = {};
       modules.forEach((mod) => {
-        defaultPerms[mod.key] = { view: false, edit: false };
+        defaultPerms[mod.key] = { access: 'none' };
       });
       setPermissions(defaultPerms);
       return;
     }
     
     try {
-      // Load from localStorage
-      const stored = localStorage.getItem(`permissions_${employee.id}`);
-      const apiPerms = stored ? JSON.parse(stored) : {};
+      // Load from API
+      const response = await apiFetch<{ permissions: Record<string, 'none' | 'view' | 'edit'> }>(
+        `/hr/employees/${employee.id}/users/permissions`
+      );
       
-      // Convert to UI format
+      const apiPerms = response?.permissions || {};
+      
+      // Convert API format to UI format
       const perms: any = {};
       modules.forEach((mod) => {
         const level = apiPerms[mod.key] || 'none';
-        perms[mod.key] = {
-          view: level === 'view' || level === 'edit',
-          edit: level === 'edit'
-        };
+        perms[mod.key] = { access: level };
       });
       
       setPermissions(perms);
     } catch (err) {
+      // On error, set all to 'none'
       const defaultPerms: any = {};
       modules.forEach((mod) => {
-        defaultPerms[mod.key] = { view: false, edit: false };
+        defaultPerms[mod.key] = { access: 'none' };
       });
       setPermissions(defaultPerms);
     }
@@ -545,6 +556,16 @@ export default function EmployeesPage() {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'ACTIVE': return 'Activo';
+      case 'INACTIVE': return 'Inactivo';
+      case 'ON_LEAVE': return 'Licencia';
+      case 'TERMINATED': return 'Desvinculado';
+      default: return status;
+    }
+  };
+
   const getContractTypeColor = (type: string) => {
     switch (type) {
       case 'PERMANENT': return 'bg-blue-100 text-blue-800';
@@ -553,6 +574,17 @@ export default function EmployeesPage() {
       case 'INTERN': return 'bg-pink-100 text-pink-800';
       case 'PART_TIME': return 'bg-indigo-100 text-indigo-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getContractTypeLabel = (type: string) => {
+    switch (type) {
+      case 'PERMANENT': return 'Permanente';
+      case 'TEMPORARY': return 'Temporal';
+      case 'CONTRACTOR': return 'Contratista';
+      case 'INTERN': return 'Pasante';
+      case 'PART_TIME': return 'Medio Tiempo';
+      default: return type;
     }
   };
 
@@ -722,12 +754,12 @@ export default function EmployeesPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(employee.status)}`}>
-                      {employee.status}
+                      {getStatusLabel(employee.status)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getContractTypeColor(employee.contractType)}`}>
-                      {employee.contractType}
+                      {getContractTypeLabel(employee.contractType)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

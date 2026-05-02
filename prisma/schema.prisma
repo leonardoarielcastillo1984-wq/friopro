@@ -67,6 +67,7 @@ model User {
   passwordHash String   @map("password_hash")
   role         UserRole @default(TECHNICIAN)
   status       UserStatus @default(ACTIVE)
+  permissions  Json?    @default("{}")
 
   emailVerified DateTime? @map("email_verified")
   image         String?

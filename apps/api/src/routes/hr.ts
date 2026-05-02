@@ -389,7 +389,6 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   // Get user permissions
   fastify.get('/employees/:id/users/permissions', async (request, reply) => {
     const { id } = request.params as { id: string };
-    console.log('🔵 GET permissions for employee:', id);
 
     const employee = await fastify.prisma.employee.findUnique({
       where: { id },
@@ -397,29 +396,24 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     });
 
     if (!employee) {
-      console.log('🔴 Employee not found:', id);
       return reply.code(404).send({ error: 'Employee not found' });
     }
 
     if (!employee.user) {
-      console.log('🔴 Employee has no user:', id);
       return reply.code(404).send({ error: 'Employee has no user account' });
     }
 
-    console.log('🔵 Returning permissions:', employee.user.permissions);
     return { permissions: employee.user.permissions || {} };
   });
 
   // Save user permissions
   fastify.post('/employees/:id/users/permissions', async (request, reply) => {
     const { id } = request.params as { id: string };
-    console.log('🔵 POST permissions for employee:', id);
-    
+
     const permissionsSchema = z.object({
       permissions: z.record(z.enum(['none', 'view', 'edit']))
     });
     const data = permissionsSchema.parse(request.body);
-    console.log('🔵 Received permissions data:', data.permissions);
 
     const employee = await fastify.prisma.employee.findUnique({
       where: { id },
@@ -427,30 +421,17 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     });
 
     if (!employee) {
-      console.log('🔴 Employee not found:', id);
-      return reply.code(404).send({ error: 'Employee not found' });
+      return reply.code(404).send({ error: 'Empleado no encontrado' });
     }
 
     if (!employee.user) {
-      console.log('🔴 Employee has no user:', id);
-      return reply.code(404).send({ error: 'Employee has no user account' });
+      return reply.code(404).send({ error: 'El empleado no tiene cuenta de usuario' });
     }
 
-    console.log('🔵 BEFORE UPDATE - User permissions:', employee.user.permissions);
-    console.log('🔵 Updating user:', employee.user.id, 'with permissions:', data.permissions);
-    
     const updatedUser = await fastify.prisma.user.update({
       where: { id: employee.user.id },
       data: { permissions: data.permissions }
     });
-
-    console.log('🔵 AFTER UPDATE - Updated user permissions:', updatedUser.permissions);
-    
-    // Verify by reading again
-    const verifyUser = await fastify.prisma.user.findUnique({
-      where: { id: employee.user.id }
-    });
-    console.log('🔵 VERIFICATION - User permissions in DB:', verifyUser?.permissions);
 
     return { success: true, permissions: updatedUser.permissions };
   });

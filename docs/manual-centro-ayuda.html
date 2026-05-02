@@ -1,0 +1,3464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Manual del Centro de Ayuda - SGI 360</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 2cm;
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .cover {
+      page-break-after: always;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      text-align: center;
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+      color: white;
+      padding: 40px;
+    }
+    
+    .cover h1 {
+      font-size: 36pt;
+      margin-bottom: 20px;
+      font-weight: 700;
+    }
+    
+    .cover .subtitle {
+      font-size: 18pt;
+      margin-bottom: 40px;
+      opacity: 0.9;
+    }
+    
+    .cover .meta {
+      font-size: 12pt;
+      opacity: 0.8;
+    }
+    
+    .cover .logo-placeholder {
+      width: 120px;
+      height: 120px;
+      background: white;
+      border-radius: 20px;
+      margin-bottom: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1e40af;
+      font-size: 48pt;
+      font-weight: bold;
+    }
+    
+    .toc {
+      page-break-after: always;
+      padding: 20px 0;
+    }
+    
+    .toc h2 {
+      color: #1e40af;
+      border-bottom: 2px solid #1e40af;
+      padding-bottom: 10px;
+      margin-bottom: 30px;
+    }
+    
+    .toc ul {
+      list-style: none;
+      padding: 0;
+    }
+    
+    .toc li {
+      margin: 8px 0;
+      padding: 8px 0;
+      border-bottom: 1px dotted #ccc;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .toc a {
+      color: #333;
+      text-decoration: none;
+    }
+    
+    .toc .difficulty {
+      font-size: 9pt;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    
+    .difficulty-facil { background: #dcfce7; color: #166534; }
+    .difficulty-medio { background: #fef3c7; color: #92400e; }
+    .difficulty-avanzado { background: #fee2e2; color: #991b1b; }
+    
+    .module {
+      page-break-before: always;
+      padding: 20px 0;
+    }
+    
+    .module-header {
+      background: #f8fafc;
+      border-left: 5px solid #1e40af;
+      padding: 20px;
+      margin-bottom: 25px;
+    }
+    
+    .module-header h2 {
+      color: #1e40af;
+      margin: 0 0 10px 0;
+      font-size: 20pt;
+    }
+    
+    .module-meta {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      font-size: 10pt;
+    }
+    
+    .badge {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+    
+    .section {
+      margin: 20px 0;
+    }
+    
+    .section h3 {
+      color: #1e40af;
+      font-size: 14pt;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 8px;
+      margin-bottom: 15px;
+    }
+    
+    .section h4 {
+      color: #374151;
+      font-size: 12pt;
+      margin: 15px 0 10px 0;
+    }
+    
+    .purpose {
+      background: #eff6ff;
+      padding: 15px;
+      border-radius: 8px;
+      border-left: 4px solid #3b82f6;
+      margin: 15px 0;
+    }
+    
+    .features-list {
+      list-style: none;
+      padding: 0;
+    }
+    
+    .features-list li {
+      padding: 8px 0 8px 25px;
+      position: relative;
+    }
+    
+    .features-list li::before {
+      content: "●";
+      color: #3b82f6;
+      position: absolute;
+      left: 0;
+    }
+    
+    .action-box {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 10px 0;
+    }
+    
+    .action-box h4 {
+      color: #1e40af;
+      margin: 0 0 8px 0;
+      font-size: 11pt;
+    }
+    
+    .action-box p {
+      margin: 5px 0;
+      font-size: 10pt;
+    }
+    
+    .action-box .detail {
+      color: #6b7280;
+      font-style: italic;
+    }
+    
+    .step {
+      margin: 15px 0;
+      padding: 15px;
+      background: #f8fafc;
+      border-radius: 8px;
+    }
+    
+    .step-number {
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      background: #1e40af;
+      color: white;
+      border-radius: 50%;
+      text-align: center;
+      line-height: 28px;
+      font-weight: bold;
+      margin-right: 10px;
+    }
+    
+    .step h4 {
+      display: inline;
+      color: #1f2937;
+    }
+    
+    .substeps {
+      margin: 10px 0 0 40px;
+      padding: 0;
+      list-style: none;
+    }
+    
+    .substeps li {
+      padding: 5px 0;
+      font-size: 10pt;
+      color: #4b5563;
+    }
+    
+    .substeps li::before {
+      content: "✓";
+      color: #10b981;
+      margin-right: 8px;
+    }
+    
+    .tips-box {
+      background: #fefce8;
+      border: 1px solid #fde047;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    
+    .tips-box h4 {
+      color: #854d0e;
+      margin: 0 0 10px 0;
+    }
+    
+    .tips-box ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    
+    .tips-box li {
+      color: #713f12;
+      margin: 5px 0;
+    }
+    
+    .related {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f3f4f6;
+      border-radius: 8px;
+      font-size: 10pt;
+    }
+    
+    .related strong {
+      color: #374151;
+    }
+    
+    .footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 9pt;
+      color: #6b7280;
+      padding: 10px;
+      border-top: 1px solid #e5e7eb;
+    }
+    
+    .page-number:after {
+      content: counter(page);
+    }
+    
+    @media print {
+      .module {
+        page-break-inside: avoid;
+      }
+      
+      .action-box, .step, .tips-box {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- PORTADA -->
+  <div class="cover">
+    <div class="logo-placeholder">SGI</div>
+    <h1>Manual del Centro de Ayuda</h1>
+    <div class="subtitle">Guías paso a paso, funcionalidades y buenas prácticas<br>de cada módulo del Sistema de Gestión Integral 360</div>
+    <div class="meta">
+      <p>Documento generado el 2 de mayo de 2026</p>
+      <p>Versión 1.0</p>
+    </div>
+  </div>
+  
+  <!-- TABLA DE CONTENIDOS -->
+  <div class="toc">
+    <h2>📑 Tabla de Contenidos</h2>
+    <ul>
+      <li>
+        <a href="#module-inicio">1. Inicio / Dashboard</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-panel">2. Panel General</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-documentos">3. Documentos</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-normativos">4. Normativos</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-audit-ia">5. Auditoría IA</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-auditorias-iso">6. Auditorías ISO</a>
+        <span class="badge difficulty difficulty-avanzado">Avanzado</span>
+      </li>
+      <li>
+        <a href="#module-no-conformidades">7. No Conformidades</a>
+        <span class="badge difficulty difficulty-avanzado">Avanzado</span>
+      </li>
+      <li>
+        <a href="#module-riesgos">8. Riesgos</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-indicadores">9. Indicadores</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-capacitaciones">10. Capacitaciones</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-rrhh">11. RRHH / Empleados</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-clientes">12. Clientes</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-proveedores">13. Proveedores</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-project360">14. Proyectos</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-revision-direccion">15. Revisión por la Dirección</a>
+        <span class="badge difficulty difficulty-avanzado">Avanzado</span>
+      </li>
+      <li>
+        <a href="#module-licencias">16. Licencias</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-calendario">17. Calendario</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-configuracion">18. Configuración</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-reportes">19. Reportes</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-notificaciones">20. Notificaciones</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-simulacros">21. Simulacros</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-mantenimiento">22. Mantenimiento</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-activos">23. Activos</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-incidentes">24. Incidentes</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-cumplimiento">25. Cumplimiento</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-contexto-sgi">26. Contexto SGI</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-legales">27. Requisitos Legales</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-acciones">28. Acciones</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-planes">29. Planes</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-objetivos">30. Objetivos</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-encuestas">31. Encuestas</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-gestion-cambios">32. Gestión de Cambios</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-infraestructura">33. Infraestructura</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-iperc">34. IPERC</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-calibraciones">35. Calibraciones</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-contexto">36. Contexto de la Organización</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-partes-interesadas">37. Partes Interesadas</a>
+        <span class="badge difficulty difficulty-facil">Fácil</span>
+      </li>
+      <li>
+        <a href="#module-calidad">38. Calidad</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-ambientales">39. Ambientales</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-seguridad360">40. Seguridad 360</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+      <li>
+        <a href="#module-audit360">41. Audit360</a>
+        <span class="badge difficulty difficulty-avanzado">Avanzado</span>
+      </li>
+      <li>
+        <a href="#module-auditoria">42. Auditoría</a>
+        <span class="badge difficulty difficulty-medio">Medio</span>
+      </li>
+    </ul>
+  </div>
+  
+  <!-- MÓDULOS -->
+  <div class="modules">
+  <div class="module" id="module-inicio">
+    <div class="module-header">
+      <h2>1. Inicio / Dashboard</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 5 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Pantalla principal con vista ejecutiva del SGI: métricas clave, alertas y accesos rápidos a módulos.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Tarjetas de métricas resumen con tendencias</li>
+        <li>Gráficos de evolución por período</li>
+        <li>Accesos directos personalizados</li>
+        <li>Panel de alertas inteligentes</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Tarjetas de métricas</h4>
+        <p>Cliqueá cualquier tarjeta para ir al módulo.</p>
+        <p class="detail">Muestran conteo actual e indicador de tendencia (subida/bajada).</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Filtros de período</h4>
+        <p>Cambiá el rango de fechas del resumen.</p>
+        <p class="detail">Soporta semana, mes, trimestre y año.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Accesos directos</h4>
+        <p>Navegación rápida sin abrir el menú lateral.</p>
+        <p class="detail">Se personalizan automáticamente según frecuencia de uso.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Acceder al Dashboard</h4>
+        <p>Iniciá sesión. El Dashboard carga automáticamente.</p>
+        <ul class="substeps">
+          <li>Ingresá email y contraseña</li>
+          <li>Sistema redirige a /dashboard</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Interpretar métricas</h4>
+        <p>Observá las tarjetas de colores.</p>
+        <ul class="substeps">
+          <li>Verde = todo en orden</li>
+          <li>Amarillo = atención requerida</li>
+          <li>Rojo = acción urgente pendiente</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Navegar por módulo</h4>
+        <p>Cliqueá cualquier tarjeta para ir al detalle.</p>
+        <ul class="substeps">
+          <li>Ej: clic en Documentos abre la lista completa</li>
+          <li>Ej: clic en Hallazgos IA abre la auditoría inteligente</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Revisar alertas</h4>
+        <p>Bajá hasta "Alertas activas".</p>
+        <ul class="substeps">
+          <li>Alertas: vencimientos de documentos, capacitaciones pendientes, auditorías programadas</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Usalo cada mañana como reunión de pie ejecutiva: 5 minutos.</li>
+        <li>Configurá el período por defecto según tu ciclo de gestión.</li>
+        <li>Las alertas se actualizan en tiempo real.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> panel, notificaciones, reportes
+    </div>
+  </div>
+  <div class="module" id="module-panel">
+    <div class="module-header">
+      <h2>2. Panel General</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 15 minutos</span>
+        <span class="badge">📋 ISO 9001 §9.3</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Panel extendido con KPIs agregados por área. Ideal para reuniones de revisión por la dirección.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>KPIs por módulo (calidad, SST, ambiente, RRHH)</li>
+        <li>Comparativas período actual vs anterior</li>
+        <li>Alertas de desvíos críticos</li>
+        <li>Exportación a PDF</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Exportar a PDF</h4>
+        <p>Genera informe ejecutivo descargable.</p>
+        <p class="detail">Incluye gráficos, tablas y resumen ejecutivo automático.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Cambiar período</h4>
+        <p>Ajustá rango de análisis de KPIs.</p>
+        <p class="detail">Soporta comparación año-a-año, mes-a-mes, trimestral.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Configurar alertas</h4>
+        <p>Definí umbrales de desvío.</p>
+        <p class="detail">Umbrales porcentuales o valores absolutos por indicador.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Acceder al Panel</h4>
+        <p>Sidebar → "Panel General".</p>
+        <ul class="substeps">
+          <li>El panel carga todos los KPIs activos por defecto</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Seleccionar módulos</h4>
+        <p>Usá tabs superiores para filtrar por área.</p>
+        <ul class="substeps">
+          <li>Tabs: Calidad, SST, Ambiente, RRHH, General</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Configurar período</h4>
+        <p>Abrí selector de fechas.</p>
+        <ul class="substeps">
+          <li>Elegí período actual y de comparación</li>
+          <li>Ej: Enero 2024 vs Enero 2023</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Exportar informe</h4>
+        <p>Clic en "Exportar PDF".</p>
+        <ul class="substeps">
+          <li>PDF generado con KPIs visibles</li>
+          <li>Descarga automática</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Revisalo mensualmente como input para Revisión por la Dirección (ISO 9001 §9.3).</li>
+        <li>Los KPIs se calculan automáticamente desde datos de otros módulos.</li>
+        <li>Usá comparativa año-a-año para tendencias a largo plazo.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> inicio, indicadores, reportes
+    </div>
+  </div>
+  <div class="module" id="module-documentos">
+    <div class="module-header">
+      <h2>3. Documentos</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 10 minutos</span>
+        <span class="badge">📋 ISO 9001 §7.5</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Repositorio centralizado de documentos del SGI: procedimientos, instructivos, formularios. Gestiona versiones, aprobaciones, vigencias y vinculación normativa.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Subida multi-formato (PDF, Word, Excel, imágenes)</li>
+        <li>Control de versiones automático</li>
+        <li>Workflow de aprobación con estados</li>
+        <li>Búsqueda avanzada por código, nombre, tipo</li>
+        <li>Vinculación a cláusulas normativas</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Subir documento</h4>
+        <p>Arrastrá archivo o usá botón de subida.</p>
+        <p class="detail">El sistema extrae texto automáticamente para búsqueda y auditoría IA.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Ver detalle</h4>
+        <p>Accedé a metadatos, versiones, historial y cláusulas vinculadas.</p>
+        <p class="detail">Podés descargar cualquier versión histórica.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Nueva versión</h4>
+        <p>Subí nueva versión manteniendo historial.</p>
+        <p class="detail">Notifica automáticamente a usuarios con versión anterior.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Vincular cláusulas</h4>
+        <p>Asociá a cláusulas normativas para auditoría IA.</p>
+        <p class="detail">PRE-REQUISITO obligatorio para que la IA analice este documento.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Aprobar documento</h4>
+        <p>Cambiá estado a "Aprobado" tras revisión.</p>
+        <p class="detail">Disponible para todo el personal del tenant.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Subir documento</h4>
+        <p>Clic en "Nuevo documento".</p>
+        <ul class="substeps">
+          <li>Arrastrá archivo o seleccionalo</li>
+          <li>Completá código (PRO-CAL-001), título, tipo</li>
+          <li>Seleccioná proceso al que pertenece</li>
+          <li>Asigná responsable de mantenimiento</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Vincular cláusulas</h4>
+        <p>En detalle del documento, sección "Cláusulas normativas".</p>
+        <ul class="substeps">
+          <li>Clic "Vincular cláusula"</li>
+          <li>Seleccioná norma (ej: ISO 39001)</li>
+          <li>Marcá cláusulas aplicables (ej: 5.2, 5.3)</li>
+          <li>Confirmá vinculación</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Solicitar aprobación</h4>
+        <p>Cambiá estado a "En revisión".</p>
+        <ul class="substeps">
+          <li>Aprobador recibe notificación</li>
+          <li>Revisa y aprueba o rechaza con comentarios</li>
+          <li>Si aprueba, estado pasa a "Aprobado"</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Buscar documento</h4>
+        <p>Usá barra de búsqueda superior.</p>
+        <ul class="substeps">
+          <li>Buscá por código, título o contenido</li>
+          <li>Filtrá por tipo, estado o proceso</li>
+          <li>Resultados instantáneos</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Usá código estandarizado (PRO-XXX-NNN) para búsquedas y trazabilidad.</li>
+        <li>Vinculá SIEMPRE cláusulas antes de usar Auditoría IA: sin vinculación no analiza.</li>
+        <li>Documentos obsoletos se mantienen para auditoría pero no aparecen en búsquedas por defecto.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> normativos, audit-ia, auditorias-iso
+    </div>
+  </div>
+  <div class="module" id="module-normativos">
+    <div class="module-header">
+      <h2>4. Normativos</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 30 minutos por norma</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Biblioteca central de normas, leyes, decretos aplicables. Referencia de requisitos legales y normativos.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Listado de normas con código, título, versión, estado</li>
+        <li>Carga de PDFs oficiales</li>
+        <li>Extracción automática de cláusulas con IA</li>
+        <li>Vinculación con documentos internos</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo normativo</h4>
+        <p>Registrá norma con código, título, versión y PDF.</p>
+        <p class="detail">Extracción automática de cláusulas con IA (si está configurada).</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Ver cláusulas</h4>
+        <p>Consultá contenido estructurado: cláusulas, subcláusulas.</p>
+        <p class="detail">Árbol navegable con número, título y contenido.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Vincular documentos</h4>
+        <p>Asociá documentos internos a cláusulas.</p>
+        <p class="detail">Base para análisis de cumplimiento de Auditoría IA.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Actualizar versión</h4>
+        <p>Subí nueva versión manteniendo historial.</p>
+        <p class="detail">Detecta cambios y alerta sobre documentos vinculados.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Cargar norma</h4>
+        <p>Clic "Nueva norma".</p>
+        <ul class="substeps">
+          <li>Completá código (ISO 39001:2012), título</li>
+          <li>Seleccioná tipo: ISO, Ley, Decreto, Reglamento</li>
+          <li>Subí PDF oficial</li>
+          <li>Marcá estado: En revisión o Vigente</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Extraer cláusulas</h4>
+        <p>Una vez cargado PDF, iniciá extracción con IA.</p>
+        <ul class="substeps">
+          <li>Clic "Extraer cláusulas con IA"</li>
+          <li>Procesa PDF y genera árbol de cláusulas</li>
+          <li>Revisá y corregí si es necesario</li>
+          <li>Marcá "Listo para uso"</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Vincular documentos</h4>
+        <p>Navegá cláusulas y vinculá documentos.</p>
+        <ul class="substeps">
+          <li>Seleccioná cláusula</li>
+          <li>Clic "Vincular documento"</li>
+          <li>Buscá documento en repositorio</li>
+          <li>Confirmá con tipo de cumplimiento</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Seguimiento de cambios</h4>
+        <p>Cuando actualicés norma, revisá impacto.</p>
+        <ul class="substeps">
+          <li>Subí nueva versión PDF</li>
+          <li>Sistema compara con anterior</li>
+          <li>Revisá cláusulas modificadas, agregadas o eliminadas</li>
+          <li>Actualizá documentos vinculados</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Priorizá normas ISO que certifiqués y leyes sectoriales obligatorias.</li>
+        <li>Extracción IA requiere PDF con texto seleccionable (no escaneado sin OCR).</li>
+        <li>Mantené calendario de revisiones normativas para anticipar cambios.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> documentos, cumplimiento, audit-ia
+    </div>
+  </div>
+  <div class="module" id="module-audit-ia">
+    <div class="module-header">
+      <h2>5. Auditoría IA</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 15 minutos (más vinculación)</span>
+        <span class="badge">📋 ISO 19011</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Motor de IA que analiza automáticamente conformidad de documentos contra normas ISO. Detecta brechas con evidencia textual y sugiere acciones concretas.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Análisis automático documento vs norma cláusula por cláusula</li>
+        <li>Análisis profundo con citas textuales</li>
+        <li>Hallazgos: Obligatorio (MUST) o Recomendado (SHOULD)</li>
+        <li>Chat con agente IA</li>
+        <li>Conversión directa a No Conformidades</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Analizar documento</h4>
+        <p>Seleccioná documento y norma. Analiza solo cláusulas vinculadas.</p>
+        <p class="detail">PRE-REQUISITO: documento debe tener cláusulas vinculadas en Documentos.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Ver hallazgos</h4>
+        <p>Revisá hallazgos con descripción, evidencia y confianza.</p>
+        <p class="detail">Incluye: cláusula, severidad, descripción fundamentada, evidencia textual, acciones.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Convertir a NC</h4>
+        <p>Transformá hallazgo en No Conformidad formal.</p>
+        <p class="detail">Traspasa título, descripción, cláusula y severidad automáticamente.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Chat con IA</h4>
+        <p>Consultá asistente sobre normas y hallazgos.</p>
+        <p class="detail">Tiene contexto de tus documentos y normas para respuestas personalizadas.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Preparar documento</h4>
+        <p>ANTES de auditar, vinculá cláusulas.</p>
+        <ul class="substeps">
+          <li>Andá a Documentos</li>
+          <li>Abrí documento a auditar</li>
+          <li>En "Cláusulas normativas", clic "Vincular"</li>
+          <li>Seleccioná norma y marcá cláusulas aplicables</li>
+          <li>Guardá cambios</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Ejecutar análisis</h4>
+        <p>En Auditoría IA, clic "Analizar Documento vs Norma".</p>
+        <ul class="substeps">
+          <li>Seleccioná documento del dropdown</li>
+          <li>Seleccioná norma del dropdown</li>
+          <li>Clic "Iniciar Análisis"</li>
+          <li>Sistema encola trabajo y muestra progreso</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Revisar hallazgos</h4>
+        <p>Cuando estado sea "Completado".</p>
+        <ul class="substeps">
+          <li>Cada hallazgo muestra: cláusula, severidad, descripción</li>
+          <li>Evidencia cita textualmente del documento</li>
+          <li>Acciones sugeridas son concretas</li>
+          <li>Porcentaje de confianza indica certeza</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Convertir a NC</h4>
+        <p>Para hallazgos que requieren acción formal.</p>
+        <ul class="substeps">
+          <li>Clic "Crear NCR" en hallazgo</li>
+          <li>Confirmá conversión</li>
+          <li>Sistema crea NC con datos pre-cargados</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">5</span>
+        <h4>Consultar IA</h4>
+        <p>Usá Chat Auditor para preguntas.</p>
+        <ul class="substeps">
+          <li>Andá a "Chat Auditor"</li>
+          <li>Escribí pregunta (ej: "¿Qué requiere cláusula 5.2 ISO 39001?")</li>
+          <li>IA responde con contexto de tus documentos</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Calidad del análisis depende de la calidad de la vinculación: vinculá solo cláusulas aplicables.</li>
+        <li>5-10 cláusulas tarda segundos; 50+ tarda minutos.</li>
+        <li>Hallazgos con confianza <70% revisarlos manualmente.</li>
+        <li>Chat Auditor para profundizar: "¿Por qué este hallazgo es MUST?"</li>
+        <li>NO reemplaza auditoría interna humana: es herramienta de preparación.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> documentos, normativos, no-conformidades, auditorias-iso
+    </div>
+  </div>
+  <div class="module" id="module-auditorias-iso">
+    <div class="module-header">
+      <h2>6. Auditorías ISO</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-avanzado">Dificultad: Avanzado</span>
+        <span class="badge">⏱️ 2-4 horas por auditoría</span>
+        <span class="badge">📋 ISO 19011:2018</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión completa del programa de auditorías internas conforme ISO 19011: planificación anual, ejecución con checklist, hallazgos, seguimiento e informes.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Programa anual con asignación de auditores</li>
+        <li>Checklist personalizables por norma</li>
+        <li>Registro de hallazgos (NC, observaciones, oportunidades)</li>
+        <li>Gestión de equipo auditor</li>
+        <li>Informe final exportable</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva auditoría</h4>
+        <p>Creá con alcance, norma, fecha, lugar y equipo.</p>
+        <p class="detail">Podés crear internas, externas o de seguimiento.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Ejecutar checklist</h4>
+        <p>Completá cada ítem con evidencia.</p>
+        <p class="detail">Checklist desde plantillas normativas o personalizadas.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Registrar hallazgos</h4>
+        <p>Agregá con clasificación y evidencia.</p>
+        <p class="detail">Vinculación automática a cláusula normativa.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Gestionar equipo</h4>
+        <p>Asigná auditores con roles y competencias.</p>
+        <p class="detail">Verifica competencias requeridas según ISO 19011.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Generar informe</h4>
+        <p>Exportá informe final con conclusiones.</p>
+        <p class="detail">Portada, resumen, detalle de hallazgos, anexos, plan de acción.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Planificar auditoría</h4>
+        <p>Clic "Nueva auditoría".</p>
+        <ul class="substeps">
+          <li>Definí alcance (ej: "Proceso de producción")</li>
+          <li>Seleccioná norma</li>
+          <li>Asigná fecha y duración</li>
+          <li>Designá auditor líder y equipo</li>
+          <li>Agregá objetivos específicos</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Preparar checklist</h4>
+        <p>Seleccioná o creá checklist.</p>
+        <ul class="substeps">
+          <li>Elegí plantilla base</li>
+          <li>Personalizá agregando ítems específicos</li>
+          <li>Asigná peso o criticidad</li>
+          <li>Revisá con equipo</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Ejecutar auditoría</h4>
+        <p>Completá checklist y registrá hallazgos.</p>
+        <ul class="substeps">
+          <li>Para cada ítem: Conforme / No conforme / No aplica</li>
+          <li>Adjuntá evidencia (fotos, documentos)</li>
+          <li>Registrá hallazgos inmediatamente</li>
+          <li>Tomá notas de campo</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Cerrar hallazgos</h4>
+        <p>Gestioná NC generadas.</p>
+        <ul class="substeps">
+          <li>NC creadas automáticamente desde hallazgos</li>
+          <li>Asigná responsables y plazos</li>
+          <li>Verificá eficacia</li>
+          <li>Cerrá NC resuelta</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">5</span>
+        <h4>Generar informe</h4>
+        <p>Una vez cerrados hallazgos.</p>
+        <ul class="substeps">
+          <li>Revisá borrador automático</li>
+          <li>Agregá conclusiones del equipo</li>
+          <li>Exportá a PDF</li>
+          <li>Distribuí a dirección y áreas</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Planificá con 2 semanas de anticipación.</li>
+        <li>Auditores internos NO auditan su propia área (ISO 19011 §4 e).</li>
+        <li>Guardá evidencia fotográfica de cada hallazgo.</li>
+        <li>Frecuencia basada en resultados previos, cambios críticos y riesgos.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> audit-ia, no-conformidades, acciones
+    </div>
+  </div>
+  <div class="module" id="module-no-conformidades">
+    <div class="module-header">
+      <h2>7. No Conformidades</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-avanzado">Dificultad: Avanzado</span>
+        <span class="badge">⏱️ 1-2 horas por NC</span>
+        <span class="badge">📋 ISO 9001 §10.2</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Registro y tratamiento formal de NC. Incluye análisis de causa raíz, acciones correctivas y verificación de eficacia.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Listado con estados: Abierta, En tratamiento, En verificación, Cerrada</li>
+        <li>Análisis de causa raíz: 5 Porqués, Ishikawa</li>
+        <li>Plan de acción con responsables y plazos</li>
+        <li>Verificación de eficacia con evidencia</li>
+        <li>Origen configurable</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva NC</h4>
+        <p>Creá con descripción, origen, severidad, responsable.</p>
+        <p class="detail">Descripción objetiva: ej "Falta registro" no "Operario descuidado".</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Análisis causa raíz</h4>
+        <p>Documentá análisis sistemático.</p>
+        <p class="detail">Guía con 5 Porqués, Ishikawa.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Acciones correctivas</h4>
+        <p>Definí acciones que eliminen causa.</p>
+        <p class="detail">Diferenciá correctiva de inmediata (contención).</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Verificar eficacia</h4>
+        <p>Confirmá que la acción funcionó.</p>
+        <p class="detail">Requiere evidencia de no repetición.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Cerrar NC</h4>
+        <p>Marcá como cerrada tras verificación.</p>
+        <p class="detail">Solo autorizados. Genera registro audit trail.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Detectar NC</h4>
+        <p>En auditoría, inspección o reclamo.</p>
+        <ul class="substeps">
+          <li>Describí evidencia objetivamente</li>
+          <li>Clasificá severidad: Crítica, Mayor, Menor, Observación</li>
+          <li>Asigná responsable</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Análisis causa raíz</h4>
+        <p>Usá metodología estructurada.</p>
+        <ul class="substeps">
+          <li>5 Porqués: preguntá "¿por qué?" 5 veces</li>
+          <li>Ishikawa: categorizá causas</li>
+          <li>Identificá causa fundamental</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Definir acciones</h4>
+        <p>Correctivas e inmediatas.</p>
+        <ul class="substeps">
+          <li>Inmediata: contener efecto</li>
+          <li>Correctiva: eliminar causa raíz</li>
+          <li>Asigná responsable y fecha</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Verificar eficacia</h4>
+        <p>Después del plazo, confirmá.</p>
+        <ul class="substeps">
+          <li>Evidencia de no repetición</li>
+          <li>Medí indicador</li>
+          <li>Documentá verificación</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">5</span>
+        <h4>Cerrar NC</h4>
+        <p>Marcá como cerrada.</p>
+        <ul class="substeps">
+          <li>Verificá acciones completas</li>
+          <li>Confirmá eficacia</li>
+          <li>Clic "Cerrar NC"</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Análisis de causa raíz es clave: sin él las NC se repiten.</li>
+        <li>Diferenciá inmediata de correctiva.</li>
+        <li>Verificación requiere TIEMPO: no cierres el mismo día.</li>
+        <li>NC críticas requieren escalamiento a dirección.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> auditorias-iso, acciones, audit-ia
+    </div>
+  </div>
+  <div class="module" id="module-riesgos">
+    <div class="module-header">
+      <h2>8. Riesgos</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 30 minutos por riesgo</span>
+        <span class="badge">📋 ISO 31000</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Identificación, evaluación y tratamiento de riesgos del SGI. Alineado con ISO 31000.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Matriz de riesgos por proceso</li>
+        <li>Evaluación probabilidad × impacto</li>
+        <li>Planes de tratamiento y controles</li>
+        <li>Seguimiento periódico</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo riesgo</h4>
+        <p>Identificá con descripción, proceso, evaluación.</p>
+        <p class="detail">Probabilidad, impacto y nivel inherente.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Agregar control</h4>
+        <p>Definí controles preventivos o mitigadores.</p>
+        <p class="detail">Tipo, responsable y frecuencia.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Reevaluar</h4>
+        <p>Actualizá riesgo residual tras controles.</p>
+        <p class="detail">Nuevo nivel considerando efectividad.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Identificar riesgo</h4>
+        <p>Clic "Nuevo riesgo".</p>
+        <ul class="substeps">
+          <li>Describí el riesgo</li>
+          <li>Asociá al proceso</li>
+          <li>Identificá fuente</li>
+          <li>Agregá causas</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Evaluar riesgo</h4>
+        <p>Asigná probabilidad e impacto.</p>
+        <ul class="substeps">
+          <li>Probabilidad: 1-5</li>
+          <li>Impacto: 1-5</li>
+          <li>Riesgo inherente = P × I</li>
+          <li>Clasificá: bajo, medio, alto, crítico</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Definir controles</h4>
+        <p>Agregá controles existentes y planificados.</p>
+        <ul class="substeps">
+          <li>Preventivo: evita que ocurra</li>
+          <li>Detectivo: detecta si ocurre</li>
+          <li>Correctivo: mitiga efectos</li>
+          <li>Asigná responsable y frecuencia</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Reevaluar residual</h4>
+        <p>Calculá riesgo residual.</p>
+        <ul class="substeps">
+          <li>Evaluá efectividad de cada control</li>
+          <li>Recalculá P × I residual</li>
+          <li>Si sigue alto, agregá más controles</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">5</span>
+        <h4>Seguimiento</h4>
+        <p>Revisá periódicamente.</p>
+        <ul class="substeps">
+          <li>Mensualmente riesgos críticos</li>
+          <li>Trimestralmente riesgos medios</li>
+          <li>Actualizá si hay cambios</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Actualizá riesgos ante cambios organizacionales.</li>
+        <li>Vinculá riesgos a indicadores para monitoreo.</li>
+        <li>Riesgos críticos requieren plan de contingencia.</li>
+        <li>Involucrá al equipo operativo en identificación.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> indicadores, auditorias-iso, documentos
+    </div>
+  </div>
+  <div class="module" id="module-indicadores">
+    <div class="module-header">
+      <h2>9. Indicadores</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 20 minutos por indicador</span>
+        <span class="badge">📋 ISO 9001 §9.1</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Definición y seguimiento de KPIs del sistema. Permite medir eficacia y cumplimiento de objetivos.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Biblioteca de indicadores con fórmula y meta</li>
+        <li>Registro de mediciones periódicas</li>
+        <li>Gráficos de tendencia</li>
+        <li>Alertas ante desvíos</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo indicador</h4>
+        <p>Definí nombre, fórmula, unidad, meta, frecuencia.</p>
+        <p class="detail">Fórmula puede usar datos de otros módulos o ser manual.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Cargar medición</h4>
+        <p>Registrá valor medido en el período.</p>
+        <p class="detail">Carga individual o masiva (importación Excel).</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Ver tendencia</h4>
+        <p>Entrá al detalle para ver gráfico histórico.</p>
+        <p class="detail">Compará contra meta y límites de alerta.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Definir indicador</h4>
+        <p>Clic "Nuevo indicador".</p>
+        <ul class="substeps">
+          <li>Nombrá descriptivamente</li>
+          <li>Definí fórmula</li>
+          <li>Establecí meta y límites</li>
+          <li>Definí frecuencia</li>
+          <li>Asigná responsable</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Cargar medición</h4>
+        <p>En fecha de medición, registrá valor.</p>
+        <ul class="substeps">
+          <li>Andá al indicador</li>
+          <li>Clic "Nueva medición"</li>
+          <li>Ingresá valor y fecha</li>
+          <li>Adjuntá evidencia</li>
+          <li>Observá desvío</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Analizar tendencia</h4>
+        <p>Revisá gráfico histórico.</p>
+        <ul class="substeps">
+          <li>Identificá tendencias</li>
+          <li>Analizá desvíos</li>
+          <li>Investigá causas</li>
+          <li>Documentá acciones</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Configurar alertas</h4>
+        <p>Definí umbrales de notificación.</p>
+        <ul class="substeps">
+          <li>Umbrales: amarillo (atención), rojo (crítico)</li>
+          <li>Configurá email</li>
+          <li>Asigná responsables</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>KPIs deben ser SMART: Específicos, Medibles, Alcanzables, Relevantes, Temporales.</li>
+        <li>Evitá más de 10 KPIs por proceso.</li>
+        <li>Vinculá a objetivos estratégicos.</li>
+        <li>Revisá pertinencia anualmente.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> panel, objetivos, reportes
+    </div>
+  </div>
+  <div class="module" id="module-capacitaciones">
+    <div class="module-header">
+      <h2>10. Capacitaciones</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 30 minutos por curso</span>
+        <span class="badge">📋 ISO 9001 §7.2</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Plan anual de capacitación: necesidades, cursos, asistencia y evaluación de eficacia.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Plan anual de capacitaciones</li>
+        <li>Registro de asistencia</li>
+        <li>Evaluación pre/post</li>
+        <li>Certificados asociados</li>
+        <li>Vinculación con brechas de competencias</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva capacitación</h4>
+        <p>Programá curso con tema, fecha, duración, instructor.</p>
+        <p class="detail">Vinculable a competencias y empleados específicos.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Marcar asistencia</h4>
+        <p>Registrá empleados que asistieron.</p>
+        <p class="detail">Importación masiva o marcación individual.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Evaluar eficacia</h4>
+        <p>Completa encuesta/test al concluir.</p>
+        <p class="detail">Nivel 1 (reacción), Nivel 2 (aprendizaje), Nivel 3 (aplicación).</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Detectar necesidad</h4>
+        <p>Identificá brechas de competencias.</p>
+        <ul class="substeps">
+          <li>Revisá Matriz de Polivalencia</li>
+          <li>Revisá resultados de auditorías</li>
+          <li>Consultá con jefes</li>
+          <li>Documentá necesidades</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Programar capacitación</h4>
+        <p>Clic "Nueva capacitación".</p>
+        <ul class="substeps">
+          <li>Definí tema/objetivo</li>
+          <li>Seleccioná fecha y duración</li>
+          <li>Asigná instructor</li>
+          <li>Definí método</li>
+          <li>Establecí presupuesto</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Inscribir participantes</h4>
+        <p>Agregá empleados al curso.</p>
+        <ul class="substeps">
+          <li>Buscá por nombre o perfil</li>
+          <li>Verificá prerequisitos</li>
+          <li>Confirmá disponibilidad</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Ejecutar curso</h4>
+        <p>Durante la capacitación, registrá asistencia.</p>
+        <ul class="substeps">
+          <li>Marcá asistencia día por día</li>
+          <li>Adjuntá material didáctico</li>
+          <li>Registrá observaciones</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">5</span>
+        <h4>Evaluar eficacia</h4>
+        <p>Después del curso, aplicá evaluación.</p>
+        <ul class="substeps">
+          <li>Nivel 1: encuesta de satisfacción</li>
+          <li>Nivel 2: test de aprendizaje</li>
+          <li>Nivel 3: seguimiento a los 30/60/90 días</li>
+          <li>Documentá resultados</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Todo programa de capacitación debe partir de necesidades detectadas, no de cursos disponibles.</li>
+        <li>Evaluá efecticacia a los 30/60/90 días: ¿se aplica lo aprendido?</li>
+        <li>Vinculá capacitaciones a brechas de la Matriz de Polivalencia.</li>
+        <li>Guardá certificados de instructores externos como evidencia.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> rrhh, indicadores, auditorias-iso
+    </div>
+  </div>
+  <div class="module" id="module-rrhh">
+    <div class="module-header">
+      <h2>11. RRHH / Empleados</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 10 minutos</span>
+        <span class="badge">📋 ISO 9001 §7.2</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión de personal del SGI: datos, competencias, evaluaciones y capacitaciones.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Directorio de empleados</li>
+        <li>Competencias y matriz de polivalencia</li>
+        <li>Historial de capacitaciones</li>
+        <li>Evaluaciones de desempeño</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo empleado</h4>
+        <p>Registrá datos personales y laborales.</p>
+        <p class="detail">Incluye puesto, área, fecha ingreso.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Competencias</h4>
+        <p>Asigná competencias requeridas por puesto.</p>
+        <p class="detail">Vincula a Matriz de Polivalencia.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear empleado</h4>
+        <p>Clic "Nuevo empleado".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Asigná puesto</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Asignar competencias</h4>
+        <p>En perfil del empleado.</p>
+        <ul class="substeps">
+          <li>Seleccioná competencias</li>
+          <li>Definí nivel DEBE</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Mantené actualizados datos y competencias.</li>
+        <li>Usá matriz para detectar brechas de capacitación.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> capacitaciones, indicadores
+    </div>
+  </div>
+  <div class="module" id="module-clientes">
+    <div class="module-header">
+      <h2>12. Clientes</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 5 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Base de clientes y partes interesadas del negocio.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Directorio de clientes</li>
+        <li>Segmentación</li>
+        <li>Historial de interacciones</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo cliente</h4>
+        <p>Registrá datos de contacto.</p>
+        <p class="detail">Incluye datos fiscales y comerciales.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Ver historial</h4>
+        <p>Consultá interacciones y documentos.</p>
+        <p class="detail">Trazabilidad completa.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear cliente</h4>
+        <p>Clic "Nuevo cliente".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Mantené datos actualizados.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> partes-interesadas, documentos
+    </div>
+  </div>
+  <div class="module" id="module-proveedores">
+    <div class="module-header">
+      <h2>13. Proveedores</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 10 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión de proveedores y evaluación de desempeño.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Registro de proveedores</li>
+        <li>Evaluaciones</li>
+        <li>Historial</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo proveedor</h4>
+        <p>Registrá proveedor.</p>
+        <p class="detail">Datos comerciales, contacto.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Registrar</h4>
+        <p>Clic "Nuevo proveedor".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Asigná categoría</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Evaluá desempeño periódicamente.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> documentos, calidad
+    </div>
+  </div>
+  <div class="module" id="module-project360">
+    <div class="module-header">
+      <h2>14. Proyectos</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 20 minutos</span>
+        <span class="badge">📋 ISO 9001 §6.2</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión integral de proyectos del SGI: mejoras, implementaciones, certificaciones.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Proyectos activos y archivados</li>
+        <li>Tableros Kanban personalizables</li>
+        <li>Asignación de responsables y fechas</li>
+        <li>Adjuntos y comentarios por proyecto</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo proyecto</h4>
+        <p>Creá con nombre, descripción, responsable, fechas y presupuesto.</p>
+        <p class="detail">Podés vincular a normativas ISO específicas.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Ver detalle</h4>
+        <p>Entrá para gestionar tareas, archivos y comentarios.</p>
+        <p class="detail">Incluye timeline, tareas, archivos adjuntos y log.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Cambiar estado</h4>
+        <p>Mové tarjetas entre columnas en Kanban.</p>
+        <p class="detail">Arrastrá y soltá para actualizar estado visualmente.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Archivar proyecto</h4>
+        <p>Marcá como completado y archivalo.</p>
+        <p class="detail">Siguen siendo buscables pero no aparecen en activos.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear proyecto</h4>
+        <p>Clic "Nuevo Proyecto".</p>
+        <ul class="substeps">
+          <li>Completá nombre descriptivo</li>
+          <li>Asigná responsable principal</li>
+          <li>Definí fechas de inicio y objetivo</li>
+          <li>Opcional: asigná presupuesto</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Agregar tareas</h4>
+        <p>Dentro del proyecto, agregá tareas.</p>
+        <ul class="substeps">
+          <li>Clic "Nueva tarea"</li>
+          <li>Describí la tarea concreta</li>
+          <li>Asigná responsable y fecha límite</li>
+          <li>Marcá dependencias si aplica</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">3</span>
+        <h4>Seguimiento Kanban</h4>
+        <p>Usá vista Kanban para visualizar avance.</p>
+        <ul class="substeps">
+          <li>Columnas: Backlog | En progreso | Revisión | Completado</li>
+          <li>Arrastrá tareas entre columnas</li>
+          <li>Registro automático de quién movió y cuándo</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">4</span>
+        <h4>Cerrar proyecto</h4>
+        <p>Cuando todas las tareas estén completas.</p>
+        <ul class="substeps">
+          <li>Verificá que no queden pendientes</li>
+          <li>Clic "Archivar proyecto"</li>
+          <li>Agregá resumen final y lecciones aprendidas</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Vinculá proyectos a objetivos del SGI para trazabilidad (ISO 9001 §6.2).</li>
+        <li>Usá presupuesto para controlar inversiones.</li>
+        <li>Proyectos archivados son evidencia para auditorías externas.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> dashboard, documentos, indicadores
+    </div>
+  </div>
+  <div class="module" id="module-revision-direccion">
+    <div class="module-header">
+      <h2>15. Revisión por la Dirección</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-avanzado">Dificultad: Avanzado</span>
+        <span class="badge">⏱️ 2 horas</span>
+        <span class="badge">📋 ISO 9001 §9.3</span>
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión de revisiones por la dirección según ISO 9001 §9.3.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Agenda de revisión</li>
+        <li>Entradas requeridas</li>
+        <li>Actas y decisiones</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva revisión</h4>
+        <p>Programá revisión por la dirección.</p>
+        <p class="detail">Fecha, participantes, agenda.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Programar</h4>
+        <p>Clic "Nueva revisión".</p>
+        <ul class="substeps">
+          <li>Definí fecha</li>
+          <li>Invitá participantes</li>
+          <li>Prepará entradas</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Realizá al menos una vez al año.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> panel, indicadores
+    </div>
+  </div>
+  <div class="module" id="module-licencias">
+    <div class="module-header">
+      <h2>16. Licencias</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 10 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión de licencias, permisos y autorizaciones legales.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Registro de licencias</li>
+        <li>Alertas de vencimiento</li>
+        <li>Documentos asociados</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva licencia</h4>
+        <p>Registrá tipo, entidad, vencimiento.</p>
+        <p class="detail">Alertas automáticas.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear licencia</h4>
+        <p>Clic "Nueva licencia".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Asociá documentos</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Configurá alertas con anticipación suficiente.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> legales, documentos
+    </div>
+  </div>
+  <div class="module" id="module-calendario">
+    <div class="module-header">
+      <h2>17. Calendario</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 2 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Calendario de eventos, auditorías, capacitaciones y vencimientos.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Vista mensual/semanal/diaria</li>
+        <li>Eventos de todos los módulos</li>
+        <li>Filtros por tipo</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Ver eventos</h4>
+        <p>Navegá por fechas.</p>
+        <p class="detail">Cliqueá para ir al módulo origen.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Consultar calendario</h4>
+        <p>Clic en evento.</p>
+        <ul class="substeps">
+          <li>Navegá fechas</li>
+          <li>Filtrá por tipo</li>
+          <li>Cliqueá para detalle</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Usá filtros para enfocarte.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> auditorias-iso, capacitaciones
+    </div>
+  </div>
+  <div class="module" id="module-configuracion">
+    <div class="module-header">
+      <h2>18. Configuración</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 10 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Configuración del sistema y preferencias del tenant.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Datos de la empresa</li>
+        <li>Preferencias del sistema</li>
+        <li>Gestión de usuarios y roles</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Empresa</h4>
+        <p>Configurá datos fiscales y de contacto.</p>
+        <p class="detail">Logo, dirección, etc.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Usuarios</h4>
+        <p>Gestión de accesos.</p>
+        <p class="detail">Crear, editar, desactivar usuarios.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Configurar empresa</h4>
+        <p>Clic "Empresa".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Subí logo</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Configurá correctamente los datos fiscales.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> empresa
+    </div>
+  </div>
+  <div class="module" id="module-reportes">
+    <div class="module-header">
+      <h2>19. Reportes</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 5 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Generación de reportes e informes del sistema.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Reportes predefinidos</li>
+        <li>Personalización</li>
+        <li>Exportación</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Generar reporte</h4>
+        <p>Seleccioná reporte y filtros.</p>
+        <p class="detail">PDF, Excel, etc.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Generar reporte</h4>
+        <p>Seleccioná reporte.</p>
+        <ul class="substeps">
+          <li>Elegí tipo</li>
+          <li>Aplicá filtros</li>
+          <li>Exportá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Usá reportes para reuniones.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> panel, indicadores
+    </div>
+  </div>
+  <div class="module" id="module-notificaciones">
+    <div class="module-header">
+      <h2>20. Notificaciones</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 2 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Centro de notificaciones y alertas del sistema.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Bandeja de notificaciones</li>
+        <li>Preferencias de notificación</li>
+        <li>Historial</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Ver notificaciones</h4>
+        <p>Consultá alertas pendientes.</p>
+        <p class="detail">Cliqueá para ir al módulo origen.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Configurar</h4>
+        <p>Definí preferencias.</p>
+        <p class="detail">Email, push, in-app.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Consultar notificaciones</h4>
+        <p>Clic en icono de campana.</p>
+        <ul class="substeps">
+          <li>Revisá lista</li>
+          <li>Cliqueá para ir al origen</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>No ignores notificaciones rojas.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> panel, inicio
+    </div>
+  </div>
+  <div class="module" id="module-simulacros">
+    <div class="module-header">
+      <h2>21. Simulacros</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 20 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión de simulacros y ejercicios de emergencia.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Planificación de simulacros</li>
+        <li>Registro de participantes</li>
+        <li>Evaluación de resultados</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo simulacro</h4>
+        <p>Programá simulacro de emergencia.</p>
+        <p class="detail">Tipo, fecha, escenario.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Programar simulacro</h4>
+        <p>Clic "Nuevo simulacro".</p>
+        <ul class="substeps">
+          <li>Definí escenario</li>
+          <li>Asigná fecha</li>
+          <li>Involucrá participantes</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Ejecutá simulacros periódicamente.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> emergencia
+    </div>
+  </div>
+  <div class="module" id="module-mantenimiento">
+    <div class="module-header">
+      <h2>22. Mantenimiento</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 15 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión de mantenimiento preventivo y correctivo de activos.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Plan de mantenimiento</li>
+        <li>Órdenes de trabajo</li>
+        <li>Historial de mantenimiento</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva orden</h4>
+        <p>Creá orden de mantenimiento.</p>
+        <p class="detail">Preventivo o correctivo.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear orden</h4>
+        <p>Clic "Nueva orden".</p>
+        <ul class="substeps">
+          <li>Seleccioná activo</li>
+          <li>Definí tipo</li>
+          <li>Asigná técnico</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Priorizá mantenimiento preventivo.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> activos
+    </div>
+  </div>
+  <div class="module" id="module-activos">
+    <div class="module-header">
+      <h2>23. Activos</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 5 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Inventario y gestión de activos de la organización.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Registro de activos</li>
+        <li>Asignación</li>
+        <li>Historial</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo activo</h4>
+        <p>Registrá activo.</p>
+        <p class="detail">Código, ubicación, estado.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear activo</h4>
+        <p>Clic "Nuevo activo".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Asigná ubicación</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Mantené inventario actualizado.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> mantenimiento
+    </div>
+  </div>
+  <div class="module" id="module-incidentes">
+    <div class="module-header">
+      <h2>24. Incidentes</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 20 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Registro y seguimiento de incidentes de seguridad.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Registro de incidentes</li>
+        <li>Investigación</li>
+        <li>Acciones correctivas</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo incidente</h4>
+        <p>Registrá incidente.</p>
+        <p class="detail">Descripción, fecha, involucrados.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Registrar incidente</h4>
+        <p>Clic "Nuevo incidente".</p>
+        <ul class="substeps">
+          <li>Describí</li>
+          <li>Clasificá</li>
+          <li>Asigná responsable</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Investigá toda lesión.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> no-conformidades, riesgos
+    </div>
+  </div>
+  <div class="module" id="module-cumplimiento">
+    <div class="module-header">
+      <h2>25. Cumplimiento</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 30 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Seguimiento de cumplimiento normativo y legal.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Requisitos legales</li>
+        <li>Evaluaciones de cumplimiento</li>
+        <li>Acciones correctivas</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva evaluación</h4>
+        <p>Evaluá cumplimiento de requisito.</p>
+        <p class="detail">Cumple / No cumple / En progreso.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Evaluar cumplimiento</h4>
+        <p>Clic "Nueva evaluación".</p>
+        <ul class="substeps">
+          <li>Seleccioná requisito</li>
+          <li>Evaluá estado</li>
+          <li>Documentá evidencia</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Revisá cambios regulatorios.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> normativos, legales
+    </div>
+  </div>
+  <div class="module" id="module-contexto-sgi">
+    <div class="module-header">
+      <h2>26. Contexto SGI</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 1 hora</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Contexto específico del Sistema de Gestión Integral.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Análisis de contexto</li>
+        <li>Partes interesadas SGI</li>
+        <li>Alcance</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Definir alcance</h4>
+        <p>Establecé alcance del SGI.</p>
+        <p class="detail">Productos, servicios, ubicaciones.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Definir</h4>
+        <p>Clic "Definir alcance".</p>
+        <ul class="substeps">
+          <li>Describí productos/servicios</li>
+          <li>Definí ubicaciones</li>
+          <li>Exclusiones si aplica</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Revisá anualmente.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> contexto, partes-interesadas
+    </div>
+  </div>
+  <div class="module" id="module-legales">
+    <div class="module-header">
+      <h2>27. Requisitos Legales</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 20 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Repositorio de requisitos legales aplicables.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Registro de requisitos</li>
+        <li>Evaluaciones de cumplimiento</li>
+        <li>Vinculación normativa</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo requisito</h4>
+        <p>Registrá requisito legal.</p>
+        <p class="detail">Norma, artículo, descripción.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear requisito</h4>
+        <p>Clic "Nuevo requisito".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Vinculá norma</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Revisá cambios regulatorios.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> normativos, cumplimiento
+    </div>
+  </div>
+  <div class="module" id="module-acciones">
+    <div class="module-header">
+      <h2>28. Acciones</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 5 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Seguimiento de acciones correctivas, preventivas y de mejora.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Listado de acciones</li>
+        <li>Estados y plazos</li>
+        <li>Responsables y seguimiento</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva acción</h4>
+        <p>Creá acción.</p>
+        <p class="detail">Tipo, descripción, responsable, plazo.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear acción</h4>
+        <p>Clic "Nueva acción".</p>
+        <ul class="substeps">
+          <li>Describí</li>
+          <li>Asigná responsable</li>
+          <li>Definí plazo</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Seguimiento periódico.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> no-conformidades, auditorias-iso
+    </div>
+  </div>
+  <div class="module" id="module-planes">
+    <div class="module-header">
+      <h2>29. Planes</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 30 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Planes de acción y mejora del SGI.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Planes estratégicos</li>
+        <li>Planes operativos</li>
+        <li>Seguimiento</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo plan</h4>
+        <p>Creá plan de acción.</p>
+        <p class="detail">Objetivos, acciones, plazos.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear plan</h4>
+        <p>Clic "Nuevo plan".</p>
+        <ul class="substeps">
+          <li>Definí objetivos</li>
+          <li>Asigná acciones</li>
+          <li>Establecí plazos</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Vinculá a objetivos.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> objetivos, indicadores
+    </div>
+  </div>
+  <div class="module" id="module-objetivos">
+    <div class="module-header">
+      <h2>30. Objetivos</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 20 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Objetivos del SGI medibles y alcanzables.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Objetivos estratégicos</li>
+        <li>KPIs asociados</li>
+        <li>Seguimiento</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo objetivo</h4>
+        <p>Definí objetivo SMART.</p>
+        <p class="detail">Específico, medible, alcanzable.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear objetivo</h4>
+        <p>Clic "Nuevo objetivo".</p>
+        <ul class="substeps">
+          <li>Describí</li>
+          <li>Asigná indicadores</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Revisá al menos anualmente.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> planes, indicadores
+    </div>
+  </div>
+  <div class="module" id="module-encuestas">
+    <div class="module-header">
+      <h2>31. Encuestas</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 15 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Creación y aplicación de encuestas de satisfacción y clima.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Creador de encuestas</li>
+        <li>Aplicación</li>
+        <li>Resultados y análisis</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva encuesta</h4>
+        <p>Creá encuesta.</p>
+        <p class="detail">Preguntas, respuestas, lógica.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear encuesta</h4>
+        <p>Clic "Nueva encuesta".</p>
+        <ul class="substeps">
+          <li>Definí preguntas</li>
+          <li>Configurá respuestas</li>
+          <li>Publicá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Anonimizá encuestas de clima.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> clientes, rrhh
+    </div>
+  </div>
+  <div class="module" id="module-gestion-cambios">
+    <div class="module-header">
+      <h2>32. Gestión de Cambios</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 20 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Control de cambios en procesos, productos o infraestructura.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Solicitudes de cambio</li>
+        <li>Evaluación de impacto</li>
+        <li>Aprobaciones</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva solicitud</h4>
+        <p>Solicitá cambio formalmente.</p>
+        <p class="detail">Descripción, justificación, impacto.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Solicitar cambio</h4>
+        <p>Clic "Nueva solicitud".</p>
+        <ul class="substeps">
+          <li>Describí cambio</li>
+          <li>Evaluá impacto</li>
+          <li>Solicitá aprobación</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Evaluá impacto antes de aprobar.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> documentos, no-conformidades
+    </div>
+  </div>
+  <div class="module" id="module-infraestructura">
+    <div class="module-header">
+      <h2>33. Infraestructura</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 10 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión de infraestructura, instalaciones y equipamiento.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Registro de infraestructura</li>
+        <li>Mantenimiento asociado</li>
+        <li>Planificación</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva infraestructura</h4>
+        <p>Registrá instalación o equipo.</p>
+        <p class="detail">Ubicación, capacidad, estado.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear infraestructura</h4>
+        <p>Clic "Nueva".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Asigná ubicación</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Vinculá a mantenimiento.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> mantenimiento, activos
+    </div>
+  </div>
+  <div class="module" id="module-iperc">
+    <div class="module-header">
+      <h2>34. IPERC</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 30 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Identificación de Peligros y Evaluación de Riesgos de Cargos (IPERC).
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Identificación de peligros por puesto</li>
+        <li>Evaluación de riesgos</li>
+        <li>Medidas de control</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva evaluación IPERC</h4>
+        <p>Evaluá riesgos de un puesto.</p>
+        <p class="detail">Peligros, riesgos, controles.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear IPERC</h4>
+        <p>Clic "Nueva evaluación".</p>
+        <ul class="substeps">
+          <li>Seleccioná puesto</li>
+          <li>Identificá peligros</li>
+          <li>Evaluá riesgos</li>
+          <li>Definí controles</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Actualizá ante cambios de proceso.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> riesgos, rrhh
+    </div>
+  </div>
+  <div class="module" id="module-calibraciones">
+    <div class="module-header">
+      <h2>35. Calibraciones</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 15 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Programa de calibración de equipos de medición.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Inventario de equipos</li>
+        <li>Programa de calibración</li>
+        <li>Certificados</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo equipo</h4>
+        <p>Registrá equipo de medición.</p>
+        <p class="detail">Código, rango, tolerancia.</p>
+      </div>
+      <div class="action-box">
+        <h4>▶ Programar calibración</h4>
+        <p>Agendá calibración.</p>
+        <p class="detail">Fecha, laboratorio, certificado.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Registrar equipo</h4>
+        <p>Clic "Nuevo equipo".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Definí frecuencia</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="step-number">2</span>
+        <h4>Programar</h4>
+        <p>Clic "Programar calibración".</p>
+        <ul class="substeps">
+          <li>Seleccioná fecha</li>
+          <li>Elegí laboratorio</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>No operés equipos vencidos.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> mantenimiento, activos
+    </div>
+  </div>
+  <div class="module" id="module-contexto">
+    <div class="module-header">
+      <h2>36. Contexto de la Organización</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 1 hora</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Análisis del contexto organizacional según ISO 9001 §4.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Análisis FODA</li>
+        <li>Partes interesadas</li>
+        <li>Alcance del SGI</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo análisis</h4>
+        <p>Registrá análisis FODA.</p>
+        <p class="detail">Fortalezas, oportunidades, debilidades, amenazas.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear análisis</h4>
+        <p>Clic "Nuevo análisis".</p>
+        <ul class="substeps">
+          <li>Completá FODA</li>
+          <li>Vinculá partes interesadas</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Actualizá anualmente.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> partes-interesadas, riesgos
+    </div>
+  </div>
+  <div class="module" id="module-partes-interesadas">
+    <div class="module-header">
+      <h2>37. Partes Interesadas</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-facil">Dificultad: Fácil</span>
+        <span class="badge">⏱️ 15 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Identificación y gestión de partes interesadas del SGI.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Registro de partes interesadas</li>
+        <li>Necesidades y expectativas</li>
+        <li>Seguimiento</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva parte</h4>
+        <p>Registrá parte interesada.</p>
+        <p class="detail">Cliente, proveedor, autoridad, etc.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Registrar parte</h4>
+        <p>Clic "Nueva parte".</p>
+        <ul class="substeps">
+          <li>Completá datos</li>
+          <li>Definí necesidades</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Revisá anualmente.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> contexto, clientes
+    </div>
+  </div>
+  <div class="module" id="module-calidad">
+    <div class="module-header">
+      <h2>38. Calidad</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 30 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Módulo de gestión de calidad: procesos, procedimientos y controles.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Procesos de calidad</li>
+        <li>Controles de calidad</li>
+        <li>Mejora continua</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo proceso</h4>
+        <p>Registrá proceso de calidad.</p>
+        <p class="detail">Mapa de proceso, responsable.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear proceso</h4>
+        <p>Clic "Nuevo proceso".</p>
+        <ul class="substeps">
+          <li>Definí entradas/salidas</li>
+          <li>Asigná responsable</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Mapeá procesos clave.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> documentos, indicadores
+    </div>
+  </div>
+  <div class="module" id="module-ambientales">
+    <div class="module-header">
+      <h2>39. Ambientales</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 20 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión de aspectos e impactos ambientales.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Aspectos ambientales</li>
+        <li>Impactos</li>
+        <li>Programas de gestión</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo aspecto</h4>
+        <p>Registrá aspecto ambiental.</p>
+        <p class="detail">Tipo, magnitud, significancia.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Crear aspecto</h4>
+        <p>Clic "Nuevo aspecto".</p>
+        <ul class="substeps">
+          <li>Describí</li>
+          <li>Evaluá significancia</li>
+          <li>Guardá</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Revisá significancia periódicamente.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> riesgos, indicadores
+    </div>
+  </div>
+  <div class="module" id="module-seguridad360">
+    <div class="module-header">
+      <h2>40. Seguridad 360</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 1 hora</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Gestión integral de seguridad y salud ocupacional.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Análisis de riesgos SST</li>
+        <li>Incidentes</li>
+        <li>Indicadores SST</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nuevo análisis</h4>
+        <p>Evaluá riesgos SST.</p>
+        <p class="detail">Puestos, peligros, controles.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Evaluar</h4>
+        <p>Clic "Nuevo análisis".</p>
+        <ul class="substeps">
+          <li>Seleccioná puesto</li>
+          <li>Identificá peligros</li>
+          <li>Evaluá riesgos</li>
+          <li>Definí controles</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Actualizá ante cambios de proceso.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> incidentes, iperc, riesgos
+    </div>
+  </div>
+  <div class="module" id="module-audit360">
+    <div class="module-header">
+      <h2>41. Audit360</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-avanzado">Dificultad: Avanzado</span>
+        <span class="badge">⏱️ 4-8 horas</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Auditorías integrales 360° del sistema de gestión.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Auditorías multidimensionales</li>
+        <li>Evaluación 360°</li>
+        <li>Plan de acción</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva auditoría 360</h4>
+        <p>Iniciá auditoría integral.</p>
+        <p class="detail">Cubre todos los módulos del SGI.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Iniciar</h4>
+        <p>Clic "Nueva auditoría 360".</p>
+        <ul class="substeps">
+          <li>Definí alcance</li>
+          <li>Asigná equipo</li>
+          <li>Programá fechas</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Auditoría integral anual recomendada.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> auditorias-iso, audit-ia
+    </div>
+  </div>
+  <div class="module" id="module-auditoria">
+    <div class="module-header">
+      <h2>42. Auditoría</h2>
+      <div class="module-meta">
+        <span class="badge difficulty-medio">Dificultad: Medio</span>
+        <span class="badge">⏱️ 20 minutos</span>
+        
+      </div>
+    </div>
+    
+    <div class="purpose">
+      <strong>Propósito:</strong> Auditorías y evaluaciones del sistema.
+    </div>
+    
+    <div class="section">
+      <h3>⭐ Funcionalidades Principales</h3>
+      <ul class="features-list">
+        <li>Programa de auditorías</li>
+        <li>Evaluaciones</li>
+        <li>Hallazgos</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <h3>🔘 Botones y Acciones</h3>
+      <div class="action-box">
+        <h4>▶ Nueva auditoría</h4>
+        <p>Programá auditoría.</p>
+        <p class="detail">Tipo, alcance, fecha.</p>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📝 Pasos de Uso</h3>
+      <div class="step">
+        <span class="step-number">1</span>
+        <h4>Programar</h4>
+        <p>Clic "Nueva auditoría".</p>
+        <ul class="substeps">
+          <li>Definí tipo</li>
+          <li>Asigná alcance</li>
+          <li>Programá fecha</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tips-box">
+      <h4>💡 Buenas Prácticas</h4>
+      <ul>
+        <li>Diferenciá tipos de auditoría.</li>
+      </ul>
+    </div>
+    <div class="related">
+      <strong>🔗 Módulos relacionados:</strong> auditorias-iso, audit-ia
+    </div>
+  </div>
+  </div>
+  
+  <div class="footer">
+    Manual del Centro de Ayuda - SGI 360 | Página <span class="page-number"></span>
+  </div>
+</body>
+</html>
