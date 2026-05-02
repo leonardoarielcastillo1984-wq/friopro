@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import {
   Settings, Users, Shield, Building2, CreditCard,
-  CheckCircle2, XCircle, Crown, UserPlus, MoreVertical,
+  CheckCircle2, XCircle, Crown, UserPlus,
   Loader2, AlertCircle, Pencil, Save, X, Trash2,
   User, Lock, Eye, EyeOff, ArrowRight, Sparkles,
   Zap, Wallet
@@ -429,92 +429,74 @@ export default function ConfiguracionPage() {
           )}
 
           {members.length > 0 ? (
-            <div className="overflow-x-auto">
-            <table className="w-full min-w-[540px]">
-              <thead>
-                <tr className="border-b border-neutral-100">
-                  <th className="text-left py-3 px-5 text-xs font-medium text-neutral-400 uppercase">Email</th>
-                  <th className="text-left py-3 px-5 text-xs font-medium text-neutral-400 uppercase">Rol</th>
-                  <th className="text-left py-3 px-5 text-xs font-medium text-neutral-400 uppercase">Estado</th>
-                  <th className="text-left py-3 px-5 text-xs font-medium text-neutral-400 uppercase">Desde</th>
-                  {isAdmin && <th className="w-12 py-3 px-5"></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {members.map(m => {
-                  const st = STATUS_LABELS[m.status] || STATUS_LABELS.ACTIVE;
-                  const isSelf = m.userId === user?.id;
-                  return (
-                    <tr key={m.id} className="border-b border-neutral-50 hover:bg-neutral-50/50">
-                      <td className="py-3 px-5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 text-xs font-semibold">
-                            {m.email.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="text-sm text-neutral-700">{m.email}</span>
-                          {isSelf && <span className="text-xs bg-brand-100 text-brand-600 px-1.5 py-0.5 rounded font-medium">Vos</span>}
-                        </div>
-                      </td>
-                      <td className="py-3 px-5">
-                        <div className="flex items-center gap-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
+              {members.map(m => {
+                const st = STATUS_LABELS[m.status] || STATUS_LABELS.ACTIVE;
+                const isSelf = m.userId === user?.id;
+                return (
+                  <div key={m.id} className="bg-white border border-neutral-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 text-sm font-bold">
+                        {m.email.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-neutral-900 truncate">{m.email}</div>
+                        {isSelf && <span className="text-[10px] bg-brand-100 text-brand-600 px-1.5 py-0.5 rounded font-medium">Vos</span>}
+                      </div>
+                    </div>
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-neutral-400">Rol</span>
+                        <div className="flex items-center gap-1 text-sm text-neutral-700">
                           {m.role === 'TENANT_ADMIN' && <Crown className="h-3 w-3 text-amber-500" />}
-                          <span className="text-sm text-neutral-600">{ROLE_LABELS[m.role] || m.role}</span>
+                          {ROLE_LABELS[m.role] || m.role}
                         </div>
-                      </td>
-                      <td className="py-3 px-5">
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-neutral-400">Estado</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.color}`}>{st.label}</span>
-                      </td>
-                      <td className="py-3 px-5 text-sm text-neutral-400">
-                        {new Date(m.joinedAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                      </td>
-                      {isAdmin && (
-                        <td className="py-3 px-5 relative">
-                          {!isSelf && (
-                            <>
-                              <button
-                                onClick={() => setActionMenuId(actionMenuId === m.id ? null : m.id)}
-                                className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-
-                              {actionMenuId === m.id && (
-                                <div className="absolute right-5 top-10 z-10 w-48 rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
-                                  <button
-                                    onClick={() => handleChangeRole(m.id, m.role === 'TENANT_ADMIN' ? 'TENANT_USER' : 'TENANT_ADMIN')}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-                                  >
-                                    <Shield className="h-4 w-4" />
-                                    {m.role === 'TENANT_ADMIN' ? 'Cambiar a Usuario' : 'Hacer Administrador'}
-                                  </button>
-                                  <button
-                                    onClick={() => handleToggleStatus(m.id, m.status)}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-                                  >
-                                    {m.status === 'SUSPENDED' ? (
-                                      <><CheckCircle2 className="h-4 w-4 text-green-600" /> Reactivar</>
-                                    ) : (
-                                      <><XCircle className="h-4 w-4 text-amber-600" /> Suspender</>
-                                    )}
-                                  </button>
-                                  <div className="border-t border-neutral-100 my-1" />
-                                  <button
-                                    onClick={() => handleRemoveMember(m.id, m.email)}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                                  >
-                                    <Trash2 className="h-4 w-4" /> Eliminar del equipo
-                                  </button>
-                                </div>
-                              )}
-                            </>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-neutral-400">Desde</span>
+                        <span className="text-sm text-neutral-500">
+                          {new Date(m.joinedAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
+                    {isAdmin && !isSelf && (
+                      <div className="flex gap-2 pt-3 border-t border-neutral-100">
+                        <button
+                          onClick={() => handleChangeRole(m.id, m.role === 'TENANT_ADMIN' ? 'TENANT_USER' : 'TENANT_ADMIN')}
+                          className="flex-1 flex items-center justify-center gap-1 text-xs px-2 py-1.5 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-50 transition-colors"
+                        >
+                          <Shield className="h-3 w-3" />
+                          {m.role === 'TENANT_ADMIN' ? 'A Usuario' : 'A Admin'}
+                        </button>
+                        <button
+                          onClick={() => handleToggleStatus(m.id, m.status)}
+                          className={`flex-1 flex items-center justify-center gap-1 text-xs px-2 py-1.5 rounded-lg border transition-colors ${
+                            m.status === 'SUSPENDED'
+                              ? 'border-green-200 text-green-700 hover:bg-green-50'
+                              : 'border-amber-200 text-amber-700 hover:bg-amber-50'
+                          }`}
+                        >
+                          {m.status === 'SUSPENDED' ? (
+                            <><CheckCircle2 className="h-3 w-3" /> Reactivar</>
+                          ) : (
+                            <><XCircle className="h-3 w-3" /> Suspender</>
                           )}
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </button>
+                        <button
+                          onClick={() => handleRemoveMember(m.id, m.email)}
+                          className="flex items-center justify-center gap-1 text-xs px-2 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="p-8 text-center text-neutral-400">No hay miembros registrados</div>
