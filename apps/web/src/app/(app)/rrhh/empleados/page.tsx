@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, Search, Filter, Users, Building, Briefcase, MoreVertical, Edit2, UserCheck, Eye, Trash2, RefreshCw, UserPlus, Shield, UserX } from 'lucide-react';
+import { Plus, Search, Filter, Users, Building, Briefcase, MoreVertical, Edit2, UserCheck, Eye, EyeOff, Trash2, RefreshCw, UserPlus, Shield, UserX } from 'lucide-react';
 
 interface Employee {
   id: string;
@@ -60,6 +60,7 @@ export default function EmployeesPage() {
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [selectedEmployeeForUser, setSelectedEmployeeForUser] = useState<any>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [roles, setRoles] = useState<any[]>([]);
   const [permissions, setPermissions] = useState<any>({});
   const [departments, setDepartments] = useState<any[]>([]);
@@ -410,29 +411,18 @@ export default function EmployeesPage() {
   };
 
   const handleSavePermissions = async () => {
-    console.log('[DEBUG] handleSavePermissions called');
-    console.log('[DEBUG] selectedEmployeeForUser:', selectedEmployeeForUser);
-    if (!selectedEmployeeForUser) {
-      console.log('[DEBUG] selectedEmployeeForUser is null/undefined, returning');
-      return;
-    }
+    if (!selectedEmployeeForUser) return;
     
     try {
       setIsUpdating(true);
-      console.log('[DEBUG] isUpdating set to true');
       
       // Transform permissions to API format: { module: 'none'|'view'|'edit' }
       const transformedPermissions: Record<string, 'none' | 'view' | 'edit'> = {};
-      console.log('[DEBUG] modules:', modules);
-      console.log('[DEBUG] permissions state:', permissions);
       
       modules.forEach((mod) => {
         const perms = permissions[mod.key] || { access: 'none' };
         transformedPermissions[mod.key] = perms.access || 'none';
       });
-      
-      console.log('[DEBUG] transformedPermissions:', transformedPermissions);
-      console.log('[DEBUG] employeeId:', selectedEmployeeForUser.id);
       
       // Save to backend API
       const response = await apiFetch<{ success: boolean; permissions: any }>(
@@ -442,18 +432,12 @@ export default function EmployeesPage() {
           json: { permissions: transformedPermissions }
         }
       );
-      console.log('[DEBUG] API response:', response);
       
       if (response?.success) {
-        // Show success feedback
         alert('✅ Permisos guardados correctamente');
-        
-        // Close modal
         setShowPermissionsModal(false);
         setSelectedEmployeeForUser(null);
         setPermissions({});
-        
-        // Refresh employees list to update state
         await loadEmployees();
       } else {
         throw new Error('La API no confirmó el guardado');
@@ -2215,14 +2199,24 @@ export default function EmployeesPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Contraseña *
                 </label>
-                <input
-                  type="password"
-                  name="password"
-                  required
-                  minLength={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Mínimo 6 caracteres"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    required
+                    minLength={6}
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Mínimo 6 caracteres"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                    title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
