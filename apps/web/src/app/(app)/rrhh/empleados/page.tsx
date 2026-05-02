@@ -196,7 +196,7 @@ export default function EmployeesPage() {
         positionId: (formData.get('positionId') as string | null)?.trim() || undefined,
         supervisorId,
         reportsToPositionId,
-        location: (formData.get('location') as string | null)?.trim() || undefined,
+        // location: (formData.get('location') as string | null)?.trim() || undefined, // TODO: disabled - backend expects UUID
         notes: (formData.get('notes') as string | null)?.trim() || undefined,
       };
 
@@ -410,18 +410,29 @@ export default function EmployeesPage() {
   };
 
   const handleSavePermissions = async () => {
-    if (!selectedEmployeeForUser) return;
+    console.log('[DEBUG] handleSavePermissions called');
+    console.log('[DEBUG] selectedEmployeeForUser:', selectedEmployeeForUser);
+    if (!selectedEmployeeForUser) {
+      console.log('[DEBUG] selectedEmployeeForUser is null/undefined, returning');
+      return;
+    }
     
     try {
       setIsUpdating(true);
+      console.log('[DEBUG] isUpdating set to true');
       
       // Transform permissions to API format: { module: 'none'|'view'|'edit' }
       const transformedPermissions: Record<string, 'none' | 'view' | 'edit'> = {};
+      console.log('[DEBUG] modules:', modules);
+      console.log('[DEBUG] permissions state:', permissions);
       
       modules.forEach((mod) => {
         const perms = permissions[mod.key] || { access: 'none' };
         transformedPermissions[mod.key] = perms.access || 'none';
       });
+      
+      console.log('[DEBUG] transformedPermissions:', transformedPermissions);
+      console.log('[DEBUG] employeeId:', selectedEmployeeForUser.id);
       
       // Save to backend API
       const response = await apiFetch<{ success: boolean; permissions: any }>(
@@ -431,6 +442,7 @@ export default function EmployeesPage() {
           json: { permissions: transformedPermissions }
         }
       );
+      console.log('[DEBUG] API response:', response);
       
       if (response?.success) {
         // Show success feedback
@@ -618,7 +630,10 @@ export default function EmployeesPage() {
             Actualizar
           </button>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setShowCreateModal(true);
+            }}
             className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -1197,6 +1212,7 @@ export default function EmployeesPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+                  {/* TODO: Location field disabled - backend expects UUID but frontend sends text
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Ubicación
@@ -1208,6 +1224,7 @@ export default function EmployeesPage() {
                       placeholder="Oficina Central - Buenos Aires"
                     />
                   </div>
+                  */}
                 </div>
               </div>
 
@@ -1297,7 +1314,7 @@ export default function EmployeesPage() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Tipo de Contrato</label>
-                    <p className="text-gray-900">{selectedEmployee.contractType}</p>
+                    <span className="text-gray-900">{getContractTypeLabel(selectedEmployee.contractType)}</span>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Fecha de Ingreso</label>
