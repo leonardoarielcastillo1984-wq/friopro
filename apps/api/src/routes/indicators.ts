@@ -25,19 +25,49 @@ function addInterval(from: Date, frequency: string): Date {
   }
 }
 
+function getPeriodKey(date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getPrevPeriod(period: string): string | null {
+  const [y, m] = period.split('-').map(Number);
+  if (m === 1) return `${y - 1}-12`;
+  return `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
+function getSamePeriodLastYear(period: string): string | null {
+  const [y, m] = period.split('-').map(Number);
+  return `${y - 1}-${String(m).padStart(2, '0')}`;
+}
+
+function getYearFromPeriod(period: string): number {
+  return Number(period.split('-')[0]);
+}
+
 function computeIndicatorStatus(args: {
   value: number | null;
   targetValue: number | null;
   warningValue: number | null;
   criticalValue: number | null;
   direction: 'HIGHER_BETTER' | 'LOWER_BETTER';
+  hasTarget: boolean;
+  tolerancePercent: number;
 }): 'ON_TARGET' | 'WARNING' | 'OFF_TARGET' | 'NO_DATA' {
-  const { value, targetValue, warningValue, criticalValue, direction } = args;
-  if (value === null || value === undefined) return 'NO_DATA';
+  const { value, targetValue, warningValue, criticalValue, direction, hasTarget, tolerancePercent } = args;
+  if (!hasTarget || value === null || value === undefined) return 'NO_DATA';
   if (targetValue === null || targetValue === undefined) return 'NO_DATA';
 
   const isHigher = direction !== 'LOWER_BETTER';
-  const warn = warningValue ?? targetValue;
+  // Tolerancia configurable. Si no hay warningValue, calculamos con tolerancePercent
+  let warn = warningValue;
+  if (warn === null || warn === undefined) {
+    const tol = 1 - (tolerancePercent / 100);
+    if (isHigher) {
+      warn = targetValue * tol;
+    } else {
+      warn = targetValue * (1 + tolerancePercent / 100);
+    }
+  }
 
   if (isHigher) {
     if (value >= targetValue) return 'ON_TARGET';
@@ -49,6 +79,88 @@ function computeIndicatorStatus(args: {
   if (value <= targetValue) return 'ON_TARGET';
   if (value <= warn) return 'WARNING';
   return 'OFF_TARGET';
+}
+
+function calculateYTD(measurements: any[], year?: number): { ytdValue: number | null; ytdTarget: number | null; ytdPercent: number | null } {
+  const yr = year ?? new Date().getFullYear();
+  const yearMeas = (measurements || []).filter((m: any) => getYearFromPeriod(m.period) === yr);
+  if (yearMeas.length === 0) return { ytdValue: null, ytdTarget: null, ytdPercent: null };
+  const ytdValue = yearMeas.reduce((sum: number, m: any) => sum + (m.value ?? 0), 0);
+  return { ytdValue, ytdTarget: null, ytdPercent: null };
+}
+
+function calculateCompliance(value: number | null, target: number | null): number | null {
+  if (value === null || target === null || target === 0) return null;
+  return Math.min(Math.max((value / target) * 100, 0), 999);
+}
+
+function calculateVariation(current: number, previous: number | null): number | null {
+  if (previous === null || previous === 0) return null;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+function getTrendLabel(trend: string, direction?: string): { icon: string; label: string; color: string } {
+  if (trend === 'UP') {
+    return direction === 'LOWER_BETTER'
+      ? { icon: 'down', label: 'Empeora', color: 'red' }
+      : { icon: 'up', label: 'Mejora', color: 'green' };
+  }
+  if (trend === 'DOWN') {
+    return direction === 'LOWER_BETTER'
+      ? { icon: 'up', label: 'Mejora', color: 'green' }
+      : { icon: 'down', label: 'Empeora', color: 'red' };
+  }
+  return { icon: 'stable', label: 'Estable', color: 'neutral' };
+}
+
+function enrichIndicator(ind: any): any {
+  const meas = ind.measurements || [];
+  const currentPeriod = getPeriodKey();
+  const currentMeas = meas.find((m: any) => m.period === currentPeriod);
+  const prevPeriod = getPrevPeriod(currentPeriod);
+  const prevMeas = prevPeriod ? meas.find((m: any) => m.period === prevPeriod) : null;
+  const samePeriodLastYear = getSamePeriodLastYear(currentPeriod);
+  const lastYearMeas = samePeriodLastYear ? meas.find((m: any) => m.period === samePeriodLastYear) : null;
+
+  // Determine target for current period (monthlyTargets vs fixed targetValue)
+  let effectiveTarget = ind.targetValue ?? null;
+  try {
+    const monthlyTargets = typeof ind.monthlyTargets === 'string' ? JSON.parse(ind.monthlyTargets) : (ind.monthlyTargets || {});
+    if (monthlyTargets && monthlyTargets[currentPeriod] !== undefined) {
+      effectiveTarget = Number(monthlyTargets[currentPeriod]);
+    }
+  } catch { /* ignore */ }
+
+  const value = ind.currentValue ?? currentMeas?.value ?? null;
+  const compliance = calculateCompliance(value, effectiveTarget);
+  const { ytdValue } = calculateYTD(meas);
+  const ytdCompliance = calculateCompliance(ytdValue, ind.yearTargetValue);
+
+  const prevValue = prevMeas?.value ?? null;
+  const variationMoM = value !== null && prevValue !== null ? calculateVariation(value, prevValue) : null;
+
+  const lastYearValue = lastYearMeas?.value ?? null;
+  const variationYoY = value !== null && lastYearValue !== null ? calculateVariation(value, lastYearValue) : null;
+
+  const trendInfo = getTrendLabel(ind.trend, ind.direction);
+
+  return {
+    ...ind,
+    _enriched: {
+      value,
+      target: effectiveTarget,
+      compliance,
+      ytdValue,
+      ytdTarget: ind.yearTargetValue ?? null,
+      ytdCompliance,
+      variationMoM,
+      variationYoY,
+      trendInfo,
+      hasData: meas.length > 0,
+      measurementCount: meas.length,
+      lastPeriod: meas[0]?.period ?? null,
+    },
+  };
 }
 
 async function generateIndicatorCode(tx: any, tenantId: string): Promise<string> {
@@ -97,7 +209,8 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    return reply.send({ indicators });
+    const enriched = indicators.map((ind: any) => enrichIndicator(ind));
+    return reply.send({ indicators: enriched });
   });
 
   // GET /indicadores/stats — Estadísticas
@@ -189,7 +302,8 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (!indicator) return reply.code(404).send({ error: 'Resource not found' });
-    return reply.send({ indicator });
+    const enriched = enrichIndicator(indicator);
+    return reply.send({ indicator: enriched });
   });
 
   // POST /indicadores — Crear indicador
@@ -206,11 +320,18 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       process: z.string().optional(),
       standard: z.string().optional(),
       targetValue: z.number().optional(),
+      yearTargetValue: z.number().optional(),
       warningValue: z.number().optional(),
       criticalValue: z.number().optional(),
       unit: z.string().min(1),
       frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY']),
       direction: z.enum(['HIGHER_BETTER', 'LOWER_BETTER']).optional(),
+      hasTarget: z.boolean().optional(),
+      tolerancePercent: z.number().int().min(0).max(50).optional(),
+      monthlyTargets: z.record(z.string(), z.number()).optional(),
+      formula: z.string().optional(),
+      dataSource: z.string().optional(),
+      area: z.string().optional(),
       ncrTriggerStreak: z.number().int().min(1).max(12).optional(),
       ownerId: z.string().uuid().optional(),
     });
@@ -228,11 +349,18 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
           process: body.process,
           standard: body.standard,
           targetValue: body.targetValue ?? null,
+          yearTargetValue: body.yearTargetValue ?? null,
           warningValue: body.warningValue ?? null,
           criticalValue: body.criticalValue ?? null,
           unit: body.unit,
           frequency: body.frequency as any,
           direction: (body.direction ?? 'HIGHER_BETTER') as any,
+          hasTarget: body.hasTarget ?? true,
+          tolerancePercent: body.tolerancePercent ?? 5,
+          monthlyTargets: body.monthlyTargets ? JSON.stringify(body.monthlyTargets) : '{}',
+          formula: body.formula ?? null,
+          dataSource: body.dataSource ?? null,
+          area: body.area ?? null,
           ncrTriggerStreak: body.ncrTriggerStreak ?? 2,
           ownerId: body.ownerId ?? null,
           createdById: req.auth?.userId ?? null,
@@ -261,6 +389,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       value: z.number(),
       period: z.string().min(1),
       notes: z.string().optional(),
+      evidenceUrl: z.string().optional(),
     });
     const body = schema.parse(req.body);
 
@@ -270,8 +399,8 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
 
       const measurement = await tx.indicatorMeasurement.upsert({
         where: { indicatorId_period: { indicatorId: indicator.id, period: body.period } },
-        update: { value: body.value, notes: body.notes ?? null, measuredAt: new Date() },
-        create: { indicatorId: indicator.id, value: body.value, period: body.period, notes: body.notes ?? null },
+        update: { value: body.value, notes: body.notes ?? null, evidenceUrl: body.evidenceUrl ?? null, measuredAt: new Date() },
+        create: { indicatorId: indicator.id, value: body.value, period: body.period, notes: body.notes ?? null, evidenceUrl: body.evidenceUrl ?? null },
       });
 
       const prev = indicator.currentValue;
@@ -289,6 +418,8 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
         warningValue: indicator.warningValue,
         criticalValue: indicator.criticalValue,
         direction: indicator.direction,
+        hasTarget: indicator.hasTarget ?? true,
+        tolerancePercent: indicator.tolerancePercent ?? 5,
       });
 
       const offTargetStreak = status === 'OFF_TARGET' ? (indicator.offTargetStreak ?? 0) + 1 : 0;
@@ -395,12 +526,19 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       process: z.string().optional(),
       standard: z.string().optional(),
       targetValue: z.number().optional(),
+      yearTargetValue: z.number().optional(),
       warningValue: z.number().optional(),
       criticalValue: z.number().optional(),
       unit: z.string().min(1).optional(),
       frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY']).optional(),
       direction: z.enum(['HIGHER_BETTER', 'LOWER_BETTER']).optional(),
       isActive: z.boolean().optional(),
+      hasTarget: z.boolean().optional(),
+      tolerancePercent: z.number().int().min(0).max(50).optional(),
+      monthlyTargets: z.record(z.string(), z.number()).optional(),
+      formula: z.string().optional(),
+      dataSource: z.string().optional(),
+      area: z.string().optional(),
       ncrTriggerStreak: z.number().int().min(1).max(12).optional(),
       ownerId: z.string().uuid().optional().nullable(),
     });
@@ -420,12 +558,19 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       if (body.process !== undefined) data.process = body.process;
       if (body.standard !== undefined) data.standard = body.standard;
       if (body.targetValue !== undefined) data.targetValue = body.targetValue;
+      if (body.yearTargetValue !== undefined) data.yearTargetValue = body.yearTargetValue;
       if (body.warningValue !== undefined) data.warningValue = body.warningValue;
       if (body.criticalValue !== undefined) data.criticalValue = body.criticalValue;
       if (body.unit !== undefined) data.unit = body.unit;
       if (body.frequency !== undefined) data.frequency = body.frequency;
       if (body.direction !== undefined) data.direction = body.direction;
       if (body.isActive !== undefined) data.isActive = body.isActive;
+      if (body.hasTarget !== undefined) data.hasTarget = body.hasTarget;
+      if (body.tolerancePercent !== undefined) data.tolerancePercent = body.tolerancePercent;
+      if (body.monthlyTargets !== undefined) data.monthlyTargets = JSON.stringify(body.monthlyTargets);
+      if (body.formula !== undefined) data.formula = body.formula;
+      if (body.dataSource !== undefined) data.dataSource = body.dataSource;
+      if (body.area !== undefined) data.area = body.area;
       if (body.ncrTriggerStreak !== undefined) data.ncrTriggerStreak = body.ncrTriggerStreak;
       if (body.ownerId !== undefined) data.ownerId = body.ownerId;
       data.updatedById = req.auth?.userId ?? null;

@@ -11,9 +11,12 @@ COPY apps/web apps/web/
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG BUILD_DATE=unknown
+RUN echo "Build date: $BUILD_DATE"
 ARG NEXT_PUBLIC_API_URL=http://localhost:3002
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+RUN rm -rf /app/apps/web/.next
 RUN pnpm --filter web run build
 
 EXPOSE 3000

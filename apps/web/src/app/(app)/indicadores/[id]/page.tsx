@@ -10,6 +10,9 @@ import {
   TrendingUp, TrendingDown, Minus, Target, User,
   Calendar, Plus, Sparkles, Loader2,
 } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from 'recharts';
 
 const FREQ_LABELS: Record<string, string> = {
   DAILY: 'Diaria', WEEKLY: 'Semanal', MONTHLY: 'Mensual',
@@ -87,9 +90,9 @@ export default function IndicatorDetailPage() {
   // Derived values with useMemo - must be before conditional returns
   const derivedValues = useMemo(() => {
     if (!indicator) return null;
-    
+    const e = indicator._enriched;
     const trend = TREND_ICON[indicator.trend] ?? TREND_ICON.STABLE;
-    const pct = indicator.targetValue ? Math.min(((indicator.currentValue ?? 0) / indicator.targetValue) * 100, 100) : 0;
+    const pct = e?.compliance ?? (indicator.targetValue ? Math.min(((indicator.currentValue ?? 0) / indicator.targetValue) * 100, 100) : 0);
     const status = indicator.status ?? 'NO_DATA';
     const safeStatus = ['ON_TARGET', 'WARNING', 'OFF_TARGET', 'NO_DATA'].includes(status) ? status as IndicatorStatus : 'NO_DATA';
     const isOnTarget = safeStatus === 'ON_TARGET';
@@ -105,7 +108,8 @@ export default function IndicatorDetailPage() {
     
     return {
       trend, pct, status, safeStatus, isOnTarget, isWarning, isOffTarget,
-      measurements, lastMeas, isOverdue, canSuggestNcr, linked, linkedRiskIds
+      measurements, lastMeas, isOverdue, canSuggestNcr, linked, linkedRiskIds,
+      enriched: e,
     };
   }, [indicator]);
 
@@ -300,11 +304,11 @@ export default function IndicatorDetailPage() {
   // Destructure derived values for use in render
   const {
     trend, pct, safeStatus, isOnTarget, isWarning, isOffTarget,
-    measurements, lastMeas, isOverdue, canSuggestNcr, linked
+    measurements, lastMeas, isOverdue, canSuggestNcr, linked, enriched
   } = derivedValues ?? {
     trend: TREND_ICON.STABLE, pct: 0, safeStatus: 'NO_DATA' as IndicatorStatus,
     isOnTarget: false, isWarning: false, isOffTarget: false,
-    measurements: [], lastMeas: null, isOverdue: false, canSuggestNcr: false, linked: []
+    measurements: [], lastMeas: null, isOverdue: false, canSuggestNcr: false, linked: [], enriched: null
   };
 
   async function handleCreateNcrSuggested() {
@@ -510,25 +514,68 @@ export default function IndicatorDetailPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-neutral-200 p-5">
           <p className="text-xs text-neutral-500 mb-1">Valor actual</p>
-          <p className="text-2xl font-bold text-neutral-900">{indicator.currentValue ?? '—'} <span className="text-sm font-normal text-neutral-400">{indicator.unit}</span></p>
-        </div>
-        <div className="bg-white rounded-xl border border-neutral-200 p-5">
-          <p className="text-xs text-neutral-500 mb-1">Meta</p>
-          <p className="text-2xl font-bold text-neutral-900">{indicator.targetValue ?? '—'} <span className="text-sm font-normal text-neutral-400">{indicator.unit}</span></p>
+          <p className="text-2xl font-bold text-neutral-900">{enriched?.value ?? indicator.currentValue ?? '—'} <span className="text-sm font-normal text-neutral-400">{indicator.unit}</span></p>
+          <p className="text-xs text-neutral-400 mt-1">Meta: {enriched?.target ?? indicator.targetValue ?? '—'} {indicator.unit}</p>
         </div>
         <div className="bg-white rounded-xl border border-neutral-200 p-5">
           <p className="text-xs text-neutral-500 mb-1">Cumplimiento</p>
           <div className="flex items-center gap-3">
-            <p className={`text-2xl font-bold ${isOnTarget ? 'text-green-600' : 'text-amber-600'}`}>{Math.round(pct)}%</p>
+            <p className={`text-2xl font-bold ${isOnTarget ? 'text-green-600' : isWarning ? 'text-amber-600' : 'text-red-600'}`}>{Math.round(pct)}%</p>
             <div className="flex-1 h-2 bg-neutral-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full transition-all ${isOnTarget ? 'bg-green-500' : 'bg-amber-400'}`} style={{ width: `${Math.round(pct)}%` }} />
+              <div className={`h-full rounded-full transition-all ${isOnTarget ? 'bg-green-500' : isWarning ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${Math.min(Math.round(pct), 100)}%` }} />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-neutral-200 p-5">
+          <p className="text-xs text-neutral-500 mb-1">YTD Acumulado</p>
+          <p className="text-2xl font-bold text-neutral-900">{enriched?.ytdValue !== null ? enriched.ytdValue : '—'} <span className="text-sm font-normal text-neutral-400">{indicator.unit}</span></p>
+          {enriched?.ytdTarget && <p className="text-xs text-neutral-400 mt-1">Meta anual: {enriched.ytdTarget} ({Math.round(enriched.ytdCompliance ?? 0)}%)</p>}
+        </div>
+        <div className="bg-white rounded-xl border border-neutral-200 p-5">
+          <p className="text-xs text-neutral-500 mb-1">Variaciones</p>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-neutral-500">vs Mes ant.:</span>
+              <span className={`font-semibold ${(enriched?.variationMoM ?? 0) > 0 ? (indicator.direction === 'LOWER_BETTER' ? 'text-red-600' : 'text-green-600') : (enriched?.variationMoM ?? 0) < 0 ? (indicator.direction === 'LOWER_BETTER' ? 'text-green-600' : 'text-red-600') : 'text-neutral-500'}`}>
+                {enriched?.variationMoM !== null ? `${enriched.variationMoM > 0 ? '+' : ''}${enriched.variationMoM.toFixed(1)}%` : '—'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-neutral-500">vs Año ant.:</span>
+              <span className={`font-semibold ${(enriched?.variationYoY ?? 0) > 0 ? (indicator.direction === 'LOWER_BETTER' ? 'text-red-600' : 'text-green-600') : (enriched?.variationYoY ?? 0) < 0 ? (indicator.direction === 'LOWER_BETTER' ? 'text-green-600' : 'text-red-600') : 'text-neutral-500'}`}>
+                {enriched?.variationYoY !== null ? `${enriched.variationYoY > 0 ? '+' : ''}${enriched.variationYoY.toFixed(1)}%` : '—'}
+              </span>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Trend Chart */}
+      {measurements.length > 0 && (
+        <div className="bg-white rounded-xl border border-neutral-200 p-5">
+          <h3 className="text-sm font-semibold text-neutral-700 mb-4">Tendencia de Mediciones</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={[...measurements].reverse().map(m => ({
+                period: m.period,
+                valor: m.value,
+                meta: enriched?.target ?? indicator.targetValue ?? 0,
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="period" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(value: any, name: any) => [name === 'meta' ? `Meta: ${value}` : `${value} ${indicator.unit}`, '']} />
+                <Legend />
+                <Line type="monotone" dataKey="valor" name={`Valor (${indicator.unit})`} stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="meta" name="Meta" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* Suggested Actions */}
       {(canSuggestNcr || isOverdue || isOffTarget) && (
@@ -678,23 +725,25 @@ export default function IndicatorDetailPage() {
                 <th className="px-5 py-2.5 text-left font-medium text-neutral-600">Período</th>
                 <th className="px-5 py-2.5 text-right font-medium text-neutral-600">Valor</th>
                 <th className="px-5 py-2.5 text-right font-medium text-neutral-600">vs Meta</th>
+                <th className="px-5 py-2.5 text-left font-medium text-neutral-600">Notas</th>
                 <th className="px-5 py-2.5 text-right font-medium text-neutral-600">Fecha</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {measurements.map(m => {
-                const vsMeta = indicator.targetValue ? ((m.value / indicator.targetValue) * 100) : null;
+                const vsMeta = enriched?.target ? ((m.value / enriched.target) * 100) : (indicator.targetValue ? ((m.value / indicator.targetValue) * 100) : null);
                 return (
                   <tr key={m.id} className="hover:bg-neutral-50/50">
                     <td className="px-5 py-3 font-mono text-neutral-800">{m.period}</td>
                     <td className="px-5 py-3 text-right font-medium text-neutral-900">{m.value} {indicator.unit}</td>
                     <td className="px-5 py-3 text-right">
                       {vsMeta !== null && (
-                        <span className={`text-xs font-medium ${vsMeta >= 100 ? 'text-green-600' : 'text-amber-600'}`}>
+                        <span className={`text-xs font-medium ${vsMeta >= 95 ? 'text-green-600' : vsMeta >= 85 ? 'text-amber-600' : 'text-red-600'}`}>
                           {Math.round(vsMeta)}%
                         </span>
                       )}
                     </td>
+                    <td className="px-5 py-3 text-left text-neutral-500 text-xs max-w-[200px] truncate">{m.notes || '—'}</td>
                     <td className="px-5 py-3 text-right text-neutral-400 text-xs">
                       {new Date(m.measuredAt).toLocaleDateString('es-AR')}
                     </td>

@@ -261,6 +261,7 @@ export type IndicatorMeasurement = {
   value: number;
   period: string;
   notes: string | null;
+  evidenceUrl: string | null;
   measuredAt: string;
 };
 
@@ -280,6 +281,21 @@ export type IndicatorRiskLink = {
   };
 };
 
+export type IndicatorEnriched = {
+  value: number | null;
+  target: number | null;
+  compliance: number | null;
+  ytdValue: number | null;
+  ytdTarget: number | null;
+  ytdCompliance: number | null;
+  variationMoM: number | null;
+  variationYoY: number | null;
+  trendInfo: { icon: string; label: string; color: string };
+  hasData: boolean;
+  measurementCount: number;
+  lastPeriod: string | null;
+};
+
 export type Indicator = {
   id: string;
   code: string;
@@ -288,14 +304,21 @@ export type Indicator = {
   category: string;
   process: string | null;
   standard: string | null;
+  area: string | null;
   currentValue: number | null;
   targetValue: number | null;
+  yearTargetValue: number | null;
   minValue: number | null;
   maxValue: number | null;
   unit: string;
   direction?: IndicatorDirection;
   warningValue?: number | null;
   criticalValue?: number | null;
+  hasTarget?: boolean;
+  tolerancePercent?: number;
+  monthlyTargets?: Record<string, number>;
+  formula?: string | null;
+  dataSource?: string | null;
   status?: IndicatorStatus;
   lastMeasuredAt?: string | null;
   nextDueAt?: string | null;
@@ -309,6 +332,7 @@ export type Indicator = {
   riskLinks?: IndicatorRiskLink[];
   createdAt: string;
   updatedAt: string;
+  _enriched?: IndicatorEnriched;
 };
 
 export type IndicatorStats = {

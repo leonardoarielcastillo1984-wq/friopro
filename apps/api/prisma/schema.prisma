@@ -565,6 +565,7 @@ model Indicator {
 
   currentValue Float?
   targetValue  Float?
+  yearTargetValue Float?           // Meta anual para YTD
   minValue     Float?
   maxValue     Float?
   unit         String
@@ -574,6 +575,16 @@ model Indicator {
   // Umbral de alerta (amarillo). Si no se define, se usa targetValue como límite.
   warningValue  Float?
   criticalValue Float?
+
+  // Configuración avanzada de meta
+  hasTarget         Boolean @default(true)   // Toggle: ¿usa meta?
+  tolerancePercent  Int     @default(5)    // % de tolerancia para estado WARNING
+  monthlyTargets    Json    @default("{}")  // Metas variables por mes: {"2024-01": 100}
+
+  // Metadata del indicador
+  formula    String?  // Fórmula de cálculo
+  dataSource String?  // Fuente de datos
+  area       String?  // Área / Proceso asociado
 
   status IndicatorStatus @default(NO_DATA)
 
@@ -615,10 +626,11 @@ model IndicatorMeasurement {
   indicatorId String    @db.Uuid
   indicator   Indicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
 
-  value      Float
-  period     String
-  notes      String?
-  measuredAt DateTime @default(now()) @db.Timestamptz
+  value       Float
+  period      String
+  notes       String?
+  evidenceUrl String? // URL de evidencia (archivo adjunto)
+  measuredAt  DateTime @default(now()) @db.Timestamptz
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
