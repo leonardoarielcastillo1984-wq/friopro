@@ -48,7 +48,7 @@ export async function registerLandingSettingsRoutes(app: FastifyInstance) {
   app.put('/landing/settings', async (req: FastifyRequest<{ Body: z.infer<typeof UpdateLandingSettingsSchema> }>, reply: FastifyReply) => {
     // TODO: Implementar autenticación cuando esté disponible
     const validation = UpdateLandingSettingsSchema.safeParse(req.body);
-    if (!validation.success) return reply.code(400).send({ error: 'Validation failed', details: validation.error.errors });
+    if (!validation.success) return reply.code(400).send({ error: 'Validación fallida', details: validation.error.errors });
 
     try {
       // TODO: Guardar en base de datos cuando se cree el modelo landingSettings

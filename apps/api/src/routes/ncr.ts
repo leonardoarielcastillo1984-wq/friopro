@@ -98,7 +98,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
       body = createSchema.parse(req.body);
     } catch (e: any) {
       console.error('[NCR CREATE] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
-      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
     }
 
     try {

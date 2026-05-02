@@ -22,7 +22,7 @@ export async function registerCompanySettingsRoutes(app: FastifyInstance) {
   // GET /company/settings - Obtener configuración de la empresa
   app.get('/company/settings', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     
     try {
       const settings = await app.runWithDbContext(req, async (tx) => {
@@ -40,10 +40,10 @@ export async function registerCompanySettingsRoutes(app: FastifyInstance) {
   // PUT /company/settings - Actualizar configuración
   app.put('/company/settings', async (req: FastifyRequest<{ Body: z.infer<typeof UpdateCompanySettingsSchema> }>, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     
     const validation = UpdateCompanySettingsSchema.safeParse(req.body);
-    if (!validation.success) return reply.code(400).send({ error: 'Validation failed', details: validation.error.errors });
+    if (!validation.success) return reply.code(400).send({ error: 'Validación fallida', details: validation.error.errors });
     
     try {
       const settings = await app.runWithDbContext(req, async (tx) => {
@@ -71,7 +71,7 @@ export async function registerCompanySettingsRoutes(app: FastifyInstance) {
   // POST /company/logo - Subir logo (simulado - en producción usar S3)
   app.post('/company/logo', async (req: FastifyRequest<{ Body: { imageBase64: string; type: 'light' | 'dark' } }>, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     
     const { imageBase64, type } = req.body;
     if (!imageBase64) return reply.code(400).send({ error: 'Image is required' });

@@ -76,7 +76,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // GET /maintenance/work-orders - Listar órdenes de trabajo
   app.get('/work-orders', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { status, type, priority, technician } = request.query as any;
@@ -99,7 +99,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // POST /maintenance/work-orders - Crear orden de trabajo
   app.post('/work-orders', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     try {
@@ -130,17 +130,17 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.code(201).send({ workOrder });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return reply.code(400).send({ error: 'Validation failed', details: error.errors });
+        return reply.code(400).send({ error: 'Validación fallida', details: error.errors });
       }
       console.error('Error creating work order:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 
   // PUT /maintenance/work-orders/:id - Actualizar orden
   app.put('/work-orders/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -168,7 +168,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // DELETE /maintenance/work-orders/:id
   app.delete('/work-orders/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -187,7 +187,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // GET /maintenance/technicians - Listar técnicos
   app.get('/technicians', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const technicians = await getPrisma(request).maintenanceTechnician.findMany({
@@ -200,7 +200,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // POST /maintenance/technicians - Crear técnico
   app.post('/technicians', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     try {
@@ -226,17 +226,17 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.code(201).send({ technician });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return reply.code(400).send({ error: 'Validation failed', details: error.errors });
+        return reply.code(400).send({ error: 'Validación fallida', details: error.errors });
       }
       console.error('Error creating technician:', error?.message || error);
-      return reply.code(500).send({ error: 'Internal server error', message: error?.message });
+      return reply.code(500).send({ error: 'Error interno del servidor', message: error?.message });
     }
   });
 
   // PUT /maintenance/technicians/:id - Actualizar técnico
   app.put('/technicians/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -258,7 +258,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // DELETE /maintenance/technicians/:id
   app.delete('/technicians/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -277,7 +277,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // GET /maintenance/spare-parts - Listar repuestos
   app.get('/spare-parts', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { category, lowStock } = request.query as any;
@@ -299,7 +299,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // POST /maintenance/spare-parts - Crear repuesto
   app.post('/spare-parts', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     try {
@@ -330,17 +330,17 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.code(201).send({ part });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return reply.code(400).send({ error: 'Validation failed', details: error.errors });
+        return reply.code(400).send({ error: 'Validación fallida', details: error.errors });
       }
       console.error('Error creating spare part:', error?.message || error);
-      return reply.code(500).send({ error: 'Internal server error', message: error?.message });
+      return reply.code(500).send({ error: 'Error interno del servidor', message: error?.message });
     }
   });
 
   // PUT /maintenance/spare-parts/:id - Actualizar repuesto
   app.put('/spare-parts/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -362,7 +362,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // DELETE /maintenance/spare-parts/:id
   app.delete('/spare-parts/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -381,7 +381,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // GET /maintenance/plans - Listar planes de mantenimiento
   app.get('/plans', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const plans = await getPrisma(request).maintenancePlan.findMany({
@@ -396,7 +396,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // POST /maintenance/plans - Crear plan de mantenimiento
   app.post('/plans', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     try {
@@ -431,16 +431,16 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       console.error('❌ Error creating plan:', error?.message || String(error));
       if (error instanceof z.ZodError) {
         console.error('Zod validation errors:', JSON.stringify(error.errors));
-        return reply.code(400).send({ error: 'Validation failed', details: error.errors });
+        return reply.code(400).send({ error: 'Validación fallida', details: error.errors });
       }
-      return reply.code(500).send({ error: 'Internal server error', message: error?.message || 'Unknown error' });
+      return reply.code(500).send({ error: 'Error interno del servidor', message: error?.message || 'Unknown error' });
     }
   });
 
   // POST /maintenance/plans/:id/execute - Ejecutar plan
   app.post('/plans/:id/execute', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -496,7 +496,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // PUT /maintenance/plans/:id - Actualizar plan
   app.put('/plans/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -522,7 +522,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // DELETE /maintenance/plans/:id
   app.delete('/plans/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -541,7 +541,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // GET /maintenance/assets - Listar activos/equipos
   app.get('/assets', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { status, category } = request.query as any;
@@ -565,7 +565,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // POST /maintenance/assets - Crear activo/equipo
   app.post('/assets', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     try {
@@ -597,17 +597,17 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.code(201).send({ asset });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return reply.code(400).send({ error: 'Validation failed', details: error.errors });
+        return reply.code(400).send({ error: 'Validación fallida', details: error.errors });
       }
       console.error('Error creating asset:', error?.message || error);
-      return reply.code(500).send({ error: 'Internal server error', message: error?.message });
+      return reply.code(500).send({ error: 'Error interno del servidor', message: error?.message });
     }
   });
 
   // PUT /maintenance/assets/:id - Actualizar activo
   app.put('/assets/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -635,7 +635,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // DELETE /maintenance/assets/:id
   app.delete('/assets/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -654,7 +654,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // POST /maintenance/assets/:id/maintenance-cost - Agregar costo de mantenimiento
   app.post('/assets/:id/maintenance-cost', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -691,7 +691,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // GET /maintenance/assets/:id/maintenance-costs - Obtener historial de costos
   app.get('/assets/:id/maintenance-costs', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const { id } = request.params as { id: string };
@@ -716,7 +716,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   // GET /maintenance/stats - Estadísticas
   app.get('/stats', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const tenantId = request.db.tenantId;

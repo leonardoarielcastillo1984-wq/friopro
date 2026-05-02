@@ -1056,7 +1056,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({ modules });
     } catch (error: any) {
       app.log.error({ error }, 'message');
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 

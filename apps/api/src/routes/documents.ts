@@ -14,7 +14,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const documents = await app.runWithDbContext(req, async (tx: any) => {
       return tx.document.findMany({
@@ -162,7 +162,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const bodySchema = z.object({
       title: z.string().min(2),
@@ -326,7 +326,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
       if (requiresTenantContext(req) && !req.db?.tenantId) {
         console.log('[DOCUMENTS_UPLOAD] Tenant context required - no tenantId and not superadmin');
-        return reply.code(400).send({ error: 'Tenant context required' });
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       }
 
       const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);

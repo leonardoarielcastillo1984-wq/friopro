@@ -107,7 +107,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
       } catch (err: any) {
         req.log.error({ err, body, model: opts.model }, 'Error en makeCrud POST');
         console.error(`[makeCrud POST ${opts.model}] ERROR:`, err.message, err.code, err.meta);
-        return reply.code(500).send({ error: 'Internal server error', detail: err.message, model: opts.model });
+        return reply.code(500).send({ error: 'Error interno del servidor', detail: err.message, model: opts.model });
       }
     });
 

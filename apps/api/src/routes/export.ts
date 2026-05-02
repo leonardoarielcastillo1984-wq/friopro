@@ -32,7 +32,7 @@ const exportRisksQuerySchema = exportFormatSchema.extend({
 export const exportRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /export/ncr — Exportar No Conformidades ──
   app.get('/ncr', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -55,7 +55,7 @@ export const exportRoutes: FastifyPluginAsync = async (app) => {
 
   // ── GET /export/risks — Exportar Riesgos ──
   app.get('/risks', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -95,7 +95,7 @@ export const exportRoutes: FastifyPluginAsync = async (app) => {
 
   // ── GET /export/indicators — Exportar Indicadores ──
   app.get('/indicators', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -118,7 +118,7 @@ export const exportRoutes: FastifyPluginAsync = async (app) => {
 
   // ── GET /export/documents — Exportar Documentos ──
   app.get('/documents', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -141,7 +141,7 @@ export const exportRoutes: FastifyPluginAsync = async (app) => {
 
   // ── GET /export/findings — Exportar Hallazgos IA ──
   app.get('/findings', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -164,7 +164,7 @@ export const exportRoutes: FastifyPluginAsync = async (app) => {
 
   // ── GET /export/tenant-report — Reporte Completo del Tenant ──
   app.get('/tenant-report', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 

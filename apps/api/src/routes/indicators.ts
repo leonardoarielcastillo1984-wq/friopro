@@ -175,7 +175,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // GET /indicadores — Listar indicadores
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -216,7 +216,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // GET /indicadores/stats — Estadísticas
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -266,7 +266,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // GET /indicadores/simple — Lista ligera para selects
   app.get('/simple', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const indicators = await app.runWithDbContext(req, async (tx: any) => {
       return tx.indicator.findMany({
@@ -281,7 +281,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // GET /indicadores/:id — Detalle
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -301,7 +301,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    if (!indicator) return reply.code(404).send({ error: 'Resource not found' });
+    if (!indicator) return reply.code(404).send({ error: 'Recurso no encontrado' });
     const enriched = enrichIndicator(indicator);
     return reply.send({ indicator: enriched });
   });
@@ -309,7 +309,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // POST /indicadores — Crear indicador
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -380,7 +380,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // POST /indicadores/:id/measurements — Agregar medición
   app.post('/:id/measurements', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -395,7 +395,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
 
     const res = await app.runWithDbContext(req, async (tx: any) => {
       const indicator = await tx.indicator.findFirst({ where: { id, tenantId, deletedAt: null } });
-      if (!indicator) throw new Error('Resource not found');
+      if (!indicator) throw new Error('Recurso no encontrado');
 
       const measurement = await tx.indicatorMeasurement.upsert({
         where: { indicatorId_period: { indicatorId: indicator.id, period: body.period } },
@@ -453,7 +453,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // POST /indicadores/:id/risk-links — Vincular riesgo a indicador
   app.post('/:id/risk-links', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -468,7 +468,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
 
     const link = await app.runWithDbContext(req, async (tx: any) => {
       const indicator = await tx.indicator.findFirst({ where: { id, tenantId, deletedAt: null } });
-      if (!indicator) throw new Error('Resource not found');
+      if (!indicator) throw new Error('Recurso no encontrado');
 
       return tx.indicatorRiskLink.upsert({
         where: { tenantId_indicatorId_riskId: { tenantId, indicatorId: indicator.id, riskId: body.riskId } },
@@ -497,14 +497,14 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /indicadores/:id/risk-links/:linkId — Desvincular riesgo
   app.delete('/:id/risk-links/:linkId', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id, linkId } = z.object({ id: z.string().uuid(), linkId: z.string().uuid() }).parse(req.params);
 
     await app.runWithDbContext(req, async (tx: any) => {
       const indicator = await tx.indicator.findFirst({ where: { id, tenantId, deletedAt: null } });
-      if (!indicator) throw new Error('Resource not found');
+      if (!indicator) throw new Error('Recurso no encontrado');
       await tx.indicatorRiskLink.delete({ where: { id: linkId } });
     });
 
@@ -514,7 +514,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // PATCH /indicadores/:id — Actualizar indicador
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -586,14 +586,14 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    if (!indicator) return reply.code(404).send({ error: 'Resource not found' });
+    if (!indicator) return reply.code(404).send({ error: 'Recurso no encontrado' });
     return reply.send({ indicator });
   });
 
   // DELETE /indicadores/:id — Eliminar indicador (soft delete)
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -611,7 +611,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       return { kind: 'ok' as const };
     });
 
-    if (result.kind === 'not_found') return reply.code(404).send({ error: 'Resource not found' });
+    if (result.kind === 'not_found') return reply.code(404).send({ error: 'Recurso no encontrado' });
     return reply.send({ success: true, message: 'Indicador eliminado' });
   });
 };

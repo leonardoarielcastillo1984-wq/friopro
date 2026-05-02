@@ -156,7 +156,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
 
     if (!req.db?.tenantId && !isSuperAdmin(req)) {
       console.log('[UPLOAD] Tenant context required - no tenantId and not superadmin');
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     // Obtener tenantId efectivo para SUPER_ADMIN
@@ -406,7 +406,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:id/revision', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    if (!req.db?.tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     // Obtener tenantId efectivo para SUPER_ADMIN
     const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);
@@ -808,7 +808,7 @@ export const clauseMappingRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:docId/clause-mappings', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const paramsSchema = z.object({ docId: z.string().uuid() });
     const params = paramsSchema.parse(req.params);

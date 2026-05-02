@@ -76,7 +76,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // GET /risks — Listar riesgos
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -141,7 +141,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // GET /risks/stats — Estadísticas
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -263,7 +263,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // GET /risks/:id — Detalle
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
@@ -284,7 +284,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // POST /risks — Crear
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
 
     const body = createSchema.parse(req.body);
@@ -323,7 +323,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // POST /risks/import — Importar riesgos desde Excel (primera hoja)
   app.post('/import', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
 
     const data = await (req as any).file();
@@ -499,7 +499,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // PATCH /risks/:id — Actualizar
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = updateSchema.parse(req.body);
@@ -550,7 +550,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /risks/:id — Soft delete
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 

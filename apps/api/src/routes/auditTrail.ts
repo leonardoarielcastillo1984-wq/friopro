@@ -42,7 +42,7 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
     '/trail/:entityType/:entityId',
     async (req: FastifyRequest, reply: FastifyReply) => {
       if (!req.db?.tenantId)
-        return reply.code(400).send({ error: 'Tenant context required' });
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
         const { entityType, entityId } = req.params as {
@@ -81,7 +81,7 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
   // Get audit logs with flexible filtering
   app.get('/logs', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId)
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     try {
       const query = auditLogsQuerySchema.parse(req.query);
@@ -127,7 +127,7 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
     '/summary/users',
     async (req: FastifyRequest, reply: FastifyReply) => {
       if (!req.db?.tenantId)
-        return reply.code(400).send({ error: 'Tenant context required' });
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
         const query = auditSummaryQuerySchema.parse(req.query);
@@ -167,7 +167,7 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
     '/summary/entities',
     async (req: FastifyRequest, reply: FastifyReply) => {
       if (!req.db?.tenantId)
-        return reply.code(400).send({ error: 'Tenant context required' });
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
         const query = auditSummaryQuerySchema.parse(req.query);
@@ -203,7 +203,7 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
   // Export audit logs as CSV
   app.get('/export', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId)
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     try {
       const query = auditLogsQuerySchema.parse(req.query);

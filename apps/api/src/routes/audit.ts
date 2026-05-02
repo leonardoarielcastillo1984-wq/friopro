@@ -65,7 +65,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     // Verificar tenant context - primero intentar req.db, luego el token JWT
     const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
     if (!effectiveTenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
     const tenantId = effectiveTenantId;
 
@@ -128,7 +128,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     // Verificar tenant context - primero intentar req.db, luego el token JWT
     const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
     if (!effectiveTenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
     const tenantId = effectiveTenantId;
 
@@ -170,7 +170,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     // Verificar tenant context - primero intentar req.db, luego el token JWT
     const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
     if (!effectiveTenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
     const tenantId = effectiveTenantId;
 
@@ -235,7 +235,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     // Verificar tenant context - primero intentar req.db, luego el token JWT
     const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
     if (!effectiveTenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
     const tenantId = effectiveTenantId;
 
@@ -297,7 +297,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
 
     const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
     if (!effectiveTenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
     const tenantId = effectiveTenantId;
 
@@ -355,7 +355,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
 
     const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
     if (!effectiveTenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
     const tenantId = effectiveTenantId;
 
@@ -429,7 +429,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     // Verificar tenant context - primero intentar req.db, luego el token JWT
     const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
     if (!effectiveTenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
     const tenantId = effectiveTenantId;
 

@@ -32,7 +32,7 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /process-maps ──────────────────────────────────────────
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const maps = await app.runWithDbContext(req, async (tx: any) => {
       return tx.processMap.findMany({
@@ -49,7 +49,7 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
   // ── POST /process-maps ─────────────────────────────────────────
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const body = mapSchema.parse(req.body);
     const map = await app.runWithDbContext(req, async (tx: any) => {
@@ -64,7 +64,7 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
   // ── PUT /process-maps/:id ──────────────────────────────────────
   app.put('/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const body = mapSchema.partial().parse(req.body);
     const map = await app.runWithDbContext(req, async (tx: any) => {
@@ -80,7 +80,7 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
   // ── DELETE /process-maps/:id ───────────────────────────────────
   app.delete('/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.processMap.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
@@ -91,14 +91,14 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
   // ── POST /process-maps/:id/processes ──────────────────────────
   app.post('/:id/processes', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     let body;
     try {
       body = processSchema.parse(req.body);
     } catch (e: any) {
       console.error('[processMaps POST processes] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
-      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
     }
     const process = await app.runWithDbContext(req, async (tx: any) => {
       return tx.process.create({ data: { ...body, tenantId, processMapId: req.params.id } });

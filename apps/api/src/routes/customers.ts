@@ -4,7 +4,7 @@ import { z } from 'zod';
 export async function registerCustomerRoutes(app: FastifyInstance) {
   // GET /customers - Listar clientes
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const query = req.query as any;
@@ -105,7 +105,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
       console.log('GET /customers/:id - params:', req.params);
       console.log('GET /customers/:id - tenantId:', req.db?.tenantId);
       
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const tenantId = req.db.tenantId;
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -174,7 +174,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
   // POST /customers - Crear cliente
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const tenantId = req.db.tenantId;
 
@@ -255,7 +255,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
     try {
       console.log('PATCH /customers/:id - body:', req.body);
       
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const tenantId = req.db.tenantId;
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -381,7 +381,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // DELETE /customers/:id - Eliminar cliente (soft delete)
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -402,7 +402,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // GET /customers/:id/surveys - Encuestas del cliente
   app.get('/:id/surveys', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -431,7 +431,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // POST /customers/:id/surveys - Asignar encuesta a cliente
   app.post('/:id/surveys', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -489,7 +489,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
       
       if (!req.db?.tenantId) {
         console.log('❌ Missing tenant context');
-        return reply.code(400).send({ error: 'Tenant context required' });
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       }
 
       const tenantId = req.db.tenantId;
@@ -582,7 +582,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // GET /customers/stats - Customer statistics dashboard
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 
@@ -628,7 +628,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // GET /customers/:id/satisfaction-history - Historial de satisfacción
   app.get('/:id/satisfaction-history', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -669,7 +669,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // POST /customers/:id/improvement-plans - Crear plan de mejora
   app.post('/:id/improvement-plans', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -708,7 +708,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // GET /customers/:id/improvement-plans - Listar planes de mejora
   app.get('/:id/improvement-plans', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -725,7 +725,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // PATCH /customers/improvement-plans/:planId - Actualizar plan de mejora
   app.patch('/improvement-plans/:planId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { planId } = z.object({ planId: z.string().uuid() }).parse(req.params);
@@ -762,7 +762,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // POST /customers/:id/actions - Crear acción manual (NC / CAPA / Plan)
   app.post('/:id/actions', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -826,7 +826,7 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
 
   // POST /customers/analyze - AI Analysis of customer trends
   app.post('/analyze', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
 

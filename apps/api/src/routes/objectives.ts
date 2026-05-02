@@ -50,7 +50,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // List
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const q = req.query as any;
     const where: any = { tenantId, deletedAt: null };
@@ -84,14 +84,14 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // Create
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     let data;
     try {
       data = objectiveSchema.parse(req.body);
     } catch (e: any) {
       console.error('[objectives POST] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
-      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
     }
     // Normalize undefined/null for optional UUID fields (strip invalid UUIDs to prevent Prisma errors)
     const item = await app.runWithDbContext(req, async (tx: any) => {
@@ -115,7 +115,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // === POLICIES (must be before /:id to avoid matching 'policies' as an id) ===
   app.get('/policies', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const q = req.query as any;
     const items = await app.runWithDbContext(req, async (tx: any) => {
@@ -128,7 +128,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/policies', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const schema = z.object({ name: z.string().min(1), content: emptyToUndefined(z.string().optional()), scope: emptyToUndefined(z.string().optional()), active: z.boolean().optional() });
     let data;
@@ -136,7 +136,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
       data = schema.parse(req.body);
     } catch (e: any) {
       console.error('[policies POST] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
-      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
     }
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.policy.create({ data: { tenantId, ...data } });
@@ -145,7 +145,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.patch('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const schema = z.object({ name: z.string().optional(), content: emptyToUndefined(z.string().optional()), scope: emptyToUndefined(z.string().optional()), active: z.boolean().optional() });
     let data;
@@ -153,7 +153,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
       data = schema.parse(req.body);
     } catch (e: any) {
       console.error('[policies PATCH] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(req.body || {}));
-      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
     }
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.policy.update({ where: { id }, data });
@@ -162,7 +162,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.delete('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.policy.update({ where: { id }, data: { deletedAt: new Date() } });
@@ -172,7 +172,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // Get one
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = req.params as { id: string };
     const item = await app.runWithDbContext(req, async (tx: any) => {
@@ -195,7 +195,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // Update
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = req.params as { id: string };
     const body = objectiveSchema.partial().parse(req.body);
@@ -218,7 +218,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // Soft delete
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = req.params as { id: string };
     await app.runWithDbContext(req, async (tx: any) => {
@@ -232,7 +232,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // === ACTIVITIES ===
   app.post('/:id/activities', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = req.params as { id: string };
     const data = activitySchema.parse(req.body);
@@ -251,7 +251,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.patch('/activities/:activityId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { activityId } = req.params as { activityId: string };
     const data = activitySchema.partial().parse(req.body);
     const item = await app.runWithDbContext(req, async (tx: any) => {
@@ -268,7 +268,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.delete('/activities/:activityId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { activityId } = req.params as { activityId: string };
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.objectiveActivity.delete({ where: { id: activityId } });
@@ -278,7 +278,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // === INDICATORS ===
   app.post('/:id/indicators', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = req.params as { id: string };
     const { id: indicatorId } = relationSchema.parse(req.body);
@@ -291,7 +291,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.delete('/indicators/:relationId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { relationId } = req.params as { relationId: string };
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.objectiveIndicator.delete({ where: { id: relationId } });
@@ -301,7 +301,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // === AUDITS ===
   app.post('/:id/audits', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = req.params as { id: string };
     const { id: auditId } = relationSchema.parse(req.body);
@@ -314,7 +314,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.delete('/audits/:relationId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { relationId } = req.params as { relationId: string };
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.objectiveAudit.delete({ where: { id: relationId } });
@@ -324,7 +324,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // === CAPAS ===
   app.post('/:id/capas', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = req.params as { id: string };
     const { id: capaId } = relationSchema.parse(req.body);
@@ -337,7 +337,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.delete('/capas/:relationId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { relationId } = req.params as { relationId: string };
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.objectiveCAPA.delete({ where: { id: relationId } });
@@ -347,7 +347,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // === RISKS ===
   app.post('/:id/risks', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { id } = req.params as { id: string };
     const { id: riskId } = relationSchema.parse(req.body);
@@ -360,7 +360,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.delete('/risks/:relationId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { relationId } = req.params as { relationId: string };
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.objectiveRisk.delete({ where: { id: relationId } });
@@ -371,7 +371,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
 
   // === DASHBOARD STATS ===
   app.get('/stats/summary', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const q = req.query as any;
     const year = q.year ? Number(q.year) : new Date().getFullYear();

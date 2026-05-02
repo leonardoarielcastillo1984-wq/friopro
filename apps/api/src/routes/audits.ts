@@ -153,7 +153,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
   // PROGRAMS
   app.get('/audit/programs', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const programs = await app.runWithDbContext(req, async (tx) => {
       return tx.auditProgram.findMany({
@@ -169,11 +169,11 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/programs',
     async (req: FastifyRequest<{ Body: z.infer<typeof CreateProgramSchema> }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const validation = CreateProgramSchema.safeParse(req.body);
       if (!validation.success) {
-        return reply.code(400).send({ error: 'Validation failed', details: validation.error.errors });
+        return reply.code(400).send({ error: 'Validación fallida', details: validation.error.errors });
       }
 
       const { year, name, description } = validation.data;
@@ -197,7 +197,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
   // AUDITORS
   app.get('/audit/auditors', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const auditors = await app.runWithDbContext(req, async (tx) => {
       return tx.auditor.findMany({
@@ -213,11 +213,11 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/auditors',
     async (req: FastifyRequest<{ Body: z.infer<typeof CreateAuditorSchema> }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const validation = CreateAuditorSchema.safeParse(req.body);
       if (!validation.success) {
-        return reply.code(400).send({ error: 'Validation failed', details: validation.error.errors });
+        return reply.code(400).send({ error: 'Validación fallida', details: validation.error.errors });
       }
 
       const auditor = await app.runWithDbContext(req, async (tx) => {
@@ -239,7 +239,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/auditors/:id',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = (req.body ?? {}) as any;
       const data: any = {};
@@ -283,7 +283,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/auditors/:id',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const auditor = await app.runWithDbContext(req, async (tx) => {
         const existing = await tx.auditor.findFirst({
@@ -309,7 +309,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/auditors/:id/documents',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const documents = await app.runWithDbContext(req, async (tx) => {
         // Verificar que el auditor existe y pertenece al tenant
@@ -335,7 +335,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/auditors/:id/documents',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = (req.body ?? {}) as any;
       
@@ -386,7 +386,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/auditors/documents/:docId',
     async (req: FastifyRequest<{ Params: { docId: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const result = await app.runWithDbContext(req, async (tx) => {
         const doc = await tx.auditorDocument.findFirst({
@@ -414,7 +414,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/auditors/:id/upload',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
         // Verificar que el auditor existe
@@ -478,7 +478,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
   // AUDITS
   app.get('/audit/audits', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const audits = await app.runWithDbContext(req, async (tx) => {
       return tx.audit.findMany({
@@ -492,7 +492,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
 
   app.get('/audit/audits/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const audit = await app.runWithDbContext(req, async (tx) => {
       return tx.audit.findUnique({
@@ -508,7 +508,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/audits/:id',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = (req.body ?? {}) as any;
       const data: any = {};
@@ -562,11 +562,11 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/audits',
     async (req: FastifyRequest<{ Body: z.infer<typeof CreateAuditSchema> }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const validation = CreateAuditSchema.safeParse(req.body);
       if (!validation.success) {
-        return reply.code(400).send({ error: 'Validation failed', details: validation.error.errors });
+        return reply.code(400).send({ error: 'Validación fallida', details: validation.error.errors });
       }
 
       const data = validation.data;
@@ -592,7 +592,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/audits/:id/findings',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const findings = await app.runWithDbContext(req, async (tx) => {
         return tx.auditFinding.findMany({
@@ -609,7 +609,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/audits/:id/findings',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = (req.body ?? {}) as any;
       const finding = await app.runWithDbContext(req, async (tx) => {
@@ -647,7 +647,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/audits/:id/checklist',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const items = await app.runWithDbContext(req, async (tx) => {
         const existing = await tx.auditChecklistItem.findMany({
@@ -688,7 +688,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/checklist/:id',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = (req.body ?? {}) as any;
 
@@ -774,7 +774,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/audits/:id/report/draft',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const draft = await app.runWithDbContext(req, async (tx) => {
         const audit = await tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
@@ -835,7 +835,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/iso-findings/:id',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const finding = await app.runWithDbContext(req, async (tx) => {
         return tx.auditFinding.findFirst({
@@ -852,7 +852,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/iso-findings/:id/actions',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const actions = await app.runWithDbContext(req, async (tx) => {
         const finding = await tx.auditFinding.findFirst({
@@ -876,7 +876,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/iso-findings/:id/actions',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = (req.body ?? {}) as any;
       if (!body.description || typeof body.description !== 'string') {
@@ -929,7 +929,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     '/audit/iso-actions/:id',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = (req.body ?? {}) as any;
 

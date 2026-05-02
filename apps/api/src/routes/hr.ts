@@ -160,7 +160,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       data = createEmployeeSchema.parse(request.body);
     } catch (e: any) {
       console.error('[hr POST /employees] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(request.body || {}));
-      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
     }
 
       // Check for duplicate DNI or email
@@ -221,7 +221,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     } catch (error) {
       console.error('[HR] Error creating employee:', error);
       return reply.code(500).send({ 
-        error: 'Internal server error', 
+        error: 'Error interno del servidor', 
         details: error instanceof Error ? error.message : String(error) 
       });
     }
@@ -275,7 +275,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     } catch (error) {
       console.error('[HR] Error updating employee:', error);
       return reply.code(500).send({
-        error: 'Internal server error',
+        error: 'Error interno del servidor',
         details: error instanceof Error ? error.message : String(error)
       });
     }
@@ -735,7 +735,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       }).parse(request.body);
     } catch (e: any) {
       console.error('[hr POST /trainings/:id/assignments] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(request.body || {}));
-      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
     }
 
     const assignment = await fastify.prisma.trainingAssignment.create({
@@ -824,7 +824,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       }).parse(request.body);
     } catch (e: any) {
       console.error('[hr POST /employees/:id/competencies] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(request.body || {}));
-      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
     }
 
     const employeeCompetency = await fastify.prisma.employeeCompetency.create({
@@ -978,7 +978,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       }).parse(request.body);
     } catch (e: any) {
       console.error('[hr POST /positions/:id/competencies] Zod validation error:', e.errors || e.message, 'Body keys:', Object.keys(request.body || {}));
-      return reply.code(400).send({ error: 'Validation failed', details: e.errors || e.message });
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
     }
 
     const positionCompetency = await fastify.prisma.positionCompetency.create({
@@ -1077,7 +1077,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       return { orgChart };
     } catch (error) {
       console.error('🔴 ORG CHART - Error:', error);
-      return reply.code(500).send({ error: 'Internal server error', details: (error as Error).message });
+      return reply.code(500).send({ error: 'Error interno del servidor', details: (error as Error).message });
     }
   });
 
@@ -1183,7 +1183,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
 
   // GET /hr/competencies/matrix - all data needed for the versatility matrix
   fastify.get('/competencies/matrix', async (req, reply) => {
-    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db.tenantId;
     const prisma = req.db.prisma;
@@ -1238,7 +1238,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   // POST /hr/employee-competencies (upsert)
   fastify.post('/employee-competencies', async (req, reply) => {
     const tenantId = req.db?.tenantId || (req as any).tenant?.tenantId || req.auth?.tenantId;
-    if (!tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.status(403).send({ error: 'Se requiere contexto de tenant' });
     const body = req.body as any;
     const { employeeId, competencyId, currentLevel } = body || {};
     if (!employeeId || !competencyId || typeof currentLevel !== 'number') {
@@ -1266,7 +1266,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
 
   // GET /hr/position-competencies
   fastify.get('/position-competencies', async (req, reply) => {
-    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Se requiere contexto de tenant' });
     const items = await req.db.prisma.positionCompetency.findMany({
       where: { position: { tenantId: req.db.tenantId } },
       include: { position: true, competency: true },
@@ -1277,7 +1277,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   // POST /hr/position-competencies (upsert)
   fastify.post('/position-competencies', async (req, reply) => {
     const tenantId = req.db?.tenantId || (req as any).tenant?.tenantId || req.auth?.tenantId;
-    if (!tenantId) return reply.status(403).send({ error: 'Tenant context required' });
+    if (!tenantId) return reply.status(403).send({ error: 'Se requiere contexto de tenant' });
     const body = req.body as any;
     const { positionId, competencyId, requiredLevel } = body || {};
     if (!positionId || !competencyId || typeof requiredLevel !== 'number') {

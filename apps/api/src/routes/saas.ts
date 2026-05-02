@@ -73,7 +73,7 @@ export default async function saasRoutes(app: FastifyInstance) {
       });
     } catch (error) {
       app.log.error('Error getting plans:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 
@@ -178,7 +178,7 @@ export default async function saasRoutes(app: FastifyInstance) {
       });
     } catch (error) {
       app.log.error('Error in onboarding:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 
@@ -186,7 +186,7 @@ export default async function saasRoutes(app: FastifyInstance) {
   app.post('/subscription/upgrade', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.db?.tenantId) {
-        return reply.code(401).send({ error: 'Tenant context required' });
+        return reply.code(401).send({ error: 'Se requiere contexto de tenant' });
       }
 
       const validatedData = upgradePlanSchema.parse(request.body);
@@ -272,7 +272,7 @@ export default async function saasRoutes(app: FastifyInstance) {
       });
     } catch (error) {
       app.log.error('Error upgrading subscription:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 
@@ -280,14 +280,14 @@ export default async function saasRoutes(app: FastifyInstance) {
   app.get('/subscription/status', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.db?.tenantId) {
-        return reply.code(401).send({ error: 'Tenant context required' });
+        return reply.code(401).send({ error: 'Se requiere contexto de tenant' });
       }
 
       const status = await app.mercadoPagoService.getSubscriptionStatus(request.db.tenantId);
       return reply.send(status);
     } catch (error) {
       app.log.error('Error getting subscription status:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 
@@ -295,7 +295,7 @@ export default async function saasRoutes(app: FastifyInstance) {
   app.post('/subscription/cancel', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.db?.tenantId) {
-        return reply.code(401).send({ error: 'Tenant context required' });
+        return reply.code(401).send({ error: 'Se requiere contexto de tenant' });
       }
 
       // Obtener información del tenant antes de cancelar
@@ -349,7 +349,7 @@ export default async function saasRoutes(app: FastifyInstance) {
       return reply.send({ cancelled: true });
     } catch (error) {
       app.log.error('Error cancelling subscription:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 
@@ -357,7 +357,7 @@ export default async function saasRoutes(app: FastifyInstance) {
   app.get('/modules/access', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.db?.tenantId) {
-        return reply.code(401).send({ error: 'Tenant context required' });
+        return reply.code(401).send({ error: 'Se requiere contexto de tenant' });
       }
 
       // Detectar si es SuperAdmin
@@ -367,7 +367,7 @@ export default async function saasRoutes(app: FastifyInstance) {
       return reply.send({ modules });
     } catch (error) {
       app.log.error('Error getting module access:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 
@@ -375,7 +375,7 @@ export default async function saasRoutes(app: FastifyInstance) {
   app.get('/subscription/usage', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.db?.tenantId) {
-        return reply.code(401).send({ error: 'Tenant context required' });
+        return reply.code(401).send({ error: 'Se requiere contexto de tenant' });
       }
 
       const planInfo = await app.featureAccessService.getPlanInfo(request.db.tenantId);
@@ -393,7 +393,7 @@ export default async function saasRoutes(app: FastifyInstance) {
       });
     } catch (error) {
       app.log.error('Error getting usage metrics:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 
@@ -401,7 +401,7 @@ export default async function saasRoutes(app: FastifyInstance) {
   app.post('/users', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.db?.tenantId) {
-        return reply.code(401).send({ error: 'Tenant context required' });
+        return reply.code(401).send({ error: 'Se requiere contexto de tenant' });
       }
 
       const { email, firstName, lastName, role } = request.body as any;
@@ -442,7 +442,7 @@ export default async function saasRoutes(app: FastifyInstance) {
       return reply.send({ user });
     } catch (error) {
       app.log.error('Error creating user:', error);
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 

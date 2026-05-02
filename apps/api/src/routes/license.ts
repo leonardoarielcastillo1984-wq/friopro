@@ -1010,7 +1010,7 @@ export async function licenseRoutes(app: FastifyInstance) {
       return reply.send({ modules });
     } catch (error: any) {
       app.log.error({ error }, 'message');
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(500).send({ error: 'Error interno del servidor' });
     }
   });
 
@@ -1477,7 +1477,7 @@ export async function licenseRoutes(app: FastifyInstance) {
         const firstTenant = await app.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
         if (firstTenant) tenantId = firstTenant.id;
       }
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       // Usar auth.userId si existe, o fallback para testing
       const userId = (req as any).auth?.userId || 'system';
@@ -1567,7 +1567,7 @@ export async function licenseRoutes(app: FastifyInstance) {
   // GET /license/usage - Obtener uso de licencia
   app.get('/usage', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const tenantId = req.db.tenantId;
 
@@ -1589,7 +1589,7 @@ export async function licenseRoutes(app: FastifyInstance) {
   // GET /license/usage-history - Obtener historial de uso
   app.get('/usage-history', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       // Historial vacío por defecto
       return reply.send({ history: [] });
@@ -1601,7 +1601,7 @@ export async function licenseRoutes(app: FastifyInstance) {
   // GET /license/payment-methods - Obtener métodos de pago
   app.get('/payment-methods', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       // Métodos de pago vacío por defecto
       return reply.send({ paymentMethods: [] });

@@ -46,7 +46,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- LIST ---
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const query = req.query as Record<string, string>;
     const where: any = { tenantId: tId, deletedAt: null };
     if (query.status) where.status = query.status;
@@ -69,7 +69,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- DETAIL ---
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
@@ -89,7 +89,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- CREATE ---
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
     delete body.id;
@@ -128,7 +128,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- UPDATE ---
   app.put('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
@@ -156,7 +156,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- PATCH ---
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
@@ -184,7 +184,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- SOFT DELETE ---
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
@@ -200,7 +200,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // List actions for a hazard
   app.get('/:id/actions', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const actions = await app.runWithDbContext(req, async (tx: any) => {
@@ -215,7 +215,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // Create action
   app.post('/:id/actions', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
@@ -243,7 +243,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // Update action
   app.put('/:id/actions/:actionId', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id: hazardId, actionId } = z.object({ id: z.string().uuid(), actionId: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
@@ -268,7 +268,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // Delete action
   app.delete('/:id/actions/:actionId', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id: hazardId, actionId } = z.object({ id: z.string().uuid(), actionId: z.string().uuid() }).parse(req.params);
 
     await app.runWithDbContext(req, async (tx: any) => {
@@ -280,7 +280,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- RISK REVIEWS ---
   app.get('/:id/reviews', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const reviews = await app.runWithDbContext(req, async (tx: any) => {
@@ -294,7 +294,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/:id/reviews', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
     if (!body) return reply.code(400).send({ error: 'Invalid body' });
@@ -322,7 +322,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- ALERTS SUMMARY ---
   app.get('/alerts/summary', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const now = new Date();
     const hazards = await app.runWithDbContext(req, async (tx: any) => {
@@ -372,7 +372,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- AUTO CREATE NC (manual trigger) ---
   app.post('/:id/auto-nc', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const hazard = await app.runWithDbContext(req, async (tx: any) => {
@@ -436,7 +436,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
   // --- AI ANALYSIS ---
   app.post('/:id/ai-analyze', async (req: FastifyRequest, reply: FastifyReply) => {
     const tId = tenantId(req);
-    if (!tId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const hazard = await app.runWithDbContext(req, async (tx: any) => {

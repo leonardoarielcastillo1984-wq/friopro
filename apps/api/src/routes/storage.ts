@@ -8,7 +8,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
   app.get('/usage', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId;
     if (!tenantId) {
-      return reply.code(400).send({ error: 'Tenant context required' });
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
     const prisma = (app as any).prisma;

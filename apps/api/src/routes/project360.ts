@@ -39,7 +39,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/projects
   app.get('/projects', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const { status, priority, origin } = req.query as any;
 
@@ -59,7 +59,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // POST /project360/projects
   app.post('/projects', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
@@ -86,7 +86,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/:id — alias sin /projects/ para compatibilidad
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     if (['projects', 'stats', 'notifications', 'tasks', 'attachments', 'reminders'].includes(id)) {
       return reply.code(404).send({ error: 'Not found' });
@@ -102,7 +102,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/projects/:id
   app.get('/projects/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
 
     const project = await prisma.project360.findFirst({
@@ -116,7 +116,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // PUT /project360/projects/:id
   app.put('/projects/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
     const { id: _id, tenantId: _tid, createdAt: _ca, deletedAt: _da, tasks: _tasks, ...data } = body;
@@ -142,7 +142,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // DELETE /project360/projects/:id
   app.delete('/projects/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
 
     const existing = await prisma.project360.findFirst({ where: { id, tenantId: req.db.tenantId, deletedAt: null } });
@@ -154,7 +154,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/stats
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
     const where = { tenantId, deletedAt: null };
 
@@ -174,7 +174,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // POST /project360/tasks/:taskId/comments
   app.post('/tasks/:taskId/comments', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { taskId } = req.params as { taskId: string };
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
     const { text } = body;
@@ -191,7 +191,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/tasks/:taskId/comments
   app.get('/tasks/:taskId/comments', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { taskId } = req.params as { taskId: string };
     const comments = await prisma.project360Comment.findMany({
       where: { taskId, tenantId: req.db.tenantId },
@@ -202,7 +202,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // POST /project360/projects/:id/attachments
   app.post('/projects/:id/attachments', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
     const { name, url, size, type, taskId } = body;
@@ -217,7 +217,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/projects/:id/attachments
   app.get('/projects/:id/attachments', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const attachments = await prisma.project360Attachment.findMany({ where: { projectId: id, tenantId: req.db.tenantId }, orderBy: { createdAt: 'desc' } });
     return reply.send({ attachments });
@@ -225,7 +225,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // DELETE /project360/attachments/:attachmentId
   app.delete('/attachments/:attachmentId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { attachmentId } = req.params as { attachmentId: string };
     const att = await prisma.project360Attachment.findFirst({ where: { id: attachmentId, tenantId: req.db.tenantId } });
     if (!att) return reply.code(404).send({ error: 'Attachment not found' });
@@ -236,7 +236,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/projects/:id/history
   app.get('/projects/:id/history', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const history = await prisma.project360History.findMany({ where: { projectId: id, tenantId: req.db.tenantId }, orderBy: { createdAt: 'desc' }, take: 50 });
     return reply.send({ history });
@@ -244,7 +244,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // POST /project360/projects/:id/reminders
   app.post('/projects/:id/reminders', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
     const { title, reminderDate, description } = body;
@@ -258,7 +258,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/projects/:id/reminders
   app.get('/projects/:id/reminders', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const reminders = await prisma.project360Reminder.findMany({ where: { projectId: id, tenantId: req.db.tenantId }, orderBy: { reminderDate: 'asc' } });
     return reply.send({ reminders });
@@ -266,7 +266,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // POST /project360/reminders/:reminderId/complete
   app.post('/reminders/:reminderId/complete', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { reminderId } = req.params as { reminderId: string };
     const reminder = await prisma.project360Reminder.findFirst({ where: { id: reminderId, tenantId: req.db.tenantId } });
     if (!reminder) return reply.code(404).send({ error: 'Reminder not found' });
@@ -276,7 +276,7 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // DELETE /project360/reminders/:reminderId
   app.delete('/reminders/:reminderId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant context required' });
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { reminderId } = req.params as { reminderId: string };
     const reminder = await prisma.project360Reminder.findFirst({ where: { id: reminderId, tenantId: req.db.tenantId } });
     if (!reminder) return reply.code(404).send({ error: 'Reminder not found' });
