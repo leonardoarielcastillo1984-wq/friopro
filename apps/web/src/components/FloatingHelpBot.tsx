@@ -28,7 +28,17 @@ export default function FloatingHelpBot() {
   const [loading, setLoading] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [currentModule, setCurrentModule] = useState<string>('');
-  const [bubbleOffset, setBubbleOffset] = useState(0);
+  const clampOffset = useCallback((v: number) => {
+    if (typeof window === 'undefined') return v;
+    const max = Math.max(0, window.innerHeight - 120);
+    return Math.max(0, Math.min(v, max));
+  }, []);
+
+  const [bubbleOffset, setBubbleOffset] = useState(() => {
+    if (typeof window === 'undefined') return 0;
+    const raw = parseInt(localStorage.getItem('sg360_bubbleOffset') || '0', 10);
+    return clampOffset(isNaN(raw) ? 0 : raw);
+  });
   const [dragging, setDragging] = useState(false);
   const dragStartY = useRef(0);
   const dragStartOffset = useRef(0);
@@ -44,10 +54,15 @@ export default function FloatingHelpBot() {
   const onDrag = (clientY: number) => {
     if (!dragging) return;
     const delta = clientY - dragStartY.current;
-    setBubbleOffset(dragStartOffset.current + delta);
+    setBubbleOffset(clampOffset(dragStartOffset.current + delta));
   };
 
-  const endDrag = () => setDragging(false);
+  const endDrag = useCallback(() => {
+    setDragging(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sg360_bubbleOffset', String(bubbleOffset));
+    }
+  }, [bubbleOffset]);
 
   useEffect(() => {
     const move = (e: MouseEvent) => onDrag(e.clientY);
