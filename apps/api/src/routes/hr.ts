@@ -370,6 +370,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       data: {
         employeeId: id,
         email: data.email,
+        password: hashedPassword,  // Required by Prisma schema
         passwordHash: hashedPassword,
         roles: data.roleId ? {
           create: {
