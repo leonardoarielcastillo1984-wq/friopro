@@ -378,13 +378,19 @@ export default function EmployeesPage() {
 
       setShowCreateUserModal(false);
       await loadEmployees(); // Refresh to update access badge
-      
-      // Find the updated employee with user data
-      const updatedEmployee = employees.find(e => e.id === selectedEmployeeForUser.id);
-      if (updatedEmployee) {
-        setSelectedEmployeeForUser(updatedEmployee);
+
+      // Fetch fresh employee data with user from API
+      try {
+        const freshEmployee = await apiFetch<{ employee: Employee }>(
+          `/hr/employees/${selectedEmployeeForUser.id}`
+        );
+        if (freshEmployee?.employee) {
+          setSelectedEmployeeForUser(freshEmployee.employee);
+        }
+      } catch {
+        // fallback to stale state
       }
-      
+
       // Open permissions modal directly after creating user
       setShowPermissionsModal(true);
     } catch (error) {
