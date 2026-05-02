@@ -557,7 +557,7 @@ export default function IndicatorDetailPage() {
       {measurements.length > 0 && (
         <div className="bg-white rounded-xl border border-neutral-200 p-5">
           <h3 className="text-sm font-semibold text-neutral-700 mb-4">Tendencia de Mediciones</h3>
-          <div className="h-64">
+          <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={[...measurements].reverse().map(m => ({
                 period: m.period,

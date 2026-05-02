@@ -140,7 +140,7 @@ export default function IndicadoresPage() {
           maxValue: form.maxValue ? Number(form.maxValue) : null,
           yearTargetValue: (form as any).yearTargetValue ? Number((form as any).yearTargetValue) : null,
           tolerancePercent: (form as any).tolerancePercent ? Number((form as any).tolerancePercent) : null,
-          monthlyTargets: (form as any).monthlyTargets || undefined,
+          monthlyTargets: (form as any).monthlyTargets ? (form as any).monthlyTargets.map(Number) : undefined,
           formula: (form as any).formula || undefined,
           dataSource: (form as any).dataSource || undefined,
           area: (form as any).area || undefined,
@@ -309,7 +309,7 @@ export default function IndicadoresPage() {
       {categoryChartData.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <h3 className="text-sm font-semibold text-slate-700 mb-4">Cumplimiento por Categoría</h3>
-          <div className="h-48">
+          <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoryChartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
