@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import argon2 from 'argon2';
 
 // Validation schemas
 const emptyToUndefined = (val: unknown) => (val === '' || val === null || val === undefined ? undefined : val);
@@ -362,14 +363,14 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: 'User with this email already exists' });
     }
 
-    // Hash password (simple hash for demo - use bcrypt in production)
-    const hashedPassword = data.password; // TODO: Implement bcrypt
+    // Hash password using argon2
+    const hashedPassword = await argon2.hash(data.password);
 
     const user = await fastify.prisma.user.create({
       data: {
         employeeId: id,
         email: data.email,
-        password: hashedPassword,
+        passwordHash: hashedPassword,
         roles: data.roleId ? {
           create: {
             roleId: data.roleId
@@ -384,6 +385,31 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     });
 
     return { user };
+  });
+
+  // Delete user from employee
+  fastify.delete('/employees/:id/users/:userId', async (request, reply) => {
+    const { id, userId } = request.params as { id: string; userId: string };
+
+    const employee = await fastify.prisma.employee.findUnique({
+      where: { id },
+      include: { user: true }
+    });
+
+    if (!employee) {
+      return reply.code(404).send({ error: 'Empleado no encontrado' });
+    }
+
+    if (!employee.user || employee.user.id !== userId) {
+      return reply.code(404).send({ error: 'Usuario no encontrado para este empleado' });
+    }
+
+    // Delete user
+    await fastify.prisma.user.delete({
+      where: { id: userId }
+    });
+
+    return { success: true };
   });
 
   // Get user permissions

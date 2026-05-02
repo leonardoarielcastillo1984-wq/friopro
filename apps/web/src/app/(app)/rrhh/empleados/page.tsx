@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, Search, Filter, Users, Building, Briefcase, MoreVertical, Edit2, UserCheck, Eye, Trash2, RefreshCw, UserPlus, Shield } from 'lucide-react';
+import { Plus, Search, Filter, Users, Building, Briefcase, MoreVertical, Edit2, UserCheck, Eye, Trash2, RefreshCw, UserPlus, Shield, UserX } from 'lucide-react';
 
 interface Employee {
   id: string;
@@ -861,6 +861,28 @@ export default function EmployeesPage() {
                                 <Eye className="h-4 w-4 mr-2" />
                                 Ver Detalles
                               </button>
+                              {employee.user && (
+                                <>
+                                  <div className="border-t border-gray-100"></div>
+                                  <button
+                                    onClick={async () => {
+                                      setShowActionsMenu(null);
+                                      if (!confirm('¿Eliminar el acceso al sistema de este empleado?\n\nEl empleado seguirá existiendo pero no podrá iniciar sesión.')) return;
+                                      try {
+                                        await apiFetch(`/hr/employees/${employee.id}/users/${employee.user.id}`, { method: 'DELETE' });
+                                        loadEmployees();
+                                        alert('Acceso eliminado correctamente');
+                                      } catch (error) {
+                                        alert('Error al eliminar acceso: ' + (error as Error).message);
+                                      }
+                                    }}
+                                    className="flex items-center px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 w-full"
+                                  >
+                                    <UserX className="h-4 w-4 mr-2" />
+                                    Eliminar acceso
+                                  </button>
+                                </>
+                              )}
                               <div className="border-t border-gray-100"></div>
                               <button
                                 onClick={() => {
@@ -871,7 +893,7 @@ export default function EmployeesPage() {
                                 className="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full"
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
-                                Eliminar
+                                Eliminar empleado
                               </button>
                             </div>
                           </div>
@@ -2070,8 +2092,6 @@ export default function EmployeesPage() {
                     const selectedStatus = form.querySelector('input[name="status"]:checked') as HTMLInputElement;
                     const newStatus = selectedStatus?.value;
                     
-                    console.log('🔵 Selected status:', newStatus);
-                    
                     if (!newStatus) {
                       alert('Por favor selecciona un estado');
                       return;
@@ -2080,30 +2100,16 @@ export default function EmployeesPage() {
                     setIsUpdating(true);
                     
                     try {
-                      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/hr/employees/${selectedEmployee.id}/status`, {
+                      await apiFetch(`/hr/employees/${selectedEmployee.id}/status`, {
                         method: 'PATCH',
-                        headers: {
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ status: newStatus }),
+                        json: { status: newStatus }
                       });
                       
-                      console.log('🔵 Response status:', response.status);
-                      const result = await response.json();
-                      console.log('🔵 Response:', result);
-                      
-                      if (response.ok) {
-                        // Close modal first
-                        setShowStatusModal(false);
-                        // Then reload data
-                        await loadEmployees();
-                        // Show success message
-                        alert('Estado actualizado correctamente');
-                      } else {
-                        throw new Error(result.error || 'Error al actualizar estado');
-                      }
+                      setShowStatusModal(false);
+                      await loadEmployees();
+                      alert('Estado actualizado correctamente');
                     } catch (error) {
-                      console.error('❌ Error updating status:', error);
+                      console.error('Error updating status:', error);
                       alert('Error al actualizar estado: ' + (error as Error).message);
                     } finally {
                       setIsUpdating(false);
@@ -2157,20 +2163,13 @@ export default function EmployeesPage() {
                 <button
                   onClick={async () => {
                     try {
-                      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'}/hr/employees/${selectedEmployee.id}`, {
-                        method: 'DELETE',
-                      });
-                      
-                      if (response.ok) {
-                        setShowDeleteModal(false);
-                        loadEmployees();
-                        alert('Empleado eliminado correctamente');
-                      } else {
-                        throw new Error('Error al eliminar empleado');
-                      }
+                      await apiFetch(`/hr/employees/${selectedEmployee.id}`, { method: 'DELETE' });
+                      setShowDeleteModal(false);
+                      loadEmployees();
+                      alert('Empleado eliminado correctamente');
                     } catch (error) {
                       console.error('Error deleting employee:', error);
-                      alert('Error al eliminar empleado');
+                      alert('Error al eliminar empleado: ' + (error as Error).message);
                     }
                   }}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
