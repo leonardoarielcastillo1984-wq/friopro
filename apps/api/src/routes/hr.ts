@@ -347,35 +347,52 @@ export default async function hrRoutes(fastify: FastifyInstance) {
 
     // Check employee exists
     const employee = await fastify.prisma.employee.findUnique({
-      where: { id }
+      where: { id },
+      include: { tenant: true }
     });
 
     if (!employee) {
       return reply.code(404).send({ error: 'Employee not found' });
     }
 
-    // Check if user already exists
-    const existingUser = await fastify.prisma.user.findUnique({
+    // Check if platform user already exists
+    const existingPlatformUser = await fastify.prisma.platformUser.findUnique({
       where: { email: data.email }
     });
 
-    if (existingUser) {
+    if (existingPlatformUser) {
       return reply.code(400).send({ error: 'User with this email already exists' });
     }
 
     // Hash password using argon2
     const hashedPassword = await argon2.hash(data.password);
 
+    // Create PlatformUser (required for login)
+    const platformUser = await fastify.prisma.platformUser.create({
+      data: {
+        email: data.email,
+        passwordHash: hashedPassword,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        isActive: true
+      }
+    });
+
+    // Create TenantMembership for the employee's tenant
+    await fastify.prisma.tenantMembership.create({
+      data: {
+        tenantId: employee.tenantId,
+        userId: platformUser.id,
+        role: 'TENANT_USER' // Standard user role
+      }
+    });
+
+    // Create internal User record linked to employee
     const user = await fastify.prisma.user.create({
       data: {
         employeeId: id,
         email: data.email,
-        password: hashedPassword,
-        roles: data.roleId ? {
-          create: {
-            roleId: data.roleId
-          }
-        } : undefined
+        password: hashedPassword
       },
       include: {
         roles: {
@@ -384,7 +401,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       }
     });
 
-    return { user };
+    return { user: { ...user, platformUserId: platformUser.id } };
   });
 
   // Delete user from employee
