@@ -215,6 +215,15 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       return;
     }
 
+    // Verificar permisos de usuario (solo para empleados, no admins)
+    const isAdmin = user?.globalRole === 'SUPER_ADMIN' || tenantRole === 'TENANT_ADMIN';
+    if (!isAdmin && href !== '/planes') {
+      const moduleKey = href.replace(/^\//, '');
+      if (!hasModulePermission(moduleKey)) {
+        return; // No redirigir si no tiene permiso
+      }
+    }
+
     router.push(href);
     setSearchQuery('');
     setSearchFocused(false);
@@ -338,7 +347,10 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             return (
               <button
                 key={item.href}
-                onClick={() => navigate(item.href)}
+                onClick={() => {
+                  if (isLocked) return;
+                  navigate(item.href);
+                }}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   active
                     ? 'bg-brand-600 text-white'
