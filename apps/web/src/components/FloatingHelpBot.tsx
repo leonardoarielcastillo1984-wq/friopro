@@ -28,8 +28,52 @@ export default function FloatingHelpBot() {
   const [loading, setLoading] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [currentModule, setCurrentModule] = useState<string>('');
+  const [bubbleOffset, setBubbleOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const dragStartY = useRef(0);
+  const dragStartOffset = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+
+  const startDrag = (clientY: number) => {
+    setDragging(true);
+    dragStartY.current = clientY;
+    dragStartOffset.current = bubbleOffset;
+  };
+
+  const onDrag = (clientY: number) => {
+    if (!dragging) return;
+    const delta = clientY - dragStartY.current;
+    setBubbleOffset(dragStartOffset.current + delta);
+  };
+
+  const endDrag = () => setDragging(false);
+
+  useEffect(() => {
+    const move = (e: MouseEvent) => onDrag(e.clientY);
+    const up = () => endDrag();
+    if (dragging) {
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    }
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [dragging]);
+
+  useEffect(() => {
+    const move = (e: TouchEvent) => onDrag(e.touches[0].clientY);
+    const up = () => endDrag();
+    if (dragging) {
+      window.addEventListener('touchmove', move);
+      window.addEventListener('touchend', up);
+    }
+    return () => {
+      window.removeEventListener('touchmove', move);
+      window.removeEventListener('touchend', up);
+    };
+  }, [dragging]);
 
   // Resetear conversación al cambiar de módulo
   useEffect(() => {
@@ -154,7 +198,10 @@ export default function FloatingHelpBot() {
       {!open && (
         <button
           onClick={() => { setOpen(true); setMinimized(false); }}
-          className="fixed bottom-5 right-5 z-[60] flex items-center justify-center w-14 h-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          onMouseDown={(e) => startDrag(e.clientY)}
+          onTouchStart={(e) => startDrag(e.touches[0].clientY)}
+          style={{ transform: `translateY(${-bubbleOffset}px)` }}
+          className="fixed bottom-5 right-5 z-[60] flex items-center justify-center w-14 h-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-grab active:cursor-grabbing"
           aria-label="Abrir asistente de ayuda"
         >
           <MessageCircle className="w-6 h-6" />
@@ -274,7 +321,10 @@ export default function FloatingHelpBot() {
       {open && minimized && (
         <button
           onClick={() => setMinimized(false)}
-          className="fixed bottom-5 right-5 z-[60] flex items-center gap-2 px-4 py-2.5 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 transition-all"
+          onMouseDown={(e) => startDrag(e.clientY)}
+          onTouchStart={(e) => startDrag(e.touches[0].clientY)}
+          style={{ transform: `translateY(${-bubbleOffset}px)` }}
+          className="fixed bottom-5 right-5 z-[60] flex items-center gap-2 px-4 py-2.5 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 transition-all cursor-grab active:cursor-grabbing"
         >
           <MessageCircle className="w-5 h-5" />
           <span className="text-sm font-medium">Asistente SGI 360</span>
