@@ -35,6 +35,8 @@ import {
   Package,
   Target,
   Grid3X3,
+  Eye,
+  Pencil,
 } from 'lucide-react';
 
 const mainNav = [
@@ -348,8 +350,28 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               >
                 <Icon className={`h-[18px] w-[18px] flex-shrink-0 ${isLocked ? 'opacity-50' : ''}`} />
                 <span className={isLocked ? 'opacity-70' : ''}>{item.label}</span>
-                {isLocked && (
+                {isLocked ? (
                   <Lock className="h-3.5 w-3.5 ml-auto text-slate-500" />
+                ) : !isAdmin && (
+                  (() => {
+                    const perms = getUserPermissions();
+                    const level = perms[moduleKey];
+                    const access = typeof level === 'string' ? level : (level as any)?.access;
+                    if (access === 'edit') {
+                      return (
+                        <span title="Edición" className="ml-auto">
+                          <Pencil className="h-3 w-3 text-brand-400" />
+                        </span>
+                      );
+                    } else if (access === 'view') {
+                      return (
+                        <span title="Solo lectura" className="ml-auto">
+                          <Eye className="h-3 w-3 text-blue-400" />
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()
                 )}
               </button>
             );

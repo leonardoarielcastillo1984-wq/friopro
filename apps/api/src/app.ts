@@ -15,6 +15,7 @@ import { authPlugin } from './plugins/auth.js';
 import { csrfPlugin } from './plugins/csrf.js';
 import { dbContextPlugin } from './plugins/dbContext.js';
 import { featuresPlugin } from './plugins/features.js';
+import { userPermissionsPlugin } from './plugins/user-permissions.js';
 
 import { healthRoutes } from './routes/health.js';
 import saasRoutes from './routes/saas.js';
@@ -138,6 +139,7 @@ export async function buildApp() {
   await app.register(csrfPlugin);
   await app.register(dbContextPlugin);
   await app.register(featuresPlugin);
+  await app.register(userPermissionsPlugin);
 
   // Registrar rutas públicas PRIMERO
   await app.register(publicRoutes);
