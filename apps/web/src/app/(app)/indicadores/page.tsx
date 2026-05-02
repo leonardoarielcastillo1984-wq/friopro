@@ -138,6 +138,12 @@ export default function IndicadoresPage() {
           targetValue: form.targetValue ? Number(form.targetValue) : null,
           minValue: form.minValue ? Number(form.minValue) : null,
           maxValue: form.maxValue ? Number(form.maxValue) : null,
+          yearTargetValue: (form as any).yearTargetValue ? Number((form as any).yearTargetValue) : null,
+          tolerancePercent: (form as any).tolerancePercent ? Number((form as any).tolerancePercent) : null,
+          monthlyTargets: (form as any).monthlyTargets || undefined,
+          formula: (form as any).formula || undefined,
+          dataSource: (form as any).dataSource || undefined,
+          area: (form as any).area || undefined,
         },
       });
       setShowForm(false);
@@ -162,6 +168,12 @@ export default function IndicadoresPage() {
           targetValue: form.targetValue ? Number(form.targetValue) : null,
           minValue: form.minValue ? Number(form.minValue) : null,
           maxValue: form.maxValue ? Number(form.maxValue) : null,
+          yearTargetValue: (form as any).yearTargetValue ? Number((form as any).yearTargetValue) : null,
+          tolerancePercent: (form as any).tolerancePercent ? Number((form as any).tolerancePercent) : null,
+          monthlyTargets: (form as any).monthlyTargets || undefined,
+          formula: (form as any).formula || undefined,
+          dataSource: (form as any).dataSource || undefined,
+          area: (form as any).area || undefined,
         },
       });
       setEditingId(null);
