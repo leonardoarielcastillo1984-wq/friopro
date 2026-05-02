@@ -514,7 +514,7 @@ Tarea:
 Responde en español, conciso y profesional.`;
 
     try {
-      const llm = createLLMProvider();
+      const llm = createLLMProvider(req.tenant);
       const aiRes = await llm.chat([{ role: 'user', content: prompt }], 1500);
       return reply.send({ analysis: aiRes?.text || 'Sin respuesta del modelo' });
     } catch (e: any) {

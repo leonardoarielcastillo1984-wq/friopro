@@ -40,20 +40,144 @@ export class AuditAnalysisService {
 
   /**
    * Analiza un documento contra un conjunto de cláusulas normativas.
-   * Si hay >25 cláusulas, las divide en lotes de 15 para análisis independientes.
+   * Primero filtra cláusulas irrelevantes vía LLM, luego analiza solo las relevantes.
    */
   async analyzeDocumentVsClauses(
     input: DocumentAnalysisInput,
     onProgress?: (processed: number, total: number) => void
   ): Promise<DocumentAnalysisResult> {
-    // Si hay muchas cláusulas, dividir en lotes
-    if (input.clauses.length > 25) {
-      return this.analyzeInBatches(input, onProgress);
+    // Paso 1: Filtrar cláusulas relevantes según tipo de documento
+    const relevantClauseNumbers = await this.filterRelevantClauses(input);
+    const relevantClauses = input.clauses.filter((c) =>
+      relevantClauseNumbers.includes(c.clauseNumber)
+    );
+
+    console.log(`[AuditAnalysis] Filtrado: ${relevantClauses.length}/${input.clauses.length} cláusulas relevantes para "${input.documentTitle}"`);
+
+    if (relevantClauses.length === 0) {
+      return {
+        findings: [],
+        summary: 'No se identificaron cláusulas relevantes para este tipo de documento.',
+        coveredCount: 0,
+        missingCount: 0,
+      };
     }
 
-    const result = await this.analyzeDirectly(input);
-    onProgress?.(input.clauses.length, input.clauses.length);
+    const filteredInput = { ...input, clauses: relevantClauses };
+
+    // Paso 2: Analizar solo las cláusulas relevantes
+    if (filteredInput.clauses.length > 25) {
+      return this.analyzeInBatches(filteredInput, onProgress);
+    }
+
+    const result = await this.analyzeDirectly(filteredInput);
+    onProgress?.(filteredInput.clauses.length, filteredInput.clauses.length);
     return result;
+  }
+
+  /**
+   * Filtra cláusulas relevantes buscando palabras clave del título del documento
+   * en título y contenido de cada cláusula. No usa LLM — es determinístico y preciso.
+   * Ej: "Política de Seguridad Vial" → match con cláusula que contenga "política".
+   */
+  private filterRelevantClauses(input: DocumentAnalysisInput): string[] {
+    const titleLower = input.documentTitle.toLowerCase();
+
+    // Detectar el TIPO de documento por palabras clave identificadoras en el título
+    // Solo usamos estas palabras, no palabras genéricas como "seguridad", "vial", "gestion"
+    const typeKeywords: Record<string, string[]> = {
+      // Política → capítulos que hablan de política, compromiso, dirección
+      'politica': ['politica', 'política', 'policy', 'compromiso', 'liderazgo', 'direccion', 'dirección', 'top management'],
+      'política': ['politica', 'política', 'policy', 'compromiso', 'liderazgo', 'direccion', 'dirección', 'top management'],
+
+      // Procedimiento / Proceso
+      'procedimiento': ['procedimiento', 'proceso', 'procesos', 'procedimientos', 'procedure', 'operacional'],
+      'proceso': ['proceso', 'procesos', 'procedimiento', 'procedimientos', 'procedure', 'operacional'],
+
+      // Incidente / No conformidad / Acción correctiva
+      'incidente': ['incidente', 'incidentes', 'no conformidad', 'no conformidades', 'accion correctiva', 'acciones correctivas', 'no conforme', 'nonconformity', 'corrective action'],
+      'accioncorrectiva': ['accion correctiva', 'acciones correctivas', 'incidente', 'incidentes', 'no conformidad', 'corrective'],
+      'accióncorrectiva': ['accion correctiva', 'acciones correctivas', 'incidente', 'incidentes', 'no conformidad', 'corrective'],
+
+      // Capacitación / Competencia / Formación
+      'capacitacion': ['capacitacion', 'capacitación', 'formacion', 'formación', 'entrenamiento', 'competencia', 'competencias', 'training', 'awareness'],
+      'competencia': ['competencia', 'competencias', 'capacitacion', 'capacitación', 'formacion', 'training'],
+
+      // Riesgo / Peligro
+      'riesgo': ['riesgo', 'riesgos', 'peligro', 'peligros', 'hazard', 'risk', 'evaluacion de riesgo', 'oportunidad', 'oportunidades'],
+
+      // Partes interesadas / Stakeholders
+      'parteinteresada': ['parteinteresada', 'partesinteresadas', 'stakeholder', 'interesados', 'parte interesada', 'partes interesadas'],
+
+      // Auditoría
+      'auditoria': ['auditoria', 'auditoría', 'auditorias', 'auditorías', 'audit', 'auditor interno', 'programa de auditoria'],
+      'auditoría': ['auditoria', 'auditoría', 'auditorias', 'auditorías', 'audit'],
+
+      // Documento / Registro / Información documentada
+      'documento': ['documento', 'documentos', 'documentacion', 'documentación', 'documented', 'registro', 'registros', 'informacion documentada', 'información documentada', 'record'],
+      'registro': ['registro', 'registros', 'documento', 'documentacion', 'record', 'informacion documentada'],
+
+      // Mejora / Acción preventiva
+      'mejora': ['mejora', 'mejoramiento', 'improvement', 'continua', 'preventiva', 'accion preventiva', 'acciones preventivas'],
+
+      // Objetivo / Meta / Planificación
+      'objetivo': ['objetivo', 'objetivos', 'meta', 'metas', 'planificacion', 'planificación', 'planificar', 'plan', 'plan de'],
+
+      // Recursos / Infraestructura
+      'recurso': ['recurso', 'recursos', 'infraestructura', 'infraestructuras', 'equipo', 'equipos', 'recursos humanos'],
+      'infraestructura': ['infraestructura', 'infraestructuras', 'recurso', 'recursos', 'equipo'],
+
+      // Comunicación / Información
+      'comunicacion': ['comunicacion', 'comunicación', 'comunicar', 'informacion', 'información', 'external', 'internal'],
+      'comunicación': ['comunicacion', 'comunicación', 'comunicar', 'informacion', 'información'],
+    };
+
+    // Buscar qué tipo de documento detectamos en el título
+    const detectedTypes: string[] = [];
+    for (const [typeKey, searchTerms] of Object.entries(typeKeywords)) {
+      // Cualquiera de los términos de búsqueda aparece en el título?
+      const titleHasMatch = searchTerms.some((term) =>
+        titleLower.includes(term.toLowerCase())
+      );
+      if (titleHasMatch) {
+        detectedTypes.push(typeKey);
+      }
+    }
+
+    // Eliminar duplicados y extraer keywords únicos para buscar en cláusulas
+    const searchKeywords = new Set<string>();
+    for (const type of detectedTypes) {
+      if (typeKeywords[type]) {
+        typeKeywords[type].forEach((term) => searchKeywords.add(term.toLowerCase()));
+      }
+    }
+
+    // Si no detectamos ningún tipo específico, fallback a todas las cláusulas
+    if (searchKeywords.size === 0) {
+      console.warn(`[AuditAnalysis] No document type detected in title "${input.documentTitle}", falling back to all ${input.clauses.length} clauses`);
+      return input.clauses.map((c) => c.clauseNumber);
+    }
+
+    const keywordArray = Array.from(searchKeywords);
+    console.log(`[AuditAnalysis] Document types detected: ${[...new Set(detectedTypes)].join(', ')}. Search keywords: ${keywordArray.join(', ')}`);
+
+    const matched: string[] = [];
+    for (const clause of input.clauses) {
+      const clauseText = (clause.title + ' ' + clause.content).toLowerCase();
+      const isRelevant = keywordArray.some((kw) => clauseText.includes(kw));
+      if (isRelevant) {
+        matched.push(clause.clauseNumber);
+      }
+    }
+
+    // Fallback si no hay matches
+    if (matched.length === 0) {
+      console.warn(`[AuditAnalysis] No clause matches for detected types, falling back to all clauses`);
+      return input.clauses.map((c) => c.clauseNumber);
+    }
+
+    console.log(`[AuditAnalysis] Matched ${matched.length} clauses: ${matched.join(', ')}`);
+    return matched;
   }
 
   /**
@@ -67,7 +191,7 @@ export class AuditAnalysisService {
         role: 'user',
         content: prompt,
       },
-    ]);
+    ], 4096);
 
     console.log(`[AuditAnalysis] Raw LLM response length: ${response.text?.length || 0}, preview: ${(response.text || '').substring(0, 200)}...`);
     const result = this.parseAnalysisResponse(response.text);
@@ -82,13 +206,18 @@ export class AuditAnalysisService {
     input: DocumentAnalysisInput,
     onProgress?: (processed: number, total: number) => void
   ): Promise<DocumentAnalysisResult> {
-    const batchSize = 15;
+    const batchSize = 5;
     const batches: AnalysisFinding[][] = [];
     let processedCount = 0;
     const totalCount = input.clauses.length;
 
     // Crear lotes
     for (let i = 0; i < input.clauses.length; i += batchSize) {
+      // Delay entre lotes para evitar rate limits de TPM (Groq free tier: 6000 TPM)
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 15000));
+      }
+
       const batchClauses = input.clauses.slice(i, i + batchSize);
       const batchInput = {
         ...input,
@@ -97,7 +226,7 @@ export class AuditAnalysisService {
 
       const batchResult = await this.analyzeDirectly(batchInput);
       batches.push(batchResult.findings);
-      
+
       // Reportar progreso
       processedCount += batchClauses.length;
       onProgress?.(processedCount, totalCount);
@@ -119,54 +248,50 @@ export class AuditAnalysisService {
   }
 
   /**
-   * Construye el prompt estructurado para el análisis
+   * Prompt detallado para análisis profundo de cumplimiento.
+   * Ahora que solo se analizan cláusulas vinculadas (5-15), podemos incluir
+   * más contexto del documento y pedir análisis fundamentado con citas.
    */
   private buildAnalysisPrompt(input: DocumentAnalysisInput): string {
     const clausesList = input.clauses
       .map(
-        (c) => `
-Cláusula ${c.clauseNumber}: ${c.title}
-Contenido: ${c.content.substring(0, 500)}${c.content.length > 500 ? '...' : ''}`,
+        (c) => `=== CLÁUSULA ${c.clauseNumber}: ${c.title} ===\n${c.content.substring(0, 600)}${c.content.length > 600 ? '...' : ''}`,
       )
-      .join('\n---\n');
+      .join('\n\n');
 
-    return `Eres un auditor experto en cumplimiento normativo ISO/IATF. Analiza el siguiente documento contra las cláusulas normativas proporcionadas.
+    return `Actuá como auditor experto en ISO. Analizá el siguiente documento contra cada cláusula normativa vinculada.
 
-DOCUMENTO:
+DOCUMENTO A AUDITAR:
 Título: ${input.documentTitle}
-Contenido: ${input.documentContent.substring(0, 2000)}${input.documentContent.length > 2000 ? '...' : ''}
+Contenido completo:
+${input.documentContent.substring(0, 1500)}${input.documentContent.length > 1500 ? '...' : ''}
 
-NORMA: ${input.normativeName} (${input.normativeCode})
+NORMA: ${input.normativeCode}
+
 CLÁUSULAS A EVALUAR:
 ${clausesList}
 
-Para cada cláusula, determina:
-1. ¿El documento cubre o implementa esta cláusula? (covered: boolean)
-2. Severidad del requisito: MUST (obligatorio) o SHOULD (recomendado)
-3. Título descriptivo del hallazgo
-4. Descripción del análisis
-5. Evidencia encontrada en el documento (o indicar ausencia)
-6. Confianza del análisis (0.0-1.0)
-7. Acciones sugeridas si hay brecha
+INSTRUCCIONES DE ANÁLISIS PROFUNDO:
+1. Leé cuidadosamente el documento completo.
+2. Para CADA cláusula, determiná si el documento la CUBRE o NO.
+3. Si CUBRE: citá textualmente del documento la evidencia que lo demuestra. Describí POR QUÉ cumple.
+4. Si NO CUBRE: explicá QUÉ elemento de la cláusula falta en el documento. Sé específico.
+5. La descripción debe tener al menos 2-3 oraciones explicando el fundamento del hallazgo.
+6. Las acciones sugeridas deben ser concretas y aplicables (ej: "Incluir definición de responsables en la sección 3").
+7. Confidence: 0.95 si hay evidencia textual clara, 0.7 si es inferencia, 0.5 si es ambiguo.
 
-Responde EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código):
-{
-  "findings": [
-    {
-      "clauseNumber": "4.1",
-      "covered": true,
-      "severity": "MUST",
-      "title": "Descripción breve",
-      "description": "Análisis detallado",
-      "evidence": "Texto extraído del documento",
-      "confidence": 0.95,
-      "suggestedActions": ["Acción 1", "Acción 2"]
-    }
-  ],
-  "summary": "Resumen general del análisis",
-  "coveredCount": 5,
-  "missingCount": 2
-}`;
+Formato de salida: JSON puro, sin markdown, sin bloques de código.
+Cada "finding" debe incluir:
+- clauseNumber: número exacto de la cláusula
+- covered: true/false
+- severity: MUST (obligatorio normativo) o SHOULD (recomendación)
+- title: título conciso del hallazgo (máx 10 palabras)
+- description: análisis detallado con fundamento (2-4 oraciones)
+- evidence: cita textual del documento que justifica el hallazgo, o "No se encontró evidencia" si no cubre
+- confidence: número 0.0-1.0
+- suggestedActions: array de strings con acciones concretas (mínimo 1 si no cubre)
+
+Output JSON: {"findings":[{"clauseNumber":"","covered":false,"severity":"MUST","title":"","description":"","evidence":"","confidence":0.8,"suggestedActions":["accion concreta 1","accion concreta 2"]}],"summary":"Resumen ejecutivo del análisis: cuántas cláusulas se cubren, cuáles no, y las principales brechas identificadas.","coveredCount":0,"missingCount":0}`;
   }
 
   /**
@@ -245,7 +370,15 @@ Responde EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código)
         description: String(f.description || ''),
         evidence: String(f.evidence || ''),
         confidence: Math.min(1, Math.max(0, Number(f.confidence) || 0)),
-        suggestedActions: Array.isArray(f.suggestedActions) ? f.suggestedActions.map(String) : [],
+        suggestedActions: Array.isArray(f.suggestedActions)
+          ? f.suggestedActions
+              .map((a: any) =>
+                typeof a === 'string'
+                  ? a
+                  : a?.action || a?.text || a?.description || (typeof a === 'object' ? null : String(a))
+              )
+              .filter((a: any) => a && typeof a === 'string' && a.length > 0)
+          : [],
       }));
 
     const coveredCount = findings.filter((f) => f.covered).length;

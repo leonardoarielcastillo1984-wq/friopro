@@ -534,7 +534,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       // Generar resumen con IA
-      const summary = await generateDocumentSummary(doc.content, doc.title, doc.type);
+      const summary = await generateDocumentSummary(doc.content, doc.title, doc.type, req.tenant);
       return reply.send(summary);
     } catch (err: any) {
       app.log.error(err, 'Error generating summary');
@@ -820,7 +820,7 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
   "responsibilityAnalysis": "Análisis de si las responsabilidades están claras."
 }`;
 
-      const llm = createLLMProvider();
+      const llm = createLLMProvider(req.tenant);
       const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
 
       let parsed;

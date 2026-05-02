@@ -33,11 +33,15 @@ export interface NCRRiskAnalysisResult {
 
 export class NCRIntelligenceService {
   private prisma: PrismaClient;
-  private llm: ReturnType<typeof createLLMProvider>;
+  private tenant: any;
 
-  constructor(prisma: PrismaClient) {
+  constructor(prisma: PrismaClient, tenant?: any) {
     this.prisma = prisma;
-    this.llm = createLLMProvider();
+    this.tenant = tenant;
+  }
+
+  private getLLM() {
+    return createLLMProvider(this.tenant);
   }
 
   async analyzeNCRForRisk(input: NCRRiskAnalysisInput): Promise<NCRRiskAnalysisResult> {
@@ -45,7 +49,7 @@ export class NCRIntelligenceService {
     const prompt = this.buildAnalysisPrompt(input);
     
     try {
-      const response = await this.llm.chat([
+      const response = await this.getLLM().chat([
         {
           role: 'user',
           content: `Eres un analista experto en gestión de riesgos ISO 31000. Analizas No Conformidades (NCRs) para detectar riesgos sistémicos.
@@ -207,12 +211,6 @@ ${input.processNCRHistory.map(ncr => `- ${ncr.title} (${ncr.severity}, ${ncr.det
   }
 }
 
-// Singleton instance
-let serviceInstance: NCRIntelligenceService | null = null;
-
-export function getNCRIntelligenceService(prisma: PrismaClient): NCRIntelligenceService {
-  if (!serviceInstance) {
-    serviceInstance = new NCRIntelligenceService(prisma);
-  }
-  return serviceInstance;
+export function getNCRIntelligenceService(prisma: PrismaClient, tenant?: any): NCRIntelligenceService {
+  return new NCRIntelligenceService(prisma, tenant);
 }

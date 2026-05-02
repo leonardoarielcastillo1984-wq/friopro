@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaClient, Prisma } from '@prisma/client';
+import { encryptApiKey } from '../services/llm/tenantCrypto.js';
 
 // Extensiones de tipos no conflictivas
 declare module 'fastify' {
@@ -243,6 +244,10 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
         memberCount: t._count.memberships,
         admins: (t.memberships || []).map((m: any) => ({ id: m.user.id, email: m.user.email })),
         subscription: transformedSubscription,
+        llmProvider: (t as any).llmProvider || null,
+        llmModel: (t as any).llmModel || null,
+        llmBaseUrl: (t as any).llmBaseUrl || null,
+        hasCustomKey: !!(t as any).llmApiKey,
       };
     });
 
@@ -806,6 +811,59 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
     } catch (error) {
       app.log.error('Error reading registration: ' + String(error));
       return reply.code(500).send({ error: 'Error al obtener solicitud' });
+    }
+  });
+
+  // ── PUT /super-admin/tenants/:id/llm-config — Update tenant LLM configuration ──
+  app.put('/tenants/:id/llm-config', async (req: FastifyRequest, reply: FastifyReply) => {
+    requireSuperAdmin(req);
+
+    try {
+      const { id } = req.params as { id: string };
+      const body = req.body as {
+        llmProvider?: string;
+        llmApiKey?: string;
+        llmModel?: string;
+        llmBaseUrl?: string;
+      };
+
+      const tenant = await (app.prisma.tenant as any).findUnique({ where: { id } });
+      if (!tenant) {
+        return reply.code(404).send({ error: 'Tenant not found' });
+      }
+
+      const updateData: any = {};
+      if (body.llmProvider !== undefined) updateData.llmProvider = body.llmProvider || null;
+      if (body.llmModel !== undefined) updateData.llmModel = body.llmModel || null;
+      if (body.llmBaseUrl !== undefined) updateData.llmBaseUrl = body.llmBaseUrl || null;
+      if (body.llmApiKey !== undefined) {
+        // Encrypt API key before storing; if empty string, clear it
+        updateData.llmApiKey = body.llmApiKey ? encryptApiKey(body.llmApiKey) : null;
+      }
+
+      const updated = await (app.prisma.tenant as any).update({
+        where: { id },
+        data: updateData,
+        select: {
+          id: true,
+          name: true,
+          llmProvider: true,
+          llmModel: true,
+          llmBaseUrl: true,
+          llmApiKey: true,
+        },
+      });
+
+      return reply.send({
+        tenant: {
+          ...updated,
+          hasCustomKey: !!updated.llmApiKey,
+        },
+        message: 'Configuración de IA actualizada correctamente',
+      });
+    } catch (err: any) {
+      app.log.error(err, 'Error updating tenant LLM config');
+      return reply.code(500).send({ error: 'Error updating LLM config', details: err.message });
     }
   });
 

@@ -5,6 +5,7 @@
 import type { Job } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { createLLMProvider } from '../services/llm/factory.js';
+import { OllamaProvider } from '../services/llm/ollama.js';
 import { AuditAnalysisService } from '../services/auditAnalysis.js';
 // import { notifyTenantAdmins } from '../routes/notifications.js'; // Temporarily disabled
 import { getStorage } from '../services/storage.js';
@@ -28,7 +29,7 @@ export interface ProcessTenantAuditPayload {
 
 const prisma = new PrismaClient();
 
-// Lazy-initialize LLM provider (avoids crash on startup if API key is missing)
+// Use Groq for audit analysis (fast, but limited to 6000 TPM on free tier)
 let _auditService: AuditAnalysisService | null = null;
 function getAuditService(): AuditAnalysisService {
   if (!_auditService) {
@@ -36,6 +37,21 @@ function getAuditService(): AuditAnalysisService {
     _auditService = new AuditAnalysisService(llmProvider);
   }
   return _auditService;
+}
+
+/**
+ * Normaliza acciones sugeridas para asegurar que sean array de strings.
+ * El LLM a veces devuelve objetos en vez de strings.
+ */
+function normalizeSuggestedActions(actions: any): string[] {
+  if (!Array.isArray(actions)) return [];
+  return actions
+    .map((a: any) =>
+      typeof a === 'string'
+        ? a
+        : a?.action || a?.text || a?.description || (typeof a === 'object' ? null : String(a))
+    )
+    .filter((a: any): a is string => typeof a === 'string' && a.length > 0 && a !== '[object Object]');
 }
 
 /**
@@ -83,22 +99,37 @@ export async function processDocumentVsNormaJob(job: Job<ProcessDocumentVsNormaP
     });
     await job.updateProgress(10);
 
-    // 2. Cargar documento y normativa con cláusulas
-    const [document, normative] = await Promise.all([
+    // 2. Cargar documento, normativa y solo las cláusulas VINCULADAS al documento
+    const [document, normative, linkedClauses] = await Promise.all([
       prisma.document.findUniqueOrThrow({
         where: { id: documentId },
       }),
       prisma.normativeStandard.findUniqueOrThrow({
         where: { id: normativeId },
-        include: {
-          clauses: {
-            where: { status: 'ACTIVE', deletedAt: null },
-            orderBy: { extractionOrder: 'asc' },
+      }),
+      prisma.normativeClause.findMany({
+        where: {
+          normativeId: normativeId,
+          status: 'ACTIVE',
+          deletedAt: null,
+          documentMappings: {
+            some: {
+              documentId: documentId,
+              deletedAt: null,
+            },
           },
         },
+        orderBy: { extractionOrder: 'asc' },
       }),
     ]);
     await job.updateProgress(20);
+
+    if (linkedClauses.length === 0) {
+      throw new Error(
+        `El documento "${document.title}" no tiene cláusulas vinculadas para la norma ${normative.code}. ` +
+        `Vincule cláusulas desde el menú Documentos antes de ejecutar el análisis.`
+      );
+    }
 
     // 3. Extraer contenido del documento
     let documentContent: string;
@@ -112,13 +143,13 @@ export async function processDocumentVsNormaJob(job: Job<ProcessDocumentVsNormaP
     await job.updateProgress(40);
 
     // 4. Construir input de análisis
-    const totalClausesCount = normative.clauses.length;
+    const totalClausesCount = linkedClauses.length;
     const analysisInput = {
       documentTitle: document.title,
       documentContent,
       normativeCode: normative.code,
       normativeName: normative.name,
-      clauses: normative.clauses.map((c) => ({
+      clauses: linkedClauses.map((c) => ({
         id: c.id,
         clauseNumber: c.clauseNumber,
         title: c.title,
@@ -173,7 +204,7 @@ export async function processDocumentVsNormaJob(job: Job<ProcessDocumentVsNormaP
         description: f.description,
         evidence: f.evidence || null,
         confidence: f.confidence,
-        suggestedActions: f.suggestedActions,
+        suggestedActions: normalizeSuggestedActions(f.suggestedActions),
         status: 'OPEN',
       }));
 
@@ -340,7 +371,7 @@ export async function processTenantAuditJob(job: Job<ProcessTenantAuditPayload>)
             description: f.description,
             evidence: f.evidence || null,
             confidence: f.confidence,
-            suggestedActions: f.suggestedActions,
+            suggestedActions: normalizeSuggestedActions(f.suggestedActions),
             status: 'OPEN',
           }));
 
@@ -351,7 +382,6 @@ export async function processTenantAuditJob(job: Job<ProcessTenantAuditPayload>)
           totalFindings += findingsToCreate.length;
         }
 
-        // Actualizar contadores
         totalClauses += analysisResult.findings.length;
         coveredClauses += analysisResult.coveredCount;
 

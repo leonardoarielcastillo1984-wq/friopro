@@ -1371,7 +1371,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
       try {
-        const llm = createLLMProvider();
+        const llm = createLLMProvider(req.tenant);
         const audit = await app.runWithDbContext(req, async (tx) => {
           return tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
         });
@@ -1435,7 +1435,7 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
       if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
       try {
-        const llm = createLLMProvider();
+        const llm = createLLMProvider(req.tenant);
         const finding = await app.runWithDbContext(req, async (tx) => {
           return tx.auditFinding.findFirst({
             where: { id: req.params.id, tenantId, deletedAt: null },
@@ -1499,7 +1499,7 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
       if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
       try {
-        const llm = createLLMProvider();
+        const llm = createLLMProvider(req.tenant);
         const auditData = await app.runWithDbContext(req, async (tx) => {
           const audit = await tx.audit.findUnique({
             where: { id: req.params.id, tenantId },
@@ -1590,7 +1590,7 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
       }
 
       try {
-        const llm = createLLMProvider();
+        const llm = createLLMProvider(req.tenant);
         const auditData = await app.runWithDbContext(req, async (tx) => {
           return tx.audit.findUnique({
             where: { id: req.params.id, tenantId },

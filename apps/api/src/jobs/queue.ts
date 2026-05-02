@@ -115,7 +115,9 @@ export function startAuditWorker(): Worker<AuditJobPayload> {
     },
     {
       connection: getRedisConnection(),
-      concurrency: 2,
+      concurrency: 1,
+      lockDuration: 900000, // 15 minutos para jobs de IA con muchos lotes
+      stalledInterval: 60000,
     },
   );
 

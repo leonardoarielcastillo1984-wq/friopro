@@ -120,7 +120,7 @@ export default function AuditDashboardPage() {
             <div className="rounded-lg bg-red-100 p-2"><AlertTriangle className="h-5 w-5 text-red-600" /></div>
             <div>
               <div className="text-2xl font-bold text-red-700">{mustCount}</div>
-              <div className="text-xs text-red-600">Críticos (MUST)</div>
+              <div className="text-xs text-red-600">Obligatorios</div>
             </div>
           </div>
         </div>
@@ -129,7 +129,7 @@ export default function AuditDashboardPage() {
             <div className="rounded-lg bg-amber-100 p-2"><Shield className="h-5 w-5 text-amber-600" /></div>
             <div>
               <div className="text-2xl font-bold text-amber-700">{shouldCount}</div>
-              <div className="text-xs text-amber-600">Importantes (SHOULD)</div>
+              <div className="text-xs text-amber-600">Recomendados</div>
             </div>
           </div>
         </div>

@@ -672,7 +672,7 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
 }`;
 
       // 7. Llamar a IA (fuera de transacción para evitar timeout)
-      const llm = createLLMProvider();
+      const llm = createLLMProvider(req.tenant);
       const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
 
       let parsed;

@@ -776,7 +776,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
       if (!section) return reply.code(404).send({ error: 'Sección no encontrada' });
 
       try {
-        const llm = createLLMProvider();
+        const llm = createLLMProvider(req.tenant);
         const { section: sec, review } = section;
 
         const periodStr = `${new Date(review.periodStart).toLocaleDateString('es-AR')} al ${new Date(review.periodEnd).toLocaleDateString('es-AR')}`;

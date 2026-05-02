@@ -29,6 +29,10 @@ type TenantRow = {
     endsAt: string | null;
     plan: { id: string; tier: string; name: string };
   } | null;
+  llmProvider?: string | null;
+  llmModel?: string | null;
+  llmBaseUrl?: string | null;
+  hasCustomKey?: boolean;
 };
 
 type PlanRow = {
@@ -668,6 +672,11 @@ export default function AdminPage() {
   // Company registrations state
   const [companyRegistrations, setCompanyRegistrations] = useState<CompanyRegistration[]>([]);
 
+  // LLM config modal state
+  const [llmModalTenant, setLlmModalTenant] = useState<TenantRow | null>(null);
+  const [llmForm, setLlmForm] = useState({ provider: 'groq', model: 'llama-3.1-8b-instant', apiKey: '', baseUrl: '' });
+  const [updatingLLM, setUpdatingLLM] = useState(false);
+
   useEffect(() => {
     if (!authLoading && user?.globalRole !== 'SUPER_ADMIN') {
       router.push('/dashboard');
@@ -1004,7 +1013,7 @@ export default function AdminPage() {
     if (!confirm(`¿Estás seguro de reactivar el tenant "${tenantName}"?`)) {
       return;
     }
-    
+
     setError('');
     try {
       await apiFetch(`/super-admin/tenants/${tenantId}/reactivate`, {
@@ -1015,6 +1024,47 @@ export default function AdminPage() {
     } catch (e: any) {
       setError(e.message);
     }
+  }
+
+  async function handleUpdateLLMConfig(e: React.FormEvent) {
+    e.preventDefault();
+    if (!llmModalTenant) return;
+    setUpdatingLLM(true);
+    setError('');
+    try {
+      const body: any = {
+        llmProvider: llmForm.provider,
+        llmModel: llmForm.model,
+      };
+      if (llmForm.provider === 'ollama') {
+        body.llmBaseUrl = llmForm.baseUrl;
+      }
+      if (llmForm.apiKey.trim()) {
+        body.llmApiKey = llmForm.apiKey.trim();
+      }
+      await apiFetch(`/super-admin/tenants/${llmModalTenant.id}/llm-config`, {
+        method: 'PUT',
+        json: body,
+      });
+      flash(`Configuración de IA actualizada para ${llmModalTenant.name}`);
+      setLlmModalTenant(null);
+      setLlmForm({ provider: 'groq', model: 'llama-3.1-8b-instant', apiKey: '', baseUrl: '' });
+      loadData();
+    } catch (e: any) {
+      setError(e.message || 'Error actualizando configuración de IA');
+    } finally {
+      setUpdatingLLM(false);
+    }
+  }
+
+  function openLLMModal(tenant: TenantRow) {
+    setLlmModalTenant(tenant);
+    setLlmForm({
+      provider: tenant.llmProvider || 'groq',
+      model: tenant.llmModel || 'llama-3.1-8b-instant',
+      apiKey: '',
+      baseUrl: tenant.llmBaseUrl || '',
+    });
   }
 
   if (authLoading || (user?.globalRole !== 'SUPER_ADMIN')) {
@@ -1438,6 +1488,35 @@ export default function AdminPage() {
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                             Eliminar Tenant
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Configure AI / LLM */}
+                      <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Zap className="h-4 w-4 text-purple-600" />
+                          <h3 className="font-medium text-purple-900 text-sm">Configurar IA</h3>
+                        </div>
+                        <div className="space-y-3">
+                          <p className="text-xs text-purple-700">
+                            {t.hasCustomKey ? (
+                              <>
+                                <strong>✓ Key propia:</strong> Usando API key del tenant.<br />
+                                <span className="text-purple-600">Provider: {t.llmProvider || 'groq'} | Modelo: {t.llmModel || 'default'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <strong>Usando key del sistema:</strong> El tenant consume tu API key global de Groq/OpenAI.
+                              </>
+                            )}
+                          </p>
+                          <button
+                            onClick={() => openLLMModal(t)}
+                            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-700 transition-colors"
+                          >
+                            <Zap className="h-3.5 w-3.5" />
+                            {t.hasCustomKey ? 'Editar Configuración IA' : 'Asignar API Key IA'}
                           </button>
                         </div>
                       </div>
@@ -1935,6 +2014,92 @@ function PaymentNotifications() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* LLM Config Modal */}
+      {llmModalTenant && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-neutral-900">
+                Configurar IA — {llmModalTenant.name}
+              </h3>
+              <button
+                onClick={() => setLlmModalTenant(null)}
+                className="p-1 rounded-lg hover:bg-neutral-100"
+              >
+                <X className="h-5 w-5 text-neutral-500" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateLLMConfig} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Proveedor</label>
+                <select
+                  value={llmForm.provider}
+                  onChange={e => setLlmForm({ ...llmForm, provider: e.target.value })}
+                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                >
+                  <option value="groq">Groq (rápido, económico)</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="ollama">Ollama (local)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Modelo</label>
+                <input
+                  type="text"
+                  value={llmForm.model}
+                  onChange={e => setLlmForm({ ...llmForm, model: e.target.value })}
+                  placeholder="llama-3.1-8b-instant"
+                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                />
+              </div>
+              {llmForm.provider === 'ollama' && (
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Base URL (opcional)</label>
+                  <input
+                    type="text"
+                    value={llmForm.baseUrl}
+                    onChange={e => setLlmForm({ ...llmForm, baseUrl: e.target.value })}
+                    placeholder="http://localhost:11434/v1"
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">
+                  API Key {llmModalTenant.hasCustomKey && <span className="text-green-600 font-normal">(ya configurada — dejar vacío para mantener)</span>}
+                </label>
+                <input
+                  type="password"
+                  value={llmForm.apiKey}
+                  onChange={e => setLlmForm({ ...llmForm, apiKey: e.target.value })}
+                  placeholder={llmModalTenant.hasCustomKey ? '••••••••••••' : 'Ingresar API key del tenant'}
+                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                />
+                <p className="text-xs text-neutral-400 mt-1">
+                  Dejá vacío para usar la key global del sistema (fallback).
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setLlmModalTenant(null)}
+                  className="flex-1 px-4 py-2 rounded-lg border border-neutral-300 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingLLM}
+                  className="flex-1 px-4 py-2 rounded-lg bg-purple-600 text-sm font-medium text-white hover:bg-purple-700 disabled:bg-neutral-300 transition-colors"
+                >
+                  {updatingLLM ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Guardar'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

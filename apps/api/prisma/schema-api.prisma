@@ -44,6 +44,12 @@ model Tenant {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  // LLM Configuration (per-tenant override)
+  llmProvider       String?   // groq | openai | ollama
+  llmApiKey         String?   // encrypted tenant-specific API key
+  llmModel          String?   // e.g. llama-3.1-8b-instant
+  llmBaseUrl        String?   // optional custom base URL (e.g. Ollama)
+
   // Relations
   sgiObjectives     SgiObjective[]
   policies          Policy[]

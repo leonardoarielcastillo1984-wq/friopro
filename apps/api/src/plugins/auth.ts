@@ -45,7 +45,7 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
   if (!secret) throw new Error('JWT_SECRET is required');
 
   const issuer = process.env.JWT_ISSUER ?? 'sgi360';
-  const accessTtl = process.env.ACCESS_TOKEN_TTL ?? '15m';
+  const accessTtl = process.env.ACCESS_TOKEN_TTL ?? '1h';
   const refreshTtl = process.env.REFRESH_TOKEN_TTL ?? '30d';
 
   app.decorate('signAccessToken', (payload: {

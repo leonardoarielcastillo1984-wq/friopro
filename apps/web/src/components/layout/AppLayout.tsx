@@ -4,9 +4,10 @@ import { useEffect, useState, Suspense, lazy } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { getTenantId } from '@/lib/api';
+import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, Clock } from 'lucide-react';
 import { LicenseBanner } from '@/components/LicenseBanner';
 
 const FloatingHelpBot = lazy(() => import('@/components/FloatingHelpBot'));
@@ -19,7 +20,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const tenantId = getTenantId();
+
+  useSessionTimeout({
+    timeoutMs: 30 * 60 * 1000, // 30 minutos de inactividad
+    onInactive: () => setShowTimeoutModal(true),
+    disabled: !user || loading,
+  });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -95,6 +103,30 @@ export default function AppLayout({ children }: AppLayoutProps) {
       <Suspense fallback={null}>
         <FloatingHelpBot />
       </Suspense>
+
+      {/* Session timeout modal */}
+      {showTimeoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="max-w-md w-full bg-white rounded-xl shadow-xl p-6 text-center mx-4">
+            <Clock className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-neutral-900 mb-2">
+              Sesión cerrada por inactividad
+            </h2>
+            <p className="text-neutral-600 mb-6">
+              Tu sesión fue cerrada automáticamente tras 30 minutos de inactividad por seguridad.
+            </p>
+            <button
+              onClick={() => {
+                setShowTimeoutModal(false);
+                router.replace('/login');
+              }}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Volver a iniciar sesión
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

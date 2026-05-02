@@ -20,7 +20,7 @@ export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
     const { ncrId } = params;
 
     const result = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
-      const service = getNCRIntelligenceService(tx as any);
+      const service = getNCRIntelligenceService(tx as any, req.tenant);
       
       // Obtener datos de la NCR y su historial
       const analysisData = await service.getNCRAnalysisData(ncrId, tenantId);
@@ -107,7 +107,7 @@ export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
     const { ncrId } = params;
 
     const result = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
-      const service = getNCRIntelligenceService(tx as any);
+      const service = getNCRIntelligenceService(tx as any, req.tenant);
       const analysisData = await service.getNCRAnalysisData(ncrId, tenantId);
       
       if (!analysisData) {

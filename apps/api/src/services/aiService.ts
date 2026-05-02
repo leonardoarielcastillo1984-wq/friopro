@@ -9,9 +9,10 @@ export interface DocumentSummary {
 export async function generateDocumentSummary(
   content: string,
   title: string,
-  docType: string
+  docType: string,
+  tenant?: any
 ): Promise<DocumentSummary> {
-  const llm = createLLMProvider();
+  const llm = createLLMProvider(tenant);
 
   const prompt = `Analizá el siguiente documento de tipo "${docType}" titulado "${title}".
 

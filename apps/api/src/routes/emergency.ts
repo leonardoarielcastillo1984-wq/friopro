@@ -418,7 +418,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!drill) return reply.code(404).send({ error: 'Not found' });
 
     try {
-      const llm = createLLMProvider();
+      const llm = createLLMProvider(req.tenant);
       const prompt = `Analiza el siguiente simulacro de emergencia y evalua su desempeño. Simulacro: ${drill.name}. Tipo: ${drill.type}. Estado: ${drill.status}. Resultado mas reciente: ${drill.drillResults?.[0]?.result || 'Sin resultado'}. Observaciones: ${drill.drillResults?.[0]?.observations || 'Ninguna'}. Acciones asociadas: ${drill.drillActions?.length || 0}. Participantes: ${drill.drillParticipants?.length || 0}. Proporciona: 1) Evaluacion de desempeño. 2) Deteccion de fallas. 3) Sugerencias de mejora. 4) Indicar si requiere revisión urgente. Responde en español.`;
       const aiRes = await llm.chat([{ role: 'user', content: prompt }], 1500);
       return reply.send({ analysis: aiRes?.text || 'Sin respuesta del modelo' });

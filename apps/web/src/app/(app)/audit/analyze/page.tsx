@@ -5,9 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import type { DocumentRow, NormativeStandard, AuditRun, AiFinding } from '@/lib/types';
 
-const severityColors: Record<string, string> = {
-  MUST: 'bg-red-100 text-red-800',
-  SHOULD: 'bg-yellow-100 text-yellow-800',
+const severityConfig: Record<string, { label: string; color: string }> = {
+  MUST: { label: 'OBLIGATORIO', color: 'bg-red-100 text-red-800' },
+  SHOULD: { label: 'RECOMENDADO', color: 'bg-yellow-100 text-yellow-800' },
 };
 
 export default function AnalyzePage() {
@@ -362,8 +362,8 @@ function AnalyzeContent() {
                   <div key={f.id} className="rounded border border-neutral-200 bg-white p-4">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
-                        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${severityColors[f.severity]}`}>
-                          {f.severity}
+                        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${severityConfig[f.severity]?.color ?? 'bg-neutral-100 text-neutral-800'}`}>
+                          {severityConfig[f.severity]?.label ?? f.severity}
                         </span>
                         <span className="font-mono text-sm text-neutral-500">{f.clause}</span>
                         <span className="font-medium">{f.title}</span>
@@ -401,7 +401,11 @@ function AnalyzeContent() {
                     )}
                     {f.suggestedActions && f.suggestedActions.length > 0 && (
                       <div className="mt-2 text-xs text-blue-600">
-                        <strong>Acciones sugeridas:</strong> {f.suggestedActions.join(' · ')}
+                        <strong>Acciones sugeridas:</strong>{' '}
+                        {f.suggestedActions
+                          .map((a: any) => (typeof a === 'string' ? a : a?.action ?? a?.text ?? JSON.stringify(a)))
+                          .filter(Boolean)
+                          .join(' · ')}
                       </div>
                     )}
                     {f.confidence != null && (

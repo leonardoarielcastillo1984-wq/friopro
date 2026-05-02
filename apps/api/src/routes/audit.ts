@@ -454,7 +454,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     ]);
 
     // Construir contexto
-    const llm = createLLMProvider();
+    const llm = createLLMProvider(req.tenant);
     const auditService = new AuditAnalysisService(llm);
     const contextStr = auditService.buildChatContext(documents, normatives);
 

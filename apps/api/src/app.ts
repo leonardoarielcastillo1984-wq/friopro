@@ -240,7 +240,7 @@ export async function buildApp() {
       const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : (rawBody ?? {});
       const message: string = body?.message || body?.prompt || '';
       if (!message) return reply.code(400).send({ error: 'message requerido' });
-      const llm = createLLMProvider();
+      const llm = createLLMProvider(req.tenant);
       // Usar solo 512 tokens para respuestas rápidas (evitar timeout 504)
       const result = await llm.chat([{ role: 'user', content: message }], 512);
       return reply.send({ response: result.text });

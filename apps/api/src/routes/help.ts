@@ -40,7 +40,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
         { role: 'user', content: message },
       ];
 
-      const llm = createLLMProvider();
+      const llm = createLLMProvider(req.tenant);
 
       // Verificar si soporta streaming
       if (!llm.chatStream) {
@@ -114,7 +114,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
         { role: 'user', content: message },
       ];
 
-      const llm = createLLMProvider();
+      const llm = createLLMProvider(req.tenant);
       const result = await llm.chat(messages, 1500);
 
       return reply.send({
