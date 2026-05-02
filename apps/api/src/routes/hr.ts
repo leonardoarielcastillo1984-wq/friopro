@@ -355,37 +355,63 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Employee not found' });
     }
 
-    // Check if platform user already exists
-    const existingPlatformUser = await fastify.prisma.platformUser.findUnique({
+    // Check if platform user already exists (from previous deletion)
+    let platformUser = await fastify.prisma.platformUser.findUnique({
       where: { email: data.email }
     });
-
-    if (existingPlatformUser) {
-      return reply.code(400).send({ error: 'User with this email already exists' });
-    }
 
     // Hash password using argon2
     const hashedPassword = await argon2.hash(data.password);
 
-    // Create PlatformUser (required for login)
-    const platformUser = await fastify.prisma.platformUser.create({
-      data: {
-        email: data.email,
-        passwordHash: hashedPassword,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        isActive: true
-      }
-    });
+    if (platformUser) {
+      // Reactivate existing platform user and update password
+      platformUser = await fastify.prisma.platformUser.update({
+        where: { id: platformUser.id },
+        data: {
+          passwordHash: hashedPassword,
+          isActive: true
+        }
+      });
 
-    // Create TenantMembership for the employee's tenant
-    await fastify.prisma.tenantMembership.create({
-      data: {
-        tenantId: employee.tenantId,
-        userId: platformUser.id,
-        role: 'TENANT_USER' // Standard user role
+      // Check if membership already exists
+      const existingMembership = await fastify.prisma.tenantMembership.findFirst({
+        where: {
+          tenantId: employee.tenantId,
+          userId: platformUser.id
+        }
+      });
+
+      if (!existingMembership) {
+        // Create TenantMembership for the employee's tenant
+        await fastify.prisma.tenantMembership.create({
+          data: {
+            tenantId: employee.tenantId,
+            userId: platformUser.id,
+            role: 'TENANT_USER'
+          }
+        });
       }
-    });
+    } else {
+      // Create new PlatformUser (required for login)
+      platformUser = await fastify.prisma.platformUser.create({
+        data: {
+          email: data.email,
+          passwordHash: hashedPassword,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          isActive: true
+        }
+      });
+
+      // Create TenantMembership for the employee's tenant
+      await fastify.prisma.tenantMembership.create({
+        data: {
+          tenantId: employee.tenantId,
+          userId: platformUser.id,
+          role: 'TENANT_USER'
+        }
+      });
+    }
 
     // Create internal User record linked to employee
     const user = await fastify.prisma.user.create({
