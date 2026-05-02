@@ -455,6 +455,34 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     return { success: true };
   });
 
+  // Get current user's permissions (by PlatformUser email)
+  fastify.get('/users/me/permissions', async (request, reply) => {
+    const userId = (request as any).auth?.userId;
+    if (!userId) {
+      return reply.code(401).send({ error: 'Unauthorized' });
+    }
+
+    // Get PlatformUser
+    const platformUser = await fastify.prisma.platformUser.findUnique({
+      where: { id: userId }
+    });
+
+    if (!platformUser) {
+      return reply.code(404).send({ error: 'User not found' });
+    }
+
+    // Find internal User by email (linked to employee)
+    const user = await fastify.prisma.user.findUnique({
+      where: { email: platformUser.email }
+    });
+
+    if (!user) {
+      return reply.code(404).send({ error: 'No employee user account found' });
+    }
+
+    return { permissions: user.permissions || {} };
+  });
+
   // Get user permissions
   fastify.get('/employees/:id/users/permissions', async (request, reply) => {
     const { id } = request.params as { id: string };

@@ -130,6 +130,23 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+// Helper para obtener permisos del usuario desde localStorage
+function getUserPermissions(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const perms = window.localStorage.getItem('userPermissions');
+    return perms ? JSON.parse(perms) : {};
+  } catch {
+    return {};
+  }
+}
+
+function hasModulePermission(moduleKey: string): boolean {
+  const perms = getUserPermissions();
+  const access = perms[moduleKey];
+  return access === 'view' || access === 'edit';
+}
+
 const allPages = [...mainNav, ...bottomNav];
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
@@ -306,8 +323,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           {mainNav.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
-            // SUPER_ADMIN nunca tiene módulos bloqueados
-            const isLocked = user?.globalRole === "SUPER_ADMIN" ? false : !hasAccessToModule(currentPlan, item.href);
+            // SUPER_ADMIN y TENANT_ADMIN nunca tienen módulos bloqueados
+            const isAdmin = user?.globalRole === "SUPER_ADMIN" || tenantRole === "TENANT_ADMIN";
+            // Verificar plan
+            const planAllows = isAdmin || hasAccessToModule(currentPlan, item.href);
+            // Verificar permisos de usuario (solo para empleados)
+            const moduleKey = item.href.replace(/^\//, '');
+            const userAllowed = isAdmin || hasModulePermission(moduleKey);
+            const isLocked = !planAllows || !userAllowed;
             const requiredPlan = getModuleRequiredPlan(item.href);
             
             return (

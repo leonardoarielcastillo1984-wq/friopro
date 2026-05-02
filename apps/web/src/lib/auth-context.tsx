@@ -62,15 +62,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // Fetch user permissions (for employee users)
+      let permissions: Record<string, string> | null = null;
+      if (res.tenantRole !== 'SUPER_ADMIN') {
+        try {
+          const permsRes = await apiFetch<{ permissions: Record<string, any> }>('/hr/users/me/permissions');
+          if (permsRes?.permissions) {
+            permissions = permsRes.permissions;
+          }
+        } catch (e) {
+          // Ignore permission fetch errors
+        }
+      }
+
       // Guardar usuario con globalRole en localStorage
       if (typeof window !== 'undefined') {
         window.localStorage.setItem('user', JSON.stringify(res.user));
         // Guardar globalRole específicamente
         if (res.user.globalRole) {
           window.localStorage.setItem('globalRole', res.user.globalRole);
-          console.log('AuthContext: GlobalRole guardado:', res.user.globalRole);
         } else {
           window.localStorage.removeItem("globalRole");
+        }
+        // Guardar permisos
+        if (permissions) {
+          window.localStorage.setItem('userPermissions', JSON.stringify(permissions));
+        } else {
+          window.localStorage.removeItem('userPermissions');
         }
       }
 
@@ -88,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.localStorage.removeItem('accessToken');
         window.localStorage.removeItem('tenantId');
         window.localStorage.removeItem('csrfToken');
+        window.localStorage.removeItem('userPermissions');
       }
 
       setState({
