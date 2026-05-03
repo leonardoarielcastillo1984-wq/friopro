@@ -54,6 +54,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [productMenuOpen, setProductMenuOpen] = useState(false);
+  const [navMenuOpen, setNavMenuOpen] = useState(false);
   const [formData, setFormData] = useState({ companyName: '', email: '', phone: '' });
 
   useEffect(() => {
@@ -119,7 +120,29 @@ export default function Home() {
               <a key={l.label} href={l.href} style={{ color: '#777770', textDecoration: 'none', fontSize: 14, fontFamily: "'Syne', sans-serif", fontWeight: 500 }}>{l.label}</a>
             ))}
             <a href="/suite" style={{ color: '#777770', textDecoration: 'none', fontSize: 14, fontFamily: "'Syne', sans-serif" }}>Ingresar</a>
-            <button className="btn-primary-light" onClick={() => setShowModal(true)}>Empezar gratis</button>
+            <div style={{ position: 'relative' }}>
+              <button className="btn-primary-light" onClick={() => setNavMenuOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Empezar gratis <ChevronDown size={13} />
+              </button>
+              {navMenuOpen && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'white', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.15)', padding: '8px 0', minWidth: 220, zIndex: 200, border: '1px solid rgba(0,0,0,0.06)' }}>
+                  {[
+                    { name: 'SGI 360', color: '#E8541A', desc: 'Gestión integrada ISO' },
+                    { name: 'AUDIT 360', color: '#2563EB', desc: 'Auditorías inteligentes' },
+                    { name: 'FLOTA 360', color: '#0891B2', desc: 'Gestión de flota' },
+                    { name: 'SEH 360', color: '#059669', desc: 'Seguridad e higiene' },
+                  ].map(p => (
+                    <button key={p.name} onClick={() => { setNavMenuOpen(false); setShowModal(true); }} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.03)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, color: '#1A1A1A' }}>{p.name}</div>
+                        <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 11, color: '#888880' }}>{p.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </nav>
