@@ -602,7 +602,18 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   app.get('/tenants', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.auth) return reply.code(401).send({ error: 'Unauthorized' });
     if (req.auth.globalRole === 'SUPER_ADMIN') {
-      return reply.send({ tenants: [] });
+      const tenants = await app.prisma.tenant.findMany({
+        where: { deletedAt: null },
+        orderBy: { name: 'asc' },
+      });
+      return reply.send({
+        tenants: tenants.map((t) => ({
+          tenantId: t.id,
+          name: t.name,
+          slug: t.slug,
+          role: 'TENANT_ADMIN',
+        })),
+      });
     }
 
     const memberships = await app.prisma.tenantMembership.findMany({
@@ -628,31 +639,41 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/switch-tenant', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.auth) return reply.code(401).send({ error: 'Unauthorized' });
-    if (req.auth.globalRole === 'SUPER_ADMIN') {
-      return reply.code(400).send({ error: 'Super admin does not switch tenant' });
-    }
 
     const bodySchema = z.object({ tenantId: z.string().uuid() });
     const body = bodySchema.parse(req.body);
 
-    const membership = await app.prisma.tenantMembership.findFirst({
-      where: {
-        userId: req.auth.userId,
-        tenantId: body.tenantId,
-        status: 'ACTIVE',
-        deletedAt: null,
-      },
-      include: { tenant: true },
-    });
+    let tenantRole: string;
 
-    if (!membership || membership.tenant.deletedAt) {
-      return reply.code(403).send({ error: 'Not a member of tenant' });
+    if (req.auth.globalRole === 'SUPER_ADMIN') {
+      const tenant = await app.prisma.tenant.findFirst({
+        where: { id: body.tenantId, deletedAt: null },
+      });
+      if (!tenant) {
+        return reply.code(404).send({ error: 'Tenant not found' });
+      }
+      tenantRole = 'TENANT_ADMIN';
+    } else {
+      const membership = await app.prisma.tenantMembership.findFirst({
+        where: {
+          userId: req.auth.userId,
+          tenantId: body.tenantId,
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+        include: { tenant: true },
+      });
+
+      if (!membership || membership.tenant.deletedAt) {
+        return reply.code(403).send({ error: 'Not a member of tenant' });
+      }
+      tenantRole = membership.role;
     }
 
     const accessToken = app.signAccessToken({
       userId: req.auth.userId,
-      tenantId: membership.tenantId,
-      tenantRole: membership.role,
+      tenantId: body.tenantId,
+      tenantRole,
     });
 
     // Keep refresh cookie unchanged; only rotate on /refresh.
@@ -663,9 +684,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       secure: isProd,
     });
 
+    const activeTenant = await app.prisma.tenant.findFirst({
+      where: { id: body.tenantId, deletedAt: null },
+      select: { id: true, name: true, slug: true },
+    });
+
     return reply.send({
-      activeTenant: { id: membership.tenant.id, name: membership.tenant.name, slug: membership.tenant.slug },
-      tenantRole: membership.role,
+      activeTenant: activeTenant || { id: body.tenantId, name: '', slug: '' },
+      tenantRole,
     });
   });
 
