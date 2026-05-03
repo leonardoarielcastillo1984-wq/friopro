@@ -1295,20 +1295,26 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      // Crear suscripción inicial con plan BASIC
-      const basicPlan = await app.prisma.plan.findFirst({
-        where: { tier: 'BASIC' },
+      // Crear suscripción inicial: BASIC si existe, sino el primer plan activo disponible
+      const initialPlan = await app.prisma.plan.findFirst({
+        where: { isActive: true, tier: 'BASIC' },
+      }) ?? await app.prisma.plan.findFirst({
+        where: { isActive: true },
+        orderBy: { createdAt: 'asc' },
       });
 
-      if (basicPlan) {
+      if (initialPlan) {
         await app.prisma.tenantSubscription.create({
           data: {
             tenantId: tenant.id,
-            planId: basicPlan.id,
-            status: 'ACTIVE',
+            planId: initialPlan.id,
+            status: 'TRIAL',
             startedAt: new Date(),
           },
         });
+        app.log.info(`[SUPERADMIN] Suscripción creada con plan ${initialPlan.tier} para tenant ${tenant.id}`);
+      } else {
+        app.log.warn(`[SUPERADMIN] No hay planes activos disponibles para asignar al tenant ${tenant.id}`);
       }
 
       // Actualizar estado de la solicitud
