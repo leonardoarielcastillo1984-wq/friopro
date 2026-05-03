@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { requireSuperAdmin } from '../middleware/auth.js';
+import { requireSuperAdmin } from '../middleware/auth';
 
 export default async function tenantReportRoutes(app: FastifyInstance) {
   // GET /super-admin/tenants/:id/full-report
@@ -50,19 +50,19 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         app.prisma.platformUser.count({ where: { memberships: { some: { tenantId: id, deletedAt: null } } } }),
         app.prisma.employee.count({ where: { tenantId: id, deletedAt: null } }),
         app.prisma.document.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.nonConformityReport.count({ where: { tenantId: id, deletedAt: null } }),
+        app.prisma.nonConformity.count({ where: { tenantId: id, deletedAt: null } }),
         app.prisma.risk.count({ where: { tenantId: id, deletedAt: null } }),
         app.prisma.indicator.count({ where: { tenantId: id, deletedAt: null } }),
         app.prisma.audit.count({ where: { tenantId: id, deletedAt: null } }),
         app.prisma.training.count({ where: { tenantId: id, deletedAt: null } }),
         app.prisma.incident.count({ where: { tenantId: id, deletedAt: null } }),
         app.prisma.drillScenario.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.meeting.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.objective.count({ where: { tenantId: id, deletedAt: null } }),
+        0 as any,
+        app.prisma.sgiObjective.count({ where: { tenantId: id, deletedAt: null } }) as any,
         app.prisma.stakeholder.count({ where: { tenantId: id, deletedAt: null } }),
         app.prisma.supplier.count({ where: { tenantId: id, deletedAt: null } }),
         app.prisma.customer.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.project.count({ where: { tenantId: id, deletedAt: null } }),
+        0 as any,
       ]);
 
       // 3. Historial de auditoría (últimos 200 eventos)
@@ -77,8 +77,6 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           entityId: true,
           actorUserId: true,
           createdAt: true,
-          ipAddress: true,
-          userAgent: true,
         },
       });
 
@@ -92,7 +90,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           amount: true,
           currency: true,
           status: true,
-          description: true,
+          notes: true,
           createdAt: true,
           paidAt: true,
         },
@@ -107,7 +105,6 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           action: true,
           actorUserId: true,
           createdAt: true,
-          ipAddress: true,
         },
       });
 
@@ -125,7 +122,6 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           action: true,
           actorUserId: true,
           createdAt: true,
-          ipAddress: true,
         },
       });
 
@@ -151,6 +147,331 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           action: { contains: 'CREATED' },
         },
         _count: { _all: true },
+      });
+
+      // 9. TRAZABILIDAD DE DOCUMENTOS (últimos 30 días)
+      const docDeletedEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          entityType: 'Document',
+          action: 'DELETED',
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          action: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      const docUpdatedEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          entityType: 'Document',
+          action: 'UPDATED',
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          action: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      const docVersionEvents = await app.prisma.documentVersion.findMany({
+        where: {
+          document: { tenantId: id },
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          documentId: true,
+          version: true,
+          createdAt: true,
+        },
+      });
+
+      const docStatusEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          entityType: 'Document',
+          action: { in: ['STATUS_CHANGED', 'APPROVED', 'REJECTED', 'PUBLISHED', 'REVIEWED'] },
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          action: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      const docDownloadEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          entityType: 'Document',
+          action: 'DOWNLOADED',
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          action: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+        },
+      });
+
+      // 10. SEGURIDAD Y ACCESOS
+      const permissionEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          action: { contains: 'PERMISSION' },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          action: true,
+          entityType: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      const userCreatedEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          action: 'CREATED',
+          entityType: { in: ['User', 'PlatformUser', 'Employee'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          action: true,
+          entityType: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+        },
+      });
+
+      const userDeletedEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          action: 'DELETED',
+          entityType: { in: ['User', 'PlatformUser', 'Employee'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          action: true,
+          entityType: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+        },
+      });
+
+      const roleChangeEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          action: { contains: 'ROLE' },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          action: true,
+          entityType: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      // 11. EVENTOS CRÍTICOS DEL SISTEMA
+      const bulkDeleteEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          action: 'BULK_DELETE',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          action: true,
+          entityType: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      const exportEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          action: { contains: 'EXPORT' },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          action: true,
+          entityType: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      const sensitiveDownloadEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          action: 'DOWNLOADED',
+          entityType: { in: ['Document', 'NonConformityReport', 'Audit', 'Report'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          action: true,
+          entityType: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+        },
+      });
+
+      const tenantConfigEvents = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          entityType: 'Tenant',
+          action: 'UPDATED',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          action: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      const licenseAccessAttempts = await app.prisma.licenseAccessAttempt.findMany({
+        where: {
+          tenantId: id,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          id: true,
+          module: true,
+          userId: true,
+          path: true,
+          createdAt: true,
+        },
+      });
+
+      // 12. USO DEL SISTEMA (ANALÍTICA)
+      const activeUserIds = await app.prisma.auditEvent.groupBy({
+        by: ['actorUserId'],
+        where: {
+          tenantId: id,
+          action: { in: ['LOGIN', 'LOGIN_ATTEMPT'] },
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        _count: { _all: true },
+      });
+      const activeUsersLast30d = activeUserIds.filter(u => u.actorUserId !== null).length;
+
+      const moduleUsageRanking = await app.prisma.auditEvent.groupBy({
+        by: ['entityType'],
+        where: {
+          tenantId: id,
+          createdAt: { gte: thirtyDaysAgo },
+          entityType: { not: { equals: null } as any },
+        },
+        _count: { _all: true },
+        orderBy: { _count: { createdAt: 'desc' } },
+        take: 20,
+      });
+
+      const allModules = [
+        'Document', 'Employee', 'Risk', 'Audit', 'Training', 'Incident',
+        'Meeting', 'Objective', 'Stakeholder', 'Supplier', 'Customer',
+        'Project', 'NonConformityReport', 'Indicator', 'DrillScenario',
+        'MaintenanceAsset', 'WorkOrder', 'ProcessMap', 'ActionItem',
+        'Competency', 'Position', 'Department', 'Survey', 'EvaluationForm',
+        'LicenseAccessAttempt',
+      ];
+      const usedModules = new Set(moduleUsageRanking.map(m => m.entityType));
+      const unusedModules = allModules.filter(m => !usedModules.has(m));
+
+      // 13. USO DE IA
+      const aiFindingsCount = await app.prisma.aiFinding.count({
+        where: {
+          tenantId: id,
+          createdAt: { gte: thirtyDaysAgo },
+        },
+      });
+
+      const aiUsageByType = await app.prisma.aiFinding.groupBy({
+        by: ['auditType'],
+        where: {
+          tenantId: id,
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        _count: true,
+      });
+
+      // 14. ELIMINACIÓN DE REGISTROS
+      const deletionsByEntity = await app.prisma.auditEvent.groupBy({
+        by: ['entityType'],
+        where: {
+          tenantId: id,
+          action: 'DELETED',
+          createdAt: { gte: oneYearAgo },
+        },
+        _count: { _all: true },
+        orderBy: { _count: { createdAt: 'desc' } },
+      });
+
+      const recentDeletions = await app.prisma.auditEvent.findMany({
+        where: {
+          tenantId: id,
+          action: 'DELETED',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          action: true,
+          entityType: true,
+          entityId: true,
+          actorUserId: true,
+          createdAt: true,
+          metadata: true,
+        },
       });
 
       // Generar resumen de actividad
@@ -207,7 +528,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           amount: p.amount,
           currency: p.currency,
           status: p.status,
-          description: p.description,
+          notes: p.notes,
           date: p.createdAt,
           paidAt: p.paidAt,
         })),
@@ -215,13 +536,11 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           action: l.action,
           userId: l.actorUserId,
           date: l.createdAt,
-          ip: l.ipAddress,
         })),
         securityEvents: securityEvents.map(s => ({
           action: s.action,
           userId: s.actorUserId,
           date: s.createdAt,
-          ip: s.ipAddress,
         })),
         auditHistory: auditEvents.map(e => ({
           id: e.id,
@@ -230,8 +549,41 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           entityId: e.entityId,
           actorUserId: e.actorUserId,
           date: e.createdAt,
-          ip: e.ipAddress,
         })),
+        documentTraceability: {
+          deletedDocuments: docDeletedEvents.map(e => ({ id: e.id, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+          modifiedDocuments: docUpdatedEvents.map(e => ({ id: e.id, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+          createdVersions: docVersionEvents.map(v => ({ id: v.id, documentId: v.documentId, version: v.version, date: v.createdAt })),
+          statusChanges: docStatusEvents.map(e => ({ id: e.id, entityId: e.entityId, action: e.action, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+          documentDownloads: docDownloadEvents.map(e => ({ id: e.id, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt })),
+        },
+        securityAccess: {
+          permissionChanges: permissionEvents.map(e => ({ action: e.action, entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+          userCreations: userCreatedEvents.map(e => ({ entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt })),
+          userDeletions: userDeletedEvents.map(e => ({ entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt })),
+          roleChanges: roleChangeEvents.map(e => ({ action: e.action, entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+        },
+        criticalEvents: {
+          bulkDeletions: bulkDeleteEvents.map(e => ({ action: e.action, entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+          dataExports: exportEvents.map(e => ({ action: e.action, entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+          sensitiveDownloads: sensitiveDownloadEvents.map(e => ({ entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt })),
+          tenantConfigChanges: tenantConfigEvents.map(e => ({ entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+          licenseAccessAttempts: licenseAccessAttempts.map(a => ({ id: a.id, module: a.module, userId: a.userId, path: a.path, date: a.createdAt })),
+        },
+        systemUsage: {
+          activeUsersLast30d,
+          inactiveUsers: usersCount - activeUsersLast30d,
+          moduleUsageRanking: moduleUsageRanking.map(m => ({ module: m.entityType, events: m._count._all })),
+          unusedModules,
+        },
+        aiUsage: {
+          totalAiFindingsLast30d: aiFindingsCount,
+          aiUsageByType: aiUsageByType.map(m => ({ type: m.auditType, count: (m as any)._count?._all })),
+        },
+        recordDeletions: {
+          deletionsByEntity: deletionsByEntity.map(d => ({ entityType: d.entityType, count: d._count._all })),
+          recentDeletions: recentDeletions.map(e => ({ entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+        },
       };
 
       return reply.send(report);

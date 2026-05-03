@@ -214,6 +214,257 @@ function formatReportAsTxt(report: any, tenantName: string): string {
     txt += '  Sin eventos de auditoría\n';
   }
 
+  // 9. TRAZABILIDAD DE DOCUMENTOS
+  txt += `
+
+═══════════════════════════════════════════════════════════════════════════════
+  9. TRAZABILIDAD DE DOCUMENTOS (últimos 30 días)
+═══════════════════════════════════════════════════════════════════════════════
+
+`;
+
+  if (report.documentTraceability) {
+    const dt = report.documentTraceability;
+    txt += `  Documentos eliminados: ${dt.deletedDocuments?.length || 0}\n`;
+    if (dt.deletedDocuments?.length > 0) {
+      txt += '  Fecha                │ ID Documento              │ Actor\n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      dt.deletedDocuments.forEach((d: any) => {
+        txt += `  ${new Date(d.date).toLocaleString('es-AR').padEnd(20)} │ ${(d.entityId || 'N/A').padEnd(25)} │ ${(d.actorUserId || 'Sistema').slice(0, 20)}\n`;
+      });
+    }
+    txt += `\n  Documentos modificados: ${dt.modifiedDocuments?.length || 0}\n`;
+    if (dt.modifiedDocuments?.length > 0) {
+      txt += '  Fecha                │ ID Documento              │ Actor\n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      dt.modifiedDocuments.forEach((d: any) => {
+        txt += `  ${new Date(d.date).toLocaleString('es-AR').padEnd(20)} │ ${(d.entityId || 'N/A').padEnd(25)} │ ${(d.actorUserId || 'Sistema').slice(0, 20)}\n`;
+      });
+    }
+    txt += `\n  Versiones creadas: ${dt.createdVersions?.length || 0}\n`;
+    if (dt.createdVersions?.length > 0) {
+      txt += '  Fecha                │ Documento                 │ Versión\n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      dt.createdVersions.forEach((v: any) => {
+        txt += `  ${new Date(v.date).toLocaleString('es-AR').padEnd(20)} │ ${(v.documentId || 'N/A').padEnd(25)} │ ${v.version || '-'}\n`;
+      });
+    }
+    txt += `\n  Cambios de estado: ${dt.statusChanges?.length || 0}\n`;
+    if (dt.statusChanges?.length > 0) {
+      txt += '  Fecha                │ Acción                    │ Documento\n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      dt.statusChanges.forEach((s: any) => {
+        txt += `  ${new Date(s.date).toLocaleString('es-AR').padEnd(20)} │ ${(s.action || 'N/A').padEnd(25)} │ ${(s.entityId || 'N/A').slice(0, 20)}\n`;
+      });
+    }
+    txt += `\n  Descargas: ${dt.documentDownloads?.length || 0}\n`;
+    if (dt.documentDownloads?.length > 0) {
+      txt += '  Fecha                │ Documento                 │ Usuario\n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      dt.documentDownloads.forEach((d: any) => {
+        txt += `  ${new Date(d.date).toLocaleString('es-AR').padEnd(20)} │ ${(d.entityId || 'N/A').padEnd(25)} │ ${(d.actorUserId || 'Anónimo').slice(0, 20)}\n`;
+      });
+    }
+  } else {
+    txt += '  Sin datos de trazabilidad de documentos\n';
+  }
+
+  // 10. SEGURIDAD Y ACCESOS
+  txt += `
+
+═══════════════════════════════════════════════════════════════════════════════
+  10. SEGURIDAD Y ACCESOS
+═══════════════════════════════════════════════════════════════════════════════
+
+`;
+
+  if (report.securityAccess) {
+    const sa = report.securityAccess;
+    txt += `  Cambios de permisos: ${sa.permissionChanges?.length || 0}\n`;
+    if (sa.permissionChanges?.length > 0) {
+      txt += '  Fecha                │ Entidad      │ Acción                    \n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      sa.permissionChanges.forEach((p: any) => {
+        txt += `  ${new Date(p.date).toLocaleString('es-AR').padEnd(20)} │ ${(p.entityType || 'N/A').padEnd(12)} │ ${(p.action || 'N/A').padEnd(25)}\n`;
+      });
+    }
+    txt += `\n  Usuarios creados: ${sa.userCreations?.length || 0}\n`;
+    if (sa.userCreations?.length > 0) {
+      txt += '  Fecha                │ Tipo         │ ID                        \n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      sa.userCreations.forEach((u: any) => {
+        txt += `  ${new Date(u.date).toLocaleString('es-AR').padEnd(20)} │ ${(u.entityType || 'N/A').padEnd(12)} │ ${(u.entityId || 'N/A').padEnd(25)}\n`;
+      });
+    }
+    txt += `\n  Usuarios eliminados: ${sa.userDeletions?.length || 0}\n`;
+    if (sa.userDeletions?.length > 0) {
+      txt += '  Fecha                │ Tipo         │ ID                        \n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      sa.userDeletions.forEach((u: any) => {
+        txt += `  ${new Date(u.date).toLocaleString('es-AR').padEnd(20)} │ ${(u.entityType || 'N/A').padEnd(12)} │ ${(u.entityId || 'N/A').padEnd(25)}\n`;
+      });
+    }
+    txt += `\n  Cambios de rol: ${sa.roleChanges?.length || 0}\n`;
+    if (sa.roleChanges?.length > 0) {
+      txt += '  Fecha                │ Entidad      │ Acción                    \n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      sa.roleChanges.forEach((r: any) => {
+        txt += `  ${new Date(r.date).toLocaleString('es-AR').padEnd(20)} │ ${(r.entityType || 'N/A').padEnd(12)} │ ${(r.action || 'N/A').padEnd(25)}\n`;
+      });
+    }
+  } else {
+    txt += '  Sin datos de seguridad y accesos\n';
+  }
+
+  // 11. EVENTOS CRÍTICOS DEL SISTEMA
+  txt += `
+
+═══════════════════════════════════════════════════════════════════════════════
+  11. EVENTOS CRÍTICOS DEL SISTEMA
+═══════════════════════════════════════════════════════════════════════════════
+
+`;
+
+  if (report.criticalEvents) {
+    const ce = report.criticalEvents;
+    txt += `  Eliminaciones masivas: ${ce.bulkDeletions?.length || 0}\n`;
+    if (ce.bulkDeletions?.length > 0) {
+      txt += '  Fecha                │ Entidad      │ Actor\n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      ce.bulkDeletions.forEach((b: any) => {
+        txt += `  ${new Date(b.date).toLocaleString('es-AR').padEnd(20)} │ ${(b.entityType || 'N/A').padEnd(12)} │ ${(b.actorUserId || 'Sistema').slice(0, 20)}\n`;
+      });
+    }
+    txt += `\n  Exportaciones: ${ce.dataExports?.length || 0}\n`;
+    if (ce.dataExports?.length > 0) {
+      txt += '  Fecha                │ Entidad      │ Acción                    │ Actor\n';
+      txt += '  ─────────────────────────────────────────────────────────────────\n';
+      ce.dataExports.forEach((e: any) => {
+        txt += `  ${new Date(e.date).toLocaleString('es-AR').padEnd(20)} │ ${(e.entityType || 'N/A').padEnd(12)} │ ${(e.action || 'N/A').padEnd(25)} │ ${(e.actorUserId || 'Sistema').slice(0, 20)}\n`;
+      });
+    }
+    txt += `\n  Descargas sensibles: ${ce.sensitiveDownloads?.length || 0}\n`;
+    if (ce.sensitiveDownloads?.length > 0) {
+      txt += '  Fecha                │ Tipo         │ Documento/Entidad\n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      ce.sensitiveDownloads.forEach((s: any) => {
+        txt += `  ${new Date(s.date).toLocaleString('es-AR').padEnd(20)} │ ${(s.entityType || 'N/A').padEnd(12)} │ ${(s.entityId || 'N/A').padEnd(25)}\n`;
+      });
+    }
+    txt += `\n  Cambios de configuración tenant: ${ce.tenantConfigChanges?.length || 0}\n`;
+    if (ce.tenantConfigChanges?.length > 0) {
+      txt += '  Fecha                │ ID Tenant    │ Actor\n';
+      txt += '  ─────────────────────────────────────────────────────────────\n';
+      ce.tenantConfigChanges.forEach((t: any) => {
+        txt += `  ${new Date(t.date).toLocaleString('es-AR').padEnd(20)} │ ${(t.entityId || 'N/A').padEnd(12)} │ ${(t.actorUserId || 'Sistema').slice(0, 20)}\n`;
+      });
+    }
+    txt += `\n  Intentos de acceso a licencias: ${ce.licenseAccessAttempts?.length || 0}\n`;
+    if (ce.licenseAccessAttempts?.length > 0) {
+      txt += '  Fecha                │ Módulo       │ Usuario                   │ Estado\n';
+      txt += '  ─────────────────────────────────────────────────────────────────\n';
+      ce.licenseAccessAttempts.forEach((a: any) => {
+        txt += `  ${new Date(a.date).toLocaleString('es-AR').padEnd(20)} │ ${(a.module || 'N/A').padEnd(12)} │ ${(a.userId || 'N/A').padEnd(25)} │ ${a.allowed ? 'Permitido' : 'Denegado'}\n`;
+      });
+    }
+  } else {
+    txt += '  Sin eventos críticos registrados\n';
+  }
+
+  // 12. USO DEL SISTEMA (ANALÍTICA)
+  txt += `
+
+═══════════════════════════════════════════════════════════════════════════════
+  12. USO DEL SISTEMA (ANALÍTICA)
+═══════════════════════════════════════════════════════════════════════════════
+
+`;
+
+  if (report.systemUsage) {
+    const su = report.systemUsage;
+    txt += `  Usuarios activos (últimos 30 días): ${su.activeUsersLast30d || 0}\n`;
+    txt += `  Usuarios inactivos: ${su.inactiveUsers || 0}\n\n`;
+
+    txt += '  Ranking de uso por módulo (eventos):\n';
+    txt += '  Módulo                    │ Eventos\n';
+    txt += '  ─────────────────────────────────────\n';
+    if (su.moduleUsageRanking?.length > 0) {
+      su.moduleUsageRanking.forEach((m: any) => {
+        txt += `  ${(m.module || 'N/A').padEnd(25)} │ ${m.events || 0}\n`;
+      });
+    } else {
+      txt += '  Sin datos de uso\n';
+    }
+
+    if (su.unusedModules?.length > 0) {
+      txt += `\n  Módulos sin uso detectado: ${su.unusedModules.length}\n`;
+      txt += '  ' + su.unusedModules.join(', ') + '\n';
+    }
+  } else {
+    txt += '  Sin datos de uso del sistema\n';
+  }
+
+  // 13. USO DE IA
+  txt += `
+
+═══════════════════════════════════════════════════════════════════════════════
+  13. USO DE IA
+═══════════════════════════════════════════════════════════════════════════════
+
+`;
+
+  if (report.aiUsage) {
+    const ai = report.aiUsage;
+    txt += `  Hallazgos de IA (últimos 30 días): ${ai.totalAiFindingsLast30d || 0}\n\n`;
+
+    if (ai.aiUsageByType?.length > 0) {
+      txt += '  Uso por tipo de auditoría:\n';
+      txt += '  Tipo                      │ Cantidad\n';
+      txt += '  ─────────────────────────────────────\n';
+      ai.aiUsageByType.forEach((t: any) => {
+        txt += `  ${(t.type || 'N/A').padEnd(25)} │ ${t.count || 0}\n`;
+      });
+    } else {
+      txt += '  Sin uso de IA registrado\n';
+    }
+  } else {
+    txt += '  Sin datos de uso de IA\n';
+  }
+
+  // 14. ELIMINACIÓN DE REGISTROS
+  txt += `
+
+═══════════════════════════════════════════════════════════════════════════════
+  14. ELIMINACIÓN DE REGISTROS (últimos 12 meses)
+═══════════════════════════════════════════════════════════════════════════════
+
+`;
+
+  if (report.recordDeletions) {
+    const rd = report.recordDeletions;
+    txt += '  Eliminaciones por tipo de entidad:\n';
+    txt += '  Entidad                   │ Cantidad\n';
+    txt += '  ─────────────────────────────────────\n';
+    if (rd.deletionsByEntity?.length > 0) {
+      rd.deletionsByEntity.forEach((d: any) => {
+        txt += `  ${(d.entityType || 'N/A').padEnd(25)} │ ${d.count || 0}\n`;
+      });
+    } else {
+      txt += '  Sin eliminaciones registradas\n';
+    }
+
+    txt += `\n  Eliminaciones recientes: ${rd.recentDeletions?.length || 0}\n`;
+    if (rd.recentDeletions?.length > 0) {
+      txt += '  Fecha                │ Entidad      │ ID                        │ Actor\n';
+      txt += '  ─────────────────────────────────────────────────────────────────────\n';
+      rd.recentDeletions.forEach((r: any) => {
+        txt += `  ${new Date(r.date).toLocaleString('es-AR').padEnd(20)} │ ${(r.entityType || 'N/A').padEnd(12)} │ ${(r.entityId || 'N/A').padEnd(25)} │ ${(r.actorUserId || 'Sistema').slice(0, 20)}\n`;
+      });
+    }
+  } else {
+    txt += '  Sin datos de eliminaciones\n';
+  }
+
   txt += `
 
 ═══════════════════════════════════════════════════════════════════════════════
