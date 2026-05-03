@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { getStorageUsage } from '../services/storage-usage.js';
 
 function requireSuperAdmin(req: FastifyRequest) {
   if (!(req as any).auth?.globalRole || (req as any).auth.globalRole !== 'SUPER_ADMIN') {
@@ -493,6 +494,22 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       });
 
       app.log.info(`[REPORT] Step 14 done`);
+
+      // 15. ALMACENAMIENTO
+      app.log.info('[REPORT] Step 15: storageUsage');
+      const storageUsage = await getStorageUsage(app.prisma, id);
+      const [docBytes, normBytes] = await Promise.all([
+        app.prisma.document.aggregate({
+          where: { tenantId: id, deletedAt: null },
+          _sum: { fileSize: true },
+        }),
+        app.prisma.normativeStandard.aggregate({
+          where: { tenantId: id, deletedAt: null },
+          _sum: { fileSize: true },
+        }),
+      ]);
+      app.log.info('[REPORT] Step 15 done');
+
       // Generar resumen de actividad
       const totalEntities = usersCount + employeesCount + documentsCount + ncrCount + risksCount +
         indicatorsCount + auditsCount + trainingsCount + incidentsCount + drillsCount +
@@ -598,6 +615,18 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         aiUsage: {
           totalAiFindingsLast30d: aiFindingsCount,
           aiUsageByType: aiUsageByType.map(m => ({ type: m.auditType, count: m._count._all })),
+        },
+        storageUsage: {
+          usedBytes: storageUsage.used,
+          limitBytes: storageUsage.limit,
+          percentage: storageUsage.percentage,
+          usedMB: Math.round(storageUsage.used / 1024 / 1024 * 100) / 100,
+          usedGB: Math.round(storageUsage.used / 1024 / 1024 / 1024 * 1000) / 1000,
+          limitGB: Math.round(storageUsage.limit / 1024 / 1024 / 1024 * 100) / 100,
+          breakdown: {
+            documentosMB: Math.round(Number(docBytes._sum.fileSize ?? 0) / 1024 / 1024 * 100) / 100,
+            normativosMB: Math.round(Number(normBytes._sum.fileSize ?? 0) / 1024 / 1024 * 100) / 100,
+          },
         },
         recordDeletions: {
           deletionsByEntity: deletionsByEntity.filter(d => d.entityType !== null).map(d => ({ entityType: d.entityType, count: d._count._all })),

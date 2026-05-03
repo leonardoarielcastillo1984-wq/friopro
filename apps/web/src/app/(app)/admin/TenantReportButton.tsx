@@ -87,6 +87,13 @@ function formatReportAsTxt(report: any, tenantName: string): string {
   Inicio:        ${report.tenant.subscriptionStarted ? new Date(report.tenant.subscriptionStarted).toLocaleDateString('es-AR') : 'N/A'}
   Vencimiento:   ${report.tenant.subscriptionEnds ? new Date(report.tenant.subscriptionEnds).toLocaleDateString('es-AR') : 'N/A'}
 
+  ── Almacenamiento ──────────────────────────────────────────────────────────
+  Usado:         ${report.storageUsage ? (report.storageUsage.usedGB >= 1 ? `${report.storageUsage.usedGB} GB` : `${report.storageUsage.usedMB} MB`) : 'N/A'}
+  Límite:        ${report.storageUsage ? `${report.storageUsage.limitGB} GB` : 'N/A'}
+  Ocupación:     ${report.storageUsage ? `${report.storageUsage.percentage}%` : 'N/A'}
+  Documentos:    ${report.storageUsage ? `${report.storageUsage.breakdown.documentosMB} MB` : 'N/A'}
+  Normativos:    ${report.storageUsage ? `${report.storageUsage.breakdown.normativosMB} MB` : 'N/A'}
+
 
 ═══════════════════════════════════════════════════════════════════════════════
   2. ESTADÍSTICAS DE ENTIDADES
