@@ -149,7 +149,7 @@ export default function Home() {
                   Comenzar ahora <ChevronDown size={14} />
                 </button>
                 {productMenuOpen && (
-                  <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: 0, background: 'white', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.15)', padding: '8px 0', minWidth: 220, zIndex: 50, border: '1px solid rgba(0,0,0,0.06)' }}>
+                  <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, background: 'white', borderRadius: 10, boxShadow: '0 -12px 40px rgba(0,0,0,0.15)', padding: '8px 0', minWidth: 220, zIndex: 50, border: '1px solid rgba(0,0,0,0.06)' }}>
                     {[
                       { name: 'SGI 360', color: '#E8541A', desc: 'Gestión integrada ISO' },
                       { name: 'AUDIT 360', color: '#2563EB', desc: 'Auditorías inteligentes' },
