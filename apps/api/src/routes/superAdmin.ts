@@ -1317,6 +1317,22 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
         app.log.warn(`[SUPERADMIN] No hay planes activos disponibles para asignar al tenant ${tenant.id}`);
       }
 
+      // Crear TenantSetup como PAID para que el cliente pueda acceder sin bloqueo de setup
+      await (app.prisma as any).tenantSetup.upsert({
+        where: { tenantId: tenant.id },
+        update: { status: 'PAID', paidAt: new Date(), provider: 'superadmin', updatedAt: new Date() },
+        create: {
+          tenantId: tenant.id,
+          amount: 0,
+          currency: 'USD',
+          status: 'PAID',
+          requestedAt: new Date(),
+          paidAt: new Date(),
+          provider: 'superadmin',
+        },
+      });
+      app.log.info(`[SUPERADMIN] TenantSetup PAID creado para tenant ${tenant.id}`);
+
       // Actualizar estado de la solicitud
       await prismaSuperUser.companyRegistration.update({
         where: { id },
