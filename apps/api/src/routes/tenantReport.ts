@@ -498,16 +498,6 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       // 15. ALMACENAMIENTO
       app.log.info('[REPORT] Step 15: storageUsage');
       const storageUsage = await getStorageUsage(app.prisma, id);
-      const [docBytes, normBytes] = await Promise.all([
-        app.prisma.document.aggregate({
-          where: { tenantId: id, deletedAt: null },
-          _sum: { fileSize: true },
-        }),
-        app.prisma.normativeStandard.aggregate({
-          where: { tenantId: id, deletedAt: null },
-          _sum: { fileSize: true },
-        }),
-      ]);
       app.log.info('[REPORT] Step 15 done');
 
       // Generar resumen de actividad
@@ -623,10 +613,6 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           usedMB: Math.round(storageUsage.used / 1024 / 1024 * 100) / 100,
           usedGB: Math.round(storageUsage.used / 1024 / 1024 / 1024 * 1000) / 1000,
           limitGB: Math.round(storageUsage.limit / 1024 / 1024 / 1024 * 100) / 100,
-          breakdown: {
-            documentosMB: Math.round(Number(docBytes._sum.fileSize ?? 0) / 1024 / 1024 * 100) / 100,
-            normativosMB: Math.round(Number(normBytes._sum.fileSize ?? 0) / 1024 / 1024 * 100) / 100,
-          },
         },
         recordDeletions: {
           deletionsByEntity: deletionsByEntity.filter(d => d.entityType !== null).map(d => ({ entityType: d.entityType, count: d._count._all })),

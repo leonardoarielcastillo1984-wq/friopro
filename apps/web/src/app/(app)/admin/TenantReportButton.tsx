@@ -91,8 +91,6 @@ function formatReportAsTxt(report: any, tenantName: string): string {
   Usado:         ${report.storageUsage ? (report.storageUsage.usedGB >= 1 ? `${report.storageUsage.usedGB} GB` : `${report.storageUsage.usedMB} MB`) : 'N/A'}
   Límite:        ${report.storageUsage ? `${report.storageUsage.limitGB} GB` : 'N/A'}
   Ocupación:     ${report.storageUsage ? `${report.storageUsage.percentage}%` : 'N/A'}
-  Documentos:    ${report.storageUsage ? `${report.storageUsage.breakdown.documentosMB} MB` : 'N/A'}
-  Normativos:    ${report.storageUsage ? `${report.storageUsage.breakdown.normativosMB} MB` : 'N/A'}
 
 
 ═══════════════════════════════════════════════════════════════════════════════
