@@ -362,64 +362,89 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     const params = z.object({ findingId: z.string().uuid() }).parse(req.params);
     const { findingId } = params;
 
-    const result = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
-      // 1. Obtener el hallazgo
-      const finding = await tx.aiFinding.findFirst({
-        where: { id: findingId, tenantId, deletedAt: null },
+    try {
+      const result = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+        // 1. Obtener el hallazgo
+        const finding = await tx.aiFinding.findFirst({
+          where: { id: findingId, tenantId, deletedAt: null },
+        });
+        if (!finding) {
+          const err: any = new Error('Hallazgo no encontrado');
+          err.statusCode = 404;
+          throw err;
+        }
+
+        // 2. Verificar que no ya esté convertido
+        if (finding.status === 'CONVERTED_TO_NCR') {
+          // Devolver la NCR existente si ya fue creada
+          const existingNcr = await tx.nonConformity.findFirst({
+            where: { tenantId, aiFindingId: finding.id },
+          });
+          if (existingNcr) {
+            return { ncr: existingNcr, finding, alreadyConverted: true };
+          }
+          const err: any = new Error('Este hallazgo ya fue convertido a no conformidad');
+          err.statusCode = 409;
+          throw err;
+        }
+
+        // 3. Generar código único para la NCR
+        const count = await tx.nonConformity.count({ where: { tenantId } });
+        const code = `NCR-${(count + 1).toString().padStart(4, '0')}`;
+
+        // 4. Mapear severidad de FindingSeverity a NCRSeverity
+        const severityMap: Record<string, NCRSeverity> = {
+          'MUST': 'MAJOR',
+          'SHOULD': 'MINOR',
+          'CRITICAL': 'CRITICAL',
+          'MAJOR': 'MAJOR',
+          'MINOR': 'MINOR',
+          'OBSERVATION': 'OBSERVATION',
+        };
+        const ncrSeverity = severityMap[finding.severity] ?? 'MINOR';
+
+        // 5. Crear la no conformidad
+        const ncr = await tx.nonConformity.create({
+          data: {
+            tenantId,
+            code,
+            title: finding.title,
+            description: finding.description,
+            severity: ncrSeverity,
+            source: 'AI_FINDING',
+            status: 'OPEN',
+            standard: finding.standard,
+            clause: finding.clause,
+            aiFindingId: finding.id,
+            detectedAt: new Date(),
+            createdById: req.auth?.userId ?? null,
+          },
+        });
+
+        // 6. Actualizar el hallazgo como convertido
+        await tx.aiFinding.update({
+          where: { id: findingId },
+          data: {
+            status: 'CONVERTED_TO_NCR',
+            updatedAt: new Date(),
+          },
+        });
+
+        return { ncr, finding, alreadyConverted: false };
       });
-      if (!finding) throw new Error('Hallazgo no encontrado');
 
-      // 2. Verificar que no ya esté convertido
-      if (finding.status === 'CONVERTED_TO_NCR') {
-        throw new Error('Este hallazgo ya fue convertido a no conformidad');
-      }
-
-      // 3. Generar código único para la NCR
-      const count = await tx.nonConformity.count({ where: { tenantId } });
-      const code = `NCR-${(count + 1).toString().padStart(4, '0')}`;
-
-      // 4. Mapear severidad de FindingSeverity a NCRSeverity
-      const severityMap: Record<string, NCRSeverity> = {
-        'MUST': 'MAJOR',
-        'SHOULD': 'MINOR',
-      };
-      const ncrSeverity = severityMap[finding.severity] ?? 'OBSERVATION';
-
-      // 5. Crear la no conformidad
-      const ncr = await tx.nonConformity.create({
-        data: {
-          tenantId,
-          code,
-          title: finding.title,
-          description: finding.description,
-          severity: ncrSeverity,
-          source: 'AI_FINDING',
-          status: 'OPEN',
-          standard: finding.standard,
-          clause: finding.clause,
-          aiFindingId: finding.id,
-          detectedAt: new Date(),
-          createdById: req.auth?.userId ?? null,
-        },
+      return reply.send({
+        success: true,
+        message: result.alreadyConverted
+          ? 'Este hallazgo ya había sido convertido anteriormente'
+          : 'Hallazgo convertido a no conformidad exitosamente',
+        nonConformity: result.ncr,
+        alreadyConverted: result.alreadyConverted,
       });
-
-      // 6. Actualizar el hallazgo como convertido
-      await tx.aiFinding.update({
-        where: { id: findingId },
-        data: {
-          status: 'CONVERTED_TO_NCR',
-          updatedAt: new Date(),
-        },
-      });
-
-      return { ncr, finding };
-    });
-
-    return reply.send({
-      success: true,
-      message: 'Hallazgo convertido a no conformidad exitosamente',
-      nonConformity: result.ncr,
-    });
+    } catch (err: any) {
+      const code = err.statusCode || 500;
+      return reply.code(code).send({ error: err.message || 'Error interno al convertir hallazgo' });
+    }
   });
 
   // ── POST /audit/chat — Chat de auditor con contexto ──
