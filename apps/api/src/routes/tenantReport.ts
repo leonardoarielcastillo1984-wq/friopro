@@ -1,5 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { requireSuperAdmin } from '../middleware/auth';
+
+function requireSuperAdmin(req: FastifyRequest) {
+  if (!(req as any).auth?.globalRole || (req as any).auth.globalRole !== 'SUPER_ADMIN') {
+    const err: any = new Error('Forbidden');
+    err.statusCode = 403;
+    throw err;
+  }
+}
 
 export default async function tenantReportRoutes(app: FastifyInstance) {
   // GET /super-admin/tenants/:id/full-report
