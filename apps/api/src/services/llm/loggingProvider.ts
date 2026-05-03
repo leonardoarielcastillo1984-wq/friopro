@@ -27,12 +27,29 @@ export class LoggingLLMProvider implements LLMProvider {
         tokensUsed: response.tokensUsed || 0,
         promptLen,
       },
-    }).catch(() => { /* ignore */ });
+    }).catch((e: any) => { console.error('[AIUsageLog] insert failed:', e?.message); });
 
     return response;
   }
 
-  chatStream(messages: LLMMessage[], maxTokens?: number): AsyncGenerator<LLMStreamChunk> {
-    return this.inner.chatStream!(messages, maxTokens);
+  async *chatStream(messages: LLMMessage[], maxTokens?: number): AsyncGenerator<LLMStreamChunk> {
+    const promptLen = messages.reduce((s, m) => s + m.content.length, 0);
+    let totalText = '';
+    for await (const chunk of this.inner.chatStream!(messages, maxTokens)) {
+      if (!chunk.done) totalText += chunk.text;
+      yield chunk;
+    }
+    // Log after stream completes — estimate tokens from chars (~4 chars per token)
+    const estimatedTokens = Math.ceil((promptLen + totalText.length) / 4);
+    this.prisma.aIUsageLog.create({
+      data: {
+        tenantId: this.tenantId,
+        userId: this.userId,
+        module: this.module,
+        model: 'stream',
+        tokensUsed: estimatedTokens,
+        promptLen,
+      },
+    }).catch((e: any) => { console.error('[AIUsageLog] stream insert failed:', e?.message); });
   }
 }
