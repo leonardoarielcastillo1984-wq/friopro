@@ -207,6 +207,106 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
+  // GET /reports/ai-usage — Uso general de IA del sistema
+  app.get('/ai-usage', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+
+    const data = await app.runWithDbContext(req, async (tx: any) => {
+      const [auditRuns, auditRunsLast30, findings, findingsLast30, chatEvents, ncrAnalysisEvents] = await Promise.all([
+        // Todos los análisis IA (documento vs norma + tenant audit)
+        tx.auditRun.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, type: true, status: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        // Análisis últimos 30 días
+        tx.auditRun.count({ where: { tenantId, deletedAt: null, createdAt: { gte: thirtyDaysAgo } } }),
+        // Hallazgos IA totales
+        tx.aiFinding.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, severity: true, status: true, auditType: true, createdAt: true },
+        }),
+        // Hallazgos últimos 30 días
+        tx.aiFinding.count({ where: { tenantId, deletedAt: null, createdAt: { gte: thirtyDaysAgo } } }),
+        // Consultas de chat de IA (desde AuditEvent)
+        tx.auditEvent.count({
+          where: {
+            tenantId,
+            action: { in: ['AI_CHAT', 'AI_QUERY', 'CHAT_MESSAGE', 'AI_ANALYSIS'] },
+          },
+        }),
+        // Análisis de NCR con IA
+        tx.auditEvent.count({
+          where: {
+            tenantId,
+            action: { contains: 'NCR' },
+            entityType: 'NonConformity',
+          },
+        }),
+      ]);
+      return { auditRuns, auditRunsLast30, findings, findingsLast30, chatEvents, ncrAnalysisEvents };
+    });
+
+    const byType = data.auditRuns.reduce((acc: Record<string, number>, r: any) => {
+      acc[r.type] = (acc[r.type] || 0) + 1;
+      return acc;
+    }, {});
+
+    const byStatus = data.auditRuns.reduce((acc: Record<string, number>, r: any) => {
+      acc[r.status] = (acc[r.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    const findingsBySeverity = data.findings.reduce((acc: Record<string, number>, f: any) => {
+      acc[f.severity] = (acc[f.severity] || 0) + 1;
+      return acc;
+    }, {});
+
+    const findingsByStatus = data.findings.reduce((acc: Record<string, number>, f: any) => {
+      acc[f.status] = (acc[f.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Últimos 5 análisis
+    const recentRuns = data.auditRuns.slice(0, 5).map((r: any) => ({
+      id: r.id,
+      type: r.type === 'document_vs_norma' ? 'Documento vs Norma' : r.type === 'tenant_audit' ? 'Auditoría Tenant' : r.type,
+      status: r.status,
+      date: r.createdAt,
+    }));
+
+    return reply.send({
+      report: {
+        type: 'ai-usage',
+        generatedAt: new Date().toISOString(),
+        summary: {
+          totalAnalyses: data.auditRuns.length,
+          analysesLast30Days: data.auditRunsLast30,
+          completedAnalyses: byStatus['COMPLETED'] || 0,
+          pendingAnalyses: (byStatus['PENDING'] || 0) + (byStatus['PROCESSING'] || 0),
+          failedAnalyses: byStatus['FAILED'] || 0,
+          totalFindings: data.findings.length,
+          findingsLast30Days: data.findingsLast30,
+          openFindings: findingsByStatus['OPEN'] || 0,
+          criticalFindings: findingsBySeverity['CRITICAL'] || 0,
+          chatConsultations: data.chatEvents,
+          ncrAnalyses: data.ncrAnalysisEvents,
+        },
+        analysesByType: Object.entries(byType).map(([type, count]) => ({
+          type: type === 'document_vs_norma' ? 'Documento vs Norma' : type === 'tenant_audit' ? 'Auditoría Tenant' : type,
+          count,
+        })),
+        findingsBySeverity: Object.entries(findingsBySeverity).map(([severity, count]) => ({ severity, count })),
+        findingsByStatus: Object.entries(findingsByStatus).map(([status, count]) => ({ status, count })),
+        recentAnalyses: recentRuns,
+      },
+    });
+  });
+
   // GET /reports/executive — Resumen ejecutivo completo
   app.get('/executive', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;

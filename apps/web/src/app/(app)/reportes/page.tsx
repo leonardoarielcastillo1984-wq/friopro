@@ -6,10 +6,10 @@ import Link from 'next/link';
 import {
   FileBarChart, Download, Calendar, CheckCircle2,
   AlertTriangle, Shield, BarChart3, BookOpen,
-  Target, Loader2, ChevronDown, ChevronUp, Users,
+  Target, Loader2, ChevronDown, ChevronUp, Users, Bot,
 } from 'lucide-react';
 
-type ReportType = 'executive' | 'ncr' | 'risks' | 'indicators' | 'compliance' | 'trainings' | 'customers';
+type ReportType = 'executive' | 'ncr' | 'risks' | 'indicators' | 'compliance' | 'trainings' | 'customers' | 'ai-usage';
 
 const REPORT_TYPES: { id: ReportType; title: string; description: string; icon: React.ReactNode; color: string }[] = [
   { id: 'executive', title: 'Resumen Ejecutivo', description: 'Resumen general de todos los módulos del SGI', icon: <Target className="h-5 w-5" />, color: 'blue' },
@@ -19,6 +19,7 @@ const REPORT_TYPES: { id: ReportType; title: string; description: string; icon: 
   { id: 'compliance', title: 'Cumplimiento Normativo', description: 'Estado de conformidad con normas aplicables', icon: <CheckCircle2 className="h-5 w-5" />, color: 'amber' },
   { id: 'trainings', title: 'Capacitaciones', description: 'Resumen de formación y asistencia', icon: <BookOpen className="h-5 w-5" />, color: 'pink' },
   { id: 'customers', title: 'Gestión de Clientes', description: 'Satisfacción, reclamos y métricas de servicio', icon: <Users className="h-5 w-5" />, color: 'indigo' },
+  { id: 'ai-usage', title: 'Uso de IA', description: 'Análisis realizados, hallazgos, consultas y consumo del sistema de IA', icon: <Bot className="h-5 w-5" />, color: 'violet' },
 ];
 
 const COLOR_MAP: Record<string, { bg: string; text: string; border: string }> = {
@@ -29,6 +30,7 @@ const COLOR_MAP: Record<string, { bg: string; text: string; border: string }> = 
   amber: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' },
   pink: { bg: 'bg-pink-50', text: 'text-pink-600', border: 'border-pink-200' },
   indigo: { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200' },
+  violet: { bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200' },
 };
 
 export default function ReportesPage() {
@@ -144,6 +146,7 @@ export default function ReportesPage() {
             {reportData.type === 'indicators' && <IndicatorsReport data={reportData} />}
             {reportData.type === 'compliance' && <ComplianceReport data={reportData} />}
             {reportData.type === 'trainings' && <TrainingsReport data={reportData} />}
+            {reportData.type === 'ai-usage' && <AIUsageReport data={reportData} />}
           </div>
         </div>
       )}
@@ -351,6 +354,112 @@ function ComplianceReport({ data }: { data: any }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AIUsageReport({ data }: { data: any }) {
+  const s = data.summary;
+  const statusLabel: Record<string, string> = {
+    COMPLETED: 'Completado', PENDING: 'Pendiente', PROCESSING: 'Procesando', FAILED: 'Error',
+  };
+  const severityColor: Record<string, string> = {
+    CRITICAL: 'bg-red-100 text-red-700', MAJOR: 'bg-orange-100 text-orange-700',
+    MINOR: 'bg-yellow-100 text-yellow-700', LOW: 'bg-slate-100 text-slate-600',
+  };
+  return (
+    <div className="space-y-6">
+      {/* KPIs principales */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-violet-50 rounded-lg p-4 border border-violet-100">
+          <div className="text-xs text-slate-500">Análisis Totales</div>
+          <div className="text-2xl font-bold text-violet-700">{s.totalAnalyses}</div>
+          <div className="text-xs text-slate-400">{s.analysesLast30Days} últimos 30 días</div>
+        </div>
+        <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+          <div className="text-xs text-slate-500">Completados</div>
+          <div className="text-2xl font-bold text-green-600">{s.completedAnalyses}</div>
+          <div className="text-xs text-slate-400">{s.failedAnalyses} fallidos</div>
+        </div>
+        <div className="bg-amber-50 rounded-lg p-4 border border-amber-100">
+          <div className="text-xs text-slate-500">Hallazgos Totales</div>
+          <div className="text-2xl font-bold text-amber-600">{s.totalFindings}</div>
+          <div className="text-xs text-slate-400">{s.openFindings} abiertos · {s.criticalFindings} críticos</div>
+        </div>
+        <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+          <div className="text-xs text-slate-500">Hallazgos (30 días)</div>
+          <div className="text-2xl font-bold text-slate-800">{s.findingsLast30Days}</div>
+          <div className="text-xs text-slate-400">{s.pendingAnalyses} análisis pendientes</div>
+        </div>
+      </div>
+
+      {/* Análisis por tipo */}
+      {data.analysesByType?.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Análisis por Tipo</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {data.analysesByType.map((t: any) => (
+              <div key={t.type} className="bg-slate-50 rounded-lg p-3 border border-slate-100 flex items-center justify-between">
+                <span className="text-sm text-slate-700">{t.type}</span>
+                <span className="text-lg font-bold text-violet-600">{t.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Hallazgos por severidad */}
+      {data.findingsBySeverity?.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Hallazgos por Severidad</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {data.findingsBySeverity.map((f: any) => (
+              <div key={f.severity} className="rounded-lg p-3 text-center border border-slate-100 bg-slate-50">
+                <div className="text-xl font-bold">{f.count}</div>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${severityColor[f.severity] || 'bg-slate-100 text-slate-600'}`}>{f.severity}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Últimos análisis */}
+      {data.recentAnalyses?.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Últimos Análisis</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-slate-200">
+                <th className="text-left py-2 px-3 text-xs text-slate-400">Tipo</th>
+                <th className="text-left py-2 px-3 text-xs text-slate-400">Estado</th>
+                <th className="text-left py-2 px-3 text-xs text-slate-400">Fecha</th>
+              </tr></thead>
+              <tbody>
+                {data.recentAnalyses.map((r: any) => (
+                  <tr key={r.id} className="border-b border-slate-50">
+                    <td className="py-2 px-3">{r.type}</td>
+                    <td className="py-2 px-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        r.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                        r.status === 'FAILED' ? 'bg-red-100 text-red-700' :
+                        'bg-yellow-100 text-yellow-700'
+                      }`}>{statusLabel[r.status] || r.status}</span>
+                    </td>
+                    <td className="py-2 px-3 text-xs text-slate-500">{new Date(r.date).toLocaleString('es-AR')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {s.totalAnalyses === 0 && (
+        <div className="text-center py-8 text-slate-400">
+          <Bot className="h-10 w-10 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">Aún no se han realizado análisis de IA en este sistema</p>
         </div>
       )}
     </div>
