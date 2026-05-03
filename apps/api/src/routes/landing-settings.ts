@@ -61,4 +61,23 @@ export async function registerLandingSettingsRoutes(app: FastifyInstance) {
       return reply.code(500).send({ error: 'Failed to update landing settings' });
     }
   });
+
+  // GET /landing/stats — métricas públicas reales del sistema
+  app.get('/landing/stats', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const prisma = (app as any).prisma;
+      const [companies, users] = await Promise.all([
+        prisma.tenant.count({ where: { status: { not: 'SUSPENDED' } } }).catch(() => 0),
+        prisma.platformUser.count().catch(() => 0),
+      ]);
+      return reply.send({
+        companies,
+        users,
+        uptime: '99.9%',
+        experience: '15+',
+      });
+    } catch {
+      return reply.send({ companies: 0, users: 0, uptime: '99.9%', experience: '15+' });
+    }
+  });
 }

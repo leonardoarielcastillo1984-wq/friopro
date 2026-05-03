@@ -46,6 +46,7 @@ const FAQS = [
 export default function Home() {
   const router = useRouter();
   const [landingSettings, setLandingSettings] = useState<any>(null);
+  const [realStats, setRealStats] = useState<any>(null);
   const [expandedFAQ, setExpandedFAQ] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [registered, setRegistered] = useState(false);
@@ -57,6 +58,10 @@ export default function Home() {
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/landing/settings`)
       .then(r => r.json())
       .then(data => { if (data.settings) setLandingSettings(data.settings); })
+      .catch(() => {});
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/landing/stats`)
+      .then(r => r.json())
+      .then(data => { if (data) setRealStats(data); })
       .catch(() => {});
   }, []);
 
@@ -118,31 +123,74 @@ export default function Home() {
       </nav>
 
       {/* HERO */}
-      <section style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '120px 40px 80px', position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #F0EEE9 60%, #FFE8DE 100%)' }}>
+      <section style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', padding: '120px 40px 80px', position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #F0EEE9 60%, #FFE8DE 100%)' }}>
         <div style={{ position: 'absolute', top: -100, right: -100, width: 500, height: 500, borderRadius: '50%', background: 'rgba(232,84,26,0.07)', pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', top: 60, right: 120, width: 200, height: 200, borderRadius: '50%', background: 'rgba(232,84,26,0.05)', pointerEvents: 'none' }} />
-        <div style={{ maxWidth: 1280, margin: '0 auto', width: '100%', position: 'relative', zIndex: 1 }}>
-          <div className="sr" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid rgba(232,84,26,0.3)', padding: '5px 14px', marginBottom: 36, background: 'rgba(232,84,26,0.06)' }}>
-            <span className="pulse-dot-dark" />
-            <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.1em', color: '#E8541A', textTransform: 'uppercase' as const }}>Sistema de Gestión Integrado</span>
+        <div style={{ maxWidth: 1280, margin: '0 auto', width: '100%', position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 64, flexWrap: 'wrap' as const }}>
+          <div style={{ flex: '1 1 420px', minWidth: 300 }}>
+            <div className="sr" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid rgba(232,84,26,0.3)', padding: '5px 14px', marginBottom: 36, background: 'rgba(232,84,26,0.06)' }}>
+              <span className="pulse-dot-dark" />
+              <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.1em', color: '#E8541A', textTransform: 'uppercase' as const }}>Sistema de Gestión Integrado</span>
+            </div>
+            <h1 className="sr sr-delay-1" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(36px, 5vw, 72px)', lineHeight: 0.95, letterSpacing: '-0.035em', margin: '0 0 24px', maxWidth: 800 }}>
+              <span style={{ display: 'block', color: '#1A1A1A' }}>Gestión ISO</span>
+              <span style={{ display: 'block', color: '#1A1A1A' }}>sin caos.</span>
+              <span style={{ display: 'block', color: '#E8541A' }}>Sin excusas.</span>
+            </h1>
+            <div className="hero-line-dark sr sr-delay-2" style={{ height: 2, background: 'linear-gradient(90deg, #E8541A, transparent)', marginBottom: 24, maxWidth: 320 }} />
+            <p className="sr sr-delay-3" style={{ fontSize: 17, color: '#666660', maxWidth: 460, lineHeight: 1.65, margin: '0 0 36px', fontFamily: "'Syne', sans-serif", fontWeight: 400 }}>
+              Una plataforma para gestionar ISO 9001, 14001, 45001 y más — con IA integrada y sin hojas de cálculo.
+            </p>
+            <div className="sr sr-delay-4" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
+              <button className="btn-primary-light" onClick={() => setShowModal(true)}>Comenzar ahora <ArrowRight size={15} /></button>
+              <button className="btn-ghost-light" onClick={() => document.getElementById('modulos')?.scrollIntoView({ behavior: 'smooth' })}>Ver módulos</button>
+            </div>
+            <div className="sr sr-delay-5" style={{ marginTop: 52, display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+              {ISOS.map(iso => (
+                <span key={iso} style={{ fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.08em', color: '#999990', border: '1px solid rgba(0,0,0,0.12)', padding: '4px 10px', textTransform: 'uppercase' as const, background: 'rgba(255,255,255,0.5)' }}>{iso}</span>
+              ))}
+            </div>
           </div>
-          <h1 className="sr sr-delay-1" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(36px, 5vw, 72px)', lineHeight: 0.95, letterSpacing: '-0.035em', margin: '0 0 24px', maxWidth: 800 }}>
-            <span style={{ display: 'block', color: '#1A1A1A' }}>Gestión ISO</span>
-            <span style={{ display: 'block', color: '#1A1A1A' }}>sin caos.</span>
-            <span style={{ display: 'block', color: '#E8541A' }}>Sin excusas.</span>
-          </h1>
-          <div className="hero-line-dark sr sr-delay-2" style={{ height: 2, background: 'linear-gradient(90deg, #E8541A, transparent)', marginBottom: 24, maxWidth: 320 }} />
-          <p className="sr sr-delay-3" style={{ fontSize: 17, color: '#666660', maxWidth: 460, lineHeight: 1.65, margin: '0 0 36px', fontFamily: "'Syne', sans-serif", fontWeight: 400 }}>
-            Una plataforma para gestionar ISO 9001, 14001, 45001 y más — con IA integrada y sin hojas de cálculo.
-          </p>
-          <div className="sr sr-delay-4" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
-            <button className="btn-primary-light" onClick={() => setShowModal(true)}>Comenzar ahora <ArrowRight size={15} /></button>
-            <button className="btn-ghost-light" onClick={() => document.getElementById('modulos')?.scrollIntoView({ behavior: 'smooth' })}>Ver módulos</button>
-          </div>
-          <div className="sr sr-delay-5" style={{ marginTop: 52, display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-            {ISOS.map(iso => (
-              <span key={iso} style={{ fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.08em', color: '#999990', border: '1px solid rgba(0,0,0,0.12)', padding: '4px 10px', textTransform: 'uppercase' as const, background: 'rgba(255,255,255,0.5)' }}>{iso}</span>
-            ))}
+          {/* Dashboard preview visual */}
+          <div style={{ flex: '1 1 420px', minWidth: 300, display: 'flex', justifyContent: 'center' }}>
+            <div style={{ width: '100%', maxWidth: 520, background: 'white', borderRadius: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.12)', padding: 24, display: 'flex', flexDirection: 'column' as const, gap: 16, transform: 'perspective(1000px) rotateY(-8deg) rotateX(4deg)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#E8541A' }} />
+                  <div style={{ fontSize: 11, color: '#999990', fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>SGI 360 Dashboard</div>
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {['#FF5F57','#FFBD2E','#28C840'].map(c => <div key={c} style={{ width: 8, height: 8, borderRadius: '50%', background: c }} />)}
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {[
+                  { label: 'Documentos', val: '124', color: '#E8541A' },
+                  { label: 'Auditorías', val: '8', color: '#2563EB' },
+                  { label: 'Indicadores', val: '32', color: '#059669' },
+                  { label: 'NCRs', val: '5', color: '#DC2626' },
+                ].map(card => (
+                  <div key={card.label} style={{ background: '#F5F4F0', borderRadius: 10, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 10, color: '#888880', fontFamily: "'Syne', sans-serif", marginBottom: 6 }}>{card.label}</div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: card.color, fontFamily: "'Syne', sans-serif", lineHeight: 1 }}>{card.val}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: '#F5F4F0', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#E8541A,#F97316)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Zap size={16} color="white" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A', fontFamily: "'Syne', sans-serif" }}>Asistente IA activo</div>
+                  <div style={{ fontSize: 10, color: '#888880', fontFamily: "'Syne', sans-serif" }}>Análisis en tiempo real de normativas</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['ISO 9001','ISO 14001','ISO 45001'].map(tag => (
+                  <span key={tag} style={{ fontSize: 9, fontFamily: "'Syne', sans-serif", fontWeight: 600, color: '#666660', border: '1px solid rgba(0,0,0,0.08)', padding: '3px 8px', borderRadius: 4, background: 'white' }}>{tag}</span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -161,10 +209,10 @@ export default function Home() {
         <div style={{ maxWidth: 1280, margin: '0 auto' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
             {[
-              { value: '500+', label: 'Empresas activas', accent: true },
-              { value: '1500+', label: 'Usuarios', accent: false },
+              { value: realStats ? `${realStats.companies}+` : '...', label: 'Empresas activas', accent: true },
+              { value: realStats ? `${realStats.users}+` : '...', label: 'Usuarios', accent: false },
               { value: '99.9%', label: 'Uptime garantizado', accent: false },
-              { value: '15 años', label: 'Experiencia ISO', orange: true },
+              { value: '15+', label: 'Años de experiencia', orange: true },
             ].map((s, i) => (
               <div key={i} className="sr stat-card-light" style={{ transitionDelay: `${i * 0.1}s`, background: s.orange ? '#E8541A' : 'white', padding: '36px 28px', borderLeft: s.accent ? '3px solid #E8541A' : 'none' }}>
                 <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(36px, 4vw, 52px)', lineHeight: 1, letterSpacing: '-0.04em', color: s.orange ? 'white' : s.accent ? '#E8541A' : '#1A1A1A', marginBottom: 8 }}>{s.value}</div>
@@ -176,49 +224,65 @@ export default function Home() {
       </section>
 
 
-      {/* PRODUCTOS */}
+      {/* PRODUCTOS / ECOSISTEMA */}
       <section style={{ padding: '100px 40px', background: '#F0EEE9' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto' }}>
           <div className="sr" style={{ marginBottom: 64 }}>
             <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.12em', color: '#E8541A', textTransform: 'uppercase' as const, display: 'block', marginBottom: 16 }}>Ecosistema</span>
             <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(22px, 2.8vw, 36px)', letterSpacing: '-0.02em', lineHeight: 1, margin: 0, color: '#1A1A1A' }}>
-              Tres productos.<br />Un solo ecosistema.
+              Cuatro productos.<br />Un solo ecosistema.
             </h2>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
             {[
               {
                 tag: 'SGI 360',
                 title: 'Sistema de Gestión Integrado',
-                features: ['Gestión multi-norma ISO en una sola plataforma', 'Documentos, auditorías, indicadores y más', 'IA integrada para análisis y reportes'],
+                desc: 'Gestión normas ISO, procesos, documentos, riesgos, acciones y mucho más.',
+                color: '#E8541A',
                 available: true,
               },
               {
                 tag: 'SEH 360',
                 title: 'Seguridad e Higiene Laboral',
-                features: ['Gestión de Riesgos Laborales', 'Investigación de Incidentes', 'EPP y Controles'],
-                available: true,
+                desc: 'Gestión de seguridad laboral, higiene, capacitaciones e incidentes.',
+                color: '#059669',
+                available: false,
               },
               {
                 tag: 'AUDIT 360',
-                title: 'Para Auditores y Consultoras',
-                features: ['Gestión de clientes y empresas auditadas', 'Planificación y ejecución de auditorías externas', 'Generación de informes profesionales'],
+                title: 'Auditorías Inteligentes',
+                desc: 'Herramientas para auditores y consultores de calidad.',
+                color: '#2563EB',
+                available: false,
+              },
+              {
+                tag: 'FLOTA 360',
+                title: 'Gestión de Flota',
+                desc: 'Control y mantenimiento de flota, inspecciones y costos.',
+                color: '#0891B2',
                 available: false,
               },
             ].map((p, i) => (
-              <div key={i} className="sr module-card-light" style={{ transitionDelay: `${i * 0.1}s`, background: 'white', padding: '40px 36px', border: '1px solid rgba(0,0,0,0.08)', position: 'relative' as const }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-                  <span style={{ fontSize: 11, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#E8541A', background: 'rgba(232,84,26,0.08)', padding: '4px 10px' }}>{p.tag}</span>
-                  {!p.available && <span style={{ fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#999990', border: '1px solid rgba(0,0,0,0.1)', padding: '3px 8px' }}>Próximamente</span>}
+              <div key={i} className="sr module-card-light" style={{ transitionDelay: `${i * 0.1}s`, background: 'white', padding: '36px 28px', border: `1px solid ${p.color}20`, borderRadius: 12, position: 'relative' as const }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: `${p.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Shield size={20} color={p.color} />
+                  </div>
+                  {p.available
+                    ? <span style={{ fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'white', background: p.color, padding: '3px 10px', borderRadius: 4 }}>Disponible</span>
+                    : <span style={{ fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#888880', background: '#E8E6E0', padding: '3px 10px', borderRadius: 4 }}>Próximamente</span>
+                  }
                 </div>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 18, marginBottom: 24, color: '#1A1A1A', lineHeight: 1.3 }}>{p.title}</div>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
-                  {p.features.map((f, j) => (
-                    <li key={j} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#666660', fontFamily: "'Syne', sans-serif", lineHeight: 1.5 }}>
-                      <span style={{ color: '#E8541A', flexShrink: 0, marginTop: 1 }}>→</span>{f}
-                    </li>
-                  ))}
-                </ul>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, color: p.color, marginBottom: 8, letterSpacing: '0.02em' }}>{p.tag}</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 16, marginBottom: 10, color: '#1A1A1A', lineHeight: 1.3 }}>{p.title}</div>
+                <div style={{ fontSize: 13, color: '#777770', lineHeight: 1.6, fontFamily: "'Syne', sans-serif" }}>{p.desc}</div>
+                {p.available && (
+                  <a href="/suite" style={{ display: 'block', marginTop: 20, padding: '10px 0', textAlign: 'center', background: p.color, color: 'white', textDecoration: 'none', borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13 }}>Ingresar al módulo →</a>
+                )}
+                {!p.available && (
+                  <div style={{ marginTop: 20, padding: '10px 0', textAlign: 'center', background: '#F0EEE9', color: '#999990', borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 13 }}>Próximamente</div>
+                )}
               </div>
             ))}
           </div>
@@ -257,10 +321,31 @@ export default function Home() {
               Simple.<br />Transparente.
             </h2>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-            {PLANS.map((plan, i) => (
-              <div key={i} className="sr plan-card-light" style={{ transitionDelay: `${i * 0.1}s`, background: plan.highlight ? '#E8541A' : 'white', padding: '40px 32px', border: plan.highlight ? 'none' : '1px solid rgba(0,0,0,0.08)', position: 'relative' }}>
-                {plan.highlight && <div style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(0,0,0,0.15)', padding: '3px 10px', fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'white' }}>Más popular</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+            {[
+              {
+                name: 'SGI 360', price: 99, color: '#E8541A',
+                features: ['Sistema de Gestión Integrado completo', 'Documentos y normativos', 'Auditorías ISO', 'Indicadores de gestión', 'No conformidades', 'Proyectos 360', 'IA integrada'],
+                highlight: true, available: true,
+              },
+              {
+                name: 'FLOTA 360', price: 99, color: '#0891B2',
+                features: ['Gestión de flota completa', 'Mantenimientos programados', 'Control de costos', 'Inspecciones vehiculares', 'Documentación operativa'],
+                highlight: false, available: false,
+              },
+              {
+                name: 'SEH 360', price: 29, color: '#059669',
+                features: ['Seguridad e higiene laboral', 'Gestión de incidentes', 'Capacitaciones', 'Controles de EPP'],
+                highlight: false, available: false,
+              },
+              {
+                name: 'AUDIT 360', price: 29, color: '#2563EB',
+                features: ['Herramientas para auditores', 'Planificación de auditorías', 'Informes profesionales', 'Gestión de clientes auditados'],
+                highlight: false, available: false,
+              },
+            ].map((plan, i) => (
+              <div key={i} className="sr plan-card-light" style={{ transitionDelay: `${i * 0.1}s`, background: plan.highlight ? plan.color : 'white', padding: '40px 32px', border: plan.highlight ? 'none' : `1px solid ${plan.color}30`, borderRadius: 12, position: 'relative' }}>
+                {plan.highlight && <div style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(0,0,0,0.2)', padding: '3px 10px', fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'white', borderRadius: 4 }}>Más popular</div>}
                 <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginBottom: 20, color: plan.highlight ? 'rgba(255,255,255,0.7)' : '#999990' }}>{plan.name}</div>
                 <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 56, letterSpacing: '-0.04em', lineHeight: 1, marginBottom: 6, color: plan.highlight ? 'white' : '#1A1A1A' }}>${plan.price}</div>
                 <div style={{ fontSize: 12, color: plan.highlight ? 'rgba(255,255,255,0.6)' : '#999990', marginBottom: 32, fontFamily: "'Syne', sans-serif" }}>USD / mes</div>
@@ -268,13 +353,14 @@ export default function Home() {
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 36px', display: 'flex', flexDirection: 'column' as const, gap: 11 }}>
                   {plan.features.map((f, j) => (
                     <li key={j} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: plan.highlight ? 'white' : '#444440', fontFamily: "'Syne', sans-serif" }}>
-                      <CheckCircle size={14} style={{ flexShrink: 0, marginTop: 2 }} />{f}
+                      <CheckCircle size={14} style={{ flexShrink: 0, marginTop: 2, color: plan.highlight ? 'white' : plan.color }} />{f}
                     </li>
                   ))}
                 </ul>
-                <button onClick={() => setShowModal(true)} style={{ width: '100%', padding: '13px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, cursor: 'pointer', background: plan.highlight ? 'white' : '#1A1A1A', color: plan.highlight ? '#E8541A' : 'white', border: 'none' }}>
-                  Empezar con {plan.name}
-                </button>
+                {plan.available
+                  ? <button onClick={() => setShowModal(true)} style={{ width: '100%', padding: '13px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, cursor: 'pointer', background: plan.highlight ? 'white' : plan.color, color: plan.highlight ? plan.color : 'white', border: 'none', borderRadius: 6 }}>Empezar con {plan.name}</button>
+                  : <div style={{ width: '100%', padding: '13px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, textAlign: 'center', background: '#F0EEE9', color: '#999990', borderRadius: 6 }}>Próximamente</div>
+                }
               </div>
             ))}
           </div>
