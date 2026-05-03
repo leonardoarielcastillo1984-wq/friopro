@@ -26,6 +26,17 @@ async function enrichProjects(prisma: any, projects: any[]) {
   }));
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Pendiente',
+  IN_PROGRESS: 'En Ejecución',
+  AT_RISK: 'En Riesgo',
+  COMPLETED: 'Completado',
+  OVERDUE: 'Vencido',
+  CANCELLED: 'Cancelado',
+  ON_HOLD: 'En Pausa',
+};
+function translateStatus(s: string): string { return STATUS_LABELS[s] ?? s; }
+
 async function logHistory(prisma: any, projectId: string, tenantId: string, action: string, details: string, userId?: string, userName?: string) {
   try {
     await prisma.project360History.create({
@@ -131,7 +142,7 @@ export default async function project360Routes(app: FastifyInstance) {
     });
 
     if (data.status && data.status !== existing.status) {
-      await logHistory(prisma, id, req.db.tenantId, 'STATUS_CHANGE', `Estado: ${existing.status} → ${data.status}`, req.db.userId, req.db.userName);
+      await logHistory(prisma, id, req.db.tenantId, 'STATUS_CHANGE', `Estado: ${translateStatus(existing.status)} → ${translateStatus(data.status)}`, req.db.userId, req.db.userName);
     }
     if (data.progress !== undefined && data.progress !== existing.progress) {
       await logHistory(prisma, id, req.db.tenantId, 'PROGRESS_UPDATE', `Progreso: ${data.progress}%`, req.db.userId, req.db.userName);
