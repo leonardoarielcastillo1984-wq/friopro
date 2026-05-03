@@ -28,9 +28,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const tenantId = getTenantId();
   
-  // Skip tenant-dependent components on select-tenant page
+  // Skip tenant-dependent components for Super Admin without tenant or on select-tenant page
   const isSelectTenantPage = typeof window !== 'undefined' && window.location.pathname === '/select-tenant';
-  const { status: demoStatus, checklist, allDone } = useDemoMode(isSelectTenantPage ? null : tenantId);
+  const shouldSkipTenantData = isSelectTenantPage || (isSuperAdmin && !tenantId);
+  const { status: demoStatus, checklist, allDone } = useDemoMode(shouldSkipTenantData ? null : tenantId);
 
   useSessionTimeout({
     timeoutMs: 30 * 60 * 1000, // 30 minutos de inactividad
@@ -59,27 +60,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
     return null;
   }
 
-  // Verificar que SUPER_ADMIN tenga un tenant seleccionado
+  // Super Admin puede acceder sin seleccionar tenant
   const isSuperAdmin = user?.globalRole === 'SUPER_ADMIN';
-  if (isSuperAdmin && !tenantId) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-100/50 p-4">
-        <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 text-center">
-          <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-neutral-900 mb-2">Tenant requerido</h2>
-          <p className="text-neutral-600 mb-4">
-            Como Super Admin, necesitás seleccionar una empresa para trabajar.
-          </p>
-          <button
-            onClick={() => router.push('/select-tenant')}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Seleccionar empresa
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-neutral-100/50">

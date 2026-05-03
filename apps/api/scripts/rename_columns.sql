@@ -1,0 +1,27 @@
+-- Rename columns from lowercase to camelCase
+ALTER TABLE environmental_actions RENAME COLUMN "aspectid" TO "aspectId";
+ALTER TABLE environmental_actions RENAME COLUMN "responsibleid" TO "responsibleId";
+ALTER TABLE environmental_aspects RENAME COLUMN "responsibleid" TO "responsibleId";
+ALTER TABLE environmental_controls RENAME COLUMN "aspectid" TO "aspectId";
+ALTER TABLE environmental_reviews RENAME COLUMN "aspectid" TO "aspectId";
+ALTER TABLE equipments RENAME COLUMN "maintenanceplanid" TO "maintenancePlanId";
+ALTER TABLE incidents RENAME COLUMN "tenantid" TO "tenantId";
+ALTER TABLE maintenance_plan_executions RENAME COLUMN "planid" TO "planId";
+ALTER TABLE maintenance_plan_executions RENAME COLUMN "workorderid" TO "workOrderId";
+ALTER TABLE measuring_equipment RENAME COLUMN "tenantid" TO "tenantId";
+ALTER TABLE notification_logs RENAME COLUMN "tenantid" TO "tenantId";
+ALTER TABLE objective_activities RENAME COLUMN "objectiveid" TO "objectiveId";
+ALTER TABLE objective_audits RENAME COLUMN "objectiveid" TO "objectiveId";
+ALTER TABLE objective_capas RENAME COLUMN "objectiveid" TO "objectiveId";
+ALTER TABLE objective_indicators RENAME COLUMN "objectiveid" TO "objectiveId";
+ALTER TABLE objective_risks RENAME COLUMN "objectiveid" TO "objectiveId";
+ALTER TABLE pdf_reports RENAME COLUMN "workorderid" TO "workOrderId";
+ALTER TABLE project_comments RENAME COLUMN "taskid" TO "taskId";
+ALTER TABLE project_evidences RENAME COLUMN "taskid" TO "taskId";
+ALTER TABLE project_milestones RENAME COLUMN "projectid" TO "projectId";
+ALTER TABLE risk_actions RENAME COLUMN "hazardid" TO "hazardId";
+ALTER TABLE risk_reviews RENAME COLUMN "hazardid" TO "hazardId";
+ALTER TABLE subscription_addons RENAME COLUMN "subscriptionid" TO "subscriptionId";
+ALTER TABLE subscriptions RENAME COLUMN "planid" TO "planId";
+ALTER TABLE subscriptions RENAME COLUMN "tenantid" TO "tenantId";
+ALTER TABLE usage_events RENAME COLUMN "tenantid" TO "tenantId";

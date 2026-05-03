@@ -48,10 +48,17 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // Skip loading company settings on select-tenant page
-    if (typeof window !== 'undefined' && window.location.pathname === '/select-tenant') {
-      setLoading(false);
-      return;
+    // Skip loading company settings for Super Admin without tenant or on select-tenant page
+    if (typeof window !== 'undefined') {
+      const isSelectTenantPage = window.location.pathname === '/select-tenant';
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const isSuperAdmin = user?.globalRole === 'SUPER_ADMIN';
+      
+      if (isSelectTenantPage || (isSuperAdmin && !localStorage.getItem('tenantId'))) {
+        setLoading(false);
+        return;
+      }
     }
     loadSettings();
   }, []);
