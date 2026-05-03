@@ -1372,9 +1372,9 @@ export async function licenseRoutes(app: FastifyInstance) {
               name: user.email.split('@')[0]
             },
             back_urls: {
-              success: `${process.env.APP_URL || 'http://localhost:3000'}/cumplimiento?tab=licencias&status=success`,
-              failure: `${process.env.APP_URL || 'http://localhost:3000'}/cumplimiento?tab=licencias&status=failure`,
-              pending: `${process.env.APP_URL || 'http://localhost:3000'}/cumplimiento?tab=licencias&status=pending`
+              success: `${process.env.APP_URL || 'http://localhost:3000'}/configuracion?tab=licencia&status=success`,
+              failure: `${process.env.APP_URL || 'http://localhost:3000'}/configuracion?tab=licencia&status=failure`,
+              pending: `${process.env.APP_URL || 'http://localhost:3000'}/configuracion?tab=licencia&status=pending`
             },
             notification_url: `http://46.62.253.81:4002/license/webhook/mercadopago`,
             external_reference: `${tenantId}_${planTier}_${period}`,
@@ -1765,7 +1765,13 @@ export async function licenseRoutes(app: FastifyInstance) {
             }
           });
 
-          app.log.info(`[MP WEBHOOK] ✅ Plan ${planTier} activado para tenant ${tenantId}`);
+          // Desactivar modo demo al pagar
+          await (app.prisma as any).tenant.update({
+            where: { id: tenantId },
+            data: { isDemo: false, demoExpiresAt: null }
+          });
+
+          app.log.info(`[MP WEBHOOK] ✅ Plan ${planTier} activado para tenant ${tenantId} — modo demo desactivado`);
         } catch (procError: any) {
           app.log.error(`[MP WEBHOOK] Error procesando pago: ${procError.message}`);
         }
