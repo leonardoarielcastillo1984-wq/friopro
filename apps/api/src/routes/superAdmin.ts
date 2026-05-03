@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { encryptApiKey } from '../services/llm/tenantCrypto.js';
+import { sendEmail, welcomeTenantEmail } from '../services/email.js';
 
 // Extensiones de tipos no conflictivas
 declare module 'fastify' {
@@ -1322,6 +1323,21 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       });
 
       app.log.info(`Company approved: ${registration.companyName}, User: ${user.email}`);
+
+      // Enviar email de bienvenida con credenciales al cliente
+      const appUrl = process.env.APP_URL || 'https://app.sgi360.com';
+      const loginUrl = `${appUrl}/login`;
+      const emailResult = await sendEmail(welcomeTenantEmail({
+        to: email,
+        companyName: registration.companyName,
+        password: tempPassword,
+        loginUrl,
+      }));
+      if (emailResult.success) {
+        app.log.info(`[SUPERADMIN] Email de bienvenida enviado a ${email}`);
+      } else {
+        app.log.warn(`[SUPERADMIN] No se pudo enviar email de bienvenida a ${email}: ${emailResult.error}`);
+      }
 
       return reply.send({
         success: true,

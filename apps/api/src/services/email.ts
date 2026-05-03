@@ -189,6 +189,73 @@ export function passwordResetEmail(email: string, resetUrl: string): EmailPayloa
   };
 }
 
+// ── Welcome / Bienvenida al nuevo cliente ────────────────────
+
+export function welcomeTenantEmail(options: {
+  to: string;
+  companyName: string;
+  password: string;
+  loginUrl: string;
+}): EmailPayload {
+  const { to, companyName, password, loginUrl } = options;
+  return {
+    to,
+    subject: '🎉 ¡Bienvenido a SGI 360! Tus datos de acceso',
+    text: [
+      `¡Hola!`,
+      ``,
+      `Tu cuenta en SGI 360 para la empresa "${companyName}" fue aprobada y está lista para usar.`,
+      ``,
+      `Datos de acceso:`,
+      `  Email:      ${to}`,
+      `  Contraseña: ${password}`,
+      `  URL:        ${loginUrl}`,
+      ``,
+      `Por seguridad, te recomendamos cambiar la contraseña después de tu primer ingreso.`,
+      ``,
+      `— Equipo SGI 360`,
+    ].join('\n'),
+    html: EMAIL_TEMPLATE_BASE(`
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 32px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; background: #E8541A; border-radius: 12px; margin-bottom: 12px;">
+            <span style="font-size: 26px;">🎉</span>
+          </div>
+          <h2 style="color: #111827; font-size: 20px; margin: 0;">¡Bienvenido a SGI 360!</h2>
+          <p style="color: #6B7280; font-size: 14px; margin: 6px 0 0;">Tu cuenta para <strong>${companyName}</strong> está lista.</p>
+        </div>
+
+        <p style="color: #4B5563; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">
+          A continuación encontrás tus credenciales de acceso. Guardá este correo en un lugar seguro.
+        </p>
+
+        <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+          <div style="margin-bottom: 12px;">
+            <span style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Email de acceso</span>
+            <span style="font-size: 15px; color: #111827; font-weight: 500;">${to}</span>
+          </div>
+          <div>
+            <span style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Contraseña temporal</span>
+            <span style="display: inline-block; font-size: 15px; color: #111827; font-weight: 700; background: #F3F4F6; padding: 6px 14px; border-radius: 6px; letter-spacing: 0.04em; font-family: monospace;">${password}</span>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 24px;">
+          <a href="${loginUrl}" style="display: inline-block; background: #E8541A; color: #FFFFFF; font-weight: 700; font-size: 14px; padding: 13px 36px; border-radius: 8px; text-decoration: none;">
+            Ingresar a SGI 360 →
+          </a>
+        </div>
+
+        <div style="background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 8px; padding: 14px;">
+          <p style="color: #92400E; font-size: 12px; margin: 0; line-height: 1.5;">
+            ⚠️ <strong>Importante:</strong> Por seguridad, te recomendamos cambiar esta contraseña temporal la primera vez que inicies sesión.
+          </p>
+        </div>
+      </div>
+    `).trim(),
+  };
+}
+
 // ── Notification Email Templates ──────────────────────────────
 
 export interface NotificationEmailOptions {
