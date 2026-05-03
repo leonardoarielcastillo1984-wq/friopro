@@ -25,7 +25,7 @@ const MODULES = [
   { icon: Users, label: 'RRHH & Capacitación', desc: 'Competencias, capacitaciones y evaluaciones del personal.' },
   { icon: AlertTriangle, label: 'Riesgos', desc: 'Matriz de riesgos con evaluación de impacto y probabilidad.' },
   { icon: TrendingUp, label: 'Proyectos 360', desc: 'Gestión integral de proyectos con seguimiento de hitos.' },
-  { icon: Layers, label: 'Integraciones', desc: 'API abierta compatible con Excel, Google Workspace y más.' },
+  { icon: Layers, label: 'Gestión de Cambios', desc: 'Control de cambios organizacionales con evaluación de impacto y aprobaciones.' },
 ];
 
 const PLANS = [
@@ -165,14 +165,15 @@ export default function Home() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {[
-                  { label: 'Documentos', val: '124', color: '#E8541A' },
-                  { label: 'Auditorías', val: '8', color: '#2563EB' },
-                  { label: 'Indicadores', val: '32', color: '#059669' },
-                  { label: 'NCRs', val: '5', color: '#DC2626' },
+                  { label: 'Hallazgos IA', val: '23', sub: 'Analizados hoy', color: '#E8541A' },
+                  { label: 'Auditorías', val: '8', sub: 'Programadas', color: '#2563EB' },
+                  { label: 'Indicadores', val: '32', sub: 'Activos', color: '#059669' },
+                  { label: 'Acciones auto', val: '12', sub: 'Autónomas', color: '#DC2626' },
                 ].map(card => (
                   <div key={card.label} style={{ background: '#F5F4F0', borderRadius: 10, padding: '14px 16px' }}>
-                    <div style={{ fontSize: 10, color: '#888880', fontFamily: "'Syne', sans-serif", marginBottom: 6 }}>{card.label}</div>
-                    <div style={{ fontSize: 22, fontWeight: 600, color: card.color, fontFamily: "'Syne', sans-serif", lineHeight: 1 }}>{card.val}</div>
+                    <div style={{ fontSize: 10, color: '#888880', fontFamily: "'Syne', sans-serif", marginBottom: 4 }}>{card.label}</div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: card.color, fontFamily: "'Syne', sans-serif", lineHeight: 1, marginBottom: 2 }}>{card.val}</div>
+                    <div style={{ fontSize: 9, color: '#AAAAA0', fontFamily: "'Syne', sans-serif" }}>{card.sub}</div>
                   </div>
                 ))}
               </div>
@@ -182,7 +183,16 @@ export default function Home() {
                 </div>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A', fontFamily: "'Syne', sans-serif" }}>Asistente IA activo</div>
-                  <div style={{ fontSize: 10, color: '#888880', fontFamily: "'Syne', sans-serif" }}>Análisis en tiempo real de normativas</div>
+                  <div style={{ fontSize: 10, color: '#888880', fontFamily: "'Syne', sans-serif" }}>Análisis autónomo de hallazgos y normativas</div>
+                </div>
+              </div>
+              <div style={{ background: '#F5F4F0', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#2563EB,#3B82F6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CheckCircle size={16} color="white" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A', fontFamily: "'Syne', sans-serif" }}>5 flujos autónomos activos</div>
+                  <div style={{ fontSize: 10, color: '#888880', fontFamily: "'Syne', sans-serif" }}>NCRs, acciones correctivas y recordatorios</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -209,14 +219,17 @@ export default function Home() {
         <div style={{ maxWidth: 1280, margin: '0 auto' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
             {[
-              { value: realStats ? `${realStats.companies}+` : '...', label: 'Empresas activas', accent: true },
-              { value: realStats ? `${realStats.users}+` : '...', label: 'Usuarios', accent: false },
-              { value: '99.9%', label: 'Uptime garantizado', accent: false },
-              { value: '15+', label: 'Años de experiencia', orange: true },
+              { icon: Zap, title: 'IA integrada', desc: 'Análisis de documentos y hallazgos con inteligencia artificial.', accent: true },
+              { icon: CheckCircle, title: 'Automatización', desc: 'Flujos automáticos para NCRs y acciones correctivas.', accent: false },
+              { icon: BarChart3, title: 'Gestión autónoma', desc: 'Dashboards en tiempo real sin intervención manual.', accent: false },
+              { icon: TrendingUp, title: 'Análisis predictivo', desc: 'Detección proactiva de riesgos y tendencias.', orange: true },
             ].map((s, i) => (
               <div key={i} className="sr stat-card-light" style={{ transitionDelay: `${i * 0.1}s`, background: s.orange ? '#E8541A' : 'white', padding: '36px 28px', borderLeft: s.accent ? '3px solid #E8541A' : 'none' }}>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 500, fontSize: 'clamp(36px, 4vw, 52px)', lineHeight: 1, letterSpacing: '-0.04em', color: s.orange ? 'white' : s.accent ? '#E8541A' : '#1A1A1A', marginBottom: 8 }}>{s.value}</div>
-                <div style={{ fontSize: 11, color: s.orange ? 'rgba(255,255,255,0.7)' : '#999990', letterSpacing: '0.06em', textTransform: 'uppercase' as const, fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>{s.label}</div>
+                <div style={{ width: 36, height: 36, background: s.orange ? 'rgba(255,255,255,0.12)' : 'rgba(232,84,26,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, borderRadius: 8 }}>
+                  <s.icon size={18} color={s.orange ? 'white' : '#E8541A'} />
+                </div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 18, lineHeight: 1.2, letterSpacing: '-0.02em', color: s.orange ? 'white' : s.accent ? '#E8541A' : '#1A1A1A', marginBottom: 10 }}>{s.title}</div>
+                <div style={{ fontSize: 12, color: s.orange ? 'rgba(255,255,255,0.75)' : '#777770', lineHeight: 1.6, fontFamily: "'Syne', sans-serif" }}>{s.desc}</div>
               </div>
             ))}
           </div>
@@ -416,17 +429,9 @@ export default function Home() {
             </div>
             <div>
               <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#FAFAF8', marginBottom: 18 }}>Contacto</div>
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
-                <a href={'mailto:' + (landingSettings?.email || 'info@sgi360.com')} style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#888880', textDecoration: 'none', fontSize: 13, fontFamily: "'Syne', sans-serif" }}>
-                  <Mail size={14} />{landingSettings?.email || 'info@sgi360.com'}
-                </a>
-                <a href={'tel:' + (landingSettings?.phone || '')} style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#888880', textDecoration: 'none', fontSize: 13, fontFamily: "'Syne', sans-serif" }}>
-                  <Phone size={14} />{landingSettings?.phone || '+54 011 15 66169368'}
-                </a>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#888880', fontSize: 13, fontFamily: "'Syne', sans-serif" }}>
-                  <MapPin size={14} />{landingSettings?.address || 'Buenos Aires, Argentina'}
-                </div>
-              </div>
+              <a href="https://wa.me/5491166169368" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#888880', textDecoration: 'none', fontSize: 13, fontFamily: "'Syne', sans-serif" }}>
+                <Phone size={14} />+54 9 1166169368
+              </a>
             </div>
           </div>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 16 }}>
