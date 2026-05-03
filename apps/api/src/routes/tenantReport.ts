@@ -15,6 +15,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     try {
+      app.log.info(`[REPORT] Starting report for tenant ${id}`);
       // 1. Información básica del tenant
       const tenant = await app.prisma.tenant.findUnique({
         where: { id },
@@ -34,43 +35,41 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       });
 
       if (!tenant) return reply.code(404).send({ error: 'Tenant not found' });
+      app.log.info(`[REPORT] Step 1 done`);
 
       // 2. Counts de entidades principales
-      const [
-        usersCount,
-        employeesCount,
-        documentsCount,
-        ncrCount,
-        risksCount,
-        indicatorsCount,
-        auditsCount,
-        trainingsCount,
-        incidentsCount,
-        drillsCount,
-        meetingsCount,
-        objectivesCount,
-        stakeholdersCount,
-        suppliersCount,
-        customersCount,
-        projectsCount,
-      ] = await Promise.all([
-        app.prisma.platformUser.count({ where: { memberships: { some: { tenantId: id, deletedAt: null } } } }),
-        app.prisma.employee.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.document.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.nonConformity.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.risk.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.indicator.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.audit.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.training.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.incident.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.drillScenario.count({ where: { tenantId: id, deletedAt: null } }),
-        0 as any,
-        app.prisma.sgiObjective.count({ where: { tenantId: id, deletedAt: null } }) as any,
-        app.prisma.stakeholder.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.supplier.count({ where: { tenantId: id, deletedAt: null } }),
-        app.prisma.customer.count({ where: { tenantId: id, deletedAt: null } }),
-        0 as any,
-      ]);
+      app.log.info('[REPORT] Step 2a: usersCount');
+      const usersCount = await app.prisma.platformUser.count({ where: { memberships: { some: { tenantId: id, deletedAt: null } } } });
+      app.log.info('[REPORT] Step 2b: employeesCount');
+      const employeesCount = await app.prisma.employee.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2c: documentsCount');
+      const documentsCount = await app.prisma.document.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2d: ncrCount');
+      const ncrCount = await app.prisma.nonConformity.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2e: risksCount');
+      const risksCount = await app.prisma.risk.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2f: indicatorsCount');
+      const indicatorsCount = await app.prisma.indicator.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2g: auditsCount');
+      const auditsCount = await app.prisma.audit.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2h: trainingsCount');
+      const trainingsCount = await app.prisma.training.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2i: incidentsCount');
+      const incidentsCount = await app.prisma.incident.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2j: drillsCount');
+      const drillsCount = await app.prisma.drillScenario.count({ where: { tenantId: id, deletedAt: null } });
+      const meetingsCount = 0;
+      app.log.info('[REPORT] Step 2k: objectivesCount');
+      const objectivesCount = await app.prisma.sgiObjective.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2l: stakeholdersCount');
+      const stakeholdersCount = await app.prisma.stakeholder.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2m: suppliersCount');
+      const suppliersCount = await app.prisma.supplier.count({ where: { tenantId: id, deletedAt: null } });
+      app.log.info('[REPORT] Step 2n: customersCount');
+      const customersCount = await app.prisma.customer.count({ where: { tenantId: id, deletedAt: null } });
+      const projectsCount = 0;
+
+      app.log.info(`[REPORT] Step 2 done`);
 
       // 3. Historial de auditoría (últimos 200 eventos)
       const auditEvents = await app.prisma.auditEvent.findMany({
@@ -87,6 +86,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
       });
 
+      app.log.info(`[REPORT] Step 3 done`);
       // 4. Pagos recientes
       const payments = await app.prisma.payment.findMany({
         where: { tenantId: id },
@@ -103,6 +103,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
       });
 
+      app.log.info(`[REPORT] Step 4 done`);
       // 5. Logins recientes (últimos 50)
       const logins = await app.prisma.auditEvent.findMany({
         where: { tenantId: id, action: { in: ['LOGIN', 'LOGIN_ATTEMPT', 'LOGOUT'] } },
@@ -115,6 +116,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
       });
 
+      app.log.info(`[REPORT] Step 5 done`);
       // 6. Errores / alertas de seguridad
       const securityEvents = await app.prisma.auditEvent.findMany({
         where: {
@@ -132,6 +134,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
       });
 
+      app.log.info(`[REPORT] Step 6 done`);
       // 7. Actividad por módulo (últimos 30 días)
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const recentActivity = await app.prisma.auditEvent.groupBy({
@@ -144,6 +147,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         orderBy: { _count: { createdAt: 'desc' } },
       });
 
+      app.log.info(`[REPORT] Step 7 done`);
       // 8. Timeline de creación (cantidad de entidades creadas por mes en el último año)
       const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
       const monthlyCreations = await app.prisma.auditEvent.groupBy({
@@ -156,6 +160,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         _count: { _all: true },
       });
 
+      app.log.info(`[REPORT] Step 8 done`);
       // 9. TRAZABILIDAD DE DOCUMENTOS (últimos 30 días)
       const docDeletedEvents = await app.prisma.auditEvent.findMany({
         where: {
@@ -247,6 +252,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
       });
 
+      app.log.info(`[REPORT] Step 9 done`);
       // 10. SEGURIDAD Y ACCESOS
       const permissionEvents = await app.prisma.auditEvent.findMany({
         where: {
@@ -316,6 +322,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
       });
 
+      app.log.info(`[REPORT] Step 10 done`);
       // 11. EVENTOS CRÍTICOS DEL SISTEMA
       const bulkDeleteEvents = await app.prisma.auditEvent.findMany({
         where: {
@@ -400,6 +407,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
       });
 
+      app.log.info(`[REPORT] Step 11 done`);
       // 12. USO DEL SISTEMA (ANALÍTICA)
       const activeUserIds = await app.prisma.auditEvent.groupBy({
         by: ['actorUserId'],
@@ -435,6 +443,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       const usedModules = new Set(moduleUsageRanking.map(m => m.entityType));
       const unusedModules = allModules.filter(m => !usedModules.has(m));
 
+      app.log.info(`[REPORT] Step 12 done`);
       // 13. USO DE IA
       const aiFindingsCount = await app.prisma.aiFinding.count({
         where: {
@@ -452,6 +461,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         _count: true,
       });
 
+      app.log.info(`[REPORT] Step 13 done`);
       // 14. ELIMINACIÓN DE REGISTROS
       const deletionsByEntity = await app.prisma.auditEvent.groupBy({
         by: ['entityType'],
@@ -481,6 +491,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
       });
 
+      app.log.info(`[REPORT] Step 14 done`);
       // Generar resumen de actividad
       const totalEntities = usersCount + employeesCount + documentsCount + ncrCount + risksCount +
         indicatorsCount + auditsCount + trainingsCount + incidentsCount + drillsCount +
@@ -595,7 +606,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
 
       return reply.send(report);
     } catch (error: any) {
-      app.log.error('Error generating tenant report:', error);
+      app.log.error({ err: error, msg: 'Error generating tenant report', stack: error?.stack, detail: error?.message });
       return reply.code(500).send({ error: 'Failed to generate report', message: error.message });
     }
   });
