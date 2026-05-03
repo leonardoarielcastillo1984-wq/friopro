@@ -48,6 +48,11 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    // Skip loading company settings on select-tenant page
+    if (typeof window !== 'undefined' && window.location.pathname === '/select-tenant') {
+      setLoading(false);
+      return;
+    }
     loadSettings();
   }, []);
 

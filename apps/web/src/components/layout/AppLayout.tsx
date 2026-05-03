@@ -27,7 +27,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const tenantId = getTenantId();
-  const { status: demoStatus, checklist, allDone } = useDemoMode(tenantId);
+  
+  // Skip tenant-dependent components on select-tenant page
+  const isSelectTenantPage = typeof window !== 'undefined' && window.location.pathname === '/select-tenant';
+  const { status: demoStatus, checklist, allDone } = useDemoMode(isSelectTenantPage ? null : tenantId);
 
   useSessionTimeout({
     timeoutMs: 30 * 60 * 1000, // 30 minutos de inactividad

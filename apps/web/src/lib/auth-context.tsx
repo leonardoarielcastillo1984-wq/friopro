@@ -64,7 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Fetch user permissions (for employee users)
       let permissions: Record<string, string> | null = null;
-      if (res.tenantRole !== 'SUPER_ADMIN') {
+      // Skip loading permissions on select-tenant page
+      const isSelectTenantPage = typeof window !== 'undefined' && window.location.pathname === '/select-tenant';
+      if (res.tenantRole !== 'SUPER_ADMIN' && !isSelectTenantPage) {
         try {
           const permsRes = await apiFetch<{ permissions: Record<string, any> }>('/hr/users/me/permissions');
           if (permsRes?.permissions) {
