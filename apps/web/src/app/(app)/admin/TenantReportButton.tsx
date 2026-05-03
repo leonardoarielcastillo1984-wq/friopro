@@ -15,7 +15,14 @@ export default function TenantReportButton({ tenantId, tenantName }: TenantRepor
   async function generateReport() {
     setLoading(true);
     try {
-      const report = await apiFetch(`/super-admin/tenants/${tenantId}/full-report`);
+      const report = await apiFetch(`/super-admin/tenants/${tenantId}/full-report`) as any;
+      
+      if (!report || report.error) {
+        throw new Error(report?.error || 'Respuesta vacía del servidor');
+      }
+      if (!report.tenant) {
+        throw new Error('Estructura de reporte inválida: falta tenant. Respuesta: ' + JSON.stringify(report).slice(0, 200));
+      }
       
       // Generar TXT formateado
       const txt = formatReportAsTxt(report, tenantName);
@@ -30,9 +37,9 @@ export default function TenantReportButton({ tenantId, tenantName }: TenantRepor
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating report:', error);
-      alert('Error al generar el reporte');
+      alert('Error al generar el reporte: ' + (error?.message || String(error)));
     } finally {
       setLoading(false);
     }
