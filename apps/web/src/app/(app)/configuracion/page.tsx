@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import LicenciasContent from '@/app/(app)/licencias/page';
 import {
   Settings, Users, Shield, Building2, CreditCard,
   CheckCircle2, XCircle, Crown, UserPlus,
@@ -22,7 +23,7 @@ type PlanInfo = {
 };
 type TenantInfo = { id: string; name: string; slug: string; status: string; createdAt: string } | null;
 
-const TABS = ['Mi Perfil', 'Usuarios', 'Plan y Facturación', 'Datos de la Empresa'] as const;
+const TABS = ['Mi Perfil', 'Usuarios', 'Plan y Facturación', 'Datos de la Empresa', 'Licencia'] as const;
 type TabType = typeof TABS[number];
 
 const ROLE_LABELS: Record<string, string> = { TENANT_ADMIN: 'Administrador', TENANT_USER: 'Usuario' };
@@ -40,12 +41,14 @@ const FEATURE_LABELS: Record<string, string> = {
   sistemas: 'Sistemas', ia_asistente: 'IA Asistente', ia_auditora: 'IA Auditora',
 };
 
-export default function ConfiguracionPage() {
+function ConfiguracionPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, tenantRole, refreshAuth } = useAuth();
   const isAdmin = tenantRole === 'TENANT_ADMIN';
 
-  const [tab, setTab] = useState<TabType>('Mi Perfil');
+  const initialTab = searchParams.get('tab') === 'licencia' ? 'Licencia' : 'Mi Perfil';
+  const [tab, setTab] = useState<TabType>(initialTab as TabType);
   const [members, setMembers] = useState<Member[]>([]);
   const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
   const [tenant, setTenant] = useState<TenantInfo>(null);
@@ -703,10 +706,25 @@ export default function ConfiguracionPage() {
         </div>
       )}
 
+      {/* ═══════════════ LICENCIA ═══════════════ */}
+      {tab === 'Licencia' && (
+        <Suspense>
+          <LicenciasContent />
+        </Suspense>
+      )}
+
       {/* Click outside to close action menus */}
       {actionMenuId && (
         <div className="fixed inset-0 z-0" onClick={() => setActionMenuId(null)} />
       )}
     </div>
+  );
+}
+
+export default function ConfiguracionPage() {
+  return (
+    <Suspense>
+      <ConfiguracionPageInner />
+    </Suspense>
   );
 }

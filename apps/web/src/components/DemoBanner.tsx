@@ -12,6 +12,8 @@ export function DemoBanner({ status }: Props) {
   const router = useRouter();
   if (!status.isDemo) return null;
 
+  const TARGET = '/configuracion?tab=licencia';
+
   if (status.isExpired) {
     return (
       <div className="w-full bg-red-600 text-white px-4 py-2 flex items-center justify-between gap-3 text-sm z-40">
@@ -21,7 +23,7 @@ export function DemoBanner({ status }: Props) {
           <span className="opacity-90">Los datos se conservan. Activá un plan para continuar.</span>
         </div>
         <button
-          onClick={() => router.push('/licencia')}
+          onClick={() => router.push(TARGET)}
           className="shrink-0 bg-white text-red-600 font-bold text-xs px-3 py-1 rounded hover:bg-red-50 transition-colors"
         >
           Activar plan →
@@ -39,7 +41,7 @@ export function DemoBanner({ status }: Props) {
           <span className="opacity-90">Menos de 24 horas restantes en modo demo.</span>
         </div>
         <button
-          onClick={() => router.push('/licencia')}
+          onClick={() => router.push(TARGET)}
           className="shrink-0 bg-white text-amber-700 font-bold text-xs px-3 py-1 rounded hover:bg-amber-50 transition-colors"
         >
           Activar plan →
@@ -60,7 +62,7 @@ export function DemoBanner({ status }: Props) {
         </span>
       </div>
       <button
-        onClick={() => router.push('/licencia')}
+        onClick={() => router.push(TARGET)}
         className="shrink-0 bg-white text-blue-700 font-bold text-xs px-3 py-1 rounded hover:bg-blue-50 transition-colors"
       >
         Activar plan →
