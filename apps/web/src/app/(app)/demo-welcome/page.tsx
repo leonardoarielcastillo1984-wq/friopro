@@ -16,7 +16,7 @@ export default function OnboardingPage() {
   const { user } = useAuth();
 
   const handleStart = () => {
-    router.push('/suite');
+    router.push('/dashboard');
   };
 
   return (
