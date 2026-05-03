@@ -7,7 +7,8 @@ import { useRouter } from 'next/navigation';
 import {
   Zap, Shield, BarChart3, Users, FileCheck, AlertTriangle,
   ArrowRight, CheckCircle, TrendingUp, Layers,
-  Phone, Mail, MapPin, Facebook, Twitter, Linkedin
+  Phone, Mail, MapPin, Facebook, Twitter, Linkedin,
+  ChevronDown
 } from 'lucide-react';
 import './landing.css';
 
@@ -52,6 +53,7 @@ export default function Home() {
   const [registered, setRegistered] = useState(false);
   const [loading, setLoading] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [productMenuOpen, setProductMenuOpen] = useState(false);
   const [formData, setFormData] = useState({ companyName: '', email: '', phone: '' });
 
   useEffect(() => {
@@ -141,8 +143,30 @@ export default function Home() {
             <p className="sr sr-delay-3" style={{ fontSize: 17, color: '#666660', maxWidth: 460, lineHeight: 1.65, margin: '0 0 36px', fontFamily: "'Syne', sans-serif", fontWeight: 400 }}>
               Una plataforma para gestionar ISO 9001, 14001, 45001 y más — con IA integrada y sin hojas de cálculo.
             </p>
-            <div className="sr sr-delay-4" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
-              <button className="btn-primary-light" onClick={() => setShowModal(true)}>Comenzar ahora <ArrowRight size={15} /></button>
+            <div className="sr sr-delay-4" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const, alignItems: 'flex-start' }}>
+              <div style={{ position: 'relative' }}>
+                <button className="btn-primary-light" onClick={() => setProductMenuOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Comenzar ahora <ChevronDown size={14} />
+                </button>
+                {productMenuOpen && (
+                  <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: 0, background: 'white', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.15)', padding: '8px 0', minWidth: 220, zIndex: 50, border: '1px solid rgba(0,0,0,0.06)' }}>
+                    {[
+                      { name: 'SGI 360', color: '#E8541A', desc: 'Gestión integrada ISO' },
+                      { name: 'AUDIT 360', color: '#2563EB', desc: 'Auditorías inteligentes' },
+                      { name: 'FLOTA 360', color: '#0891B2', desc: 'Gestión de flota' },
+                      { name: 'SEH 360', color: '#059669', desc: 'Seguridad e higiene' },
+                    ].map(p => (
+                      <button key={p.name} onClick={() => { setProductMenuOpen(false); setShowModal(true); }} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.03)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                        <div>
+                          <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, color: '#1A1A1A' }}>{p.name}</div>
+                          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 11, color: '#888880' }}>{p.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button className="btn-ghost-light" onClick={() => document.getElementById('modulos')?.scrollIntoView({ behavior: 'smooth' })}>Ver módulos</button>
             </div>
             <div className="sr sr-delay-5" style={{ marginTop: 52, display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
