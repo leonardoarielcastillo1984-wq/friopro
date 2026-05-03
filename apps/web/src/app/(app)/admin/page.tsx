@@ -114,7 +114,7 @@ function CompanyRegistrations() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [approvalResult, setApprovalResult] = useState<any>(null);
-  const [approvalData, setApprovalData] = useState<{id: string, customEmail: string, customPassword: string} | null>(null);
+  const [approvalData, setApprovalData] = useState<{id: string, registrationEmail: string, customEmail: string, customPassword: string} | null>(null);
   const [showCustomCredentials, setShowCustomCredentials] = useState(false);
 
   useEffect(() => {
@@ -134,8 +134,8 @@ function CompanyRegistrations() {
   }
 
   async function handleApprove(id: string) {
-    // Mostrar formulario de credenciales personalizadas
-    setApprovalData({ id, customEmail: '', customPassword: '' });
+    const reg = registrations.find(r => r.id === id);
+    setApprovalData({ id, registrationEmail: reg?.email || '', customEmail: reg?.email || '', customPassword: '' });
     setShowCustomCredentials(true);
   }
 
@@ -391,29 +391,27 @@ function CompanyRegistrations() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold text-neutral-900 mb-4">
-              Configurar Credenciales de Acceso
+              Aprobar empresa
             </h3>
             <p className="text-sm text-neutral-600 mb-4">
-              Puedes personalizar el email y contraseña para el cliente. Si dejas los campos vacíos, se usarán los datos por defecto.
+              El cliente usará el email con el que solicitó el acceso. Solo definí la contraseña temporal.
             </p>
             
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Email Personalizado (opcional)
+                  Email de acceso
                 </label>
-                <input
-                  type="email"
-                  value={approvalData.customEmail}
-                  onChange={(e) => setApprovalData({...approvalData, customEmail: e.target.value})}
-                  placeholder="cliente@empresa.com"
-                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-                />
+                <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700 flex items-center gap-2">
+                  <span className="text-neutral-400">✉</span>
+                  {approvalData.registrationEmail}
+                </div>
+                <p className="text-xs text-neutral-400 mt-1">Este es el email con el que el cliente solicitó unirse.</p>
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Contraseña Personalizada (opcional)
+                  Contraseña temporal <span className="text-neutral-400 font-normal">(opcional)</span>
                 </label>
                 <input
                   type="password"
@@ -421,10 +419,11 @@ function CompanyRegistrations() {
                   onChange={(e) => setApprovalData({...approvalData, customPassword: e.target.value})}
                   placeholder="Contraseña segura"
                   minLength={8}
-                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  autoFocus
+                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
                 />
                 <p className="text-xs text-neutral-500 mt-1">
-                  Mínimo 8 caracteres. Si no se especifica, se usará "TempPassword123!"
+                  Mínimo 8 caracteres. Si la dejás vacía se usará <code className="bg-neutral-100 px-1 rounded">TempPassword123!</code>
                 </p>
               </div>
             </div>
