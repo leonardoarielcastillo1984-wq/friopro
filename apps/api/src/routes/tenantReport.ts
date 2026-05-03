@@ -403,6 +403,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           module: true,
           userId: true,
           path: true,
+          count: true,
           createdAt: true,
         },
       });
@@ -458,7 +459,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           tenantId: id,
           createdAt: { gte: thirtyDaysAgo },
         },
-        _count: true,
+        _count: { _all: true },
       });
 
       app.log.info(`[REPORT] Step 13 done`);
@@ -586,7 +587,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           dataExports: exportEvents.map(e => ({ action: e.action, entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
           sensitiveDownloads: sensitiveDownloadEvents.map(e => ({ entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt })),
           tenantConfigChanges: tenantConfigEvents.map(e => ({ entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
-          licenseAccessAttempts: licenseAccessAttempts.map(a => ({ id: a.id, module: a.module, userId: a.userId, path: a.path, date: a.createdAt })),
+          licenseAccessAttempts: licenseAccessAttempts.map(a => ({ id: a.id, module: a.module, userId: a.userId, path: a.path, count: a.count, date: a.createdAt, allowed: false })),
         },
         systemUsage: {
           activeUsersLast30d,
@@ -596,10 +597,10 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
         aiUsage: {
           totalAiFindingsLast30d: aiFindingsCount,
-          aiUsageByType: aiUsageByType.map(m => ({ type: m.auditType, count: (m as any)._count?._all })),
+          aiUsageByType: aiUsageByType.map(m => ({ type: m.auditType, count: m._count._all })),
         },
         recordDeletions: {
-          deletionsByEntity: deletionsByEntity.map(d => ({ entityType: d.entityType, count: d._count._all })),
+          deletionsByEntity: deletionsByEntity.filter(d => d.entityType !== null).map(d => ({ entityType: d.entityType, count: d._count._all })),
           recentDeletions: recentDeletions.map(e => ({ entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
         },
       };

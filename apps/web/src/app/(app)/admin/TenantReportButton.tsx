@@ -368,10 +368,10 @@ function formatReportAsTxt(report: any, tenantName: string): string {
     }
     txt += `\n  Intentos de acceso a licencias: ${ce.licenseAccessAttempts?.length || 0}\n`;
     if (ce.licenseAccessAttempts?.length > 0) {
-      txt += '  Fecha                │ Módulo       │ Usuario                   │ Estado\n';
-      txt += '  ─────────────────────────────────────────────────────────────────\n';
+      txt += '  Fecha                │ Módulo            │ Ruta                      │ Intentos\n';
+      txt += '  ──────────────────────────────────────────────────────────────────────────\n';
       ce.licenseAccessAttempts.forEach((a: any) => {
-        txt += `  ${new Date(a.date).toLocaleString('es-AR').padEnd(20)} │ ${(a.module || 'N/A').padEnd(12)} │ ${(a.userId || 'N/A').padEnd(25)} │ ${a.allowed ? 'Permitido' : 'Denegado'}\n`;
+        txt += `  ${new Date(a.date).toLocaleString('es-AR').padEnd(20)} │ ${(a.module || 'N/A').padEnd(17)} │ ${(a.path || 'N/A').padEnd(25)} │ ${a.count || 1}\n`;
       });
     }
   } else {
