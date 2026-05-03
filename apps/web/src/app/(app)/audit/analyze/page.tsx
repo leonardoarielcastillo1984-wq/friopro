@@ -169,15 +169,14 @@ function AnalyzeContent() {
   async function convertFindingToNCR(findingId: string) {
     if (!confirm('¿Convertir este hallazgo en una No Conformidad?')) return;
     try {
-      const res = await apiFetch<{ success: boolean; message: string; nonConformity: { id: string; code: string } }>(`/audit/findings/${findingId}/convert-to-ncr`, {
+      const res = await apiFetch<{ success: boolean; message: string; nonConformity: { id: string; code: string }; alreadyConverted?: boolean }>(`/audit/findings/${findingId}/convert-to-ncr`, {
         method: 'POST',
       });
       alert(`✅ ${res.message}\nCódigo: ${res.nonConformity.code}`);
-      // Refresh findings
-      if (auditRun) {
-        const findingsRes = await apiFetch<{ findings: AiFinding[] }>(`/audit/runs/${auditRun.id}/findings`);
-        setFindings(findingsRes.findings ?? []);
-      }
+      // Actualizar estado local inmediatamente
+      setFindings(prev => prev.map(f =>
+        f.id === findingId ? { ...f, status: 'CONVERTED_TO_NCR' } : f
+      ));
     } catch (err: any) {
       setError(err?.message ?? 'Error al convertir a NCR');
     }
@@ -378,13 +377,19 @@ function AnalyzeContent() {
                         <option value="RESOLVED">Resuelto</option>
                         <option value="CLOSED">Cerrado</option>
                       </select>
-                      <button
-                        onClick={() => convertFindingToNCR(f.id)}
-                        className="ml-2 rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
-                        title="Convertir a No Conformidad"
-                      >
-                        Crear NCR
-                      </button>
+                      {f.status === 'CONVERTED_TO_NCR' ? (
+                        <span className="ml-2 rounded bg-green-100 px-2 py-1 text-xs text-green-700 border border-green-300">
+                          ✓ NCR creada
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => convertFindingToNCR(f.id)}
+                          className="ml-2 rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                          title="Convertir a No Conformidad"
+                        >
+                          Crear NCR
+                        </button>
+                      )}
                       <button
                         onClick={() => deleteFinding(f.id)}
                         className="ml-2 rounded bg-neutral-400 px-2 py-1 text-xs text-white hover:bg-neutral-500"

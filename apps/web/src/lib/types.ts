@@ -142,7 +142,7 @@ export type AiFinding = {
   confidence: number | null;
   evidence: string | null;
   suggestedActions: string[] | null;
-  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' | 'CONVERTED_TO_NCR';
   createdAt: string;
   document?: { id: string; title: string } | null;
   normative?: { id: string; name: string; code: string } | null;
