@@ -6,7 +6,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { getAuditQueue } from '../jobs/queue.js';
-import { createLLMProvider } from '../services/llm/factory.js';
+import { createLLMProvider, createLoggingLLMProvider } from '../services/llm/factory.js';
 import { AuditAnalysisService } from '../services/auditAnalysis.js';
 
 const FEATURE_KEY = 'audit_ia';
@@ -454,7 +454,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     ]);
 
     // Construir contexto
-    const llm = createLLMProvider(req.tenant);
+    const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-chat');
     const auditService = new AuditAnalysisService(llm);
     const contextStr = auditService.buildChatContext(documents, normatives);
 

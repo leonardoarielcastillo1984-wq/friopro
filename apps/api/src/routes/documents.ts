@@ -8,7 +8,7 @@ import { extractTextFromPdf } from '../services/pdfParser.js';
 import { generateDocumentSummary } from '../services/aiService.js';
 import { requiresTenantContext, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { checkStorageQuota, incrementStorageUsed, decrementStorageUsed } from '../services/storage-usage.js';
-import { createLLMProvider } from '../services/llm/factory.js';
+import { createLoggingLLMProvider } from '../services/llm/factory.js';
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -820,7 +820,8 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
   "responsibilityAnalysis": "Análisis de si las responsabilidades están claras."
 }`;
 
-      const llm = createLLMProvider(req.tenant);
+      const tenantId = req.db?.tenantId ?? (req as any).auth?.tenantId ?? null;
+      const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'document-quality-analysis');
       const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
 
       let parsed;

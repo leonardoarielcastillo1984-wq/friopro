@@ -463,6 +463,21 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         _count: { _all: true },
       });
 
+      // Uso general del sistema de IA (desde AIUsageLog)
+      const [aiTotalInteractions, aiTotalTokens, aiInteractionsLast30d, aiTokensLast30d, aiByModule] = await Promise.all([
+        (app.prisma as any).aIUsageLog.count({ where: { tenantId: id } }),
+        (app.prisma as any).aIUsageLog.aggregate({ where: { tenantId: id }, _sum: { tokensUsed: true } }),
+        (app.prisma as any).aIUsageLog.count({ where: { tenantId: id, createdAt: { gte: thirtyDaysAgo } } }),
+        (app.prisma as any).aIUsageLog.aggregate({ where: { tenantId: id, createdAt: { gte: thirtyDaysAgo } }, _sum: { tokensUsed: true } }),
+        (app.prisma as any).aIUsageLog.groupBy({
+          by: ['module'],
+          where: { tenantId: id },
+          _count: { _all: true },
+          _sum: { tokensUsed: true },
+          orderBy: [{ _count: { module: 'desc' } }],
+        }),
+      ]);
+
       app.log.info(`[REPORT] Step 13 done`);
       // 14. ELIMINACIÓN DE REGISTROS
       const deletionsByEntity = await (app.prisma.auditEvent as any).groupBy({
@@ -605,6 +620,17 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         aiUsage: {
           totalAiFindingsLast30d: aiFindingsCount,
           aiUsageByType: aiUsageByType.map(m => ({ type: m.auditType, count: m._count._all })),
+          generalUsage: {
+            totalInteractions: aiTotalInteractions,
+            totalTokens: aiTotalTokens._sum?.tokensUsed || 0,
+            interactionsLast30d: aiInteractionsLast30d,
+            tokensLast30d: aiTokensLast30d._sum?.tokensUsed || 0,
+            byModule: (aiByModule as any[]).map(m => ({
+              module: m.module,
+              interactions: m._count._all,
+              tokens: m._sum?.tokensUsed || 0,
+            })),
+          },
         },
         storageUsage: {
           usedBytes: storageUsage.used,

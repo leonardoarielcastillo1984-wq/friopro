@@ -3,6 +3,7 @@ import type { LLMProvider } from './types.js';
 import { OpenAIProvider } from './openai.js';
 import { OllamaProvider } from './ollama.js';
 import { decryptApiKey } from './tenantCrypto.js';
+import { LoggingLLMProvider } from './loggingProvider.js';
 
 let globalInstance: LLMProvider | null = null;
 
@@ -111,4 +112,19 @@ export function createLLMProvider(tenant?: TenantLLMConfig | null): LLMProvider 
  */
 export function resetLLMProvider(): void {
   globalInstance = null;
+}
+
+/**
+ * Creates an LLM provider wrapped with usage logging.
+ * Every chat() call will be persisted to ai_usage_logs.
+ */
+export function createLoggingLLMProvider(
+  tenant: TenantLLMConfig | null | undefined,
+  prisma: any,
+  tenantId: string | null,
+  userId: string | null,
+  module: string,
+): LLMProvider {
+  const inner = createLLMProvider(tenant);
+  return new LoggingLLMProvider(inner, prisma, tenantId, userId, module);
 }

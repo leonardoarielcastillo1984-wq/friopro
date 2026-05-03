@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { createLLMProvider } from '../services/llm/factory.js';
+import { createLoggingLLMProvider } from '../services/llm/factory.js';
 import { availableTools, executeTool } from '../services/assistant-tools.js';
 
 const AskSchema = z.object({
@@ -40,7 +40,8 @@ export async function registerHelpRoutes(app: FastifyInstance) {
         { role: 'user', content: message },
       ];
 
-      const llm = createLLMProvider(req.tenant);
+      const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId ?? null;
+      const llm = createLoggingLLMProvider(req.tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'centro-ayuda');
 
       // Verificar si soporta streaming
       if (!llm.chatStream) {
@@ -114,7 +115,8 @@ export async function registerHelpRoutes(app: FastifyInstance) {
         { role: 'user', content: message },
       ];
 
-      const llm = createLLMProvider(req.tenant);
+      const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId ?? null;
+      const llm = createLoggingLLMProvider(req.tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'centro-ayuda');
       const result = await llm.chat(messages, 1500);
 
       return reply.send({

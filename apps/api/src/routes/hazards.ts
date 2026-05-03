@@ -4,7 +4,7 @@
  */
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { createLLMProvider } from '../services/llm/factory.js';
+import { createLoggingLLMProvider } from '../services/llm/factory.js';
 
 function parseBody(req: FastifyRequest): any {
   let body = req.body as any;
@@ -472,7 +472,8 @@ Tarea:
 Responde en español, conciso y profesional.`;
 
     try {
-      const llm = createLLMProvider(req.tenant);
+      const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId ?? null;
+      const llm = createLoggingLLMProvider(req.tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'hazards-analysis');
       const aiRes = await llm.chat([{ role: 'user', content: prompt }], 1500);
       return reply.send({ analysis: aiRes?.text || 'Sin respuesta del modelo' });
     } catch (e: any) {

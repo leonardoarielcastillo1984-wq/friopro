@@ -286,6 +286,7 @@ model Tenant {
   paymentPreferences    PaymentPreference[]
   licenseAccessAttempts LicenseAccessAttempt[]
   licenseNotifications  LicenseNotification[]
+  aiUsageLogs           AIUsageLog[]
 
   // Maintenance Relations
   maintenanceAssets        MaintenanceAsset[]
@@ -394,6 +395,7 @@ model PlatformUser {
   // License & Billing Relations
   licenseAccessAttempts LicenseAccessAttempt[]
   licenseNotifications  LicenseNotification[]
+  aiUsageLogs           AIUsageLog[]
 
   // Emergency & Disaster Management
   drillsCreated    DrillScenario[]     @relation("DrillCreatedBy")
@@ -4993,4 +4995,25 @@ enum WorkOrderType {
   CORRECTIVE
   PREDICTIVE
   EMERGENCY
+}
+
+model AIUsageLog {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String?       @db.Uuid
+  user   PlatformUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  module      String  // help, audit-chat, ncr-analysis, document-analysis, etc.
+  model       String
+  tokensUsed  Int     @default(0)
+  promptLen   Int     @default(0)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@map("ai_usage_logs")
 }

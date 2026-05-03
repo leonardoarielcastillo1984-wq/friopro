@@ -427,17 +427,39 @@ function formatReportAsTxt(report: any, tenantName: string): string {
 
   if (report.aiUsage) {
     const ai = report.aiUsage;
-    txt += `  Hallazgos de IA (últimos 30 días): ${ai.totalAiFindingsLast30d || 0}\n\n`;
+
+    txt += `  ── Uso General del Sistema de IA ───────────────────────────────────────────\n`;
+    if (ai.generalUsage) {
+      const g = ai.generalUsage;
+      txt += `  Interacciones totales:        ${g.totalInteractions || 0}\n`;
+      txt += `  Tokens consumidos (total):    ${(g.totalTokens || 0).toLocaleString('es-AR')}\n`;
+      txt += `  Interacciones (30 días):      ${g.interactionsLast30d || 0}\n`;
+      txt += `  Tokens (últimos 30 días):     ${(g.tokensLast30d || 0).toLocaleString('es-AR')}\n\n`;
+
+      if (g.byModule?.length > 0) {
+        txt += '  Uso por módulo:\n';
+        txt += '  Módulo                     │ Interacciones │ Tokens\n';
+        txt += '  ────────────────────────────────────────────────────────\n';
+        g.byModule.forEach((m: any) => {
+          txt += `  ${(m.module || 'N/A').padEnd(26)} │ ${String(m.interactions || 0).padEnd(13)} │ ${(m.tokens || 0).toLocaleString('es-AR')}\n`;
+        });
+        txt += '\n';
+      } else {
+        txt += '  Sin interacciones de IA registradas en el sistema\n\n';
+      }
+    } else {
+      txt += '  Sin datos de uso general (módulo nuevo — los datos se acumulan desde ahora)\n\n';
+    }
+
+    txt += `  ── Análisis IA Documento vs Norma (hallazgos últimos 30 días) ──────────────\n`;
+    txt += `  Hallazgos generados: ${ai.totalAiFindingsLast30d || 0}\n\n`;
 
     if (ai.aiUsageByType?.length > 0) {
-      txt += '  Uso por tipo de auditoría:\n';
-      txt += '  Tipo                      │ Cantidad\n';
-      txt += '  ─────────────────────────────────────\n';
+      txt += '  Tipo de auditoría              │ Hallazgos\n';
+      txt += '  ────────────────────────────────────────\n';
       ai.aiUsageByType.forEach((t: any) => {
-        txt += `  ${(t.type || 'N/A').padEnd(25)} │ ${t.count || 0}\n`;
+        txt += `  ${(t.type || 'N/A').padEnd(30)} │ ${t.count || 0}\n`;
       });
-    } else {
-      txt += '  Sin uso de IA registrado\n';
     }
   } else {
     txt += '  Sin datos de uso de IA\n';
