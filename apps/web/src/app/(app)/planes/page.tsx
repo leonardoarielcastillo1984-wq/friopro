@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { 
   Check, 
   X, 
@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Shield
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -46,16 +47,13 @@ const PLAN_COLORS = {
 };
 
 export default function PlanesPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const isSetup = searchParams.get('setup') === '1';
   
   const { 
     status, 
     plans, 
-    fetchPlans, 
-    createSubscription,
-    paySetup 
+    fetchPlans,
   } = useLicense();
   
   const [period, setPeriod] = useState<'monthly' | 'annual'>('monthly');
@@ -71,19 +69,19 @@ export default function PlanesPage() {
     setSelectedPlan(planTier);
     
     try {
-      // Si es setup, primero pagar el setup
-      if (isSetup && !status.setupPaid) {
-        await paySetup('manual');
+      const response = await apiFetch('/license/checkout', {
+        method: 'POST',
+        json: { planTier, period }
+      }) as any;
+
+      const initPoint = response.checkout?.initPoint || response.initPoint;
+      if (initPoint) {
+        window.location.href = initPoint;
+      } else {
+        alert('Error: no se pudo obtener el link de pago de MercadoPago');
       }
-      
-      // Crear suscripción
-      await createSubscription(planTier as any, period, 'manual');
-      
-      // Redirigir al dashboard
-      router.push('/panel');
-      router.refresh();
-    } catch (error) {
-      console.error('Error selecting plan:', error);
+    } catch (error: any) {
+      alert(`Error: ${error.message || 'Error desconocido al procesar el pago'}`);
     } finally {
       setLoading(false);
     }
