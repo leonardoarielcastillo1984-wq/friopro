@@ -420,17 +420,17 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       });
       const activeUsersLast30d = activeUserIds.filter(u => u.actorUserId !== null).length;
 
-      const moduleUsageRanking = await (app.prisma.auditEvent as any).groupBy({
+      const moduleUsageRankingRaw = await (app.prisma.auditEvent as any).groupBy({
         by: ['entityType'],
         where: {
           tenantId: id,
           createdAt: { gte: thirtyDaysAgo },
-          entityType: { not: null },
         },
         _count: { _all: true },
         orderBy: [{ _count: { entityType: 'desc' } }],
-        take: 20,
+        take: 25,
       }) as Array<{ entityType: string | null; _count: { _all: number } }>;
+      const moduleUsageRanking = moduleUsageRankingRaw.filter(m => m.entityType !== null).slice(0, 20);
 
       const allModules = [
         'Document', 'Employee', 'Risk', 'Audit', 'Training', 'Incident',
