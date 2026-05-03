@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import { MercadoPagoService } from '../services/mercadopago.js';
+import { sendEmail, paymentConfirmationEmail } from '../services/email.js';
 
 // Extender FastifyInstance para incluir prisma
 declare module 'fastify' {
@@ -1766,10 +1767,35 @@ export async function licenseRoutes(app: FastifyInstance) {
           });
 
           // Desactivar modo demo al pagar
-          await (app.prisma as any).tenant.update({
+          const updatedTenant = await (app.prisma as any).tenant.update({
             where: { id: tenantId },
             data: { isDemo: false, demoExpiresAt: null }
           });
+
+          // Obtener email del admin del tenant para enviar confirmación
+          const adminMembership = await app.prisma.tenantMembership.findFirst({
+            where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null },
+            include: { user: { select: { email: true } } }
+          });
+
+          if (adminMembership?.user?.email) {
+            const appUrl = process.env.APP_URL || 'https://app.sgi360.com';
+            const emailResult = await sendEmail(paymentConfirmationEmail({
+              to: adminMembership.user.email,
+              companyName: updatedTenant.name || tenantId,
+              planName: plan.name || planTier,
+              planTier,
+              period: period === 'annual' ? 'annual' : 'monthly',
+              amount: payment.transaction_amount || 0,
+              endsAt,
+              loginUrl: `${appUrl}/login`,
+            }));
+            if (emailResult.success) {
+              app.log.info(`[MP WEBHOOK] Email de confirmación enviado a ${adminMembership.user.email}`);
+            } else {
+              app.log.warn(`[MP WEBHOOK] No se pudo enviar email: ${emailResult.error}`);
+            }
+          }
 
           app.log.info(`[MP WEBHOOK] ✅ Plan ${planTier} activado para tenant ${tenantId} — modo demo desactivado`);
         } catch (procError: any) {

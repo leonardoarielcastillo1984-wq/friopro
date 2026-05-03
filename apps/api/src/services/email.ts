@@ -256,6 +256,86 @@ export function welcomeTenantEmail(options: {
   };
 }
 
+// ── Confirmación de pago y activación del plan ───────────────
+
+export function paymentConfirmationEmail(options: {
+  to: string;
+  companyName: string;
+  planName: string;
+  planTier: string;
+  period: 'monthly' | 'annual';
+  amount: number;
+  endsAt: Date;
+  loginUrl: string;
+}): EmailPayload {
+  const { to, companyName, planName, planTier, period, amount, endsAt, loginUrl } = options;
+  const periodLabel = period === 'monthly' ? 'mensual' : 'anual';
+  const endsAtStr = endsAt.toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
+  return {
+    to,
+    subject: `✅ Pago confirmado — Plan ${planName} activado en SGI 360`,
+    text: [
+      `¡Hola!`,
+      ``,
+      `Confirmamos que recibimos tu pago y tu plan ya está activo.`,
+      ``,
+      `Empresa:    ${companyName}`,
+      `Plan:       ${planName} (${planTier})`,
+      `Período:    ${periodLabel}`,
+      `Monto:      USD ${amount}`,
+      `Vence:      ${endsAtStr}`,
+      ``,
+      `Ya podés acceder a todos los módulos incluidos en tu plan.`,
+      ``,
+      `Ingresá en: ${loginUrl}`,
+      ``,
+      `— Equipo SGI 360`,
+    ].join('\n'),
+    html: EMAIL_TEMPLATE_BASE(`
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 32px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; background: #16A34A; border-radius: 12px; margin-bottom: 12px;">
+            <span style="font-size: 26px;">✅</span>
+          </div>
+          <h2 style="color: #111827; font-size: 20px; margin: 0;">¡Pago confirmado!</h2>
+          <p style="color: #6B7280; font-size: 14px; margin: 6px 0 0;">Tu plan fue activado para <strong>${companyName}</strong>.</p>
+        </div>
+
+        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+          <div style="display: grid; gap: 12px;">
+            <div style="display: flex; justify-content: space-between;">
+              <span style="font-size: 13px; color: #6B7280;">Plan</span>
+              <span style="font-size: 13px; font-weight: 700; color: #111827;">${planName}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="font-size: 13px; color: #6B7280;">Período</span>
+              <span style="font-size: 13px; font-weight: 600; color: #111827; text-transform: capitalize;">${periodLabel}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="font-size: 13px; color: #6B7280;">Monto</span>
+              <span style="font-size: 13px; font-weight: 700; color: #16A34A;">USD ${amount}</span>
+            </div>
+            <div style="border-top: 1px solid #BBF7D0; padding-top: 12px; display: flex; justify-content: space-between;">
+              <span style="font-size: 13px; color: #6B7280;">Próxima renovación</span>
+              <span style="font-size: 13px; font-weight: 600; color: #111827;">${endsAtStr}</span>
+            </div>
+          </div>
+        </div>
+
+        <p style="color: #4B5563; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">
+          Ya tenés acceso completo a todos los módulos de tu plan. Ingresá a la plataforma para comenzar.
+        </p>
+
+        <div style="text-align: center; margin-bottom: 16px;">
+          <a href="${loginUrl}" style="display: inline-block; background: #E8541A; color: #FFFFFF; font-weight: 700; font-size: 14px; padding: 13px 36px; border-radius: 8px; text-decoration: none;">
+            Ir a SGI 360 →
+          </a>
+        </div>
+      </div>
+    `).trim(),
+  };
+}
+
 // ── Notification Email Templates ──────────────────────────────
 
 export interface NotificationEmailOptions {
