@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Eye, EyeOff, Copy, Check, Key, Mail, Globe, Clock, History } from 'lucide-react';
+import { Eye, EyeOff, Copy, Check, Key, Mail, Globe, Clock, History, Trash2, Loader2 } from 'lucide-react';
 
 interface AccessCredentials {
   email: string;
@@ -29,10 +29,24 @@ export default function CompanyAccessData() {
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState<string | null>(null);
   const [expandedCompany, setExpandedCompany] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
     loadApprovedCompanies();
   }, []);
+
+  async function handleDelete(id: string, companyName: string) {
+    if (!confirm(`¿Eliminar "${companyName}" y TODOS sus datos (tenant, usuarios, registros)? Esta acción NO se puede deshacer.`)) return;
+    setDeleting(id);
+    try {
+      await apiFetch(`/super-admin/company-registrations/${id}`, { method: 'DELETE' });
+      setCompanies(prev => prev.filter(c => c.id !== id));
+    } catch (error: any) {
+      alert('Error al eliminar: ' + (error.message || 'Error desconocido'));
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   async function loadApprovedCompanies() {
     setLoading(true);
@@ -139,6 +153,14 @@ Vigencia: ${creds.expiresIn}`;
                   {new Date(company.approvedAt).toLocaleDateString('es-AR')}
                 </span>
               )}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDelete(company.id, company.companyName); }}
+                disabled={deleting !== null}
+                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50 transition-colors"
+                title="Eliminar empresa y todos sus datos"
+              >
+                {deleting === company.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </button>
               <div className={`transform transition-transform ${expandedCompany === company.id ? 'rotate-180' : ''}`}>
                 <Eye className="h-4 w-4 text-gray-400" />
               </div>

@@ -1426,14 +1426,13 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  // DELETE - Eliminar solicitud de registro
+  // DELETE - Eliminar solicitud de registro + tenant + usuario huérfano
   app.delete('/company-registrations/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     requireSuperAdmin(req);
 
     try {
       const { id } = req.params as { id: string };
 
-      // Verificar que existe
       const registration = await prismaSuperUser.companyRegistration.findUnique({
         where: { id },
       });
@@ -1442,16 +1441,52 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ error: 'Solicitud no encontrada' });
       }
 
-      // Eliminar
+      const deletedEntities: string[] = [];
+
+      // 1. Si tiene tenantId, eliminar el Tenant (TenantMembership se borra en cascada)
+      if (registration.tenantId) {
+        try {
+          // Obtener memberships para detectar usuarios a limpiar después
+          const memberships = await app.prisma.tenantMembership.findMany({
+            where: { tenantId: registration.tenantId },
+            select: { userId: true },
+          });
+
+          await app.prisma.tenant.delete({
+            where: { id: registration.tenantId },
+          });
+          deletedEntities.push(`tenant:${registration.tenantId}`);
+
+          // 2. Para cada usuario de ese tenant, eliminarlo si ya no tiene otras memberships activas
+          for (const { userId } of memberships) {
+            const remainingMemberships = await app.prisma.tenantMembership.count({
+              where: { userId },
+            });
+            if (remainingMemberships === 0) {
+              // Usuario huérfano — eliminar historial de contraseñas primero (no tiene cascade)
+              await (app.prisma as any).passwordHistory.deleteMany({ where: { userId } });
+              await app.prisma.platformUser.delete({ where: { id: userId } });
+              deletedEntities.push(`user:${userId}`);
+            }
+          }
+        } catch (tenantErr) {
+          app.log.error('[SUPERADMIN] Error eliminando tenant: ' + String(tenantErr));
+          // Continuar igual para borrar el registro de CompanyRegistration
+        }
+      }
+
+      // 3. Eliminar la solicitud de CompanyRegistration
       await prismaSuperUser.companyRegistration.delete({
         where: { id },
       });
+      deletedEntities.push(`registration:${id}`);
 
-      app.log.info(`[SUPERADMIN] Solicitud ${id} eliminada por ${(req as any).auth?.user?.email}`);
+      app.log.info(`[SUPERADMIN] Solicitud ${id} y entidades relacionadas eliminadas: ${deletedEntities.join(', ')}`);
 
       return reply.send({
         success: true,
-        message: 'Solicitud eliminada correctamente',
+        message: 'Empresa y todos sus datos eliminados correctamente',
+        deleted: deletedEntities,
       });
     } catch (error) {
       app.log.error('Error deleting registration: ' + String(error));

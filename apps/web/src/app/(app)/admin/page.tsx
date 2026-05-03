@@ -184,8 +184,8 @@ function CompanyRegistrations() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('¿Estás seguro de eliminar esta solicitud? Esta acción no se puede deshacer.')) {
+  async function handleDelete(id: string, companyName?: string) {
+    if (!confirm(`¿Eliminar "${companyName || 'esta empresa'}" y TODOS sus datos (tenant, usuarios, registros)? Esta acción NO se puede deshacer.`)) {
       return;
     }
     setProcessing(id);
@@ -287,10 +287,10 @@ function CompanyRegistrations() {
                         Rechazar
                       </button>
                       <button
-                        onClick={() => handleDelete(reg.id)}
+                        onClick={() => handleDelete(reg.id, reg.companyName)}
                         disabled={processing !== null}
                         className="flex items-center justify-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-lg hover:bg-slate-700 disabled:opacity-50 font-medium text-sm"
-                        title="Eliminar solicitud"
+                        title="Eliminar empresa y todos sus datos"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -346,7 +346,17 @@ function CompanyRegistrations() {
                       <p className="font-medium text-gray-900">{reg.companyName}</p>
                       <p className="text-sm text-gray-500">{reg.email}</p>
                     </div>
-                    <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">Aprobado</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">Aprobado</span>
+                      <button
+                        onClick={() => handleDelete(reg.id, reg.companyName)}
+                        disabled={processing !== null}
+                        className="flex items-center justify-center p-1.5 text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-50 transition-colors"
+                        title="Eliminar empresa y todos sus datos"
+                      >
+                        {processing === reg.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
