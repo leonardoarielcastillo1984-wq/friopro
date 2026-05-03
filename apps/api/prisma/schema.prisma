@@ -235,6 +235,12 @@ model Tenant {
   slug        String   @unique
   status      String   @default("ACTIVE")
   storageUsed Int      @default(0) @map("storage_used")
+
+  // Demo mode
+  isDemo         Boolean   @default(false)
+  demoStartedAt  DateTime? @db.Timestamptz
+  demoExpiresAt  DateTime? @db.Timestamptz
+
   createdAt   DateTime @default(now()) @db.Timestamptz
   updatedAt   DateTime @updatedAt @db.Timestamptz
 

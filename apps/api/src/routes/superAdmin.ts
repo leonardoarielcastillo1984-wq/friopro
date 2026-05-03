@@ -1212,10 +1212,16 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       const baseSlug = registration.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       const uniqueSlug = `${baseSlug}-${Date.now().toString(36).slice(-4)}`;
       
-      const tenant = await app.prisma.tenant.create({
+      const demoStartedAt = new Date();
+      const demoExpiresAt = new Date(demoStartedAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+      const tenant = await (app.prisma as any).tenant.create({
         data: {
           name: registration.companyName,
           slug: uniqueSlug,
+          isDemo: true,
+          demoStartedAt,
+          demoExpiresAt,
         },
       });
 

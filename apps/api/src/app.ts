@@ -60,6 +60,7 @@ import { processMapsRoutes } from './routes/processMaps.js';
 import { registerCompanyRoutes } from './routes/register-company.js';
 import { registerSupplierRoutes } from './routes/suppliers.js';
 import { registerHelpRoutes } from './routes/help.js';
+import { demoRoutes } from './routes/demo.js';
 import { startNormativeWorker, startAuditWorker } from './jobs/queue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import {
@@ -236,6 +237,7 @@ export async function buildApp() {
   await app.register(calendarRoutes, { prefix: '/calendar' });
   await app.register(gestionCambiosRoutes, { prefix: '/gestion-cambios' });
   await app.register(registerHelpRoutes, { prefix: '/help' });
+  await app.register(demoRoutes);
 
   // Endpoint genérico de IA para módulos del frontend - respuestas rápidas
   app.post('/ai/chat', async (req: any, reply: any) => {

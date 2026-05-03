@@ -9,6 +9,11 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { Loader2, AlertTriangle, Clock } from 'lucide-react';
 import { LicenseBanner } from '@/components/LicenseBanner';
+import { useDemoMode } from '@/hooks/useDemoMode';
+import { DemoBanner } from '@/components/DemoBanner';
+import { DemoWatermark } from '@/components/DemoWatermark';
+import { DemoChecklist } from '@/components/DemoChecklist';
+import { DemoExpiredModal } from '@/components/DemoExpiredModal';
 
 const FloatingHelpBot = lazy(() => import('@/components/FloatingHelpBot'));
 
@@ -22,6 +27,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const tenantId = getTenantId();
+  const { status: demoStatus, checklist, allDone } = useDemoMode(tenantId);
 
   useSessionTimeout({
     timeoutMs: 30 * 60 * 1000, // 30 minutos de inactividad
@@ -85,6 +91,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
       {/* Sidebar */}
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
+      {/* Demo Banner */}
+      <DemoBanner status={demoStatus} />
+
       {/* License Banner - positioned at top */}
       <LicenseBanner position="top" />
 
@@ -98,6 +107,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
           {children}
         </main>
       </div>
+
+      {/* Demo overlay components */}
+      <DemoWatermark status={demoStatus} />
+      <DemoChecklist status={demoStatus} checklist={checklist} allDone={allDone} />
+      <DemoExpiredModal status={demoStatus} />
 
       {/* Global help bot - lazy loaded */}
       <Suspense fallback={null}>
