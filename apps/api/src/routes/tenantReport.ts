@@ -137,15 +137,15 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       app.log.info(`[REPORT] Step 6 done`);
       // 7. Actividad por módulo (últimos 30 días)
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const recentActivity = await app.prisma.auditEvent.groupBy({
+      const recentActivity = await (app.prisma.auditEvent as any).groupBy({
         by: ['entityType'],
         where: {
           tenantId: id,
           createdAt: { gte: thirtyDaysAgo },
         },
         _count: { _all: true },
-        orderBy: { _count: { createdAt: 'desc' } },
-      });
+        orderBy: [{ _count: { entityType: 'desc' } }],
+      }) as Array<{ entityType: string | null; _count: { _all: number } }>;
 
       app.log.info(`[REPORT] Step 7 done`);
       // 8. Timeline de creación (cantidad de entidades creadas por mes en el último año)
@@ -420,17 +420,17 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       });
       const activeUsersLast30d = activeUserIds.filter(u => u.actorUserId !== null).length;
 
-      const moduleUsageRanking = await app.prisma.auditEvent.groupBy({
+      const moduleUsageRanking = await (app.prisma.auditEvent as any).groupBy({
         by: ['entityType'],
         where: {
           tenantId: id,
           createdAt: { gte: thirtyDaysAgo },
-          entityType: { not: { equals: null } as any },
+          entityType: { not: null },
         },
         _count: { _all: true },
-        orderBy: { _count: { createdAt: 'desc' } },
+        orderBy: [{ _count: { entityType: 'desc' } }],
         take: 20,
-      });
+      }) as Array<{ entityType: string | null; _count: { _all: number } }>;
 
       const allModules = [
         'Document', 'Employee', 'Risk', 'Audit', 'Training', 'Incident',
@@ -463,7 +463,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
 
       app.log.info(`[REPORT] Step 13 done`);
       // 14. ELIMINACIÓN DE REGISTROS
-      const deletionsByEntity = await app.prisma.auditEvent.groupBy({
+      const deletionsByEntity = await (app.prisma.auditEvent as any).groupBy({
         by: ['entityType'],
         where: {
           tenantId: id,
@@ -471,8 +471,8 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           createdAt: { gte: oneYearAgo },
         },
         _count: { _all: true },
-        orderBy: { _count: { createdAt: 'desc' } },
-      });
+        orderBy: [{ _count: { entityType: 'desc' } }],
+      }) as Array<{ entityType: string | null; _count: { _all: number } }>;
 
       const recentDeletions = await app.prisma.auditEvent.findMany({
         where: {
