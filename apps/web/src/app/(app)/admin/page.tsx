@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import PaymentManagement from './payment-management';
 import CompanyAccessData from './company-access-data';
 import LandingPageConfig from './landing-page-config';
+import TenantReportButton from './TenantReportButton';
 import {
   Shield, Building2, Users, CreditCard, Plus, X, Loader2, Key, Pause, Play,
   AlertCircle, CheckCircle2, Crown, ChevronDown, ChevronUp,
@@ -1523,12 +1524,15 @@ export default function AdminPage() {
                     </div>
 
                     {/* Tenant metadata */}
-                    <div className="mt-3 flex items-center gap-4 text-xs text-neutral-400">
-                      <span>ID: <span className="font-mono">{t.id.slice(0, 8)}…</span></span>
-                      <span>Estado: {t.status}</span>
-                      {t.subscription && (
-                        <span>Desde: {new Date(t.subscription.startedAt).toLocaleDateString('es-AR')}</span>
-                      )}
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex items-center gap-4 text-xs text-neutral-400">
+                        <span>ID: <span className="font-mono">{t.id.slice(0, 8)}…</span></span>
+                        <span>Estado: {t.status}</span>
+                        {t.subscription && (
+                          <span>Desde: {new Date(t.subscription.startedAt).toLocaleDateString('es-AR')}</span>
+                        )}
+                      </div>
+                      <TenantReportButton tenantId={t.id} tenantName={t.name} />
                     </div>
                   </div>
                 )}

@@ -52,6 +52,7 @@ import { registerSurveyRoutes } from './routes/surveys.js';
 import { licenseRoutes } from './routes/license.js';
 import { storageRoutes } from './routes/storage.js';
 import { superAdminRoutes } from './routes/superAdmin.js';
+import tenantReportRoutes from './routes/tenantReport.js';
 import surveyPublicRoutes from './routes/survey-public.js';
 import { publicRoutes } from './routes/publicRoutes.js';
 import { documentsPublicRoutes } from './routes/documentsPublic.js';
@@ -216,6 +217,7 @@ export async function buildApp() {
   await app.register(storageRoutes, { prefix: '/storage' });
   await app.register(processMapsRoutes, { prefix: '/process-maps' });
   await app.register(superAdminRoutes, { prefix: '/super-admin' });
+  await app.register(tenantReportRoutes);
   await app.register(surveyPublicRoutes, { prefix: '/survey' });
   await app.register(registerCompanyRoutes); // Registro de empresas
   await app.register(saasRoutes);
