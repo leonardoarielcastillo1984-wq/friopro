@@ -287,9 +287,9 @@ export default function Home() {
                     : <span style={{ fontSize: 10, fontFamily: "'Syne', sans-serif", fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#888880', background: '#E8E6E0', padding: '3px 10px', borderRadius: 4 }}>Próximamente</span>
                   }
                 </div>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, color: p.color, marginBottom: 8, letterSpacing: '0.02em' }}>{p.tag}</div>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 16, marginBottom: 10, color: '#1A1A1A', lineHeight: 1.3 }}>{p.title}</div>
-                <div style={{ fontSize: 13, color: '#777770', lineHeight: 1.6, fontFamily: "'Syne', sans-serif" }}>{p.desc}</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: p.color, marginBottom: 10, letterSpacing: '0.02em', lineHeight: 1.5 }}>{p.tag}</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 19, marginBottom: 12, color: '#1A1A1A', lineHeight: 1.5 }}>{p.title}</div>
+                <div style={{ fontSize: 14, color: '#777770', lineHeight: 1.6, fontFamily: "'Syne', sans-serif" }}>{p.desc}</div>
                 {p.available && (
                   <a href="/suite" style={{ display: 'block', marginTop: 20, padding: '10px 0', textAlign: 'center', background: p.color, color: 'white', textDecoration: 'none', borderRadius: 6, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13 }}>Ingresar al módulo →</a>
                 )}
