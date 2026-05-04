@@ -1,7 +1,6 @@
 import './globals.css';
 import '@/styles/2fa.css';
 import type { ReactNode } from 'react';
-import './globals.css';
 import type { Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import Providers from './providers';

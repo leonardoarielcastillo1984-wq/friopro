@@ -13,7 +13,7 @@ COPY apps/web apps/web/
 
 RUN echo "Source timestamp: $SOURCE_TIMESTAMP"
 
-ENV NODE_ENV=production
+ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG BUILD_DATE=unknown
 RUN echo "Build date: $BUILD_DATE"
@@ -21,8 +21,7 @@ ARG NEXT_PUBLIC_API_URL=http://localhost:3002
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN rm -rf /app/apps/web/.next
-# Skip build for now to avoid static generation issues
-# RUN pnpm --filter web run build --no-lint
+# Skip CSS processing for now - let Next.js handle it in dev mode
 
 EXPOSE 3000
 ENV PORT=3000
