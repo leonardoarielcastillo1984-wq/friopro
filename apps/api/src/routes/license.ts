@@ -325,13 +325,30 @@ export async function licenseRoutes(app: FastifyInstance) {
         orderBy: { createdAt: 'desc' }
       });
 
+      // Also fetch tenant license data (new system)
+      const tenant = await (app.prisma as any).tenant.findUnique({
+        where: { id: tenantId },
+        select: {
+          licensePlan: true,
+          licenseStartAt: true,
+          licenseEndAt: true,
+          licenseStatus: true,
+          graceEndAt: true,
+          isDemo: true,
+          demoExpiresAt: true,
+        },
+      });
+
       // No subscription or inactive/canceled
       if (!subscription || subscription.status === 'CANCELED' || subscription.providerRef === 'NO_PLAN') {
         return reply.code(200).send({
           hasSubscription: false,
-          status: subscription?.status === 'CANCELED' ? 'CANCELED' : 'TRIAL',
+          status: tenant?.licenseStatus || subscription?.status === 'CANCELED' ? 'CANCELED' : 'TRIAL',
           message: 'No active subscription',
-          daysRemaining: 0
+          daysRemaining: 0,
+          licenseStatus: tenant?.licenseStatus || 'ACTIVE',
+          licenseEndAt: tenant?.licenseEndAt,
+          licensePlan: tenant?.licensePlan,
         });
       }
 
@@ -365,7 +382,10 @@ export async function licenseRoutes(app: FastifyInstance) {
         isInGracePeriod,
         graceDaysRemaining,
         isExpired: daysRemaining < 0 && !isInGracePeriod,
-        provider: subscription.provider
+        provider: subscription.provider,
+        licenseStatus: tenant?.licenseStatus,
+        licenseEndAt: tenant?.licenseEndAt,
+        licensePlan: tenant?.licensePlan,
       });
     } catch (error: any) {
       app.log.error({ error }, 'message');
@@ -1767,10 +1787,31 @@ export async function licenseRoutes(app: FastifyInstance) {
             }
           });
 
-          // Desactivar modo demo al pagar
+          // Desactivar modo demo y reactivar licencia al pagar
+          const licenseEnd = new Date(now);
+          if (period === 'monthly') {
+            licenseEnd.setMonth(licenseEnd.getMonth() + 1);
+          } else {
+            licenseEnd.setFullYear(licenseEnd.getFullYear() + 1);
+          }
+
           const updatedTenant = await (app.prisma as any).tenant.update({
             where: { id: tenantId },
-            data: { isDemo: false, demoExpiresAt: null }
+            data: {
+              isDemo: false,
+              demoExpiresAt: null,
+              licensePlan: planTier,
+              licenseStartAt: now,
+              licenseEndAt: licenseEnd,
+              licenseStatus: 'ACTIVE',
+              graceEndAt: null,
+              lastPaymentId: String(paymentId),
+              notified7Days: false,
+              notified3Days: false,
+              notified1Day: false,
+              notifiedExpired: false,
+              notifiedGrace: false,
+            }
           });
 
           // Obtener email del admin del tenant para enviar confirmación

@@ -247,6 +247,20 @@ model Tenant {
   llmBaseUrl  String?
   llmApiKey   String?
 
+  // License management
+  licensePlan       String?    @default("BASIC")
+  licenseStartAt    DateTime?  @db.Timestamptz
+  licenseEndAt      DateTime?  @db.Timestamptz
+  licenseStatus     LicenseStatus @default(ACTIVE)
+  graceEndAt        DateTime?  @db.Timestamptz
+  lastPaymentId     String?
+  autoRenew         Boolean    @default(false)
+  notified7Days     Boolean    @default(false)
+  notified3Days     Boolean    @default(false)
+  notified1Day      Boolean    @default(false)
+  notifiedExpired   Boolean    @default(false)
+  notifiedGrace     Boolean    @default(false)
+
   createdAt   DateTime @default(now()) @db.Timestamptz
   updatedAt   DateTime @updatedAt @db.Timestamptz
 
@@ -5007,6 +5021,13 @@ enum WorkOrderType {
   CORRECTIVE
   PREDICTIVE
   EMERGENCY
+}
+
+enum LicenseStatus {
+  ACTIVE
+  EXPIRING
+  GRACE
+  EXPIRED
 }
 
 model AIUsageLog {

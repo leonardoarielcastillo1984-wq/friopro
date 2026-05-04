@@ -52,6 +52,9 @@ import { registerSurveyRoutes } from './routes/surveys.js';
 import { licenseRoutes } from './routes/license.js';
 import { storageRoutes } from './routes/storage.js';
 import { superAdminRoutes } from './routes/superAdmin.js';
+import { licenseBlockPlugin } from './plugins/licenseBlock.js';
+import { LicenseMonitor } from './services/license/licenseMonitor.js';
+import { billingRoutes } from './routes/billing.js';
 import tenantReportRoutes from './routes/tenantReport.js';
 import surveyPublicRoutes from './routes/survey-public.js';
 import { publicRoutes } from './routes/publicRoutes.js';
@@ -139,9 +142,22 @@ export async function buildApp() {
   startStorageReconcileJob((app as any).prisma);
   await app.register(authPlugin);
   await app.register(csrfPlugin);
+  await app.register(licenseBlockPlugin);
   await app.register(dbContextPlugin);
   await app.register(featuresPlugin);
   await app.register(userPermissionsPlugin);
+
+  // Iniciar monitor diario de licencias (cada 24h)
+  const licenseMonitor = new LicenseMonitor((app as any).prisma);
+  setInterval(() => {
+    licenseMonitor.runDailyCheck().catch((err: any) => {
+      app.log.error('[LICENSE_MONITOR] Error en check diario:', err);
+    });
+  }, 24 * 60 * 60 * 1000);
+  // Ejecutar inmediatamente al arrancar
+  licenseMonitor.runDailyCheck().catch((err: any) => {
+    app.log.error('[LICENSE_MONITOR] Error en check inicial:', err);
+  });
 
   // Registrar rutas públicas PRIMERO
   await app.register(publicRoutes);
@@ -215,6 +231,7 @@ export async function buildApp() {
   await app.register(registerCustomerRoutes, { prefix: '/customers' });
   await app.register(registerSurveyRoutes, { prefix: '/surveys' });
   await app.register(licenseRoutes, { prefix: '/license' });
+  await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(storageRoutes, { prefix: '/storage' });
   await app.register(processMapsRoutes, { prefix: '/process-maps' });
   await app.register(superAdminRoutes, { prefix: '/super-admin' });
