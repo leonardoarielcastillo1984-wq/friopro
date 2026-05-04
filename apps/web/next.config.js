@@ -9,6 +9,9 @@ const nextConfig = {
   experimental: {
     esmExternals: true,
   },
+  output: 'standalone',
+  swcMinify: true,
+  trailingSlash: true,
   webpack: (config, { isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
