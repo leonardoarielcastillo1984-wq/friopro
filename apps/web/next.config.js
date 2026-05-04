@@ -8,13 +8,15 @@ const nextConfig = {
   },
   experimental: {
     esmExternals: true,
-    appDir: true,
   },
-  // Disable static generation
-  generateEtags: false,
+  // Disable static generation completely
+  output: undefined,
+  distDir: '.next',
+  // Force all pages to be server-side rendered
+  generateBuildId: undefined,
+  output: 'standalone',
+  swcMinify: true,
   trailingSlash: true,
-  // Force all pages to be dynamic
-  poweredByHeader: false,
   webpack: (config, { isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,

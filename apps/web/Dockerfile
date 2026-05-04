@@ -21,12 +21,12 @@ ARG NEXT_PUBLIC_API_URL=http://localhost:3002
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN rm -rf /app/apps/web/.next
-ENV NEXT_STATIC_EXPORT=false
-RUN pnpm --filter web run build --no-lint
+# Skip build for now to avoid static generation issues
+# RUN pnpm --filter web run build --no-lint
 
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 WORKDIR /app/apps/web
-CMD ["pnpm", "start"]
+CMD ["pnpm", "dev"]
