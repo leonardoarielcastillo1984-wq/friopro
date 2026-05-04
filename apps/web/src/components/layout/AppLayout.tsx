@@ -30,7 +30,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   
   // Skip tenant-dependent components for Super Admin without tenant or on select-tenant page
   const isSelectTenantPage = typeof window !== 'undefined' && window.location.pathname === '/select-tenant';
-  const shouldSkipTenantData = isSelectTenantPage || (user?.globalRole === 'SUPER_ADMIN' && !tenantId);
+  const shouldSkipTenantData = isSelectTenantPage || (isSuperAdmin && !tenantId);
   const { status: demoStatus, checklist, allDone } = useDemoMode(shouldSkipTenantData ? null : tenantId);
 
   useSessionTimeout({
@@ -59,6 +59,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
   if (!user) {
     return null;
   }
+
+  // Super Admin puede acceder sin seleccionar tenant
+  const isSuperAdmin = user?.globalRole === 'SUPER_ADMIN';
 
   return (
     <div className="min-h-screen bg-neutral-100/50">

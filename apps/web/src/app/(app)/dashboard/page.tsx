@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth-context';
 import {
   FileText, BookOpen, AlertTriangle, Shield, TrendingUp, Users,
   GraduationCap, Activity, Target, RefreshCw,
