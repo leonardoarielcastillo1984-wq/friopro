@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 function getApiBases() {
   // Prioritize API_URL (server-side internal URL) over NEXT_PUBLIC_API_URL (browser URL)
   // because this code runs on the server and may not reach the public URL.
