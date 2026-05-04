@@ -3,8 +3,12 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 export const dashboardRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      const tenantFilter = tenantId ? { tenantId } : {};
+      const auth = (req as any).auth;
+      const tenantId = auth?.tenantId;
+      const isSuperAdmin = auth?.globalRole === 'SUPER_ADMIN';
+      
+      // For Super Admin without tenant, show aggregated data from all tenants
+      const tenantFilter = tenantId ? { tenantId } : (isSuperAdmin ? {} : { tenantId: 'none' });
       const now = new Date();
       const in30 = new Date(Date.now() + 30 * 24 * 3600 * 1000);
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
