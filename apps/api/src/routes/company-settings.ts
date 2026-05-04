@@ -73,7 +73,8 @@ export async function registerCompanySettingsRoutes(app: FastifyInstance) {
     const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     
-    const { imageBase64, type } = req.body;
+    const rawBody: any = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const { imageBase64, type } = rawBody || {};
     if (!imageBase64) return reply.code(400).send({ error: 'Image is required' });
     
     try {
