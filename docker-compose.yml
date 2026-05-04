@@ -61,6 +61,8 @@ services:
       LLM_PROVIDER: ollama
       OLLAMA_BASE_URL: http://ollama:11434/v1
       OLLAMA_MODEL: llama3.2
+      MERCADOPAGO_ACCESS_TOKEN: APP_USR-4473975081608854-040416-fcaec1d4ed41d106c268c51f17ac271c-75716951
+      WEBHOOK_BASE_URL: https://logismart.ar
     ports:
       - "3002:3002"
     volumes:
