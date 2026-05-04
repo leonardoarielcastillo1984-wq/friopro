@@ -331,16 +331,21 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
     const rawBody = req.body;
     const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody as any;
 
-    const item = await app.runWithDbContext(req, async (tx: any) => {
-      const { id: _id, tenantId: _tid, year: _y, createdAt: _ca, updatedAt: _ua, ...data } = body;
+    try {
+      const item = await app.runWithDbContext(req, async (tx: any) => {
+        const { id: _id, tenantId: _tid, year: _y, createdAt: _ca, updatedAt: _ua, createdById: _cb, deletedAt: _da, ...data } = body;
 
-      return tx.organizationContext.upsert({
-        where: { tenantId_year: { tenantId, year: y } },
-        update: data,
-        create: { tenantId, year: y, ...data },
+        return tx.organizationContext.upsert({
+          where: { tenantId_year: { tenantId, year: y } },
+          update: data,
+          create: { tenantId, year: y, ...data },
+        });
       });
-    });
-    return reply.send({ item });
+      return reply.send({ item });
+    } catch (err: any) {
+      console.error('[CONTEXT_PUT] Error:', err?.message, err?.meta);
+      return reply.code(500).send({ error: err?.message || 'Error guardando contexto' });
+    }
   });
 };
 
