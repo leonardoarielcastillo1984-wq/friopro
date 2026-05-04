@@ -72,14 +72,6 @@ export class LicenseMonitor {
           await this.notifyExpiring(tenant, status.daysUntilExpiry, 'urgente');
           await this.markNotified(tenant.id, 'notified1Day');
           emailsSent = adminEmails.length;
-        } else if (status.daysUntilExpiry <= 3 && !tenant.notified3Days) {
-          await this.notifyExpiring(tenant, status.daysUntilExpiry, 'visible');
-          await this.markNotified(tenant.id, 'notified3Days');
-          emailsSent = adminEmails.length;
-        } else if (status.daysUntilExpiry <= 7 && !tenant.notified7Days) {
-          await this.notifyExpiring(tenant, status.daysUntilExpiry, 'leve');
-          await this.markNotified(tenant.id, 'notified7Days');
-          emailsSent = adminEmails.length;
         }
       }
 
