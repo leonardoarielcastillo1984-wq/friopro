@@ -88,7 +88,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   }, []);
 
   useEffect(() => {
-    if (user) {
+    if (user && user.globalRole !== 'SUPER_ADMIN') {
       fetchUnreadCount();
       const interval = setInterval(fetchUnreadCount, 30000);
       return () => clearInterval(interval);

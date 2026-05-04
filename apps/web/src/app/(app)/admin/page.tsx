@@ -615,7 +615,7 @@ type LicenseMetrics = {
 
 export default function AdminPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, tenant, loading: authLoading } = useAuth();
 
   const [tenants, setTenants] = useState<TenantRow[]>([])
   const [plans, setPlans] = useState<PlanRow[]>([]);
@@ -775,11 +775,14 @@ export default function AdminPage() {
     if (user?.globalRole === 'SUPER_ADMIN') {
       loadData();
       loadCompanyRegistrations();
-      loadLicenseMetrics();
-      loadSetupFees();
-      loadPayments();
+      // Only load tenant-scoped data if a tenant is selected
+      if (tenant) {
+        loadLicenseMetrics();
+        loadSetupFees();
+        loadPayments();
+      }
     }
-  }, [user]);
+  }, [user, tenant]);
 
   async function handleUpdatePlan(e: React.FormEvent) {
     e.preventDefault();
