@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import argon2 from 'argon2';
+import { sendEmail, notificationEmail } from '../services/email.js';
 
 // Validation schemas
 const emptyToUndefined = (val: unknown) => (val === '' || val === null || val === undefined ? undefined : val);
@@ -426,6 +427,33 @@ export default async function hrRoutes(fastify: FastifyInstance) {
         }
       }
     });
+
+    // Send invitation email to the employee
+    const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
+    try {
+      const emailPayload = notificationEmail({
+        userEmail: data.email,
+        title: 'Bienvenido a SGI 360 - Acceso a la plataforma',
+        message: `Hola ${employee.firstName} ${employee.lastName},\n\n` +
+          `Se te ha otorgado acceso a la plataforma <strong>SGI 360</strong>.\n\n` +
+          `<strong>Tus credenciales de acceso:</strong>\n` +
+          `• <strong>Usuario:</strong> ${data.email}\n` +
+          `• <strong>Contraseña:</strong> ${data.password}\n\n` +
+          `Accedé a la plataforma desde: ${appUrl}`,
+        actionLabel: 'Iniciar sesión en SGI 360',
+        actionUrl: `${appUrl}/login`,
+        type: 'info',
+      });
+
+      const emailResult = await sendEmail(emailPayload);
+      if (emailResult.success) {
+        fastify.log.info(`[HR] Email de invitación enviado a ${data.email}`);
+      } else {
+        fastify.log.error(`[HR] Error enviando email de invitación: ${emailResult.error}`);
+      }
+    } catch (emailError) {
+      fastify.log.error(`[HR] Error enviando email de invitación: ${emailError}`);
+    }
 
     return { user: { ...user, platformUserId: platformUser.id } };
   });
