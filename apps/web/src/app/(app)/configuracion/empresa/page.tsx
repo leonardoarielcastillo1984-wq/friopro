@@ -98,11 +98,10 @@ export default function CompanySettingsPage() {
       setUploading(true);
       const res = await apiFetch('/company/logo', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        json: {
           imageBase64: base64Image,
           type: 'light',
-        }),
+        },
       }) as { success: boolean; logoUrl: string };
 
       if (res.success) {
