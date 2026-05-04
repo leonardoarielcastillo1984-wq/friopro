@@ -16,8 +16,13 @@ export async function tenantContext(app: FastifyInstance) {
       '/auth/register',
       '/auth/forgot-password',
       '/auth/reset-password',
+      '/auth/refresh',
+      '/auth/me',
       '/plans',
+      '/register-company',
+      '/landing',
       '/webhooks/mercadopago',
+      '/license/webhook/mercadopago',
       '/health'
     ];
     
