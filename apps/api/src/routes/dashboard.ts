@@ -7,8 +7,17 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       const tenantId = auth?.tenantId;
       const isSuperAdmin = auth?.globalRole === 'SUPER_ADMIN';
       
+      // Debug logs
+      app.log.info('Dashboard auth check:', { 
+        auth: auth ? 'present' : 'missing', 
+        tenantId, 
+        globalRole: auth?.globalRole,
+        isSuperAdmin 
+      });
+      
       // For Super Admin without tenant, show aggregated data from all tenants
       const tenantFilter = tenantId ? { tenantId } : (isSuperAdmin ? {} : { tenantId: 'none' });
+      app.log.info('Dashboard tenantFilter:', tenantFilter);
       const now = new Date();
       const in30 = new Date(Date.now() + 30 * 24 * 3600 * 1000);
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
