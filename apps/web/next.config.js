@@ -8,10 +8,13 @@ const nextConfig = {
   },
   experimental: {
     esmExternals: true,
+    appDir: true,
   },
-  output: 'standalone',
-  swcMinify: true,
+  // Disable static generation
+  generateEtags: false,
   trailingSlash: true,
+  // Force all pages to be dynamic
+  poweredByHeader: false,
   webpack: (config, { isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
