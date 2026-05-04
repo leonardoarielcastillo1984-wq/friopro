@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
+import { sendEmail, notificationEmail } from '../services/email.js';
 
 const registerCompanySchema = z.object({
   companyName: z.string().min(1),
@@ -48,6 +49,34 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
       });
 
       app.log.info(`Nueva solicitud de registro: ${validated.companyName}`);
+
+      // Notificar al superadmin por email
+      const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || 'leonardoarielcastillo@hotmail.com';
+      const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';
+      try {
+        const emailPayload = notificationEmail({
+          userEmail: adminEmail,
+          title: 'Nueva solicitud de registro de empresa',
+          message: `Se ha recibido una nueva solicitud de registro:\n\n` +
+            `<strong>Empresa:</strong> ${validated.companyName}\n` +
+            `<strong>Email:</strong> ${validated.email}\n` +
+            `<strong>RUT:</strong> ${validated.rut}\n` +
+            `<strong>Teléfono:</strong> ${validated.phone}\n` +
+            `<strong>Dirección:</strong> ${validated.address}\n\n` +
+            `Tenés una solicitud pendiente de aprobación.`,
+          actionLabel: 'Ver solicitudes pendientes',
+          actionUrl: `${appUrl}/admin/registros`,
+          type: 'warning',
+        });
+        const emailResult = await sendEmail(emailPayload);
+        if (emailResult.success) {
+          app.log.info(`[REGISTER-COMPANY] Email de notificación enviado a ${adminEmail}`);
+        } else {
+          app.log.error(`[REGISTER-COMPANY] Error enviando email: ${emailResult.error}`);
+        }
+      } catch (emailErr) {
+        app.log.error(`[REGISTER-COMPANY] Error en notificación: ${emailErr}`);
+      }
 
       return reply.code(200).send({
         success: true,
