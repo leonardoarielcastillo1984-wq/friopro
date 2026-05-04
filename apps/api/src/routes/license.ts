@@ -1378,7 +1378,7 @@ export async function licenseRoutes(app: FastifyInstance) {
               failure: `${process.env.APP_URL || 'http://localhost:3000'}/configuracion?tab=licencia&status=failure`,
               pending: `${process.env.APP_URL || 'http://localhost:3000'}/configuracion?tab=licencia&status=pending`
             },
-            notification_url: `${process.env.WEBHOOK_BASE_URL || process.env.APP_URL || 'https://logismart.ar'}/api/webhook/mercadopago`,
+            notification_url: `${process.env.WEBHOOK_BASE_URL || process.env.APP_URL || 'https://logismart.ar'}/api/license/webhook/mercadopago`,
             external_reference: `${tenantId}_${planTier}_${period}`,
             statement_descriptor: "SGI360",
             metadata: {
