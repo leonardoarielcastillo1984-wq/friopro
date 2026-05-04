@@ -797,7 +797,7 @@ export default function DocumentDetailPage() {
                     {statusCfg.label}
                   </span>
                   <span className="text-neutral-400">|</span>
-                  <span className="text-neutral-500">Tipo: {doc.type}</span>
+                  <span className="text-neutral-500">Tipo: {docTypeOptions.find(t => t.value === doc.type)?.label || doc.type}</span>
                   <span className="text-neutral-400">|</span>
                   <span className="text-neutral-500">Versión {doc.version}</span>
                   {doc.department && (
@@ -806,7 +806,12 @@ export default function DocumentDetailPage() {
                       <span className="text-neutral-500">Dept: {doc.department.name}</span>
                     </>
                   )}
-                  {doc.normative && (
+                  {(doc.normatives && doc.normatives.length > 0) ? (
+                    <>
+                      <span className="text-neutral-400">|</span>
+                      <span className="text-neutral-500">Norma{doc.normatives.length > 1 ? 's' : ''}: {doc.normatives.map(n => n.name).join(', ')}</span>
+                    </>
+                  ) : doc.normative && (
                     <>
                       <span className="text-neutral-400">|</span>
                       <span className="text-neutral-500">Norma: {doc.normative.name}</span>
