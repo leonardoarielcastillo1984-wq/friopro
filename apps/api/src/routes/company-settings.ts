@@ -75,6 +75,7 @@ export async function registerCompanySettingsRoutes(app: FastifyInstance) {
     
     const rawBody: any = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     const { imageBase64, type } = rawBody || {};
+    app.log.info({ bodyType: typeof req.body, hasImage: !!imageBase64, bodyKeys: Object.keys(rawBody || {}) }, '[LOGO] body received');
     if (!imageBase64) return reply.code(400).send({ error: 'Image is required' });
     
     try {
