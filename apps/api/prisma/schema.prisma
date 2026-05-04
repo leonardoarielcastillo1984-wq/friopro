@@ -241,6 +241,12 @@ model Tenant {
   demoStartedAt  DateTime? @db.Timestamptz
   demoExpiresAt  DateTime? @db.Timestamptz
 
+  // LLM config (per-tenant overrides)
+  llmProvider String?
+  llmModel    String?
+  llmBaseUrl  String?
+  llmApiKey   String?
+
   createdAt   DateTime @default(now()) @db.Timestamptz
   updatedAt   DateTime @updatedAt @db.Timestamptz
 
