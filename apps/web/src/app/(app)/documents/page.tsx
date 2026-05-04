@@ -54,7 +54,7 @@ export default function DocumentsPage() {
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadType, setUploadType] = useState('PROCEDURE');
   const [uploadDepartmentId, setUploadDepartmentId] = useState('');
-  const [uploadNormativeId, setUploadNormativeId] = useState('');
+  const [uploadNormativeIds, setUploadNormativeIds] = useState<string[]>([]);
   const [uploadProcess, setUploadProcess] = useState('');
   const [uploadOwnerId, setUploadOwnerId] = useState('');
   const [uploadNextReviewDate, setUploadNextReviewDate] = useState('');
@@ -89,7 +89,7 @@ export default function DocumentsPage() {
       filtered = filtered.filter(d => d.type === filterType);
     }
     if (filterNormative !== 'ALL') {
-      filtered = filtered.filter(d => d.normativeId === filterNormative);
+      filtered = filtered.filter(d => d.normativeId === filterNormative || (d.normativeIds && d.normativeIds.includes(filterNormative)));
     }
     if (filterDepartment !== 'ALL') {
       filtered = filtered.filter(d => d.departmentId === filterDepartment);
@@ -183,7 +183,7 @@ export default function DocumentsPage() {
       formData.append('file', selectedFile);
       formData.append('title', uploadTitle || selectedFile.name.replace(/\.(pdf|docx|xlsx|xls)$/i, ''));
       formData.append('departmentId', uploadDepartmentId);
-      formData.append('normativeId', uploadNormativeId);
+      if (uploadNormativeIds.length > 0) formData.append('normativeIds', JSON.stringify(uploadNormativeIds));
       if (uploadProcess) formData.append('process', uploadProcess);
       if (uploadOwnerId) formData.append('ownerId', uploadOwnerId);
       if (uploadNextReviewDate) formData.append('nextReviewDate', uploadNextReviewDate);
@@ -199,7 +199,7 @@ export default function DocumentsPage() {
       setUploadTitle('');
       setUploadType('PROCEDURE');
       setUploadDepartmentId('');
-      setUploadNormativeId('');
+      setUploadNormativeIds([]);
       setUploadProcess('');
       setUploadOwnerId('');
       setUploadNextReviewDate('');
@@ -362,17 +362,33 @@ export default function DocumentsPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-1">Normativa aplicable</label>
-              <select
-                value={uploadNormativeId}
-                onChange={(e) => setUploadNormativeId(e.target.value)}
-                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-              >
-                <option value="">Sin normativa</option>
-                {normatives.map((n) => (
-                  <option key={n.id} value={n.id}>{n.code} - {n.name}</option>
-                ))}
-              </select>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Normativas aplicables</label>
+              <div className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm max-h-40 overflow-y-auto">
+                {normatives.length === 0 ? (
+                  <p className="text-neutral-400 py-1">Sin normativas</p>
+                ) : (
+                  normatives.map((n) => (
+                    <label key={n.id} className="flex items-center gap-2 py-1 cursor-pointer hover:bg-neutral-50 rounded px-1">
+                      <input
+                        type="checkbox"
+                        checked={uploadNormativeIds.includes(n.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setUploadNormativeIds([...uploadNormativeIds, n.id]);
+                          } else {
+                            setUploadNormativeIds(uploadNormativeIds.filter(id => id !== n.id));
+                          }
+                        }}
+                        className="rounded border-neutral-300 text-brand-600 focus:ring-brand-500"
+                      />
+                      <span className="text-sm text-neutral-700">{n.code} - {n.name}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+              {uploadNormativeIds.length > 0 && (
+                <p className="text-xs text-brand-600 mt-1">{uploadNormativeIds.length} normativa{uploadNormativeIds.length > 1 ? 's' : ''} seleccionada{uploadNormativeIds.length > 1 ? 's' : ''}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Proceso</label>

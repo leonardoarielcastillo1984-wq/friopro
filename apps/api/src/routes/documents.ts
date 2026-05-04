@@ -27,6 +27,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           status: true,
           version: true,
           normativeId: true,
+          normativeIds: true,
           departmentId: true,
           createdAt: true,
           updatedAt: true,
@@ -412,7 +413,15 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const title = (data.fields?.title as any)?.value || data.filename.replace(/\.(pdf|docx?|xlsx?)$/i, '');
     const docType = (data.fields?.type as any)?.value || 'PROCEDURE';
     const departmentId = (data.fields?.departmentId as any)?.value || null;
-    const normativeId = (data.fields?.normativeId as any)?.value || null;
+    // Support multi-normative: normativeIds is a JSON array of UUIDs
+    const normativeIdsRaw = (data.fields?.normativeIds as any)?.value || null;
+    let normativeIds: string[] = [];
+    if (normativeIdsRaw) {
+      try { normativeIds = JSON.parse(normativeIdsRaw); } catch { normativeIds = []; }
+    }
+    const singleNormativeId = (data.fields?.normativeId as any)?.value || null;
+    // If normativeIds provided, use first as primary; otherwise fall back to single
+    const normativeId = normativeIds.length > 0 ? normativeIds[0] : singleNormativeId;
     const docProcess = (data.fields?.process as any)?.value || null;
     let ownerId = (data.fields?.ownerId as any)?.value || null;
     const reviewDate = (data.fields?.reviewDate as any)?.value || null;
@@ -440,6 +449,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           filePath,
           departmentId,
           normativeId,
+          normativeIds: normativeIds.length > 0 ? normativeIds : (normativeId ? [normativeId] : []),
           process: docProcess,
           ownerId,
           reviewDate: reviewDate ? new Date(reviewDate) : null,

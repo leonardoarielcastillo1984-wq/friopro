@@ -31,6 +31,7 @@ export type DocumentRow = {
   status: 'DRAFT' | 'EFFECTIVE' | 'OBSOLETE';
   version: number;
   normativeId?: string | null;
+  normativeIds?: string[] | null;
   departmentId?: string | null;
   process?: string | null;
   ownerId?: string | null;
