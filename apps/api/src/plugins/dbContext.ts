@@ -34,6 +34,11 @@ function isTenantScopedRequest(req: FastifyRequest): boolean {
   if (path.startsWith('/api/auth')) return false;
   if (path.startsWith('/super-admin')) return false;
   if (path.startsWith('/health')) return false;
+  if (path.startsWith('/landing')) return false;
+  if (path.startsWith('/register-company')) return false;
+  if (path.startsWith('/plans')) return false;
+  if (path.startsWith('/webhooks')) return false;
+  if (path.startsWith('/license/webhook')) return false;
   return true;
 }
 
