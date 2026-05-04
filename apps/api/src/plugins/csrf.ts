@@ -17,6 +17,8 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/help/ask')) return true; // TEMP: testing assistant IA
   if (url.startsWith('/api/auth/login') || url.startsWith('/auth/login')) return true;
   if (url.startsWith('/api/auth/register') || url.startsWith('/auth/register')) return true;
+  if (url.startsWith('/api/auth/forgot-password') || url.startsWith('/auth/forgot-password')) return true;
+  if (url.startsWith('/api/auth/reset-password') || url.startsWith('/auth/reset-password')) return true;
   if (url.startsWith('/api/auth/refresh') || url.startsWith('/auth/refresh')) return true;
   if (url.startsWith('/api/register-company') || url.startsWith('/register-company')) return true;
   if (url.startsWith('/documents/upload')) return true;
