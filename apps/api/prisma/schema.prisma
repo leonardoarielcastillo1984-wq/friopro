@@ -3988,6 +3988,8 @@ enum LicenseStatus {
   ACTIVE
   SUSPENDED
   EXPIRED
+  EXPIRING
+  GRACE
 }
 
 enum MaintenanceAssetCategory {
@@ -5021,13 +5023,6 @@ enum WorkOrderType {
   CORRECTIVE
   PREDICTIVE
   EMERGENCY
-}
-
-enum LicenseStatus {
-  ACTIVE
-  EXPIRING
-  GRACE
-  EXPIRED
 }
 
 model AIUsageLog {
