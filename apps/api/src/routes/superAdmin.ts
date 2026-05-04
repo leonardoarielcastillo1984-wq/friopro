@@ -481,10 +481,11 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
               planId: plan?.id || '',
               status: 'ACTIVE',
               providerRef: null,
-            startedAt: startDate,
-            endsAt: endDate
-          }
-        });
+              startedAt: startDate,
+              endsAt: endDate
+            }
+          });
+        }
       }
 
       // Actualizar tenant (no tiene planTier ni subscriptionStatus en el modelo)
