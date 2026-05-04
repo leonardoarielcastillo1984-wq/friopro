@@ -309,7 +309,6 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     }
 
     const roles = await fastify.prisma.role.findMany({
-      where: { tenantId, deletedAt: null },
       orderBy: { name: 'asc' }
     });
 

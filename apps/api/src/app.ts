@@ -75,7 +75,10 @@ import { hazardsRoutes } from './routes/hazards.js';
 import { aspectsRoutes } from './routes/aspects.js';
 
 export async function buildApp() {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: true,
+    bodyLimit: parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 1024,
+  });
 
   // Iniciar workers
   startNormativeWorker();
