@@ -58,9 +58,8 @@ services:
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: ./uploads
       EMAIL_PROVIDER: console
-      LLM_PROVIDER: ollama
-      OLLAMA_BASE_URL: http://ollama:11434/v1
-      OLLAMA_MODEL: llama3.2
+      LLM_PROVIDER: groq
+      GROQ_MODEL: llama-3.1-8b-instant
       MERCADOPAGO_ACCESS_TOKEN: APP_USR-4473975081608854-040416-fcaec1d4ed41d106c268c51f17ac271c-75716951
       WEBHOOK_BASE_URL: https://logismart.ar
     ports:
@@ -70,7 +69,6 @@ services:
     depends_on:
       - postgres
       - redis
-      - ollama
     networks:
       - sgi-network
 
