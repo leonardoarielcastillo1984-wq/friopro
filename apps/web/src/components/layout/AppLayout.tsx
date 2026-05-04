@@ -30,7 +30,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
   
   // Skip tenant-dependent components for Super Admin without tenant or on select-tenant page
   const isSelectTenantPage = typeof window !== 'undefined' && window.location.pathname === '/select-tenant';
-  const shouldSkipTenantData = isSelectTenantPage || (user?.globalRole === 'SUPER_ADMIN' && !tenantId);
+  const isSuperAdmin = user?.globalRole === 'SUPER_ADMIN';
+  const shouldSkipTenantData = isSelectTenantPage || (isSuperAdmin && !tenantId);
   const { status: demoStatus, checklist, allDone } = useDemoMode(shouldSkipTenantData ? null : tenantId);
 
   useSessionTimeout({
@@ -74,7 +75,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Demo Banner */}
-      <DemoBanner status={demoStatus} />
+      {!isSuperAdmin && <DemoBanner status={demoStatus} />}
 
       {/* License Banner - positioned at top */}
       <LicenseBanner position="top" />
@@ -91,9 +92,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </div>
 
       {/* Demo overlay components */}
-      <DemoWatermark status={demoStatus} />
-      <DemoChecklist status={demoStatus} checklist={checklist} allDone={allDone} />
-      <DemoExpiredModal status={demoStatus} />
+      {!isSuperAdmin && (
+        <>
+          <DemoWatermark status={demoStatus} />
+          <DemoChecklist status={demoStatus} checklist={checklist} allDone={allDone} />
+          <DemoExpiredModal status={demoStatus} />
+        </>
+      )}
 
       {/* Global help bot - lazy loaded */}
       <Suspense fallback={null}>
