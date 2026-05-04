@@ -151,17 +151,17 @@ export default function LicensesPanel() {
 
       {/* Estado de Suscripción */}
       <div className={`p-6 rounded-xl border ${
-        isExpired ? 'bg-red-50 border-red-200' :
+        !subscription?.hasSubscription || isExpired ? 'bg-red-50 border-red-200' :
         isExpiringSoon ? 'bg-amber-50 border-amber-200' :
         'bg-green-50 border-green-200'
       }`}>
         <div className="flex items-start gap-4">
           <div className={`p-3 rounded-lg ${
-            isExpired ? 'bg-red-100' :
+            !subscription?.hasSubscription || isExpired ? 'bg-red-100' :
             isExpiringSoon ? 'bg-amber-100' :
             'bg-green-100'
           }`}>
-            {isExpired ? (
+            {!subscription?.hasSubscription || isExpired ? (
               <AlertTriangle className="h-6 w-6 text-red-600" />
             ) : isExpiringSoon ? (
               <AlertTriangle className="h-6 w-6 text-amber-600" />
@@ -171,12 +171,12 @@ export default function LicensesPanel() {
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">
-              {isExpired ? 'Suscripción Vencida' :
+              {!subscription?.hasSubscription || isExpired ? 'Sin Suscripción Activa' :
                isExpiringSoon ? 'Renovación Próxima' :
                'Suscripción Activa'}
             </h3>
             <p className="text-gray-600 mt-1">
-              {isExpired ? 'Tu suscripción ha vencido. Renueva para continuar usando el sistema.' :
+              {!subscription?.hasSubscription || isExpired ? 'No tienes una suscripción activa. Selecciona un plan para comenzar a usar el sistema.' :
                isExpiringSoon ? `Tu suscripción vence en ${subscription?.daysRemaining} días. Renueva pronto.` :
                `Tu suscripción ${subscription?.planTier} está activa. ${subscription?.daysRemaining} días restantes.`}
             </p>

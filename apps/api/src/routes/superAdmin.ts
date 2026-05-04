@@ -457,26 +457,30 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
 
       // Crear o actualizar suscripción
       let subscription;
+      const isNoPlan = planTier === 'NO_PLAN';
       if (existing) {
         // Actualizar suscripción existente
         subscription = await app.prisma.tenantSubscription.update({
           where: { id: existing.id },
           data: {
-            planId: plan?.id || '',
-            status: planTier === 'NO_PLAN' ? 'ACTIVE' : 'ACTIVE',
-            providerRef: planTier === 'NO_PLAN' ? 'NO_PLAN' : null,
-            startedAt: startDate,
-            endsAt: endDate
+            planId: isNoPlan ? existing.planId : plan?.id || '',
+            status: isNoPlan ? 'CANCELED' : 'ACTIVE',
+            providerRef: isNoPlan ? 'NO_PLAN' : null,
+            startedAt: isNoPlan ? existing.startedAt : startDate,
+            endsAt: isNoPlan ? new Date() : endDate
           }
         });
       } else {
-        // Crear nueva suscripción
-        subscription = await app.prisma.tenantSubscription.create({
-          data: {
-            tenantId,
-            planId: plan?.id || '',
-            status: 'ACTIVE',
-            providerRef: planTier === 'NO_PLAN' ? 'NO_PLAN' : null,
+        // Crear nueva suscripción (solo si no es NO_PLAN)
+        if (isNoPlan) {
+          subscription = null;
+        } else {
+          subscription = await app.prisma.tenantSubscription.create({
+            data: {
+              tenantId,
+              planId: plan?.id || '',
+              status: 'ACTIVE',
+              providerRef: null,
             startedAt: startDate,
             endsAt: endDate
           }
@@ -486,17 +490,17 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       // Actualizar tenant (no tiene planTier ni subscriptionStatus en el modelo)
       // El plan se asocia a través de la suscripción
       
-      console.log(`[API] Suscripción actualizada:`, subscription.id);
+      console.log(`[API] Suscripción actualizada:`, subscription?.id || 'none');
 
       return reply.send({
         success: true,
-        subscription: {
+        subscription: subscription ? {
           id: subscription.id,
           planTier: plan?.tier || 'NO_PLAN',
           status: subscription.status,
           startDate: subscription.startedAt,
           endDate: subscription.endsAt
-        }
+        } : null
       });
     } catch (error) {
       console.error(`[API] Error:`, error);

@@ -325,10 +325,11 @@ export async function licenseRoutes(app: FastifyInstance) {
         orderBy: { createdAt: 'desc' }
       });
 
-      if (!subscription) {
+      // No subscription or inactive/canceled
+      if (!subscription || subscription.status === 'CANCELED' || subscription.providerRef === 'NO_PLAN') {
         return reply.code(200).send({
           hasSubscription: false,
-          status: 'TRIAL',
+          status: subscription?.status === 'CANCELED' ? 'CANCELED' : 'TRIAL',
           message: 'No active subscription',
           daysRemaining: 0
         });
