@@ -180,7 +180,7 @@ export const calibrationsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // Crear directorio de uploads si no existe
-      const uploadDir = join(process.cwd(), 'apps', 'api', 'uploads', 'calibrations', tenantId);
+      const uploadDir = join(process.env.STORAGE_LOCAL_PATH || '/app/uploads', 'calibrations', tenantId);
       if (!existsSync(uploadDir)) {
         await mkdir(uploadDir, { recursive: true });
       }
