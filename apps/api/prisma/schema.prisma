@@ -1900,14 +1900,14 @@ model Audit {
   interviewees String?       @db.Text
 
   // Professional Report Fields
-  auditCriteria      Json? // Normas, procedimientos, requisitos legales
-  structuredScope    Json? // Procesos, ubicaciones, exclusiones
-  auditTeamDetails   Json? // Equipo auditor detallado
-  auditorOpinion     String? // Conforme / No conforme
-  maturityLevel      String? // bajo / medio / alto
-  certificationRecommendation String?
-  mainRisks          String? @db.Text
-  reportVersion      Int     @default(1)
+  auditCriteria      Json? @map("auditcriteria") // Normas, procedimientos, requisitos legales
+  structuredScope    Json? @map("structuredscope") // Procesos, ubicaciones, exclusiones
+  auditTeamDetails   Json? @map("auditteamdetails") // Equipo auditor detallado
+  auditorOpinion     String? @map("auditoropinion") // Conforme / No conforme
+  maturityLevel      String? @map("maturitylevel") // bajo / medio / alto
+  certificationRecommendation String? @map("certificationrecommendation")
+  mainRisks          String? @db.Text @map("mainrisks")
+  reportVersion      Int     @default(1) @map("reportversion")
 
   // Metadata
   createdById    String          @db.Uuid
