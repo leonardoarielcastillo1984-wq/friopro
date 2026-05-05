@@ -2041,6 +2041,7 @@ model AuditTemplateItem {
 model AuditChecklistItem {
   id      String @id @default(uuid()) @db.Uuid
   auditId String @db.Uuid @map("auditId")
+  audit   Audit @relation(fields: [auditId], references: [id], onDelete: Cascade)
 
   templateItemId String? @db.Uuid @map("templateItemId")
 
