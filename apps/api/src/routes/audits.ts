@@ -1670,9 +1670,53 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
           return reply.code(400).send({ error: 'No se encontraron normas normativas procesadas para las normas ISO seleccionadas' });
         }
 
-        // Generar items de checklist a partir de las cláusulas
-        const checklistItems = normativeStandards.flatMap((normative) => {
-          return normative.clauses.map((clause: any, index: number) => ({
+        // Usar IA para filtrar cláusulas relevantes según el departamento/proceso
+        const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
+
+        // Preparar lista de cláusulas para que la IA las evalúe
+        const allClauses = normativeStandards.flatMap((normative) => {
+          return normative.clauses.map((clause: any) => ({
+            clauseNumber: clause.clauseNumber,
+            title: clause.title,
+            content: clause.content,
+          }));
+        });
+
+        // Prompt para que la IA filtre cláusulas relevantes
+        const filterPrompt = `Eres un auditor experto ISO. Tu tarea es filtrar qué cláusulas normativas son RELEVANTES para una auditoría específica.
+
+Normas ISO: ${isoStandards.join(', ')}
+Área/Departamento: ${audit.area || 'N/A'}
+Proceso: ${audit.process || 'N/A'}
+Alcance: ${audit.scope || 'N/A'}
+Objetivo: ${audit.objective || 'Verificar conformidad'}
+
+Cláusulas disponibles:
+${allClauses.map((c, i) => `${i + 1}. ${c.clauseNumber} - ${c.title}: ${c.content.substring(0, 150)}...`).join('\n')}
+
+Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
+{
+  "relevantClauses": [1, 3, 5],
+  "reasoning": "Explicación breve de por qué estas cláusulas son relevantes para el departamento/proceso especificado"
+}
+
+Donde "relevantClauses" es un array con los números de índice (basados en 1) de las cláusulas que son RELEVANTES para esta auditoría específica.`;
+
+        const filterResult = await llm.chat(filterPrompt, { temperature: 0.3 });
+
+        let relevantIndices: number[] = [];
+        try {
+          const parsed = JSON.parse(filterResult.content);
+          relevantIndices = parsed.relevantClauses || [];
+        } catch {
+          // Si falla el parseo, usar todas las cláusulas
+          relevantIndices = allClauses.map((_, i) => i + 1);
+        }
+
+        // Generar items de checklist solo con las cláusulas relevantes
+        const checklistItems = allClauses
+          .filter((_, index) => relevantIndices.includes(index + 1))
+          .map((clause, index) => ({
             auditId: audit.id,
             clause: clause.clauseNumber,
             requirement: clause.title,
@@ -1680,7 +1724,6 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
             weight: 1,
             order: index,
           }));
-        });
 
         // Eliminar checklist existente y crear nuevo
         await app.runWithDbContext(req, async (tx) => {
@@ -1696,6 +1739,8 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
         return reply.send({
           message: 'Checklist generado exitosamente',
           itemsCount: checklistItems.length,
+          totalClauses: allClauses.length,
+          filteredClauses: relevantIndices.length,
           standards: normativeStandards.map((ns) => ns.name),
         });
       } catch (err: any) {
