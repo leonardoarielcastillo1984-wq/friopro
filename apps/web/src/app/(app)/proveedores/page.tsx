@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
-import { Truck, TrendingUp, AlertTriangle, Star, BarChart3, Plus, Search, RefreshCw, Edit2, Trash2, ClipboardCheck, X, Clock, CheckCircle } from 'lucide-react';
+import { Truck, TrendingUp, AlertTriangle, Star, BarChart3, Plus, Search, RefreshCw, Edit2, Trash2, ClipboardCheck, X, Clock, CheckCircle, Calendar } from 'lucide-react';
 
 interface Supplier {
   id: string; code: string; name: string; legalName?: string; taxId?: string; email?: string; phone?: string;
@@ -12,6 +12,16 @@ interface Supplier {
   evaluationScore?: number | null; avgScore?: number | null; computedStatus?: string;
   lastEvaluationDate?: string | null; nextEvaluationDate?: string | null; notes?: string;
   createdAt: string; _count?: { evaluations: number };
+}
+
+interface SupplierEvaluation {
+  id: string;
+  supplierId: string;
+  date: string;
+  overallScore: number;
+  result: string;
+  comments?: string;
+  supplier?: { id: string; name: string; code: string };
 }
 
 interface SupplierStats {
@@ -44,18 +54,22 @@ export default function ProveedoresPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [evalForm, setEvalForm] = useState({ qualityScore: 3, deliveryScore: 3, priceScore: 3, serviceScore: 3, documentationScore: 3, comments: '' });
   const [supplierForm, setSupplierForm] = useState<Partial<Supplier>>({ status: 'PENDING', isCritical: false });
+  const [evaluations, setEvaluations] = useState<SupplierEvaluation[]>([]);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [supRes, statsRes] = await Promise.all([
+      const [supRes, statsRes, evalRes] = await Promise.all([
         apiFetch<{ suppliers: Supplier[] }>('/suppliers'),
         apiFetch<{ stats: SupplierStats }>('/suppliers/stats').catch(() => null),
+        apiFetch<{ evaluations: SupplierEvaluation[] }>('/suppliers/evaluations/all').catch(() => null),
       ]);
       setSuppliers(supRes?.suppliers || []);
       if (statsRes?.stats) setStats(statsRes.stats);
+      if (evalRes?.evaluations) setEvaluations(evalRes.evaluations);
     } catch (err) { console.error('Error loading suppliers:', err); }
     finally { setLoading(false); }
   };
@@ -112,6 +126,9 @@ export default function ProveedoresPage() {
           <p className="text-gray-600 mt-1">Gestión y evaluación de proveedores (ISO 9001 §8.4)</p>
         </div>
         <div className="flex gap-3">
+          <button onClick={() => setShowCalendarModal(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+            <Calendar className="w-4 h-4" /> Calendario Evaluaciones
+          </button>
           <button onClick={handleAi} disabled={aiLoading} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50">
             <BarChart3 className="w-4 h-4" /> {aiLoading ? 'Analizando...' : 'Analizar proveedores'}
           </button>
@@ -228,6 +245,18 @@ export default function ProveedoresPage() {
               <button onClick={() => setShowEvalModal(false)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleCreateEval} className="p-6 space-y-4">
+              {/* Referencia de valoraciones */}
+              <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-800">
+                <p className="font-semibold mb-1">Referencia de valoraciones:</p>
+                <div className="grid grid-cols-5 gap-1 text-center">
+                  <div><span className="font-bold">1</span><br/>Muy malo</div>
+                  <div><span className="font-bold">2</span><br/>Malo</div>
+                  <div><span className="font-bold">3</span><br/>Regular</div>
+                  <div><span className="font-bold">4</span><br/>Bueno</div>
+                  <div><span className="font-bold">5</span><br/>Excelente</div>
+                </div>
+              </div>
+
               {[
                 { k: 'qualityScore' as const, l: 'Calidad' }, { k: 'deliveryScore' as const, l: 'Cumplimiento' },
                 { k: 'priceScore' as const, l: 'Precio' }, { k: 'serviceScore' as const, l: 'Servicio' },
@@ -268,6 +297,63 @@ export default function ProveedoresPage() {
                   <div className="space-y-2">{aiAnalysis.recommendations.map((r: string, i: number) => (
                     <div key={i} className="flex items-start gap-2 bg-indigo-50 rounded-lg p-3"><CheckCircle className="w-4 h-4 text-indigo-600 mt-0.5 flex-shrink-0" /><span className="text-sm text-indigo-900">{r}</span></div>
                   ))}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Calendar Modal */}
+      {showCalendarModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-4xl max-h-[80vh] overflow-y-auto">
+            <div className="border-b border-gray-200 p-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900"><Calendar className="w-5 h-5 inline mr-2 text-purple-600" />Calendario de Evaluaciones</h2>
+              <button onClick={() => setShowCalendarModal(false)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6">
+              {evaluations.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p>No hay evaluaciones registradas</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {evaluations.map((evaluation) => (
+                    <div key={evaluation.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                            <Calendar className="w-5 h-5 text-purple-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{evaluation.supplier?.name || 'Proveedor desconocido'}</p>
+                            <p className="text-sm text-gray-500">{evaluation.supplier?.code || ''}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium text-gray-900">{new Date(evaluation.date).toLocaleDateString('es-AR')}</p>
+                          <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+                            evaluation.result === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                            evaluation.result === 'CONDITIONAL' ? 'bg-amber-100 text-amber-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {evaluation.result === 'APPROVED' ? 'Aprobado' :
+                             evaluation.result === 'CONDITIONAL' ? 'Condicional' :
+                             'Rechazado'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <Star className={`w-4 h-4 ${evaluation.overallScore >= 4 ? 'text-amber-500 fill-amber-500' : evaluation.overallScore >= 3 ? 'text-amber-400' : 'text-gray-300'}`} />
+                          <span className="font-bold">{evaluation.overallScore.toFixed(1)}</span>
+                        </div>
+                        {evaluation.comments && <p className="text-gray-600 truncate max-w-md">{evaluation.comments}</p>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

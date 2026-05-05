@@ -64,6 +64,7 @@ export default function AuditorsPage() {
     employeeId: '',
     normativeCompetencies: [] as string[],
   });
+  const [newAuditorFiles, setNewAuditorFiles] = useState<File[]>([]);
 
   useEffect(() => {
     loadAuditors();
@@ -101,6 +102,39 @@ export default function AuditorsPage() {
       }) as { auditor: Auditor };
 
       if (res.auditor) {
+        // Subir certificados si hay archivos
+        for (const file of newAuditorFiles) {
+          if (file.size > 10 * 1024 * 1024) {
+            alert(`El archivo ${file.name} es demasiado grande. Máximo 10MB.`);
+            continue;
+          }
+          if (file.type !== 'application/pdf') {
+            alert(`El archivo ${file.name} no es un PDF.`);
+            continue;
+          }
+
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const { filePath } = await apiFetch<{ filePath: string }>(`/audit/auditors/${res.auditor.id}/upload`, {
+              method: 'POST',
+              body: formData,
+            });
+
+            await apiFetch(`/audit/auditors/${res.auditor.id}/documents`, {
+              method: 'POST',
+              json: {
+                title: file.name.replace('.pdf', ''),
+                filePath,
+                fileSize: file.size,
+                mimeType: 'application/pdf',
+              },
+            });
+          } catch (err) {
+            console.error('Error uploading file:', err);
+          }
+        }
+
         setAuditors([...auditors, res.auditor]);
         setShowCreateModal(false);
         setNewAuditor({
@@ -112,6 +146,7 @@ export default function AuditorsPage() {
           employeeId: '',
           normativeCompetencies: [],
         });
+        setNewAuditorFiles([]);
       }
     } catch (err) {
       console.error('Error creating auditor:', err);
@@ -567,6 +602,58 @@ export default function AuditorsPage() {
                       <span className="text-sm">{comp.label}</span>
                     </label>
                   ))}
+                </div>
+              </div>
+
+              {/* Certificados PDF */}
+              <div className="border-t border-gray-200 pt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Certificados y Diplomas (PDF)</label>
+                
+                {/* Lista de archivos seleccionados */}
+                {newAuditorFiles.length > 0 && (
+                  <div className="space-y-2 mb-4">
+                    {newAuditorFiles.map((file, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-red-100 rounded flex items-center justify-center">
+                            <span className="text-red-600 font-bold text-xs">PDF</span>
+                          </div>
+                          <span className="text-sm text-gray-700 truncate max-w-[200px]">{file.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setNewAuditorFiles(newAuditorFiles.filter((_, i) => i !== idx))}
+                          className="text-red-600 hover:text-red-800 text-xs"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Input para subir nuevo PDF */}
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors">
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      setNewAuditorFiles([...newAuditorFiles, ...files]);
+                    }}
+                    className="hidden"
+                    id="pdf-upload-create"
+                  />
+                  <label htmlFor="pdf-upload-create" className="cursor-pointer flex flex-col items-center">
+                    <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center mb-2">
+                      <span className="text-blue-600 text-xl">+</span>
+                    </div>
+                    <span className="text-sm text-gray-600 text-center">
+                      Click para subir certificados PDF
+                    </span>
+                    <span className="text-xs text-gray-400 mt-1">Máx. 10MB por archivo</span>
+                  </label>
                 </div>
               </div>
 

@@ -275,6 +275,30 @@ export async function registerSupplierRoutes(app: FastifyInstance) {
     return reply.send({ evaluations });
   });
 
+  // GET /suppliers/evaluations/all - Get all evaluations for calendar view
+  app.get('/evaluations/all', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = req.db.tenantId;
+
+    const evaluations = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.supplierEvaluation.findMany({
+        where: { tenantId },
+        include: {
+          supplier: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+        orderBy: { date: 'desc' },
+      });
+    });
+
+    return reply.send({ evaluations });
+  });
+
   // POST /suppliers/analyze - AI analysis (rule-based, no LLM)
   app.post('/analyze', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
