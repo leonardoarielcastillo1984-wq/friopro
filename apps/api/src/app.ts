@@ -290,7 +290,7 @@ export async function buildApp() {
   await app.register(staticPlugin, {
     root: uploadsPath,
     prefix: '/uploads/',
-    wildcard: false,
+    wildcard: true,
   });
 
   return app;
