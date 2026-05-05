@@ -2039,9 +2039,9 @@ model AuditTemplateItem {
 // Checklist Items (instances from template)
 model AuditChecklistItem {
   id      String @id @default(uuid()) @db.Uuid
-  auditId String @db.Uuid @map("auditid")
+  auditId String @db.Uuid @map("auditId")
 
-  templateItemId String? @db.Uuid @map("templateitemid")
+  templateItemId String? @db.Uuid @map("templateItemId")
 
   clause      String
   requirement String
@@ -2058,8 +2058,8 @@ model AuditChecklistItem {
   customFields Json? @default("{}") @map("customfields")
 
   // AI suggestions
-  aiSuggestedFinding Boolean @default(false) @map("aisuggestedfinding")
-  aiSuggestion       String? @map("aisuggestion")
+  aiSuggestedFinding Boolean @default(false) @map("aiSuggestedFinding")
+  aiSuggestion       String? @map("aiSuggestion")
 
   @@index([auditId])
   @@map("audit_checklist_items")
