@@ -1899,6 +1899,16 @@ model Audit {
   objective    String?
   interviewees String?       @db.Text
 
+  // Professional Report Fields
+  auditCriteria      Json? // Normas, procedimientos, requisitos legales
+  structuredScope    Json? // Procesos, ubicaciones, exclusiones
+  auditTeamDetails   Json? // Equipo auditor detallado
+  auditorOpinion     String? // Conforme / No conforme
+  maturityLevel      String? // bajo / medio / alto
+  certificationRecommendation String?
+  mainRisks          String? @db.Text
+  reportVersion      Int     @default(1)
+
   // Metadata
   createdById    String          @db.Uuid
   createdAt      DateTime        @default(now()) @db.Timestamptz
