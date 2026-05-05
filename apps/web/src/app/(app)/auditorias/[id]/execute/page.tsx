@@ -463,15 +463,15 @@ export default function AuditExecutePage() {
               </div>
             )}
             {checklist.length > 0 && (
-              <div className="p-4 flex items-center justify-between bg-gray-50">
-                <span className="text-sm font-medium text-gray-700">Checklist ({checklist.length} ítems)</span>
-                <button onClick={generateAiChecklist} disabled={aiLoading}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200 text-sm">
-                  <Sparkles className="w-4 h-4" /> {aiLoading ? 'Generando...' : 'Regenerar desde normas'}
-                </button>
-              </div>
-            )}
-            {checklist.map(item => (
+              <>
+                <div className="p-4 flex items-center justify-between bg-gray-50">
+                  <span className="text-sm font-medium text-gray-700">Checklist ({checklist.length} ítems)</span>
+                  <button onClick={generateAiChecklist} disabled={aiLoading}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200 text-sm">
+                    <Sparkles className="w-4 h-4" /> {aiLoading ? 'Generando...' : 'Regenerar desde normas'}
+                  </button>
+                </div>
+                {checklist.map(item => (
               <div key={item.id} className="p-4 hover:bg-gray-50 transition-colors">
                 <div className="flex items-start gap-4">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-600">{item.order + 1}</div>
@@ -530,6 +530,8 @@ export default function AuditExecutePage() {
                 </div>
               </div>
             ))}
+              </>
+            )}
           </div>
         )}
 
