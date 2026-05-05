@@ -4,7 +4,7 @@
  */
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { mkdir } from 'fs/promises';
+import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 
@@ -193,7 +193,7 @@ export const calibrationsRoutes: FastifyPluginAsync = async (app) => {
 
       // Guardar archivo
       const buffer = await data.toBuffer();
-      await Bun.write(filepath, buffer);
+      await writeFile(filepath, buffer);
 
       // Retornar ruta relativa para acceso web
       const relativePath = `/uploads/calibrations/${tenantId}/${filename}`;
