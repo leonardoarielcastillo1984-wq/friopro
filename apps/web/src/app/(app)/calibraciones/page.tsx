@@ -182,6 +182,21 @@ export default function CalibracionesPage() {
     }
   }
 
+  async function deleteCalibration(calibrationId: string) {
+    if (!confirm('¿Estás seguro de eliminar esta calibración?')) return;
+    try {
+      await apiFetch(`/calibrations/${calibrationId}`, { method: 'DELETE' });
+      // Recargar calibraciones del equipo expandido
+      if (expandedEquipment) {
+        const calibrations = await loadCalibrations(expandedEquipment);
+        setEquipment(equipment.map(e => e.id === expandedEquipment ? { ...e, calibrations } : e));
+      }
+    } catch (err) {
+      console.error('Error deleting calibration:', err);
+      alert('Error al eliminar calibración');
+    }
+  }
+
   async function deleteEquipment(id: string) {
     if (!confirm('¿Eliminar este equipo?')) return;
     try {
@@ -331,9 +346,18 @@ export default function CalibracionesPage() {
                                 </span>
                                 {cal.provider && <span className="text-sm text-gray-500">• {cal.provider}</span>}
                               </div>
-                              <span className={`px-2 py-1 text-xs rounded-full ${getResultColor(cal.result)}`}>
-                                {getResultLabel(cal.result)}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-1 text-xs rounded-full ${getResultColor(cal.result)}`}>
+                                  {getResultLabel(cal.result)}
+                                </span>
+                                <button
+                                  onClick={() => deleteCalibration(cal.id)}
+                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Eliminar calibración"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
                             {cal.certificateNumber && (
                               <p className="text-sm text-gray-600 mb-1">Certificado: {cal.certificateNumber}</p>
