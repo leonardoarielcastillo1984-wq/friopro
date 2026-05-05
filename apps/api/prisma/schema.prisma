@@ -1916,6 +1916,7 @@ model Audit {
   deletedAt      DateTime?       @db.Timestamptz
   auditSchedules AuditSchedule[]
   auditTeams     AuditTeam[]
+  checklist      AuditChecklistItem[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
