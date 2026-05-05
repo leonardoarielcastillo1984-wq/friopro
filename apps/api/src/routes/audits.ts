@@ -1628,9 +1628,9 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
     },
   );
 
-  // POST /audit/audits/:id/generate-checklist — Generar checklist basado en normas normativas
+  // POST /audit/audits/:id/generate-checklist-from-normative — Generar checklist basado en normas normativas
   app.post(
-    '/audit/audits/:id/generate-checklist',
+    '/audit/audits/:id/generate-checklist-from-normative',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
       if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });

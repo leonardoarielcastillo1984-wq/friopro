@@ -233,7 +233,7 @@ export default function AuditExecutePage() {
   async function generateAiChecklist() {
     try {
       setAiLoading(true); setError(null);
-      const res = (await apiFetch(`/audit/audits/${auditId}/generate-checklist`, { method:'POST' })) as any;
+      const res = (await apiFetch(`/audit/audits/${auditId}/generate-checklist-from-normative`, { method:'POST' })) as any;
       if (res.message) {
         // Recargar checklist después de generar
         const checklistRes = await apiFetch(`/audit/audits/${auditId}/full`) as any;
