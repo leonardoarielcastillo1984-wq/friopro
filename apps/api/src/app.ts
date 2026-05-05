@@ -71,6 +71,7 @@ import {
   incidentsRoutes,
   equipmentRoutes, contextRoutes, calendarRoutes,
 } from './routes/sgi-professional.js';
+import { calibrationsRoutes } from './routes/calibrations.js';
 import { hazardsRoutes } from './routes/hazards.js';
 import { aspectsRoutes } from './routes/aspects.js';
 
@@ -254,6 +255,7 @@ export async function buildApp() {
   await app.register(incidentsRoutes, { prefix: '/incidents' });
   await app.register(registerSupplierRoutes, { prefix: '/suppliers' });
   await app.register(equipmentRoutes, { prefix: '/equipment' });
+  await app.register(calibrationsRoutes, { prefix: '/calibrations' });
   await app.register(calendarRoutes, { prefix: '/calendar' });
   await app.register(gestionCambiosRoutes, { prefix: '/gestion-cambios' });
   await app.register(registerHelpRoutes, { prefix: '/help' });
