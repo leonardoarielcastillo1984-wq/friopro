@@ -274,9 +274,9 @@ export default function CalibracionesPage() {
           <div className="divide-y divide-gray-200">
             {equipment.map((equip) => (
               <div key={equip.id} className="border-b border-gray-200 last:border-b-0">
-                <div className="px-6 py-4 hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(equip)}>
+                <div className="px-6 py-4 hover:bg-gray-50">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 cursor-pointer flex-1" onClick={() => toggleExpand(equip)}>
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                         <Ruler className="w-5 h-5 text-blue-600" />
                       </div>
@@ -292,7 +292,16 @@ export default function CalibracionesPage() {
                       <span className="text-sm text-gray-500">
                         Próx. calibración: {equip.nextCalibrationDate ? new Date(equip.nextCalibrationDate).toLocaleDateString('es-AR') : '—'}
                       </span>
-                      {expandedEquipment === equip.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openAddCalibration(equip); }}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Calibrar
+                      </button>
+                      <button onClick={() => toggleExpand(equip)} className="p-2 text-gray-400 hover:text-gray-600">
+                        {expandedEquipment === equip.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
                 </div>
