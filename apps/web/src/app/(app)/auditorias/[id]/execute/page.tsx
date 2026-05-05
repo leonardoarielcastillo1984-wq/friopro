@@ -234,12 +234,16 @@ export default function AuditExecutePage() {
     try {
       setAiLoading(true); setError(null);
       const res = (await apiFetch(`/audit/audits/${auditId}/generate-checklist`, { method:'POST' })) as any;
-      if (res.items) {
-        setChecklist(res.items);
+      if (res.message) {
+        // Recargar checklist después de generar
+        const checklistRes = await apiFetch(`/audit/audits/${auditId}/full`) as any;
+        if (checklistRes.audit?.checklist) {
+          setChecklist(checklistRes.audit.checklist);
+        }
         setError(null);
       }
     } catch (err: any) {
-      setError(err?.message || 'Error al generar checklist con IA');
+      setError(err?.message || 'Error al generar checklist basado en normas normativas');
     } finally { setAiLoading(false); }
   }
 
@@ -420,7 +424,7 @@ export default function AuditExecutePage() {
                 <span className="text-sm font-medium text-gray-700">Checklist ({checklist.length} ítems)</span>
                 <button onClick={generateAiChecklist} disabled={aiLoading}
                   className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200 text-sm">
-                  <Sparkles className="w-4 h-4" /> {aiLoading ? 'Generando...' : 'Regenerar con IA'}
+                  <Sparkles className="w-4 h-4" /> {aiLoading ? 'Generando...' : 'Regenerar desde normas'}
                 </button>
               </div>
             )}

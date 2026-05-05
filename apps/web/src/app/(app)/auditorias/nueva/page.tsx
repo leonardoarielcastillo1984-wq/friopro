@@ -19,6 +19,12 @@ type Auditor = {
   type: 'INTERNAL' | 'EXTERNAL';
 };
 
+type Department = {
+  id: string;
+  name: string;
+  description: string | null;
+};
+
 const ISO_STANDARDS = [
   { value: 'ISO_9001', label: 'ISO 9001 - Calidad' },
   { value: 'ISO_14001', label: 'ISO 14001 - Medio Ambiente' },
@@ -44,6 +50,7 @@ export default function NuevaAuditoriaPage() {
   const router = useRouter();
   const [programs, setPrograms] = useState<AuditProgram[]>([]);
   const [auditors, setAuditors] = useState<Auditor[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -70,13 +77,15 @@ export default function NuevaAuditoriaPage() {
 
   async function loadProgramsAndAuditors() {
     try {
-      const [programsRes, auditorsRes] = await Promise.all([
+      const [programsRes, auditorsRes, departmentsRes] = await Promise.all([
         apiFetch('/audit/programs') as Promise<{ programs: AuditProgram[] }>,
         apiFetch('/audit/auditors') as Promise<{ auditors: Auditor[] }>,
+        apiFetch('/hr/departments') as Promise<{ departments: Department[] }>,
       ]);
-      
+
       if (programsRes.programs) setPrograms(programsRes.programs);
       if (auditorsRes.auditors) setAuditors(auditorsRes.auditors);
+      if (departmentsRes.departments) setDepartments(departmentsRes.departments);
     } catch (err) {
       console.error('Error loading data:', err);
     }
@@ -282,30 +291,35 @@ export default function NuevaAuditoriaPage() {
             </div>
           </div>
 
-          {/* Área y Proceso */}
+          {/* Proceso/Area */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Área Auditada <span className="text-red-500">*</span>
+                Proceso/Area <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
+              <select
                 value={formData.area}
                 onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                placeholder="Producción, Calidad, etc."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
-              />
+              >
+                <option value="">Seleccionar departamento...</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.name}>
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Proceso
+                Proceso Específico
               </label>
               <input
                 type="text"
                 value={formData.process}
                 onChange={(e) => setFormData({ ...formData, process: e.target.value })}
-                placeholder="Nombre del proceso específico"
+                placeholder="Nombre del proceso específico (opcional)"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>

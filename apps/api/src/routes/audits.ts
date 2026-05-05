@@ -1627,4 +1627,80 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
       }
     },
   );
+
+  // POST /audit/audits/:id/generate-checklist — Generar checklist basado en normas normativas
+  app.post(
+    '/audit/audits/:id/generate-checklist',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+      try {
+        const audit = await app.runWithDbContext(req, async (tx) => {
+          return tx.audit.findUnique({
+            where: { id: req.params.id, tenantId },
+          });
+        });
+        if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+
+        const isoStandards = audit.isoStandard as string[] || [];
+        if (isoStandards.length === 0) {
+          return reply.code(400).send({ error: 'La auditoría debe tener al menos una norma ISO seleccionada' });
+        }
+
+        // Buscar normas normativas cargadas que coincidan con las normas ISO seleccionadas
+        const normativeStandards = await app.runWithDbContext(req, async (tx) => {
+          return tx.normativeStandard.findMany({
+            where: {
+              tenantId,
+              status: 'PROCESSED',
+              code: { in: isoStandards },
+            },
+            include: {
+              clauses: {
+                where: { status: 'ACTIVE', deletedAt: null },
+                orderBy: { extractionOrder: 'asc' },
+              },
+            },
+          });
+        });
+
+        if (normativeStandards.length === 0) {
+          return reply.code(400).send({ error: 'No se encontraron normas normativas procesadas para las normas ISO seleccionadas' });
+        }
+
+        // Generar items de checklist a partir de las cláusulas
+        const checklistItems = normativeStandards.flatMap((normative) => {
+          return normative.clauses.map((clause: any, index: number) => ({
+            auditId: audit.id,
+            clause: clause.clauseNumber,
+            requirement: clause.title,
+            whatToCheck: clause.content.substring(0, 200) + (clause.content.length > 200 ? '...' : ''),
+            weight: 1,
+            order: index,
+          }));
+        });
+
+        // Eliminar checklist existente y crear nuevo
+        await app.runWithDbContext(req, async (tx) => {
+          await tx.auditChecklistItem.deleteMany({
+            where: { auditId: audit.id },
+          });
+
+          await tx.auditChecklistItem.createMany({
+            data: checklistItems,
+          });
+        });
+
+        return reply.send({
+          message: 'Checklist generado exitosamente',
+          itemsCount: checklistItems.length,
+          standards: normativeStandards.map((ns) => ns.name),
+        });
+      } catch (err: any) {
+        console.error('Error generando checklist:', err.message);
+        return reply.code(500).send({ error: 'Error generando checklist', details: err.message });
+      }
+    },
+  );
 }
