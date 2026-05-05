@@ -24,6 +24,15 @@ interface SupplierEvaluation {
   supplier?: { id: string; name: string; code: string };
 }
 
+interface EvaluationConcept {
+  id: string;
+  name: string;
+  description?: string;
+  weight: number;
+  isActive: boolean;
+  order: number;
+}
+
 interface SupplierStats {
   total: number; critical: number; withoutEval90: number; avgOverall: number | null;
 }
@@ -56,20 +65,25 @@ export default function ProveedoresPage() {
   const [supplierForm, setSupplierForm] = useState<Partial<Supplier>>({ status: 'PENDING', isCritical: false });
   const [evaluations, setEvaluations] = useState<SupplierEvaluation[]>([]);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [concepts, setConcepts] = useState<EvaluationConcept[]>([]);
+  const [showConceptsModal, setShowConceptsModal] = useState(false);
+  const [conceptForm, setConceptForm] = useState({ name: '', description: '', weight: 1.0, isActive: true });
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [supRes, statsRes, evalRes] = await Promise.all([
+      const [supRes, statsRes, evalRes, conceptsRes] = await Promise.all([
         apiFetch<{ suppliers: Supplier[] }>('/suppliers'),
         apiFetch<{ stats: SupplierStats }>('/suppliers/stats').catch(() => null),
         apiFetch<{ evaluations: SupplierEvaluation[] }>('/suppliers/evaluations/all').catch(() => null),
+        apiFetch<{ concepts: EvaluationConcept[] }>('/suppliers/evaluation-concepts').catch(() => null),
       ]);
       setSuppliers(supRes?.suppliers || []);
       if (statsRes?.stats) setStats(statsRes.stats);
       if (evalRes?.evaluations) setEvaluations(evalRes.evaluations);
+      if (conceptsRes?.concepts) setConcepts(conceptsRes.concepts);
     } catch (err) { console.error('Error loading suppliers:', err); }
     finally { setLoading(false); }
   };
@@ -126,6 +140,9 @@ export default function ProveedoresPage() {
           <p className="text-gray-600 mt-1">Gestión y evaluación de proveedores (ISO 9001 §8.4)</p>
         </div>
         <div className="flex gap-3">
+          <button onClick={() => setShowConceptsModal(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+            <Edit2 className="w-4 h-4" /> Conceptos de Evaluación
+          </button>
           <button onClick={() => setShowCalendarModal(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
             <Calendar className="w-4 h-4" /> Calendario Evaluaciones
           </button>
@@ -356,6 +373,114 @@ export default function ProveedoresPage() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Conceptos de Evaluación Modal */}
+      {showConceptsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="border-b border-gray-200 p-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900"><Edit2 className="w-5 h-5 inline mr-2 text-gray-600" />Conceptos de Evaluación</h2>
+              <button onClick={() => setShowConceptsModal(false)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6">
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-gray-900 mb-3">Agregar nuevo concepto</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Nombre del concepto"
+                    value={conceptForm.name}
+                    onChange={(e) => setConceptForm({ ...conceptForm, name: e.target.value })}
+                    className="px-3 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Peso (1.0 = estándar)"
+                    value={conceptForm.weight}
+                    onChange={(e) => setConceptForm({ ...conceptForm, weight: parseFloat(e.target.value) || 1.0 })}
+                    className="px-3 py-2 border border-gray-300 rounded-lg"
+                    step="0.1"
+                    min="0.1"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Descripción (opcional)"
+                    value={conceptForm.description}
+                    onChange={(e) => setConceptForm({ ...conceptForm, description: e.target.value })}
+                    className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!conceptForm.name) return;
+                      try {
+                        await apiFetch('/suppliers/evaluation-concepts', {
+                          method: 'POST',
+                          json: conceptForm,
+                        });
+                        setConceptForm({ name: '', description: '', weight: 1.0, isActive: true });
+                        const res = await apiFetch<{ concepts: EvaluationConcept[] }>('/suppliers/evaluation-concepts');
+                        if (res?.concepts) setConcepts(res.concepts);
+                      } catch (err) {
+                        console.error('Error creating concept:', err);
+                        alert('Error al crear concepto');
+                      }
+                    }}
+                    disabled={!conceptForm.name}
+                    className="col-span-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Agregar Concepto
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-medium text-gray-900 mb-3">Conceptos activos</h3>
+                {concepts.length === 0 ? (
+                  <div className="text-center py-4 text-gray-500 text-sm">
+                    No hay conceptos de evaluación configurados
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {concepts.map((concept) => (
+                      <div key={concept.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="font-medium text-gray-900">{concept.name}</p>
+                          {concept.description && <p className="text-sm text-gray-500">{concept.description}</p>}
+                          <p className="text-xs text-gray-400">Peso: {concept.weight}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-1 text-xs rounded-full ${concept.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                            {concept.isActive ? 'Activo' : 'Inactivo'}
+                          </span>
+                          <button
+                            onClick={async () => {
+                              if (!confirm('¿Eliminar este concepto?')) return;
+                              try {
+                                await apiFetch(`/suppliers/evaluation-concepts/${concept.id}`, {
+                                  method: 'DELETE',
+                                });
+                                const res = await apiFetch<{ concepts: EvaluationConcept[] }>('/suppliers/evaluation-concepts');
+                                if (res?.concepts) setConcepts(res.concepts);
+                              } catch (err) {
+                                console.error('Error deleting concept:', err);
+                                alert('Error al eliminar concepto');
+                              }
+                            }}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

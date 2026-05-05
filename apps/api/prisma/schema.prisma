@@ -4925,28 +4925,68 @@ model Supplier {
   @@map("suppliers")
 }
 
+model EvaluationConcept {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  name        String   // Nombre del concepto (ej: "Calidad", "Tiempo de entrega")
+  description String?  // Descripción opcional
+  weight      Float    @default(1.0) // Peso para cálculo de score (1.0 = estándar)
+  isActive    Boolean  @default(true)
+  order       Int      @default(0) // Orden de visualización
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  scores      EvaluationScore[]
+
+  @@index([tenantId])
+  @@map("evaluation_concepts")
+}
+
 model SupplierEvaluation {
-  id                 String   @id @default(uuid()) @db.Uuid
-  tenantId           String   @db.Uuid
-  supplierId         String   @db.Uuid
-  supplier           Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  date               DateTime
-  period             String?
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  supplierId    String   @db.Uuid
+  supplier      Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  date          DateTime
+  period        String?
+  overallScore  Float    @default(0)
+  result        String // APPROVED, CONDITIONAL, REJECTED
+  comments      String?
+  evaluatedById String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+
+  // Scores dinámicos por concepto
+  scores        EvaluationScore[]
+
+  // Campos legados para compatibilidad (se calculan de los scores dinámicos)
   qualityScore       Float    @default(0) // calidad
   deliveryScore      Float    @default(0) // cumplimiento
   priceScore         Float    @default(0) // precio
   serviceScore       Float    @default(0) // servicio
   documentationScore Float    @default(0) // documentacion
-  overallScore       Float    @default(0)
-  result             String // APPROVED, CONDITIONAL, REJECTED
-  comments           String?
-  evaluatedById      String?  @db.Uuid
-  createdAt          DateTime @default(now()) @db.Timestamptz
-  updatedAt          DateTime @updatedAt @db.Timestamptz
 
   @@index([supplierId])
   @@index([tenantId])
   @@map("supplier_evaluations")
+}
+
+model EvaluationScore {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @db.Uuid
+  evaluationId    String            @db.Uuid
+  evaluation      SupplierEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  conceptId       String            @db.Uuid
+  concept         EvaluationConcept @relation(fields: [conceptId], references: [id])
+  score           Float             // Score 1-5
+  comments        String?
+  createdAt       DateTime          @default(now()) @db.Timestamptz
+
+  @@unique([evaluationId, conceptId])
+  @@index([evaluationId])
+  @@index([conceptId])
+  @@index([tenantId])
+  @@map("evaluation_scores")
 }
 
 enum TaskStatus {

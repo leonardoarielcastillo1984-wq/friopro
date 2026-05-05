@@ -299,6 +299,120 @@ export async function registerSupplierRoutes(app: FastifyInstance) {
     return reply.send({ evaluations });
   });
 
+  // GET /suppliers/evaluation-concepts - Listar conceptos de evaluación
+  app.get('/evaluation-concepts', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = req.db.tenantId;
+
+    const concepts = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.evaluationConcept.findMany({
+        where: { tenantId },
+        orderBy: { order: 'asc' },
+      });
+    });
+
+    return reply.send({ concepts });
+  });
+
+  // POST /suppliers/evaluation-concepts - Crear concepto de evaluación
+  app.post('/evaluation-concepts', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = req.db.tenantId;
+    const rawBody = req.body;
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : (rawBody ?? {}) as any;
+
+    const { name, description, weight, isActive, order } = body;
+
+    try {
+      const concept = await app.runWithDbContext(req, async (tx: any) => {
+        // Get max order if not provided
+        let finalOrder = order;
+        if (finalOrder === undefined || finalOrder === null) {
+          const max = await tx.evaluationConcept.findFirst({
+            where: { tenantId },
+            orderBy: { order: 'desc' },
+            select: { order: true },
+          });
+          finalOrder = (max?.order ?? 0) + 1;
+        }
+
+        return tx.evaluationConcept.create({
+          data: {
+            tenantId,
+            name,
+            description: description || null,
+            weight: weight || 1.0,
+            isActive: isActive !== undefined ? isActive : true,
+            order: finalOrder,
+          },
+        });
+      });
+
+      return reply.code(201).send({ concept });
+    } catch (err: any) {
+      console.error('[EVALUATION_CONCEPTS_POST] Error:', err?.message);
+      return reply.code(500).send({ error: err?.message || 'Error al crear concepto' });
+    }
+  });
+
+  // PATCH /suppliers/evaluation-concepts/:id - Actualizar concepto
+  app.patch('/evaluation-concepts/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const rawBody = req.body;
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : (rawBody ?? {}) as any;
+
+    try {
+      const concept = await app.runWithDbContext(req, async (tx: any) => {
+        const existing = await tx.evaluationConcept.findFirst({
+          where: { id, tenantId },
+        });
+        if (!existing) throw new Error('Concepto no encontrado');
+
+        const data: any = {};
+        if (body.name !== undefined) data.name = body.name;
+        if (body.description !== undefined) data.description = body.description;
+        if (body.weight !== undefined) data.weight = body.weight;
+        if (body.isActive !== undefined) data.isActive = body.isActive;
+        if (body.order !== undefined) data.order = body.order;
+
+        return tx.evaluationConcept.update({
+          where: { id },
+          data,
+        });
+      });
+
+      return reply.send({ concept });
+    } catch (err: any) {
+      console.error('[EVALUATION_CONCEPTS_PATCH] Error:', err?.message);
+      return reply.code(500).send({ error: err?.message || 'Error al actualizar concepto' });
+    }
+  });
+
+  // DELETE /suppliers/evaluation-concepts/:id - Eliminar concepto
+  app.delete('/evaluation-concepts/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = req.db.tenantId;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    try {
+      await app.runWithDbContext(req, async (tx: any) => {
+        const existing = await tx.evaluationConcept.findFirst({
+          where: { id, tenantId },
+        });
+        if (!existing) throw new Error('Concepto no encontrado');
+
+        await tx.evaluationConcept.delete({ where: { id } });
+      });
+
+      return reply.send({ deleted: true });
+    } catch (err: any) {
+      console.error('[EVALUATION_CONCEPTS_DELETE] Error:', err?.message);
+      return reply.code(500).send({ error: err?.message || 'Error al eliminar concepto' });
+    }
+  });
+
   // POST /suppliers/analyze - AI analysis (rule-based, no LLM)
   app.post('/analyze', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
