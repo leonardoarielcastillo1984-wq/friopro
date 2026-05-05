@@ -711,6 +711,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       if ('response' in body) data.response = body.response;
       if ('comment' in body) data.comment = body.comment;
       if ('evidence' in body) data.evidence = body.evidence;
+      if ('customFields' in body) data.customFields = body.customFields;
 
       if (Object.keys(data).length === 0) {
         return reply.code(400).send({ error: 'No updatable fields provided' });

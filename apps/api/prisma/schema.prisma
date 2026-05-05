@@ -2044,6 +2044,9 @@ model AuditChecklistItem {
   comment  String?
   evidence String? // URL or file path
 
+  // Custom fields for premium report mode (JSON flexible)
+  customFields Json? @default("{}")
+
   // AI suggestions
   aiSuggestedFinding Boolean @default(false)
   aiSuggestion       String?

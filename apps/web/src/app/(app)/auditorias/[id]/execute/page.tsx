@@ -16,6 +16,7 @@ type ChecklistItem = {
   whatToCheck: string | null; order: number;
   response: 'COMPLIES' | 'DOES_NOT_COMPLY' | 'NOT_APPLICABLE' | null;
   comment: string | null; evidence: string | null;
+  customFields: Record<string, any> | null;
 };
 type Finding = {
   id: string; code: string; type: string; severity: string;
@@ -88,6 +89,10 @@ export default function AuditExecutePage() {
   const [teamForm, setTeamForm] = useState({ userId:'', auditorId:'', role:'AUDITOR' });
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({ id:'', phase:'', plannedDate:'', actualDate:'', duration:'', location:'', notes:'' });
+  const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
+  const [customFieldsItem, setCustomFieldsItem] = useState<ChecklistItem | null>(null);
+  const [newCustomFieldName, setNewCustomFieldName] = useState('');
+  const [newCustomFieldValue, setNewCustomFieldValue] = useState('');
 
   // AI states
   const [aiLoading, setAiLoading] = useState(false);
@@ -122,10 +127,10 @@ export default function AuditExecutePage() {
 
   useEffect(() => { if (auditId) loadData(); }, [auditId, loadData]);
 
-  async function updateItem(itemId: string, response: ChecklistItem['response'], comment?: string, evidence?: string) {
+  async function updateItem(itemId: string, response: ChecklistItem['response'], comment?: string, evidence?: string, customFields?: Record<string, any>) {
     try {
       setSaving(true);
-      const res = (await apiFetch(`/audit/checklist/${itemId}`, { method:'PATCH', json:{ response, comment, evidence } })) as any;
+      const res = (await apiFetch(`/audit/checklist/${itemId}`, { method:'PATCH', json:{ response, comment, evidence, customFields } })) as any;
       if (res.item) {
         setChecklist(prev => prev.map(i => i.id === itemId ? res.item : i));
         const fRes = (await apiFetch(`/audit/audits/${auditId}/findings`)) as any;
@@ -227,6 +232,44 @@ export default function AuditExecutePage() {
       await apiFetch(`/audit/audits/${auditId}/schedule/${id}`, { method:'DELETE' });
       setSchedule(prev => prev.filter(s => s.id !== id));
     } catch (err) { setError('Error al eliminar fase'); }
+  }
+
+  // Custom fields handlers
+  function openCustomFieldsModal(item: ChecklistItem) {
+    setCustomFieldsItem(item);
+    setShowCustomFieldsModal(true);
+  }
+
+  async function addCustomField() {
+    if (!customFieldsItem || !newCustomFieldName.trim()) return;
+    try {
+      const currentFields = customFieldsItem.customFields || {};
+      const updatedFields = { ...currentFields, [newCustomFieldName.trim()]: newCustomFieldValue };
+      await updateItem(customFieldsItem.id, customFieldsItem.response, customFieldsItem.comment || undefined, customFieldsItem.evidence || undefined, updatedFields);
+      setChecklist(prev => prev.map(i => i.id === customFieldsItem.id ? { ...i, customFields: updatedFields } : i));
+      setNewCustomFieldName('');
+      setNewCustomFieldValue('');
+    } catch (err) { setError('Error al agregar campo personalizado'); }
+  }
+
+  async function removeCustomField(fieldName: string) {
+    if (!customFieldsItem) return;
+    try {
+      const currentFields = customFieldsItem.customFields || {};
+      const { [fieldName]: removed, ...updatedFields } = currentFields;
+      await updateItem(customFieldsItem.id, customFieldsItem.response, customFieldsItem.comment || undefined, customFieldsItem.evidence || undefined, updatedFields);
+      setChecklist(prev => prev.map(i => i.id === customFieldsItem.id ? { ...i, customFields: updatedFields } : i));
+    } catch (err) { setError('Error al eliminar campo personalizado'); }
+  }
+
+  async function updateCustomFieldValue(fieldName: string, value: string) {
+    if (!customFieldsItem) return;
+    try {
+      const currentFields = customFieldsItem.customFields || {};
+      const updatedFields = { ...currentFields, [fieldName]: value };
+      await updateItem(customFieldsItem.id, customFieldsItem.response, customFieldsItem.comment || undefined, customFieldsItem.evidence || undefined, updatedFields);
+      setChecklist(prev => prev.map(i => i.id === customFieldsItem.id ? { ...i, customFields: updatedFields } : i));
+    } catch (err) { setError('Error al actualizar campo personalizado'); }
   }
 
   // AI Handlers
@@ -436,6 +479,11 @@ export default function AuditExecutePage() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-medium px-2 py-0.5 bg-blue-50 text-blue-700 rounded">{item.clause}</span>
                       <span className="text-sm font-medium text-gray-900">{item.requirement}</span>
+                      {item.customFields && Object.keys(item.customFields).length > 0 && (
+                        <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 rounded-full">
+                          {Object.keys(item.customFields).length} campos
+                        </span>
+                      )}
                     </div>
                     {item.whatToCheck && <p className="text-sm text-gray-500 mb-3">{item.whatToCheck}</p>}
                     <div className="flex flex-wrap gap-2 mb-3">
@@ -468,6 +516,15 @@ export default function AuditExecutePage() {
                         defaultValue={item.evidence || ''}
                         onBlur={e => { if (e.target.value !== (item.evidence||'')) updateItem(item.id, item.response, item.comment || undefined, e.target.value || undefined); }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div className="mt-2">
+                      <button
+                        onClick={() => openCustomFieldsModal(item)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-xs"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Campos personalizados
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -904,6 +961,86 @@ export default function AuditExecutePage() {
                 Enviar
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Fields Modal */}
+      {showCustomFieldsModal && customFieldsItem && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Campos Personalizados</h3>
+              <button onClick={() => setShowCustomFieldsModal(false)} className="p-1 hover:bg-gray-100 rounded text-gray-500">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="text-sm text-gray-600 mb-4">
+                <p className="font-medium">Item: {customFieldsItem.clause} - {customFieldsItem.requirement}</p>
+              </div>
+
+              {/* Add new field */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newCustomFieldName}
+                  onChange={e => setNewCustomFieldName(e.target.value)}
+                  placeholder="Nombre del campo"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  value={newCustomFieldValue}
+                  onChange={e => setNewCustomFieldValue(e.target.value)}
+                  placeholder="Valor"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={addCustomField}
+                  disabled={!newCustomFieldName.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Existing fields */}
+              {customFieldsItem.customFields && Object.keys(customFieldsItem.customFields).length > 0 ? (
+                <div className="space-y-3">
+                  {Object.entries(customFieldsItem.customFields).map(([fieldName, value]) => (
+                    <div key={fieldName} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <div className="text-xs font-medium text-gray-700 mb-1">{fieldName}</div>
+                        <input
+                          type="text"
+                          value={value as string}
+                          onChange={e => updateCustomFieldValue(fieldName, e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <button
+                        onClick={() => removeCustomField(fieldName)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                        title="Eliminar campo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-gray-500 py-8">
+                  <p className="text-sm">No hay campos personalizados agregados</p>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setShowCustomFieldsModal(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}
