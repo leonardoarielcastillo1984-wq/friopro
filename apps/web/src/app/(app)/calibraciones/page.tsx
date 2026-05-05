@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Ruler, Plus, Edit2, Trash2, X, Calendar, FileText, Upload, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { Ruler, Plus, Edit2, Trash2, X, Calendar, FileText, Upload, ChevronDown, ChevronUp, Download, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
 type Equipment = {
   id: string;
@@ -241,6 +242,9 @@ export default function CalibracionesPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
+          <Link href="/infraestructura" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-2">
+            <ArrowLeft className="w-4 h-4" /> Volver a Infraestructura
+          </Link>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Ruler className="w-6 h-6 text-blue-600" />
             Equipos de Medición / Calibraciones
