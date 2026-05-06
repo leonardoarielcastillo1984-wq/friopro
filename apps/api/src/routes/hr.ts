@@ -1917,9 +1917,9 @@ export default async function hrRoutes(fastify: FastifyInstance) {
               positionId,
               supervisorId,
               reportsToPositionId,
-              contractType: emp.contractType,
+              contractType: emp.TipoContrato || 'Permanente',
               hireDate: parseDate(emp.fechaIngreso) ?? new Date(),
-              status: emp.status,
+              status: emp.Estado || 'Activo',
               notes: emp.notas,
             },
           });
@@ -1939,9 +1939,9 @@ export default async function hrRoutes(fastify: FastifyInstance) {
             positionId,
             supervisorId,
             reportsToPositionId,
-            contractType: emp.contractType,
+            contractType: emp.TipoContrato || 'Permanente',
             hireDate: parseDate(emp.fechaIngreso) ?? new Date(),
-            status: emp.status,
+            status: emp.Estado || 'Activo',
             notes: emp.notas,
             createdById: req.auth?.userId,
           };
