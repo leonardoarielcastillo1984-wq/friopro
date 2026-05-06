@@ -812,7 +812,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
               source: 'INTERNAL_AUDIT',
               standard: finding.audit.isoStandard.join(', ') || '',
               clause: finding.clause,
-              area: finding.area,
+              process: finding.area,
               auditFindingId: finding.id,
               detectedAt: finding.detectedAt || new Date(),
               dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
