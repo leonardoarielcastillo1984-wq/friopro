@@ -13,7 +13,7 @@ const nextConfig = {
   output: undefined,
   distDir: '.next',
   // Force all pages to be server-side rendered
-  generateBuildId: undefined,
+  generateBuildId: () => 'build-' + Date.now(),
   output: 'standalone',
   swcMinify: true,
   trailingSlash: true,
