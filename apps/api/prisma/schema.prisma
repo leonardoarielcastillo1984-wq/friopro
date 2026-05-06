@@ -5130,6 +5130,7 @@ model ClimaSurvey {
 
   questions    ClimaQuestion[]
   recipients   ClimaRecipient[]
+  responses    ClimaResponse[]
   actionPlans  ClimaActionPlan[]
 
   createdAt   DateTime      @default(now()) @db.Timestamptz
@@ -5290,7 +5291,7 @@ model ClimaSuggestion {
   attachmentUrl String?
   sectorId      String? @db.Uuid
 
-  actionPlan ClimaActionPlan?
+  actionPlans ClimaActionPlan[]
 
   createdAt   DateTime      @default(now()) @db.Timestamptz
   updatedAt   DateTime      @updatedAt @db.Timestamptz
