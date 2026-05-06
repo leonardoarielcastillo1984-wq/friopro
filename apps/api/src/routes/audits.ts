@@ -767,9 +767,9 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
-  // POST /audit/findings/:id/convert-to-ncr — Convertir hallazgo de auditoría a no conformidad
+  // POST /audit/audits/findings/:id/convert-to-ncr — Convertir hallazgo de auditoría a no conformidad
   app.post(
-    '/audit/findings/:id/convert-to-ncr',
+    '/audit/audits/findings/:id/convert-to-ncr',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });

@@ -218,7 +218,7 @@ export default function ReportPage() {
 
   async function createNCRFromFinding(findingId: string) {
     try {
-      await apiFetch(`/audit/findings/${findingId}/convert-to-ncr`, {
+      await apiFetch(`/audit/audits/findings/${findingId}/convert-to-ncr`, {
         method: 'POST',
       });
       loadData();
