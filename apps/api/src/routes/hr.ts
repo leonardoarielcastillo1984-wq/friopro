@@ -1826,6 +1826,31 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     return isNaN(d.getTime()) ? undefined : d;
   }
 
+  function mapContractType(val: string | undefined): string {
+    if (!val) return 'PERMANENT';
+    const map: Record<string, string> = {
+      'Permanente': 'PERMANENT',
+      'Temporal': 'TEMPORARY',
+      'Contratista': 'CONTRACTOR',
+      'Pasantía': 'INTERN',
+      'Pasante': 'INTERN',
+      'Part-time': 'PART_TIME',
+      'Medio tiempo': 'PART_TIME',
+    };
+    return map[val] || 'PERMANENT';
+  }
+
+  function mapStatus(val: string | undefined): string {
+    if (!val) return 'ACTIVE';
+    const map: Record<string, string> = {
+      'Activo': 'ACTIVE',
+      'Inactivo': 'INACTIVE',
+      'Licencia': 'ON_LEAVE',
+      'Baja': 'INACTIVE',
+    };
+    return map[val] || 'ACTIVE';
+  }
+
   fastify.post('/employees/import/confirm', async (req, reply) => {
     const tenantId = req.db?.tenantId;
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
@@ -1917,9 +1942,9 @@ export default async function hrRoutes(fastify: FastifyInstance) {
               positionId,
               supervisorId,
               reportsToPositionId,
-              contractType: emp.TipoContrato || 'Permanente',
+              contractType: mapContractType(emp.TipoContrato) as any,
               hireDate: parseDate(emp.fechaIngreso) ?? new Date(),
-              status: emp.Estado || 'Activo',
+              status: mapStatus(emp.Estado) as any,
               notes: emp.notas,
             },
           });
@@ -1939,9 +1964,9 @@ export default async function hrRoutes(fastify: FastifyInstance) {
             positionId,
             supervisorId,
             reportsToPositionId,
-            contractType: emp.TipoContrato || 'Permanente',
+            contractType: mapContractType(emp.TipoContrato) as any,
             hireDate: parseDate(emp.fechaIngreso) ?? new Date(),
-            status: emp.Estado || 'Activo',
+            status: mapStatus(emp.Estado) as any,
             notes: emp.notas,
             createdById: req.auth?.userId,
           };
