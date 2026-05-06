@@ -1477,9 +1477,9 @@ model Employee {
   firstName String
   lastName  String
   dni       String
-  birthDate DateTime @db.Timestamptz
-  address   String
-  phone     String
+  birthDate DateTime? @db.Timestamptz
+  address   String?
+  phone     String?
   email     String
   cuil      String?
 
