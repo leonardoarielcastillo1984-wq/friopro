@@ -1741,8 +1741,8 @@ Proceso: ${audit.process || 'N/A'}
 Alcance: ${audit.scope || 'N/A'}
 Objetivo: ${audit.objective || 'Verificar conformidad'}
 
-Cláusulas disponibles:
-${allClauses.map((c, i) => `${i + 1}. ${c.clauseNumber} - ${c.title}: ${c.content.substring(0, 150)}...`).join('\n')}
+Cláusulas disponibles (solo número y título):
+${allClauses.map((c, i) => `${i + 1}. ${c.clauseNumber} - ${c.title}`).join('\n')}
 
 Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
 {
