@@ -1894,7 +1894,7 @@ model Audit {
   // Scope
   area         String
   process      String?
-  isoStandard  IsoStandard[]
+  isoStandard  String[] @map("isostandard")
   scope        String?
   objective    String?
   interviewees String?       @db.Text
