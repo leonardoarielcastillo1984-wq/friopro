@@ -305,6 +305,11 @@ model Tenant {
   customers Customer[]
   surveys   Survey[]
 
+  // Clima y Cultura Relations
+  climaSurveys    ClimaSurvey[]
+  climaSuggestions ClimaSuggestion[]
+  climaActionPlans ClimaActionPlan[]
+
   // License & Billing Relations
   tenantSetup           TenantSetup?
   payments              Payment[]
@@ -452,6 +457,14 @@ model PlatformUser {
   actionTasks         ActionTask[]
   processMaps         ProcessMap[]      @relation("ProcessMapCreatedBy")
   projectComments     ProjectComment[]
+
+  // Clima y Cultura Relations
+  climaSurveysCreated    ClimaSurvey[]     @relation("ClimaSurveyCreatedBy")
+  climaSurveysUpdated    ClimaSurvey[]     @relation("ClimaSurveyUpdatedBy")
+  climaSuggestionsCreated ClimaSuggestion[] @relation("ClimaSuggestionCreatedBy")
+  climaSuggestionsResponded ClimaSuggestion[] @relation("ClimaSuggestionRespondedBy")
+  climaActionPlansCreated ClimaActionPlan[] @relation("ClimaActionPlanCreatedBy")
+  climaActionPlansResponsible ClimaActionPlan[] @relation("ClimaActionPlanResponsible")
 }
 
 model TenantMembership {
@@ -1521,6 +1534,8 @@ model Employee {
   drillsResponsible    DrillScenario[]       @relation("DrillResponsible")
   plansResponsible     ContingencyPlan[]     @relation("PlanResponsible")
   resourcesResponsible EmergencyResource[]   @relation("ResourceResponsible")
+  climaRecipients      ClimaRecipient[]      @relation("ClimaRecipientEmployee")
+  climaSuggestions     ClimaSuggestion[]     @relation("ClimaSuggestionEmployee")
 
   @@unique([tenantId, dni])
   @@unique([tenantId, email])
@@ -5081,6 +5096,253 @@ enum WorkOrderType {
   CORRECTIVE
   PREDICTIVE
   EMERGENCY
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Módulo Clima y Cultura (PREMIUM)
+// ═══════════════════════════════════════════════════════════════
+
+model ClimaSurvey {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code        String
+  title       String
+  description String?
+  category    String  @default("CLIMA_LABORAL")
+  // CLIMA_LABORAL, SATISFACCION, LIDERAZGO, ONBOARDING, CAPACITACION,
+  // BIENESTAR, RIESGOS_PSICOSOCIALES, CULTURA_SEGURIDAD, CULTURA_CALIDAD,
+  // EVALUACION_INTERNA, CULTURA_VIAL, BURNOUT, COMUNICACION_INTERNA, PERSONALIZADA
+
+  isAnonymous   Boolean @default(true)
+  isRequired    Boolean @default(false)
+  isActive      Boolean @default(true)
+  periodicidad  String? // UNICA, MENSUAL, TRIMESTRAL, SEMESTRAL, ANUAL
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  targetSectors  Json? // Array of departmentIds
+  targetEmployees Json? // Array of employeeIds (null = todos)
+
+  estimatedMinutes Int @default(5)
+
+  questions    ClimaQuestion[]
+  recipients   ClimaRecipient[]
+  actionPlans  ClimaActionPlan[]
+
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @db.Timestamptz
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("ClimaSurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("ClimaSurveyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  deletedAt   DateTime?     @db.Timestamptz
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("clima_surveys")
+}
+
+model ClimaQuestion {
+  id       String      @id @default(uuid()) @db.Uuid
+  surveyId String      @db.Uuid
+  survey   ClimaSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  order       Int    @default(0)
+  text        String
+  description String?
+  type        String
+  // RATING_5, RATING_10, SINGLE_CHOICE, MULTIPLE_CHOICE, YES_NO, TEXT, EMOJI, STARS
+
+  isRequired  Boolean @default(true)
+  minValue    Int?
+  maxValue    Int?
+  scaleLabels Json?
+
+  options ClimaQuestionOption[]
+  answers ClimaAnswer[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([surveyId, order])
+  @@map("clima_questions")
+}
+
+model ClimaQuestionOption {
+  id         String        @id @default(uuid()) @db.Uuid
+  questionId String        @db.Uuid
+  question   ClimaQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  order Int    @default(0)
+  value String
+  label String
+
+  @@index([questionId])
+  @@map("clima_question_options")
+}
+
+model ClimaRecipient {
+  id       String      @id @default(uuid()) @db.Uuid
+  surveyId String      @db.Uuid
+  survey   ClimaSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  employeeId   String?   @db.Uuid
+  employee     Employee? @relation("ClimaRecipientEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+
+  email       String?
+  phone       String?
+  name        String?
+
+  token       String    @unique
+  status      String    @default("PENDING")
+  // PENDING, SENT, OPENED, COMPLETED, EXPIRED
+
+  sentAt      DateTime?
+  openedAt    DateTime?
+  completedAt DateTime?
+  sentMethod  String?   // EMAIL, WHATSAPP, INTERNAL
+
+  response    ClimaResponse?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([surveyId])
+  @@index([token])
+  @@index([employeeId])
+  @@map("clima_recipients")
+}
+
+model ClimaResponse {
+  id          String         @id @default(uuid()) @db.Uuid
+  recipientId String         @unique @db.Uuid
+  recipient   ClimaRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  surveyId String      @db.Uuid
+  survey   ClimaSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  answers      ClimaAnswer[]
+  overallScore Float?
+  comments     String?
+  isComplete   Boolean   @default(false)
+  completedAt  DateTime?
+  ipAddress    String?
+
+  aiAnalysis   String?
+  aiSentiment  String?  // POSITIVO, NEUTRAL, NEGATIVO
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([surveyId])
+  @@map("clima_responses")
+}
+
+model ClimaAnswer {
+  id         String        @id @default(uuid()) @db.Uuid
+  responseId String        @db.Uuid
+  response   ClimaResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  questionId   String        @db.Uuid
+  question     ClimaQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionText String
+
+  value           String?
+  numericValue    Float?
+  textValue       String?
+  selectedOptions Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([responseId])
+  @@map("clima_answers")
+}
+
+model ClimaSuggestion {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  employeeId String?   @db.Uuid
+  employee   Employee? @relation("ClimaSuggestionEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+
+  type      String @default("SUGERENCIA")
+  // SUGERENCIA, RECLAMO, INQUIETUD, MEJORA, COMENTARIO, ALERTA
+
+  category  String?
+  priority  String  @default("MEDIA")
+  // BAJA, MEDIA, ALTA, CRITICA
+
+  title     String
+  content   String
+  isAnonymous Boolean @default(false)
+
+  status    String  @default("ABIERTO")
+  // ABIERTO, EN_PROCESO, RESUELTO, CERRADO
+
+  response  String?
+  respondedAt DateTime?
+  respondedById String?  @db.Uuid
+  respondedBy   PlatformUser? @relation("ClimaSuggestionRespondedBy", fields: [respondedById], references: [id], onDelete: SetNull)
+
+  attachmentUrl String?
+  sectorId      String? @db.Uuid
+
+  actionPlan ClimaActionPlan?
+
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @db.Timestamptz
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("ClimaSuggestionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  deletedAt   DateTime?     @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("clima_suggestions")
+}
+
+model ClimaActionPlan {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  surveyId     String?      @db.Uuid
+  survey       ClimaSurvey? @relation(fields: [surveyId], references: [id], onDelete: SetNull)
+
+  suggestionId String?          @db.Uuid
+  suggestion   ClimaSuggestion? @relation(fields: [suggestionId], references: [id], onDelete: SetNull)
+
+  title        String
+  description  String?
+  origin       String  @default("ENCUESTA")
+  // ENCUESTA, SUGERENCIA, RECLAMO, IA, MANUAL
+
+  criticality  String  @default("MEDIA")
+  status       String  @default("ABIERTO")
+  // ABIERTO, EN_PROCESO, COMPLETADO, VENCIDO, CANCELADO
+
+  responsibleId String?       @db.Uuid
+  responsible   PlatformUser? @relation("ClimaActionPlanResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+
+  dueDate       DateTime?
+  completedAt   DateTime?
+
+  actions       Json?
+  evidenceNotes String?
+
+  ncrId String? @db.Uuid
+
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @db.Timestamptz
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("ClimaActionPlanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  deletedAt   DateTime?     @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("clima_action_plans")
 }
 
 model AIUsageLog {

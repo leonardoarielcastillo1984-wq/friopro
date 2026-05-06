@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { getTenantId } from '@/lib/api';
@@ -14,7 +14,7 @@ import { DemoBanner } from '@/components/DemoBanner';
 import { DemoWatermark } from '@/components/DemoWatermark';
 import { DemoChecklist } from '@/components/DemoChecklist';
 import { DemoExpiredModal } from '@/components/DemoExpiredModal';
-import FloatingHelpBot from '@/components/FloatingHelpBot';
+import { SugerenciaBot } from '@/components/clima/SugerenciaBot';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -99,10 +99,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
         </>
       )}
 
-      {/* Global help bot - lazy loaded */}
-      <Suspense fallback={null}>
-        <FloatingHelpBot />
-      </Suspense>
+      {/* Buzón de sugerencias global */}
+      <SugerenciaBot />
 
       {/* Session timeout modal */}
       {showTimeoutModal && (
