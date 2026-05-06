@@ -24,6 +24,7 @@ type Audit = {
   code: string;
   title: string;
   status: string;
+  isoStandard: string[];
 };
 
 const RESPONSE_OPTIONS = [
@@ -46,6 +47,8 @@ export default function ChecklistPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newItem, setNewItem] = useState({ clause: '', requirement: '', whatToCheck: '' });
+  const [suggestedClauses, setSuggestedClauses] = useState<any[]>([]);
+  const [searchingClause, setSearchingClause] = useState(false);
 
   useEffect(() => {
     if (auditId) {
@@ -101,6 +104,33 @@ export default function ChecklistPage() {
     } finally {
       setAiLoading(false);
     }
+  }
+
+  async function searchClauses(clauseNumber: string) {
+    if (!clauseNumber || !audit?.isoStandard?.[0]) {
+      setSuggestedClauses([]);
+      return;
+    }
+
+    try {
+      setSearchingClause(true);
+      const res = await apiFetch(`/audit/normative-clauses?clauseNumber=${clauseNumber}&standardCode=${audit.isoStandard[0]}`) as any;
+      setSuggestedClauses(res.clauses || []);
+    } catch (err) {
+      setSuggestedClauses([]);
+    } finally {
+      setSearchingClause(false);
+    }
+  }
+
+  function selectClause(clause: any) {
+    setNewItem({ 
+      ...newItem, 
+      clause: clause.clauseNumber, 
+      requirement: clause.title,
+      whatToCheck: clause.content?.substring(0, 200) || ''
+    });
+    setSuggestedClauses([]);
   }
 
   async function addManualItem() {
@@ -378,17 +408,39 @@ export default function ChecklistPage() {
             </div>
             
             <div className="space-y-4">
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Cláusula / Capítulo <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={newItem.clause}
-                  onChange={(e) => setNewItem({ ...newItem, clause: e.target.value })}
+                  onChange={(e) => {
+                    setNewItem({ ...newItem, clause: e.target.value });
+                    searchClauses(e.target.value);
+                  }}
                   placeholder="Ej: 4.1, 5.2, Capítulo 3..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                {suggestedClauses.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                    {suggestedClauses.map((clause) => (
+                      <button
+                        key={clause.id}
+                        onClick={() => selectClause(clause)}
+                        className="w-full px-3 py-2 text-left hover:bg-gray-100 border-b border-gray-100 last:border-0"
+                      >
+                        <div className="font-medium text-sm text-gray-900">{clause.clauseNumber}</div>
+                        <div className="text-xs text-gray-600 truncate">{clause.title}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {searchingClause && (
+                  <div className="absolute right-3 top-9">
+                    <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                  </div>
+                )}
               </div>
               
               <div>

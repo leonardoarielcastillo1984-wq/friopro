@@ -1729,6 +1729,42 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
     return reply.send({ standards });
   });
 
+  // GET /audit/normative-clauses — Buscar cláusulas por número y código de norma
+  app.get('/audit/normative-clauses', async (req: FastifyRequest<{ Querystring: { clauseNumber: string; standardCode: string } }>, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    const { clauseNumber, standardCode } = req.query;
+    if (!clauseNumber || !standardCode) {
+      return reply.code(400).send({ error: 'clauseNumber y standardCode son requeridos' });
+    }
+
+    const clauses = await app.runWithDbContext(req, async (tx) => {
+      return tx.normativeClause.findMany({
+        where: {
+          normative: {
+            tenantId,
+            code: standardCode,
+            status: 'READY',
+            deletedAt: null,
+          },
+          clauseNumber: {
+            startsWith: clauseNumber,
+          },
+        },
+        select: {
+          id: true,
+          clauseNumber: true,
+          title: true,
+          content: true,
+        },
+        orderBy: { clauseNumber: 'asc' },
+      });
+    });
+
+    return reply.send({ clauses });
+  });
+
   // POST /audit/audits/:id/generate-checklist-from-normative — Generar checklist basado en normas normativas
   app.post(
     '/audit/audits/:id/generate-checklist-from-normative',
