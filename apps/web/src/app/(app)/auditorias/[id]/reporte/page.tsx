@@ -375,13 +375,48 @@ export default function ReportPage() {
             Resumen Ejecutivo
           </h2>
           {editMode && editingReport ? (
-            <textarea
-              value={editingReport.executiveSummary || ''}
-              onChange={(e) => setEditingReport({ ...editingReport, executiveSummary: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={4}
-              placeholder="Resumen ejecutivo..."
-            />
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Resumen Ejecutivo</label>
+                <textarea
+                  value={editingReport.executiveSummary || ''}
+                  onChange={(e) => setEditingReport({ ...editingReport, executiveSummary: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={4}
+                  placeholder="Resumen ejecutivo..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Objetivo</label>
+                <textarea
+                  value={editingReport.objective || ''}
+                  onChange={(e) => setEditingReport({ ...editingReport, objective: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                  placeholder="Objetivo de la auditoría..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Alcance</label>
+                <textarea
+                  value={editingReport.scope || ''}
+                  onChange={(e) => setEditingReport({ ...editingReport, scope: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                  placeholder="Alcance de la auditoría..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Procesos Auditados (separados por coma)</label>
+                <input
+                  type="text"
+                  value={editingReport.processesAudited?.join(', ') || ''}
+                  onChange={(e) => setEditingReport({ ...editingReport, processesAudited: e.target.value.split(',').map(s => s.trim()) })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Proceso 1, Proceso 2, Proceso 3..."
+                />
+              </div>
+            </div>
           ) : (
             <>
               {draft?.executiveSummary && (

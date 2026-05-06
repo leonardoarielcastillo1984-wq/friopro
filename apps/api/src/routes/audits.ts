@@ -767,6 +767,75 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // POST /audit/findings/:id/convert-to-ncr — Convertir hallazgo de auditoría a no conformidad
+  app.post(
+    '/audit/findings/:id/convert-to-ncr',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      try {
+        const result = await app.runWithDbContext(req, async (tx) => {
+          const finding = await tx.auditFinding.findFirst({
+            where: { id: req.params.id, tenantId, deletedAt: null },
+            include: { audit: true },
+          });
+          if (!finding) {
+            const err: any = new Error('Hallazgo no encontrado');
+            err.statusCode = 404;
+            throw err;
+          }
+
+          if (finding.ncrId) {
+            const err: any = new Error('Este hallazgo ya fue convertido a no conformidad');
+            err.statusCode = 409;
+            throw err;
+          }
+
+          const count = await tx.nonConformity.count({ where: { tenantId } });
+          const code = `NCR-${(count + 1).toString().padStart(4, '0')}`;
+
+          const severityMap: Record<string, any> = {
+            'CRITICAL': 'CRITICAL',
+            'MAJOR': 'MAJOR',
+            'MINOR': 'MINOR',
+            'TRIVIAL': 'OBSERVATION',
+          };
+
+          const ncr = await tx.nonConformity.create({
+            data: {
+              tenantId,
+              code,
+              title: `Hallazgo ${finding.code} - ${finding.audit.code}`,
+              description: finding.description,
+              severity: severityMap[finding.severity] || 'MINOR',
+              source: 'INTERNAL_AUDIT',
+              standard: finding.audit.isoStandard.join(', ') || '',
+              clause: finding.clause,
+              area: finding.area,
+              auditFindingId: finding.id,
+              detectedAt: finding.detectedAt || new Date(),
+              dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              createdById: req.auth!.userId,
+            },
+          });
+
+          await tx.auditFinding.update({
+            where: { id: finding.id },
+            data: { ncrId: ncr.id },
+          });
+
+          return { ncr, finding };
+        });
+
+        return reply.send(result);
+      } catch (err: any) {
+        console.error('Error converting finding to NCR:', err);
+        return reply.code(err.statusCode || 500).send({ error: err.message || 'Error al convertir a no conformidad' });
+      }
+    },
+  );
+
   // DELETE /audit/checklist/:id — Eliminar un item del checklist
   app.delete(
     '/audit/checklist/:id',
