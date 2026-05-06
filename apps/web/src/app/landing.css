@@ -32,6 +32,10 @@ body{background:#F0EEE9;color:#1A1A1A;font-family:'Syne',sans-serif;margin:0}
 /* Buttons light */
 .btn-primary-light{background:#E8541A;color:white;border:none;padding:12px 28px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:background 0.2s,transform 0.2s;display:inline-flex;align-items:center;gap:8px}
 .btn-primary-light:hover{background:#D44A10;transform:translateY(-1px)}
+/* Botón Ingresar verde 3D */
+.btn-ingresar-green{background:linear-gradient(180deg,#5cb85c 0%,#4cae4c 100%);color:white;border:none;border-bottom:3px solid #3d8b3d;border-radius:6px;padding:10px 24px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 12px rgba(76,174,76,0.35),inset 0 1px 0 rgba(255,255,255,0.25);transition:all 0.15s ease;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.btn-ingresar-green:hover{background:linear-gradient(180deg,#6abf6a 0%,#5cb85c 100%);box-shadow:0 6px 16px rgba(76,174,76,0.4),inset 0 1px 0 rgba(255,255,255,0.3);transform:translateY(-1px)}
+.btn-ingresar-green:active{transform:translateY(1px);border-bottom-width:1px;box-shadow:0 2px 6px rgba(76,174,76,0.25)}
 .btn-ghost-light{background:transparent;color:#1A1A1A;border:1px solid rgba(0,0,0,0.15);padding:11px 28px;font-family:'Syne',sans-serif;font-weight:600;font-size:14px;cursor:pointer;transition:border-color 0.2s,background 0.2s;display:inline-flex;align-items:center;gap:8px}
 .btn-ghost-light:hover{border-color:#E8541A;background:rgba(232,84,26,0.04)}
 
