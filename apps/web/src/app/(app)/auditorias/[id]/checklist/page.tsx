@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle } from 'lucide-react';
+import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle, Sparkles, Loader2 } from 'lucide-react';
 
 type ChecklistItem = {
   id: string;
@@ -15,6 +15,8 @@ type ChecklistItem = {
   comment: string | null;
   evidence: string | null;
   order: number;
+  aiSuggestion: string | null;
+  customFields: Record<string, any> | null;
 };
 
 type Audit = {
@@ -41,6 +43,7 @@ export default function ChecklistPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState({ answered: 0, total: 0 });
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     if (auditId) {
@@ -66,6 +69,21 @@ export default function ChecklistPage() {
       setError('Error al cargar el checklist');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function generateAiChecklist() {
+    try {
+      setAiLoading(true);
+      setError(null);
+      const res = await apiFetch(`/audit/audits/${auditId}/generate-checklist-from-normative`, { method: 'POST' }) as any;
+      if (res.message) {
+        await loadChecklist();
+      }
+    } catch (err) {
+      setError('Error al generar checklist con IA');
+    } finally {
+      setAiLoading(false);
     }
   }
 
@@ -161,6 +179,14 @@ export default function ChecklistPage() {
               {progress.answered}/{progress.total} ({getProgressPercentage()}%)
             </span>
           </div>
+          <button
+            onClick={generateAiChecklist}
+            disabled={aiLoading}
+            className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200 text-sm"
+          >
+            {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {aiLoading ? 'Generando...' : 'Regenerar desde normas'}
+          </button>
         </div>
       </div>
 
@@ -179,9 +205,20 @@ export default function ChecklistPage() {
                   </span>
                 </div>
                 <p className="text-gray-900 font-medium mb-2">{item.requirement}</p>
-                <p className="text-sm text-gray-500 mb-4">
+                <p className="text-sm text-gray-500 mb-2">
                   <span className="font-medium">Verificar:</span> {item.whatToCheck}
                 </p>
+
+                {/* AI Suggestion */}
+                {item.aiSuggestion && (
+                  <div className="mt-2 mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Sparkles className="w-4 h-4 text-purple-600" />
+                      <span className="text-xs font-medium text-purple-700">IA: Por qué esta cláusula es relevante</span>
+                    </div>
+                    <p className="text-sm text-purple-900">{item.aiSuggestion}</p>
+                  </div>
+                )}
 
                 {/* Response Buttons */}
                 <div className="flex gap-2 mb-4">
