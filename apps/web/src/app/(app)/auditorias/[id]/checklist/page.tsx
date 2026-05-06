@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle, Sparkles, Loader2 } from 'lucide-react';
+import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle, Sparkles, Loader2, Plus, X } from 'lucide-react';
 
 type ChecklistItem = {
   id: string;
@@ -44,6 +44,8 @@ export default function ChecklistPage() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState({ answered: 0, total: 0 });
   const [aiLoading, setAiLoading] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newItem, setNewItem] = useState({ clause: '', requirement: '', whatToCheck: '' });
 
   useEffect(() => {
     if (auditId) {
@@ -98,6 +100,29 @@ export default function ChecklistPage() {
       setError(err?.error || 'Error al generar checklist con IA');
     } finally {
       setAiLoading(false);
+    }
+  }
+
+  async function addManualItem() {
+    if (!newItem.clause.trim() || !newItem.requirement.trim()) {
+      setError('Cláusula y requisito son obligatorios');
+      return;
+    }
+    
+    try {
+      setSaving(true);
+      setError(null);
+      await apiFetch(`/audit/audits/${auditId}/checklist`, { 
+        method: 'POST',
+        body: JSON.stringify(newItem)
+      });
+      setNewItem({ clause: '', requirement: '', whatToCheck: '' });
+      setShowAddModal(false);
+      await loadChecklist();
+    } catch (err: any) {
+      setError(err?.error || 'Error al agregar item');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -193,14 +218,23 @@ export default function ChecklistPage() {
               {progress.answered}/{progress.total} ({getProgressPercentage()}%)
             </span>
           </div>
-          <button
-            onClick={generateAiChecklist}
-            disabled={aiLoading}
-            className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200 text-sm"
-          >
-            {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {aiLoading ? 'Generando...' : 'Regenerar desde normas'}
-          </button>
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors border border-blue-200 text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Agregar item manual
+            </button>
+            <button
+              onClick={generateAiChecklist}
+              disabled={aiLoading}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200 text-sm"
+            >
+              {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {aiLoading ? 'Generando...' : 'Regenerar desde normas'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -328,6 +362,90 @@ export default function ChecklistPage() {
           )}
         </button>
       </div>
+
+      {/* Modal para agregar item manual */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-lg max-w-lg w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Agregar Item Manual</h2>
+              <button 
+                onClick={() => setShowAddModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cláusula / Capítulo <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newItem.clause}
+                  onChange={(e) => setNewItem({ ...newItem, clause: e.target.value })}
+                  placeholder="Ej: 4.1, 5.2, Capítulo 3..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Requisito / Título <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newItem.requirement}
+                  onChange={(e) => setNewItem({ ...newItem, requirement: e.target.value })}
+                  placeholder="Título del requisito a verificar"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Qué verificar (opcional)
+                </label>
+                <textarea
+                  value={newItem.whatToCheck}
+                  onChange={(e) => setNewItem({ ...newItem, whatToCheck: e.target.value })}
+                  placeholder="Descripción detallada de qué verificar en la auditoría"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={addManualItem}
+                disabled={saving}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Agregando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    Agregar al Checklist
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

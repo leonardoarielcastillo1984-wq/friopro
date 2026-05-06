@@ -717,6 +717,47 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // POST /audit/audits/:id/checklist — Agregar item individual al checklist
+  app.post(
+    '/audit/audits/:id/checklist',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = (req.body ?? {}) as any;
+      const { clause, requirement, whatToCheck } = body;
+
+      if (!clause || !requirement) {
+        return reply.code(400).send({ error: 'Cláusula y requisito son obligatorios' });
+      }
+
+      const item = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
+        if (!audit) return null;
+
+        // Obtener el último order para agregar al final
+        const lastItem = await tx.auditChecklistItem.findFirst({
+          where: { auditId: req.params.id },
+          orderBy: { order: 'desc' },
+        });
+
+        return tx.auditChecklistItem.create({
+          data: {
+            auditId: req.params.id,
+            clause,
+            requirement,
+            whatToCheck: whatToCheck || '',
+            weight: 1,
+            order: lastItem ? lastItem.order + 1 : 0,
+          },
+        });
+      });
+
+      if (!item) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.code(201).send({ item });
+    },
+  );
+
   app.patch(
     '/audit/checklist/:id',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
