@@ -83,31 +83,33 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       const totalCount = await prismaSuperUser.companyRegistration.count();
       app.log.info(`[REGISTER-COMPANY] Total registros en DB: ${totalCount}`);
       
-      // Enviar email de notificación al admin
-      const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
+      // Enviar email de notificación al admin (soporta múltiples correos separados por coma)
+      const adminEmails = (process.env.ADMIN_NOTIFICATION_EMAILS || process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com').split(',').map(e => e.trim());
       const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
-      
+
       try {
-        const emailPayload = notificationEmail({
-          userEmail: adminEmail,
-          title: 'Nueva solicitud de registro de empresa',
-          message: `Se ha recibido una nueva solicitud de registro:\n\n` +
-            `<strong>Empresa:</strong> ${validatedData.companyName}\n` +
-            `<strong>Email:</strong> ${validatedData.email}\n` +
-            `<strong>RUT:</strong> ${validatedData.rut}\n` +
-            `<strong>Teléfono:</strong> ${validatedData.phone}\n` +
-            `<strong>Dirección:</strong> ${validatedData.address}\n\n` +
-            `Tenés una solicitud pendiente de aprobación.`,
-          actionLabel: 'Ver solicitudes pendientes',
-          actionUrl: `${appUrl}/admin/registros`,
-          type: 'warning',
-        });
-        
-        const emailResult = await sendEmail(emailPayload);
-        if (emailResult.success) {
-          app.log.info(`[REGISTER-COMPANY] Email de notificación enviado a ${adminEmail}`);
-        } else {
-          app.log.error(`[REGISTER-COMPANY] Error enviando email: ${emailResult.error}`);
+        for (const adminEmail of adminEmails) {
+          const emailPayload = notificationEmail({
+            userEmail: adminEmail,
+            title: 'Nueva solicitud de registro de empresa',
+            message: `Se ha recibido una nueva solicitud de registro:\n\n` +
+              `<strong>Empresa:</strong> ${validatedData.companyName}\n` +
+              `<strong>Email:</strong> ${validatedData.email}\n` +
+              `<strong>RUT:</strong> ${validatedData.rut}\n` +
+              `<strong>Teléfono:</strong> ${validatedData.phone}\n` +
+              `<strong>Dirección:</strong> ${validatedData.address}\n\n` +
+              `Tenés una solicitud pendiente de aprobación.`,
+            actionLabel: 'Ver solicitudes pendientes',
+            actionUrl: `${appUrl}/admin/registros`,
+            type: 'warning',
+          });
+
+          const emailResult = await sendEmail(emailPayload);
+          if (emailResult.success) {
+            app.log.info(`[REGISTER-COMPANY] Email de notificación enviado a ${adminEmail}`);
+          } else {
+            app.log.error(`[REGISTER-COMPANY] Error enviando email a ${adminEmail}: ${emailResult.error}`);
+          }
         }
       } catch (emailError) {
         app.log.error(`[REGISTER-COMPANY] Error enviando notificación: ${emailError}`);
