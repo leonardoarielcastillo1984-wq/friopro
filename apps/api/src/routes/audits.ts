@@ -775,7 +775,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const item = await app.runWithDbContext(req, async (tx) => {
-        return tx.checklistItem.delete({
+        return tx.auditChecklistItem.delete({
           where: { id: req.params.id },
         });
       });
