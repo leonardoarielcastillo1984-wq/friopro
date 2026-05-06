@@ -564,24 +564,19 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
-        await app.runWithDbContext(req, async (tx) => {
-          // Verificar que la auditoría existe y pertenece al tenant
-          const audit = await tx.audit.findUnique({
-            where: { id: req.params.id, tenantId },
-          });
-          if (!audit) return null;
-
-          // Eliminar en cascada: checklist, findings, team, schedule, report
-          await tx.auditChecklistItem.deleteMany({ where: { auditId: req.params.id } });
-          await tx.auditFinding.deleteMany({ where: { auditId: req.params.id } });
-          await tx.auditTeamMember.deleteMany({ where: { auditId: req.params.id } });
-          await tx.auditScheduleItem.deleteMany({ where: { auditId: req.params.id } });
-          await tx.auditReport.deleteMany({ where: { auditId: req.params.id } });
-
-          // Finalmente eliminar la auditoría
-          await tx.audit.delete({ where: { id: req.params.id, tenantId } });
-          return audit;
+        // Verificar que la auditoría existe y pertenece al tenant
+        const audit = await req.db?.prisma.audit.findUnique({
+          where: { id: req.params.id, tenantId },
         });
+        if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+
+        // Eliminar en cascada: checklist, findings, report (team y schedule se eliminan por cascade)
+        await req.db?.prisma.auditChecklistItem.deleteMany({ where: { auditId: req.params.id } });
+        await req.db?.prisma.auditFinding.deleteMany({ where: { auditId: req.params.id } });
+        await req.db?.prisma.auditReport.deleteMany({ where: { auditId: req.params.id } });
+
+        // Finalmente eliminar la auditoría (team y schedule se eliminan por cascade)
+        await req.db?.prisma.audit.delete({ where: { id: req.params.id, tenantId } });
 
         return reply.send({ message: 'Auditoría eliminada correctamente' });
       } catch (err: any) {
