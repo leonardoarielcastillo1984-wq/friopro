@@ -1756,11 +1756,11 @@ Donde "relevantClauses" es un array con objetos que contienen:
 - "index": número de índice (basados en 1) de la cláusula relevante
 - "reasoning": explicación específica de por qué esa cláusula es relevante para el departamento/proceso especificado`;
 
-        const filterResult = await llm.chat(filterPrompt, { temperature: 0.3 });
+        const filterResult = await llm.chat([{ role: 'user', content: filterPrompt }], 2048);
 
         let relevantClauses: Array<{ index: number; reasoning: string }> = [];
         try {
-          const parsed = JSON.parse(filterResult.content);
+          const parsed = JSON.parse(filterResult.text);
           relevantClauses = parsed.relevantClauses || [];
         } catch {
           // Si falla el parseo, usar todas las cláusulas con razonamiento genérico
