@@ -376,8 +376,6 @@ export default function ChecklistPage() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
         ))}
 
         {items.length === 0 && (
