@@ -35,6 +35,7 @@
     "bullmq": "^5.12.6",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "fastify": "^5.8.2",
     "fastify-plugin": "^4.5.1",

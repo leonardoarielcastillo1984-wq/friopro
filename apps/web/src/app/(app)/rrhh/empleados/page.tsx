@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, Search, Filter, Users, Building, Briefcase, MoreVertical, Edit2, UserCheck, Eye, EyeOff, Trash2, RefreshCw, UserPlus, Shield, UserX } from 'lucide-react';
+import { Plus, Search, Filter, Users, Building, Briefcase, MoreVertical, Edit2, UserCheck, Eye, EyeOff, Trash2, RefreshCw, UserPlus, Shield, UserX, Download, Upload, FileSpreadsheet } from 'lucide-react';
 
 interface Employee {
   id: string;
@@ -73,6 +73,11 @@ export default function EmployeesPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importStep, setImportStep] = useState(1);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<any>(null);
+  const [updateExisting, setUpdateExisting] = useState(false);
 
   useEffect(() => {
     loadEmployees();
@@ -112,9 +117,102 @@ export default function EmployeesPage() {
   const loadSupervisors = async () => {
     try {
       const res = await apiFetch<{ employees: any[] }>('/hr/employees');
-      setSupervisors(res?.employees ?? []);
+      setSupervisors(res?.employees?.filter((e: any) => e.status === 'ACTIVE' && !e.deletedAt) ?? []);
     } catch {
       setSupervisors([]);
+    }
+  };
+
+  // Funciones de Importación/Exportación
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await fetch('/api/hr/employees/template');
+      if (!response.ok) throw new Error('Error al descargar plantilla');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'plantilla_empleados.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error descargando plantilla:', error);
+      alert('Error al descargar plantilla');
+    }
+  };
+
+  const handleExportEmployees = async () => {
+    try {
+      const response = await fetch('/api/hr/employees/export');
+      if (!response.ok) throw new Error('Error al exportar empleados');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'empleados_export.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error exportando empleados:', error);
+      alert('Error al exportar empleados');
+    }
+  };
+
+  const handleImportPreview = async () => {
+    if (!importFile) return;
+
+    const formData = new FormData();
+    formData.append('file', importFile);
+    formData.append('updateExisting', updateExisting.toString());
+
+    try {
+      const response = await fetch('/api/hr/employees/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error('Error al procesar archivo');
+
+      const data = await response.json();
+      setImportPreview(data);
+      setImportStep(3);
+    } catch (error) {
+      console.error('Error en preview de importación:', error);
+      alert('Error al procesar archivo');
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importPreview) return;
+
+    try {
+      const response = await fetch('/api/hr/employees/import/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employees: importPreview.validEmployees,
+          updateExisting,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Error al confirmar importación');
+
+      const data = await response.json();
+      alert(`Importación exitosa: ${data.created} empleados creados, ${data.updated} actualizados`);
+      setShowImportModal(false);
+      setImportStep(1);
+      setImportFile(null);
+      setImportPreview(null);
+      loadEmployees();
+    } catch (error) {
+      console.error('Error confirmando importación:', error);
+      alert('Error al confirmar importación');
     }
   };
 
@@ -631,6 +729,27 @@ export default function EmployeesPage() {
           >
             <Plus className="h-4 w-4" />
             Nuevo Empleado
+          </button>
+          <button
+            onClick={handleDownloadTemplate}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Descargar Plantilla
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            Importar Excel
+          </button>
+          <button
+            onClick={handleExportEmployees}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Exportar Empleados
           </button>
         </div>
       </div>
@@ -2532,6 +2651,240 @@ export default function EmployeesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Importación */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Importar Empleados</h2>
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportStep(1);
+                    setImportFile(null);
+                    setImportPreview(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Paso 1: Subir archivo */}
+              {importStep === 1 && (
+                <div>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-4">
+                      Arrastra tu archivo Excel aquí o haz clic para seleccionar
+                    </p>
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700"
+                    >
+                      Seleccionar Archivo
+                    </label>
+                    {importFile && (
+                      <p className="mt-4 text-sm text-green-600">
+                        Archivo seleccionado: {importFile.name}
+                      </p>
+                    )}
+                  </div>
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        setShowImportModal(false);
+                        setImportStep(1);
+                        setImportFile(null);
+                      }}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => setImportStep(2)}
+                      disabled={!importFile}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Siguiente
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Paso 2: Opciones */}
+              {importStep === 2 && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Opciones de Importación</h3>
+                  <div className="space-y-4">
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={updateExisting}
+                        onChange={(e) => setUpdateExisting(e.target.checked)}
+                        className="w-5 h-5 text-blue-600 rounded"
+                      />
+                      <span className="text-gray-700">
+                        Actualizar empleados existentes según DNI
+                      </span>
+                    </label>
+                    <p className="text-sm text-gray-500">
+                      Si esta opción está activa, los empleados con DNI duplicado se actualizarán
+                      con la información del archivo. Si no está activa, se mostrará un error
+                      para los DNIs duplicados.
+                    </p>
+                  </div>
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button
+                      onClick={() => setImportStep(1)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Atrás
+                    </button>
+                    <button
+                      onClick={handleImportPreview}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      Validar Archivo
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Paso 3: Preview */}
+              {importStep === 3 && importPreview && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Preview de Importación</h3>
+                  
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <div className="text-2xl font-bold text-green-600">
+                        {importPreview.valid}
+                      </div>
+                      <div className="text-sm text-green-700">Válidos</div>
+                    </div>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <div className="text-2xl font-bold text-yellow-600">
+                        {importPreview.warnings}
+                      </div>
+                      <div className="text-sm text-yellow-700">Advertencias</div>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <div className="text-2xl font-bold text-red-600">
+                        {importPreview.errorCount}
+                      </div>
+                      <div className="text-sm text-red-700">Errores</div>
+                    </div>
+                  </div>
+
+                  {importPreview.validationErrors && importPreview.validationErrors.length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="font-semibold text-red-600 mb-2">Errores de Validación</h4>
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-h-60 overflow-y-auto">
+                        {importPreview.validationErrors.map((error: any, idx: number) => (
+                          <div key={idx} className="mb-2">
+                            <span className="font-medium">Fila {error.row}:</span>
+                            <span className="text-red-600 ml-2">{error.errors.join(', ')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {importPreview.validEmployees && importPreview.validEmployees.length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="font-semibold text-green-600 mb-2">Empleados a Importar</h4>
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4 max-h-60 overflow-y-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2">Fila</th>
+                              <th className="text-left py-2">Nombre</th>
+                              <th className="text-left py-2">Apellido</th>
+                              <th className="text-left py-2">DNI</th>
+                              <th className="text-left py-2">Email</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importPreview.validEmployees.map((emp: any, idx: number) => (
+                              <tr key={idx} className="border-b">
+                                <td className="py-2">{emp.row}</td>
+                                <td className="py-2">{emp.nombre}</td>
+                                <td className="py-2">{emp.apellido}</td>
+                                <td className="py-2">{emp.dni}</td>
+                                <td className="py-2">{emp.email}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button
+                      onClick={() => setImportStep(2)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Atrás
+                    </button>
+                    <button
+                      onClick={() => setImportStep(4)}
+                      disabled={importPreview.errorCount > 0}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Confirmar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Paso 4: Confirmación */}
+              {importStep === 4 && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Confirmar Importación</h3>
+                  <p className="text-gray-600 mb-6">
+                    Estás a punto de importar {importPreview?.valid} empleados.
+                    {updateExisting && ' Los empleados existentes con el mismo DNI serán actualizados.'}
+                    Esta acción no se puede deshacer.
+                  </p>
+                  
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                    <p className="text-sm text-yellow-800">
+                      ⚠️ Esta acción creará/actualizará empleados en la base de datos.
+                      Asegúrate de haber revisado el preview antes de continuar.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button
+                      onClick={() => setImportStep(3)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Atrás
+                    </button>
+                    <button
+                      onClick={handleConfirmImport}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                      Confirmar Importación
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

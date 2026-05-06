@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import argon2 from 'argon2';
 import { sendEmail, notificationEmail } from '../services/email.js';
+import ExcelJS from 'exceljs';
 
 // Validation schemas
 const emptyToUndefined = (val: unknown) => (val === '' || val === null || val === undefined ? undefined : val);
@@ -1406,6 +1407,563 @@ export default async function hrRoutes(fastify: FastifyInstance) {
       data: { positionId, competencyId, requiredLevel },
     });
     return reply.status(201).send(created);
+  });
+
+  // ========== EXCEL IMPORT/EXPORT ==========
+  
+  // GET /hr/employees/template - Descargar plantilla Excel
+  fastify.get('/employees/template', async (req, reply) => {
+    const tenantId = req.db?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const prisma = req.db?.prisma || fastify.prisma;
+
+    // Obtener datos existentes para listas válidas
+    const [departments, positions, employees] = await Promise.all([
+      prisma.department.findMany({ where: { tenantId }, select: { name: true } }),
+      prisma.position.findMany({ where: { tenantId }, select: { name: true } }),
+      prisma.employee.findMany({ where: { tenantId }, select: { firstName: true, lastName: true } }),
+    ]);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'SGI360';
+    workbook.created = new Date();
+
+    // HOJA 1: EMPLEADOS
+    const sheet = workbook.addWorksheet('EMPLEADOS');
+    
+    // Encabezados
+    const headers = [
+      'Nombre', 'Apellido', 'DNI', 'CUIL', 'FechaNacimiento', 'Email', 
+      'Telefono', 'Direccion', 'Departamento', 'Puesto', 'SupervisorTipo', 
+      'Supervisor', 'TipoContrato', 'FechaIngreso', 'Estado', 'Notas'
+    ];
+    
+    const headerRow = sheet.addRow(headers);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF0066CC' }
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Validaciones dropdown
+    const supervisorTypes = ['PERSONA', 'PUESTO'];
+    const contractTypes = ['Permanente', 'Temporal', 'Pasantía', 'Contratista'];
+    const statuses = ['Activo', 'Inactivo', 'Licencia'];
+
+    // Agregar validaciones
+    sheet.getCell('K2').dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [`"${supervisorTypes.join(',')}"`],
+      showErrorMessage: true,
+      errorStyle: 'error',
+      error: 'Valor inválido'
+    };
+    
+    sheet.getCell('N2').dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [`"${contractTypes.join(',')}"`],
+      showErrorMessage: true,
+      errorStyle: 'error',
+      error: 'Valor inválido'
+    };
+    
+    sheet.getCell('P2').dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [`"${statuses.join(',')}"`],
+      showErrorMessage: true,
+      errorStyle: 'error',
+      error: 'Valor inválido'
+    };
+
+    // Ajustar columnas
+    sheet.columns.forEach((column) => {
+      column.width = 20;
+    });
+    sheet.getRow(1).height = 30;
+
+    // Congelar primera fila
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // HOJA 2: INSTRUCCIONES
+    const instructionsSheet = workbook.addWorksheet('INSTRUCCIONES');
+    const instrRow = instructionsSheet.addRow(['INSTRUCCIONES DE IMPORTACIÓN']);
+    instrRow.font = { bold: true, size: 14 };
+    instructionsSheet.addRow([]);
+    
+    instructionsSheet.addRow(['CAMPOS OBLIGATORIOS:']);
+    instructionsSheet.addRow(['- Nombre: Primer nombre del empleado']);
+    instructionsSheet.addRow(['- Apellido: Apellido del empleado']);
+    instructionsSheet.addRow(['- DNI: Documento nacional de identidad (único)']);
+    instructionsSheet.addRow(['- Email: Correo electrónico válido']);
+    instructionsSheet.addRow(['- Telefono: Número de contacto']);
+    instructionsSheet.addRow(['- TipoContrato: Permanente, Temporal, Pasantía, Contratista']);
+    instructionsSheet.addRow(['- FechaIngreso: Formato DD/MM/YYYY']);
+    instructionsSheet.addRow(['- Estado: Activo, Inactivo, Licencia']);
+    instructionsSheet.addRow([]);
+    
+    instructionsSheet.addRow(['CAMPOS OPCIONALES:']);
+    instructionsSheet.addRow(['- CUIL: Código único de identificación laboral']);
+    instructionsSheet.addRow(['- FechaNacimiento: Formato DD/MM/YYYY']);
+    instructionsSheet.addRow(['- Direccion: Dirección postal']);
+    instructionsSheet.addRow(['- Departamento: Nombre del departamento (se crea si no existe)']);
+    instructionsSheet.addRow(['- Puesto: Nombre del puesto (se crea si no existe)']);
+    instructionsSheet.addRow(['- SupervisorTipo: PERSONA o PUESTO']);
+    instructionsSheet.addRow(['- Supervisor: Nombre del supervisor o nombre del puesto']);
+    instructionsSheet.addRow(['- Notas: Observaciones adicionales']);
+    instructionsSheet.addRow([]);
+    
+    instructionsSheet.addRow(['REGLAS DE IMPORTACIÓN:']);
+    instructionsSheet.addRow(['- Los DNIs deben ser únicos']);
+    instructionsSheet.addRow(['- Los emails deben ser válidos']);
+    instructionsSheet.addRow(['- Las fechas deben estar en formato DD/MM/YYYY']);
+    instructionsSheet.addRow(['- Departamentos y puestos inexistentes se crean automáticamente']);
+    instructionsSheet.addRow(['- Puede actualizar empleados existentes marcando la opción correspondiente']);
+
+    // HOJA 3: LISTAS VÁLIDAS
+    const listsSheet = workbook.addWorksheet('LISTAS_VALIDAS');
+    const listsRow = listsSheet.addRow(['LISTAS VÁLIDAS']);
+    listsRow.font = { bold: true, size: 14 };
+    listsSheet.addRow([]);
+    
+    listsSheet.addRow(['DEPARTAMENTOS EXISTENTES:']);
+    departments.forEach(dept => listsSheet.addRow([dept.name]));
+    listsSheet.addRow([]);
+    
+    listsSheet.addRow(['PUESTOS EXISTENTES:']);
+    positions.forEach(pos => listsSheet.addRow([pos.name]));
+    listsSheet.addRow([]);
+    
+    listsSheet.addRow(['SUPERVISORES EXISTENTES:']);
+    employees.forEach(emp => listsSheet.addRow([`${emp.firstName} ${emp.lastName}`]));
+
+    // Generar buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    reply.header('Content-Disposition', 'attachment; filename=plantilla_empleados.xlsx');
+    return reply.send(buffer);
+  });
+
+  // POST /hr/employees/import - Importación masiva (preview)
+  fastify.post('/employees/import', async (req, reply) => {
+    const tenantId = req.db?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const prisma = req.db?.prisma || fastify.prisma;
+    const body = req.body as any;
+    
+    try {
+      const data = await req.file();
+      if (!data) return reply.code(400).send({ error: 'No se proporcionó archivo' });
+
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.read(data.file);
+      
+      const sheet = workbook.getWorksheet('EMPLEADOS');
+      if (!sheet) return reply.code(400).send({ error: 'Hoja EMPLEADOS no encontrada' });
+
+      const validEmployees: any[] = [];
+      const errors: any[] = [];
+      
+      // Obtener datos existentes
+      const [existingDepts, existingPositions, existingEmployees] = await Promise.all([
+        prisma.department.findMany({ where: { tenantId } }),
+        prisma.position.findMany({ where: { tenantId } }),
+        prisma.employee.findMany({ where: { tenantId } }),
+      ]);
+
+      const deptMap = new Map(existingDepts.map(d => [d.name.toLowerCase(), d.id]));
+      const positionMap = new Map(existingPositions.map(p => [p.name.toLowerCase(), p.id]));
+      const dniMap = new Map(existingEmployees.map(e => [e.dni, e.id]));
+      const employeeNameMap = new Map(existingEmployees.map(e => [`${e.firstName} ${e.lastName}`.toLowerCase(), e.id]));
+
+      const updateExisting = body?.updateExisting === true;
+
+      // Leer filas (saltando encabezado)
+      sheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // Saltar encabezado
+
+        const cells = row.values as any[];
+        const rowData = {
+          row: rowNumber,
+          nombre: cells[1],
+          apellido: cells[2],
+          dni: cells[3],
+          cuil: cells[4],
+          fechaNacimiento: cells[5],
+          email: cells[6],
+          telefono: cells[7],
+          direccion: cells[8],
+          departamento: cells[9],
+          puesto: cells[10],
+          supervisorTipo: cells[11],
+          supervisor: cells[12],
+          tipoContrato: cells[13],
+          fechaIngreso: cells[14],
+          estado: cells[15],
+          notas: cells[16],
+        };
+
+        // Validaciones
+        const rowErrors: string[] = [];
+        const rowWarnings: string[] = [];
+
+        if (!rowData.nombre) rowErrors.push('Nombre es obligatorio');
+        if (!rowData.apellido) rowErrors.push('Apellido es obligatorio');
+        if (!rowData.dni) rowErrors.push('DNI es obligatorio');
+        if (!rowData.email) rowErrors.push('Email es obligatorio');
+        if (!rowData.telefono) rowErrors.push('Telefono es obligatorio');
+        if (!rowData.tipoContrato) rowErrors.push('TipoContrato es obligatorio');
+        if (!rowData.fechaIngreso) rowErrors.push('FechaIngreso es obligatorio');
+        if (!rowData.estado) rowErrors.push('Estado es obligatorio');
+
+        // Validar email
+        if (rowData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rowData.email)) {
+          rowErrors.push('Email inválido');
+        }
+
+        // Validar DNI duplicado
+        if (rowData.dni && dniMap.has(rowData.dni)) {
+          if (updateExisting) {
+            rowWarnings.push('DNI ya existe, se actualizará');
+          } else {
+            rowErrors.push('DNI ya existe');
+          }
+        }
+
+        // Validar fechas
+        const parseDate = (dateStr: string) => {
+          if (!dateStr) return null;
+          const parts = dateStr.split('/');
+          if (parts.length === 3) {
+            const [day, month, year] = parts;
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          }
+          return null;
+        };
+
+        const fechaNacimiento = parseDate(rowData.fechaNacimiento);
+        const fechaIngreso = parseDate(rowData.fechaIngreso);
+
+        if (rowData.fechaNacimiento && !fechaNacimiento) {
+          rowErrors.push('FechaNacimiento inválida (formato DD/MM/YYYY)');
+        }
+        if (rowData.fechaIngreso && !fechaIngreso) {
+          rowErrors.push('FechaIngreso inválida (formato DD/MM/YYYY)');
+        }
+
+        // Validar supervisor
+        if (rowData.supervisor && rowData.supervisorTipo) {
+          if (rowData.supervisorTipo === 'PERSONA') {
+            const supervisorId = employeeNameMap.get(rowData.supervisor.toLowerCase());
+            if (!supervisorId) rowErrors.push('Supervisor no encontrado');
+          } else if (rowData.supervisorTipo === 'PUESTO') {
+            const positionId = positionMap.get(rowData.supervisor.toLowerCase());
+            if (!positionId) rowErrors.push('Puesto de supervisor no encontrado');
+          }
+        }
+
+        // Mapear tipo de contrato
+        const contractTypeMap: Record<string, string> = {
+          'Permanente': 'PERMANENT',
+          'Temporal': 'TEMPORARY',
+          'Pasantía': 'INTERN',
+          'Contratista': 'CONTRACTOR',
+        };
+        const contractType = contractTypeMap[rowData.tipoContrato] || 'PERMANENT';
+
+        // Mapear estado
+        const statusMap: Record<string, string> = {
+          'Activo': 'ACTIVE',
+          'Inactivo': 'INACTIVE',
+          'Licencia': 'ON_LEAVE',
+        };
+        const status = statusMap[rowData.estado] || 'ACTIVE';
+
+        if (rowErrors.length > 0) {
+          errors.push({
+            row: rowData.row,
+            errors: rowErrors,
+            data: rowData,
+          });
+        } else {
+          validEmployees.push({
+            ...rowData,
+            contractType,
+            status,
+            fechaNacimiento: fechaNacimiento?.toISOString(),
+            fechaIngreso: fechaIngreso?.toISOString(),
+            warnings: rowWarnings,
+          });
+        }
+      });
+
+      // Preparar respuesta de preview
+      return reply.send({
+        valid: validEmployees.length,
+        warnings: validEmployees.reduce((sum, e) => sum + e.warnings.length, 0),
+        errorCount: errors.length,
+        validEmployees: validEmployees.map(e => ({
+          row: e.row,
+          nombre: e.nombre,
+          apellido: e.apellido,
+          dni: e.dni,
+          email: e.email,
+          warnings: e.warnings,
+        })),
+        validationErrors: errors.map(e => ({
+          row: e.row,
+          errors: e.errors,
+          data: e.data,
+        })),
+      });
+    } catch (error: any) {
+      console.error('Error importando empleados:', error);
+      return reply.code(500).send({ error: error.message || 'Error al importar empleados' });
+    }
+  });
+
+  // POST /hr/employees/import/confirm - Confirmar importación
+  fastify.post('/employees/import/confirm', async (req, reply) => {
+    const tenantId = req.db?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const prisma = req.db?.prisma || fastify.prisma;
+    const { employees, updateExisting } = req.body as any;
+    
+    if (!employees || !Array.isArray(employees)) {
+      return reply.code(400).send({ error: 'Datos inválidos' });
+    }
+
+    try {
+      const results = [];
+      
+      // Obtener datos existentes
+      const [existingDepts, existingPositions, existingEmployees] = await Promise.all([
+        prisma.department.findMany({ where: { tenantId } }),
+        prisma.position.findMany({ where: { tenantId } }),
+        prisma.employee.findMany({ where: { tenantId } }),
+      ]);
+
+      const deptMap = new Map(existingDepts.map(d => [d.name.toLowerCase(), d.id]));
+      const positionMap = new Map(existingPositions.map(p => [p.name.toLowerCase(), p.id]));
+      const employeeNameMap = new Map(existingEmployees.map(e => [`${e.firstName} ${e.lastName}`.toLowerCase(), e.id]));
+      
+      for (const emp of employees) {
+        // Obtener o crear departamento
+        let departmentId: string | undefined;
+        if (emp.departamento) {
+          departmentId = deptMap.get(emp.departamento.toLowerCase());
+          if (!departmentId) {
+            const newDept = await prisma.department.create({
+              data: {
+                tenantId,
+                name: emp.departamento,
+                createdById: req.auth?.userId,
+              },
+            });
+            departmentId = newDept.id;
+            deptMap.set(emp.departamento.toLowerCase(), newDept.id);
+          }
+        }
+
+        // Obtener o crear puesto
+        let positionId: string | undefined;
+        if (emp.puesto) {
+          positionId = positionMap.get(emp.puesto.toLowerCase());
+          if (!positionId) {
+            const newPos = await prisma.position.create({
+              data: {
+                tenantId,
+                name: emp.puesto,
+                createdById: req.auth?.userId,
+              },
+            });
+            positionId = newPos.id;
+            positionMap.set(emp.puesto.toLowerCase(), newPos.id);
+          }
+        }
+
+        // Obtener supervisor
+        let supervisorId: string | undefined;
+        let reportsToPositionId: string | undefined;
+        if (emp.supervisor && emp.supervisorTipo) {
+          if (emp.supervisorTipo === 'PERSONA') {
+            supervisorId = employeeNameMap.get(emp.supervisor.toLowerCase());
+          } else if (emp.supervisorTipo === 'PUESTO') {
+            reportsToPositionId = positionMap.get(emp.supervisor.toLowerCase());
+          }
+        }
+
+        const existingEmployee = await prisma.employee.findFirst({
+          where: { dni: emp.dni, tenantId },
+        });
+
+        if (existingEmployee && updateExisting) {
+          // Actualizar empleado existente
+          const updated = await prisma.employee.update({
+            where: { id: existingEmployee.id },
+            data: {
+              firstName: emp.nombre,
+              lastName: emp.apellido,
+              cuil: emp.cuil,
+              birthDate: emp.fechaNacimiento ? new Date(emp.fechaNacimiento) : undefined,
+              email: emp.email,
+              phone: emp.telefono,
+              address: emp.direccion,
+              departmentId,
+              positionId,
+              supervisorId,
+              reportsToPositionId,
+              contractType: emp.contractType,
+              hireDate: new Date(emp.fechaIngreso),
+              status: emp.status,
+              notes: emp.notas,
+            },
+          });
+          results.push({ action: 'updated', id: updated.id, dni: emp.dni });
+        } else if (!existingEmployee) {
+          // Crear nuevo empleado
+          const createData: any = {
+            tenantId,
+            firstName: emp.nombre,
+            lastName: emp.apellido,
+            dni: emp.dni,
+            cuil: emp.cuil,
+            email: emp.email,
+            phone: emp.telefono,
+            address: emp.direccion,
+            departmentId,
+            positionId,
+            supervisorId,
+            reportsToPositionId,
+            contractType: emp.contractType,
+            hireDate: new Date(emp.fechaIngreso),
+            status: emp.status,
+            notes: emp.notas,
+            createdById: req.auth?.userId,
+          };
+          
+          if (emp.fechaNacimiento) {
+            createData.birthDate = new Date(emp.fechaNacimiento);
+          }
+          
+          const created = await prisma.employee.create({
+            data: createData,
+          });
+          results.push({ action: 'created', id: created.id, dni: emp.dni });
+        }
+      }
+
+      return reply.send({
+        success: true,
+        results,
+        total: results.length,
+        created: results.filter(r => r.action === 'created').length,
+        updated: results.filter(r => r.action === 'updated').length,
+      });
+    } catch (error: any) {
+      console.error('Error confirmando importación:', error);
+      return reply.code(500).send({ error: error.message || 'Error al confirmar importación' });
+    }
+  });
+
+  // GET /hr/employees/export - Exportar empleados
+  fastify.get('/employees/export', async (req, reply) => {
+    const tenantId = req.db?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const prisma = req.db?.prisma || fastify.prisma;
+
+    const employees = await prisma.employee.findMany({
+      where: { tenantId, deletedAt: null },
+      include: {
+        department: true,
+        position: true,
+        supervisor: true,
+      },
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'SGI360';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('EMPLEADOS');
+
+    // Encabezados
+    const headers = [
+      'Nombre', 'Apellido', 'DNI', 'CUIL', 'FechaNacimiento', 'Email', 
+      'Telefono', 'Direccion', 'Departamento', 'Puesto', 'SupervisorTipo', 
+      'Supervisor', 'TipoContrato', 'FechaIngreso', 'Estado', 'Notas'
+    ];
+    
+    const headerRow = sheet.addRow(headers);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF0066CC' }
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Mapear tipo de contrato
+    const contractTypeMap: Record<string, string> = {
+      'PERMANENT': 'Permanente',
+      'TEMPORARY': 'Temporal',
+      'INTERN': 'Pasantía',
+      'CONTRACTOR': 'Contratista',
+    };
+
+    // Mapear estado
+    const statusMap: Record<string, string> = {
+      'ACTIVE': 'Activo',
+      'INACTIVE': 'Inactivo',
+      'ON_LEAVE': 'Licencia',
+    };
+
+    // Agregar datos
+    employees.forEach(emp => {
+      sheet.addRow([
+        emp.firstName,
+        emp.lastName,
+        emp.dni,
+        emp.cuil || '',
+        emp.birthDate ? new Date(emp.birthDate).toLocaleDateString('es-ES') : '',
+        emp.email,
+        emp.phone,
+        emp.address || '',
+        emp.department?.name || '',
+        emp.position?.name || '',
+        emp.supervisorId ? 'PERSONA' : '',
+        emp.supervisor ? `${emp.supervisor.firstName} ${emp.supervisor.lastName}` : '',
+        contractTypeMap[emp.contractType] || emp.contractType,
+        emp.hireDate ? new Date(emp.hireDate).toLocaleDateString('es-ES') : '',
+        statusMap[emp.status] || emp.status,
+        emp.notes || '',
+      ]);
+    });
+
+    // Ajustar columnas
+    sheet.columns.forEach((column) => {
+      column.width = 20;
+    });
+    sheet.getRow(1).height = 30;
+
+    // Congelar primera fila
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // Generar buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    reply.header('Content-Disposition', 'attachment; filename=empleados_export.xlsx');
+    return reply.send(buffer);
   });
 
 }
