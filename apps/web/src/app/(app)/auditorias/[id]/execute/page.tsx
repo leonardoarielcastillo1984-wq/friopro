@@ -115,6 +115,8 @@ export default function AuditExecutePage() {
       ]);
       if (fullRes.audit) {
         setAudit(fullRes.audit);
+        console.log('[DEBUG] Frontend /full response checklist:', fullRes.audit.checklist?.length || 0, 'items');
+        console.log('[DEBUG] First item:', fullRes.audit.checklist?.[0]);
         setChecklist(fullRes.audit.checklist || []);
         setFindings(fullRes.audit.findings || []);
         setTeam(fullRes.audit.team || []);
