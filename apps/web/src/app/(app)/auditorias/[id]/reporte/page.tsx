@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ChevronLeft, FileText, Download, Printer, Share2, CheckCircle, AlertCircle, FileBarChart } from 'lucide-react';
+import { ChevronLeft, FileText, Download, Printer, Share2, CheckCircle, AlertCircle, FileBarChart, Edit, Save, X, Plus } from 'lucide-react';
 import { useCompany } from '@/lib/company-context';
 
 type Audit = {
@@ -97,6 +97,19 @@ const STATUS_LABELS: Record<string, string> = {
   'CLOSED': 'Cerrada',
 };
 
+const SEVERITY_LABELS: Record<string, string> = {
+  'CRITICAL': 'Crítica',
+  'MAJOR': 'Mayor',
+  'MINOR': 'Menor',
+  'TRIVIAL': 'Trivial',
+};
+
+const FINDING_TYPE_LABELS: Record<string, string> = {
+  'NON_CONFORMITY': 'No Conformidad',
+  'OBSERVATION': 'Observación',
+  'OPPORTUNITY': 'Oportunidad',
+};
+
 export default function ReportPage() {
   const params = useParams();
   const auditId = params.id as string;
@@ -111,6 +124,9 @@ export default function ReportPage() {
   const [draft, setDraft] = useState<DraftResponse['draft'] | null>(null);
   const [report, setReport] = useState<AuditReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editingReport, setEditingReport] = useState<AuditReport | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (auditId) {
@@ -158,10 +174,57 @@ export default function ReportPage() {
     }
   }
 
-  function generatePDF() {
+  async function generatePDF() {
     setGenerating(true);
     window.print();
     setTimeout(() => setGenerating(false), 1000);
+  }
+
+  async function saveReport() {
+    if (!editingReport) return;
+    try {
+      setSaving(true);
+      await apiFetch(`/audit/audits/${auditId}/report`, {
+        method: 'PATCH',
+        json: editingReport,
+      });
+      setReport(editingReport);
+      setEditMode(false);
+    } catch (err) {
+      setError('Error al guardar el informe');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function startEdit() {
+    setEditingReport(report || {
+      auditId,
+      executiveSummary: draft?.executiveSummary || null,
+      objective: draft?.objective || audit.objective || null,
+      scope: draft?.scope || audit.scope || null,
+      processesAudited: draft?.processesAudited || [],
+      overallScore: draft?.overallScore || null,
+      totalItems: draft?.totalItems || 0,
+      compliantItems: draft?.compliantItems || 0,
+      nonCompliantItems: draft?.nonCompliantItems || 0,
+      totalFindings: draft?.totalFindings || 0,
+      openFindings: draft?.openFindings || 0,
+      closedFindings: draft?.closedFindings || 0,
+      conclusion: draft?.conclusion || null,
+    });
+    setEditMode(true);
+  }
+
+  async function createNCRFromFinding(findingId: string) {
+    try {
+      await apiFetch(`/audit/findings/${findingId}/convert-to-ncr`, {
+        method: 'POST',
+      });
+      loadData();
+    } catch (err) {
+      setError('Error al crear no conformidad');
+    }
   }
 
   function getComplianceStats() {
@@ -226,26 +289,51 @@ export default function ReportPage() {
           <p className="text-gray-600">{audit.code} - {audit.title}</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={generateDraft}
-            disabled={draftGenerating}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            <FileBarChart className="w-4 h-4" />
-            {draftGenerating ? 'Generando...' : 'Generar borrador'}
-          </button>
-          <button
-            onClick={generatePDF}
-            disabled={generating}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" />
-            {generating ? 'Generando...' : 'Descargar PDF'}
-          </button>
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            <Share2 className="w-4 h-4" />
-            Compartir
-          </button>
+          {editMode ? (
+            <>
+              <button
+                onClick={saveReport}
+                disabled={saving}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+              <button
+                onClick={() => setEditMode(false)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                <X className="w-4 h-4" />
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={startEdit}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Edit className="w-4 h-4" />
+                Editar
+              </button>
+              <button
+                onClick={generateDraft}
+                disabled={draftGenerating}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+              >
+                <FileBarChart className="w-4 h-4" />
+                {draftGenerating ? 'Generando...' : 'Generar borrador'}
+              </button>
+              <button
+                onClick={generatePDF}
+                disabled={generating}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                {generating ? 'Generando...' : 'Descargar PDF'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -286,10 +374,22 @@ export default function ReportPage() {
             <FileText className="w-5 h-5" />
             Resumen Ejecutivo
           </h2>
-          {draft?.executiveSummary && (
-            <div className="bg-gray-50 border border-gray-200 px-4 py-3 rounded-lg mb-6">
-              <p className="text-gray-700 whitespace-pre-line">{draft.executiveSummary}</p>
-            </div>
+          {editMode && editingReport ? (
+            <textarea
+              value={editingReport.executiveSummary || ''}
+              onChange={(e) => setEditingReport({ ...editingReport, executiveSummary: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={4}
+              placeholder="Resumen ejecutivo..."
+            />
+          ) : (
+            <>
+              {draft?.executiveSummary && (
+                <div className="bg-gray-50 border border-gray-200 px-4 py-3 rounded-lg mb-6">
+                  <p className="text-gray-700 whitespace-pre-line">{draft.executiveSummary}</p>
+                </div>
+              )}
+            </>
           )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-blue-50 p-4 rounded-lg text-center">
@@ -407,14 +507,14 @@ export default function ReportPage() {
                       finding.severity === 'MINOR' ? 'bg-yellow-100 text-yellow-800' :
                       'bg-gray-100 text-gray-800'
                     }`}>
-                      {finding.severity}
+                      {SEVERITY_LABELS[finding.severity] || finding.severity}
                     </span>
                     <span className={`px-2 py-1 text-xs rounded-full ${
                       finding.type === 'NON_CONFORMITY' ? 'bg-red-100 text-red-800' :
                       finding.type === 'OBSERVATION' ? 'bg-yellow-100 text-yellow-800' :
                       'bg-blue-100 text-blue-800'
                     }`}>
-                      {finding.type.replace('_', ' ')}
+                      {FINDING_TYPE_LABELS[finding.type] || finding.type.replace('_', ' ')}
                     </span>
                   </div>
                   <p className="text-gray-900">{finding.description}</p>
@@ -422,6 +522,13 @@ export default function ReportPage() {
                     <span>Cláusula: {finding.clause}</span>
                     <span>Área: {finding.area}</span>
                   </div>
+                  <button
+                    onClick={() => createNCRFromFinding(finding.id)}
+                    className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Crear No Conformidad
+                  </button>
                 </div>
               ))}
             </div>
@@ -435,15 +542,25 @@ export default function ReportPage() {
             Conclusión
           </h2>
           <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="text-gray-700 whitespace-pre-line">
-              {(draft?.conclusion || report?.conclusion) ? (draft?.conclusion || report?.conclusion) : (
-                `La auditoría ${audit.code} ha sido ${audit.status === 'COMPLETED' ? 'completada' : 'realizada'} ` +
-                `con un nivel de cumplimiento del ${stats.percentage}%. ` +
-                (findings.length > 0
-                  ? `Se han identificado ${findings.length} hallazgos que requieren atención, de los cuales ${getSeverityCount('CRITICAL') + getSeverityCount('MAJOR')} son de severidad crítica o mayor.`
-                  : 'No se han identificado hallazgos significativos.')
-              )}
-            </p>
+            {editMode && editingReport ? (
+              <textarea
+                value={editingReport.conclusion || ''}
+                onChange={(e) => setEditingReport({ ...editingReport, conclusion: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                rows={4}
+                placeholder="Conclusión..."
+              />
+            ) : (
+              <p className="text-gray-700 whitespace-pre-line">
+                {(draft?.conclusion || report?.conclusion) ? (draft?.conclusion || report?.conclusion) : (
+                  `La auditoría ${audit.code} ha sido ${audit.status === 'COMPLETED' ? 'completada' : 'realizada'} ` +
+                  `con un nivel de cumplimiento del ${stats.percentage}%. ` +
+                  (findings.length > 0
+                    ? `Se han identificado ${findings.length} hallazgos que requieren atención, de los cuales ${getSeverityCount('CRITICAL') + getSeverityCount('MAJOR')} son de severidad crítica o mayor.`
+                    : 'No se han identificado hallazgos significativos.')
+                )}
+              </p>
+            )}
           </div>
         </div>
 

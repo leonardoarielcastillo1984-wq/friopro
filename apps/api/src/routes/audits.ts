@@ -931,6 +931,63 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // PATCH /audit/audits/:id/report — Guardar informe manualmente
+  app.patch(
+    '/audit/audits/:id/report',
+    async (req: FastifyRequest<{ Params: { id: string }, Body: Partial<AuditReport> }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      try {
+        const report = await app.runWithDbContext(req, async (tx) => {
+          const audit = await tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
+          if (!audit) return null;
+
+          return tx.auditReport.upsert({
+            where: { auditId: audit.id },
+            create: {
+              auditId: audit.id,
+              executiveSummary: req.body.executiveSummary || '',
+              objective: req.body.objective || audit.objective || '',
+              scope: req.body.scope || audit.scope || '',
+              processesAudited: req.body.processesAudited || [],
+              overallScore: req.body.overallScore || null,
+              totalItems: req.body.totalItems || 0,
+              compliantItems: req.body.compliantItems || 0,
+              nonCompliantItems: req.body.nonCompliantItems || 0,
+              totalFindings: req.body.totalFindings || 0,
+              openFindings: req.body.openFindings || 0,
+              closedFindings: req.body.closedFindings || 0,
+              conclusion: req.body.conclusion || '',
+              generatedById: req.auth!.userId,
+            },
+            update: {
+              executiveSummary: req.body.executiveSummary,
+              objective: req.body.objective,
+              scope: req.body.scope,
+              processesAudited: req.body.processesAudited,
+              overallScore: req.body.overallScore,
+              totalItems: req.body.totalItems,
+              compliantItems: req.body.compliantItems,
+              nonCompliantItems: req.body.nonCompliantItems,
+              totalFindings: req.body.totalFindings,
+              openFindings: req.body.openFindings,
+              closedFindings: req.body.closedFindings,
+              conclusion: req.body.conclusion,
+              generatedById: req.auth!.userId,
+            },
+          });
+        });
+
+        if (!report) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+        return reply.send({ report });
+      } catch (err) {
+        console.error('Error saving report:', err);
+        return reply.code(500).send({ error: 'Error al guardar el informe' });
+      }
+    },
+  );
+
   // ACTIONS (namespaced to avoid colliding with AI audit routes)
   app.get(
     '/audit/iso-findings/:id',
