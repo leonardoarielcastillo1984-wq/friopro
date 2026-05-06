@@ -12,7 +12,6 @@ COPY prisma/migrations prisma/migrations/
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm --filter api install --no-frozen-lockfile
 
-RUN rm -rf /app/apps/api/node_modules
 COPY apps/api apps/api/
 # apps/api/prisma/schema.prisma already contains the full merged schema (106 models)
 RUN pnpm --filter api exec prisma generate
