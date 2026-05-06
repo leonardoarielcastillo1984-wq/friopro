@@ -57,9 +57,17 @@ services:
       CORS_ORIGIN: http://logismart.ar
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: /app/uploads
-      EMAIL_PROVIDER: console
-      LLM_PROVIDER: groq
-      GROQ_MODEL: llama-3.1-8b-instant
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      EMAIL_FROM: ${EMAIL_FROM:-SGI 360 <noreply@logismart.ar>}
+      ADMIN_NOTIFICATION_EMAIL: ${ADMIN_NOTIFICATION_EMAIL:-leonardoarielcastillo1984@gmail.com}
+      LLM_PROVIDER: ${LLM_PROVIDER:-groq}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      GROQ_API_KEY: ${GROQ_API_KEY}
       MERCADOPAGO_ACCESS_TOKEN: APP_USR-4473975081608854-040416-fcaec1d4ed41d106c268c51f17ac271c-75716951
       WEBHOOK_BASE_URL: https://logismart.ar
     ports:
