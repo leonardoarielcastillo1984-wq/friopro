@@ -1416,15 +1416,6 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     const tenantId = req.db?.tenantId;
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
-    const prisma = req.db?.prisma || fastify.prisma;
-
-    // Obtener datos existentes para listas válidas
-    const [departments, positions, employees] = await Promise.all([
-      prisma.department.findMany({ where: { tenantId }, select: { name: true } }),
-      prisma.position.findMany({ where: { tenantId }, select: { name: true } }),
-      prisma.employee.findMany({ where: { tenantId }, select: { firstName: true, lastName: true } }),
-    ]);
-
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'SGI360';
     workbook.created = new Date();
@@ -1524,23 +1515,6 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     instructionsSheet.addRow(['- Las fechas deben estar en formato DD/MM/YYYY']);
     instructionsSheet.addRow(['- Departamentos y puestos inexistentes se crean automáticamente']);
     instructionsSheet.addRow(['- Puede actualizar empleados existentes marcando la opción correspondiente']);
-
-    // HOJA 3: LISTAS VÁLIDAS
-    const listsSheet = workbook.addWorksheet('LISTAS_VALIDAS');
-    const listsRow = listsSheet.addRow(['LISTAS VÁLIDAS']);
-    listsRow.font = { bold: true, size: 14 };
-    listsSheet.addRow([]);
-    
-    listsSheet.addRow(['DEPARTAMENTOS EXISTENTES:']);
-    departments.forEach(dept => listsSheet.addRow([dept.name]));
-    listsSheet.addRow([]);
-    
-    listsSheet.addRow(['PUESTOS EXISTENTES:']);
-    positions.forEach(pos => listsSheet.addRow([pos.name]));
-    listsSheet.addRow([]);
-    
-    listsSheet.addRow(['SUPERVISORES EXISTENTES:']);
-    employees.forEach(emp => listsSheet.addRow([`${emp.firstName} ${emp.lastName}`]));
 
     // Generar buffer
     const buffer = await workbook.xlsx.writeBuffer();
@@ -1555,15 +1529,6 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     const tenantId = req.db?.tenantId;
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
-    const prisma = req.db?.prisma || fastify.prisma;
-
-    // Obtener datos existentes para listas válidas
-    const [departments, positions, employees] = await Promise.all([
-      prisma.department.findMany({ where: { tenantId }, select: { name: true } }),
-      prisma.position.findMany({ where: { tenantId }, select: { name: true } }),
-      prisma.employee.findMany({ where: { tenantId }, select: { firstName: true, lastName: true } }),
-    ]);
-
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'SGI360';
     workbook.created = new Date();
@@ -1663,23 +1628,6 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     instructionsSheet.addRow(['- Las fechas deben estar en formato DD/MM/YYYY']);
     instructionsSheet.addRow(['- Departamentos y puestos inexistentes se crean automáticamente']);
     instructionsSheet.addRow(['- Puede actualizar empleados existentes marcando la opción correspondiente']);
-
-    // HOJA 3: LISTAS VÁLIDAS
-    const listsSheet = workbook.addWorksheet('LISTAS_VALIDAS');
-    const listsRow = listsSheet.addRow(['LISTAS VÁLIDAS']);
-    listsRow.font = { bold: true, size: 14 };
-    listsSheet.addRow([]);
-    
-    listsSheet.addRow(['DEPARTAMENTOS EXISTENTES:']);
-    departments.forEach(dept => listsSheet.addRow([dept.name]));
-    listsSheet.addRow([]);
-    
-    listsSheet.addRow(['PUESTOS EXISTENTES:']);
-    positions.forEach(pos => listsSheet.addRow([pos.name]));
-    listsSheet.addRow([]);
-    
-    listsSheet.addRow(['SUPERVISORES EXISTENTES:']);
-    employees.forEach(emp => listsSheet.addRow([`${emp.firstName} ${emp.lastName}`]));
 
     // Generar buffer
     const buffer = await workbook.xlsx.writeBuffer();
