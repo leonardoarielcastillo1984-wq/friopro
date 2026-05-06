@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import {
   FolderOpen, Plus, Calendar, Users, DollarSign, Target, Clock,
   CheckCircle, AlertTriangle, TrendingUp, TrendingDown,
   Filter, Search, MoreVertical, Eye, Edit, Trash2, BarChart3,
-  User, Settings, Archive, Star, Flag, X, FileText, Download, Paperclip
+  User, Settings, Archive, Star, Flag, X, FileText, Download, Paperclip, Upload
 } from 'lucide-react';
 
 interface Project {
@@ -96,7 +96,9 @@ export default function ProjectsPage() {
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
   const [projectAttachments, setProjectAttachments] = useState<Record<string, any[]>>({});
   const [showAddDocument, setShowAddDocument] = useState<string | null>(null);
-  const [newDocument, setNewDocument] = useState({ name: '', url: '', type: '' });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [loadingDocs, setLoadingDocs] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -191,22 +193,48 @@ export default function ProjectsPage() {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setSelectedFile(file);
+  };
+
   const handleAddDocument = async (projectId: string) => {
-    if (!newDocument.name || !newDocument.url) return;
+    if (!selectedFile) return;
+    setUploading(true);
     try {
+      // Subir archivo al storage
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('title', selectedFile.name);
+      
+      const uploadRes = await apiFetch<{ url: string; size: number; type: string }>('/storage/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      // Crear attachment con la URL del archivo subido
       const response = await apiFetch(`/project360/projects/${projectId}/attachments`, {
         method: 'POST',
-        json: newDocument
+        json: {
+          name: selectedFile.name,
+          url: uploadRes.url,
+          size: uploadRes.size,
+          type: uploadRes.type || selectedFile.type
+        }
       }) as any;
+      
       setProjectAttachments(prev => ({
         ...prev,
         [projectId]: [response.attachment, ...(prev[projectId] || [])]
       }));
-      setNewDocument({ name: '', url: '', type: '' });
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setShowAddDocument(null);
     } catch (err) {
       console.error('Error adding document:', err);
       alert('Error al agregar documento');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -549,29 +577,38 @@ export default function ProjectsPage() {
                           {showAddDocument === project.id && (
                             <div className="mb-3 p-3 bg-gray-50 rounded-lg">
                               <input
-                                type="text"
-                                value={newDocument.name}
-                                onChange={(e) => setNewDocument({ ...newDocument, name: e.target.value })}
-                                placeholder="Nombre del documento"
-                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded mb-2"
+                                ref={fileInputRef}
+                                type="file"
+                                onChange={handleFileChange}
+                                className="w-full text-sm mb-2"
+                                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar"
                               />
-                              <input
-                                type="text"
-                                value={newDocument.url}
-                                onChange={(e) => setNewDocument({ ...newDocument, url: e.target.value })}
-                                placeholder="URL del documento"
-                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded mb-2"
-                              />
+                              {selectedFile && (
+                                <p className="text-xs text-gray-600 mb-2">
+                                  Archivo: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                                </p>
+                              )}
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => handleAddDocument(project.id)}
-                                  disabled={!newDocument.name || !newDocument.url}
-                                  className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                                  disabled={!selectedFile || uploading}
+                                  className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
                                 >
-                                  Guardar
+                                  {uploading ? (
+                                    <>
+                                      <Clock className="w-3 h-3 animate-spin" />
+                                      Subiendo...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Upload className="w-3 h-3" />
+                                      Subir
+                                    </>
+                                  )}
                                 </button>
                                 <button
-                                  onClick={() => { setShowAddDocument(null); setNewDocument({ name: '', url: '', type: '' }); }}
+                                  onClick={() => { setShowAddDocument(null); setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                                  disabled={uploading}
                                   className="px-3 py-1 border border-gray-300 text-gray-700 text-xs rounded hover:bg-gray-50"
                                 >
                                   Cancelar
