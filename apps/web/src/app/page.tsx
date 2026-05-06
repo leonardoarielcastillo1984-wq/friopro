@@ -452,8 +452,11 @@ export default function Home() {
             </div>
             <div>
               <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#FAFAF8', marginBottom: 18 }}>Contacto</div>
-              <a href="https://wa.me/5491166169368" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#888880', textDecoration: 'none', fontSize: 13, fontFamily: "'Syne', sans-serif" }}>
+              <a href="https://wa.me/5491166169368" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#888880', textDecoration: 'none', fontSize: 13, fontFamily: "'Syne', sans-serif", marginBottom: 12 }}>
                 <Phone size={14} />+54 9 1166169368
+              </a>
+              <a href="mailto:soporte@logismart.ar" style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#888880', textDecoration: 'none', fontSize: 13, fontFamily: "'Syne', sans-serif" }}>
+                <Mail size={14} />soporte@logismart.ar
               </a>
             </div>
           </div>
