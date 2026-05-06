@@ -1112,10 +1112,17 @@ export async function registerAuditRoutes(app: FastifyInstance) {
         return tx.audit.findUnique({
           where: { id: req.params.id, tenantId },
           include: {
-            checklist: { orderBy: { order: 'asc' } },
-            findings: { where: { deletedAt: null }, orderBy: { detectedAt: 'desc' } },
+            checklist: {
+              orderBy: { order: 'asc' },
+            },
+            findings: {
+              where: { deletedAt: null },
+              orderBy: { detectedAt: 'desc' },
+            },
             auditTeams: true,
-            auditSchedules: { orderBy: { plannedDate: 'asc' } },
+            auditSchedules: {
+              orderBy: { plannedDate: 'asc' },
+            },
             report: true,
           },
         });

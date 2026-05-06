@@ -259,13 +259,6 @@ export default function AuditDetailPage() {
             <Play className="w-4 h-4" />
             Ejecutar
           </Link>
-          <Link
-            href={`/auditorias/${auditId}/informe`}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-          >
-            <FileText className="w-4 h-4" />
-            Informe Pro
-          </Link>
           <button
             onClick={openEdit}
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
