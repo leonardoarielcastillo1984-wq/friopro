@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense, lazy } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { getTenantId } from '@/lib/api';
@@ -14,8 +14,7 @@ import { DemoBanner } from '@/components/DemoBanner';
 import { DemoWatermark } from '@/components/DemoWatermark';
 import { DemoChecklist } from '@/components/DemoChecklist';
 import { DemoExpiredModal } from '@/components/DemoExpiredModal';
-
-const FloatingHelpBot = lazy(() => import('@/components/FloatingHelpBot'));
+import FloatingHelpBot from '@/components/FloatingHelpBot';
 
 interface AppLayoutProps {
   children: React.ReactNode;
