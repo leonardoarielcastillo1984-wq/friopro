@@ -1817,6 +1817,15 @@ export default async function hrRoutes(fastify: FastifyInstance) {
   });
 
   // POST /hr/employees/import/confirm - Confirmar importación
+  function parseDate(val: string | undefined): Date | undefined {
+    if (!val) return undefined;
+    // Soporta DD/MM/YYYY y YYYY-MM-DD
+    const dmyMatch = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmyMatch) return new Date(Number(dmyMatch[3]), Number(dmyMatch[2]) - 1, Number(dmyMatch[1]));
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? undefined : d;
+  }
+
   fastify.post('/employees/import/confirm', async (req, reply) => {
     const tenantId = req.db?.tenantId;
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
@@ -1900,7 +1909,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
               firstName: emp.nombre,
               lastName: emp.apellido,
               cuil: emp.cuil,
-              birthDate: emp.fechaNacimiento ? new Date(emp.fechaNacimiento) : undefined,
+              birthDate: parseDate(emp.fechaNacimiento),
               email: emp.email,
               phone: emp.telefono,
               address: emp.direccion,
@@ -1909,7 +1918,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
               supervisorId,
               reportsToPositionId,
               contractType: emp.contractType,
-              hireDate: new Date(emp.fechaIngreso),
+              hireDate: parseDate(emp.fechaIngreso) ?? new Date(),
               status: emp.status,
               notes: emp.notas,
             },
@@ -1931,14 +1940,14 @@ export default async function hrRoutes(fastify: FastifyInstance) {
             supervisorId,
             reportsToPositionId,
             contractType: emp.contractType,
-            hireDate: new Date(emp.fechaIngreso),
+            hireDate: parseDate(emp.fechaIngreso) ?? new Date(),
             status: emp.status,
             notes: emp.notas,
             createdById: req.auth?.userId,
           };
           
           if (emp.fechaNacimiento) {
-            createData.birthDate = new Date(emp.fechaNacimiento);
+            createData.birthDate = parseDate(emp.fechaNacimiento);
           }
           
           const created = await prisma.employee.create({
