@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { ChevronLeft, FileText, AlertCircle } from 'lucide-react';
+import { ChevronLeft, FileText, AlertCircle, Trash2 } from 'lucide-react';
 
 type Audit = {
   id: string;
@@ -86,6 +86,22 @@ export default function AuditoriasListaPage() {
     }
   }
 
+  async function handleDelete(auditId: string, auditCode: string) {
+    if (!confirm(`¿Estás seguro de que quieres eliminar la auditoría ${auditCode}?\n\nEsta acción no se puede deshacer.`)) {
+      return;
+    }
+    
+    try {
+      setError(null);
+      await apiFetch(`/audit/audits/${auditId}`, { method: 'DELETE' });
+      // Recargar lista después de eliminar
+      await load();
+    } catch (err: any) {
+      console.error('Error deleting audit:', err);
+      setError(err?.error || 'Error al eliminar la auditoría');
+    }
+  }
+
   const sorted = useMemo(() => {
     return [...audits].sort((a, b) => (a.code || '').localeCompare(b.code || ''));
   }, [audits]);
@@ -126,28 +142,39 @@ export default function AuditoriasListaPage() {
         <div className="divide-y divide-gray-200">
           {sorted.length > 0 ? (
             sorted.map((audit) => (
-              <Link
+              <div
                 key={audit.id}
-                href={`/auditorias/${audit.id}`}
-                className="block px-6 py-4 hover:bg-gray-50 transition-colors"
+                className="flex items-center px-6 py-4 hover:bg-gray-50 transition-colors"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                      <span className="text-sm font-medium text-gray-900">{audit.code}</span>
-                      <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(audit.status)}`}>
-                        {getStatusLabel(audit.status)}
-                      </span>
-                      <span className="text-xs text-gray-500">{getTypeLabel(audit.type)}</span>
-                    </div>
-                    <h3 className="text-base font-medium text-gray-900">{audit.title}</h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Área: {audit.area} • Normas: {audit.isoStandard?.join(', ') || 'N/A'}
-                    </p>
+                <Link
+                  href={`/auditorias/${audit.id}`}
+                  className="flex-1"
+                >
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="text-sm font-medium text-gray-900">{audit.code}</span>
+                    <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(audit.status)}`}>
+                      {getStatusLabel(audit.status)}
+                    </span>
+                    <span className="text-xs text-gray-500">{getTypeLabel(audit.type)}</span>
                   </div>
-                  <FileText className="w-5 h-5 text-gray-400" />
+                  <h3 className="text-base font-medium text-gray-900">{audit.title}</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Área: {audit.area} • Normas: {audit.isoStandard?.join(', ') || 'N/A'}
+                  </p>
+                </Link>
+                <div className="flex items-center gap-2 ml-4">
+                  <Link href={`/auditorias/${audit.id}`}>
+                    <FileText className="w-5 h-5 text-gray-400 hover:text-blue-600" />
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(audit.id, audit.code)}
+                    className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                    title="Eliminar auditoría"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
                 </div>
-              </Link>
+              </div>
             ))
           ) : (
             <div className="px-6 py-8 text-center text-gray-500">

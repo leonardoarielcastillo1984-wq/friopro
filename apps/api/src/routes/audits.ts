@@ -129,9 +129,7 @@ const CreateAuditSchema = z.object({
   leadAuditorId: z.string().uuid(),
   area: z.string().min(1),
   process: z.string().optional(),
-  isoStandard: z.array(
-    z.enum(['ISO_9001', 'ISO_14001', 'ISO_45001', 'ISO_39001', 'IATF_16949', 'ISO_27001', 'ISO_50001', 'CUSTOM'])
-  ),
+  isoStandard: z.array(z.string()).default([]),
   scope: z.string().optional(),
   objective: z.string().optional(),
 });
@@ -555,6 +553,41 @@ export async function registerAuditRoutes(app: FastifyInstance) {
 
       if (!audit) return reply.code(404).send({ error: 'Audit not found' });
       return reply.send({ audit });
+    },
+  );
+
+  // DELETE /audit/audits/:id — Eliminar auditoría
+  app.delete(
+    '/audit/audits/:id',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      try {
+        await app.runWithDbContext(req, async (tx) => {
+          // Verificar que la auditoría existe y pertenece al tenant
+          const audit = await tx.audit.findUnique({
+            where: { id: req.params.id, tenantId },
+          });
+          if (!audit) return null;
+
+          // Eliminar en cascada: checklist, findings, team, schedule, report
+          await tx.auditChecklistItem.deleteMany({ where: { auditId: req.params.id } });
+          await tx.auditFinding.deleteMany({ where: { auditId: req.params.id } });
+          await tx.auditTeamMember.deleteMany({ where: { auditId: req.params.id } });
+          await tx.auditScheduleItem.deleteMany({ where: { auditId: req.params.id } });
+          await tx.auditReport.deleteMany({ where: { auditId: req.params.id } });
+
+          // Finalmente eliminar la auditoría
+          await tx.audit.delete({ where: { id: req.params.id, tenantId } });
+          return audit;
+        });
+
+        return reply.send({ message: 'Auditoría eliminada correctamente' });
+      } catch (err: any) {
+        console.error('Error eliminando auditoría:', err.message);
+        return reply.code(500).send({ error: 'Error al eliminar la auditoría' });
+      }
     },
   );
 
