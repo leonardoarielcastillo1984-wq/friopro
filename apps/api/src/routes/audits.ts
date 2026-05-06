@@ -1655,7 +1655,7 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
           return tx.normativeStandard.findMany({
             where: {
               tenantId,
-              status: 'PROCESSED',
+              status: 'READY',
               code: { in: isoStandards },
             },
             include: {
