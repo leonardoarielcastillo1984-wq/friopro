@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import {
   ArrowLeft, Target, Calendar, User, CheckCircle, Clock,
-  AlertTriangle, Flag, FileText, Plus, Edit, Trash2, Check, Download, Users
+  AlertTriangle, Flag, FileText, Plus, Edit, Trash2, Check, Download, Users, Upload
 } from 'lucide-react';
 
 interface Project {
@@ -51,7 +51,9 @@ export default function ProjectDetailPage() {
   // Attachments state
   const [attachments, setAttachments] = useState<any[]>([]);
   const [showAddAttachment, setShowAddAttachment] = useState(false);
-  const [newAttachment, setNewAttachment] = useState({ name: '', url: '', type: '' });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reminders state
   const [reminders, setReminders] = useState<any[]>([]);
@@ -184,19 +186,45 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setSelectedFile(file);
+  };
+
   const handleAddAttachment = async () => {
-    if (!newAttachment.name || !newAttachment.url) return;
-    
+    if (!selectedFile) return;
+    setUploading(true);
     try {
+      // Subir archivo al storage
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('title', selectedFile.name);
+      
+      const uploadRes = await apiFetch<{ url: string; size: number; type: string }>('/storage/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      // Crear attachment con la URL del archivo subido
       const response = await apiFetch(`/project360/projects/${params.id}/attachments`, {
         method: 'POST',
-        json: newAttachment
+        json: {
+          name: selectedFile.name,
+          url: uploadRes.url,
+          size: uploadRes.size,
+          type: uploadRes.type || selectedFile.type
+        }
       }) as any;
+      
       setAttachments([response.attachment, ...attachments]);
-      setNewAttachment({ name: '', url: '', type: '' });
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setShowAddAttachment(false);
     } catch (err) {
       console.error('Error adding attachment:', err);
+      alert('Error al subir archivo');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -534,29 +562,38 @@ export default function ProjectDetailPage() {
             <h4 className="text-sm font-medium text-gray-900 mb-3">Agregar Archivo</h4>
             <div className="space-y-3">
               <input
-                type="text"
-                value={newAttachment.name}
-                onChange={(e) => setNewAttachment({ ...newAttachment, name: e.target.value })}
-                placeholder="Nombre del archivo"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                ref={fileInputRef}
+                type="file"
+                onChange={handleFileChange}
+                className="w-full text-sm"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.zip,.rar"
               />
-              <input
-                type="text"
-                value={newAttachment.url}
-                onChange={(e) => setNewAttachment({ ...newAttachment, url: e.target.value })}
-                placeholder="URL del archivo"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              />
+              {selectedFile && (
+                <p className="text-xs text-gray-600">
+                  Archivo: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
               <div className="flex gap-2">
                 <button
                   onClick={handleAddAttachment}
-                  disabled={!newAttachment.name || !newAttachment.url}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+                  disabled={!selectedFile || uploading}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
                 >
-                  Agregar
+                  {uploading ? (
+                    <>
+                      <Clock className="w-4 h-4 animate-spin" />
+                      Subiendo...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      Subir
+                    </>
+                  )}
                 </button>
                 <button
-                  onClick={() => setShowAddAttachment(false)}
+                  onClick={() => { setShowAddAttachment(false); setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                  disabled={uploading}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
                 >
                   Cancelar
