@@ -7,7 +7,7 @@ import {
   FolderOpen, Plus, Calendar, Users, DollarSign, Target, Clock,
   CheckCircle, AlertTriangle, TrendingUp, TrendingDown,
   Filter, Search, MoreVertical, Eye, Edit, Trash2, BarChart3,
-  User, Settings, Archive, Star, Flag, X
+  User, Settings, Archive, Star, Flag, X, FileText, Download, Paperclip
 } from 'lucide-react';
 
 interface Project {
@@ -91,6 +91,13 @@ export default function ProjectsPage() {
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('name');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  
+  // Documentos/Attachments state
+  const [expandedProject, setExpandedProject] = useState<string | null>(null);
+  const [projectAttachments, setProjectAttachments] = useState<Record<string, any[]>>({});
+  const [showAddDocument, setShowAddDocument] = useState<string | null>(null);
+  const [newDocument, setNewDocument] = useState({ name: '', url: '', type: '' });
+  const [loadingDocs, setLoadingDocs] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadProjects();
@@ -168,6 +175,62 @@ export default function ProjectsPage() {
 
   const isOverBudget = (project: Project) => {
     return project.actualCost && project.actualCost > project.budget;
+  };
+
+  // Funciones para documentos
+  const loadProjectDocuments = async (projectId: string) => {
+    if (loadingDocs[projectId]) return;
+    setLoadingDocs(prev => ({ ...prev, [projectId]: true }));
+    try {
+      const response = await apiFetch(`/project360/projects/${projectId}/attachments`) as any;
+      setProjectAttachments(prev => ({ ...prev, [projectId]: response.attachments || [] }));
+    } catch (err) {
+      console.error('Error loading documents:', err);
+    } finally {
+      setLoadingDocs(prev => ({ ...prev, [projectId]: false }));
+    }
+  };
+
+  const handleAddDocument = async (projectId: string) => {
+    if (!newDocument.name || !newDocument.url) return;
+    try {
+      const response = await apiFetch(`/project360/projects/${projectId}/attachments`, {
+        method: 'POST',
+        json: newDocument
+      }) as any;
+      setProjectAttachments(prev => ({
+        ...prev,
+        [projectId]: [response.attachment, ...(prev[projectId] || [])]
+      }));
+      setNewDocument({ name: '', url: '', type: '' });
+      setShowAddDocument(null);
+    } catch (err) {
+      console.error('Error adding document:', err);
+      alert('Error al agregar documento');
+    }
+  };
+
+  const handleDeleteDocument = async (projectId: string, attachmentId: string) => {
+    if (!confirm('¿Eliminar este documento?')) return;
+    try {
+      await apiFetch(`/project360/attachments/${attachmentId}`, { method: 'DELETE' });
+      setProjectAttachments(prev => ({
+        ...prev,
+        [projectId]: (prev[projectId] || []).filter(a => a.id !== attachmentId)
+      }));
+    } catch (err) {
+      console.error('Error deleting document:', err);
+      alert('Error al eliminar documento');
+    }
+  };
+
+  const toggleProjectExpand = (projectId: string) => {
+    if (expandedProject === projectId) {
+      setExpandedProject(null);
+    } else {
+      setExpandedProject(projectId);
+      loadProjectDocuments(projectId);
+    }
   };
 
   const filteredProjects = projects.filter(project => {
@@ -450,9 +513,109 @@ export default function ProjectsPage() {
                     ))}
                   </div>
                 )}
+                
+                {/* Documentos Section */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => toggleProjectExpand(project.id)}
+                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                    <span>Documentos ({projectAttachments[project.id]?.length || 0})</span>
+                    {expandedProject === project.id ? (
+                      <span className="text-xs">▲</span>
+                    ) : (
+                      <span className="text-xs">▼</span>
+                    )}
+                  </button>
+                  
+                  {expandedProject === project.id && (
+                    <div className="mt-3 pl-6">
+                      {loadingDocs[project.id] ? (
+                        <p className="text-sm text-gray-500">Cargando documentos...</p>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-700">Archivos</span>
+                            <button
+                              onClick={() => setShowAddDocument(project.id)}
+                              className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                            >
+                              <Plus className="w-3 h-3" />
+                              Agregar
+                            </button>
+                          </div>
+                          
+                          {showAddDocument === project.id && (
+                            <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+                              <input
+                                type="text"
+                                value={newDocument.name}
+                                onChange={(e) => setNewDocument({ ...newDocument, name: e.target.value })}
+                                placeholder="Nombre del documento"
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded mb-2"
+                              />
+                              <input
+                                type="text"
+                                value={newDocument.url}
+                                onChange={(e) => setNewDocument({ ...newDocument, url: e.target.value })}
+                                placeholder="URL del documento"
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded mb-2"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleAddDocument(project.id)}
+                                  disabled={!newDocument.name || !newDocument.url}
+                                  className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  Guardar
+                                </button>
+                                <button
+                                  onClick={() => { setShowAddDocument(null); setNewDocument({ name: '', url: '', type: '' }); }}
+                                  className="px-3 py-1 border border-gray-300 text-gray-700 text-xs rounded hover:bg-gray-50"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {projectAttachments[project.id]?.length === 0 ? (
+                            <p className="text-sm text-gray-500">Sin documentos</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {projectAttachments[project.id]?.map((doc: any) => (
+                                <div key={doc.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                  <FileText className="w-4 h-4 text-blue-500" />
+                                  <span className="flex-1 text-sm text-gray-700 truncate">{doc.name}</span>
+                                  <a
+                                    href={doc.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                    title="Descargar"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </a>
+                                  <button
+                                    onClick={() => handleDeleteDocument(project.id, doc.id)}
+                                    className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                    title="Eliminar"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          ))
+          ))}
         )}
       </div>
 
