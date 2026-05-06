@@ -720,25 +720,21 @@ export async function registerAuditRoutes(app: FastifyInstance) {
   // POST /audit/audits/:id/checklist — Agregar item individual al checklist
   app.post(
     '/audit/audits/:id/checklist',
-    {
-      schema: {
-        body: {
-          type: 'object',
-          required: ['clause', 'requirement'],
-          properties: {
-            clause: { type: 'string' },
-            requirement: { type: 'string' },
-            whatToCheck: { type: 'string' }
-          }
-        }
-      }
-    },
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
-      const body = (req.body ?? {}) as any;
-      const { clause, requirement, whatToCheck } = body;
+      // Parsear body si viene como string
+      let body = req.body;
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch {
+          return reply.code(400).send({ error: 'Body inválido' });
+        }
+      }
+
+      const { clause, requirement, whatToCheck } = body || {};
 
       if (!clause || !requirement) {
         return reply.code(400).send({ error: 'Cláusula y requisito son obligatorios' });
