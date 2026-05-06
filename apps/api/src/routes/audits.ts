@@ -1061,8 +1061,8 @@ export async function registerAuditRoutes(app: FastifyInstance) {
           include: {
             checklist: { orderBy: { order: 'asc' } },
             findings: { where: { deletedAt: null }, orderBy: { detectedAt: 'desc' } },
-            team: true,
-            schedule: { orderBy: { plannedDate: 'asc' } },
+            auditTeams: true,
+            auditSchedules: { orderBy: { plannedDate: 'asc' } },
             report: true,
           },
         });
