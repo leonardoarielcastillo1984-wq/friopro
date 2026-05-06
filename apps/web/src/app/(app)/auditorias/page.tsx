@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
-import { Plus, Calendar, FileText, AlertCircle, CheckCircle, Clock, Users, List } from 'lucide-react';
+import { Plus, Calendar, FileText, AlertCircle, CheckCircle, Clock, Users, List, Trash2 } from 'lucide-react';
 
 // Tipos
 type AuditProgram = {
@@ -63,6 +63,21 @@ export default function AuditoriasPage() {
       setError('Error al cargar datos de auditorías');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDelete(auditId: string, auditCode: string) {
+    if (!confirm(`¿Estás seguro de que quieres eliminar la auditoría ${auditCode}?\n\nEsta acción no se puede deshacer.`)) {
+      return;
+    }
+    
+    try {
+      setError(null);
+      await apiFetch(`/audit/audits/${auditId}`, { method: 'DELETE' });
+      await loadData();
+    } catch (err: any) {
+      console.error('Error deleting audit:', err);
+      setError(err?.error || 'Error al eliminar la auditoría');
     }
   }
 
@@ -288,30 +303,40 @@ export default function AuditoriasPage() {
 
             <div className="divide-y divide-gray-200">
               {audits.slice(0, 5).map((audit) => (
-                <Link
+                <div
                   key={audit.id}
-                  href={`/auditorias/${audit.id}`}
-                  className="block px-6 py-4 hover:bg-gray-50 transition-colors"
+                  className="flex items-center px-6 py-4 hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-1">
-                        <span className="text-sm font-medium text-gray-900">{audit.code}</span>
-                        <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(audit.status)}`}>
-                          {getStatusLabel(audit.status)}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {getTypeLabel(audit.type)}
-                        </span>
+                  <Link
+                    href={`/auditorias/${audit.id}`}
+                    className="flex-1"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="text-sm font-medium text-gray-900">{audit.code}</span>
+                          <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(audit.status)}`}>
+                            {getStatusLabel(audit.status)}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {getTypeLabel(audit.type)}
+                          </span>
+                        </div>
+                        <h3 className="text-base font-medium text-gray-900">{audit.title}</h3>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Área: {audit.area} • Normas: {audit.isoStandard?.join(', ') || 'N/A'}
+                        </p>
                       </div>
-                      <h3 className="text-base font-medium text-gray-900">{audit.title}</h3>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Área: {audit.area} • Normas: {audit.isoStandard?.join(', ') || 'N/A'}
-                      </p>
                     </div>
-                    <FileText className="w-5 h-5 text-gray-400" />
-                  </div>
-                </Link>
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(audit.id, audit.code)}
+                    className="p-1 text-gray-400 hover:text-red-600 transition-colors ml-4"
+                    title="Eliminar auditoría"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
               ))}
 
               {audits.length === 0 && (
