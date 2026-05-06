@@ -995,6 +995,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       });
 
       if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      console.log('[DEBUG] /full response for', req.params.id, 'checklist:', audit.checklist?.length || 0, 'items');
       return reply.send({ audit });
     },
   );
