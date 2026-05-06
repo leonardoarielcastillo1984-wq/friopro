@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle, Sparkles, Loader2, Plus, X } from 'lucide-react';
+import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle, Sparkles, Loader2, Plus, X, Trash2 } from 'lucide-react';
 
 type ChecklistItem = {
   id: string;
@@ -156,6 +156,20 @@ export default function ChecklistPage() {
     }
   }
 
+  async function deleteItem(itemId: string) {
+    if (!confirm('¿Está seguro de eliminar este item del checklist?')) return;
+    
+    try {
+      setSaving(true);
+      await apiFetch(`/audit/checklist/${itemId}`, { method: 'DELETE' });
+      await loadChecklist();
+    } catch (err: any) {
+      setError(err?.error || 'Error al eliminar item');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function updateProgress(itemsList: ChecklistItem[]) {
     const answered = itemsList.filter(i => i.response !== null).length;
     setProgress({ answered, total: itemsList.length });
@@ -272,87 +286,98 @@ export default function ChecklistPage() {
       <div className="space-y-4">
         {items.map((item, index) => (
           <div key={item.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-start gap-4">
-              <span className="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
-                {index + 1}
-              </span>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                    {item.clause}
-                  </span>
-                </div>
-                <p className="text-gray-900 font-medium mb-2">{item.requirement}</p>
-                <p className="text-sm text-gray-500 mb-2">
-                  <span className="font-medium">Verificar:</span> {item.whatToCheck}
-                </p>
-
-                {/* AI Suggestion */}
-                {item.aiSuggestion && (
-                  <div className="mt-2 mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Sparkles className="w-4 h-4 text-purple-600" />
-                      <span className="text-xs font-medium text-purple-700">IA: Por qué esta cláusula es relevante</span>
-                    </div>
-                    <p className="text-sm text-purple-900">{item.aiSuggestion}</p>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="flex items-start gap-4">
+                <span className="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
+                  {index + 1}
+                </span>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                      {item.clause}
+                    </span>
                   </div>
-                )}
-
-                {/* Response Buttons */}
-                <div className="flex gap-2 mb-4">
-                  {RESPONSE_OPTIONS.map((option) => {
-                    const Icon = option.icon;
-                    return (
-                      <button
-                        key={option.value}
-                        onClick={() => updateItem(item.id, { response: option.value as any })}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                          item.response === option.value
-                            ? option.color + ' border-transparent'
-                            : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        {option.label}
-                      </button>
-                    );
-                  })}
+                  <p className="text-gray-900 font-medium mb-2">{item.requirement}</p>
+                  <p className="text-sm text-gray-500 mb-2">
+                    <span className="font-medium">Verificar:</span> {item.whatToCheck}
+                  </p>
                 </div>
+              </div>
+              <button
+                onClick={() => deleteItem(item.id)}
+                className="flex-shrink-0 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Eliminar item"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
 
-                {/* Comment & Evidence */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
-                    <textarea
-                      value={item.comment || ''}
-                      onChange={(e) => {
-                        const next = items.map(i => (i.id === item.id ? { ...i, comment: e.target.value } : i));
-                        setItems(next);
-                      }}
-                      onBlur={(e) => updateItem(item.id, { comment: e.target.value })}
-                      placeholder="Ingrese observaciones..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      rows={2}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Evidencia</label>
-                    <input
-                      type="text"
-                      value={item.evidence || ''}
-                      onChange={(e) => {
-                        const next = items.map(i => (i.id === item.id ? { ...i, evidence: e.target.value } : i));
-                        setItems(next);
-                      }}
-                      onBlur={(e) => updateItem(item.id, { evidence: e.target.value })}
-                      placeholder="URL o referencia de evidencia..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+            {/* AI Suggestion */}
+            {item.aiSuggestion && (
+              <div className="mt-2 mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <span className="text-xs font-medium text-purple-700">IA: Por qué esta cláusula es relevante</span>
                 </div>
+                <p className="text-sm text-purple-900">{item.aiSuggestion}</p>
+              </div>
+            )}
+
+            {/* Response Buttons */}
+            <div className="flex gap-2 mb-4">
+              {RESPONSE_OPTIONS.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <button
+                    key={option.value}
+                    onClick={() => updateItem(item.id, { response: option.value as any })}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                      item.response === option.value
+                        ? option.color + ' border-transparent'
+                        : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Comment & Evidence */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+                <textarea
+                  value={item.comment || ''}
+                  onChange={(e) => {
+                    const next = items.map(i => (i.id === item.id ? { ...i, comment: e.target.value } : i));
+                    setItems(next);
+                  }}
+                  onBlur={(e) => updateItem(item.id, { comment: e.target.value })}
+                  placeholder="Ingrese observaciones..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Evidencia</label>
+                <input
+                  type="text"
+                  value={item.evidence || ''}
+                  onChange={(e) => {
+                    const next = items.map(i => (i.id === item.id ? { ...i, evidence: e.target.value } : i));
+                    setItems(next);
+                  }}
+                  onBlur={(e) => updateItem(item.id, { evidence: e.target.value })}
+                  placeholder="URL o referencia de evidencia..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
             </div>
           </div>
+        </div>
+      </div>
         ))}
 
         {items.length === 0 && (

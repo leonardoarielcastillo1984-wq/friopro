@@ -767,6 +767,23 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // DELETE /audit/checklist/:id — Eliminar un item del checklist
+  app.delete(
+    '/audit/checklist/:id',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const item = await app.runWithDbContext(req, async (tx) => {
+        return tx.checklistItem.delete({
+          where: { id: req.params.id },
+        });
+      });
+
+      return reply.send({ success: true });
+    },
+  );
+
   app.patch(
     '/audit/checklist/:id',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
@@ -953,6 +970,33 @@ export async function registerAuditRoutes(app: FastifyInstance) {
 
       if (!actions) return reply.code(404).send({ error: 'Finding not found' });
       return reply.send({ actions });
+    },
+  );
+
+  // PATCH /audit/audits/:id/report — Actualizar informe de auditoría
+  app.patch(
+    '/audit/audits/:id/report',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = req.body || {};
+
+      const audit = await app.runWithDbContext(req, async (tx) => {
+        return tx.audit.update({
+          where: { id: req.params.id, tenantId },
+          data: {
+            objective: body.objective,
+            scope: body.scope,
+            auditorOpinion: body.auditorOpinion,
+            maturityLevel: body.maturityLevel,
+            certificationRecommendation: body.certificationRecommendation,
+            mainRisks: body.mainRisks,
+          },
+        });
+      });
+
+      return reply.send({ audit });
     },
   );
 

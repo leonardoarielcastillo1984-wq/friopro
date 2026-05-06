@@ -7,7 +7,7 @@ import { useParams } from 'next/navigation';
 import {
   ChevronLeft, FileText, CheckCircle, XCircle, AlertTriangle,
   Users, Calendar, Shield, TrendingUp, Download, Printer,
-  Award, Target, ClipboardCheck, PenTool, Zap,
+  Award, Target, ClipboardCheck, PenTool, Zap, Save, Edit,
 } from 'lucide-react';
 
 type Audit = {
@@ -48,6 +48,7 @@ type Finding = {
   requirement: string | null;
   risk: string | null;
   status: string;
+  ncrId: string | null;
 };
 
 export default function AuditReportPage() {
@@ -58,6 +59,16 @@ export default function AuditReportPage() {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [reportData, setReportData] = useState({
+    objective: '',
+    scope: '',
+    auditorOpinion: '',
+    maturityLevel: '',
+    certificationRecommendation: '',
+    mainRisks: '',
+  });
 
   useEffect(() => {
     async function loadData() {
@@ -68,6 +79,14 @@ export default function AuditReportPage() {
           setAudit(res.audit);
           setChecklist(res.audit.checklist || []);
           setFindings(res.audit.findings || []);
+          setReportData({
+            objective: res.audit.objective || '',
+            scope: res.audit.scope || '',
+            auditorOpinion: res.audit.auditorOpinion || '',
+            maturityLevel: res.audit.maturityLevel || '',
+            certificationRecommendation: res.audit.certificationRecommendation || '',
+            mainRisks: res.audit.mainRisks || '',
+          });
         }
       } catch (err) {
         setError('Error al cargar el informe');
@@ -77,6 +96,26 @@ export default function AuditReportPage() {
     }
     loadData();
   }, [auditId]);
+
+  async function saveReport() {
+    try {
+      setSaving(true);
+      await apiFetch(`/audit/audits/${auditId}/report`, {
+        method: 'PATCH',
+        body: JSON.stringify(reportData),
+      });
+      setEditMode(false);
+      // Reload data to get updated audit
+      const res = await apiFetch(`/audit/audits/${auditId}/full`) as any;
+      if (res.audit) {
+        setAudit(res.audit);
+      }
+    } catch (err) {
+      setError('Error al guardar el informe');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -114,12 +153,38 @@ export default function AuditReportPage() {
           <p className="text-gray-600">{audit.code} - {audit.title}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
-            <Printer className="w-4 h-4" /> Imprimir
-          </button>
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
-            <Download className="w-4 h-4" /> Exportar PDF
-          </button>
+          {editMode ? (
+            <>
+              <button
+                onClick={() => setEditMode(false)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveReport}
+                disabled={saving}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" /> {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setEditMode(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+              <button className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+                <Printer className="w-4 h-4" /> Imprimir
+              </button>
+              <button className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                <Download className="w-4 h-4" /> Exportar PDF
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -165,30 +230,42 @@ export default function AuditReportPage() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Objetivo de la Auditoría</label>
-            <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-              rows={3}
-              placeholder="Describir el objetivo principal de la auditoría..."
-              defaultValue={audit.objective || ''}
-            />
+            {editMode ? (
+              <textarea
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                rows={3}
+                value={reportData.objective}
+                onChange={(e) => setReportData({ ...reportData, objective: e.target.value })}
+              />
+            ) : (
+              <p className="text-sm text-gray-900">{audit.objective || '-'}</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Alcance</label>
-            <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-              rows={2}
-              placeholder="Describir el alcance de la auditoría..."
-              defaultValue={audit.scope || ''}
-            />
+            {editMode ? (
+              <textarea
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                rows={2}
+                value={reportData.scope}
+                onChange={(e) => setReportData({ ...reportData, scope: e.target.value })}
+              />
+            ) : (
+              <p className="text-sm text-gray-900">{audit.scope || '-'}</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Conclusiones Generales</label>
-            <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-              rows={4}
-              placeholder="Resumen de las principales conclusiones de la auditoría..."
-              defaultValue={audit.auditorOpinion || ''}
-            />
+            {editMode ? (
+              <textarea
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                rows={4}
+                value={reportData.auditorOpinion}
+                onChange={(e) => setReportData({ ...reportData, auditorOpinion: e.target.value })}
+              />
+            ) : (
+              <p className="text-sm text-gray-900">{audit.auditorOpinion || '-'}</p>
+            )}
           </div>
         </div>
       </div>
@@ -433,9 +510,19 @@ export default function AuditReportPage() {
                       {finding.status}
                     </span>
                   </div>
-                  <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                    Crear CAPA
-                  </button>
+                  <div className="flex gap-2">
+                    {finding.ncrId && (
+                      <Link
+                        href={`/no-conformidades/${finding.ncrId}`}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        Abrir NCR
+                      </Link>
+                    )}
+                    <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                      Crear CAPA
+                    </button>
+                  </div>
                 </div>
                 
                 <h4 className="text-lg font-semibold text-gray-900 mb-2">{finding.description}</h4>
@@ -495,82 +582,66 @@ export default function AuditReportPage() {
         <div className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Opinión del Auditor</label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-              defaultValue={audit.auditorOpinion || ''}
-            >
-              <option value="">Seleccionar...</option>
-              <option value="CONFORME">Conforme</option>
-              <option value="NO_CONFORME">No conforme</option>
-              <option value="PARCIALMENTE_CONFORME">Parcialmente conforme</option>
-            </select>
+            {editMode ? (
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                value={reportData.auditorOpinion}
+                onChange={(e) => setReportData({ ...reportData, auditorOpinion: e.target.value })}
+              >
+                <option value="">Seleccionar...</option>
+                <option value="CONFORME">Conforme</option>
+                <option value="NO_CONFORME">No conforme</option>
+                <option value="PARCIALMENTE_CONFORME">Parcialmente conforme</option>
+              </select>
+            ) : (
+              <p className="text-sm text-gray-900">{audit.auditorOpinion || '-'}</p>
+            )}
           </div>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Nivel de Madurez del Sistema</label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-              defaultValue={audit.maturityLevel || ''}
-            >
-              <option value="">Seleccionar...</option>
-              <option value="BAJO">Bajo - Sistema en desarrollo inicial</option>
-              <option value="MEDIO">Medio - Sistema implementado pero con mejoras necesarias</option>
-              <option value="ALTO">Alto - Sistema maduro y efectivo</option>
-            </select>
-          </div>
-          
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <label className="block text-sm font-medium text-blue-900 mb-3">Recomendaciones Específicas por Hallazgo</label>
-            {findings.length === 0 ? (
-              <p className="text-sm text-blue-700">No hay hallazgos para generar recomendaciones</p>
+            {editMode ? (
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                value={reportData.maturityLevel}
+                onChange={(e) => setReportData({ ...reportData, maturityLevel: e.target.value })}
+              >
+                <option value="">Seleccionar...</option>
+                <option value="BAJO">Bajo - Sistema en desarrollo inicial</option>
+                <option value="MEDIO">Medio - Sistema implementado pero con mejoras necesarias</option>
+                <option value="ALTO">Alto - Sistema maduro y efectivo</option>
+              </select>
             ) : (
-              <div className="space-y-3">
-                {findings.map((finding, idx) => (
-                  <div key={finding.id} className="bg-white rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-medium text-gray-500">Rec. {idx + 1}:</span>
-                      <span className="text-sm font-semibold text-gray-900">{finding.code}</span>
-                    </div>
-                    <textarea
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500"
-                      rows={2}
-                      placeholder="Describir recomendación específica para este hallazgo..."
-                    />
-                  </div>
-                ))}
-              </div>
+              <p className="text-sm text-gray-900">{audit.maturityLevel || '-'}</p>
             )}
           </div>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Recomendaciones Generales</label>
-            <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-              rows={4}
-              placeholder="Recomendaciones generales de mejora para el sistema de gestión..."
-              defaultValue={audit.certificationRecommendation || ''}
-            />
+            {editMode ? (
+              <textarea
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                rows={4}
+                value={reportData.certificationRecommendation}
+                onChange={(e) => setReportData({ ...reportData, certificationRecommendation: e.target.value })}
+              />
+            ) : (
+              <p className="text-sm text-gray-900">{audit.certificationRecommendation || '-'}</p>
+            )}
           </div>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Riesgos Principales Identificados</label>
-            <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-              rows={3}
-              placeholder="Describir riesgos principales que podrían afectar el sistema..."
-              defaultValue={audit.mainRisks || ''}
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Plazo Sugerido para Implementación</label>
-            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-              <option value="">Seleccionar...</option>
-              <option value="INMEDIATO">Inmediato (0-30 días)</option>
-              <option value="CORTO">Corto plazo (1-3 meses)</option>
-              <option value="MEDIO">Medio plazo (3-6 meses)</option>
-              <option value="LARGO">Largo plazo (6-12 meses)</option>
-            </select>
+            {editMode ? (
+              <textarea
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                rows={3}
+                value={reportData.mainRisks}
+                onChange={(e) => setReportData({ ...reportData, mainRisks: e.target.value })}
+              />
+            ) : (
+              <p className="text-sm text-gray-900">{audit.mainRisks || '-'}</p>
+            )}
           </div>
         </div>
       </div>
