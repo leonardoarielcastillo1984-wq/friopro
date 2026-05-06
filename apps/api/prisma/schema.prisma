@@ -35,9 +35,6 @@ model NonConformity {
 
   aiFindingId String? @db.Uuid
 
-  // Trazabilidad desde Auditorías (hallazgos de auditoría)
-  auditFindingId String? @db.Uuid
-
   // Proceso asociado para análisis de riesgo
   processId String? @db.Uuid
   process   String? // Nombre del proceso para análisis IA
