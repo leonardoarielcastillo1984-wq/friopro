@@ -1123,7 +1123,6 @@ export async function registerAuditRoutes(app: FastifyInstance) {
             auditSchedules: {
               orderBy: { plannedDate: 'asc' },
             },
-            report: true,
           },
         });
       });
