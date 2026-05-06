@@ -1682,8 +1682,8 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
           }));
         });
 
-        // Prompt para que la IA filtre cláusulas relevantes
-        const filterPrompt = `Eres un auditor experto ISO. Tu tarea es filtrar qué cláusulas normativas son RELEVANTES para una auditoría específica.
+        // Prompt para que la IA filtre cláusulas relevantes con razonamiento específico
+        const filterPrompt = `Eres un auditor experto ISO. Tu tarea es filtrar qué cláusulas normativas son RELEVANTES para una auditoría específica y explicar por qué.
 
 Normas ISO: ${isoStandards.join(', ')}
 Área/Departamento: ${audit.area || 'N/A'}
@@ -1696,34 +1696,45 @@ ${allClauses.map((c, i) => `${i + 1}. ${c.clauseNumber} - ${c.title}: ${c.conten
 
 Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
 {
-  "relevantClauses": [1, 3, 5],
-  "reasoning": "Explicación breve de por qué estas cláusulas son relevantes para el departamento/proceso especificado"
+  "relevantClauses": [
+    { "index": 1, "reasoning": "Explicación breve de por qué esta cláusula es relevante para el departamento/proceso" },
+    { "index": 3, "reasoning": "Explicación breve de por qué esta cláusula es relevante para el departamento/proceso" }
+  ]
 }
 
-Donde "relevantClauses" es un array con los números de índice (basados en 1) de las cláusulas que son RELEVANTES para esta auditoría específica.`;
+Donde "relevantClauses" es un array con objetos que contienen:
+- "index": número de índice (basados en 1) de la cláusula relevante
+- "reasoning": explicación específica de por qué esa cláusula es relevante para el departamento/proceso especificado`;
 
         const filterResult = await llm.chat(filterPrompt, { temperature: 0.3 });
 
-        let relevantIndices: number[] = [];
+        let relevantClauses: Array<{ index: number; reasoning: string }> = [];
         try {
           const parsed = JSON.parse(filterResult.content);
-          relevantIndices = parsed.relevantClauses || [];
+          relevantClauses = parsed.relevantClauses || [];
         } catch {
-          // Si falla el parseo, usar todas las cláusulas
-          relevantIndices = allClauses.map((_, i) => i + 1);
+          // Si falla el parseo, usar todas las cláusulas con razonamiento genérico
+          relevantClauses = allClauses.map((_, i) => ({
+            index: i + 1,
+            reasoning: 'Cláusula incluida por defecto (error en procesamiento de IA)'
+          }));
         }
 
         // Generar items de checklist solo con las cláusulas relevantes
         const checklistItems = allClauses
-          .filter((_, index) => relevantIndices.includes(index + 1))
-          .map((clause, index) => ({
-            auditId: audit.id,
-            clause: clause.clauseNumber,
-            requirement: clause.title,
-            whatToCheck: clause.content.substring(0, 200) + (clause.content.length > 200 ? '...' : ''),
-            weight: 1,
-            order: index,
-          }));
+          .filter((_, index) => relevantClauses.some(rc => rc.index === index + 1))
+          .map((clause, index) => {
+            const relevantInfo = relevantClauses.find(rc => rc.index === allClauses.indexOf(clause) + 1);
+            return {
+              auditId: audit.id,
+              clause: clause.clauseNumber,
+              requirement: clause.title,
+              whatToCheck: clause.content.substring(0, 200) + (clause.content.length > 200 ? '...' : ''),
+              weight: 1,
+              order: index,
+              aiSuggestion: relevantInfo?.reasoning || null,
+            };
+          });
 
         // Eliminar checklist existente y crear nuevo
         await app.runWithDbContext(req, async (tx) => {
@@ -1740,7 +1751,7 @@ Donde "relevantClauses" es un array con los números de índice (basados en 1) d
           message: 'Checklist generado exitosamente',
           itemsCount: checklistItems.length,
           totalClauses: allClauses.length,
-          filteredClauses: relevantIndices.length,
+          filteredClauses: relevantClauses.length,
           standards: normativeStandards.map((ns) => ns.name),
         });
       } catch (err: any) {

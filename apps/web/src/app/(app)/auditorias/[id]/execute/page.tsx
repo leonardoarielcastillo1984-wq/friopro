@@ -17,6 +17,7 @@ type ChecklistItem = {
   response: 'COMPLIES' | 'DOES_NOT_COMPLY' | 'NOT_APPLICABLE' | null;
   comment: string | null; evidence: string | null;
   customFields: Record<string, any> | null;
+  aiSuggestion: string | null;
 };
 type Finding = {
   id: string; code: string; type: string; severity: string;
@@ -486,6 +487,15 @@ export default function AuditExecutePage() {
                       )}
                     </div>
                     {item.whatToCheck && <p className="text-sm text-gray-500 mb-3">{item.whatToCheck}</p>}
+                    {item.aiSuggestion && (
+                      <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Sparkles className="w-4 h-4 text-purple-600" />
+                          <span className="text-xs font-medium text-purple-700">IA: Por qué esta cláusula es relevante</span>
+                        </div>
+                        <p className="text-sm text-purple-900">{item.aiSuggestion}</p>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2 mb-3">
                       {(['COMPLIES','DOES_NOT_COMPLY','NOT_APPLICABLE'] as const).map(resp => {
                         const labels: Record<string,string> = { COMPLIES:'Conforme', DOES_NOT_COMPLY:'No conforme', NOT_APPLICABLE:'N/A' };
