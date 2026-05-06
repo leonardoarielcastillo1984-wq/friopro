@@ -25,7 +25,16 @@ type Department = {
   description: string | null;
 };
 
-const ISO_STANDARDS = [
+type NormativeStandard = {
+  id: string;
+  name: string;
+  code: string;
+  version: string;
+  description: string | null;
+  totalClauses: number;
+};
+
+const ISO_STANDARDS_FALLBACK = [
   { value: 'ISO_9001', label: 'ISO 9001 - Calidad' },
   { value: 'ISO_14001', label: 'ISO 14001 - Medio Ambiente' },
   { value: 'ISO_45001', label: 'ISO 45001 - Seguridad y Salud' },
@@ -51,6 +60,7 @@ export default function NuevaAuditoriaPage() {
   const [programs, setPrograms] = useState<AuditProgram[]>([]);
   const [auditors, setAuditors] = useState<Auditor[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [normativeStandards, setNormativeStandards] = useState<NormativeStandard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -77,15 +87,17 @@ export default function NuevaAuditoriaPage() {
 
   async function loadProgramsAndAuditors() {
     try {
-      const [programsRes, auditorsRes, departmentsRes] = await Promise.all([
+      const [programsRes, auditorsRes, departmentsRes, normativesRes] = await Promise.all([
         apiFetch('/audit/programs') as Promise<{ programs: AuditProgram[] }>,
         apiFetch('/audit/auditors') as Promise<{ auditors: Auditor[] }>,
         apiFetch('/hr/departments') as Promise<{ departments: Department[] }>,
+        apiFetch('/audit/normative-standards') as Promise<{ standards: NormativeStandard[] }>,
       ]);
 
       if (programsRes.programs) setPrograms(programsRes.programs);
       if (auditorsRes.auditors) setAuditors(auditorsRes.auditors);
       if (departmentsRes.departments) setDepartments(departmentsRes.departments);
+      if (normativesRes.standards) setNormativeStandards(normativesRes.standards);
     } catch (err) {
       console.error('Error loading data:', err);
     }
@@ -330,19 +342,31 @@ export default function NuevaAuditoriaPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Normas ISO Aplicables
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-              {ISO_STANDARDS.map((standard) => (
-                <label key={standard.value} className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input
-                    type="checkbox"
-                    checked={formData.isoStandard.includes(standard.value)}
-                    onChange={() => handleIsoStandardChange(standard.value)}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <span className="text-sm">{standard.label}</span>
-                </label>
-              ))}
-            </div>
+            {normativeStandards.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded-lg text-sm">
+                <AlertCircle className="w-4 h-4 inline mr-2" />
+                No hay normas normativas cargadas. Carga normas ISO en el módulo de <strong>Cumplimiento &gt; Normativas</strong> para generar checklists con IA.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {normativeStandards.map((standard) => (
+                  <label key={standard.id} className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={formData.isoStandard.includes(standard.code)}
+                      onChange={() => handleIsoStandardChange(standard.code)}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium block truncate">{standard.name}</span>
+                      {standard.totalClauses > 0 && (
+                        <span className="text-xs text-gray-500">{standard.totalClauses} cláusulas</span>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Alcance y Objetivo */}

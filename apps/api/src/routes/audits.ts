@@ -1630,6 +1630,22 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
     },
   );
 
+  // GET /audit/normative-standards — Listar normas normativas disponibles para auditorías
+  app.get('/audit/normative-standards', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    const standards = await app.runWithDbContext(req, async (tx) => {
+      return tx.normativeStandard.findMany({
+        where: { tenantId, status: 'READY', deletedAt: null },
+        select: { id: true, name: true, code: true, version: true, description: true, totalClauses: true },
+        orderBy: { name: 'asc' },
+      });
+    });
+
+    return reply.send({ standards });
+  });
+
   // POST /audit/audits/:id/generate-checklist-from-normative — Generar checklist basado en normas normativas
   app.post(
     '/audit/audits/:id/generate-checklist-from-normative',
