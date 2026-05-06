@@ -34,6 +34,7 @@ type Finding = {
   description: string;
   clause: string;
   area: string;
+  ncrId: string | null;
 };
 
 type ChecklistItem = {
@@ -557,13 +558,22 @@ export default function ReportPage() {
                     <span>Cláusula: {finding.clause}</span>
                     <span>Área: {finding.area}</span>
                   </div>
-                  <button
-                    onClick={() => createNCRFromFinding(finding.id)}
-                    className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Crear No Conformidad
-                  </button>
+                  {finding.ncrId ? (
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-800 text-sm rounded-full">
+                        <CheckCircle className="w-3 h-3" />
+                        NCR creada
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => createNCRFromFinding(finding.id)}
+                      className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Crear No Conformidad
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
