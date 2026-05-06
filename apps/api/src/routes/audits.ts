@@ -931,9 +931,9 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
-  // PATCH /audit/audits/:id/report — Guardar informe manualmente
+  // PATCH /audit/audits/:id/report-content — Guardar contenido de informe manualmente
   app.patch(
-    '/audit/audits/:id/report',
+    '/audit/audits/:id/report-content',
     async (req: FastifyRequest<{ Params: { id: string }, Body: Partial<AuditReport> }>, reply: FastifyReply) => {
       const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });

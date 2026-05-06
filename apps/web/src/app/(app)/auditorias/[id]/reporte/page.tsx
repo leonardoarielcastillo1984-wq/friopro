@@ -184,7 +184,7 @@ export default function ReportPage() {
     if (!editingReport) return;
     try {
       setSaving(true);
-      await apiFetch(`/audit/audits/${auditId}/report`, {
+      await apiFetch(`/audit/audits/${auditId}/report-content`, {
         method: 'PATCH',
         json: editingReport,
       });
