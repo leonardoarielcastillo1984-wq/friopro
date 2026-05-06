@@ -126,7 +126,7 @@ export default function EmployeesPage() {
   // Funciones de Importación/Exportación
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetch('/api/hr/employees/template');
+      const response = await fetch('/hr/employees/template');
       if (!response.ok) throw new Error('Error al descargar plantilla');
       
       const blob = await response.blob();
@@ -146,7 +146,7 @@ export default function EmployeesPage() {
 
   const handleExportEmployees = async () => {
     try {
-      const response = await fetch('/api/hr/employees/export');
+      const response = await fetch('/hr/employees/export');
       if (!response.ok) throw new Error('Error al exportar empleados');
       
       const blob = await response.blob();
@@ -172,7 +172,7 @@ export default function EmployeesPage() {
     formData.append('updateExisting', updateExisting.toString());
 
     try {
-      const response = await fetch('/api/hr/employees/import', {
+      const response = await fetch('/hr/employees/import', {
         method: 'POST',
         body: formData,
       });
@@ -192,7 +192,7 @@ export default function EmployeesPage() {
     if (!importPreview) return;
 
     try {
-      const response = await fetch('/api/hr/employees/import/confirm', {
+      const response = await fetch('/hr/employees/import/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
