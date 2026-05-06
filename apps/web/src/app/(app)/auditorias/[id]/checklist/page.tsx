@@ -76,12 +76,26 @@ export default function ChecklistPage() {
     try {
       setAiLoading(true);
       setError(null);
-      const res = await apiFetch(`/audit/audits/${auditId}/generate-checklist-from-normative`, { method: 'POST' }) as any;
-      if (res.message) {
-        await loadChecklist();
+      // Intentar primero con normativas, si falla usar endpoint genérico
+      try {
+        const res = await apiFetch(`/audit/audits/${auditId}/generate-checklist-from-normative`, { method: 'POST' }) as any;
+        if (res.message) {
+          await loadChecklist();
+          return;
+        }
+      } catch (e: any) {
+        // Si falla por no tener normativas, usar endpoint genérico
+        if (e?.error?.includes('normativas') || e?.error?.includes('ISO')) {
+          const res2 = await apiFetch(`/audit/audits/${auditId}/generate-checklist`, { method: 'POST' }) as any;
+          if (res2.items) {
+            await loadChecklist();
+            return;
+          }
+        }
+        throw e;
       }
-    } catch (err) {
-      setError('Error al generar checklist con IA');
+    } catch (err: any) {
+      setError(err?.error || 'Error al generar checklist con IA');
     } finally {
       setAiLoading(false);
     }
