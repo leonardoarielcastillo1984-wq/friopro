@@ -100,6 +100,7 @@ export default function AuditReportPage() {
   const compliantCount = checklist.filter(i => i.response === 'COMPLIES').length;
   const nonCompliantCount = checklist.filter(i => i.response === 'DOES_NOT_COMPLY').length;
   const complianceRate = checklist.length > 0 ? ((compliantCount / checklist.length) * 100).toFixed(1) : '0';
+  const auditDate = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -119,6 +120,76 @@ export default function AuditReportPage() {
           <button className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
             <Download className="w-4 h-4" /> Exportar PDF
           </button>
+        </div>
+      </div>
+
+      {/* Portada Profesional */}
+      <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl shadow-lg p-8 text-white">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <div className="text-sm opacity-80 mb-2">INFORME DE AUDITORÍA</div>
+            <h1 className="text-3xl font-bold mb-2">{audit.title}</h1>
+            <div className="text-xl font-semibold mb-4">{audit.code}</div>
+            <div className="space-y-2 text-sm opacity-90">
+              <div><span className="font-medium">Área:</span> {audit.area}</div>
+              <div><span className="font-medium">Proceso:</span> {audit.process || 'N/A'}</div>
+              <div><span className="font-medium">Fecha:</span> {auditDate}</div>
+              <div><span className="font-medium">Normas:</span> {audit.isoStandard.join(', ')}</div>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="bg-white/10 rounded-lg p-4">
+              <div className="text-sm opacity-80">Estado de Cumplimiento</div>
+              <div className="text-4xl font-bold">{complianceRate}%</div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white/10 rounded-lg p-4">
+                <div className="text-xs opacity-80">Ítems</div>
+                <div className="text-2xl font-bold">{checklist.length}</div>
+              </div>
+              <div className="bg-white/10 rounded-lg p-4">
+                <div className="text-xs opacity-80">Hallazgos</div>
+                <div className="text-2xl font-bold">{findings.length}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Resumen Ejecutivo */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <FileText className="w-5 h-5 text-blue-600" />
+          <h2 className="text-lg font-semibold text-gray-900">Resumen Ejecutivo</h2>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Objetivo de la Auditoría</label>
+            <textarea
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              rows={3}
+              placeholder="Describir el objetivo principal de la auditoría..."
+              defaultValue={audit.objective || ''}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Alcance</label>
+            <textarea
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              rows={2}
+              placeholder="Describir el alcance de la auditoría..."
+              defaultValue={audit.scope || ''}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Conclusiones Generales</label>
+            <textarea
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              rows={4}
+              placeholder="Resumen de las principales conclusiones de la auditoría..."
+              defaultValue={audit.auditorOpinion || ''}
+            />
+          </div>
         </div>
       </div>
 
@@ -334,54 +405,94 @@ export default function AuditReportPage() {
         </div>
       </div>
 
-      {/* 5. Hallazgos Mejorados */}
+      {/* 5. Hallazgos Mejorados con Evidencia */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4">
           <AlertTriangle className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">5. Hallazgos</h2>
+          <h2 className="text-lg font-semibold text-gray-900">5. Hallazgos Detallados con Evidencia</h2>
         </div>
         {findings.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No hay hallazgos registrados</p>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {findings.map((finding) => (
-              <div key={finding.id} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">
+              <div key={finding.id} className="border border-gray-200 rounded-lg p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded text-sm font-medium">
                       {finding.code}
                     </span>
-                    <span className="ml-2 inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">
+                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded text-sm font-medium ${
+                      finding.severity === 'ALTO' ? 'bg-red-100 text-red-700' :
+                      finding.severity === 'MEDIO' ? 'bg-orange-100 text-orange-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }`}>
                       {finding.severity}
                     </span>
+                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded text-sm">
+                      {finding.status}
+                    </span>
                   </div>
-                  <button className="text-blue-600 hover:text-blue-800 text-sm">
+                  <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
                     Crear CAPA
                   </button>
                 </div>
-                <h4 className="font-medium text-gray-900 mb-1">{finding.description}</h4>
-                {finding.clause && (
-                  <p className="text-sm text-gray-600">Cláusula: {finding.clause}</p>
-                )}
-                {finding.requirement && (
-                  <p className="text-sm text-gray-600">Requisito: {finding.requirement}</p>
-                )}
+                
+                <h4 className="text-lg font-semibold text-gray-900 mb-2">{finding.description}</h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  {finding.clause && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Cláusula</label>
+                      <p className="text-sm text-gray-900">{finding.clause}</p>
+                    </div>
+                  )}
+                  {finding.requirement && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Requisito</label>
+                      <p className="text-sm text-gray-900">{finding.requirement}</p>
+                    </div>
+                  )}
+                </div>
+                
                 {finding.risk && (
-                  <p className="text-sm text-red-600 mt-2">Riesgo: {finding.risk}</p>
+                  <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                    <label className="block text-sm font-medium text-red-700 mb-1">Riesgo Identificado</label>
+                    <p className="text-sm text-red-900">{finding.risk}</p>
+                  </div>
                 )}
+                
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Evidencia del Hallazgo</label>
+                    <textarea
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                      rows={3}
+                      placeholder="Describir la evidencia que sustenta el hallazgo..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Acción Inmediata Tomada</label>
+                    <textarea
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                      rows={2}
+                      placeholder="Describir acciones inmediatas..."
+                    />
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* 6. Conclusión Avanzada */}
+      {/* 6. Recomendaciones de Mejora */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">6. Conclusión y Recomendaciones</h2>
+          <h2 className="text-lg font-semibold text-gray-900">6. Recomendaciones de Mejora</h2>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Opinión del Auditor</label>
             <select
@@ -394,35 +505,72 @@ export default function AuditReportPage() {
               <option value="PARCIALMENTE_CONFORME">Parcialmente conforme</option>
             </select>
           </div>
+          
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Nivel de Madurez</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Nivel de Madurez del Sistema</label>
             <select
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
               defaultValue={audit.maturityLevel || ''}
             >
               <option value="">Seleccionar...</option>
-              <option value="BAJO">Bajo</option>
-              <option value="MEDIO">Medio</option>
-              <option value="ALTO">Alto</option>
+              <option value="BAJO">Bajo - Sistema en desarrollo inicial</option>
+              <option value="MEDIO">Medio - Sistema implementado pero con mejoras necesarias</option>
+              <option value="ALTO">Alto - Sistema maduro y efectivo</option>
             </select>
           </div>
+          
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <label className="block text-sm font-medium text-blue-900 mb-3">Recomendaciones Específicas por Hallazgo</label>
+            {findings.length === 0 ? (
+              <p className="text-sm text-blue-700">No hay hallazgos para generar recomendaciones</p>
+            ) : (
+              <div className="space-y-3">
+                {findings.map((finding, idx) => (
+                  <div key={finding.id} className="bg-white rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-medium text-gray-500">Rec. {idx + 1}:</span>
+                      <span className="text-sm font-semibold text-gray-900">{finding.code}</span>
+                    </div>
+                    <textarea
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500"
+                      rows={2}
+                      placeholder="Describir recomendación específica para este hallazgo..."
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Recomendación de Certificación</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Recomendaciones Generales</label>
             <textarea
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-              rows={3}
-              placeholder="Recomendación..."
+              rows={4}
+              placeholder="Recomendaciones generales de mejora para el sistema de gestión..."
               defaultValue={audit.certificationRecommendation || ''}
             />
           </div>
+          
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Riesgos Principales</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Riesgos Principales Identificados</label>
             <textarea
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
               rows={3}
-              placeholder="Describir riesgos principales..."
+              placeholder="Describir riesgos principales que podrían afectar el sistema..."
               defaultValue={audit.mainRisks || ''}
             />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Plazo Sugerido para Implementación</label>
+            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+              <option value="">Seleccionar...</option>
+              <option value="INMEDIATO">Inmediato (0-30 días)</option>
+              <option value="CORTO">Corto plazo (1-3 meses)</option>
+              <option value="MEDIO">Medio plazo (3-6 meses)</option>
+              <option value="LARGO">Largo plazo (6-12 meses)</option>
+            </select>
           </div>
         </div>
       </div>
