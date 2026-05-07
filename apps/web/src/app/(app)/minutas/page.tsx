@@ -125,6 +125,7 @@ export default function MinutasPage() {
   const [summarizing, setSummarizing] = useState(false);
   const [detectingActions, setDetectingActions] = useState(false);
   const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [capaCreatedBlocks, setCapaCreatedBlocks] = useState<Set<string>>(new Set());
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -329,6 +330,7 @@ export default function MinutasPage() {
       await apiFetch(`/minutas/${editingMinuta.id}/blocks/${blockId}/create-capa`, {
         method: 'POST',
       });
+      setCapaCreatedBlocks(prev => new Set(prev).add(blockId));
       alert('CAPA creada exitosamente');
     } catch (err) {
       console.error('Error creating CAPA:', err);
@@ -1311,16 +1313,22 @@ export default function MinutasPage() {
                                   </div>
                                 )}
                               </div>
-                              <div className="flex gap-1">
+                              <div className="flex gap-1 items-center">
                                 {block.type === 'ACTION' && (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => handleCreateCAPA(block.id)}
-                                    title="Crear CAPA"
-                                  >
-                                    <Target className="h-4 w-4 text-blue-600" />
-                                  </Button>
+                                  <>
+                                    {!capaCreatedBlocks.has(block.id) ? (
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => handleCreateCAPA(block.id)}
+                                        title="Crear CAPA"
+                                      >
+                                        <Target className="h-4 w-4 text-blue-600" />
+                                      </Button>
+                                    ) : (
+                                      <span className="text-xs text-green-600 font-medium">✓ CAPA registrada</span>
+                                    )}
+                                  </>
                                 )}
                                 {block.type === 'DECISION' && (
                                   <Button

@@ -516,7 +516,7 @@ Minuta:\n${content}`;
             tenantId,
             code: `CAPA-${Date.now()}`,
             title: block.content.substring(0, 100),
-            description: block.content,
+            description: `Acción creada desde minuta: ${block.minuta?.title || 'Sin título'}\n\n${block.content}`,
             type: 'CORRECTIVE',
             priority: block.minuta?.priority || 'MEDIUM',
             status: 'OPEN',
@@ -527,7 +527,7 @@ Minuta:\n${content}`;
             dueDate,
             origin: 'MANUAL',
             affectedArea: block.minuta?.area || 'General',
-            detectedBy: 'Minuta',
+            detectedBy: `Minuta: ${block.minuta?.title || 'Sin título'}`,
           },
         });
       });
