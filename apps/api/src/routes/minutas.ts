@@ -701,7 +701,11 @@ La transcripción debe ser detallada y profesional.`;
             firstName: true,
             lastName: true,
             email: true,
-            position: true,
+            position: {
+              select: {
+                name: true,
+              },
+            },
             departmentId: true,
           },
           orderBy: { firstName: 'asc' },
@@ -712,7 +716,7 @@ La transcripción debe ser detallada y profesional.`;
         id: emp.id,
         name: `${emp.firstName} ${emp.lastName}`.trim(),
         email: emp.email,
-        position: emp.position,
+        position: emp.position?.name || '',
         departmentId: emp.departmentId,
       }));
 
