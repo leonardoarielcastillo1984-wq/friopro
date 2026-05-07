@@ -484,19 +484,36 @@ Minuta:\n${content}`;
     try {
       // Crear un objetivo SGI para la acción
       const objective = await app.runWithDbContext(req, async (tx: any) => {
+        // Buscar responsable por nombre de empleado
+        let responsibleId = null;
+        if (block.responsible) {
+          const employee = await tx.employee.findFirst({
+            where: { 
+              tenantId,
+              firstName: { contains: block.responsible.split(' ')[0] }
+            }
+          });
+          if (employee) {
+            const user = await tx.user.findFirst({
+              where: { employeeId: employee.id }
+            });
+            responsibleId = user?.id || null;
+          }
+        }
+
         return tx.sgiObjective.create({
           data: {
             tenantId,
             code: `OBJ-${Date.now()}`,
             title: block.content.substring(0, 100),
             description: block.content,
-            targetDate: block.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            targetDate: block.dueDate ? new Date(block.dueDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             progress: 0,
             status: 'PENDING',
             priority: block.minuta?.priority || 'MEDIUM',
             origin: 'MINUTAS',
             originEntityId: block.minutaId,
-            responsibleId: block.responsible ? await tx.user.findFirst({ where: { name: block.responsible } })?.id : null,
+            responsibleId,
           },
         });
       });
@@ -641,6 +658,32 @@ La transcripción debe ser detallada y profesional.`;
     } catch (err: any) {
       console.error('[minutas transcribe] Error:', err);
       return reply.code(500).send({ error: 'Error al transcribir audio', details: err.message });
+    }
+  });
+
+  // GET /minutas/departments — Obtener lista de departamentos
+  app.get('/departments', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = req.db.tenantId;
+
+    try {
+      const departments = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.department.findMany({
+          where: { tenantId, deletedAt: null },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            color: true,
+          },
+          orderBy: { name: 'asc' },
+        });
+      });
+
+      return reply.send({ departments });
+    } catch (err: any) {
+      console.error('[minutas departments] Error:', err);
+      return reply.code(500).send({ error: 'Error al obtener departamentos', details: err.message });
     }
   });
 };

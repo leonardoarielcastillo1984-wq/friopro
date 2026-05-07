@@ -125,6 +125,7 @@ export default function MinutasPage() {
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcribing, setTranscribing] = useState(false);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     title: '',
     date: new Date().toISOString().split('T')[0],
@@ -150,7 +151,17 @@ export default function MinutasPage() {
 
   useEffect(() => {
     loadMinutas();
+    loadDepartments();
   }, []);
+
+  async function loadDepartments() {
+    try {
+      const res = await apiFetch('/minutas/departments') as { departments: any[] };
+      setDepartments(res.departments);
+    } catch (err) {
+      console.error('Error loading departments:', err);
+    }
+  }
 
   async function loadMinutas() {
     try {
@@ -839,12 +850,19 @@ export default function MinutasPage() {
               </div>
               <div>
                 <Label htmlFor="area">Área</Label>
-                <Input
+                <select
                   id="area"
                   value={formData.area}
                   onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                  placeholder="Departamento"
-                />
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="">Seleccionar departamento</option>
+                  {departments.map((dept) => (
+                    <option key={dept.id} value={dept.name}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
