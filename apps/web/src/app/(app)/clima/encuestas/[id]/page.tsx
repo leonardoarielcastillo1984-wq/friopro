@@ -35,7 +35,8 @@ export default function DetallEncuestaPage() {
   const [loading, setLoading] = useState(true);
   const [showCapaModal, setShowCapaModal] = useState(false);
   const [capaContext, setCapaContext] = useState<{ title: string; description: string } | null>(null);
-  const [capaForm, setCapaForm] = useState({ title: '', description: '', criticality: 'MEDIA', dueDate: '' });
+  const [capaForm, setCapaForm] = useState({ title: '', description: '', criticality: 'MEDIA', dueDate: '', createNcr: false });
+  const [ncrCreada, setNcrCreada] = useState<{ id: string; code: string } | null>(null);
   const [savingCapa, setSavingCapa] = useState(false);
   const [capaCreada, setCapaCreada] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -77,8 +78,9 @@ export default function DetallEncuestaPage() {
   }
 
   function openCapa(title: string, description: string) {
-    setCapaForm({ title, description, criticality: 'MEDIA', dueDate: '' });
+    setCapaForm({ title, description, criticality: 'MEDIA', dueDate: '', createNcr: false });
     setCapaCreada(false);
+    setNcrCreada(null);
     setShowCapaModal(true);
   }
 
@@ -86,11 +88,12 @@ export default function DetallEncuestaPage() {
     e.preventDefault();
     setSavingCapa(true);
     try {
-      await apiFetch('/clima/planes-accion', {
+      const res = await apiFetch('/clima/planes-accion', {
         method: 'POST',
-        json: { title: capaForm.title, description: capaForm.description, criticality: capaForm.criticality, dueDate: capaForm.dueDate || undefined, surveyId: id, origin: 'ENCUESTA' },
-      });
+        json: { title: capaForm.title, description: capaForm.description, criticality: capaForm.criticality, dueDate: capaForm.dueDate || undefined, surveyId: id, origin: 'ENCUESTA', createNcr: capaForm.createNcr },
+      }) as any;
       setCapaCreada(true);
+      if (res?.ncr) setNcrCreada({ id: res.ncr.id, code: res.ncr.code });
       setShowCapaModal(false);
     } catch { alert('Error al crear CAPA'); } finally { setSavingCapa(false); }
   }
@@ -279,13 +282,23 @@ export default function DetallEncuestaPage() {
                 </div>
 
                 {/* CAPA global desde resultados */}
-                {capaCreada ? (
-                  <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span className="font-medium">CAPA creada correctamente</span>
-                    <button onClick={() => router.push('/clima/planes-accion')} className="ml-auto text-xs underline">Ver planes</button>
+                {capaCreada && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span className="font-medium">CAPA creada correctamente</span>
+                      <button onClick={() => router.push('/clima/planes-accion')} className="ml-auto text-xs underline">Ver planes</button>
+                    </div>
+                    {ncrCreada && (
+                      <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 rounded-xl px-4 py-2.5">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span className="font-medium">NCR {ncrCreada.code} creada en módulo general</span>
+                        <button onClick={() => router.push(`/calidad?ncr=${ncrCreada.id}`)} className="ml-auto text-xs underline">Ver NCR</button>
+                      </div>
+                    )}
                   </div>
-                ) : (
+                )}
+                {!capaCreada && (
                   <button onClick={() => openCapa(`Mejora encuesta: ${survey.title}`, `Hallazgos detectados en resultados de la encuesta "${survey.title}"`)}
                     className="w-full flex items-center justify-center gap-2 text-sm text-purple-700 border border-purple-200 hover:bg-purple-50 py-2.5 rounded-xl transition-colors font-medium">
                     <ClipboardCheck className="w-4 h-4" />
@@ -495,6 +508,11 @@ export default function DetallEncuestaPage() {
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400" />
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={capaForm.createNcr} onChange={e => setCapaForm(p => ({ ...p, createNcr: e.target.checked }))}
+                  className="rounded border-gray-300" />
+                Crear también como NCR en módulo general
+              </label>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowCapaModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
                 <button type="submit" disabled={savingCapa} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-xl transition-colors">

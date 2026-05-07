@@ -63,9 +63,10 @@ export default function SugerenciasPage() {
   const [newForm, setNewForm] = useState({ type: 'SUGERENCIA', title: '', content: '', priority: 'MEDIA', isAnonymous: true, category: '' });
   const [saving, setSaving] = useState(false);
   const [showCapa, setShowCapa] = useState(false);
-  const [capaForm, setCapaForm] = useState({ title: '', description: '', criticality: 'MEDIA', dueDate: '' });
+  const [capaForm, setCapaForm] = useState({ title: '', description: '', criticality: 'MEDIA', dueDate: '', createNcr: false });
   const [savingCapa, setSavingCapa] = useState(false);
   const [capaCreada, setCapaCreada] = useState<string | null>(null);
+  const [ncrCreada, setNcrCreada] = useState<{ id: string; code: string } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => { loadItems(); }, []);
@@ -127,11 +128,13 @@ export default function SugerenciasPage() {
           criticality: capaForm.criticality,
           dueDate: capaForm.dueDate || undefined,
           suggestionId: selected.id,
+          createNcr: capaForm.createNcr,
         },
       }) as any;
       setCapaCreada(data.plan?.id || 'ok');
+      if (data?.ncr) setNcrCreada({ id: data.ncr.id, code: data.ncr.code });
       setShowCapa(false);
-      setCapaForm({ title: '', description: '', criticality: 'MEDIA', dueDate: '' });
+      setCapaForm({ title: '', description: '', criticality: 'MEDIA', dueDate: '', createNcr: false });
     } catch { alert('Error al crear CAPA'); } finally { setSavingCapa(false); }
   }
 
@@ -313,10 +316,19 @@ export default function SugerenciasPage() {
               {/* CAPA */}
               <div className="pt-2 border-t border-gray-100">
                 {capaCreada ? (
-                  <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span className="font-medium">CAPA creada correctamente</span>
-                    <button onClick={() => router.push(`/clima/planes-accion`)} className="ml-auto text-xs underline">Ver planes</button>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span className="font-medium">CAPA creada correctamente</span>
+                      <button onClick={() => router.push(`/clima/planes-accion`)} className="ml-auto text-xs underline">Ver planes</button>
+                    </div>
+                    {ncrCreada && (
+                      <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 rounded-xl px-4 py-2.5">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span className="font-medium">NCR {ncrCreada.code} creada en módulo general</span>
+                        <button onClick={() => router.push(`/ncr`)} className="ml-auto text-xs underline">Ver NCR</button>
+                      </div>
+                    )}
                   </div>
                 ) : selected.actionPlans?.length > 0 ? (
                   <div className="flex items-center gap-2 text-sm text-purple-700 bg-purple-50 rounded-xl px-4 py-2.5">
@@ -325,7 +337,7 @@ export default function SugerenciasPage() {
                     <button onClick={() => router.push(`/clima/planes-accion`)} className="ml-auto text-xs underline">Ver</button>
                   </div>
                 ) : (
-                  <button onClick={() => { setCapaForm({ title: `CAPA: ${selected.title}`, description: selected.content, criticality: 'MEDIA', dueDate: '' }); setShowCapa(true); }}
+                  <button onClick={() => { setCapaForm({ title: `CAPA: ${selected.title}`, description: selected.content, criticality: 'MEDIA', dueDate: '', createNcr: false }); setNcrCreada(null); setShowCapa(true); }}
                     className="w-full flex items-center justify-center gap-2 text-sm text-purple-700 border border-purple-200 hover:bg-purple-50 py-2.5 rounded-xl transition-colors font-medium">
                     <ClipboardList className="w-4 h-4" />
                     Crear plan de acción (CAPA)
@@ -370,6 +382,11 @@ export default function SugerenciasPage() {
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400" />
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={capaForm.createNcr} onChange={e => setCapaForm(p => ({ ...p, createNcr: e.target.checked }))}
+                  className="rounded border-gray-300" />
+                Crear también como NCR en módulo general
+              </label>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowCapa(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
                 <button type="submit" disabled={savingCapa} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-xl transition-colors">
