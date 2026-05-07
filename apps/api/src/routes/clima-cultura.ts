@@ -727,8 +727,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.post('/sugerencias', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
     const schema = z.object({
       type: z.enum(['SUGERENCIA', 'RECLAMO', 'INQUIETUD', 'MEJORA', 'COMENTARIO', 'ALERTA']).default('SUGERENCIA'),
