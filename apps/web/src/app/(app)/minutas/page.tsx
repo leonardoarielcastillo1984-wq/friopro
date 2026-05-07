@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit, Sparkles, Loader2, Target, AlertTriangle, FolderKanban, Mic, Upload, Timeline, VolumeUp, ChartBar } from 'lucide-react';
+import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit, Sparkles, Loader2, Target, AlertTriangle, FolderKanban, Mic, Upload, History, Volume2, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -584,7 +584,7 @@ export default function MinutasPage() {
                 <p className="text-sm text-gray-500">Tasa de Completación</p>
                 <p className="text-2xl font-bold">{Math.round((minutas.filter(m => m.status === 'COMPLETED').length / minutas.length) * 100)}%</p>
               </div>
-              <ChartBar className="h-8 w-8 text-purple-600" />
+              <BarChart3 className="h-8 w-8 text-purple-600" />
             </div>
           </CardContent>
         </Card>
@@ -621,7 +621,7 @@ export default function MinutasPage() {
                 <p className="text-sm text-gray-500">Minutas con Audio</p>
                 <p className="text-2xl font-bold">{minutas.filter(m => m.audioUrl && m.audioUrl.length > 0).length}</p>
               </div>
-              <VolumeUp className="h-8 w-8 text-orange-600" />
+              <Volume2 className="h-8 w-8 text-orange-600" />
             </div>
           </CardContent>
         </Card>
@@ -642,7 +642,7 @@ export default function MinutasPage() {
       <Card className="mt-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Timeline className="h-5 w-5" />
+            <History className="h-5 w-5" />
             Timeline Corporativo
           </CardTitle>
         </CardHeader>
