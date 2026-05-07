@@ -303,4 +303,166 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
     return reply.code(204).send();
   });
+
+  // POST /minutas/:id/summarize — Generar resumen con IA
+  app.post('/:id/summarize', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+    const tenantId = req.db.tenantId;
+
+    const minuta = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minuta.findFirst({
+        where: { id, tenantId, deletedAt: null },
+        include: { blocks: true },
+      });
+    });
+
+    if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
+
+    try {
+      const llm = (app as any).llm;
+      if (!llm) return reply.code(503).send({ error: 'IA no configurada' });
+
+      // Construir el contenido de la minuta
+      let content = `Título: ${minuta.title}\n`;
+      content += `Tipo: ${minuta.type}\n`;
+      content += `Fecha: ${minuta.date}\n`;
+      content += `Participantes: ${minuta.participants.join(', ')}\n\n`;
+
+      if (minuta.blocks && minuta.blocks.length > 0) {
+        minuta.blocks.forEach((block: any) => {
+          content += `[${block.type}]\n${block.content}\n\n`;
+        });
+      } else if (minuta.content) {
+        content += `Contenido:\n${minuta.content}\n`;
+      }
+
+      const prompt = `Generá un resumen ejecutivo conciso de la siguiente minuta de reunión. El resumen debe ser en español, máximo 200 palabras, y debe capturar los puntos clave, decisiones tomadas y acciones pendientes.\n\n${content}`;
+
+      const response = await llm.chat([{ role: 'user', content: prompt }], 1000);
+
+      // Guardar el resumen en la minuta
+      await app.runWithDbContext(req, async (tx: any) => {
+        return tx.minuta.update({
+          where: { id },
+          data: { summary: response.text, aiProcessed: true },
+        });
+      });
+
+      return reply.send({ summary: response.text });
+    } catch (err: any) {
+      console.error('[minutas summarize] Error:', err);
+      return reply.code(500).send({ error: 'Error al generar resumen', details: err.message });
+    }
+  });
+
+  // POST /minutas/:id/detect-actions — Detectar acciones automáticamente con IA
+  app.post('/:id/detect-actions', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+    const tenantId = req.db.tenantId;
+
+    const minuta = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minuta.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+    });
+
+    if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
+
+    try {
+      const llm = (app as any).llm;
+      if (!llm) return reply.code(503).send({ error: 'IA no configurada' });
+
+      // Construir el contenido de la minuta
+      let content = `Título: ${minuta.title}\n`;
+      content += `Tipo: ${minuta.type}\n`;
+      content += `Fecha: ${minuta.date}\n`;
+      content += `Participantes: ${minuta.participants.join(', ')}\n\n`;
+
+      if (minuta.content) {
+        content += `Contenido:\n${minuta.content}\n\n`;
+      }
+
+      const blocks = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.minutaBlock.findMany({
+          where: { minutaId: id },
+          orderBy: { order: 'asc' },
+        });
+      });
+
+      if (blocks.length > 0) {
+        blocks.forEach((block: any) => {
+          content += `[${block.type}]\n${block.content}\n\n`;
+        });
+      }
+
+      const prompt = `Analizá la siguiente minuta de reunión y extraé las acciones, decisiones y puntos clave. Respondé SOLO en formato JSON con esta estructura:
+{
+  "actions": [
+    {
+      "type": "ACTION",
+      "content": "descripción de la acción",
+      "responsible": "nombre del responsable",
+      "dueDate": "YYYY-MM-DD o null"
+    }
+  ],
+  "decisions": [
+    {
+      "type": "DECISION",
+      "content": "descripción de la decisión"
+    }
+  ],
+  "conversations": [
+    {
+      "type": "CONVERSATION",
+      "content": "punto clave de la conversación"
+    }
+  ]
+}
+
+Minuta:\n${content}`;
+
+      const response = await llm.chat([{ role: 'user', content: prompt }], 2000);
+
+      // Parsear la respuesta JSON
+      const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return reply.code(500).send({ error: 'La IA no devolvió un formato JSON válido' });
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Crear los bloques detectados
+      const allItems = [
+        ...(parsed.actions || []).map((item: any) => ({ ...item, type: 'ACTION' })),
+        ...(parsed.decisions || []).map((item: any) => ({ ...item, type: 'DECISION' })),
+        ...(parsed.conversations || []).map((item: any) => ({ ...item, type: 'CONVERSATION' })),
+      ];
+
+      const createdBlocks = await app.runWithDbContext(req, async (tx: any) => {
+        const created = [];
+        for (let i = 0; i < allItems.length; i++) {
+          const item = allItems[i];
+          const block = await tx.minutaBlock.create({
+            data: {
+              minutaId: id,
+              type: item.type,
+              content: item.content,
+              order: i,
+              responsible: item.responsible || null,
+              dueDate: item.dueDate ? new Date(item.dueDate) : null,
+              completed: false,
+              tags: [],
+            },
+          });
+          created.push(block);
+        }
+        return created;
+      });
+
+      return reply.send({ blocks: createdBlocks, count: createdBlocks.length });
+    } catch (err: any) {
+      console.error('[minutas detect-actions] Error:', err);
+      return reply.code(500).send({ error: 'Error al detectar acciones', details: err.message });
+    }
+  });
 };

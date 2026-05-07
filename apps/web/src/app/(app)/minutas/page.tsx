@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit } from 'lucide-react';
+import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit, Sparkles, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -120,6 +120,8 @@ export default function MinutasPage() {
   const [blocks, setBlocks] = useState<MinutaBlock[]>([]);
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [editingBlock, setEditingBlock] = useState<MinutaBlock | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
+  const [detectingActions, setDetectingActions] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     date: new Date().toISOString().split('T')[0],
@@ -247,6 +249,46 @@ export default function MinutasPage() {
       tags: block.tags.join(', '),
     });
     setBlockDialogOpen(true);
+  }
+
+  async function handleSummarize() {
+    if (!editingMinuta) return;
+
+    try {
+      setSummarizing(true);
+      const res = await apiFetch(`/minutas/${editingMinuta.id}/summarize`, {
+        method: 'POST',
+      }) as { summary: string };
+
+      // Actualizar la minuta localmente
+      setEditingMinuta({ ...editingMinuta, summary: res.summary });
+      setMinutas(prev => prev.map(m => m.id === editingMinuta.id ? { ...m, summary: res.summary } : m));
+    } catch (err) {
+      console.error('Error summarizing:', err);
+      alert('Error al generar resumen con IA');
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
+  async function handleDetectActions() {
+    if (!editingMinuta) return;
+
+    try {
+      setDetectingActions(true);
+      const res = await apiFetch(`/minutas/${editingMinuta.id}/detect-actions`, {
+        method: 'POST',
+      }) as { blocks: MinutaBlock[]; count: number };
+
+      // Recargar bloques
+      await loadBlocks(editingMinuta.id);
+      alert(`Se detectaron ${res.count} bloques automáticamente`);
+    } catch (err) {
+      console.error('Error detecting actions:', err);
+      alert('Error al detectar acciones con IA');
+    } finally {
+      setDetectingActions(false);
+    }
   }
 
   async function handleSave() {
@@ -497,6 +539,15 @@ export default function MinutasPage() {
                     )}
                   </div>
                 )}
+                {minuta.summary && (
+                  <div className="mt-3 p-2 bg-purple-50 rounded border border-purple-200">
+                    <div className="flex items-center gap-1 mb-1">
+                      <Sparkles className="h-3 w-3 text-purple-600" />
+                      <span className="text-xs font-medium text-purple-700">Resumen IA</span>
+                    </div>
+                    <p className="text-xs text-gray-700 line-clamp-3">{minuta.summary}</p>
+                  </div>
+                )}
               </div>
               <div className="flex gap-2 mt-4">
                 <Button
@@ -699,10 +750,28 @@ export default function MinutasPage() {
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold">Bloques de Decisión</h3>
-                  <Button onClick={openNewBlock} size="sm" variant="outline">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Agregar Bloque
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button onClick={handleSummarize} size="sm" variant="outline" disabled={summarizing}>
+                      {summarizing ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4 mr-2" />
+                      )}
+                      Resumen IA
+                    </Button>
+                    <Button onClick={handleDetectActions} size="sm" variant="outline" disabled={detectingActions}>
+                      {detectingActions ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4 mr-2" />
+                      )}
+                      Detectar Acciones
+                    </Button>
+                    <Button onClick={openNewBlock} size="sm" variant="outline">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar Bloque
+                    </Button>
+                  </div>
                 </div>
 
                 {blocks.length === 0 ? (
