@@ -140,11 +140,16 @@ export default function ComunicadosPage() {
 
   async function handleSave(e: React.FormEvent, sendNow = false) {
     e.preventDefault();
-    const bodyText = form.body.replace(/<[^>]*>/g, '').trim();
-    if (!form.title.trim() || !bodyText) return;
+    const currentBody = editorRef.current ? editorRef.current.innerHTML : form.body;
+    const bodyText = currentBody.replace(/<[^>]*>/g, '').trim();
+    if (!form.title.trim() || !bodyText) {
+      alert('Completá el asunto y el mensaje antes de continuar.');
+      return;
+    }
+    const payload = { ...form, body: currentBody };
     setSaving(true);
     try {
-      const data = await apiFetch('/clima/comunicados', { method: 'POST', json: form }) as any;
+      const data = await apiFetch('/clima/comunicados', { method: 'POST', json: payload }) as any;
       setComms(p => [data.comm, ...p]);
       setShowForm(false);
       resetForm();
