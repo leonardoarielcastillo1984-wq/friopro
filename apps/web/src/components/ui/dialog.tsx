@@ -71,8 +71,8 @@ DialogClose.displayName = "DialogClose"
 
 const DialogContent = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { onCloseAutoFocus?: () => void }
->(({ className, children, ...props }, ref) => {
+  React.HTMLAttributes<HTMLDivElement> & { onCloseAutoFocus?: () => void; resizable?: boolean }
+>(({ className, children, resizable = false, ...props }, ref) => {
   const { open, onOpenChange } = useDialog()
 
   if (!open) return null
@@ -87,6 +87,7 @@ const DialogContent = React.forwardRef<
         ref={ref}
         className={cn(
           "relative z-50 w-full max-w-lg gap-4 border bg-white p-6 shadow-lg sm:rounded-lg",
+          resizable && "resize-x overflow-auto min-w-[500px]",
           className
         )}
         {...props}

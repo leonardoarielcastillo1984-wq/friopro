@@ -522,6 +522,7 @@ export default function MinutasPage() {
       status: minuta.status,
       confidentiality: minuta.confidentiality,
       content: minuta.content || '',
+      audioUrl: minuta.audioUrl || '',
     });
     setDialogOpen(true);
     loadBlocks(minuta.id);
@@ -543,6 +544,7 @@ export default function MinutasPage() {
       status: 'DRAFT',
       confidentiality: 'INTERNAL',
       content: '',
+      audioUrl: '',
     });
     setDialogOpen(true);
   }
@@ -950,7 +952,7 @@ export default function MinutasPage() {
 
       {/* Dialogo de crear/editar */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" resizable={true}>
           <DialogHeader>
             <div className="flex items-center justify-between">
               <DialogTitle>
