@@ -649,7 +649,7 @@ Minuta:\n${content}`;
     }
   });
 
-  // POST /minutas/:id/transcribe — Transcribir audio con IA
+  // POST /minutas/:id/transcribe — Transcribir audio con IA (Whisper de Ollama)
   app.post('/:id/transcribe', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
@@ -665,40 +665,52 @@ Minuta:\n${content}`;
     if (!minuta.audioUrl) return reply.code(400).send({ error: 'La minuta no tiene audio' });
 
     try {
-      const llm = createLLMProvider(req.tenant);
-      if (!llm) return reply.code(503).send({ error: 'IA no configurada' });
+      // Extraer el nombre del archivo de la URL
+      const urlParts = minuta.audioUrl.split('/');
+      const fileName = urlParts[urlParts.length - 1];
+      
+      // Construir la ruta local del archivo
+      const storageBase = process.env.STORAGE_LOCAL_PATH || '/app/uploads';
+      const filePath = `${storageBase}/${tenantId}/files/${fileName}`;
 
-      // Por ahora, simulamos la transcripción con un mensaje
-      // En producción, esto debería usar un servicio de transcripción de audio real
-      const prompt = `Simulá una transcripción de una reunión de reunión basada en el contexto:
-Título: ${minuta.title}
-Tipo: ${minuta.type}
-Fecha: ${minuta.date}
-Participantes: ${minuta.participants.join(', ')}
+      // Leer el archivo de audio
+      const fs = await import('fs/promises');
+      const fileBuffer = await fs.readFile(filePath);
 
-Generá una transcripción realista de la reunión en español, incluyendo:
-- Introducción y presentación
-- Discusión de temas principales
-- Decisiones tomadas
-- Acciones asignadas
-- Cierre de la reunión
+      // Enviar el audio a Ollama Whisper
+      const ollamaUrl = process.env.OLLAMA_URL || 'http://ollama:11434';
+      const formData = new FormData();
+      formData.append('model', 'whisper');
+      formData.append('file', new Blob([new Uint8Array(fileBuffer)], { type: 'audio/mpeg' }), fileName);
 
-La transcripción debe ser detallada y profesional.`;
+      const ollamaResponse = await fetch(`${ollamaUrl}/api/generate`, {
+        method: 'POST',
+        body: formData,
+      });
 
-      const response = await llm.chat([{ role: 'user', content: prompt }], 3000);
+      if (!ollamaResponse.ok) {
+        throw new Error(`Ollama Whisper error: ${ollamaResponse.statusText}`);
+      }
+
+      const ollamaData = await ollamaResponse.json();
+      const transcription = ollamaData.response || '';
+
+      if (!transcription) {
+        throw new Error('No se pudo obtener la transcripción de Whisper');
+      }
 
       // Guardar la transcripción en el contenido de la minuta
       await app.runWithDbContext(req, async (tx: any) => {
         return tx.minuta.update({
           where: { id },
-          data: { content: response.text },
+          data: { content: transcription },
         });
       });
 
-      return reply.send({ transcription: response.text });
+      return reply.send({ transcription });
     } catch (err: any) {
       console.error('[minutas transcribe] Error:', err);
-      return reply.code(500).send({ error: 'Error al transcribir audio', details: err.message });
+      return reply.code(500).send({ error: 'Error al transcribir audio: ' + err.message });
     }
   });
 
