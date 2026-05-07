@@ -7,7 +7,7 @@ import {
   ImageIcon, X, Users, Mail, CheckCircle2, Clock, Loader2,
   Paperclip, ChevronDown
 } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getCsrfToken, getTenantId } from '@/lib/api';
 
 const STATUS_COLORS: Record<string, string> = {
   BORRADOR: 'bg-gray-100 text-gray-600',
@@ -67,12 +67,22 @@ export default function ComunicadosPage() {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api'}/clima/comunicados/upload`, {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+      const headers: Record<string, string> = {};
+      const token = typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null;
+      if (token) headers['authorization'] = `Bearer ${token}`;
+      const csrf = getCsrfToken();
+      if (csrf) headers['x-csrf-token'] = csrf;
+      const tenantId = getTenantId();
+      if (tenantId) headers['x-tenant-id'] = tenantId;
+      const res = await fetch(`${apiBase}/clima/comunicados/upload`, {
         method: 'POST',
         body: fd,
+        headers,
         credentials: 'include',
       });
       const data = await res.json();
+      if (!res.ok) { alert(data.error || 'Error al subir archivo'); return; }
       if (data.url) {
         setForm(p => ({ ...p, attachments: [...p.attachments, { name: data.name, url: data.url, type: data.type }] }));
       }

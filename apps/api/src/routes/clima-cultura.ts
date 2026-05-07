@@ -1110,17 +1110,40 @@ Respondé en JSON con esta estructura exacta:
     return reply.send({ comms });
   });
 
-  // GET /clima/comunicados/:id
-  app.get('/comunicados/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+  // POST /clima/comunicados/upload — DEBE ir ANTES de /:id para evitar conflicto de rutas
+  app.post('/comunicados/upload', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
     if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { id } = req.params as any;
-    const comm = await app.prisma.climaComms.findFirst({
-      where: { id, tenantId, deletedAt: null },
-      include: { createdBy: { select: { id: true, email: true } } },
-    });
-    if (!comm) return reply.code(404).send({ error: 'Comunicado no encontrado' });
-    return reply.send({ comm });
+
+    try {
+      const data = await req.file();
+      if (!data) return reply.code(400).send({ error: 'No se recibió archivo' });
+
+      const { createWriteStream, mkdirSync } = await import('fs');
+      const { join } = await import('path');
+      const { randomBytes } = await import('crypto');
+
+      const uploadDir = join(process.cwd(), 'uploads', 'comunicados', tenantId);
+      mkdirSync(uploadDir, { recursive: true });
+
+      const ext = data.filename.split('.').pop() || 'bin';
+      const fileName = `${randomBytes(12).toString('hex')}.${ext}`;
+      const filePath = join(uploadDir, fileName);
+
+      await new Promise<void>((resolve, reject) => {
+        const ws = createWriteStream(filePath);
+        data.file.pipe(ws);
+        ws.on('finish', resolve);
+        ws.on('error', reject);
+      });
+
+      const baseUrl = process.env.API_BASE_URL || `http://localhost:4000`;
+      const url = `${baseUrl}/uploads/comunicados/${tenantId}/${fileName}`;
+
+      return reply.send({ name: data.filename, url, type: data.mimetype });
+    } catch (e: any) {
+      return reply.code(500).send({ error: 'Error al subir archivo', detail: e.message });
+    }
   });
 
   // POST /clima/comunicados
@@ -1148,6 +1171,19 @@ Respondé en JSON con esta estructura exacta:
       },
     });
     return reply.code(201).send({ comm });
+  });
+
+  // GET /clima/comunicados/:id
+  app.get('/comunicados/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const { id } = req.params as any;
+    const comm = await app.prisma.climaComms.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: { createdBy: { select: { id: true, email: true } } },
+    });
+    if (!comm) return reply.code(404).send({ error: 'Comunicado no encontrado' });
+    return reply.send({ comm });
   });
 
   // PATCH /clima/comunicados/:id
@@ -1189,12 +1225,10 @@ Respondé en JSON con esta estructura exacta:
     const extraEmails = (comm.extraEmails as string[]) ?? [];
     const attachments = (comm.attachments as any[]) ?? [];
 
-    // Construir lista de emails únicos
     const allEmails = new Set<string>();
     for (const r of recipients) { if (r.email) allEmails.add(r.email); }
     for (const e of extraEmails) { allEmails.add(e); }
 
-    // HTML del comunicado
     const attachHtml = attachments.length > 0
       ? `<div style="margin-top:16px;"><strong>Adjuntos:</strong><ul style="margin:8px 0;padding-left:20px;">${attachments.map(a => `<li><a href="${a.url}">${a.name}</a></li>`).join('')}</ul></div>`
       : '';
@@ -1227,41 +1261,5 @@ Respondé en JSON con esta estructura exacta:
     });
 
     return reply.send({ success: true, sentCount, totalTargets: allEmails.size, errors });
-  });
-
-  // POST /clima/comunicados/upload — subida de adjuntos
-  app.post('/comunicados/upload', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-
-    try {
-      const data = await req.file();
-      if (!data) return reply.code(400).send({ error: 'No se recibió archivo' });
-
-      const { createWriteStream, mkdirSync } = await import('fs');
-      const { join } = await import('path');
-      const { randomBytes } = await import('crypto');
-
-      const uploadDir = join(process.cwd(), 'uploads', 'comunicados', tenantId);
-      mkdirSync(uploadDir, { recursive: true });
-
-      const ext = data.filename.split('.').pop() || 'bin';
-      const fileName = `${randomBytes(12).toString('hex')}.${ext}`;
-      const filePath = join(uploadDir, fileName);
-
-      await new Promise<void>((resolve, reject) => {
-        const ws = createWriteStream(filePath);
-        data.file.pipe(ws);
-        ws.on('finish', resolve);
-        ws.on('error', reject);
-      });
-
-      const baseUrl = process.env.API_BASE_URL || `http://localhost:4000`;
-      const url = `${baseUrl}/uploads/comunicados/${tenantId}/${fileName}`;
-
-      return reply.send({ name: data.filename, url, type: data.mimetype });
-    } catch (e: any) {
-      return reply.code(500).send({ error: 'Error al subir archivo', detail: e.message });
-    }
   });
 }
