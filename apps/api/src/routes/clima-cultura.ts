@@ -71,8 +71,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── DASHBOARD ──────────────────────────────────────────────────────────────
 
   app.get('/dashboard', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
     const [
       totalSurveys,
@@ -199,8 +199,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── ENCUESTAS CRUD ──────────────────────────────────────────────────────────
 
   app.get('/encuestas', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const q = req.query as any;
 
     const where: any = { tenantId, deletedAt: null };
@@ -229,8 +229,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.get('/encuestas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
@@ -260,8 +260,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.post('/encuestas', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
     const schema = z.object({
       title: z.string().min(2),
@@ -337,8 +337,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.patch('/encuestas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const schema = z.object({
@@ -366,8 +366,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.delete('/encuestas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     await app.prisma.climaSurvey.updateMany({ where: { id, tenantId, deletedAt: null }, data: { deletedAt: new Date(), isActive: false } });
@@ -377,8 +377,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── PREGUNTAS ───────────────────────────────────────────────────────────────
 
   app.post('/encuestas/:id/preguntas', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({ where: { id, tenantId, deletedAt: null } });
@@ -413,7 +413,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.delete('/encuestas/:id/preguntas/:qid', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id, qid } = req.params as any;
 
     await app.prisma.climaQuestion.updateMany({ where: { id: qid, surveyId: id }, data: { deletedAt: new Date() } });
@@ -423,8 +424,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── ENVÍO A DESTINATARIOS ───────────────────────────────────────────────────
 
   app.post('/encuestas/:id/enviar', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
@@ -500,8 +501,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── RESULTADOS Y RESPUESTAS ─────────────────────────────────────────────────
 
   app.get('/encuestas/:id/resultados', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
@@ -555,8 +556,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.get('/encuestas/:id/participacion', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({ where: { id, tenantId, deletedAt: null } });
@@ -577,8 +578,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── ANÁLISIS IA ─────────────────────────────────────────────────────────────
 
   app.post('/encuestas/:id/analisis-ia', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
@@ -638,8 +639,8 @@ Respondé en JSON con esta estructura exacta:
   // ─── INDICADORES ─────────────────────────────────────────────────────────────
 
   app.get('/indicadores', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
     const [allResponses, allSurveys, suggestions] = await Promise.all([
       app.prisma.climaResponse.findMany({
@@ -700,8 +701,8 @@ Respondé en JSON con esta estructura exacta:
   // ─── SUGERENCIAS Y RECLAMOS ───────────────────────────────────────────────────
 
   app.get('/sugerencias', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const q = req.query as any;
 
     const where: any = { tenantId, deletedAt: null };
@@ -755,8 +756,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.patch('/sugerencias/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const schema = z.object({
@@ -778,8 +779,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.delete('/sugerencias/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     await app.prisma.climaSuggestion.updateMany({ where: { id, tenantId, deletedAt: null }, data: { deletedAt: new Date() } });
@@ -789,8 +790,8 @@ Respondé en JSON con esta estructura exacta:
   // ─── PLANES DE ACCIÓN ────────────────────────────────────────────────────────
 
   app.get('/planes-accion', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const q = req.query as any;
 
     const where: any = { tenantId, deletedAt: null };
@@ -812,8 +813,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.post('/planes-accion', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
     const schema = z.object({
       title: z.string().min(3),
@@ -867,8 +868,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.patch('/planes-accion/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const schema = z.object({
@@ -895,8 +896,8 @@ Respondé en JSON con esta estructura exacta:
   // ─── EXPORTACIÓN CSV ─────────────────────────────────────────────────────────
 
   app.get('/encuestas/:id/exportar-csv', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const { tenantId } = req.db;
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
