@@ -1,11 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Zap, Lock, Mail } from 'lucide-react';
 import Link from 'next/link';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@sgi360.com');
+  const [email, setEmail] = useState('');
+
+  useEffect(() => {
+    const lastEmail = localStorage.getItem('lastLoginEmail');
+    if (lastEmail) setEmail(lastEmail);
+  }, []);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +69,7 @@ export default function LoginPage() {
           console.log('Login: user.globalRole no encontrado en:', (data as any).user);
         }
       }
+      localStorage.setItem('lastLoginEmail', email);
       if ((data as any)?.activeTenant?.id) localStorage.setItem('tenantId', (data as any).activeTenant.id);
       if ((data as any)?.csrfToken) localStorage.setItem('csrfToken', (data as any).csrfToken);
       
