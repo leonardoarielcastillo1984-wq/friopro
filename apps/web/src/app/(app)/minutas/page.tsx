@@ -606,58 +606,58 @@ export default function MinutasPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Prioridad Alta</p>
-                <p className="text-2xl font-bold">{minutas.filter(m => m.priority === 'HIGH' || m.priority === 'CRITICAL').length}</p>
+                <p className="text-xs text-gray-500">Prioridad Alta</p>
+                <p className="text-xl font-bold">{minutas.filter(m => m.priority === 'HIGH' || m.priority === 'CRITICAL').length}</p>
               </div>
-              <AlertCircle className="h-8 w-8 text-red-600" />
+              <AlertCircle className="h-5 w-5 text-red-600" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-3 pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Tasa de Completación</p>
-                <p className="text-2xl font-bold">{Math.round((minutas.filter(m => m.status === 'COMPLETED').length / minutas.length) * 100)}%</p>
+                <p className="text-xs text-gray-500">Tasa de Completación</p>
+                <p className="text-xl font-bold">{Math.round((minutas.filter(m => m.status === 'COMPLETED').length / minutas.length) * 100)}%</p>
               </div>
-              <BarChart3 className="h-8 w-8 text-purple-600" />
+              <BarChart3 className="h-5 w-5 text-purple-600" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-3 pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Minutas del Mes</p>
-                <p className="text-2xl font-bold">{minutas.filter(m => {
+                <p className="text-xs text-gray-500">Minutas del Mes</p>
+                <p className="text-xl font-bold">{minutas.filter(m => {
                   const date = new Date(m.date);
                   const now = new Date();
                   return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
                 }).length}</p>
               </div>
-              <Calendar className="h-8 w-8 text-blue-600" />
+              <Calendar className="h-5 w-5 text-blue-600" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-3 pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Minutas con Resumen</p>
-                <p className="text-2xl font-bold">{minutas.filter(m => m.summary && m.summary.length > 0).length}</p>
+                <p className="text-xs text-gray-500">Minutas con Resumen</p>
+                <p className="text-xl font-bold">{minutas.filter(m => m.summary && m.summary.length > 0).length}</p>
               </div>
-              <FileText className="h-8 w-8 text-green-600" />
+              <FileText className="h-5 w-5 text-green-600" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-3 pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Minutas con Audio</p>
-                <p className="text-2xl font-bold">{minutas.filter(m => m.content && m.content.length > 0).length}</p>
+                <p className="text-xs text-gray-500">Minutas con Audio</p>
+                <p className="text-xl font-bold">{minutas.filter(m => m.content && m.content.length > 0).length}</p>
               </div>
-              <Clock className="h-8 w-8 text-blue-600" />
+              <Clock className="h-5 w-5 text-blue-600" />
             </div>
           </CardContent>
         </Card>
