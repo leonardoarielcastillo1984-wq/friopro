@@ -524,8 +524,6 @@ Minuta:\n${content}`;
             endDate: dueDate,
             progress: 0,
             status: 'PLANNED',
-            origin: 'MINUTAS',
-            originEntityId: block.minutaId,
             responsibleId,
           },
         });
