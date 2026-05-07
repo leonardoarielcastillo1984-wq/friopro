@@ -82,8 +82,11 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
       pendingRecipients,
       recentResponses,
       openSuggestions,
+      openComplaints,
       openActionPlans,
       overdueActionPlans,
+      inProgressActionPlans,
+      completedActionPlans,
     ] = await Promise.all([
       app.prisma.climaSurvey.count({ where: { tenantId, deletedAt: null } }),
       app.prisma.climaSurvey.count({ where: { tenantId, isActive: true, deletedAt: null } }),
@@ -93,26 +96,63 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
       app.prisma.climaResponse.findMany({
         where: { survey: { tenantId }, isComplete: true },
         orderBy: { createdAt: 'desc' },
-        take: 20,
-        select: { overallScore: true, aiSentiment: true, createdAt: true, surveyId: true },
+        take: 50,
+        select: { overallScore: true, aiSentiment: true, completedAt: true, surveyId: true },
       }),
-      app.prisma.climaSuggestion.count({ where: { tenantId, status: { in: ['ABIERTO', 'EN_PROCESO'] }, deletedAt: null } }),
-      app.prisma.climaActionPlan.count({ where: { tenantId, status: { in: ['ABIERTO', 'EN_PROCESO'] }, deletedAt: null } }),
-      app.prisma.climaActionPlan.count({
-        where: { tenantId, status: { in: ['ABIERTO', 'EN_PROCESO'] }, dueDate: { lt: new Date() }, deletedAt: null },
-      }),
+      app.prisma.climaSuggestion.count({ where: { tenantId, type: 'SUGERENCIA', status: { in: ['ABIERTO', 'EN_PROCESO'] }, deletedAt: null } }),
+      app.prisma.climaSuggestion.count({ where: { tenantId, type: 'RECLAMO', status: { in: ['ABIERTO', 'EN_PROCESO'] }, deletedAt: null } }),
+      app.prisma.climaActionPlan.count({ where: { tenantId, status: 'ABIERTO', deletedAt: null } }),
+      app.prisma.climaActionPlan.count({ where: { tenantId, status: { in: ['ABIERTO', 'EN_PROCESO'] }, dueDate: { lt: new Date() }, deletedAt: null } }),
+      app.prisma.climaActionPlan.count({ where: { tenantId, status: 'EN_PROCESO', deletedAt: null } }),
+      app.prisma.climaActionPlan.count({ where: { tenantId, status: 'COMPLETADO', deletedAt: null } }),
     ]);
 
     const participationRate = totalRecipients > 0 ? Math.round((completedRecipients / totalRecipients) * 100) : 0;
 
-    const scores = recentResponses.filter(r => r.overallScore !== null).map(r => r.overallScore as number);
-    const avgScore = scores.length > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null;
+    const scores = recentResponses.filter((r: any) => r.overallScore !== null).map((r: any) => r.overallScore as number);
+    const avgScore = scores.length > 0 ? Math.round((scores.reduce((a: number, b: number) => a + b, 0) / scores.length) * 10) / 10 : null;
 
     const sentimentCounts = { POSITIVO: 0, NEUTRAL: 0, NEGATIVO: 0 };
-    recentResponses.forEach(r => {
+    recentResponses.forEach((r: any) => {
       if (r.aiSentiment && r.aiSentiment in sentimentCounts) {
         sentimentCounts[r.aiSentiment as keyof typeof sentimentCounts]++;
       }
+    });
+
+    // Monthly trend: last 6 months avg score
+    const now = new Date();
+    const monthlyTrend: { month: string; score: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      const monthResponses = recentResponses.filter((r: any) => {
+        const dt = r.completedAt ? new Date(r.completedAt) : null;
+        return dt && dt >= d && dt < end && r.overallScore != null;
+      });
+      if (monthResponses.length > 0) {
+        const avg = monthResponses.reduce((a: number, r: any) => a + r.overallScore, 0) / monthResponses.length;
+        monthlyTrend.push({ month: d.toLocaleString('es-AR', { month: 'short' }), score: Math.round(avg * 20) });
+      }
+    }
+
+    // Top topics from last AI analyses
+    const lastAnalyses = await app.prisma.climaSurvey.findMany({
+      where: { tenantId, deletedAt: null, aiAnalysis: { not: null } },
+      orderBy: { updatedAt: 'desc' },
+      take: 3,
+      select: { aiAnalysis: true },
+    });
+
+    const topTopics: any[] = [];
+    lastAnalyses.forEach((s: any) => {
+      try {
+        const analysis = typeof s.aiAnalysis === 'string' ? JSON.parse(s.aiAnalysis) : s.aiAnalysis;
+        if (Array.isArray(analysis?.topTopics)) {
+          analysis.topTopics.forEach((t: any) => topTopics.push(t));
+        } else if (Array.isArray(analysis?.themes)) {
+          analysis.themes.forEach((t: any) => topTopics.push({ topic: t.topic || t.name, count: t.count || t.mentions || 1, sentiment: t.sentiment || 'NEUTRAL', criticality: t.criticality || t.severity || 'MEDIA' }));
+        }
+      } catch (_) {}
     });
 
     const surveysWithStats = await app.prisma.climaSurvey.findMany({
@@ -125,6 +165,14 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
       },
     });
 
+    const surveysWithParticipation = await Promise.all(surveysWithStats.map(async (s: any) => {
+      const [comp, total] = await Promise.all([
+        app.prisma.climaRecipient.count({ where: { surveyId: s.id, status: 'COMPLETED' } }),
+        app.prisma.climaRecipient.count({ where: { surveyId: s.id } }),
+      ]);
+      return { ...s, participationRate: total > 0 ? Math.round((comp / total) * 100) : 0 };
+    }));
+
     return reply.send({
       kpis: {
         totalSurveys,
@@ -132,13 +180,19 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
         participationRate,
         avgScore,
         openSuggestions,
+        openComplaints,
         openActionPlans,
         overdueActionPlans,
+        inProgressActionPlans,
+        completedActionPlans,
         sentimentCounts,
         completedResponses: completedRecipients,
         pendingResponses: pendingRecipients,
+        totalRecipients,
+        monthlyTrend,
+        topTopics: topTopics.slice(0, 5),
       },
-      recentSurveys: surveysWithStats,
+      recentSurveys: surveysWithParticipation,
     });
   });
 
