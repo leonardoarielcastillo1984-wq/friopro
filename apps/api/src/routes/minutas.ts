@@ -482,25 +482,34 @@ Minuta:\n${content}`;
     if (!block) return reply.code(404).send({ error: 'Bloque no encontrado' });
 
     try {
-      // Crear un objetivo SGI para la acción
-      const objective = await app.runWithDbContext(req, async (tx: any) => {
-        // Buscar responsable por nombre de empleado
-        let responsibleId = null;
-        if (block.responsible) {
-          const employee = await tx.employee.findFirst({
-            where: { 
+      // Buscar usuario responsable por nombre de empleado
+      let responsibleId = null;
+      if (block.responsible) {
+        const employee = await app.runWithDbContext(req, async (tx: any) => {
+          return tx.employee.findFirst({
+            where: {
               tenantId,
-              firstName: { contains: block.responsible.split(' ')[0] }
-            }
+              OR: [
+                { firstName: { contains: block.responsible.split(' ')[0] } },
+                { lastName: { contains: block.responsible.split(' ')[block.responsible.split(' ').length - 1] } },
+              ],
+            },
           });
-          if (employee) {
-            const user = await tx.user.findFirst({
-              where: { employeeId: employee.id }
+        });
+        if (employee) {
+          const user = await app.runWithDbContext(req, async (tx: any) => {
+            return tx.user.findFirst({
+              where: { employeeId: employee.id },
             });
-            responsibleId = user?.id || null;
+          });
+          if (user) {
+            responsibleId = user.id;
           }
         }
+      }
 
+      // Crear un objetivo SGI para la acción
+      const objective = await app.runWithDbContext(req, async (tx: any) => {
         return tx.sgiObjective.create({
           data: {
             tenantId,
