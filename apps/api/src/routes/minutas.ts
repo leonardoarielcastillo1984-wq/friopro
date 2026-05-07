@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { createLLMProvider } from '../services/llm/factory.js';
 
 const emptyToUndefined = <T>(val: T): T | undefined => (val === '' ? undefined : val);
 
@@ -664,7 +665,7 @@ Minuta:\n${content}`;
     if (!minuta.audioUrl) return reply.code(400).send({ error: 'La minuta no tiene audio' });
 
     try {
-      const llm = (app as any).llm;
+      const llm = createLLMProvider(req.tenant);
       if (!llm) return reply.code(503).send({ error: 'IA no configurada' });
 
       // Por ahora, simulamos la transcripción con un mensaje
