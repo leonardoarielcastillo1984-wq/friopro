@@ -510,6 +510,7 @@ Minuta:\n${content}`;
 
       // Crear un objetivo SGI para la acción
       const currentYear = new Date().getFullYear();
+      const dueDate = block.dueDate ? new Date(block.dueDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       const objective = await app.runWithDbContext(req, async (tx: any) => {
         return tx.sgiObjective.create({
           data: {
@@ -519,7 +520,8 @@ Minuta:\n${content}`;
             description: block.content,
             year: currentYear,
             target: 'Completar acción de minuta',
-            targetDate: block.dueDate ? new Date(block.dueDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            startDate: new Date(),
+            endDate: dueDate,
             progress: 0,
             status: 'PLANNED',
             origin: 'MINUTAS',
