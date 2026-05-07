@@ -272,7 +272,7 @@ export default function PoliciesPage() {
                     try {
                       const formDataUpload = new FormData();
                       formDataUpload.append('file', file);
-                      const response = await apiFetch('/uploads/policies', {
+                      const response = await apiFetch('/storage/upload/policies', {
                         method: 'POST',
                         body: formDataUpload,
                       }) as { url: string };

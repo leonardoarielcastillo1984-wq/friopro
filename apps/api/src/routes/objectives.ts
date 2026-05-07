@@ -130,7 +130,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   app.post('/policies', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db.tenantId;
-    const schema = z.object({ name: z.string().min(1), content: emptyToUndefined(z.string().optional()), scope: emptyToUndefined(z.string().optional()), active: z.boolean().optional() });
+    const schema = z.object({ name: z.string().min(1), content: emptyToUndefined(z.string().optional()), scope: emptyToUndefined(z.string().optional()), active: z.boolean().optional(), signedPdfUrl: emptyToUndefined(z.string().optional()) });
     let data;
     try {
       data = schema.parse(req.body);
@@ -147,7 +147,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
   app.patch('/policies/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const schema = z.object({ name: z.string().optional(), content: emptyToUndefined(z.string().optional()), scope: emptyToUndefined(z.string().optional()), active: z.boolean().optional() });
+    const schema = z.object({ name: z.string().optional(), content: emptyToUndefined(z.string().optional()), scope: emptyToUndefined(z.string().optional()), active: z.boolean().optional(), signedPdfUrl: emptyToUndefined(z.string().optional()) });
     let data;
     try {
       data = schema.parse(req.body);
