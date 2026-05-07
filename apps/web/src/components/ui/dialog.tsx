@@ -74,6 +74,44 @@ const DialogContent = React.forwardRef<
   React.HTMLAttributes<HTMLDivElement> & { onCloseAutoFocus?: () => void; resizable?: boolean }
 >(({ className, children, resizable = false, ...props }, ref) => {
   const { open, onOpenChange } = useDialog()
+  const [width, setWidth] = React.useState<number | null>(null)
+  const [isResizing, setIsResizing] = React.useState(false)
+  const contentRef = React.useRef<HTMLDivElement>(null)
+  const startX = React.useRef(0)
+  const startWidth = React.useRef(0)
+
+  React.useEffect(() => {
+    if (!resizable || !contentRef.current) return
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).dataset.resizeHandle !== 'true') return
+      e.preventDefault()
+      setIsResizing(true)
+      startX.current = e.clientX
+      startWidth.current = contentRef.current!.offsetWidth
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing || !contentRef.current) return
+      const diff = e.clientX - startX.current
+      const newWidth = Math.max(500, startWidth.current + diff)
+      setWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [resizable, isResizing])
 
   if (!open) return null
 
@@ -84,18 +122,28 @@ const DialogContent = React.forwardRef<
         onClick={() => onOpenChange(false)}
       />
       <div
-        ref={ref}
+        ref={(node) => {
+          if (typeof ref === 'function') ref(node)
+          contentRef.current = node
+        }}
         className={cn(
-          "relative z-50 w-full max-w-lg gap-4 border bg-white p-6 shadow-lg sm:rounded-lg",
-          resizable && "resize-x overflow-auto min-w-[500px]",
+          "relative z-50 w-full gap-4 border bg-white p-6 shadow-lg sm:rounded-lg",
+          resizable && "overflow-hidden",
           className
         )}
+        style={resizable && width ? { width: `${width}px` } : undefined}
         {...props}
       >
         {children}
+        {resizable && (
+          <div
+            data-resize-handle="true"
+            className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-transparent hover:bg-blue-500/20 transition-colors"
+          />
+        )}
         <button
           onClick={() => onOpenChange(false)}
-          className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100"
+          className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 z-10"
         >
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
