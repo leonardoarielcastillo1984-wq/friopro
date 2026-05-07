@@ -336,6 +336,23 @@ export default function ClimaPage() {
               ))}
             </div>
           </div>
+
+          {/* Row 5: Comunicación y Difusión */}
+          <div onClick={() => router.push('/clima/comunicados')}
+            className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-5 cursor-pointer hover:shadow-md transition-all group">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow">
+                  <Megaphone className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-indigo-900">Comunicación y Difusión</h3>
+                  <p className="text-xs text-indigo-600 mt-0.5">Enviá comunicados, PDFs e imágenes a empleados o emails externos</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-indigo-400 group-hover:text-indigo-600 transition-colors" />
+            </div>
+          </div>
         </div>
 
         {/* ── RIGHT col (3) ── */}
