@@ -32,6 +32,8 @@ type Minuta = {
   confidentiality: string;
   content?: string;
   summary?: string;
+  audioUrl?: string;
+  blocks?: MinutaBlock[];
   createdAt: string;
 };
 
@@ -364,6 +366,10 @@ export default function MinutasPage() {
 
   async function startRecording() {
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Tu navegador no soporta acceso al micrófono o no está en HTTPS');
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
@@ -508,6 +514,7 @@ export default function MinutasPage() {
         status: 'DRAFT',
         confidentiality: 'INTERNAL',
         content: '',
+        audioUrl: '',
       });
       loadMinutas();
     } catch (err) {
@@ -974,7 +981,7 @@ export default function MinutasPage() {
 
       {/* Dialogo de crear/editar */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" resizable={true}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center justify-between">
               <DialogTitle>

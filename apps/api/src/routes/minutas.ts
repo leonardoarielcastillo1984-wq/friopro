@@ -581,6 +581,32 @@ Minuta:\n${content}`;
     if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
 
     try {
+      // Buscar usuario responsable por nombre de empleado
+      let responsibleId = null;
+      if (minuta.responsible) {
+        const employee = await app.runWithDbContext(req, async (tx: any) => {
+          return tx.employee.findFirst({
+            where: {
+              tenantId,
+              OR: [
+                { firstName: { contains: minuta.responsible.split(' ')[0] } },
+                { lastName: { contains: minuta.responsible.split(' ')[minuta.responsible.split(' ').length - 1] } },
+              ],
+            },
+          });
+        });
+        if (employee) {
+          const user = await app.runWithDbContext(req, async (tx: any) => {
+            return tx.user.findFirst({
+              where: { employeeId: employee.id },
+            });
+          });
+          if (user) {
+            responsibleId = user.id;
+          }
+        }
+      }
+
       const project = await app.runWithDbContext(req, async (tx: any) => {
         return tx.project360.create({
           data: {
@@ -591,7 +617,7 @@ Minuta:\n${content}`;
             origin: 'MINUTAS',
             originModule: 'MINUTAS',
             originEntityId: minuta.id,
-            responsibleId: minuta.responsible ? await tx.user.findFirst({ where: { name: minuta.responsible } })?.id : null,
+            responsibleId,
             targetDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
             status: 'PENDING',
             priority: minuta.priority,
