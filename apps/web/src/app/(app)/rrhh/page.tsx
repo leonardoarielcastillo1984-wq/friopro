@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { Users, Building, Briefcase, GraduationCap, Brain, Settings } from 'lucide-react';
+import { Users, Building, Briefcase, GraduationCap, Brain, Settings, Wind } from 'lucide-react';
 
 interface HRStats {
   totalEmployees: number;
@@ -94,6 +94,15 @@ export default function RRHHPage() {
       color: 'bg-pink-500',
       count: stats.competencies,
       stats: 'Definidas'
+    },
+    {
+      title: 'Clima y Cultura',
+      description: 'Encuestas, sugerencias y planes de acción',
+      icon: Wind,
+      href: '/clima',
+      color: 'bg-teal-500',
+      count: null,
+      stats: 'Módulo Premium'
     },
     {
       title: 'Configuración',
