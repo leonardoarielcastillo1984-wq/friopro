@@ -435,13 +435,22 @@ export default function MinutasPage() {
         const url = editingMinuta ? `/minutas/${editingMinuta.id}` : '/minutas';
         const method = editingMinuta ? 'PATCH' : 'POST';
 
-        await apiFetch(url, {
+        const savedMinuta = await apiFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-        });
+        }) as Minuta;
 
         await loadMinutas();
+
+        // Si estamos editando, recargar la minuta para obtener el audioUrl guardado
+        if (savedMinuta && savedMinuta.id) {
+          const updatedMinuta = await apiFetch(`/minutas/${savedMinuta.id}`) as Minuta;
+          setFormData({
+            ...formData,
+            audioUrl: updatedMinuta.audioUrl || '',
+          });
+        }
       }
 
       alert('Audio subido exitosamente');
