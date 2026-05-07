@@ -483,7 +483,7 @@ Minuta:\n${content}`;
 
     try {
       // Buscar usuario responsable por nombre de empleado
-      let responsibleId = null;
+      let assignedToId = null;
       if (block.responsible) {
         const employee = await app.runWithDbContext(req, async (tx: any) => {
           return tx.employee.findFirst({
@@ -503,33 +503,36 @@ Minuta:\n${content}`;
             });
           });
           if (user) {
-            responsibleId = user.id;
+            assignedToId = user.id;
           }
         }
       }
 
-      // Crear un objetivo SGI para la acción
-      const currentYear = new Date().getFullYear();
+      // Crear ActionItem (CAPA) en lugar de SgiObjective
       const dueDate = block.dueDate ? new Date(block.dueDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      const objective = await app.runWithDbContext(req, async (tx: any) => {
-        return tx.sgiObjective.create({
+      const action = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.actionItem.create({
           data: {
             tenantId,
-            code: `OBJ-${Date.now()}`,
+            code: `CAPA-${Date.now()}`,
             title: block.content.substring(0, 100),
             description: block.content,
-            year: currentYear,
-            target: 'Completar acción de minuta',
-            startDate: new Date(),
-            endDate: dueDate,
-            progress: 0,
-            status: 'PLANNED',
-            responsibleId,
+            type: 'CORRECTIVE',
+            priority: block.minuta?.priority || 'MEDIUM',
+            status: 'OPEN',
+            sourceType: 'MANUAL',
+            sourceId: id, // ID de la minuta
+            assignedToId,
+            openDate: new Date(),
+            dueDate,
+            origin: 'MANUAL',
+            affectedArea: block.minuta?.area || 'General',
+            detectedBy: 'Minuta',
           },
         });
       });
 
-      return reply.send({ objectiveId: objective.id, message: 'CAPA creada exitosamente' });
+      return reply.send({ actionId: action.id, message: 'CAPA creada exitosamente' });
     } catch (err: any) {
       console.error('[minutas create-capa] Error:', err);
       return reply.code(500).send({ error: 'Error al crear CAPA', details: err.message });
