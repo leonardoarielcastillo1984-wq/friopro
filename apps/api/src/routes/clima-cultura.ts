@@ -1247,20 +1247,27 @@ Respondé en JSON con esta estructura exacta:
       ? `<img src="${branding.logoUrl}" alt="${branding.companyName || 'SGI 360'}" style="max-height:60px;max-width:180px;object-fit:contain;" />`
       : `<h2 style="color:#111827;font-size:20px;margin:0;">${branding?.companyName || 'SGI 360'}</h2>`;
 
-    const html = `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
-        <div style="text-align:center;margin-bottom:24px;">${logoHtml}</div>
-        <h1 style="color:#111827;font-size:22px;margin:0 0 8px;">${comm.title}</h1>
-        <div style="color:#4B5563;font-size:14px;line-height:1.7;">${comm.body}</div>
-        ${attachHtml}
-        <hr style="margin:24px 0;border:none;border-top:1px solid #E5E7EB;" />
-        <p style="color:#9CA3AF;font-size:11px;">© ${new Date().getFullYear()} ${branding?.companyName || 'SGI 360'}</p>
-      </div>`;
+    const baseUrlEnv = process.env.API_BASE_URL || 'http://localhost:4000';
 
     let sentCount = 0;
     const errors: string[] = [];
 
     for (const email of allEmails) {
+      const pixelUrl = `${baseUrlEnv}/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}`;
+      const confirmUrl = `${baseUrlEnv}/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}&confirm=1`;
+      const html = `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
+          <div style="text-align:center;margin-bottom:24px;">${logoHtml}</div>
+          <h1 style="color:#111827;font-size:22px;margin:0 0 8px;">${comm.title}</h1>
+          <div style="color:#4B5563;font-size:14px;line-height:1.7;">${comm.body}</div>
+          ${attachHtml}
+          <hr style="margin:24px 0;border:none;border-top:1px solid #E5E7EB;" />
+          <p style="text-align:center;margin:0 0 8px;">
+            <a href="${confirmUrl}" style="color:#6366F1;font-size:12px;text-decoration:none;">✓ Confirmar lectura</a>
+          </p>
+          <p style="color:#9CA3AF;font-size:11px;text-align:center;">© ${new Date().getFullYear()} ${branding?.companyName || 'SGI 360'}</p>
+          <img src="${pixelUrl}" width="1" height="1" style="display:block;width:1px;height:1px;" />
+        </div>`;
       try {
         const result = await sendEmail({ to: email, subject: comm.title, html, text: comm.body });
         if (result.success) sentCount++;
@@ -1334,24 +1341,45 @@ Respondé en JSON con esta estructura exacta:
     return reply.send({ success: true, sentCount, totalTargets: allEmails.size, errors });
   });
 
-  // GET /clima/comunicados/:id/visto — Pixel de tracking de lectura
+  // GET /clima/comunicados/:id/visto — Pixel de tracking + confirmación de lectura
   app.get('/comunicados/:id/visto', async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as any;
-    const { email, name } = req.query as any;
+    const { email, name, confirm } = req.query as any;
 
     if (email) {
       try {
         const comm = await app.prisma.climaComms.findFirst({ where: { id, deletedAt: null } });
         if (comm) {
+          // Buscar nombre real del destinatario en employees/platformUsers
+          let resolvedName = name || null;
+          if (!resolvedName) {
+            const user = await app.prisma.platformUser.findFirst({ where: { email }, select: { firstName: true, lastName: true } }).catch(() => null);
+            if (user) resolvedName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+          }
           const existing = await app.prisma.climaCommsView.findFirst({ where: { commId: id, email } });
           if (!existing) {
-            await app.prisma.climaCommsView.create({ data: { commId: id, email, name: name || null } });
+            await app.prisma.climaCommsView.create({ data: { commId: id, email, name: resolvedName } });
           }
         }
       } catch {}
     }
 
-    // Devolver pixel 1x1 transparente
+    // Si viene con confirm=1, devolver página HTML de confirmación
+    if (confirm === '1') {
+      return reply
+        .header('content-type', 'text/html; charset=utf-8')
+        .header('cache-control', 'no-store')
+        .send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Lectura confirmada</title></head>
+        <body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#F9FAFB;">
+          <div style="text-align:center;padding:32px;background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:360px;">
+            <div style="font-size:48px;margin-bottom:16px;">✅</div>
+            <h2 style="color:#111827;margin:0 0 8px;">¡Lectura confirmada!</h2>
+            <p style="color:#6B7280;font-size:14px;">Gracias por confirmar que recibiste y leíste este comunicado.</p>
+          </div>
+        </body></html>`);
+    }
+
+    // Pixel 1x1 transparente
     const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
     return reply.header('content-type', 'image/gif').header('cache-control', 'no-store').send(pixel);
   });

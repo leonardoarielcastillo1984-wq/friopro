@@ -285,7 +285,8 @@ export default function ComunicadosPage() {
               <button onClick={() => { setSelected(null); setSendResult(null); }} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-5 space-y-4">
-              <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 rounded-xl p-4">{selected.body}</div>
+              <div className="text-sm text-gray-700 bg-gray-50 rounded-xl p-4 prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: selected.body }} />
 
               {/* Adjuntos */}
               {(selected.attachments as any[])?.length > 0 && (
