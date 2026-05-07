@@ -426,40 +426,7 @@ export default function MinutasPage() {
       setFormData({ ...formData, audioUrl });
       setAudioFile(null);
 
-      // Guardar minuta automáticamente para que audioUrl se guarde en la base de datos
-      if (formData.title.trim()) {
-        const payload = {
-          ...formData,
-          audioUrl,
-          participants: formData.participants ? formData.participants.split(',').map(p => p.trim()) : [],
-          tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
-        };
-
-        const url = editingMinuta ? `/minutas/${editingMinuta.id}` : '/minutas';
-        const method = editingMinuta ? 'PATCH' : 'POST';
-
-        const savedMinuta = await apiFetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        }) as Minuta;
-
-        await loadMinutas();
-
-        // Actualizar formData con la minuta guardada
-        if (savedMinuta && savedMinuta.id) {
-          setEditingMinuta(savedMinuta);
-          setFormData({
-            ...formData,
-            audioUrl,
-          });
-
-          // Transcribir automáticamente después de subir
-          await handleTranscribe();
-        }
-      }
-
-      alert('Audio subido exitosamente y transcrito');
+      alert('Audio subido exitosamente. Guarda la minuta para que el audio se guarde.');
     } catch (err) {
       console.error('Error uploading audio:', err);
       alert('Error al subir audio');
