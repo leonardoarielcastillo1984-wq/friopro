@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search } from 'lucide-react';
+import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,18 @@ type Minuta = {
   content?: string;
   summary?: string;
   createdAt: string;
+};
+
+type MinutaBlock = {
+  id: string;
+  minutaId: string;
+  type: 'CONVERSATION' | 'DECISION' | 'ACTION';
+  content: string;
+  order: number;
+  responsible?: string;
+  dueDate?: string;
+  completed: boolean;
+  tags: string[];
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -80,6 +92,24 @@ const TYPE_LABELS: Record<string, string> = {
   'RRHH': 'RRHH',
 };
 
+const BLOCK_TYPE_LABELS: Record<string, string> = {
+  'CONVERSATION': 'Conversación',
+  'DECISION': 'Decisión',
+  'ACTION': 'Acción',
+};
+
+const BLOCK_TYPE_COLORS: Record<string, string> = {
+  'CONVERSATION': 'bg-blue-50 border-blue-200',
+  'DECISION': 'bg-purple-50 border-purple-200',
+  'ACTION': 'bg-green-50 border-green-200',
+};
+
+const BLOCK_TYPE_ICONS: Record<string, any> = {
+  'CONVERSATION': MessageCircle,
+  'DECISION': CheckSquare,
+  'ACTION': ArrowRight,
+};
+
 export default function MinutasPage() {
   const [minutas, setMinutas] = useState<Minuta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +117,9 @@ export default function MinutasPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMinuta, setEditingMinuta] = useState<Minuta | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [blocks, setBlocks] = useState<MinutaBlock[]>([]);
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false);
+  const [editingBlock, setEditingBlock] = useState<MinutaBlock | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     date: new Date().toISOString().split('T')[0],
@@ -101,6 +134,13 @@ export default function MinutasPage() {
     status: 'DRAFT',
     confidentiality: 'INTERNAL',
     content: '',
+  });
+  const [blockFormData, setBlockFormData] = useState({
+    type: 'CONVERSATION' as 'CONVERSATION' | 'DECISION' | 'ACTION',
+    content: '',
+    responsible: '',
+    dueDate: '',
+    tags: '',
   });
 
   useEffect(() => {
@@ -119,6 +159,94 @@ export default function MinutasPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadBlocks(minutaId: string) {
+    try {
+      const res = await apiFetch(`/minutas/${minutaId}/blocks`) as MinutaBlock[];
+      setBlocks(res);
+    } catch (err) {
+      console.error('Error loading blocks:', err);
+    }
+  }
+
+  async function handleSaveBlock() {
+    if (!editingMinuta || !blockFormData.content.trim()) {
+      alert('El contenido es obligatorio');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: blockFormData.type,
+        content: blockFormData.content,
+        responsible: blockFormData.responsible || undefined,
+        dueDate: blockFormData.dueDate || undefined,
+        tags: blockFormData.tags ? blockFormData.tags.split(',').map(t => t.trim()) : [],
+      };
+
+      const url = editingBlock
+        ? `/minutas/${editingMinuta.id}/blocks/${editingBlock.id}`
+        : `/minutas/${editingMinuta.id}/blocks`;
+      const method = editingBlock ? 'PATCH' : 'POST';
+
+      await apiFetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      setBlockDialogOpen(false);
+      setEditingBlock(null);
+      setBlockFormData({
+        type: 'CONVERSATION',
+        content: '',
+        responsible: '',
+        dueDate: '',
+        tags: '',
+      });
+      loadBlocks(editingMinuta.id);
+    } catch (err) {
+      console.error('Error saving block:', err);
+      alert('Error al guardar el bloque');
+    }
+  }
+
+  async function handleDeleteBlock(blockId: string) {
+    if (!confirm('¿Eliminar este bloque?')) return;
+    if (!editingMinuta) return;
+
+    try {
+      await apiFetch(`/minutas/${editingMinuta.id}/blocks/${blockId}`, { method: 'DELETE' });
+      setBlocks(prev => prev.filter(b => b.id !== blockId));
+    } catch (err) {
+      console.error('Error deleting block:', err);
+      alert('Error al eliminar el bloque');
+    }
+  }
+
+  function openNewBlock() {
+    setEditingBlock(null);
+    setBlockFormData({
+      type: 'CONVERSATION',
+      content: '',
+      responsible: '',
+      dueDate: '',
+      tags: '',
+    });
+    setBlockDialogOpen(true);
+  }
+
+  function openEditBlock(block: MinutaBlock) {
+    setEditingBlock(block);
+    setBlockFormData({
+      type: block.type,
+      content: block.content,
+      responsible: block.responsible || '',
+      dueDate: block.dueDate ? block.dueDate.split('T')[0] : '',
+      tags: block.tags.join(', '),
+    });
+    setBlockDialogOpen(true);
   }
 
   async function handleSave() {
@@ -197,6 +325,7 @@ export default function MinutasPage() {
       content: minuta.content || '',
     });
     setDialogOpen(true);
+    loadBlocks(minuta.id);
   }
 
   function openNew() {
@@ -565,12 +694,173 @@ export default function MinutasPage() {
               />
             </div>
 
+            {/* Sección de Bloques de Decisión */}
+            {editingMinuta && (
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold">Bloques de Decisión</h3>
+                  <Button onClick={openNewBlock} size="sm" variant="outline">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agregar Bloque
+                  </Button>
+                </div>
+
+                {blocks.length === 0 ? (
+                  <div className="text-center text-gray-500 py-4">
+                    <p>No hay bloques agregados</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {blocks.map((block) => {
+                      const BlockIcon = BLOCK_TYPE_ICONS[block.type];
+                      return (
+                        <Card key={block.id} className={`${BLOCK_TYPE_COLORS[block.type]} border`}>
+                          <CardContent className="pt-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <BlockIcon className="h-4 w-4" />
+                                  <Badge className={BLOCK_TYPE_COLORS[block.type]}>
+                                    {BLOCK_TYPE_LABELS[block.type]}
+                                  </Badge>
+                                  {block.type === 'ACTION' && block.completed && (
+                                    <CheckCircle className="h-4 w-4 text-green-600" />
+                                  )}
+                                </div>
+                                <p className="text-sm mb-2">{block.content}</p>
+                                {block.responsible && (
+                                  <p className="text-xs text-gray-600">
+                                    Responsable: {block.responsible}
+                                  </p>
+                                )}
+                                {block.dueDate && (
+                                  <p className="text-xs text-gray-600">
+                                    Fecha límite: {new Date(block.dueDate).toLocaleDateString('es-AR')}
+                                  </p>
+                                )}
+                                {block.tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {block.tags.map((tag, i) => (
+                                      <Badge key={i} variant="secondary" className="text-xs">
+                                        {tag}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => openEditBlock(block)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleDeleteBlock(block.id)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
               <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700">
                 {editingMinuta ? 'Actualizar' : 'Crear'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialogo para crear/editar bloques */}
+      <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingBlock ? 'Editar Bloque' : 'Nuevo Bloque'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="blockType">Tipo *</Label>
+              <select
+                id="blockType"
+                value={blockFormData.type}
+                onChange={(e) => setBlockFormData({ ...blockFormData, type: e.target.value as any })}
+                className="w-full p-2 border rounded-md"
+              >
+                <option value="CONVERSATION">Conversación</option>
+                <option value="DECISION">Decisión</option>
+                <option value="ACTION">Acción</option>
+              </select>
+            </div>
+
+            <div>
+              <Label htmlFor="blockContent">Contenido *</Label>
+              <Textarea
+                id="blockContent"
+                value={blockFormData.content}
+                onChange={(e) => setBlockFormData({ ...blockFormData, content: e.target.value })}
+                placeholder="Contenido del bloque..."
+                rows={4}
+              />
+            </div>
+
+            {blockFormData.type === 'ACTION' && (
+              <>
+                <div>
+                  <Label htmlFor="blockResponsible">Responsable</Label>
+                  <Input
+                    id="blockResponsible"
+                    value={blockFormData.responsible}
+                    onChange={(e) => setBlockFormData({ ...blockFormData, responsible: e.target.value })}
+                    placeholder="Nombre del responsable"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="blockDueDate">Fecha límite</Label>
+                  <Input
+                    id="blockDueDate"
+                    type="date"
+                    value={blockFormData.dueDate}
+                    onChange={(e) => setBlockFormData({ ...blockFormData, dueDate: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
+
+            <div>
+              <Label htmlFor="blockTags">Etiquetas (separadas por coma)</Label>
+              <Input
+                id="blockTags"
+                value={blockFormData.tags}
+                onChange={(e) => setBlockFormData({ ...blockFormData, tags: e.target.value })}
+                placeholder="Urgente, Estratégico, etc."
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setBlockDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveBlock} className="bg-blue-600 hover:bg-blue-700">
+                {editingBlock ? 'Actualizar' : 'Crear'}
               </Button>
             </div>
           </div>

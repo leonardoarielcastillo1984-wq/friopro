@@ -147,4 +147,160 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
     return reply.code(204).send();
   });
+
+  // GET /minutas/:id/blocks — Obtener bloques de una minuta
+  app.get('/:id/blocks', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+    const tenantId = req.db.tenantId;
+
+    // Verificar que la minuta pertenece al tenant
+    const minuta = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minuta.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+    });
+
+    if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
+
+    const blocks = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minutaBlock.findMany({
+        where: { minutaId: id },
+        orderBy: { order: 'asc' },
+      });
+    });
+
+    return reply.send(blocks);
+  });
+
+  // POST /minutas/:id/blocks — Crear un bloque en una minuta
+  app.post('/:id/blocks', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+    const tenantId = req.db.tenantId;
+
+    // Verificar que la minuta pertenece al tenant
+    const minuta = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minuta.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+    });
+
+    if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
+
+    const schema = z.object({
+      type: z.enum(['CONVERSATION', 'DECISION', 'ACTION']),
+      content: z.string().min(1),
+      order: z.number().optional(),
+      responsible: emptyToUndefined(z.string().optional()),
+      dueDate: emptyToUndefined(z.string().optional()),
+      tags: z.array(z.string()).default([]),
+    });
+
+    let data;
+    try {
+      data = schema.parse(req.body);
+    } catch (e: any) {
+      console.error('[minutas blocks POST] Zod validation error:', e.errors || e.message);
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
+    }
+
+    // Obtener el último orden si no se especifica
+    let order = data.order;
+    if (order === undefined) {
+      const lastBlock = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.minutaBlock.findFirst({
+          where: { minutaId: id },
+          orderBy: { order: 'desc' },
+        });
+      });
+      order = lastBlock ? lastBlock.order + 1 : 0;
+    }
+
+    const block = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minutaBlock.create({
+        data: {
+          minutaId: id,
+          type: data.type,
+          content: data.content,
+          order,
+          responsible: data.responsible,
+          dueDate: data.dueDate ? new Date(data.dueDate) : null,
+          tags: data.tags,
+        },
+      });
+    });
+
+    return reply.code(201).send(block);
+  });
+
+  // PATCH /minutas/:id/blocks/:blockId — Actualizar un bloque
+  app.patch('/:id/blocks/:blockId', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id, blockId } = req.params as { id: string; blockId: string };
+    const tenantId = req.db.tenantId;
+
+    // Verificar que la minuta pertenece al tenant
+    const minuta = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minuta.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+    });
+
+    if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
+
+    const schema = z.object({
+      type: z.enum(['CONVERSATION', 'DECISION', 'ACTION']).optional(),
+      content: z.string().optional(),
+      order: z.number().optional(),
+      responsible: emptyToUndefined(z.string().optional()),
+      dueDate: emptyToUndefined(z.string().optional()),
+      completed: z.boolean().optional(),
+      tags: z.array(z.string()).optional(),
+    });
+
+    let data;
+    try {
+      data = schema.parse(req.body);
+    } catch (e: any) {
+      console.error('[minutas blocks PATCH] Zod validation error:', e.errors || e.message);
+      return reply.code(400).send({ error: 'Validación fallida', details: e.errors || e.message });
+    }
+
+    const block = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minutaBlock.update({
+        where: { id: blockId, minutaId: id },
+        data: {
+          ...data,
+          ...(data.dueDate !== undefined ? { dueDate: new Date(data.dueDate) } : {}),
+        },
+      });
+    });
+
+    return reply.send(block);
+  });
+
+  // DELETE /minutas/:id/blocks/:blockId — Eliminar un bloque
+  app.delete('/:id/blocks/:blockId', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id, blockId } = req.params as { id: string; blockId: string };
+    const tenantId = req.db.tenantId;
+
+    // Verificar que la minuta pertenece al tenant
+    const minuta = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minuta.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+    });
+
+    if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
+
+    await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minutaBlock.delete({
+        where: { id: blockId, minutaId: id },
+      });
+    });
+
+    return reply.code(204).send();
+  });
 };

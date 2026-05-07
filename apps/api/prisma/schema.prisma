@@ -4373,18 +4373,39 @@ model Minuta {
   confidentiality     String    @default("INTERNAL") // INTERNAL, CONFIDENTIAL, RESTRICTED
   attachments        String[]  // URLs de archivos adjuntos
   audioUrl           String?   // URL del audio de la reunión
-  content            String?   @db.Text // Contenido enriquecido de la minuta
+  content            String?   @db.Text // Contenido enriquecido de la minuta (deprecated, usar blocks)
   summary            String?   @db.Text // Resumen ejecutivo generado por IA
   aiProcessed        Boolean   @default(false) // Si la IA ya procesó la minuta
   deletedAt          DateTime?
   createdAt          DateTime  @default(now()) @db.Timestamptz
   updatedAt          DateTime  @updatedAt @db.Timestamptz
 
+  blocks             MinutaBlock[]
+
   @@index([tenantId])
   @@index([date])
   @@index([type])
   @@index([status])
   @@map("minutas")
+}
+
+model MinutaBlock {
+  id           String   @id @default(uuid()) @db.Uuid
+  minutaId     String   @db.Uuid
+  minuta       Minuta   @relation(fields: [minutaId], references: [id], onDelete: Cascade)
+  type         String   // CONVERSATION, DECISION, ACTION
+  content      String   @db.Text // Contenido del bloque
+  order        Int      // Orden de visualización
+  responsible  String?  // Responsable (para acciones)
+  dueDate      DateTime? @db.Timestamptz // Fecha límite (para acciones)
+  completed    Boolean  @default(false) // Completado (para acciones)
+  tags         String[] // Etiquetas del bloque
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  @@index([minutaId])
+  @@index([type])
+  @@map("minuta_blocks")
 }
 
 enum Priority {
