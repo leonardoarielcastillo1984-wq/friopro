@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, ClipboardList, Users, CheckCircle, Clock, Send,
-  BarChart2, BrainCircuit, Settings, AlertCircle, Edit3, Plus, Download
+  BarChart2, BrainCircuit, AlertCircle, Plus, Download, Trash2, X, ClipboardCheck, CheckCircle2
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
@@ -33,6 +33,12 @@ export default function DetallEncuestaPage() {
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showCapaModal, setShowCapaModal] = useState(false);
+  const [capaContext, setCapaContext] = useState<{ title: string; description: string } | null>(null);
+  const [capaForm, setCapaForm] = useState({ title: '', description: '', criticality: 'MEDIA', dueDate: '' });
+  const [savingCapa, setSavingCapa] = useState(false);
+  const [capaCreada, setCapaCreada] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { loadSurvey(); }, [id]);
   useEffect(() => {
@@ -59,6 +65,34 @@ export default function DetallEncuestaPage() {
       const data = await apiFetch(`/clima/encuestas/${id}/resultados`) as any;
       setResultados(data);
     } catch { setResultados(null); }
+  }
+
+  async function handleDelete() {
+    if (!confirm('¿Eliminar esta encuesta? Esta acción no se puede deshacer.')) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/clima/encuestas/${id}`, { method: 'DELETE' });
+      router.push('/clima/encuestas');
+    } catch { alert('Error al eliminar'); setDeleting(false); }
+  }
+
+  function openCapa(title: string, description: string) {
+    setCapaForm({ title, description, criticality: 'MEDIA', dueDate: '' });
+    setCapaCreada(false);
+    setShowCapaModal(true);
+  }
+
+  async function handleCrearCapa(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingCapa(true);
+    try {
+      await apiFetch('/clima/planes-accion', {
+        method: 'POST',
+        json: { title: capaForm.title, description: capaForm.description, criticality: capaForm.criticality, dueDate: capaForm.dueDate || undefined, surveyId: id, origin: 'ENCUESTA' },
+      });
+      setCapaCreada(true);
+      setShowCapaModal(false);
+    } catch { alert('Error al crear CAPA'); } finally { setSavingCapa(false); }
   }
 
   async function runAiAnalysis() {
@@ -93,17 +127,17 @@ export default function DetallEncuestaPage() {
         <button
           onClick={() => {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-            const tenantId = typeof window !== 'undefined' ? localStorage.getItem('tenantId') : null;
-            const token = typeof window !== 'undefined' ? localStorage.getItem('csrfToken') : null;
             const url = `${apiUrl}/clima/encuestas/${id}/exportar-csv`;
-            const a = document.createElement('a');
-            a.href = url;
-            a.click();
+            const a = document.createElement('a'); a.href = url; a.click();
           }}
           className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 hover:border-gray-400 px-3 py-2.5 rounded-xl transition-colors"
         >
           <Download className="w-4 h-4" />
           CSV
+        </button>
+        <button onClick={handleDelete} disabled={deleting}
+          className="p-2.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-xl transition-colors border border-gray-200" title="Eliminar encuesta">
+          <Trash2 className="w-4 h-4" />
         </button>
         <button
           onClick={() => router.push(`/clima/encuestas/${id}/enviar`)}
@@ -244,20 +278,43 @@ export default function DetallEncuestaPage() {
                   </div>
                 </div>
 
+                {/* CAPA global desde resultados */}
+                {capaCreada ? (
+                  <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span className="font-medium">CAPA creada correctamente</span>
+                    <button onClick={() => router.push('/clima/planes-accion')} className="ml-auto text-xs underline">Ver planes</button>
+                  </div>
+                ) : (
+                  <button onClick={() => openCapa(`Mejora encuesta: ${survey.title}`, `Hallazgos detectados en resultados de la encuesta "${survey.title}"`)}
+                    className="w-full flex items-center justify-center gap-2 text-sm text-purple-700 border border-purple-200 hover:bg-purple-50 py-2.5 rounded-xl transition-colors font-medium">
+                    <ClipboardCheck className="w-4 h-4" />
+                    Crear plan de acción (CAPA) desde estos resultados
+                  </button>
+                )}
+
                 <div className="space-y-4">
                   {resultados.questionStats?.map((qs: any) => (
                     <div key={qs.questionId} className="border border-gray-100 rounded-xl p-4">
-                      <p className="text-sm font-medium text-gray-800 mb-2">{qs.questionText}</p>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p className="text-sm font-medium text-gray-800">{qs.questionText}</p>
+                        {qs.avgScore != null && qs.avgScore <= 3 && (
+                          <button onClick={() => openCapa(`Bajo puntaje: ${qs.questionText}`, `Pregunta con puntaje promedio ${qs.avgScore}/5 en la encuesta "${survey.title}"`)}
+                            className="flex-shrink-0 text-xs text-purple-600 border border-purple-200 hover:bg-purple-50 px-2.5 py-1 rounded-lg transition-colors font-medium whitespace-nowrap">
+                            + CAPA
+                          </button>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-500 mb-3">{qs.totalAnswers} respuestas</p>
                       {qs.avgScore != null && (
                         <div className="flex items-center gap-3">
                           <div className="flex-1 bg-gray-100 rounded-full h-2">
                             <div
-                              className="bg-teal-500 h-2 rounded-full transition-all"
+                              className={`h-2 rounded-full transition-all ${qs.avgScore <= 2.5 ? 'bg-red-400' : qs.avgScore <= 3.5 ? 'bg-amber-400' : 'bg-teal-500'}`}
                               style={{ width: `${Math.min((qs.avgScore / 5) * 100, 100)}%` }}
                             />
                           </div>
-                          <span className="text-sm font-bold text-teal-700 w-8 text-right">{qs.avgScore}</span>
+                          <span className={`text-sm font-bold w-8 text-right ${qs.avgScore <= 2.5 ? 'text-red-600' : qs.avgScore <= 3.5 ? 'text-amber-600' : 'text-teal-700'}`}>{qs.avgScore}</span>
                         </div>
                       )}
                       {qs.textAnswers?.length > 0 && (
@@ -384,17 +441,70 @@ export default function DetallEncuestaPage() {
                   </div>
                 )}
 
-                <button
-                  onClick={() => router.push('/clima/planes-accion')}
-                  className="w-full text-sm text-teal-600 hover:text-teal-800 border border-teal-200 hover:border-teal-400 py-2.5 rounded-xl transition-colors font-medium"
-                >
-                  → Crear plan de acción desde este análisis
-                </button>
+                {capaCreada ? (
+                  <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span className="font-medium">CAPA creada correctamente</span>
+                    <button onClick={() => router.push('/clima/planes-accion')} className="ml-auto text-xs underline">Ver planes</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => openCapa(`Plan IA: ${survey.title}`, `${aiAnalysis.resumen}\n\nProblemas: ${(aiAnalysis.problemasDetectados || []).join(', ')}\n\nRecomendaciones: ${(aiAnalysis.recomendaciones || []).join(', ')}`)}
+                    className="w-full flex items-center justify-center gap-2 text-sm text-purple-700 border border-purple-200 hover:bg-purple-50 py-2.5 rounded-xl transition-colors font-medium"
+                  >
+                    <ClipboardCheck className="w-4 h-4" />
+                    Crear plan de acción (CAPA) desde análisis IA
+                  </button>
+                )}
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* CAPA Modal */}
+      {showCapaModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">Nuevo Plan de Acción (CAPA)</h3>
+              <button onClick={() => setShowCapaModal(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+            </div>
+            <form onSubmit={handleCrearCapa} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Título *</label>
+                <input type="text" required value={capaForm.title} onChange={e => setCapaForm(p => ({ ...p, title: e.target.value }))}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Descripción</label>
+                <textarea value={capaForm.description} onChange={e => setCapaForm(p => ({ ...p, description: e.target.value }))}
+                  rows={3} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400 resize-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Criticidad</label>
+                  <select value={capaForm.criticality} onChange={e => setCapaForm(p => ({ ...p, criticality: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none bg-white">
+                    {['BAJA','MEDIA','ALTA','CRITICA'].map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Fecha límite</label>
+                  <input type="date" value={capaForm.dueDate} onChange={e => setCapaForm(p => ({ ...p, dueDate: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400" />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowCapaModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
+                <button type="submit" disabled={savingCapa} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-xl transition-colors">
+                  {savingCapa ? 'Guardando...' : 'Crear CAPA'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

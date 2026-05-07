@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Target, Plus, X, CheckCircle, Clock, AlertTriangle, ArrowUp, ChevronRight } from 'lucide-react';
+import { Target, Plus, X, CheckCircle, Clock, AlertTriangle, ArrowUp, ChevronRight, ArrowLeft, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -21,12 +21,14 @@ const CRITICALITY_COLORS: Record<string, string> = {
 };
 
 export default function PlanesAccionPage() {
+  const router = useRouter();
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [form, setForm] = useState({ title: '', description: '', origin: 'MANUAL', criticality: 'MEDIA', dueDate: '', createNcr: false });
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => { loadPlans(); }, []);
 
@@ -43,7 +45,7 @@ export default function PlanesAccionPage() {
     if (!form.title.trim()) return;
     setSaving(true);
     try {
-      await apiFetch('/clima/planes-accion', { method: 'POST', body: JSON.stringify(form) });
+      await apiFetch('/clima/planes-accion', { method: 'POST', json: form });
       setShowNew(false);
       setForm({ title: '', description: '', origin: 'MANUAL', criticality: 'MEDIA', dueDate: '', createNcr: false });
       loadPlans();
@@ -51,9 +53,19 @@ export default function PlanesAccionPage() {
   }
 
   async function updateStatus(id: string, status: string) {
-    await apiFetch(`/clima/planes-accion/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    await apiFetch(`/clima/planes-accion/${id}`, { method: 'PATCH', json: { status } });
     loadPlans();
     setSelected(null);
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('¿Eliminar este plan de acción?')) return;
+    setDeletingId(id);
+    try {
+      await apiFetch(`/clima/planes-accion/${id}`, { method: 'DELETE' });
+      setSelected(null);
+      loadPlans();
+    } catch { alert('Error al eliminar'); } finally { setDeletingId(null); }
   }
 
   const open = plans.filter(p => ['ABIERTO', 'EN_PROCESO'].includes(p.status));
@@ -61,8 +73,11 @@ export default function PlanesAccionPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center gap-3">
+        <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-xl text-gray-500 transition-colors">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-900">Planes de Acción</h1>
           <p className="text-sm text-gray-500 mt-0.5">{open.length} activos · {done.length} cerrados</p>
         </div>
@@ -191,7 +206,13 @@ export default function PlanesAccionPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <h3 className="font-semibold text-gray-900 text-sm">{selected.title}</h3>
-              <button onClick={() => setSelected(null)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => handleDelete(selected.id)} disabled={deletingId === selected.id}
+                  className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors" title="Eliminar">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <button onClick={() => setSelected(null)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+              </div>
             </div>
             <div className="p-5 space-y-4">
               {selected.description && <p className="text-sm text-gray-700">{selected.description}</p>}

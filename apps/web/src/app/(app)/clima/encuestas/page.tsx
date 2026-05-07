@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, ClipboardList, ChevronRight, Users, CheckCircle, Clock, MoreVertical, Trash2, Eye, Send } from 'lucide-react';
+import { Plus, Search, ClipboardList, ChevronRight, Users, CheckCircle, Clock, MoreVertical, Trash2, Eye, Send, ArrowLeft } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -32,6 +32,9 @@ export default function EncuestasClimaPage() {
   const [surveys, setSurveys] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [yearFilter, setYearFilter] = useState<string>('');
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 4 }, (_, i) => String(currentYear - i));
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   useEffect(() => { loadSurveys(); }, []);
@@ -50,18 +53,22 @@ export default function EncuestasClimaPage() {
     loadSurveys();
   }
 
-  const filtered = surveys.filter(s =>
-    s.title.toLowerCase().includes(search.toLowerCase()) ||
-    s.code?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = surveys.filter(s => {
+    const matchSearch = s.title.toLowerCase().includes(search.toLowerCase()) || s.code?.toLowerCase().includes(search.toLowerCase());
+    const matchYear = !yearFilter || s.code?.includes(`-${yearFilter}-`) || new Date(s.createdAt).getFullYear() === Number(yearFilter);
+    return matchSearch && matchYear;
+  });
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center gap-3">
+        <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-xl text-gray-500 transition-colors">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-900">Encuestas de Clima</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{surveys.length} encuestas en total</p>
+          <p className="text-sm text-gray-500 mt-0.5">{filtered.length} encuestas{yearFilter ? ` en ${yearFilter}` : ' en total'}</p>
         </div>
         <button
           onClick={() => router.push('/clima/encuestas/nueva')}
@@ -72,16 +79,23 @@ export default function EncuestasClimaPage() {
         </button>
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 shadow-sm">
-        <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
-        <input
-          type="text"
-          placeholder="Buscar por título o código..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full text-sm bg-transparent outline-none text-gray-700 placeholder:text-gray-400"
-        />
+      {/* Search + Year filter */}
+      <div className="flex gap-2 flex-wrap">
+        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 shadow-sm flex-1 min-w-[200px]">
+          <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <input
+            type="text"
+            placeholder="Buscar por título o código..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full text-sm bg-transparent outline-none text-gray-700 placeholder:text-gray-400"
+          />
+        </div>
+        <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}
+          className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none shadow-sm">
+          <option value="">Todos los años</option>
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
 
       {/* List */}

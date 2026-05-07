@@ -50,7 +50,7 @@ export default function EnviarEncuestaPage() {
       const body: any = { method, allEmployees };
       if (!allEmployees) body.employeeIds = Array.from(selected);
       const data = await apiFetch(`/clima/encuestas/${id}/enviar`, {
-        method: 'POST', body: JSON.stringify(body),
+        method: 'POST', json: body,
       }) as any;
       setSent(true);
       setTimeout(() => router.push(`/clima/encuestas/${id}`), 2000);

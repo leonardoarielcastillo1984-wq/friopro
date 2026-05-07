@@ -893,6 +893,14 @@ Respondé en JSON con esta estructura exacta:
     return reply.send({ plan: updated });
   });
 
+  app.delete('/planes-accion/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const { id } = req.params as any;
+    await app.prisma.climaActionPlan.updateMany({ where: { id, tenantId, deletedAt: null }, data: { deletedAt: new Date() } });
+    return reply.send({ success: true });
+  });
+
   // ─── EXPORTACIÓN CSV ─────────────────────────────────────────────────────────
 
   app.get('/encuestas/:id/exportar-csv', async (req: FastifyRequest, reply: FastifyReply) => {
