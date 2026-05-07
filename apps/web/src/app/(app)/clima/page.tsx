@@ -6,7 +6,7 @@ import {
   Wind, BarChart2, ClipboardList, MessageSquare, Target,
   TrendingUp, Users, BrainCircuit, ChevronRight, Plus,
   AlertTriangle, CheckCircle, Clock, ArrowUp, Bell, Zap,
-  FileText, Send, Flag, Settings, Calendar
+  FileText, Send, Flag, Settings, Calendar, Megaphone
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
@@ -361,6 +361,7 @@ export default function ClimaPage() {
               {[
                 { label: 'Nueva encuesta', icon: Plus, href: '/clima/encuestas/nueva', color: 'text-teal-600' },
                 { label: 'Mis encuestas', icon: ClipboardList, href: '/clima/encuestas', color: 'text-blue-600' },
+                { label: 'Comunicados', icon: Megaphone, href: '/clima/comunicados', color: 'text-indigo-600' },
                 { label: 'Enviar sugerencia', icon: Send, href: '/clima/sugerencias', color: 'text-amber-600' },
                 { label: 'Mis reclamos', icon: Flag, href: '/clima/sugerencias', color: 'text-red-500' },
               ].map(a => (

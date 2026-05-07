@@ -1095,4 +1095,173 @@ Respondé en JSON con esta estructura exacta:
 
     return reply.code(201).send({ success: true, message: '¡Gracias por completar la encuesta!' });
   });
+
+  // ─── COMUNICADOS / DIFUSIÓN ──────────────────────────────────────────────
+
+  // GET /clima/comunicados
+  app.get('/comunicados', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const comms = await app.prisma.climaComms.findMany({
+      where: { tenantId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      include: { createdBy: { select: { id: true, email: true } } },
+    });
+    return reply.send({ comms });
+  });
+
+  // GET /clima/comunicados/:id
+  app.get('/comunicados/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const { id } = req.params as any;
+    const comm = await app.prisma.climaComms.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: { createdBy: { select: { id: true, email: true } } },
+    });
+    if (!comm) return reply.code(404).send({ error: 'Comunicado no encontrado' });
+    return reply.send({ comm });
+  });
+
+  // POST /clima/comunicados
+  app.post('/comunicados', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const schema = z.object({
+      title: z.string().min(3),
+      body: z.string().min(5),
+      attachments: z.array(z.object({ name: z.string(), url: z.string(), type: z.string() })).default([]),
+      recipients: z.array(z.object({ type: z.enum(['employee', 'email']), id: z.string().optional(), email: z.string().email(), name: z.string().optional() })).default([]),
+      extraEmails: z.array(z.string().email()).default([]),
+    });
+    const body = schema.parse(req.body);
+    const comm = await app.prisma.climaComms.create({
+      data: {
+        tenantId,
+        title: body.title,
+        body: body.body,
+        attachments: body.attachments,
+        recipients: body.recipients,
+        extraEmails: body.extraEmails,
+        status: 'BORRADOR',
+        createdById: req.auth?.userId ?? null,
+      },
+    });
+    return reply.code(201).send({ comm });
+  });
+
+  // PATCH /clima/comunicados/:id
+  app.patch('/comunicados/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      title: z.string().min(3).optional(),
+      body: z.string().min(5).optional(),
+      attachments: z.array(z.object({ name: z.string(), url: z.string(), type: z.string() })).optional(),
+      recipients: z.array(z.object({ type: z.enum(['employee', 'email']), id: z.string().optional(), email: z.string().email(), name: z.string().optional() })).optional(),
+      extraEmails: z.array(z.string().email()).optional(),
+    });
+    const body = schema.parse(req.body);
+    const comm = await app.prisma.climaComms.update({ where: { id }, data: body });
+    return reply.send({ comm });
+  });
+
+  // DELETE /clima/comunicados/:id
+  app.delete('/comunicados/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const { id } = req.params as any;
+    await app.prisma.climaComms.update({ where: { id }, data: { deletedAt: new Date() } });
+    return reply.send({ success: true });
+  });
+
+  // POST /clima/comunicados/:id/enviar
+  app.post('/comunicados/:id/enviar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const { id } = req.params as any;
+
+    const comm = await app.prisma.climaComms.findFirst({ where: { id, tenantId, deletedAt: null } });
+    if (!comm) return reply.code(404).send({ error: 'Comunicado no encontrado' });
+
+    const recipients = (comm.recipients as any[]) ?? [];
+    const extraEmails = (comm.extraEmails as string[]) ?? [];
+    const attachments = (comm.attachments as any[]) ?? [];
+
+    // Construir lista de emails únicos
+    const allEmails = new Set<string>();
+    for (const r of recipients) { if (r.email) allEmails.add(r.email); }
+    for (const e of extraEmails) { allEmails.add(e); }
+
+    // HTML del comunicado
+    const attachHtml = attachments.length > 0
+      ? `<div style="margin-top:16px;"><strong>Adjuntos:</strong><ul style="margin:8px 0;padding-left:20px;">${attachments.map(a => `<li><a href="${a.url}">${a.name}</a></li>`).join('')}</ul></div>`
+      : '';
+
+    const html = `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
+        <h1 style="color:#111827;font-size:22px;margin:0 0 8px;">${comm.title}</h1>
+        <div style="color:#4B5563;font-size:14px;line-height:1.7;white-space:pre-line;">${comm.body}</div>
+        ${attachHtml}
+        <hr style="margin:24px 0;border:none;border-top:1px solid #E5E7EB;" />
+        <p style="color:#9CA3AF;font-size:11px;">Este mensaje fue enviado desde SGI 360 — Sistema de Gestión Integrado</p>
+      </div>`;
+
+    let sentCount = 0;
+    const errors: string[] = [];
+
+    for (const email of allEmails) {
+      try {
+        const result = await sendEmail({ to: email, subject: comm.title, html, text: comm.body });
+        if (result.success) sentCount++;
+        else errors.push(`${email}: ${result.error}`);
+      } catch (e: any) {
+        errors.push(`${email}: ${e.message}`);
+      }
+    }
+
+    await app.prisma.climaComms.update({
+      where: { id },
+      data: { status: 'ENVIADO', sentAt: new Date(), sentCount },
+    });
+
+    return reply.send({ success: true, sentCount, totalTargets: allEmails.size, errors });
+  });
+
+  // POST /clima/comunicados/upload — subida de adjuntos
+  app.post('/comunicados/upload', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    try {
+      const data = await req.file();
+      if (!data) return reply.code(400).send({ error: 'No se recibió archivo' });
+
+      const { createWriteStream, mkdirSync } = await import('fs');
+      const { join } = await import('path');
+      const { randomBytes } = await import('crypto');
+
+      const uploadDir = join(process.cwd(), 'uploads', 'comunicados', tenantId);
+      mkdirSync(uploadDir, { recursive: true });
+
+      const ext = data.filename.split('.').pop() || 'bin';
+      const fileName = `${randomBytes(12).toString('hex')}.${ext}`;
+      const filePath = join(uploadDir, fileName);
+
+      await new Promise<void>((resolve, reject) => {
+        const ws = createWriteStream(filePath);
+        data.file.pipe(ws);
+        ws.on('finish', resolve);
+        ws.on('error', reject);
+      });
+
+      const baseUrl = process.env.API_BASE_URL || `http://localhost:4000`;
+      const url = `${baseUrl}/uploads/comunicados/${tenantId}/${fileName}`;
+
+      return reply.send({ name: data.filename, url, type: data.mimetype });
+    } catch (e: any) {
+      return reply.code(500).send({ error: 'Error al subir archivo', detail: e.message });
+    }
+  });
 }

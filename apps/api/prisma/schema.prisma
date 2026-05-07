@@ -309,6 +309,7 @@ model Tenant {
   climaSurveys    ClimaSurvey[]
   climaSuggestions ClimaSuggestion[]
   climaActionPlans ClimaActionPlan[]
+  climaComms       ClimaComms[]
 
   // License & Billing Relations
   tenantSetup           TenantSetup?
@@ -463,6 +464,7 @@ model PlatformUser {
   climaSurveysUpdated    ClimaSurvey[]     @relation("ClimaSurveyUpdatedBy")
   climaSuggestionsCreated ClimaSuggestion[] @relation("ClimaSuggestionCreatedBy")
   climaSuggestionsResponded ClimaSuggestion[] @relation("ClimaSuggestionRespondedBy")
+  climaCommsCreated      ClimaComms[]      @relation("ClimaCommsCreatedBy")
   climaActionPlansCreated ClimaActionPlan[] @relation("ClimaActionPlanCreatedBy")
   climaActionPlansResponsible ClimaActionPlan[] @relation("ClimaActionPlanResponsible")
 }
@@ -5344,6 +5346,39 @@ model ClimaActionPlan {
   @@index([tenantId])
   @@index([tenantId, status])
   @@map("clima_action_plans")
+}
+
+model ClimaComms {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title    String
+  body     String
+  // Adjuntos: [{name, url, type}]
+  attachments Json @default("[]")
+
+  // Destinatarios registrados
+  recipients  Json @default("[]")
+  // [{type: 'employee'|'email', id?, email, name?}]
+
+  // Emails libres adicionales
+  extraEmails Json @default("[]")
+
+  sentAt      DateTime?
+  sentCount   Int      @default(0)
+  status      String   @default("BORRADOR")
+  // BORRADOR, ENVIADO
+
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @db.Timestamptz
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("ClimaCommsCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  deletedAt   DateTime?     @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("clima_comms")
 }
 
 model AIUsageLog {
