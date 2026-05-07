@@ -107,7 +107,7 @@ export default function ComunicadosPage() {
     setExtraEmailInput('');
   }
 
-  async function handleSave(e: React.FormEvent) {
+  async function handleSave(e: React.FormEvent, sendNow = false) {
     e.preventDefault();
     if (!form.title.trim() || !form.body.trim()) return;
     setSaving(true);
@@ -116,6 +116,15 @@ export default function ComunicadosPage() {
       setComms(p => [data.comm, ...p]);
       setShowForm(false);
       resetForm();
+      if (sendNow && data.comm?.id) {
+        setSending(true);
+        try {
+          const res = await apiFetch(`/clima/comunicados/${data.comm.id}/enviar`, { method: 'POST' }) as any;
+          setSendResult(res);
+          setSelected({ ...data.comm, status: 'ENVIADO' });
+          loadComms();
+        } catch (e: any) { setSendResult({ error: e.message }); } finally { setSending(false); }
+      }
     } catch { alert('Error al guardar'); } finally { setSaving(false); }
   }
 
@@ -383,11 +392,20 @@ export default function ComunicadosPage() {
                 </div>
               )}
 
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setShowForm(false)}
+                  className="text-sm text-gray-600 border border-gray-200 px-4 py-2.5 rounded-xl hover:bg-gray-50 transition-colors">
+                  Cancelar
+                </button>
                 <button type="submit" disabled={saving}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-xl transition-colors">
-                  {saving ? 'Guardando...' : 'Guardar como borrador'}
+                  className="flex-1 border border-indigo-300 text-indigo-700 hover:bg-indigo-50 disabled:opacity-60 text-sm font-medium py-2.5 rounded-xl transition-colors">
+                  {saving ? 'Guardando...' : 'Guardar borrador'}
+                </button>
+                <button type="button" disabled={saving || sending}
+                  onClick={e => handleSave(e as any, true)}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1.5">
+                  {saving || sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {saving ? 'Guardando...' : sending ? 'Enviando...' : 'Enviar ahora'}
                 </button>
               </div>
             </form>
