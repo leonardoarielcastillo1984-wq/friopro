@@ -1131,7 +1131,8 @@ Respondé en JSON con esta estructura exacta:
       const { join } = await import('path');
       const { randomBytes } = await import('crypto');
 
-      const uploadDir = join(process.cwd(), 'uploads', 'comunicados', tenantId);
+      const storageBase = process.env.STORAGE_LOCAL_PATH || '/app/uploads';
+      const uploadDir = join(storageBase, 'comunicados', tenantId);
       mkdirSync(uploadDir, { recursive: true });
 
       const ext = data.filename.split('.').pop() || 'bin';

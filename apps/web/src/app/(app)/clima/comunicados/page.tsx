@@ -142,7 +142,8 @@ export default function ComunicadosPage() {
     e.preventDefault();
     const currentBody = editorRef.current ? editorRef.current.innerHTML : form.body;
     const bodyText = currentBody.replace(/<[^>]*>/g, '').trim();
-    if (!form.title.trim() || !bodyText) {
+    const hasImage = /<img/i.test(currentBody);
+    if (!form.title.trim() || (!bodyText && !hasImage)) {
       alert('Completá el asunto y el mensaje antes de continuar.');
       return;
     }
