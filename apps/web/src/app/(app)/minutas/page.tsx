@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit, Sparkles, Loader2, Target, AlertTriangle, FolderKanban, Mic, Upload, History, Volume2, BarChart3 } from 'lucide-react';
+import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit, Sparkles, Loader2, Target, AlertTriangle, FolderKanban, Mic, Upload, History, Volume2, BarChart3, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -32,7 +32,7 @@ type Minuta = {
   confidentiality: string;
   content?: string;
   summary?: string;
-  audioUrl?: string;
+  aiProcessed?: boolean;
   blocks?: MinutaBlock[];
   createdAt: string;
 };
@@ -124,13 +124,10 @@ export default function MinutasPage() {
   const [editingBlock, setEditingBlock] = useState<MinutaBlock | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [detectingActions, setDetectingActions] = useState(false);
-  const [uploadingAudio, setUploadingAudio] = useState(false);
   const [capaCreatedBlocks, setCapaCreatedBlocks] = useState<Set<string>>(new Set());
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [transcribing, setTranscribing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
+  const [transcriptionText, setTranscriptionText] = useState('');
+  const [recognition, setRecognition] = useState<any>(null);
   const [departments, setDepartments] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [formData, setFormData] = useState({
@@ -147,7 +144,6 @@ export default function MinutasPage() {
     status: 'DRAFT',
     confidentiality: 'INTERNAL',
     content: '',
-    audioUrl: '',
   });
   const [blockFormData, setBlockFormData] = useState({
     type: 'CONVERSATION' as 'CONVERSATION' | 'DECISION' | 'ACTION',
@@ -366,95 +362,61 @@ export default function MinutasPage() {
     }
   }
 
-  async function startRecording() {
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert('Tu navegador no soporta acceso al micrófono o no está en HTTPS');
-        return;
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunks.push(e.data);
-        }
-      };
-
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const file = new File([blob], 'grabacion.webm', { type: 'audio/webm' });
-        setAudioFile(file);
-        setRecordedChunks([]);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      recorder.start();
-      setMediaRecorder(recorder);
-      setRecordedChunks(chunks);
-      setIsRecording(true);
-    } catch (err) {
-      console.error('Error al iniciar grabación:', err);
-      alert('No se pudo acceder al micrófono');
-    }
-  }
-
-  function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop();
-      setMediaRecorder(null);
-      setIsRecording(false);
-    }
-  }
-
-  async function handleAudioUpload() {
-    if (!audioFile) return;
-
-    try {
-      setUploadingAudio(true);
-      const uploadFormData = new FormData();
-      uploadFormData.append('file', audioFile);
-
-      const res = await apiFetch('/storage/upload', {
-        method: 'POST',
-        headers: {},
-        body: uploadFormData,
-      }) as { url: string };
-
-      const audioUrl = res.url.replace('https://', 'http://');
-      setFormData({ ...formData, audioUrl });
-      setAudioFile(null);
-
-      alert('Audio subido exitosamente. Guarda la minuta para que el audio se guarde.');
-    } catch (err) {
-      console.error('Error uploading audio:', err);
-      alert('Error al subir audio');
-    } finally {
-      setUploadingAudio(false);
-    }
-  }
-
-  async function handleTranscribe() {
-    if (!editingMinuta || !editingMinuta.audioUrl) {
-      alert('La minuta no tiene audio');
+  function startRecording() {
+    // Verificar si el navegador soporta Web Speech API
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert('Tu navegador no soporta transcripción por voz. Por favor usa Chrome o Edge.');
       return;
     }
 
-    try {
-      setTranscribing(true);
-      const res = await apiFetch(`/minutas/${editingMinuta.id}/transcribe`, {
-        method: 'POST',
-      }) as { transcription: string };
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    
+    recognition.lang = 'es-ES';
+    recognition.continuous = true;
+    recognition.interimResults = true;
 
-      setEditingMinuta({ ...editingMinuta, content: res.transcription });
-      setFormData({ ...formData, content: res.transcription });
-      alert('Audio transcrito exitosamente');
-    } catch (err) {
-      console.error('Error transcribing:', err);
-      alert('Error al transcribir audio');
-    } finally {
-      setTranscribing(false);
+    recognition.onresult = (event: any) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+
+      setTranscriptionText((prev) => prev + finalTranscript);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Error en reconocimiento de voz:', event.error);
+      if (event.error === 'not-allowed') {
+        alert('No se pudo acceder al micrófono. Por favor permite el acceso al micrófono.');
+      }
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      if (isRecording) {
+        // Si sigue grabando, reiniciar
+        recognition.start();
+      }
+    };
+
+    recognition.start();
+    setRecognition(recognition);
+    setTranscriptionText('');
+    setIsRecording(true);
+  }
+
+  function stopRecording() {
+    if (recognition) {
+      recognition.stop();
+      setRecognition(null);
+      setIsRecording(false);
     }
   }
 
@@ -496,7 +458,6 @@ export default function MinutasPage() {
         status: 'DRAFT',
         confidentiality: 'INTERNAL',
         content: '',
-        audioUrl: '',
       });
       loadMinutas();
     } catch (err) {
@@ -533,7 +494,6 @@ export default function MinutasPage() {
       status: minuta.status,
       confidentiality: minuta.confidentiality,
       content: minuta.content || '',
-      audioUrl: minuta.audioUrl || '',
     });
     setDialogOpen(true);
     loadBlocks(minuta.id);
@@ -555,7 +515,6 @@ export default function MinutasPage() {
       status: 'DRAFT',
       confidentiality: 'INTERNAL',
       content: '',
-      audioUrl: '',
     });
     setDialogOpen(true);
   }
@@ -696,7 +655,7 @@ export default function MinutasPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Minutas con Audio</p>
-                <p className="text-2xl font-bold">{minutas.filter(m => m.audioUrl && m.audioUrl.length > 0).length}</p>
+                <p className="text-2xl font-bold">{minutas.filter(m => m.content && m.content.length > 0).length}</p>
               </div>
               <Clock className="h-8 w-8 text-blue-600" />
             </div>
@@ -1145,74 +1104,44 @@ export default function MinutasPage() {
               />
             </div>
 
-            {/* Sección de Audio */}
+            {/* Sección de Audio - Transcripción desde micrófono */}
             <div className="border-t pt-4">
-              <Label>Audio de la reunión</Label>
-              <div className="flex gap-2 mt-2">
-                <Input
-                  type="file"
-                  accept="audio/*"
-                  onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
-                  className="flex-1"
-                />
+              <Label>Transcripción desde micrófono</Label>
+              <div className="flex gap-2 mt-2 items-center">
                 <Button
                   onClick={isRecording ? stopRecording : startRecording}
                   variant={isRecording ? "destructive" : "outline"}
+                  className="flex-1"
                 >
                   <Mic className={`h-4 w-4 mr-2 ${isRecording ? 'animate-pulse' : ''}`} />
-                  {isRecording ? 'Detener' : 'Grabar'}
+                  {isRecording ? 'Detener grabación' : 'Iniciar grabación y transcripción'}
                 </Button>
-                <Button
-                  onClick={handleAudioUpload}
-                  disabled={!audioFile || uploadingAudio}
-                  variant="outline"
-                >
-                  {uploadingAudio ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4 mr-2" />
-                  )}
-                  Subir
-                </Button>
+                {transcriptionText && (
+                  <Button
+                    onClick={() => {
+                      setFormData({ ...formData, content: formData.content + '\n\n' + transcriptionText });
+                      setTranscriptionText('');
+                    }}
+                    variant="default"
+                  >
+                    <Check className="h-4 w-4 mr-2" />
+                    Agregar al contenido
+                  </Button>
+                )}
               </div>
-              {formData.audioUrl && (
-                <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Mic className="h-4 w-4 text-blue-600" />
-                      <span className="text-sm text-blue-700">Audio cargado</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        onClick={() => {
-                          setFormData({ ...formData, audioUrl: '' });
-                          setAudioFile(null);
-                        }}
-                        size="sm"
-                        variant="destructive"
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Eliminar
-                      </Button>
-                      <Button
-                        onClick={handleTranscribe}
-                        size="sm"
-                        variant="outline"
-                        disabled={transcribing}
-                      >
-                        {transcribing ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-4 w-4 mr-2" />
-                        )}
-                        Transcribir
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="mt-2">
-                    <video controls src={formData.audioUrl} className="w-full h-12" style={{ maxWidth: '100%' }}>
-                      Tu navegador no soporta el elemento de video.
-                    </video>
+              {isRecording && (
+                <div className="mt-2 p-2 bg-red-50 rounded border border-red-200">
+                  <p className="text-sm text-red-700 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Grabando y transcribiendo en tiempo real...
+                  </p>
+                </div>
+              )}
+              {transcriptionText && (
+                <div className="mt-2 p-2 bg-green-50 rounded border border-green-200">
+                  <p className="text-sm text-green-700 mb-2">Transcripción en curso:</p>
+                  <div className="text-sm bg-white p-2 rounded border max-h-32 overflow-y-auto">
+                    {transcriptionText}
                   </div>
                 </div>
               )}
