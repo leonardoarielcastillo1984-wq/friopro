@@ -1161,7 +1161,7 @@ Respondé en JSON con esta estructura exacta:
     if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
     const schema = z.object({
       title: z.string().min(3),
-      body: z.string().min(5),
+      body: z.string().min(1),
       attachments: z.array(z.object({ name: z.string(), url: z.string(), type: z.string() })).default([]),
       recipients: z.array(z.object({ type: z.enum(['employee', 'email']), id: z.string().optional(), email: z.string().email(), name: z.string().optional() })).default([]),
       extraEmails: z.array(z.string().email()).default([]),
@@ -1242,12 +1242,16 @@ Respondé en JSON con esta estructura exacta:
       ? `<div style="margin-top:16px;"><strong>Adjuntos:</strong><ul style="margin:8px 0;padding-left:20px;">${attachments.map(a => `<li><a href="${a.url}">${a.name}</a></li>`).join('')}</ul></div>`
       : '';
 
-    const branding = await app.prisma.companySettings.findUnique({ where: { tenantId }, select: { logoUrl: true, companyName: true } }).catch(() => null);
+    const branding = await app.prisma.companySettings.findUnique({ where: { tenantId }, select: { logoUrl: true, companyName: true, commSignature: true } }).catch(() => null);
     const logoHtml = branding?.logoUrl
       ? `<img src="${branding.logoUrl}" alt="${branding.companyName || 'SGI 360'}" style="max-height:60px;max-width:180px;object-fit:contain;" />`
       : `<h2 style="color:#111827;font-size:20px;margin:0;">${branding?.companyName || 'SGI 360'}</h2>`;
 
     const baseUrlEnv = process.env.API_BASE_URL || 'http://localhost:4000';
+    const signatureHtml = branding?.commSignature
+      ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #E5E7EB;font-size:13px;color:#374151;">${branding.commSignature}</div>`
+      : '';
+    const promoFooter = `<p style="color:#CBD5E1;font-size:10px;text-align:center;margin:12px 0 0;">Enviado desde <a href="https://www.logismart.ar" style="color:#CBD5E1;">www.logismart.ar</a></p>`;
 
     let sentCount = 0;
     const errors: string[] = [];
@@ -1260,12 +1264,14 @@ Respondé en JSON con esta estructura exacta:
           <div style="text-align:center;margin-bottom:24px;">${logoHtml}</div>
           <h1 style="color:#111827;font-size:22px;margin:0 0 8px;">${comm.title}</h1>
           <div style="color:#4B5563;font-size:14px;line-height:1.7;">${comm.body}</div>
+          ${signatureHtml}
           ${attachHtml}
           <hr style="margin:24px 0;border:none;border-top:1px solid #E5E7EB;" />
           <p style="text-align:center;margin:0 0 8px;">
-            <a href="${confirmUrl}" style="color:#6366F1;font-size:12px;text-decoration:none;">✓ Confirmar lectura</a>
+            <a href="${confirmUrl}" style="color:#6366F1;font-size:12px;text-decoration:none;">✓ Confirmar que lo leí</a>
           </p>
           <p style="color:#9CA3AF;font-size:11px;text-align:center;">© ${new Date().getFullYear()} ${branding?.companyName || 'SGI 360'}</p>
+          ${promoFooter}
           <img src="${pixelUrl}" width="1" height="1" style="display:block;width:1px;height:1px;" />
         </div>`;
       try {

@@ -40,8 +40,12 @@ export default function ComunicadosPage() {
   const [extraEmailInput, setExtraEmailInput] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [signature, setSignature] = useState<string>('');
+  const [showSigEditor, setShowSigEditor] = useState(false);
+  const [savingSig, setSavingSig] = useState(false);
+  const sigEditorRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { loadComms(); loadEmployees(); }, []);
+  useEffect(() => { loadComms(); loadEmployees(); loadSignature(); }, []);
 
   async function loadComms() {
     setLoading(true);
@@ -58,11 +62,42 @@ export default function ComunicadosPage() {
     } catch { setEmployees([]); }
   }
 
+  async function loadSignature() {
+    try {
+      const data = await apiFetch('/company/settings') as any;
+      setSignature(data.settings?.commSignature || '');
+    } catch {}
+  }
+
+  async function saveSignature() {
+    setSavingSig(true);
+    const html = sigEditorRef.current ? sigEditorRef.current.innerHTML : signature;
+    try {
+      await apiFetch('/company/settings', { method: 'PUT', json: { commSignature: html } });
+      setSignature(html);
+      setShowSigEditor(false);
+    } catch { alert('Error al guardar firma'); } finally { setSavingSig(false); }
+  }
+
   function resetForm() {
     setForm({ title: '', body: '', attachments: [], recipients: [], extraEmails: [] });
     setExtraEmailInput('');
     setSendResult(null);
     if (editorRef.current) editorRef.current.innerHTML = '';
+  }
+
+  function openNewForm() {
+    resetForm();
+    if (signature) {
+      setTimeout(() => {
+        if (editorRef.current) {
+          const html = '<div><br></div><hr style="border:none;border-top:1px solid #E5E7EB;margin:12px 0;"/>' + signature;
+          editorRef.current.innerHTML = html;
+          setForm(p => ({ ...p, body: editorRef.current!.innerHTML }));
+        }
+      }, 50);
+    }
+    setShowForm(true);
   }
 
   const handleEditorPaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
@@ -218,11 +253,18 @@ export default function ComunicadosPage() {
           <h1 className="text-xl font-bold text-gray-900">Comunicación y Difusión</h1>
           <p className="text-sm text-gray-500 mt-0.5">Enviá comunicados, documentos e imágenes a tu equipo</p>
         </div>
-        <button onClick={() => { resetForm(); setShowForm(true); }}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow transition-colors">
-          <Plus className="w-4 h-4" />
-          Nuevo comunicado
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowSigEditor(true)}
+            className="flex items-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-2.5 rounded-xl transition-colors" title="Editar firma">
+            <FileText className="w-4 h-4" />
+            Firma
+          </button>
+          <button onClick={openNewForm}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow transition-colors">
+            <Plus className="w-4 h-4" />
+            Nuevo comunicado
+          </button>
+        </div>
       </div>
 
       {/* Lista */}
@@ -385,6 +427,45 @@ export default function ComunicadosPage() {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editor de firma */}
+      {showSigEditor && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div>
+                <h3 className="font-semibold text-gray-900">Firma de comunicados</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Se insertará automáticamente al crear un nuevo comunicado</p>
+              </div>
+              <button onClick={() => setShowSigEditor(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="flex items-center gap-1 border border-gray-200 border-b-0 rounded-t-xl px-2 py-1.5 bg-gray-50">
+                {[{cmd:'bold',label:<strong>B</strong>},{cmd:'italic',label:<em>I</em>},{cmd:'underline',label:<span className="underline">U</span>}].map(({cmd,label})=>(
+                  <button key={cmd} type="button" onMouseDown={e=>{e.preventDefault();sigEditorRef.current?.focus();document.execCommand(cmd,false,undefined);}}
+                    className="w-7 h-7 rounded hover:bg-gray-200 text-sm font-medium text-gray-700 flex items-center justify-center">{label}</button>
+                ))}
+              </div>
+              <div
+                ref={sigEditorRef}
+                contentEditable
+                suppressContentEditableWarning
+                dangerouslySetInnerHTML={{ __html: signature }}
+                data-placeholder="Ej: Saludos, Leonardo Castillo | Gerente de Calidad | Tel: +54 9 11..."
+                className="min-h-[100px] text-sm border border-gray-200 rounded-b-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/30 empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
+              />
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setShowSigEditor(false)}
+                  className="flex-1 border border-gray-200 text-gray-600 text-sm font-medium py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
+                <button onClick={saveSignature} disabled={savingSig}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-xl transition-colors">
+                  {savingSig ? 'Guardando...' : 'Guardar firma'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

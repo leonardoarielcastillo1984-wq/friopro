@@ -1852,9 +1852,10 @@ model CompanySettings {
   faviconUrl  String?
 
   // Report Settings
-  headerText   String? // Custom text for report headers
-  footerText   String? // Custom text for report footers
-  primaryColor String? @default("#2563eb") // Brand color
+  headerText     String? // Custom text for report headers
+  footerText     String? // Custom text for report footers
+  primaryColor   String? @default("#2563eb") // Brand color
+  commSignature  String? // Firma HTML para comunicados/difusión
 
   // Metadata
   updatedAt   DateTime @updatedAt @db.Timestamptz

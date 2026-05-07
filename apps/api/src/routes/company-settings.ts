@@ -15,6 +15,7 @@ const UpdateCompanySettingsSchema = z.object({
   headerText: z.string().optional(),
   footerText: z.string().optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  commSignature: z.string().optional(),
 });
 
 export async function registerCompanySettingsRoutes(app: FastifyInstance) {
