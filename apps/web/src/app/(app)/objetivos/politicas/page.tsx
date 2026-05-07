@@ -12,7 +12,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Plus, Pencil, Trash2, Shield, Save, X } from 'lucide-react';
+import { FileText, Plus, Pencil, Trash2, Shield, Save, X, Upload } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 interface Policy {
@@ -21,6 +21,7 @@ interface Policy {
   content: string;
   scope: string;
   active: boolean;
+  signedPdfUrl?: string;
   createdAt: string;
 }
 
@@ -34,7 +35,9 @@ export default function PoliciesPage() {
     content: '',
     scope: 'QUALITY',
     active: true,
+    signedPdfUrl: '',
   });
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const fetchPolicies = useCallback(async () => {
     try {
@@ -67,6 +70,7 @@ export default function PoliciesPage() {
       const normalize = (val: any) => (val === '' || val === null ? undefined : val);
       payload.content = normalize(payload.content);
       payload.scope = normalize(payload.scope);
+      payload.signedPdfUrl = normalize(payload.signedPdfUrl);
       await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -75,7 +79,7 @@ export default function PoliciesPage() {
 
       setDialogOpen(false);
       setEditingPolicy(null);
-      setFormData({ name: '', content: '', scope: 'QUALITY', active: true });
+      setFormData({ name: '', content: '', scope: 'QUALITY', active: true, signedPdfUrl: '' });
       fetchPolicies();
       // Removed success alert — silent save
     } catch (e: any) {
@@ -102,13 +106,14 @@ export default function PoliciesPage() {
       content: policy.content,
       scope: policy.scope,
       active: policy.active,
+      signedPdfUrl: policy.signedPdfUrl || '',
     });
     setDialogOpen(true);
   };
 
   const openNew = () => {
     setEditingPolicy(null);
-    setFormData({ name: '', content: '', scope: 'QUALITY', active: true });
+    setFormData({ name: '', content: '', scope: 'QUALITY', active: true, signedPdfUrl: '' });
     setDialogOpen(true);
   };
 
@@ -175,6 +180,19 @@ export default function PoliciesPage() {
               <p className="text-sm text-muted-foreground line-clamp-4 whitespace-pre-wrap">
                 {policy.content || 'Sin contenido'}
               </p>
+              {policy.signedPdfUrl && (
+                <div className="mt-3 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  <a
+                    href={policy.signedPdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    PDF firmado
+                  </a>
+                </div>
+              )}
               {!policy.active && (
                 <span className="inline-block mt-2 text-xs text-destructive font-medium">
                   Inactiva
@@ -236,6 +254,53 @@ export default function PoliciesPage() {
                 placeholder="Redacte aquí el contenido de la política..."
                 rows={8}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>PDF firmado (opcional)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  accept=".pdf"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.type !== 'application/pdf') {
+                      alert('Solo se permiten archivos PDF');
+                      return;
+                    }
+                    setUploadingFile(true);
+                    try {
+                      const formDataUpload = new FormData();
+                      formDataUpload.append('file', file);
+                      const response = await apiFetch('/uploads/policies', {
+                        method: 'POST',
+                        body: formDataUpload,
+                      }) as { url: string };
+                      setFormData({ ...formData, signedPdfUrl: response.url });
+                    } catch (error) {
+                      alert('Error al subir el archivo');
+                    } finally {
+                      setUploadingFile(false);
+                    }
+                  }}
+                  disabled={uploadingFile}
+                />
+                {uploadingFile && <span className="text-sm text-muted-foreground">Subiendo...</span>}
+              </div>
+              {formData.signedPdfUrl && (
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <FileText className="h-4 w-4" />
+                  <a href={formData.signedPdfUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                    Ver PDF cargado
+                  </a>
+                  <button
+                    onClick={() => setFormData({ ...formData, signedPdfUrl: '' })}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

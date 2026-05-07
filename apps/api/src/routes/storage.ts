@@ -94,4 +94,59 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(500).send({ error: 'Error uploading file: ' + err.message });
     }
   });
+
+  // POST /storage/upload/policies — Subir PDF firmado de política
+  app.post('/upload/policies', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId;
+      if (!tenantId) {
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      }
+
+      const data = await req.file();
+      if (!data) {
+        return reply.code(400).send({ error: 'No file uploaded' });
+      }
+
+      // Validar que sea PDF
+      if (data.mimetype !== 'application/pdf') {
+        return reply.code(400).send({ error: 'Solo se permiten archivos PDF' });
+      }
+
+      // Leer archivo
+      const chunks: Buffer[] = [];
+      for await (const chunk of data.file) {
+        chunks.push(chunk);
+      }
+      const fileBuffer = Buffer.concat(chunks);
+
+      // Guardar archivo en carpeta específica de políticas
+      const storageBase = process.env.STORAGE_LOCAL_PATH || '/app/uploads';
+      const uploadDir = path.resolve(storageBase, tenantId, 'policies');
+      await fs.mkdir(uploadDir, { recursive: true });
+
+      const fileName = `${Date.now()}-${data.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const filePath = path.join(uploadDir, fileName);
+      await fs.writeFile(filePath, fileBuffer);
+
+      // Incrementar uso de storage
+      const prisma = (app as any).prisma;
+      await incrementStorageUsed(prisma, tenantId, fileBuffer.length);
+
+      // Construir URL pública
+      const host = req.headers.host || process.env.APP_URL || 'localhost:3000';
+      const protocol = host.includes('localhost') ? 'http' : 'https';
+      const url = `${protocol}://${host}/uploads/${tenantId}/policies/${fileName}`;
+
+      return reply.send({
+        url,
+        size: fileBuffer.length,
+        type: data.mimetype,
+        name: data.filename,
+      });
+    } catch (err: any) {
+      console.error('[STORAGE_UPLOAD_POLICIES] Error:', err.message);
+      return reply.code(500).send({ error: 'Error uploading file: ' + err.message });
+    }
+  });
 };
