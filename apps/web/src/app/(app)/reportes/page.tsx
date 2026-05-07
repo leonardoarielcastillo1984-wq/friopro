@@ -68,18 +68,18 @@ export default function ReportesPage() {
 
       {/* Report Type Selection */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Informe para la Dirección - Special Card */}
+        {/* MINUTAS - Special Card */}
         <Link
-          href="/reportes/informe-direccion"
-          className="text-left rounded-xl border-2 p-5 transition-all hover:shadow-md bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200 hover:border-blue-300"
+          href="/minutas"
+          className="text-left rounded-xl border-2 p-5 transition-all hover:shadow-md bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200 hover:border-purple-300"
         >
           <div className="flex items-start justify-between mb-3">
-            <div className="p-2.5 rounded-lg bg-blue-100">
-              <FileBarChart className="h-5 w-5 text-blue-600" />
+            <div className="p-2.5 rounded-lg bg-purple-100">
+              <FileText className="h-5 w-5 text-purple-600" />
             </div>
           </div>
-          <h3 className="font-semibold text-slate-900 text-sm">Informe para la Dirección</h3>
-          <p className="text-xs text-slate-500 mt-1">Revisión por la dirección multi-norma con entradas/salidas</p>
+          <h3 className="font-semibold text-slate-900 text-sm">MINUTAS</h3>
+          <p className="text-xs text-slate-500 mt-1">Centro inteligente de decisiones y seguimiento corporativo</p>
         </Link>
 
         {REPORT_TYPES.map(rt => {

@@ -41,6 +41,7 @@ import { riskRoutes } from './routes/risks.js';
 import { exportRoutes } from './routes/export.js';
 import { integrationRoutes } from './routes/integrations.js';
 import { objectivesRoutes } from './routes/objectives.js';
+import { minutasRoutes } from './routes/minutas.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
 import { registerCompanySettingsRoutes } from './routes/company-settings.js';
 import { registerLandingSettingsRoutes } from './routes/landing-settings.js';
@@ -249,6 +250,7 @@ export async function buildApp() {
   // SGI Profesional (Abr 2026)
   await app.register(actionsRoutes, { prefix: '/actions' });
   await app.register(objectivesRoutes, { prefix: '/objectives' });
+  await app.register(minutasRoutes, { prefix: '/minutas' });
   await app.register(stakeholdersRoutes, { prefix: '/stakeholders' });
   await app.register(stakeholderActionRoutes, { prefix: '/stakeholders' });
   await app.register(contextRoutes, { prefix: '/context' });

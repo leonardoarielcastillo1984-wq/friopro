@@ -3542,6 +3542,7 @@ model Client {
   equipments       Equipment[]
   workOrders       WorkOrder[]
   notificationLogs NotificationLog[]
+  minutas          Minuta[]
 
   @@index([userId])
   @@map("clients")
@@ -4349,6 +4350,43 @@ model Policy {
   @@map("policies")
 }
 
+model Minuta {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @db.Uuid
+  title              String
+  date               DateTime  @db.Timestamptz
+  time               String?   // HH:MM
+  duration           String?   // en minutos
+  area               String?   // Departamento/Área
+  type               String    // Revisión por la Dirección, Comité de Calidad, Reunión Operativa, etc.
+  participants       String[]  // Array de nombres o IDs de participantes
+  responsible        String?   // Responsable de la minuta
+  clientId           String?   @db.Uuid
+  client             Client?   @relation(fields: [clientId], references: [id])
+  supplierId         String?   @db.Uuid
+  supplier           Supplier? @relation(fields: [supplierId], references: [id])
+  projectId          String?   @db.Uuid
+  project            Project360? @relation(fields: [projectId], references: [id])
+  tags               String[]  // Etiquetas
+  priority           Priority  @default(MEDIUM)
+  status             String    @default("DRAFT") // DRAFT, IN_PROGRESS, COMPLETED, CANCELLED
+  confidentiality     String    @default("INTERNAL") // INTERNAL, CONFIDENTIAL, RESTRICTED
+  attachments        String[]  // URLs de archivos adjuntos
+  audioUrl           String?   // URL del audio de la reunión
+  content            String?   @db.Text // Contenido enriquecido de la minuta
+  summary            String?   @db.Text // Resumen ejecutivo generado por IA
+  aiProcessed        Boolean   @default(false) // Si la IA ya procesó la minuta
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now()) @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([date])
+  @@index([type])
+  @@index([status])
+  @@map("minutas")
+}
+
 enum Priority {
   LOW
   MEDIUM
@@ -4483,6 +4521,7 @@ model Project360 {
   attachments Project360Attachment[]
   reminders   Project360Reminder[]
   history     Project360History[]
+  minutas     Minuta[]
 
   @@map("project360")
 }
@@ -4956,6 +4995,7 @@ model Supplier {
   updatedAt          DateTime  @updatedAt @db.Timestamptz
 
   evaluations SupplierEvaluation[]
+  minutas     Minuta[]
 
   @@index([tenantId])
   @@map("suppliers")
