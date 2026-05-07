@@ -67,7 +67,7 @@ export async function notifyNcrAssigned(
     tenantId: string; ncrId: string; ncrCode: string; ncrTitle: string; assignedToId: string;
   }
 ) {
-  const link = `${APP_URL}/calidad?ncr=${ncrId}`;
+  const link = `${APP_URL}/no-conformidades/${ncrId}`;
   const title = `NCR asignada: ${ncrCode}`;
   const message = `Se te asignó la no conformidad "${ncrTitle}". Revisá los detalles y tomá las acciones correspondientes.`;
 
@@ -125,7 +125,7 @@ export async function notifyDocumentReview(
     tenantId: string; docId: string; docTitle: string; reviewerId: string;
   }
 ) {
-  const link = `${APP_URL}/documentos/${docId}`;
+  const link = `${APP_URL}/documents/${docId}`;
   const title = `Documento requiere revisión`;
   const message = `El documento "${docTitle}" fue enviado a revisión y requiere tu atención.`;
 
