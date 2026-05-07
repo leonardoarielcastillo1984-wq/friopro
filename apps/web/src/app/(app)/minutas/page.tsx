@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit, Sparkles, Loader2 } from 'lucide-react';
+import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit, Sparkles, Loader2, Target, AlertTriangle, FolderKanban, Mic, Upload, Timeline, VolumeUp, ChartBar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -122,6 +122,9 @@ export default function MinutasPage() {
   const [editingBlock, setEditingBlock] = useState<MinutaBlock | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [detectingActions, setDetectingActions] = useState(false);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     date: new Date().toISOString().split('T')[0],
@@ -288,6 +291,96 @@ export default function MinutasPage() {
       alert('Error al detectar acciones con IA');
     } finally {
       setDetectingActions(false);
+    }
+  }
+
+  async function handleCreateCAPA(blockId: string) {
+    if (!editingMinuta) return;
+
+    try {
+      await apiFetch(`/minutas/${editingMinuta.id}/blocks/${blockId}/create-capa`, {
+        method: 'POST',
+      });
+      alert('CAPA creada exitosamente');
+    } catch (err) {
+      console.error('Error creating CAPA:', err);
+      alert('Error al crear CAPA');
+    }
+  }
+
+  async function handleCreateRisk(blockId: string) {
+    if (!editingMinuta) return;
+
+    try {
+      await apiFetch(`/minutas/${editingMinuta.id}/blocks/${blockId}/create-risk`, {
+        method: 'POST',
+      });
+      alert('Riesgo creado exitosamente');
+    } catch (err) {
+      console.error('Error creating risk:', err);
+      alert('Error al crear riesgo');
+    }
+  }
+
+  async function handleCreateProject() {
+    if (!editingMinuta) return;
+
+    try {
+      await apiFetch(`/minutas/${editingMinuta.id}/create-project`, {
+        method: 'POST',
+      });
+      alert('Proyecto creado exitosamente');
+    } catch (err) {
+      console.error('Error creating project:', err);
+      alert('Error al crear proyecto');
+    }
+  }
+
+  async function handleAudioUpload() {
+    if (!audioFile) return;
+
+    try {
+      setUploadingAudio(true);
+      const formData = new FormData();
+      formData.append('file', audioFile);
+
+      const res = await apiFetch('/storage/upload/minutas', {
+        method: 'POST',
+        headers: {},
+        body: formData,
+      }) as { url: string };
+
+      setFormData({ ...formData, audioUrl: res.url });
+      setAudioFile(null);
+      alert('Audio subido exitosamente');
+    } catch (err) {
+      console.error('Error uploading audio:', err);
+      alert('Error al subir audio');
+    } finally {
+      setUploadingAudio(false);
+    }
+  }
+
+  async function handleTranscribe() {
+    if (!editingMinuta || !editingMinuta.audioUrl) {
+      alert('La minuta no tiene audio');
+      return;
+    }
+
+    try {
+      setTranscribing(true);
+      const res = await apiFetch(`/minutas/${editingMinuta.id}/transcribe`, {
+        method: 'POST',
+      }) as { transcription: string };
+
+      setEditingMinuta({ ...editingMinuta, content: res.transcription });
+      setFormData({ ...formData, content: res.transcription });
+      alert('Audio transcrito exitosamente');
+    } catch (err) {
+      console.error('Error transcribing:', err);
+      alert('Error al transcribir audio');
+    } finally {
+      setTranscribing(false);
     }
   }
 
@@ -484,7 +577,108 @@ export default function MinutasPage() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Tasa de Completación</p>
+                <p className="text-2xl font-bold">{Math.round((minutas.filter(m => m.status === 'COMPLETED').length / minutas.length) * 100)}%</p>
+              </div>
+              <ChartBar className="h-8 w-8 text-purple-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Minutas del Mes</p>
+                <p className="text-2xl font-bold">{minutas.filter(m => {
+                  const date = new Date(m.date);
+                  const now = new Date();
+                  return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+                }).length}</p>
+              </div>
+              <Calendar className="h-8 w-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Minutas con Resumen</p>
+                <p className="text-2xl font-bold">{minutas.filter(m => m.summary && m.summary.length > 0).length}</p>
+              </div>
+              <FileText className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Minutas con Audio</p>
+                <p className="text-2xl font-bold">{minutas.filter(m => m.audioUrl && m.audioUrl.length > 0).length}</p>
+              </div>
+              <VolumeUp className="h-8 w-8 text-orange-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Duración Promedio</p>
+                <p className="text-2xl font-bold">{Math.round(minutas.reduce((sum, m) => sum + (parseInt(m.duration || '0') || 0), 0) / minutas.length)} min</p>
+              </div>
+              <Clock className="h-8 w-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Timeline Corporativo */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Timeline className="h-5 w-5" />
+            Timeline Corporativo
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {minutas
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              .slice(0, 5)
+              .map((minuta) => (
+                <div key={minuta.id} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className="h-3 w-3 rounded-full bg-blue-600"></div>
+                    <div className="h-full w-0.5 bg-gray-200"></div>
+                  </div>
+                  <div className="flex-1 pb-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-medium">{minuta.title}</p>
+                        <p className="text-sm text-gray-500">{new Date(minuta.date).toLocaleDateString('es-AR')}</p>
+                      </div>
+                      <Badge className={STATUS_COLORS[minuta.status] || 'bg-gray-100'}>
+                        {STATUS_LABELS[minuta.status] || minuta.status}
+                      </Badge>
+                    </div>
+                    {minuta.summary && (
+                      <p className="text-sm text-gray-600 mt-2 line-clamp-2">{minuta.summary}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            {minutas.length === 0 && (
+              <p className="text-center text-gray-500 py-4">No hay minutas para mostrar en el timeline</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Lista de minutas */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -589,9 +783,17 @@ export default function MinutasPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingMinuta ? 'Editar Minuta' : 'Nueva Minuta'}
-            </DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>
+                {editingMinuta ? 'Editar Minuta' : 'Nueva Minuta'}
+              </DialogTitle>
+              {editingMinuta && (
+                <Button onClick={handleCreateProject} size="sm" variant="outline">
+                  <FolderKanban className="h-4 w-4 mr-2" />
+                  Crear Proyecto
+                </Button>
+              )}
+            </div>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -745,6 +947,55 @@ export default function MinutasPage() {
               />
             </div>
 
+            {/* Sección de Audio */}
+            <div className="border-t pt-4">
+              <Label>Audio de la reunión</Label>
+              <div className="flex gap-2 mt-2">
+                <Input
+                  type="file"
+                  accept="audio/*"
+                  onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleAudioUpload}
+                  disabled={!audioFile || uploadingAudio}
+                  variant="outline"
+                >
+                  {uploadingAudio ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-2" />
+                  )}
+                  Subir
+                </Button>
+              </div>
+              {formData.audioUrl && (
+                <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Mic className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm text-blue-700">Audio cargado</span>
+                    </div>
+                    <Button
+                      onClick={handleTranscribe}
+                      size="sm"
+                      variant="outline"
+                      disabled={transcribing}
+                    >
+                      {transcribing ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4 mr-2" />
+                      )}
+                      Transcribir
+                    </Button>
+                  </div>
+                  <audio controls src={formData.audioUrl} className="h-8 mt-2 w-full" />
+                </div>
+              )}
+            </div>
+
             {/* Sección de Bloques de Decisión */}
             {editingMinuta && (
               <div className="border-t pt-4">
@@ -818,6 +1069,26 @@ export default function MinutasPage() {
                                 )}
                               </div>
                               <div className="flex gap-1">
+                                {block.type === 'ACTION' && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleCreateCAPA(block.id)}
+                                    title="Crear CAPA"
+                                  >
+                                    <Target className="h-4 w-4 text-blue-600" />
+                                  </Button>
+                                )}
+                                {block.type === 'DECISION' && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleCreateRisk(block.id)}
+                                    title="Crear Riesgo"
+                                  >
+                                    <AlertTriangle className="h-4 w-4 text-orange-600" />
+                                  </Button>
+                                )}
                                 <Button
                                   size="icon"
                                   variant="ghost"

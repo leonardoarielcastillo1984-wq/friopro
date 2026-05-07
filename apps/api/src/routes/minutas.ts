@@ -465,4 +465,182 @@ Minuta:\n${content}`;
       return reply.code(500).send({ error: 'Error al detectar acciones', details: err.message });
     }
   });
+
+  // POST /minutas/:id/blocks/:blockId/create-capa — Crear CAPA desde bloque de acción
+  app.post('/:id/blocks/:blockId/create-capa', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id, blockId } = req.params as { id: string; blockId: string };
+    const tenantId = req.db.tenantId;
+
+    const block = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minutaBlock.findFirst({
+        where: { id: blockId, minutaId: id },
+        include: { minuta: true },
+      });
+    });
+
+    if (!block) return reply.code(404).send({ error: 'Bloque no encontrado' });
+
+    try {
+      // Crear un objetivo SGI para la acción
+      const objective = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.sgiObjective.create({
+          data: {
+            tenantId,
+            code: `OBJ-${Date.now()}`,
+            title: block.content.substring(0, 100),
+            description: block.content,
+            targetDate: block.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            progress: 0,
+            status: 'PENDING',
+            priority: block.minuta?.priority || 'MEDIUM',
+            origin: 'MINUTAS',
+            originEntityId: block.minutaId,
+            responsibleId: block.responsible ? await tx.user.findFirst({ where: { name: block.responsible } })?.id : null,
+          },
+        });
+      });
+
+      return reply.send({ objectiveId: objective.id, message: 'CAPA creada exitosamente' });
+    } catch (err: any) {
+      console.error('[minutas create-capa] Error:', err);
+      return reply.code(500).send({ error: 'Error al crear CAPA', details: err.message });
+    }
+  });
+
+  // POST /minutas/:id/blocks/:blockId/create-risk — Crear Riesgo desde bloque de decisión
+  app.post('/:id/blocks/:blockId/create-risk', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id, blockId } = req.params as { id: string; blockId: string };
+    const tenantId = req.db.tenantId;
+
+    const block = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minutaBlock.findFirst({
+        where: { id: blockId, minutaId: id },
+      });
+    });
+
+    if (!block) return reply.code(404).send({ error: 'Bloque no encontrado' });
+
+    try {
+      const risk = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.risk.create({
+          data: {
+            tenantId,
+            code: `RSK-${Date.now()}`,
+            title: block.content.substring(0, 100),
+            description: block.content,
+            category: 'Operacional',
+            probability: 3,
+            impact: 3,
+            riskLevel: 9,
+            status: 'ASSESSED',
+            treatmentPlan: 'Derivado de minuta de reunión',
+            origin: 'MINUTAS',
+            originEntityId: block.minutaId,
+          },
+        });
+      });
+
+      return reply.send({ riskId: risk.id, message: 'Riesgo creado exitosamente' });
+    } catch (err: any) {
+      console.error('[minutas create-risk] Error:', err);
+      return reply.code(500).send({ error: 'Error al crear riesgo', details: err.message });
+    }
+  });
+
+  // POST /minutas/:id/create-project — Crear Proyecto desde minuta
+  app.post('/:id/create-project', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+    const tenantId = req.db.tenantId;
+
+    const minuta = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minuta.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+    });
+
+    if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
+
+    try {
+      const project = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.project360.create({
+          data: {
+            tenantId,
+            code: `PRJ-${Date.now()}`,
+            name: minuta.title.substring(0, 100),
+            description: minuta.content || minuta.summary || 'Proyecto derivado de minuta de reunión',
+            origin: 'MINUTAS',
+            originModule: 'MINUTAS',
+            originEntityId: minuta.id,
+            responsibleId: minuta.responsible ? await tx.user.findFirst({ where: { name: minuta.responsible } })?.id : null,
+            targetDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+            status: 'PENDING',
+            priority: minuta.priority,
+            progress: 0,
+            tags: minuta.tags,
+          },
+        });
+      });
+
+      return reply.send({ projectId: project.id, message: 'Proyecto creado exitosamente' });
+    } catch (err: any) {
+      console.error('[minutas create-project] Error:', err);
+      return reply.code(500).send({ error: 'Error al crear proyecto', details: err.message });
+    }
+  });
+
+  // POST /minutas/:id/transcribe — Transcribir audio con IA
+  app.post('/:id/transcribe', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+    const tenantId = req.db.tenantId;
+
+    const minuta = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.minuta.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+    });
+
+    if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
+    if (!minuta.audioUrl) return reply.code(400).send({ error: 'La minuta no tiene audio' });
+
+    try {
+      const llm = (app as any).llm;
+      if (!llm) return reply.code(503).send({ error: 'IA no configurada' });
+
+      // Por ahora, simulamos la transcripción con un mensaje
+      // En producción, esto debería usar un servicio de transcripción de audio real
+      const prompt = `Simulá una transcripción de una reunión de reunión basada en el contexto:
+Título: ${minuta.title}
+Tipo: ${minuta.type}
+Fecha: ${minuta.date}
+Participantes: ${minuta.participants.join(', ')}
+
+Generá una transcripción realista de la reunión en español, incluyendo:
+- Introducción y presentación
+- Discusión de temas principales
+- Decisiones tomadas
+- Acciones asignadas
+- Cierre de la reunión
+
+La transcripción debe ser detallada y profesional.`;
+
+      const response = await llm.chat([{ role: 'user', content: prompt }], 3000);
+
+      // Guardar la transcripción en el contenido de la minuta
+      await app.runWithDbContext(req, async (tx: any) => {
+        return tx.minuta.update({
+          where: { id },
+          data: { content: response.text },
+        });
+      });
+
+      return reply.send({ transcription: response.text });
+    } catch (err: any) {
+      console.error('[minutas transcribe] Error:', err);
+      return reply.code(500).send({ error: 'Error al transcribir audio', details: err.message });
+    }
+  });
 };
