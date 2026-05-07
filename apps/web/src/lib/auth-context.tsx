@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isSuperAdminWithoutTenant = res.globalRole === 'SUPER_ADMIN' && !res.tenantId;
       if (res.tenantRole !== 'SUPER_ADMIN' && !isSelectTenantPage && !isSuperAdminWithoutTenant) {
         try {
-          const permsRes = await apiFetch<{ permissions: Record<string, any> }>('/hr/users/me/permissions');
+          const permsRes = await apiFetch<{ permissions: Record<string, any> }>('/api/hr/users/me/permissions');
           if (permsRes?.permissions) {
             permissions = permsRes.permissions;
           }
