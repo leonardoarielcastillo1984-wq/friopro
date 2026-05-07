@@ -405,17 +405,39 @@ export default function MinutasPage() {
 
     try {
       setUploadingAudio(true);
-      const formData = new FormData();
-      formData.append('file', audioFile);
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', audioFile);
 
       const res = await apiFetch('/storage/upload', {
         method: 'POST',
         headers: {},
-        body: formData,
+        body: uploadFormData,
       }) as { url: string };
 
-      setFormData({ ...formData, audioUrl: res.url.replace('https://', 'http://') });
+      const audioUrl = res.url.replace('https://', 'http://');
+      setFormData({ ...formData, audioUrl });
       setAudioFile(null);
+
+      // Guardar minuta automáticamente para que audioUrl se guarde en la base de datos
+      if (formData.title.trim()) {
+        const payload = {
+          ...formData,
+          participants: formData.participants ? formData.participants.split(',').map(p => p.trim()) : [],
+          tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
+        };
+
+        const url = editingMinuta ? `/minutas/${editingMinuta.id}` : '/minutas';
+        const method = editingMinuta ? 'PATCH' : 'POST';
+
+        await apiFetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        await loadMinutas();
+      }
+
       alert('Audio subido exitosamente');
     } catch (err) {
       console.error('Error uploading audio:', err);
