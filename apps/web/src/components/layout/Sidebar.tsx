@@ -37,7 +37,6 @@ import {
   Grid3X3,
   Eye,
   Pencil,
-  Wind,
 } from 'lucide-react';
 
 const mainNav = [
@@ -53,7 +52,6 @@ const mainNav = [
 
   // 3. Personas y proveedores
   { label: 'RRHH', icon: Users, href: '/rrhh' },
-  { label: 'Clima y Cultura', icon: Wind, href: '/clima' },
   { label: 'Capacitaciones', icon: GraduationCap, href: '/capacitaciones' },
   { label: 'Clientes', icon: Headphones, href: '/clientes' },
   { label: 'Proveedores', icon: Truck, href: '/proveedores' },
