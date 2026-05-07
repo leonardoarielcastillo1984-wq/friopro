@@ -684,7 +684,97 @@ export default function MinutasPage() {
                 <p className="text-sm text-gray-500">Minutas con Audio</p>
                 <p className="text-2xl font-bold">{minutas.filter(m => m.audioUrl && m.audioUrl.length > 0).length}</p>
               </div>
-              <Volume2 className="h-8 w-8 text-orange-600" />
+              <Clock className="h-8 w-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Gráficos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Distribución por Tipo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {Object.entries(TYPE_LABELS).map(([type, label]) => {
+                const count = minutas.filter(m => m.type === type).length;
+                const percentage = minutas.length > 0 ? (count / minutas.length) * 100 : 0;
+                return (
+                  <div key={type}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>{label}</span>
+                      <span className="font-semibold">{count}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Distribución por Prioridad</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map((priority) => {
+                const count = minutas.filter(m => m.priority === priority).length;
+                const percentage = minutas.length > 0 ? (count / minutas.length) * 100 : 0;
+                const colors = {
+                  LOW: 'bg-green-500',
+                  MEDIUM: 'bg-yellow-500',
+                  HIGH: 'bg-orange-500',
+                  CRITICAL: 'bg-red-500',
+                };
+                const labels = {
+                  LOW: 'Baja',
+                  MEDIUM: 'Media',
+                  HIGH: 'Alta',
+                  CRITICAL: 'Crítica',
+                };
+                return (
+                  <div key={priority}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>{labels[priority as keyof typeof labels]}</span>
+                      <span className="font-semibold">{count}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`${colors[priority as keyof typeof colors]} h-2 rounded-full`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Métricas adicionales */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Duración Promedio</p>
+                <p className="text-2xl font-bold">
+                  {minutas.length > 0
+                    ? Math.round(minutas.reduce((sum, m) => sum + (parseInt(m.duration || '0') || 0), 0) / minutas.length)
+                    : 0} min
+                </p>
+              </div>
+              <Clock className="h-8 w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
@@ -692,10 +782,25 @@ export default function MinutasPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Duración Promedio</p>
-                <p className="text-2xl font-bold">{Math.round(minutas.reduce((sum, m) => sum + (parseInt(m.duration || '0') || 0), 0) / minutas.length)} min</p>
+                <p className="text-sm text-gray-500">Total Bloques</p>
+                <p className="text-2xl font-bold">
+                  {minutas.reduce((sum, m) => sum + (m.blocks?.length || 0), 0)}
+                </p>
               </div>
-              <Clock className="h-8 w-8 text-blue-600" />
+              <MessageCircle className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Acciones Detectadas</p>
+                <p className="text-2xl font-bold">
+                  {minutas.reduce((sum, m) => sum + (m.blocks?.filter((b: any) => b.type === 'ACTION').length || 0), 0)}
+                </p>
+              </div>
+              <ArrowRight className="h-8 w-8 text-purple-600" />
             </div>
           </CardContent>
         </Card>
