@@ -321,7 +321,7 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
     if (!minuta) return reply.code(404).send({ error: 'Minuta no encontrada' });
 
     try {
-      const llm = (app as any).llm;
+      const llm = createLLMProvider(req.tenant);
       if (!llm) return reply.code(503).send({ error: 'IA no configurada' });
 
       // Construir el contenido de la minuta
