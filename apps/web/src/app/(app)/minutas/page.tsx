@@ -430,6 +430,7 @@ export default function MinutasPage() {
       if (formData.title.trim()) {
         const payload = {
           ...formData,
+          audioUrl,
           participants: formData.participants ? formData.participants.split(',').map(p => p.trim()) : [],
           tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
         };
@@ -445,17 +446,20 @@ export default function MinutasPage() {
 
         await loadMinutas();
 
-        // Si estamos editando, recargar la minuta para obtener el audioUrl guardado
+        // Actualizar formData con la minuta guardada
         if (savedMinuta && savedMinuta.id) {
-          const updatedMinuta = await apiFetch(`/minutas/${savedMinuta.id}`) as Minuta;
+          setEditingMinuta(savedMinuta);
           setFormData({
             ...formData,
-            audioUrl: updatedMinuta.audioUrl || '',
+            audioUrl,
           });
+
+          // Transcribir automáticamente después de subir
+          await handleTranscribe();
         }
       }
 
-      alert('Audio subido exitosamente');
+      alert('Audio subido exitosamente y transcrito');
     } catch (err) {
       console.error('Error uploading audio:', err);
       alert('Error al subir audio');
