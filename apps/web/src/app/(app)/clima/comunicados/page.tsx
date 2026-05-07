@@ -24,6 +24,9 @@ export default function ComunicadosPage() {
   const [sendResult, setSendResult] = useState<any>(null);
   const [employees, setEmployees] = useState<any[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [views, setViews] = useState<any[]>([]);
+  const [loadingViews, setLoadingViews] = useState(false);
+  const [resendsResult, setResendsResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
@@ -137,6 +140,24 @@ export default function ComunicadosPage() {
       loadComms();
       if (selected?.id === id) setSelected((p: any) => ({ ...p, status: 'ENVIADO' }));
     } catch (e: any) { setSendResult({ error: e.message }); } finally { setSending(false); }
+  }
+
+  async function handleResend(id: string) {
+    setSending(true);
+    setResendsResult(null);
+    try {
+      const res = await apiFetch(`/clima/comunicados/${id}/reenviar`, { method: 'POST' }) as any;
+      setResendsResult(res);
+      loadComms();
+    } catch (e: any) { setResendsResult({ error: e.message }); } finally { setSending(false); }
+  }
+
+  async function handleLoadViews(id: string) {
+    setLoadingViews(true);
+    try {
+      const res = await apiFetch(`/clima/comunicados/${id}/vistas`) as any;
+      setViews(res.views || []);
+    } catch { setViews([]); } finally { setLoadingViews(false); }
   }
 
   async function handleDelete(id: string) {
@@ -285,9 +306,47 @@ export default function ComunicadosPage() {
                 </button>
               )}
               {selected.status === 'ENVIADO' && (
-                <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Enviado el {selected.sentAt ? new Date(selected.sentAt).toLocaleDateString('es-AR') : '—'} · {selected.sentCount} destinatarios</span>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Enviado el {selected.sentAt ? new Date(selected.sentAt).toLocaleDateString('es-AR') : '—'} · {selected.sentCount} destinatarios</span>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button onClick={() => handleResend(selected.id)} disabled={sending}
+                      className="flex-1 flex items-center justify-center gap-2 border border-indigo-300 text-indigo-700 hover:bg-indigo-50 disabled:opacity-60 text-sm font-medium py-2.5 rounded-xl transition-colors">
+                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      {sending ? 'Reenviando...' : 'Reenviar a todos'}
+                    </button>
+                    <button onClick={() => handleLoadViews(selected.id)}
+                      className="flex-1 flex items-center justify-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium py-2.5 rounded-xl transition-colors">
+                      {loadingViews ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                      Ver quién lo vio
+                    </button>
+                  </div>
+
+                  {resendsResult && (
+                    <div className={`rounded-xl px-4 py-3 text-sm ${resendsResult.error ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                      {resendsResult.error ? `Error: ${resendsResult.error}` : `✓ Reenviado a ${resendsResult.sentCount} de ${resendsResult.totalTargets} destinatarios`}
+                    </div>
+                  )}
+
+                  {views.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 mb-2">VISTO POR ({views.length})</p>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {views.map((v: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between text-xs px-3 py-1.5 bg-gray-50 rounded-lg">
+                            <span className="text-gray-700 font-medium">{v.name || v.email}</span>
+                            <span className="text-gray-400">{new Date(v.viewedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {views.length === 0 && !loadingViews && (
+                    <p className="text-xs text-gray-400 text-center py-1">Hacé clic en "Ver quién lo vio" para cargar</p>
+                  )}
                 </div>
               )}
             </div>

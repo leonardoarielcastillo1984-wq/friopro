@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import crypto from 'node:crypto';
 import { extractTextFromPdf } from '../services/pdfParser.js';
 import { generateDocumentSummary } from '../services/aiService.js';
+import { notifyDocumentReview } from '../services/notifyService.js';
 import { requiresTenantContext, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { checkStorageQuota, incrementStorageUsed, decrementStorageUsed } from '../services/storage-usage.js';
 import { createLoggingLLMProvider } from '../services/llm/factory.js';
@@ -277,6 +278,20 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (!updated) return reply.code(404).send({ error: 'Not found' });
+
+    if (
+      body.reviewStatus === 'REQUIRES_UPDATE' &&
+      updated.ownerId &&
+      updated.ownerId !== req.auth?.userId
+    ) {
+      notifyDocumentReview(app.prisma, {
+        tenantId: req.db!.tenantId,
+        docId: updated.id,
+        docTitle: updated.title,
+        reviewerId: updated.ownerId,
+      }).catch(() => {});
+    }
+
     return reply.send({ document: updated });
   });
 

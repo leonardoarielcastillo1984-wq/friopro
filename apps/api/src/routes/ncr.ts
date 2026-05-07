@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { notifyNcrAssigned } from '../services/notifyService.js';
 
 const FEATURE_KEY = 'no_conformidades';
 
@@ -135,6 +136,16 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
+    if (ncr.assignedToId) {
+      notifyNcrAssigned(app.prisma, {
+        tenantId,
+        ncrId: ncr.id,
+        ncrCode: ncr.code,
+        ncrTitle: ncr.title,
+        assignedToId: ncr.assignedToId,
+      }).catch(() => {});
+    }
+
     return reply.code(201).send({ ncr });
     } catch (err: any) {
       console.error('[NCR CREATE] Prisma error:', err.message, err.code, err.meta);
@@ -184,18 +195,17 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
 
     const body = updateSchema.parse(req.body);
 
-    const ncr = await app.runWithDbContext(req, async (tx: any) => {
+    const { ncr, prevAssignedToId } = await app.runWithDbContext(req, async (tx: any) => {
       const existing = await tx.nonConformity.findFirst({
         where: { id, tenantId, deletedAt: null },
       });
       if (!existing) throw new Error('NCR no encontrada');
 
-      // Si el estado cambia a CLOSED, registrar fecha de cierre
       const closedAt = body.status === 'CLOSED' && existing.status !== 'CLOSED'
         ? new Date()
         : existing.closedAt;
 
-      return tx.nonConformity.update({
+      const ncr = await tx.nonConformity.update({
         where: { id },
         data: {
           ...body,
@@ -207,7 +217,14 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
           createdBy: { select: { id: true, email: true } },
         },
       });
+      return { ncr, prevAssignedToId: existing.assignedToId };
     });
+
+    if (body.assignedToId && body.assignedToId !== prevAssignedToId) {
+      notifyNcrAssigned(app.prisma, {
+        tenantId, ncrId: ncr.id, ncrCode: ncr.code, ncrTitle: ncr.title, assignedToId: body.assignedToId,
+      }).catch(() => {});
+    }
 
     return reply.send({ ncr });
   });

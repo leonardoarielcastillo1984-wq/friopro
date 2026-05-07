@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { sendEmail, notificationEmail } from '../services/email.js';
 import { createLLMProvider } from '../services/llm/factory.js';
+import { notifyCapaAssigned } from '../services/notifyService.js';
 
 function generateToken(): string {
   return randomBytes(24).toString('hex');
@@ -864,6 +865,13 @@ Respondé en JSON con esta estructura exacta:
       }
     }
 
+    if (body.responsibleId) {
+      notifyCapaAssigned(app.prisma, {
+        tenantId, capaId: plan.id, capaTitle: plan.title,
+        assignedToId: body.responsibleId, origin: body.origin,
+      }).catch(() => {});
+    }
+
     return reply.code(201).send({ plan });
   });
 
@@ -1261,5 +1269,92 @@ Respondé en JSON con esta estructura exacta:
     });
 
     return reply.send({ success: true, sentCount, totalTargets: allEmails.size, errors });
+  });
+
+  // POST /clima/comunicados/:id/reenviar — Re-enviar comunicado ya enviado
+  app.post('/comunicados/:id/reenviar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const { id } = req.params as any;
+
+    const comm = await app.prisma.climaComms.findFirst({ where: { id, tenantId, deletedAt: null } });
+    if (!comm) return reply.code(404).send({ error: 'Comunicado no encontrado' });
+
+    const recipients = (comm.recipients as any[]) ?? [];
+    const extraEmails = (comm.extraEmails as string[]) ?? [];
+    const attachments = (comm.attachments as any[]) ?? [];
+    const allEmails = new Set<string>();
+    for (const r of recipients) { if (r.email) allEmails.add(r.email); }
+    for (const e of extraEmails) { allEmails.add(e); }
+
+    const attachHtml = attachments.length > 0
+      ? `<div style="margin-top:16px;"><strong>Adjuntos:</strong><ul>${attachments.map(a => `<li><a href="${a.url}">${a.name}</a></li>`).join('')}</ul></div>`
+      : '';
+
+    const baseUrl = process.env.API_BASE_URL || 'http://localhost:4000';
+
+    let sentCount = 0;
+    const errors: string[] = [];
+
+    for (const email of allEmails) {
+      const trackUrl = `${baseUrl}/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}`;
+      const html = `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
+          <h1 style="color:#111827;font-size:22px;margin:0 0 8px;">${comm.title}</h1>
+          <div style="color:#4B5563;font-size:14px;line-height:1.7;white-space:pre-line;">${comm.body}</div>
+          ${attachHtml}
+          <hr style="margin:24px 0;border:none;border-top:1px solid #E5E7EB;" />
+          <p style="color:#9CA3AF;font-size:11px;">Este mensaje fue enviado desde SGI 360</p>
+          <img src="${trackUrl}" width="1" height="1" style="display:none;" />
+        </div>`;
+      try {
+        const result = await sendEmail({ to: email, subject: `[Reenvío] ${comm.title}`, html, text: comm.body });
+        if (result.success) sentCount++;
+        else errors.push(`${email}: ${result.error}`);
+      } catch (e: any) { errors.push(`${email}: ${e.message}`); }
+    }
+
+    await app.prisma.climaComms.update({
+      where: { id },
+      data: { sentAt: new Date(), sentCount: (comm.sentCount || 0) + sentCount },
+    });
+
+    return reply.send({ success: true, sentCount, totalTargets: allEmails.size, errors });
+  });
+
+  // GET /clima/comunicados/:id/visto — Pixel de tracking de lectura
+  app.get('/comunicados/:id/visto', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { id } = req.params as any;
+    const { email, name } = req.query as any;
+
+    if (email) {
+      try {
+        const comm = await app.prisma.climaComms.findFirst({ where: { id, deletedAt: null } });
+        if (comm) {
+          const existing = await app.prisma.climaCommsView.findFirst({ where: { commId: id, email } });
+          if (!existing) {
+            await app.prisma.climaCommsView.create({ data: { commId: id, email, name: name || null } });
+          }
+        }
+      } catch {}
+    }
+
+    // Devolver pixel 1x1 transparente
+    const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    return reply.header('content-type', 'image/gif').header('cache-control', 'no-store').send(pixel);
+  });
+
+  // GET /clima/comunicados/:id/vistas — Listar quién vio el comunicado
+  app.get('/comunicados/:id/vistas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const { id } = req.params as any;
+
+    const views = await app.prisma.climaCommsView.findMany({
+      where: { commId: id },
+      orderBy: { viewedAt: 'desc' },
+    });
+
+    return reply.send({ views, total: views.length });
   });
 }

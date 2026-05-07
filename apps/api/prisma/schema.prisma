@@ -5376,9 +5376,23 @@ model ClimaComms {
   createdBy   PlatformUser? @relation("ClimaCommsCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   deletedAt   DateTime?     @db.Timestamptz
 
+  views       ClimaCommsView[]
+
   @@index([tenantId])
   @@index([tenantId, status])
   @@map("clima_comms")
+}
+
+model ClimaCommsView {
+  id        String     @id @default(uuid()) @db.Uuid
+  commId    String     @db.Uuid
+  comm      ClimaComms @relation(fields: [commId], references: [id], onDelete: Cascade)
+  email     String
+  name      String?
+  viewedAt  DateTime   @default(now()) @db.Timestamptz
+
+  @@index([commId])
+  @@map("clima_comms_views")
 }
 
 model AIUsageLog {
