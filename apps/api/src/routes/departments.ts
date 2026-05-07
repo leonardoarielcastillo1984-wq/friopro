@@ -175,7 +175,7 @@ export const departmentRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(201).send({ department: created });
     } catch (error: any) {
       if (error.code === 'P2002') {
-        return reply.code(409).send({ error: `Department "${body.name}" already exists in this tenant` });
+        return reply.code(409).send({ error: `Ya existe un departamento con el nombre "${body.name}". Usá un nombre diferente.` });
       }
       throw error;
     }
@@ -237,7 +237,7 @@ export const departmentRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({ department: updated });
     } catch (error: any) {
       if (error.code === 'P2002') {
-        return reply.code(409).send({ error: `Department "${body.name}" already exists in this tenant` });
+        return reply.code(409).send({ error: `Ya existe un departamento con el nombre "${body.name}". Usá un nombre diferente.` });
       }
       throw error;
     }

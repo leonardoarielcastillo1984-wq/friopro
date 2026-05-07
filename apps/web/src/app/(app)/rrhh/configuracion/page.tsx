@@ -81,6 +81,7 @@ export default function ConfiguracionRRHHPage() {
 
   // Forms
   const [showDeptForm, setShowDeptForm] = useState(false);
+  const [deptError, setDeptError] = useState('');
   const [showPosCatForm, setShowPosCatForm] = useState(false);
   const [showContractForm, setShowContractForm] = useState(false);
   const [showTrainingCatForm, setShowTrainingCatForm] = useState(false);
@@ -183,6 +184,7 @@ export default function ConfiguracionRRHHPage() {
   // Department handlers
   const handleCreateDept = async () => {
     if (!deptForm.name) return;
+    setDeptError('');
     try {
       await apiFetch('/hr/departments', {
         method: 'POST',
@@ -192,7 +194,7 @@ export default function ConfiguracionRRHHPage() {
       setShowDeptForm(false);
       loadData();
     } catch (e: any) {
-      setError(e.message);
+      setDeptError(e.message);
     }
   };
 
@@ -361,6 +363,11 @@ export default function ConfiguracionRRHHPage() {
           {showDeptForm && (
             <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
               <h3 className="font-medium text-slate-900">{editingDept ? 'Editar' : 'Nuevo'} Departamento</h3>
+              {deptError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 text-sm flex items-center justify-between">
+                  {deptError} <button onClick={() => setDeptError('')}><X className="h-4 w-4" /></button>
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <input 
                   placeholder="Nombre *" 
@@ -398,6 +405,7 @@ export default function ConfiguracionRRHHPage() {
                     setShowDeptForm(false);
                     setEditingDept(null);
                     setDeptForm({ name: '', description: '', color: '#3B82F6' });
+                    setDeptError('');
                   }}
                   className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
                 >
