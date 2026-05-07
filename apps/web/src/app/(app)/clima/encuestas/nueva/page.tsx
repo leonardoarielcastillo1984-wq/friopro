@@ -104,16 +104,11 @@ export default function NuevaEncuestaPage() {
 
   async function applyTemplate(key: string) {
     try {
-      const data = await apiFetch(`/clima/plantillas`) as any;
-      const t = data.templates?.find((t: any) => t.key === key);
-      if (!t) return;
       const tpl = templates.find(tp => tp.key === key);
-      if (tpl) {
-        setForm(prev => ({ ...prev, title: tpl.title, description: tpl.description, category: key }));
-      }
+      const title = form.title.trim() || tpl?.title || 'Nueva encuesta';
       const surveyData = await apiFetch('/clima/encuestas', {
         method: 'POST',
-        body: JSON.stringify({ title: form.title || tpl?.title || 'Nueva', useTemplate: key, ...form }),
+        json: { title, description: tpl?.description || '', category: key, isAnonymous: form.isAnonymous, periodicidad: form.periodicidad, estimatedMinutes: form.estimatedMinutes, useTemplate: key },
       }) as any;
       if (surveyData.survey?.id) {
         router.push(`/clima/encuestas/${surveyData.survey.id}`);
@@ -133,7 +128,7 @@ export default function NuevaEncuestaPage() {
     try {
       const data = await apiFetch('/clima/encuestas', {
         method: 'POST',
-        body: JSON.stringify({ ...form, questions }),
+        json: { ...form, questions },
       }) as any;
       router.push(`/clima/encuestas/${data.survey.id}`);
     } catch (e) {

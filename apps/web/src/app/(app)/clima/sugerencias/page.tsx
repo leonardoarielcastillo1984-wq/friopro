@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Plus, Search, ChevronDown, Filter, X, AlertCircle, CheckCircle, Clock, ArrowUp } from 'lucide-react';
+import { MessageSquare, Plus, Search, X, CheckCircle, Clock, ArrowUp, ArrowLeft, Trash2, ClipboardList, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 const TIPOS = [
@@ -62,8 +62,14 @@ export default function SugerenciasPage() {
   const [selected, setSelected] = useState<any>(null);
   const [newForm, setNewForm] = useState({ type: 'SUGERENCIA', title: '', content: '', priority: 'MEDIA', isAnonymous: true, category: '' });
   const [saving, setSaving] = useState(false);
+  const [showCapa, setShowCapa] = useState(false);
+  const [capaForm, setCapaForm] = useState({ title: '', description: '', criticality: 'MEDIA', dueDate: '' });
+  const [savingCapa, setSavingCapa] = useState(false);
+  const [capaCreada, setCapaCreada] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => { loadItems(); }, []);
+  useEffect(() => { loadItems(); }, [filters]);
 
   async function loadItems() {
     setLoading(true);
@@ -78,14 +84,12 @@ export default function SugerenciasPage() {
     } catch { setItems([]); } finally { setLoading(false); }
   }
 
-  useEffect(() => { loadItems(); }, [filters]);
-
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!newForm.title.trim() || !newForm.content.trim()) return;
     setSaving(true);
     try {
-      await apiFetch('/clima/sugerencias', { method: 'POST', body: JSON.stringify(newForm) });
+      await apiFetch('/clima/sugerencias', { method: 'POST', json: newForm });
       setShowNew(false);
       setNewForm({ type: 'SUGERENCIA', title: '', content: '', priority: 'MEDIA', isAnonymous: true, category: '' });
       loadItems();
@@ -93,15 +97,51 @@ export default function SugerenciasPage() {
   }
 
   async function updateStatus(id: string, status: string) {
-    await apiFetch(`/clima/sugerencias/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-    loadItems();
-    setSelected(null);
+    try {
+      await apiFetch(`/clima/sugerencias/${id}`, { method: 'PATCH', json: { status } });
+      setSelected((prev: any) => prev ? { ...prev, status } : null);
+      loadItems();
+    } catch { alert('Error al actualizar estado'); }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('¿Eliminar esta sugerencia?')) return;
+    setDeletingId(id);
+    try {
+      await apiFetch(`/clima/sugerencias/${id}`, { method: 'DELETE' });
+      setSelected(null);
+      loadItems();
+    } catch { alert('Error al eliminar'); } finally { setDeletingId(null); }
+  }
+
+  async function handleCrearCapa(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected) return;
+    setSavingCapa(true);
+    try {
+      const data = await apiFetch('/clima/planes-accion', {
+        method: 'POST',
+        json: {
+          title: capaForm.title || `CAPA: ${selected.title}`,
+          description: capaForm.description || selected.content,
+          criticality: capaForm.criticality,
+          dueDate: capaForm.dueDate || undefined,
+          suggestionId: selected.id,
+        },
+      }) as any;
+      setCapaCreada(data.plan?.id || 'ok');
+      setShowCapa(false);
+      setCapaForm({ title: '', description: '', criticality: 'MEDIA', dueDate: '' });
+    } catch { alert('Error al crear CAPA'); } finally { setSavingCapa(false); }
   }
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center gap-3">
+        <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-xl text-gray-500 transition-colors">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-900">Sugerencias y Reclamos</h1>
           <p className="text-sm text-gray-500 mt-0.5">Escucha permanente del equipo</p>
         </div>
@@ -150,7 +190,7 @@ export default function SugerenciasPage() {
           {items.map(item => {
             const StatusIcon = STATUS_ICONS[item.status]?.icon || Clock;
             return (
-              <div key={item.id} onClick={() => setSelected(item)}
+              <div key={item.id} onClick={() => { setSelected(item); setCapaCreada(null); }}
                 className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all p-4 cursor-pointer">
                 <div className="flex items-start gap-3">
                   <StatusIcon className={`w-4 h-4 mt-1 flex-shrink-0 ${STATUS_ICONS[item.status]?.color || 'text-gray-400'}`} />
@@ -159,6 +199,9 @@ export default function SugerenciasPage() {
                       <span className="font-semibold text-gray-900 text-sm">{item.title}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[item.type] || 'bg-gray-100 text-gray-600'}`}>{item.type}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLORS[item.priority] || 'bg-gray-100 text-gray-500'}`}>{item.priority}</span>
+                      {item.actionPlans?.length > 0 && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">CAPA vinculada</span>
+                      )}
                     </div>
                     <p className="text-xs text-gray-500 line-clamp-2">{item.content}</p>
                     <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
@@ -230,11 +273,17 @@ export default function SugerenciasPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[selected.type] || 'bg-gray-100 text-gray-600'}`}>{selected.type}</span>
                 <h3 className="font-semibold text-gray-900 text-sm">{selected.title}</h3>
               </div>
-              <button onClick={() => setSelected(null)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => handleDelete(selected.id)} disabled={deletingId === selected.id}
+                  className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors" title="Eliminar">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <button onClick={() => setSelected(null)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+              </div>
             </div>
             <div className="p-5 space-y-4">
               <p className="text-sm text-gray-700">{selected.content}</p>
@@ -249,15 +298,85 @@ export default function SugerenciasPage() {
                   <p className="text-sm text-gray-700">{selected.response}</p>
                 </div>
               )}
-              <div className="flex gap-2 pt-2">
-                {['ABIERTO', 'EN_PROCESO', 'RESUELTO'].map(s => (
-                  <button key={s} onClick={() => updateStatus(selected.id, s)}
-                    className={`flex-1 text-xs py-2 rounded-xl border transition-colors font-medium ${selected.status === s ? 'bg-teal-600 text-white border-teal-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                    {s === 'ABIERTO' ? 'Abierto' : s === 'EN_PROCESO' ? 'En proceso' : 'Resuelto'}
+              {/* Estado */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">Estado</p>
+                <div className="flex gap-2">
+                  {['ABIERTO', 'EN_PROCESO', 'RESUELTO'].map(s => (
+                    <button key={s} onClick={() => updateStatus(selected.id, s)}
+                      className={`flex-1 text-xs py-2 rounded-xl border transition-colors font-medium ${selected.status === s ? 'bg-teal-600 text-white border-teal-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      {s === 'ABIERTO' ? 'Abierto' : s === 'EN_PROCESO' ? 'En proceso' : 'Resuelto'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* CAPA */}
+              <div className="pt-2 border-t border-gray-100">
+                {capaCreada ? (
+                  <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span className="font-medium">CAPA creada correctamente</span>
+                    <button onClick={() => router.push(`/clima/planes-accion`)} className="ml-auto text-xs underline">Ver planes</button>
+                  </div>
+                ) : selected.actionPlans?.length > 0 ? (
+                  <div className="flex items-center gap-2 text-sm text-purple-700 bg-purple-50 rounded-xl px-4 py-2.5">
+                    <ClipboardList className="w-4 h-4" />
+                    <span className="font-medium">{selected.actionPlans.length} CAPA vinculada{selected.actionPlans.length > 1 ? 's' : ''}</span>
+                    <button onClick={() => router.push(`/clima/planes-accion`)} className="ml-auto text-xs underline">Ver</button>
+                  </div>
+                ) : (
+                  <button onClick={() => { setCapaForm({ title: `CAPA: ${selected.title}`, description: selected.content, criticality: 'MEDIA', dueDate: '' }); setShowCapa(true); }}
+                    className="w-full flex items-center justify-center gap-2 text-sm text-purple-700 border border-purple-200 hover:bg-purple-50 py-2.5 rounded-xl transition-colors font-medium">
+                    <ClipboardList className="w-4 h-4" />
+                    Crear plan de acción (CAPA)
                   </button>
-                ))}
+                )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CAPA Modal */}
+      {showCapa && selected && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">Nuevo Plan de Acción (CAPA)</h3>
+              <button onClick={() => setShowCapa(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+            </div>
+            <form onSubmit={handleCrearCapa} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Título *</label>
+                <input type="text" required value={capaForm.title} onChange={e => setCapaForm(p => ({ ...p, title: e.target.value }))}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Descripción</label>
+                <textarea value={capaForm.description} onChange={e => setCapaForm(p => ({ ...p, description: e.target.value }))}
+                  rows={3} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400 resize-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Criticidad</label>
+                  <select value={capaForm.criticality} onChange={e => setCapaForm(p => ({ ...p, criticality: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none bg-white">
+                    {['BAJA','MEDIA','ALTA','CRITICA'].map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Fecha límite</label>
+                  <input type="date" value={capaForm.dueDate} onChange={e => setCapaForm(p => ({ ...p, dueDate: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-400" />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowCapa(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
+                <button type="submit" disabled={savingCapa} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-xl transition-colors">
+                  {savingCapa ? 'Guardando...' : 'Crear CAPA'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
