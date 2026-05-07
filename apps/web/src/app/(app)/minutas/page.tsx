@@ -144,6 +144,7 @@ export default function MinutasPage() {
     status: 'DRAFT',
     confidentiality: 'INTERNAL',
     content: '',
+    audioUrl: '',
   });
   const [blockFormData, setBlockFormData] = useState({
     type: 'CONVERSATION' as 'CONVERSATION' | 'DECISION' | 'ACTION',
@@ -413,7 +414,7 @@ export default function MinutasPage() {
         body: formData,
       }) as { url: string };
 
-      setFormData({ ...formData, audioUrl: res.url });
+      setFormData({ ...formData, audioUrl: res.url.replace('https://', 'http://') });
       setAudioFile(null);
       alert('Audio subido exitosamente');
     } catch (err) {
