@@ -27,7 +27,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/mantenimiento': { title: 'Mantenimiento', subtitle: 'Gestión integral de mantenimiento industrial' },
   '/simulacros': { title: 'Simulacros', subtitle: 'Planes de contingencia y emergencias' },
   '/documents': { title: 'Documentos', subtitle: 'Gestión documental del sistema integrado' },
-  '/normativos': { title: 'Normativos', subtitle: 'Normas y estándares aplicables' },
+  '/cumplimiento': { title: 'Normativos', subtitle: 'Normas y estándares aplicables' },
   '/audit': { title: 'Auditoría IA', subtitle: 'Análisis inteligente de cumplimiento' },
   '/no-conformidades': { title: 'No Conformidades', subtitle: 'Gestión de NCRs y acciones correctivas' },
   '/riesgos': { title: 'Riesgos', subtitle: 'Matriz de riesgos y oportunidades' },

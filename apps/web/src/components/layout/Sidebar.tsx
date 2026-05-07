@@ -42,37 +42,39 @@ import {
 const mainNav = [
   // 1. Visión general
   { label: 'Inicio', icon: LayoutDashboard, href: '/dashboard' },
-  { label: 'Calendario', icon: CalendarDays, href: '/calendario' },
-  { label: 'Proyectos', icon: BarChart3, href: '/project360' },
+  { label: 'Documentos', icon: FileText, href: '/documents' },
 
-  // 2. Contexto estratégico (ISO §4, §6)
-  { label: 'Contexto del SGI', icon: Compass, href: '/contexto-sgi' },
-  { label: 'Objetivos SGI', icon: Target, href: '/objetivos' },
-  { label: 'Políticas SGI', icon: FileText, href: '/objetivos/politicas' },
-
-  // 3. Personas y proveedores
+  // 2. Personas y base de datos
   { label: 'RRHH', icon: Users, href: '/rrhh' },
   { label: 'Capacitaciones', icon: GraduationCap, href: '/capacitaciones' },
   { label: 'Clientes', icon: Headphones, href: '/clientes' },
   { label: 'Proveedores', icon: Truck, href: '/proveedores' },
 
-  // 4. Marco normativo
-  { label: 'Cumplimiento', icon: BookOpen, href: '/cumplimiento' },
-  { label: 'Documentos', icon: FileText, href: '/documents' },
+  // 3. Marco normativo
+  { label: 'Normativos', icon: BookOpen, href: '/cumplimiento' },
 
-  // 5. Seguridad & Ambiente
-  { label: 'Seguridad & Ambiente', icon: Shield, href: '/seguridad' },
-  { label: 'Indicadores', icon: TrendingUp, href: '/indicadores' },
+  // 4. Contexto estratégico (ISO §4, §6)
+  { label: 'Contexto del SGI', icon: Compass, href: '/contexto-sgi' },
+  { label: 'Objetivos SGI', icon: Target, href: '/objetivos' },
+  { label: 'Políticas SGI', icon: FileText, href: '/objetivos/politicas' },
 
-  // 6. Calidad y mejora continua
-  { label: 'Calidad / Mejora', icon: ClipboardCheck, href: '/calidad' },
+  // 5. Calidad y mejora continua
+  { label: 'No Conformidades', icon: ClipboardCheck, href: '/calidad' },
   { label: 'Auditorías', icon: BrainCircuit, href: '/auditoria' },
   { label: 'Revisión por la Dirección', icon: FileBarChart, href: '/revision-direccion' },
 
-  // 7. Infraestructura
+  // 6. Seguridad & Ambiente
+  { label: 'Seguridad & Ambiente', icon: Shield, href: '/seguridad' },
+  { label: 'Indicadores', icon: TrendingUp, href: '/indicadores' },
+
+  // 7. Proyectos y acciones
+  { label: 'Proyectos', icon: BarChart3, href: '/project360' },
+  { label: 'Calendario', icon: CalendarDays, href: '/calendario' },
+
+  // 8. Infraestructura
   { label: 'Infraestructura', icon: Package, href: '/infraestructura' },
 
-  // 8. Admin
+  // 9. Admin
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
   { label: 'Centro de Ayuda', icon: HelpCircle, href: '/modo-de-uso' },
 ];
