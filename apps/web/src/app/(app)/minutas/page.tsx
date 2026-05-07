@@ -130,6 +130,9 @@ export default function MinutasPage() {
   const [recognition, setRecognition] = useState<any>(null);
   const [departments, setDepartments] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
+  const [aiSummary, setAiSummary] = useState('');
+  const [detectedActions, setDetectedActions] = useState<any[]>([]);
+  const [showActionsDialog, setShowActionsDialog] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     date: new Date().toISOString().split('T')[0],
@@ -288,9 +291,8 @@ export default function MinutasPage() {
         method: 'POST',
       }) as { summary: string };
 
-      // Actualizar la minuta localmente
-      setEditingMinuta({ ...editingMinuta, summary: res.summary });
-      setMinutas(prev => prev.map(m => m.id === editingMinuta.id ? { ...m, summary: res.summary } : m));
+      // Mostrar el resumen en un cuadro editable
+      setAiSummary(res.summary);
     } catch (err) {
       console.error('Error summarizing:', err);
       alert('Error al generar resumen con IA');
@@ -308,14 +310,51 @@ export default function MinutasPage() {
         method: 'POST',
       }) as { blocks: MinutaBlock[]; count: number };
 
-      // Recargar bloques
-      await loadBlocks(editingMinuta.id);
-      alert(`Se detectaron ${res.count} bloques automáticamente`);
+      // Mostrar las acciones detectadas en un modal
+      const actionBlocks = res.blocks.filter((b: MinutaBlock) => b.type === 'ACTION');
+      setDetectedActions(actionBlocks);
+      setShowActionsDialog(true);
     } catch (err) {
       console.error('Error detecting actions:', err);
       alert('Error al detectar acciones con IA');
     } finally {
       setDetectingActions(false);
+    }
+  }
+
+  async function handleSaveSummaryToContent() {
+    if (!aiSummary || !editingMinuta) return;
+    
+    setFormData({ ...formData, content: formData.content + '\n\n--- Resumen IA ---\n' + aiSummary });
+    setAiSummary('');
+    alert('Resumen agregado al contenido');
+  }
+
+  async function handleCreateCAPAFromActions() {
+    if (!editingMinuta || detectedActions.length === 0) return;
+
+    try {
+      for (const action of detectedActions) {
+        if (action.selected) {
+          await apiFetch(`/minutas/${editingMinuta.id}/blocks`, {
+            method: 'POST',
+            body: JSON.stringify({
+              type: 'ACTION',
+              content: action.content,
+              responsible: action.responsible,
+              dueDate: action.dueDate,
+              tags: action.tags || [],
+            }),
+          });
+        }
+      }
+      await loadBlocks(editingMinuta.id);
+      setShowActionsDialog(false);
+      setDetectedActions([]);
+      alert('CAPA creadas exitosamente');
+    } catch (err) {
+      console.error('Error creating CAPA from actions:', err);
+      alert('Error al crear CAPA desde las acciones');
     }
   }
 
@@ -1176,6 +1215,28 @@ export default function MinutasPage() {
                   </div>
                 </div>
 
+                {/* Resumen IA */}
+                {aiSummary && (
+                  <div className="mt-4 p-4 bg-blue-50 rounded border border-blue-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-blue-900 flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" />
+                        Resumen IA
+                      </h4>
+                      <Button onClick={handleSaveSummaryToContent} size="sm" variant="default">
+                        <Check className="h-4 w-4 mr-2" />
+                        Agregar al contenido
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={aiSummary}
+                      onChange={(e) => setAiSummary(e.target.value)}
+                      placeholder="El resumen generado por IA aparecerá aquí..."
+                      className="min-h-[100px] bg-white"
+                    />
+                  </div>
+                )}
+
                 {blocks.length === 0 ? (
                   <div className="text-center text-gray-500 py-4">
                     <p>No hay bloques agregados</p>
@@ -1358,6 +1419,88 @@ export default function MinutasPage() {
               </Button>
               <Button onClick={handleSaveBlock} className="bg-blue-600 hover:bg-blue-700">
                 {editingBlock ? 'Actualizar' : 'Crear'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialogo para acciones detectadas */}
+      <Dialog open={showActionsDialog} onOpenChange={setShowActionsDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Acciones Detectadas por IA</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {detectedActions.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No se detectaron acciones</p>
+            ) : (
+              detectedActions.map((action, index) => (
+                <Card key={index} className="border">
+                  <CardContent className="pt-4">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={action.selected || false}
+                        onChange={(e) => {
+                          const updated = [...detectedActions];
+                          updated[index].selected = e.target.checked;
+                          setDetectedActions(updated);
+                        }}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 space-y-2">
+                        <div>
+                          <Label>Descripción</Label>
+                          <Textarea
+                            value={action.content}
+                            onChange={(e) => {
+                              const updated = [...detectedActions];
+                              updated[index].content = e.target.value;
+                              setDetectedActions(updated);
+                            }}
+                            className="min-h-[60px]"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label>Responsable</Label>
+                            <Input
+                              value={action.responsible || ''}
+                              onChange={(e) => {
+                                const updated = [...detectedActions];
+                                updated[index].responsible = e.target.value;
+                                setDetectedActions(updated);
+                              }}
+                              placeholder="Nombre del responsable"
+                            />
+                          </div>
+                          <div>
+                            <Label>Fecha límite</Label>
+                            <Input
+                              type="date"
+                              value={action.dueDate ? action.dueDate.split('T')[0] : ''}
+                              onChange={(e) => {
+                                const updated = [...detectedActions];
+                                updated[index].dueDate = e.target.value;
+                                setDetectedActions(updated);
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowActionsDialog(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleCreateCAPAFromActions} className="bg-blue-600 hover:bg-blue-700">
+                <Target className="h-4 w-4 mr-2" />
+                Crear CAPA
               </Button>
             </div>
           </div>
