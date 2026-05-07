@@ -1257,8 +1257,8 @@ Respondé en JSON con esta estructura exacta:
     const errors: string[] = [];
 
     for (const email of allEmails) {
-      const pixelUrl = `${baseUrlEnv}/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}`;
-      const confirmUrl = `${baseUrlEnv}/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}&confirm=1`;
+      const pixelUrl = `${baseUrlEnv}/api/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}`;
+      const confirmUrl = `${baseUrlEnv}/api/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}&confirm=1`;
       const html = `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
           <div style="text-align:center;margin-bottom:24px;">${logoHtml}</div>
@@ -1312,25 +1312,33 @@ Respondé en JSON con esta estructura exacta:
       : '';
 
     const baseUrl = process.env.API_BASE_URL || 'http://localhost:4000';
-    const branding2 = await app.prisma.companySettings.findUnique({ where: { tenantId }, select: { logoUrl: true, companyName: true } }).catch(() => null);
+    const branding2 = await app.prisma.companySettings.findUnique({ where: { tenantId }, select: { logoUrl: true, companyName: true, commSignature: true } }).catch(() => null);
     const logoHtml2 = branding2?.logoUrl
       ? `<img src="${branding2.logoUrl}" alt="${branding2.companyName || 'SGI 360'}" style="max-height:60px;max-width:180px;object-fit:contain;" />`
       : `<h2 style="color:#111827;font-size:20px;margin:0;">${branding2?.companyName || 'SGI 360'}</h2>`;
+    const sig2Html = branding2?.commSignature
+      ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #E5E7EB;font-size:13px;color:#374151;">${branding2.commSignature}</div>`
+      : '';
+    const promo2 = `<p style="color:#CBD5E1;font-size:10px;text-align:center;margin:12px 0 0;">Enviado desde <a href="https://www.logismart.ar" style="color:#CBD5E1;">www.logismart.ar</a></p>`;
 
     let sentCount = 0;
     const errors: string[] = [];
 
     for (const email of allEmails) {
-      const trackUrl = `${baseUrl}/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}`;
+      const trackUrl = `${baseUrl}/api/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}`;
+      const confirmUrl2 = `${baseUrl}/api/clima/comunicados/${id}/visto?email=${encodeURIComponent(email)}&confirm=1`;
       const html = `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
           <div style="text-align:center;margin-bottom:24px;">${logoHtml2}</div>
           <h1 style="color:#111827;font-size:22px;margin:0 0 8px;">${comm.title}</h1>
           <div style="color:#4B5563;font-size:14px;line-height:1.7;">${comm.body}</div>
+          ${sig2Html}
           ${attachHtml}
           <hr style="margin:24px 0;border:none;border-top:1px solid #E5E7EB;" />
-          <p style="color:#9CA3AF;font-size:11px;">© ${new Date().getFullYear()} ${branding2?.companyName || 'SGI 360'}</p>
-          <img src="${trackUrl}" width="1" height="1" style="display:none;" />
+          <p style="text-align:center;margin:0 0 8px;"><a href="${confirmUrl2}" style="color:#6366F1;font-size:12px;text-decoration:none;">✓ Confirmar que lo leí</a></p>
+          <p style="color:#9CA3AF;font-size:11px;text-align:center;">© ${new Date().getFullYear()} ${branding2?.companyName || 'SGI 360'}</p>
+          ${promo2}
+          <img src="${trackUrl}" width="1" height="1" style="display:block;width:1px;height:1px;" />
         </div>`;
       try {
         const result = await sendEmail({ to: email, subject: `[Reenvío] ${comm.title}`, html, text: comm.body });
