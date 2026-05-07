@@ -7,6 +7,7 @@ import {
   FileBarChart, Download, Calendar, CheckCircle2,
   AlertTriangle, Shield, BarChart3, BookOpen,
   Target, Loader2, ChevronDown, ChevronUp, Users, Bot,
+  FileText,
 } from 'lucide-react';
 
 type ReportType = 'executive' | 'ncr' | 'risks' | 'indicators' | 'compliance' | 'trainings' | 'customers' | 'ai-usage';
