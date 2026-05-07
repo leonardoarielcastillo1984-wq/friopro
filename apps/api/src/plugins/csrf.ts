@@ -29,6 +29,7 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/ncr')) return true;
   if (url.startsWith('/departments')) return true;
   if (url.startsWith('/hr')) return true;
+  if (url.startsWith('/clima')) return true; // Clima y Cultura routes
   if (url.startsWith('/emergency')) return true; // Emergency routes para simulacros
   if (url.startsWith('/maintenance')) return true; // Maintenance routes
   if (url.startsWith('/project360')) return true; // Project360 routes
