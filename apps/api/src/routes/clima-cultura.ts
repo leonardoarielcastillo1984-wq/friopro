@@ -717,7 +717,7 @@ Respondé en JSON con esta estructura exacta:
       include: {
         employee: { select: { firstName: true, lastName: true } },
         respondedBy: { select: { firstName: true, lastName: true } },
-        actionPlan: { select: { id: true, title: true, status: true } },
+        actionPlans: { select: { id: true, title: true, status: true } },
       },
     });
 
