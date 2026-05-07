@@ -686,4 +686,40 @@ La transcripción debe ser detallada y profesional.`;
       return reply.code(500).send({ error: 'Error al obtener departamentos', details: err.message });
     }
   });
+
+  // GET /minutas/employees — Obtener lista de empleados
+  app.get('/employees', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = req.db.tenantId;
+
+    try {
+      const employees = await app.runWithDbContext(req, async (tx: any) => {
+        return tx.employee.findMany({
+          where: { tenantId, deletedAt: null },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            position: true,
+            departmentId: true,
+          },
+          orderBy: { firstName: 'asc' },
+        });
+      });
+
+      const formattedEmployees = employees.map((emp: any) => ({
+        id: emp.id,
+        name: `${emp.firstName} ${emp.lastName}`.trim(),
+        email: emp.email,
+        position: emp.position,
+        departmentId: emp.departmentId,
+      }));
+
+      return reply.send({ employees: formattedEmployees });
+    } catch (err: any) {
+      console.error('[minutas employees] Error:', err);
+      return reply.code(500).send({ error: 'Error al obtener empleados', details: err.message });
+    }
+  });
 };

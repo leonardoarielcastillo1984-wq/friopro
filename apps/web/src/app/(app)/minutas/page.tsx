@@ -125,7 +125,11 @@ export default function MinutasPage() {
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcribing, setTranscribing] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     title: '',
     date: new Date().toISOString().split('T')[0],
@@ -152,7 +156,17 @@ export default function MinutasPage() {
   useEffect(() => {
     loadMinutas();
     loadDepartments();
+    loadEmployees();
   }, []);
+
+  async function loadEmployees() {
+    try {
+      const res = await apiFetch('/minutas/employees') as { employees: any[] };
+      setEmployees(res.employees);
+    } catch (err) {
+      console.error('Error loading employees:', err);
+    }
+  }
 
   async function loadDepartments() {
     try {
@@ -347,6 +361,44 @@ export default function MinutasPage() {
     }
   }
 
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const file = new File([blob], 'grabacion.webm', { type: 'audio/webm' });
+        setAudioFile(file);
+        setRecordedChunks([]);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setRecordedChunks(chunks);
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Error al iniciar grabación:', err);
+      alert('No se pudo acceder al micrófono');
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+      setMediaRecorder(null);
+      setIsRecording(false);
+    }
+  }
+
   async function handleAudioUpload() {
     if (!audioFile) return;
 
@@ -355,7 +407,7 @@ export default function MinutasPage() {
       const formData = new FormData();
       formData.append('file', audioFile);
 
-      const res = await apiFetch('/storage/upload/minutas', {
+      const res = await apiFetch('/storage/upload', {
         method: 'POST',
         headers: {},
         body: formData,
@@ -884,16 +936,25 @@ export default function MinutasPage() {
               <Label htmlFor="participants">Participantes (separados por coma)</Label>
               <Input
                 id="participants"
+                list="employees-list"
                 value={formData.participants}
                 onChange={(e) => setFormData({ ...formData, participants: e.target.value })}
                 placeholder="Juan, María, Carlos"
               />
+              <datalist id="employees-list">
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.name}>
+                    {emp.position} - {emp.email}
+                  </option>
+                ))}
+              </datalist>
             </div>
 
             <div>
               <Label htmlFor="responsible">Responsable</Label>
               <Input
                 id="responsible"
+                list="employees-list"
                 value={formData.responsible}
                 onChange={(e) => setFormData({ ...formData, responsible: e.target.value })}
                 placeholder="Nombre del responsable"
@@ -975,6 +1036,13 @@ export default function MinutasPage() {
                   onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
                   className="flex-1"
                 />
+                <Button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  variant={isRecording ? "destructive" : "outline"}
+                >
+                  <Mic className={`h-4 w-4 mr-2 ${isRecording ? 'animate-pulse' : ''}`} />
+                  {isRecording ? 'Detener' : 'Grabar'}
+                </Button>
                 <Button
                   onClick={handleAudioUpload}
                   disabled={!audioFile || uploadingAudio}
