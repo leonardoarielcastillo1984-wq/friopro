@@ -80,6 +80,7 @@ export async function buildApp() {
   const app = Fastify({
     logger: true,
     bodyLimit: parseInt(process.env.MAX_PDF_SIZE_MB || '50', 10) * 1024 * 1024,
+    ignoreTrailingSlash: true,
   });
 
   // Iniciar workers
