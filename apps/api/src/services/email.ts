@@ -141,18 +141,20 @@ export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
 
 // ── Template helpers ─────────────────────────────────────────
 
-const EMAIL_TEMPLATE_BASE = (content: string) => `
-  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
-    <div style="text-align: center; margin-bottom: 32px;">
-      <h1 style="color: #111827; font-size: 24px; margin: 0;">SGI 360</h1>
-      <p style="color: #6B7280; font-size: 14px; margin-top: 4px;">Sistema de Gestión Integrado</p>
-    </div>
+const EMAIL_TEMPLATE_BASE = (content: string, opts?: { logoUrl?: string | null; companyName?: string | null }) => {
+  const name = opts?.companyName || 'SGI 360';
+  const header = opts?.logoUrl
+    ? `<div style="text-align:center;margin-bottom:28px;"><img src="${opts.logoUrl}" alt="${name}" style="max-height:64px;max-width:200px;object-fit:contain;" /></div>`
+    : `<div style="text-align:center;margin-bottom:28px;"><h1 style="color:#111827;font-size:24px;margin:0;">${name}</h1><p style="color:#6B7280;font-size:14px;margin-top:4px;">Sistema de Gestión Integrado</p></div>`;
+  return `
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;padding:40px 20px;">
+    ${header}
     ${content}
-    <p style="color: #9CA3AF; font-size: 11px; text-align: center; margin-top: 24px;">
-      © ${new Date().getFullYear()} SGI 360. Todos los derechos reservados.
+    <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:24px;">
+      © ${new Date().getFullYear()} ${name}. Todos los derechos reservados.
     </p>
-  </div>
-`;
+  </div>`;
+};
 
 export function passwordResetEmail(email: string, resetUrl: string): EmailPayload {
   return {

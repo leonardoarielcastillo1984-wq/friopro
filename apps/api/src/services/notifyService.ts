@@ -52,6 +52,13 @@ async function getUserEmail(prisma: PrismaClient, userId: string): Promise<strin
   } catch { return null; }
 }
 
+async function getCompanyBranding(prisma: PrismaClient, tenantId: string): Promise<{ logoUrl?: string | null; companyName?: string | null }> {
+  try {
+    const s = await prisma.companySettings.findUnique({ where: { tenantId }, select: { logoUrl: true, companyName: true } });
+    return { logoUrl: s?.logoUrl ?? null, companyName: s?.companyName ?? null };
+  } catch { return {}; }
+}
+
 // ── NCR asignada ─────────────────────────────────────────────────────────────
 
 export async function notifyNcrAssigned(
@@ -71,10 +78,11 @@ export async function notifyNcrAssigned(
 
   const email = await getUserEmail(prisma, assignedToId);
   if (email) {
+    const branding = await getCompanyBranding(prisma, tenantId);
     await sendEmail({
       to: email,
-      subject: `SGI 360 — ${title}`,
-      html: buildEmailHtml(title, message, 'Ver NCR', link, '#DC2626'),
+      subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+      html: buildEmailHtml(title, message, 'Ver NCR', link, '#DC2626', branding),
       text: `${title}\n\n${message}\n\n${link}`,
     }).catch(e => console.error('[notifyService] Email error:', e));
   }
@@ -99,10 +107,11 @@ export async function notifyCapaAssigned(
 
   const email = await getUserEmail(prisma, assignedToId);
   if (email) {
+    const branding = await getCompanyBranding(prisma, tenantId);
     await sendEmail({
       to: email,
-      subject: `SGI 360 — ${title}`,
-      html: buildEmailHtml(title, message, 'Ver CAPA', link, '#D97706'),
+      subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+      html: buildEmailHtml(title, message, 'Ver CAPA', link, '#D97706', branding),
       text: `${title}\n\n${message}\n\n${link}`,
     }).catch(e => console.error('[notifyService] Email error:', e));
   }
@@ -127,10 +136,11 @@ export async function notifyDocumentReview(
 
   const email = await getUserEmail(prisma, reviewerId);
   if (email) {
+    const branding = await getCompanyBranding(prisma, tenantId);
     await sendEmail({
       to: email,
-      subject: `SGI 360 — ${title}`,
-      html: buildEmailHtml(title, message, 'Ver documento', link, '#2563EB'),
+      subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+      html: buildEmailHtml(title, message, 'Ver documento', link, '#2563EB', branding),
       text: `${title}\n\n${message}\n\n${link}`,
     }).catch(e => console.error('[notifyService] Email error:', e));
   }
@@ -148,6 +158,7 @@ export async function notifyAuditScheduled(
   const dateStr = scheduledDate.toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
   const title = `Auditoría programada: ${auditTitle}`;
   const message = `Estás asignado a la auditoría "${auditTitle}" programada para el ${dateStr}.`;
+  const branding = await getCompanyBranding(prisma, tenantId);
 
   for (const userId of userIds) {
     await createNotification(prisma, {
@@ -159,8 +170,8 @@ export async function notifyAuditScheduled(
     if (email) {
       await sendEmail({
         to: email,
-        subject: `SGI 360 — ${title}`,
-        html: buildEmailHtml(title, message, 'Ver auditoría', link, '#7C3AED'),
+        subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+        html: buildEmailHtml(title, message, 'Ver auditoría', link, '#7C3AED', branding),
         text: `${title}\n\n${message}\n\n${link}`,
       }).catch(e => console.error('[notifyService] Email error:', e));
     }
@@ -169,13 +180,17 @@ export async function notifyAuditScheduled(
 
 // ── HTML template ─────────────────────────────────────────────────────────────
 
-function buildEmailHtml(title: string, message: string, btnLabel: string, btnUrl: string, color: string): string {
+function buildEmailHtml(
+  title: string, message: string, btnLabel: string, btnUrl: string, color: string,
+  branding?: { logoUrl?: string | null; companyName?: string | null }
+): string {
+  const name = branding?.companyName || 'SGI 360';
+  const logoHtml = branding?.logoUrl
+    ? `<img src="${branding.logoUrl}" alt="${name}" style="max-height:60px;max-width:180px;object-fit:contain;" />`
+    : `<h1 style="color:#111827;font-size:22px;margin:0;">${name}</h1><p style="color:#6B7280;font-size:13px;margin:4px 0 0;">Sistema de Gestión Integrado</p>`;
   return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:40px 20px;">
-      <div style="text-align:center;margin-bottom:28px;">
-        <h1 style="color:#111827;font-size:22px;margin:0;">SGI 360</h1>
-        <p style="color:#6B7280;font-size:13px;margin:4px 0 0;">Sistema de Gestión Integrado</p>
-      </div>
+      <div style="text-align:center;margin-bottom:28px;">${logoHtml}</div>
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:28px;">
         <div style="display:inline-block;background:${color}20;border:1px solid ${color}40;border-radius:8px;padding:6px 12px;margin-bottom:16px;">
           <span style="color:${color};font-size:12px;font-weight:600;">${title}</span>
@@ -185,6 +200,6 @@ function buildEmailHtml(title: string, message: string, btnLabel: string, btnUrl
           <a href="${btnUrl}" style="display:inline-block;background:${color};color:#fff;font-weight:600;font-size:14px;padding:12px 32px;border-radius:8px;text-decoration:none;">${btnLabel} →</a>
         </div>
       </div>
-      <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:20px;">© ${new Date().getFullYear()} SGI 360. Todos los derechos reservados.</p>
+      <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:20px;">© ${new Date().getFullYear()} ${name}. Todos los derechos reservados.</p>
     </div>`;
 }

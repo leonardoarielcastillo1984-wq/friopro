@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Plus, Megaphone, Send, Trash2, Eye, FileText,
@@ -28,6 +28,7 @@ export default function ComunicadosPage() {
   const [loadingViews, setLoadingViews] = useState(false);
   const [resendsResult, setResendsResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
   const [form, setForm] = useState({
     title: '',
@@ -61,6 +62,33 @@ export default function ComunicadosPage() {
     setForm({ title: '', body: '', attachments: [], recipients: [], extraEmails: [] });
     setExtraEmailInput('');
     setSendResult(null);
+    if (editorRef.current) editorRef.current.innerHTML = '';
+  }
+
+  const handleEditorPaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target?.result as string;
+          document.execCommand('insertImage', false, dataUrl);
+          if (editorRef.current) setForm(p => ({ ...p, body: editorRef.current!.innerHTML }));
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
+  }, []);
+
+  function execFormat(cmd: string, value?: string) {
+    document.execCommand(cmd, false, value);
+    if (editorRef.current) setForm(p => ({ ...p, body: editorRef.current!.innerHTML }));
+    editorRef.current?.focus();
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -112,7 +140,8 @@ export default function ComunicadosPage() {
 
   async function handleSave(e: React.FormEvent, sendNow = false) {
     e.preventDefault();
-    if (!form.title.trim() || !form.body.trim()) return;
+    const bodyText = form.body.replace(/<[^>]*>/g, '').trim();
+    if (!form.title.trim() || !bodyText) return;
     setSaving(true);
     try {
       const data = await apiFetch('/clima/comunicados', { method: 'POST', json: form }) as any;
@@ -372,12 +401,44 @@ export default function ComunicadosPage() {
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400" />
               </div>
 
-              {/* Cuerpo */}
+              {/* Cuerpo — editor rich text */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">Mensaje *</label>
-                <textarea required value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))}
-                  rows={5} placeholder="Escribí el contenido del comunicado..."
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 resize-none" />
+                {/* Toolbar */}
+                <div className="flex items-center gap-1 border border-gray-200 border-b-0 rounded-t-xl px-2 py-1.5 bg-gray-50">
+                  {[
+                    { cmd: 'bold', label: <strong>B</strong> },
+                    { cmd: 'italic', label: <em>I</em> },
+                    { cmd: 'underline', label: <span className="underline">U</span> },
+                  ].map(({ cmd, label }) => (
+                    <button key={cmd} type="button" onMouseDown={e => { e.preventDefault(); execFormat(cmd); }}
+                      className="w-7 h-7 rounded hover:bg-gray-200 text-sm font-medium text-gray-700 flex items-center justify-center transition-colors">
+                      {label}
+                    </button>
+                  ))}
+                  <div className="w-px h-4 bg-gray-300 mx-1" />
+                  {['1', '2', '3'].map(n => (
+                    <button key={n} type="button" onMouseDown={e => { e.preventDefault(); execFormat('formatBlock', `h${n}`); }}
+                      className="px-2 h-7 rounded hover:bg-gray-200 text-xs font-medium text-gray-700 transition-colors">
+                      H{n}
+                    </button>
+                  ))}
+                  <div className="w-px h-4 bg-gray-300 mx-1" />
+                  <button type="button" onMouseDown={e => { e.preventDefault(); execFormat('insertUnorderedList'); }}
+                    className="px-2 h-7 rounded hover:bg-gray-200 text-xs text-gray-700 transition-colors">• Lista</button>
+                  <div className="w-px h-4 bg-gray-300 mx-1" />
+                  <span className="text-xs text-gray-400 ml-1">Pegá imágenes con Ctrl+V</span>
+                </div>
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={() => { if (editorRef.current) setForm(p => ({ ...p, body: editorRef.current!.innerHTML })); }}
+                  onPaste={handleEditorPaste}
+                  data-placeholder="Escribí el contenido del comunicado..."
+                  className="w-full min-h-[140px] text-sm border border-gray-200 rounded-b-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 prose prose-sm max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
+                  style={{ whiteSpace: 'pre-wrap' }}
+                />
               </div>
 
               {/* Adjuntos */}
