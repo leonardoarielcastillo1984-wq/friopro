@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
       requestBody.append('logo', data.logo as File);
     }
 
-    // Enviar al API de Fastify
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+    // Enviar al API de Fastify (usar API_URL server-side, no la pública)
+    const apiUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
     const response = await fetch(`${apiUrl}/register-company`, {
       method: 'POST',
       body: requestBody,
