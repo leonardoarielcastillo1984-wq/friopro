@@ -343,7 +343,7 @@ export default function MinutasPage() {
               content: action.content,
               responsible: action.responsible,
               dueDate: action.dueDate,
-              tags: action.tags || [],
+              tags: Array.isArray(action.tags) ? action.tags : (action.tags ? action.tags.split(',').map(t => t.trim()) : []),
             }),
           });
         }
