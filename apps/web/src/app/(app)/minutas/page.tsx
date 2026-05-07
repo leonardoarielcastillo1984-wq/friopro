@@ -1214,7 +1214,18 @@ export default function MinutasPage() {
                       Transcribir
                     </Button>
                   </div>
-                  <audio controls src={formData.audioUrl} className="h-8 mt-2 w-full" />
+                  <div className="mt-2">
+                    <audio controls src={formData.audioUrl} className="h-8 w-full mb-2">
+                      Tu navegador no soporta el elemento de audio.
+                    </audio>
+                    <a
+                      href={formData.audioUrl}
+                      download
+                      className="text-sm text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Descargar audio
+                    </a>
+                  </div>
                 </div>
               )}
             </div>
