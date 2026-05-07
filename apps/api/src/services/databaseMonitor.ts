@@ -100,6 +100,8 @@ export class DatabaseMonitor {
     try {
       const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
       const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
+      const environment = process.env.ENVIRONMENT || 'PROD';
+      const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
       
       const recentSlowQueries = this.slowQueries.slice(-5); // Show last 5 slow queries
       const queryDetails = recentSlowQueries
@@ -108,7 +110,7 @@ export class DatabaseMonitor {
       
       const emailPayload = notificationEmail({
         userEmail: adminEmail,
-        title: '⚠️ Alerta de Rendimiento - Base de Datos Lenta',
+        title: `${envPrefix}⚠️ Alerta de Rendimiento - Base de Datos Lenta`,
         message: `Se han detectado consultas lentas en la base de datos:\\n\\n` +
           `<strong>Consultas lentas recientes:</strong>\\n${queryDetails}\\n\\n` +
           `<strong>Umbral de alerta:</strong> ${this.SLOW_QUERY_THRESHOLD}ms\\n` +

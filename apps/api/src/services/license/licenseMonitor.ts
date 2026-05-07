@@ -127,6 +127,9 @@ export class LicenseMonitor {
     daysLeft: number,
     urgency: 'leve' | 'visible' | 'urgente'
   ) {
+    const environment = process.env.ENVIRONMENT || 'PROD';
+    const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
+    
     const urgencyLabels: Record<string, { subject: string; color: string }> = {
       leve: { subject: 'Tu licencia vence pronto', color: '#F59E0B' },
       visible: { subject: 'Tu licencia vence en pocos días', color: '#F97316' },
@@ -143,7 +146,7 @@ export class LicenseMonitor {
       try {
         await sendEmail({
           to: email,
-          subject: label.subject,
+          subject: `${envPrefix}${label.subject}`,
           html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: ${label.color};">${label.subject}</h2>
             <p>La licencia de <strong>${tenant.name}</strong> vence en <strong>${daysLeft} día${daysLeft !== 1 ? 's' : ''}</strong>.</p>
@@ -158,6 +161,8 @@ export class LicenseMonitor {
   }
 
   private async notifyGrace(tenant: any, daysRemaining: number) {
+    const environment = process.env.ENVIRONMENT || 'PROD';
+    const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
     const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';
 
     for (const membership of tenant.memberships) {
@@ -167,7 +172,7 @@ export class LicenseMonitor {
       try {
         await sendEmail({
           to: email,
-          subject: 'Tu licencia venció — período de gracia activo',
+          subject: `${envPrefix}Tu licencia venció — período de gracia activo`,
           html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #F97316;">Tu licencia venció</h2>
             <p>La licencia de <strong>${tenant.name}</strong> venció. Tenés <strong>${daysRemaining} día${daysRemaining !== 1 ? 's' : ''}</strong> de gracia para renovarla.</p>
@@ -182,6 +187,8 @@ export class LicenseMonitor {
   }
 
   private async notifyExpired(tenant: any) {
+    const environment = process.env.ENVIRONMENT || 'PROD';
+    const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
     const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';
 
     for (const membership of tenant.memberships) {
@@ -191,7 +198,7 @@ export class LicenseMonitor {
       try {
         await sendEmail({
           to: email,
-          subject: 'Tu licencia expiró — reactivá tu cuenta',
+          subject: `${envPrefix}Tu licencia expiró — reactivá tu cuenta`,
           html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #EF4444;">Tu licencia expiró</h2>
             <p>La licencia de <strong>${tenant.name}</strong> expiró y el período de gracia finalizó.</p>

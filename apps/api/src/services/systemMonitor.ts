@@ -56,10 +56,12 @@ export class SystemMonitor {
     try {
       const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
       const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
+      const environment = process.env.ENVIRONMENT || 'PROD';
+      const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
       
       const emailPayload = notificationEmail({
         userEmail: adminEmail,
-        title: '⚠️ Alerta Crítica - Espacio en Disco Bajo',
+        title: `${envPrefix}⚠️ Alerta Crítica - Espacio en Disco Bajo`,
         message: `El espacio en disco del servidor está críticamente bajo:\n\n` +
           `<strong>Uso actual:</strong> ${usedPercent}%\n` +
           `<strong>Umbral de alerta:</strong> ${100 - this.DISK_ALERT_THRESHOLD}%\n` +

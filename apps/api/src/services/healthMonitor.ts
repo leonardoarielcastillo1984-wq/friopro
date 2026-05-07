@@ -58,10 +58,12 @@ export class HealthMonitor {
     try {
       const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
       const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
+      const environment = process.env.ENVIRONMENT || 'PROD';
+      const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
       
       const emailPayload = notificationEmail({
         userEmail: adminEmail,
-        title: '🚨 Alerta Crítica - Servicio Caído',
+        title: `${envPrefix}🚨 Alerta Crítica - Servicio Caído`,
         message: `La API de SGI 360 no está respondiendo:\\n\\n` +
           `<strong>Estado:</strong> CRÍTICO - Fuera de línea\\n` +
           `<strong>Fallos consecutivos:</strong> ${this.consecutiveFailures}\\n` +

@@ -105,13 +105,15 @@ export class SubscriptionMonitor {
     try {
       const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
       const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
+      const environment = process.env.ENVIRONMENT || 'PROD';
+      const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
       
       let title: string;
       let message: string;
       let type: 'error' | 'warning';
       
       if (alertType === 'overdue') {
-        title = '⚠️ Pago Vencido - Suscripción Suspendida';
+        title = `${envPrefix}⚠️ Pago Vencido - Suscripción Suspendida`;
         message = `La suscripción está vencida y necesita atención inmediata:\n\n` +
           `<strong>Empresa:</strong> ${tenant.name}\n` +
           `<strong>Plan:</strong> ${plan.name}\n` +
@@ -122,7 +124,7 @@ export class SubscriptionMonitor {
           `• Evaluar cancelación si no responde`;
         type = 'error';
       } else {
-        title = '⏰ Pago Próximo a Vencer';
+        title = `${envPrefix}⏰ Pago Próximo a Vencer`;
         message = `La suscripción vencerá pronto:\n\n` +
           `<strong>Empresa:</strong> ${tenant.name}\n` +
           `<strong>Plan:</strong> ${plan.name}\n` +
