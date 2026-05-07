@@ -488,9 +488,15 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      // Actualizar tenant (no tiene planTier ni subscriptionStatus en el modelo)
-      // El plan se asocia a través de la suscripción
-      
+      // Si se activa un plan real, limpiar modo demo automáticamente
+      if (!isNoPlan && status !== 'CANCELED') {
+        await (app.prisma as any).tenant.update({
+          where: { id: tenantId },
+          data: { isDemo: false, demoExpiresAt: null },
+        });
+        console.log(`[API] Modo demo desactivado para tenant ${tenantId}`);
+      }
+
       console.log(`[API] Suscripción actualizada:`, subscription?.id || 'none');
 
       return reply.send({
