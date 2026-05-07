@@ -1182,31 +1182,37 @@ export default function MinutasPage() {
                       <Mic className="h-4 w-4 text-blue-600" />
                       <span className="text-sm text-blue-700">Audio cargado</span>
                     </div>
-                    <Button
-                      onClick={handleTranscribe}
-                      size="sm"
-                      variant="outline"
-                      disabled={transcribing}
-                    >
-                      {transcribing ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-4 w-4 mr-2" />
-                      )}
-                      Transcribir
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => {
+                          setFormData({ ...formData, audioUrl: '' });
+                          setAudioFile(null);
+                        }}
+                        size="sm"
+                        variant="destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Eliminar
+                      </Button>
+                      <Button
+                        onClick={handleTranscribe}
+                        size="sm"
+                        variant="outline"
+                        disabled={transcribing}
+                      >
+                        {transcribing ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4 mr-2" />
+                        )}
+                        Transcribir
+                      </Button>
+                    </div>
                   </div>
                   <div className="mt-2">
-                    <audio controls src={formData.audioUrl} className="h-8 w-full mb-2">
-                      Tu navegador no soporta el elemento de audio.
-                    </audio>
-                    <a
-                      href={formData.audioUrl}
-                      download
-                      className="text-sm text-blue-600 hover:text-blue-800 underline"
-                    >
-                      Descargar audio
-                    </a>
+                    <video controls src={formData.audioUrl} className="w-full h-12" style={{ maxWidth: '100%' }}>
+                      Tu navegador no soporta el elemento de video.
+                    </video>
                   </div>
                 </div>
               )}
