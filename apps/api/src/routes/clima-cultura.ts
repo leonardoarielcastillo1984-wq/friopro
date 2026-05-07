@@ -135,18 +135,18 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
       }
     }
 
-    // Top topics from last AI analyses
-    const lastAnalyses = await app.prisma.climaSurvey.findMany({
-      where: { tenantId, deletedAt: null, aiAnalysis: { not: null } },
-      orderBy: { updatedAt: 'desc' },
-      take: 3,
+    // Top topics from last AI analyses (stored in ClimaResponse.aiAnalysis)
+    const lastAnalysisResponses = await app.prisma.climaResponse.findMany({
+      where: { survey: { tenantId }, aiAnalysis: { not: null }, isComplete: true },
+      orderBy: { completedAt: 'desc' },
+      take: 10,
       select: { aiAnalysis: true },
     });
 
     const topTopics: any[] = [];
-    lastAnalyses.forEach((s: any) => {
+    lastAnalysisResponses.forEach((r: any) => {
       try {
-        const analysis = typeof s.aiAnalysis === 'string' ? JSON.parse(s.aiAnalysis) : s.aiAnalysis;
+        const analysis = typeof r.aiAnalysis === 'string' ? JSON.parse(r.aiAnalysis) : r.aiAnalysis;
         if (Array.isArray(analysis?.topTopics)) {
           analysis.topTopics.forEach((t: any) => topTopics.push(t));
         } else if (Array.isArray(analysis?.themes)) {

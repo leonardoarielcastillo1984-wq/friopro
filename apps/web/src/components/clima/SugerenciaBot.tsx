@@ -41,7 +41,7 @@ export function SugerenciaBot() {
     try {
       await apiFetch('/clima/sugerencias', {
         method: 'POST',
-        body: JSON.stringify({ ...form, type: tipo }),
+        json: { ...form, type: tipo },
       });
       setStep('done');
     } catch {
