@@ -59,7 +59,7 @@ const mainNav = [
   { label: 'Políticas SGI', icon: FileText, href: '/objetivos/politicas' },
 
   // 5. Calidad y mejora continua
-  { label: 'No Conformidades', icon: ClipboardCheck, href: '/calidad' },
+  { label: 'No Conformidades y Plan de acción', icon: ClipboardCheck, href: '/calidad' },
   { label: 'Auditorías', icon: BrainCircuit, href: '/auditoria' },
   { label: 'Revisión por la Dirección', icon: FileBarChart, href: '/revision-direccion' },
 
