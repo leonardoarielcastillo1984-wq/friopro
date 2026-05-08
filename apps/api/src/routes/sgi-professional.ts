@@ -216,7 +216,6 @@ export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string() }).parse(req.params);
-    const tenantId = req.db.tenantId;
 
     const stakeholder = await app.runWithDbContext(req, async (tx: any) => {
       return tx.stakeholder.findFirst({ where: { id, tenantId, deletedAt: null } });
@@ -265,7 +264,6 @@ export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string() }).parse(req.params);
-    const tenantId = req.db.tenantId;
 
     const stakeholder = await app.runWithDbContext(req, async (tx: any) => {
       return tx.stakeholder.findFirst({ where: { id, tenantId, deletedAt: null } });
@@ -319,7 +317,8 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { year } = z.object({ year: z.string() }).parse(req.params);
     const y = parseInt(year, 10);
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.organizationContext.findUnique({ where: { tenantId_year: { tenantId, year: y } } });
@@ -332,7 +331,8 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { year } = z.object({ year: z.string() }).parse(req.params);
     const y = parseInt(year, 10);
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const rawBody = req.body;
     const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody as any;
 

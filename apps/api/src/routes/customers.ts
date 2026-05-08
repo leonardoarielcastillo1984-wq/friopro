@@ -493,7 +493,8 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
         return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       }
 
-      const tenantId = req.db.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       const { id, surveyId } = z.object({ 
         id: z.string().uuid(),
         surveyId: z.string().uuid()

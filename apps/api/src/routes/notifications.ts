@@ -12,7 +12,8 @@ export const notificacionesRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
 
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const query = z
       .object({
         limit: z.coerce.number().int().min(1).max(500).optional().default(100),
@@ -43,7 +44,8 @@ export const notificacionesRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
 
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const unreadCount = await app.runWithDbContext(req, async (tx: any) => {
       return await tx.notification.count({
         where: { tenantId, userId: req.auth!.userId, deletedAt: null, isRead: false },
@@ -60,7 +62,8 @@ export const notificacionesRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
 
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const body = z.object({ ids: z.array(z.string().uuid()).min(1) }).parse(req.body);
 
     await app.runWithDbContext(req, async (tx: any) => {
@@ -85,7 +88,8 @@ export const notificacionesRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
 
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     await app.runWithDbContext(req, async (tx: any) => {
       await tx.notification.updateMany({
@@ -103,7 +107,8 @@ export const notificacionesRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
 
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const userId = req.auth.userId;
     const generated: string[] = [];
 

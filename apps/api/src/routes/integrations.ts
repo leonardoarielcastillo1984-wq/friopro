@@ -9,7 +9,8 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
 
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const webhooks = await app.runWithDbContext(req, async (tx: any) => {
       return tx.webhookConfig.findMany({
@@ -32,7 +33,6 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
-    const tenantId = req.db.tenantId;
     if (req.auth.tenantRole !== 'TENANT_ADMIN') {
       return reply.code(403).send({ error: 'Solo administradores pueden crear webhooks' });
     }
@@ -67,7 +67,6 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
-    const tenantId = req.db.tenantId;
     if (req.auth.tenantRole !== 'TENANT_ADMIN') {
       return reply.code(403).send({ error: 'Solo administradores pueden editar webhooks' });
     }
@@ -103,7 +102,6 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
-    const tenantId = req.db.tenantId;
     if (req.auth.tenantRole !== 'TENANT_ADMIN') {
       return reply.code(403).send({ error: 'Solo administradores pueden eliminar webhooks' });
     }
@@ -130,7 +128,6 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
-    const tenantId = req.db.tenantId;
 
     const { id } = req.params;
 
