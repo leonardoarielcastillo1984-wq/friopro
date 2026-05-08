@@ -114,6 +114,15 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
       }
     } catch (error) {
       console.log('[AUTH] Token verification failed - clearing auth:', error);
+
+      // Token expirado → 401 para que el frontend dispare el refresh automático
+      if (error instanceof Error && error.message === 'jwt expired') {
+        req.auth = null;
+        const reply = (req as any).server?.reply ?? (req.raw as any)._reply;
+        // Usar el reply de Fastify directamente a través del contexto
+        throw Object.assign(new Error('Token expired'), { statusCode: 401 });
+      }
+
       req.auth = null;
       
       // Si el token está malformed, limpiar las cookies en la respuesta
