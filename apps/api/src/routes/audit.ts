@@ -68,7 +68,6 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
-    const tenantId = effectiveTenantId;
 
     const body = analyzeDocSchema.parse(req.body);
 
@@ -131,7 +130,6 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
-    const tenantId = effectiveTenantId;
 
     tenantAuditSchema.parse(req.body);
 
@@ -173,7 +171,6 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
-    const tenantId = effectiveTenantId;
 
     const runs = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
       return tx.auditRun.findMany({
@@ -238,7 +235,6 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
-    const tenantId = effectiveTenantId;
 
     const query = findingsQuerySchema.parse(req.query);
 
@@ -300,7 +296,6 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
-    const tenantId = effectiveTenantId;
 
     const params = findingIdSchema.parse(req.params);
     const { id: findingId } = params;
@@ -358,7 +353,6 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
-    const tenantId = effectiveTenantId;
 
     const params = z.object({ findingId: z.string().uuid() }).parse(req.params);
     const { findingId } = params;
@@ -457,7 +451,6 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
-    const tenantId = effectiveTenantId;
 
     const body = chatSchema.parse(req.body);
 

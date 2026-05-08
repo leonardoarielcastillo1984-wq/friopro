@@ -15,7 +15,6 @@ export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
-    const tenantId = effectiveTenantId;
 
     const params = z.object({ ncrId: z.string().uuid() }).parse(req.params);
     const { ncrId } = params;
@@ -101,7 +100,6 @@ export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
-    const tenantId = effectiveTenantId;
 
     const params = z.object({ ncrId: z.string().uuid() }).parse(req.params);
     const { ncrId } = params;
