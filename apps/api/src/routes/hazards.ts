@@ -49,7 +49,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const query = req.query as Record<string, string>;
-    const where: any = { tenantId: tId, deletedAt: null };
+    const where: any = { tenantId, deletedAt: null };
     if (query.status) where.status = query.status;
     if (query.riskCategory) where.riskCategory = query.riskCategory;
 
@@ -75,7 +75,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.findUnique({
-        where: { id, tenantId: tId, deletedAt: null },
+        where: { id, tenantId: tenantId, deletedAt: null },
         include: {
           actions: { orderBy: { createdAt: 'desc' } },
           reviews: { orderBy: { reviewDate: 'desc' } },
@@ -109,12 +109,12 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     if (!body.code) {
       const year = new Date().getFullYear();
       const count = await app.prisma.hazard.count({
-        where: { tenantId: tId, code: { startsWith: `IPERC-${year}-` } },
+        where: { tenantId: tenantId, code: { startsWith: `IPERC-${year}-` } },
       });
       body.code = `IPERC-${year}-${String(count + 1).padStart(3, '0')}`;
     }
 
-    const data = { ...body, tenantId: tId };
+    const data = { ...body, tenantId: tenantId };
     try {
       data.createdById = req.auth?.userId ?? null;
       data.updatedById = req.auth?.userId ?? null;
@@ -147,7 +147,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.update({
-        where: { id, tenantId: tId, deletedAt: null },
+        where: { id, tenantId: tenantId, deletedAt: null },
         data: body,
       });
     });
@@ -175,7 +175,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.update({
-        where: { id, tenantId: tId, deletedAt: null },
+        where: { id, tenantId: tenantId, deletedAt: null },
         data: body,
       });
     });
@@ -190,7 +190,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.update({
-        where: { id, tenantId: tId, deletedAt: null },
+        where: { id, tenantId: tenantId, deletedAt: null },
         data: { deletedAt: new Date() },
       });
     });
@@ -206,7 +206,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
 
     const actions = await app.runWithDbContext(req, async (tx: any) => {
       return tx.riskAction.findMany({
-        where: { hazardId: id, tenantId: tId, deletedAt: null },
+        where: { hazardId: id, tenantId: tenantId, deletedAt: null },
         orderBy: { createdAt: 'desc' },
       });
     });
@@ -229,7 +229,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
         return tx.riskAction.create({
           data: {
             ...body,
-            tenantId: tId,
+            tenantId: tenantId,
             hazardId: id,
           },
         });
@@ -255,7 +255,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     try {
       const action = await app.runWithDbContext(req, async (tx: any) => {
         return tx.riskAction.update({
-          where: { id: actionId, hazardId, tenantId: tId },
+          where: { id: actionId, hazardId, tenantId: tenantId },
           data: body,
         });
       });
@@ -273,7 +273,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     const { id: hazardId, actionId } = z.object({ id: z.string().uuid(), actionId: z.string().uuid() }).parse(req.params);
 
     await app.runWithDbContext(req, async (tx: any) => {
-      return tx.riskAction.delete({ where: { id: actionId, hazardId, tenantId: tId } });
+      return tx.riskAction.delete({ where: { id: actionId, hazardId, tenantId: tenantId } });
     });
     return reply.send({ deleted: true });
   });
@@ -286,7 +286,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
 
     const reviews = await app.runWithDbContext(req, async (tx: any) => {
       return tx.riskReview.findMany({
-        where: { hazardId: id, tenantId: tId },
+        where: { hazardId: id, tenantId: tenantId },
         orderBy: { reviewDate: 'desc' },
       });
     });
@@ -308,7 +308,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
         return tx.riskReview.create({
           data: {
             ...body,
-            tenantId: tId,
+            tenantId: tenantId,
             hazardId: id,
           },
         });
@@ -328,7 +328,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     const now = new Date();
     const hazards = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.findMany({
-        where: { tenantId: tId, deletedAt: null },
+        where: { tenantId: tenantId, deletedAt: null },
         include: {
           actions: true,
           reviews: { orderBy: { reviewDate: 'desc' }, take: 1 },
@@ -378,7 +378,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
 
     const hazard = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.findUnique({
-        where: { id, tenantId: tId, deletedAt: null },
+        where: { id, tenantId: tenantId, deletedAt: null },
         include: { nonConformities: { where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, take: 1 } },
       });
     });
@@ -410,13 +410,13 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     const ncr = await app.runWithDbContext(req, async (tx: any) => {
       const year = new Date().getFullYear();
       const count = await tx.nonConformity.count({
-        where: { tenantId: tId, code: { startsWith: `NCR-${year}-` } },
+        where: { tenantId: tenantId, code: { startsWith: `NCR-${year}-` } },
       });
       const code = `NCR-${year}-${String(count + 1).padStart(3, '0')}`;
 
       return tx.nonConformity.create({
         data: {
-          tenantId: tId,
+          tenantId: tenantId,
           code,
           title,
           description,
@@ -442,7 +442,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
 
     const hazard = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.findUnique({
-        where: { id, tenantId: tId, deletedAt: null },
+        where: { id, tenantId: tenantId, deletedAt: null },
         include: { actions: true },
       });
     });
