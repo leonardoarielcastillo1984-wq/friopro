@@ -176,9 +176,9 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // GET /indicadores — Listar indicadores
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const query = z
       .object({
@@ -217,9 +217,9 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // GET /indicadores/stats — Estadísticas
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const indicators = await app.runWithDbContext(req, async (tx: any) => {
       return tx.indicator.findMany({
@@ -282,9 +282,9 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // GET /indicadores/:id — Detalle
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const indicator = await app.runWithDbContext(req, async (tx: any) => {
@@ -310,9 +310,9 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // POST /indicadores — Crear indicador
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const schema = z.object({
       name: z.string().min(2),
@@ -381,9 +381,9 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // POST /indicadores/:id/measurements — Agregar medición
   app.post('/:id/measurements', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const schema = z.object({
@@ -454,9 +454,9 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // POST /indicadores/:id/risk-links — Vincular riesgo a indicador
   app.post('/:id/risk-links', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = z
       .object({
@@ -498,9 +498,9 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /indicadores/:id/risk-links/:linkId — Desvincular riesgo
   app.delete('/:id/risk-links/:linkId', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id, linkId } = z.object({ id: z.string().uuid(), linkId: z.string().uuid() }).parse(req.params);
 
     await app.runWithDbContext(req, async (tx: any) => {
@@ -515,9 +515,9 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // PATCH /indicadores/:id — Actualizar indicador
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const schema = z.object({
@@ -594,9 +594,9 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /indicadores/:id — Eliminar indicador (soft delete)
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const result = await app.runWithDbContext(req, async (tx: any) => {

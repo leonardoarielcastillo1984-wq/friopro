@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
@@ -72,8 +73,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── DASHBOARD ──────────────────────────────────────────────────────────────
 
   app.get('/dashboard', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const [
       totalSurveys,
@@ -200,8 +201,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── ENCUESTAS CRUD ──────────────────────────────────────────────────────────
 
   app.get('/encuestas', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const q = req.query as any;
 
     const where: any = { tenantId, deletedAt: null };
@@ -230,8 +231,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.get('/encuestas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
@@ -261,8 +262,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.post('/encuestas', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const schema = z.object({
       title: z.string().min(2),
@@ -338,8 +339,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.patch('/encuestas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const schema = z.object({
@@ -367,8 +368,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.delete('/encuestas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     await app.prisma.climaSurvey.updateMany({ where: { id, tenantId, deletedAt: null }, data: { deletedAt: new Date(), isActive: false } });
@@ -378,8 +379,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── PREGUNTAS ───────────────────────────────────────────────────────────────
 
   app.post('/encuestas/:id/preguntas', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({ where: { id, tenantId, deletedAt: null } });
@@ -414,8 +415,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.delete('/encuestas/:id/preguntas/:qid', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id, qid } = req.params as any;
 
     await app.prisma.climaQuestion.updateMany({ where: { id: qid, surveyId: id }, data: { deletedAt: new Date() } });
@@ -425,8 +426,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── ENVÍO A DESTINATARIOS ───────────────────────────────────────────────────
 
   app.post('/encuestas/:id/enviar', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
@@ -502,8 +503,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── RESULTADOS Y RESPUESTAS ─────────────────────────────────────────────────
 
   app.get('/encuestas/:id/resultados', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
@@ -557,8 +558,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   });
 
   app.get('/encuestas/:id/participacion', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({ where: { id, tenantId, deletedAt: null } });
@@ -579,8 +580,8 @@ export async function climaCulturaRoutes(app: FastifyInstance) {
   // ─── ANÁLISIS IA ─────────────────────────────────────────────────────────────
 
   app.post('/encuestas/:id/analisis-ia', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
@@ -640,8 +641,8 @@ Respondé en JSON con esta estructura exacta:
   // ─── INDICADORES ─────────────────────────────────────────────────────────────
 
   app.get('/indicadores', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const [allResponses, allSurveys, suggestions] = await Promise.all([
       app.prisma.climaResponse.findMany({
@@ -702,8 +703,8 @@ Respondé en JSON con esta estructura exacta:
   // ─── SUGERENCIAS Y RECLAMOS ───────────────────────────────────────────────────
 
   app.get('/sugerencias', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const q = req.query as any;
 
     const where: any = { tenantId, deletedAt: null };
@@ -729,8 +730,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.post('/sugerencias', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const schema = z.object({
       type: z.enum(['SUGERENCIA', 'RECLAMO', 'INQUIETUD', 'MEJORA', 'COMENTARIO', 'ALERTA']).default('SUGERENCIA'),
@@ -757,8 +758,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.patch('/sugerencias/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const schema = z.object({
@@ -780,8 +781,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.delete('/sugerencias/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     await app.prisma.climaSuggestion.updateMany({ where: { id, tenantId, deletedAt: null }, data: { deletedAt: new Date() } });
@@ -791,8 +792,8 @@ Respondé en JSON con esta estructura exacta:
   // ─── PLANES DE ACCIÓN ────────────────────────────────────────────────────────
 
   app.get('/planes-accion', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const q = req.query as any;
 
     const where: any = { tenantId, deletedAt: null };
@@ -814,8 +815,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.post('/planes-accion', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const schema = z.object({
       title: z.string().min(3),
@@ -876,8 +877,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.patch('/planes-accion/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const schema = z.object({
@@ -902,8 +903,8 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.delete('/planes-accion/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
     await app.prisma.climaActionPlan.updateMany({ where: { id, tenantId, deletedAt: null }, data: { deletedAt: new Date() } });
     return reply.send({ success: true });
@@ -912,8 +913,8 @@ Respondé en JSON con esta estructura exacta:
   // ─── EXPORTACIÓN CSV ─────────────────────────────────────────────────────────
 
   app.get('/encuestas/:id/exportar-csv', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const survey = await app.prisma.climaSurvey.findFirst({
@@ -1108,8 +1109,8 @@ Respondé en JSON con esta estructura exacta:
 
   // GET /clima/comunicados
   app.get('/comunicados', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const comms = await app.prisma.climaComms.findMany({
       where: { tenantId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -1120,8 +1121,8 @@ Respondé en JSON con esta estructura exacta:
 
   // POST /clima/comunicados/upload — DEBE ir ANTES de /:id para evitar conflicto de rutas
   app.post('/comunicados/upload', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     try {
       const data = await req.file();
@@ -1157,8 +1158,8 @@ Respondé en JSON con esta estructura exacta:
 
   // POST /clima/comunicados
   app.post('/comunicados', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const schema = z.object({
       title: z.string().min(3),
       body: z.string().min(1),
@@ -1184,8 +1185,8 @@ Respondé en JSON con esta estructura exacta:
 
   // GET /clima/comunicados/:id
   app.get('/comunicados/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
     const comm = await app.prisma.climaComms.findFirst({
       where: { id, tenantId, deletedAt: null },
@@ -1197,8 +1198,8 @@ Respondé en JSON con esta estructura exacta:
 
   // PATCH /clima/comunicados/:id
   app.patch('/comunicados/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
     const schema = z.object({
       title: z.string().min(3).optional(),
@@ -1214,8 +1215,8 @@ Respondé en JSON con esta estructura exacta:
 
   // DELETE /clima/comunicados/:id
   app.delete('/comunicados/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
     await app.prisma.climaComms.update({ where: { id }, data: { deletedAt: new Date() } });
     return reply.send({ success: true });
@@ -1223,8 +1224,8 @@ Respondé en JSON con esta estructura exacta:
 
   // POST /clima/comunicados/:id/enviar
   app.post('/comunicados/:id/enviar', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const comm = await app.prisma.climaComms.findFirst({ where: { id, tenantId, deletedAt: null } });
@@ -1293,8 +1294,8 @@ Respondé en JSON con esta estructura exacta:
 
   // POST /clima/comunicados/:id/reenviar — Re-enviar comunicado ya enviado
   app.post('/comunicados/:id/reenviar', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const comm = await app.prisma.climaComms.findFirst({ where: { id, tenantId, deletedAt: null } });
@@ -1400,8 +1401,8 @@ Respondé en JSON con esta estructura exacta:
 
   // GET /clima/comunicados/:id/vistas — Listar quién vio el comunicado
   app.get('/comunicados/:id/vistas', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? (req.headers['x-tenant-id'] as string | undefined);
-    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
 
     const views = await app.prisma.climaCommsView.findMany({

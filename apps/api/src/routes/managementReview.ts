@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { createLLMProvider } from '../services/llm/factory.js';
@@ -397,7 +398,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
   app.get(
     '/management-reviews',
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const reviews = await app.runWithDbContext(req, async (tx) => {
@@ -420,7 +421,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
   app.post(
     '/management-reviews',
     async (req: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
-      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = req.body as any;
@@ -501,7 +502,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
   app.get(
     '/management-reviews/:id',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const review = await app.runWithDbContext(req, async (tx) => {
@@ -524,7 +525,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
   app.post(
     '/management-reviews/:id/generate-draft',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const review = await app.runWithDbContext(req, async (tx) => {
@@ -606,7 +607,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
   app.patch(
     '/management-reviews/:id',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
-      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = req.body as any;
@@ -641,7 +642,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
   app.patch(
     '/management-reviews/:id/sections/:sectionKey',
     async (req: FastifyRequest<{ Params: { id: string; sectionKey: string }; Body: any }>, reply: FastifyReply) => {
-      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = req.body as any;
@@ -677,7 +678,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
   app.post(
     '/management-reviews/:id/sections',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
-      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const { title, freeText, key: customKey } = req.body as any;
@@ -709,7 +710,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
   app.delete(
     '/management-reviews/:id/sections/:sectionKey',
     async (req: FastifyRequest<{ Params: { id: string; sectionKey: string } }>, reply: FastifyReply) => {
-      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       await app.runWithDbContext(req, async (tx) => {
@@ -731,7 +732,7 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
   app.delete(
     '/management-reviews/:id',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-      const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       await app.runWithDbContext(req, async (tx) => {

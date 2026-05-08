@@ -27,9 +27,9 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // GET /ncr — Listar no conformidades
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const ncrs = await app.runWithDbContext(req, async (tx: any) => {
       return tx.nonConformity.findMany({
         where: { tenantId, deletedAt: null },
@@ -47,9 +47,9 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // GET /ncr/stats — Estadísticas
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const ncrs = await app.runWithDbContext(req, async (tx: any) => {
       return tx.nonConformity.findMany({
         where: { tenantId, deletedAt: null },

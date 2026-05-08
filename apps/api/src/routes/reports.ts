@@ -210,7 +210,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
   // GET /reports/ai-usage — Uso general de IA del sistema
   app.get('/ai-usage', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -310,7 +310,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
   // GET /reports/executive — Resumen ejecutivo completo
   app.get('/executive', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const data = await app.runWithDbContext(req, async (tx: any) => {

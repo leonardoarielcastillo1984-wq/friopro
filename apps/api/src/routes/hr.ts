@@ -1414,7 +1414,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   
   // GET /hr/employees/template - Descargar plantilla Excel
   fastify.get('/employees/template', async (req, reply) => {
-    const tenantId = req.db?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const workbook = new ExcelJS.Workbook();
@@ -1527,7 +1527,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
   // POST /hr/employees/import - Importación masiva (preview)
   fastify.post('/employees/import', async (req, reply) => {
-    const tenantId = req.db?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const prisma = req.db?.prisma || fastify.prisma;
@@ -1740,7 +1740,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   }
 
   fastify.post('/employees/import/confirm', async (req, reply) => {
-    const tenantId = req.db?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const prisma = req.db?.prisma || fastify.prisma;
@@ -1885,7 +1885,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
   // GET /hr/employees/export - Exportar empleados
   fastify.get('/employees/export', async (req, reply) => {
-    const tenantId = req.db?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const prisma = req.db?.prisma || fastify.prisma;

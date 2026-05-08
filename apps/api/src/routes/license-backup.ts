@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -161,8 +162,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // Obtener estado del setup
   app.get('/setup', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const setup = await app.prisma.tenantSetup.findUnique({
         where: { tenantId }
@@ -197,8 +198,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // Marcar setup como pagado (para pagos manuales o webhooks)
   app.post('/setup/pay', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = setupPaymentSchema.parse(req.body);
 
@@ -361,8 +362,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // Obtener suscripción actual
   app.get('/subscription', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const subscription = await app.prisma.tenantSubscription.findFirst({
         where: { tenantId },
@@ -420,8 +421,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // Crear nueva suscripción
   app.post('/subscription', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = createSubscriptionSchema.parse(req.body);
 
@@ -495,8 +496,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // Obtener historial de pagos
   app.get('/payments', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const payments = await app.prisma.payment.findMany({
         where: { tenantId },
@@ -514,8 +515,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // Registrar un pago
   app.post('/payments', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const body = recordPaymentSchema.parse(req.body);
 
@@ -733,8 +734,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // Obtener métricas del tenant (para billing dashboard)
   app.get('/metrics', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       // Contar usuarios
       const userCount = await app.prisma.tenantMembership.count({
@@ -1067,8 +1068,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // POST /create-payment - Crear preferencia de pago en MercadoPago
   app.post('/create-payment', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const { planTier, planId, amount } = req.body as { planTier: string; planId: string; amount: number };
 
@@ -1144,8 +1145,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // POST /payment-success - Confirmar pago y habilitar módulos
   app.post('/payment-success', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const { preferenceId, planTier, planId } = req.body as { preferenceId: string; planTier: string; planId: string };
 
@@ -1281,8 +1282,8 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   // Obtener facturas del tenant (para el cliente)
   app.get('/invoices', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const invoices = await (app.prisma as any).invoice.findMany({
         where: { tenantId },

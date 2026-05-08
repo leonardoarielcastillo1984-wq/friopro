@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 
@@ -31,7 +32,7 @@ const processSchema = z.object({
 export const processMapsRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /process-maps ──────────────────────────────────────────
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const maps = await app.runWithDbContext(req, async (tx: any) => {
@@ -48,7 +49,7 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
 
   // ── POST /process-maps ─────────────────────────────────────────
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const body = mapSchema.parse(req.body);
@@ -63,7 +64,7 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
 
   // ── PUT /process-maps/:id ──────────────────────────────────────
   app.put('/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const body = mapSchema.partial().parse(req.body);
@@ -79,7 +80,7 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
 
   // ── DELETE /process-maps/:id ───────────────────────────────────
   app.delete('/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     await app.runWithDbContext(req, async (tx: any) => {
@@ -90,7 +91,7 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
 
   // ── POST /process-maps/:id/processes ──────────────────────────
   app.post('/:id/processes', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    const tenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     let body;
