@@ -141,7 +141,8 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       body.riskCategory = getRiskCategory(body.riskLevel);
     }
 
-    try { body.updatedById = req.auth?.userId ?? null; } catch {}
+    delete body.updatedById;
+    delete body.createdById;
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.update({
@@ -169,7 +170,8 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       body.riskCategory = getRiskCategory(body.riskLevel);
     }
 
-    try { body.updatedById = req.auth?.userId ?? null; } catch {}
+    delete body.updatedById;
+    delete body.createdById;
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.update({
