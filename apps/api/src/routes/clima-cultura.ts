@@ -742,7 +742,7 @@ Respondé en JSON con esta estructura exacta:
       category: z.string().optional(),
       priority: z.enum(['BAJA', 'MEDIA', 'ALTA', 'CRITICA']).default('MEDIA'),
       title: z.string().min(3),
-      content: z.string().min(10),
+      content: z.string().min(5),
       isAnonymous: z.boolean().default(false),
       employeeId: z.string().uuid().optional(),
       sectorId: z.string().uuid().optional(),
