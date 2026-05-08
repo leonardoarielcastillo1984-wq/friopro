@@ -1612,7 +1612,8 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   // GET /license/usage-history - Obtener historial de uso
   app.get('/usage-history', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       // Historial vacío por defecto
       return reply.send({ history: [] });
@@ -1624,7 +1625,8 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   // GET /license/payment-methods - Obtener métodos de pago
   app.get('/payment-methods', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       // Métodos de pago vacío por defecto
       return reply.send({ paymentMethods: [] });

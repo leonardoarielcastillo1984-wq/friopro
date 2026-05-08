@@ -35,7 +35,8 @@ async function genCode(tx: any, tenantId: string): Promise<string> {
 export default async function gestionCambiosRoutes(app: FastifyInstance) {
   // GET /gestion-cambios
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { status, tipo } = req.query as any;
     const where: any = { tenantId: req.db.tenantId, deletedAt: null };
     if (status) where.status = status;
@@ -67,7 +68,8 @@ export default async function gestionCambiosRoutes(app: FastifyInstance) {
 
   // GET /gestion-cambios/:id
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const cambio = await app.runWithDbContext(req, async (tx: any) => {
       return tx.gestionCambio.findFirst({
@@ -104,7 +106,8 @@ export default async function gestionCambiosRoutes(app: FastifyInstance) {
 
   // PUT /gestion-cambios/:id
   app.put('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
     const { id: _id, tenantId: _tid, createdAt: _ca, deletedAt: _da, historial: _h, code: _c, ...data } = body;
@@ -123,7 +126,8 @@ export default async function gestionCambiosRoutes(app: FastifyInstance) {
 
   // PUT /gestion-cambios/:id/status
   app.put('/:id/status', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
     const { status, motivoRechazo, verificacion } = body;
@@ -144,7 +148,8 @@ export default async function gestionCambiosRoutes(app: FastifyInstance) {
 
   // DELETE /gestion-cambios/:id
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     await app.runWithDbContext(req, async (tx: any) => {
       const existing = await tx.gestionCambio.findFirst({ where: { id, tenantId: req.db.tenantId, deletedAt: null } });

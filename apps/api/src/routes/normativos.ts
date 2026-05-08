@@ -808,7 +808,8 @@ export const clauseMappingRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:docId/clause-mappings', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const paramsSchema = z.object({ docId: z.string().uuid() });
     const params = paramsSchema.parse(req.params);

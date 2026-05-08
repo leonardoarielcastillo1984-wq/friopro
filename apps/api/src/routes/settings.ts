@@ -60,7 +60,8 @@ const updateTenantSchema = z.object({
 export const settingsRoutes: FastifyPluginAsync = async (app) => {
   // GET /settings/members — Usuarios del tenant
   app.get('/members', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const members = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
       return tx.tenantMembership.findMany({
@@ -88,7 +89,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /settings/plan — Info del plan actual
   app.get('/plan', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     // Usar prisma (superuser) para acceder a TenantSubscription (bypasea RLS)
     const sub = await app.prisma.tenantSubscription.findFirst({
@@ -120,7 +122,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /settings/tenant — Info del tenant
   app.get('/tenant', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenant = await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
       return tx.tenant.findFirst({
@@ -234,7 +237,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   // ── PATCH /settings/members/:memberId — Actualizar miembro ──
   app.patch('/members/:memberId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const { memberId } = req.params as { memberId: string };
     const body = updateMemberSchema.parse(req.body);
@@ -294,7 +298,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   // ── DELETE /settings/members/:memberId — Eliminar miembro del tenant ──
   app.delete('/members/:memberId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const { memberId } = req.params as { memberId: string };
 
@@ -334,7 +339,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   // ── PATCH /settings/tenant — Actualizar datos del tenant ──
   app.patch('/tenant', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const body = updateTenantSchema.parse(req.body);
 

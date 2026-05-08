@@ -5,7 +5,8 @@ import { z } from 'zod';
 export const reportRoutes: FastifyPluginAsync = async (app) => {
   // GET /reports/ncr — Reporte de No Conformidades
   app.get('/ncr', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const ncrs = await app.runWithDbContext(req, async (tx: any) => {
       return tx.nonConformity.findMany({
@@ -114,7 +115,8 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
   // GET /reports/indicators — Reporte de Indicadores
   app.get('/indicators', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const indicators = await app.runWithDbContext(req, async (tx: any) => {
       return tx.indicator.findMany({
@@ -138,7 +140,8 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
   // GET /reports/compliance — Reporte de Cumplimiento Normativo
   app.get('/compliance', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const data = await app.runWithDbContext(req, async (tx: any) => {
       const docs = await tx.document.findMany({
@@ -181,7 +184,8 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
   // GET /reports/trainings — Reporte de Capacitaciones
   app.get('/trainings', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const trainings = await app.runWithDbContext(req, async (tx: any) => {
       return tx.sgiTraining.findMany({

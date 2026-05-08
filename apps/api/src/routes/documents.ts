@@ -15,7 +15,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const documents = await app.runWithDbContext(req, async (tx: any) => {
       return tx.document.findMany({
@@ -164,7 +165,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
 
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const bodySchema = z.object({
       title: z.string().min(2),

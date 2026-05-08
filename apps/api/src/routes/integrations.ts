@@ -5,7 +5,8 @@ import { z } from 'zod';
 export const integrationRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /integrations/webhooks — List all webhooks for this tenant ──
   app.get('/webhooks', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
 
     const tenantId = req.db.tenantId;
@@ -28,7 +29,8 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
 
   // ── POST /integrations/webhooks — Create webhook ──
   app.post('/webhooks', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
     const tenantId = req.db.tenantId;
     if (req.auth.tenantRole !== 'TENANT_ADMIN') {
@@ -62,7 +64,8 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
 
   // ── PATCH /integrations/webhooks/:id — Update webhook ──
   app.patch('/webhooks/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
     const tenantId = req.db.tenantId;
     if (req.auth.tenantRole !== 'TENANT_ADMIN') {
@@ -97,7 +100,8 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
 
   // ── DELETE /integrations/webhooks/:id — Soft delete webhook ──
   app.delete('/webhooks/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
     const tenantId = req.db.tenantId;
     if (req.auth.tenantRole !== 'TENANT_ADMIN') {
@@ -123,7 +127,8 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
 
   // ── POST /integrations/webhooks/:id/test — Send test message ──
   app.post('/webhooks/:id/test', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
     const tenantId = req.db.tenantId;
 

@@ -213,7 +213,8 @@ export const stakeholdersRoutes = makeCrud('stakeholders', { model: 'stakeholder
 // Endpoint adicional para generar acción CAPA desde stakeholder
 export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:id/generate-action', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const tenantId = req.db.tenantId;
 
@@ -261,7 +262,8 @@ export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/:id/create-nc', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const tenantId = req.db.tenantId;
 
@@ -313,7 +315,8 @@ export const equipmentRoutes = makeCrud('equipment', { model: 'measuringEquipmen
 // -------- CONTEXTO ORGANIZACIONAL (singleton por año) --------
 export const contextRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:year', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { year } = z.object({ year: z.string() }).parse(req.params);
     const y = parseInt(year, 10);
     const tenantId = req.db.tenantId;
@@ -325,7 +328,8 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.put('/:year', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { year } = z.object({ year: z.string() }).parse(req.params);
     const y = parseInt(year, 10);
     const tenantId = req.db.tenantId;
