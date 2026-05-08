@@ -2468,4 +2468,119 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // ── POST /super-admin/tenants/:tenantId/impersonate ──────────────────────────
+  // Genera un accessToken con contexto del tenant seleccionado para que el
+  // SUPER_ADMIN pueda navegar el sistema como si fuera el TENANT_ADMIN.
+  // El token lleva isImpersonating=true y originalUserId para poder salir.
+  app.post('/tenants/:tenantId/impersonate', async (req: FastifyRequest, reply: FastifyReply) => {
+    requireSuperAdmin(req);
+
+    const { tenantId } = z.object({ tenantId: z.string().uuid() }).parse(req.params);
+    const superAdminUserId = (req as any).auth.userId;
+
+    const tenant = await app.prisma.tenant.findUnique({
+      where: { id: tenantId, deletedAt: null },
+      include: {
+        subscriptions: {
+          where: { deletedAt: null },
+          orderBy: { startedAt: 'desc' },
+          take: 1,
+          include: { plan: { select: { id: true, tier: true, name: true } } },
+        },
+      },
+    });
+    if (!tenant) return reply.code(404).send({ error: 'Tenant no encontrado' });
+
+    const superAdmin = await app.prisma.platformUser.findUnique({
+      where: { id: superAdminUserId },
+      select: { id: true, email: true, globalRole: true },
+    });
+    if (!superAdmin) return reply.code(404).send({ error: 'Usuario no encontrado' });
+
+    const impersonatedToken = (app as any).signAccessToken({
+      userId: superAdminUserId,
+      globalRole: 'SUPER_ADMIN',
+      tenantId,
+      tenantRole: 'TENANT_ADMIN',
+      isImpersonating: true,
+      originalUserId: superAdminUserId,
+    });
+
+    await app.prisma.auditEvent.create({
+      data: {
+        tenantId,
+        action: 'TENANT_IMPERSONATION_START',
+        entityType: 'Tenant',
+        entityId: tenantId,
+        actorUserId: superAdminUserId,
+        metadata: {
+          superAdminEmail: superAdmin.email,
+          tenantName: tenant.name,
+          tenantSlug: tenant.slug,
+          ip: req.ip,
+          userAgent: req.headers['user-agent'] || '',
+        },
+      },
+    });
+
+    app.log.warn({ superAdminId: superAdminUserId, tenantId, tenantName: tenant.name }, '[IMPERSONATION] SUPER_ADMIN inició impersonación de tenant');
+
+    return reply.send({
+      accessToken: impersonatedToken,
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        subscription: tenant.subscriptions[0] || null,
+      },
+      impersonating: true,
+    });
+  });
+
+  // ── POST /super-admin/impersonate/exit ────────────────────────────────────────
+  // Restaura la sesión original del SUPER_ADMIN, limpiando el contexto de tenant.
+  app.post('/impersonate/exit', async (req: FastifyRequest, reply: FastifyReply) => {
+    const auth = (req as any).auth;
+    if (!auth?.userId || auth.globalRole !== 'SUPER_ADMIN') {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const tenantId = auth.tenantId;
+    const userId = auth.userId;
+
+    const superAdmin = await app.prisma.platformUser.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, globalRole: true },
+    });
+    if (!superAdmin || superAdmin.globalRole !== 'SUPER_ADMIN') {
+      return reply.code(403).send({ error: 'No autorizado' });
+    }
+
+    const cleanToken = (app as any).signAccessToken({
+      userId,
+      globalRole: 'SUPER_ADMIN',
+    });
+
+    if (tenantId) {
+      await app.prisma.auditEvent.create({
+        data: {
+          tenantId,
+          action: 'TENANT_IMPERSONATION_END',
+          entityType: 'Tenant',
+          entityId: tenantId,
+          actorUserId: userId,
+          metadata: {
+            superAdminEmail: superAdmin.email,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'] || '',
+          },
+        },
+      }).catch(() => {});
+    }
+
+    app.log.info({ superAdminId: userId, tenantId }, '[IMPERSONATION] SUPER_ADMIN salió de impersonación');
+
+    return reply.send({ accessToken: cleanToken, impersonating: false });
+  });
+
 };

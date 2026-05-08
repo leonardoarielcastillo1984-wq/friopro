@@ -13,7 +13,9 @@ import {
   AlertCircle, CheckCircle2, Crown, ChevronDown, ChevronUp,
   UserPlus, Zap, Globe, Wallet, TrendingUp, AlertTriangle,
   Package, RefreshCw, DollarSign, Briefcase, ThumbsUp, ThumbsDown, Trash2,
+  Eye, LogIn,
 } from 'lucide-react';
+import { setImpersonationState, clearImpersonationState } from '@/components/ImpersonationBanner';
 
 type TenantRow = {
   id: string;
@@ -687,6 +689,9 @@ export default function AdminPage() {
   const [llmForm, setLlmForm] = useState({ provider: 'groq', model: 'llama-3.1-8b-instant', apiKey: '', baseUrl: '' });
   const [updatingLLM, setUpdatingLLM] = useState(false);
 
+  // Impersonation state
+  const [impersonating, setImpersonating] = useState<string | null>(null);
+
   useEffect(() => {
     if (!authLoading && user?.globalRole !== 'SUPER_ADMIN') {
       router.push('/dashboard');
@@ -988,6 +993,32 @@ export default function AdminPage() {
     }
   }
 
+  async function handleImpersonate(t: TenantRow) {
+    if (!confirm(`¿Ingresar al sistema como administrador de "${t.name}"?\n\nVerás el sistema exactamente como lo ve el cliente. Se registrará esta acción en el log de auditoría.`)) return;
+    setImpersonating(t.id);
+    try {
+      const res = await apiFetch<{ accessToken: string; tenant: { id: string; name: string; slug: string } }>(
+        `/super-admin/tenants/${t.id}/impersonate`,
+        { method: 'POST' }
+      );
+      const originalToken = localStorage.getItem('accessToken') || '';
+      setImpersonationState({
+        isImpersonating: true,
+        tenantName: t.name,
+        tenantId: t.id,
+        originalToken,
+      });
+      localStorage.setItem('accessToken', res.accessToken);
+      localStorage.setItem('tenantId', t.id);
+      localStorage.setItem('activeTenant', JSON.stringify({ id: t.id, name: t.name, slug: t.slug }));
+      window.dispatchEvent(new Event('impersonation-change'));
+      window.location.href = '/dashboard';
+    } catch (e: any) {
+      setError(e.message || 'Error al iniciar impersonación');
+      setImpersonating(null);
+    }
+  }
+
   async function handleDeleteTenant(tenantId: string) {
     if (!confirm('¿Estás seguro? Esta acción eliminará permanentemente el tenant y todos sus datos.')) {
       return;
@@ -1268,6 +1299,17 @@ export default function AdminPage() {
                     ) : (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-400 font-medium">Sin plan</span>
                     )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleImpersonate(t); }}
+                      disabled={impersonating === t.id}
+                      className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 ml-1"
+                      title={`Ver sistema como administrador de ${t.name}`}
+                    >
+                      {impersonating === t.id
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <Eye className="h-3 w-3" />}
+                      <span className="hidden sm:inline">Ver como</span>
+                    </button>
                     {expandedId === t.id ? <ChevronUp className="h-4 w-4 text-neutral-400" /> : <ChevronDown className="h-4 w-4 text-neutral-400" />}
                   </div>
                 </button>
@@ -1275,7 +1317,30 @@ export default function AdminPage() {
                 {/* Expanded Actions */}
                 {expandedId === t.id && (
                   <div className="px-5 pb-5 bg-neutral-50/50 border-t border-neutral-100">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4">
+
+                    {/* Impersonation Hero Panel */}
+                    <div className="mt-4 mb-4 rounded-xl border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-4 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white flex-shrink-0">
+                          <LogIn className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-amber-900 text-sm">Ingresar como {t.name}</div>
+                          <div className="text-xs text-amber-700 truncate">Ver el sistema exactamente como lo ve el administrador del cliente. Acción auditada.</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleImpersonate(t)}
+                        disabled={impersonating === t.id}
+                        className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0 shadow-sm"
+                      >
+                        {impersonating === t.id
+                          ? <><Loader2 className="h-4 w-4 animate-spin" /> Ingresando...</>
+                          : <><Eye className="h-4 w-4" /> Ver como cliente</>}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-0">
                       {/* Current Admins */}
                       <div className="rounded-xl border border-blue-200 bg-blue-50/30 p-4">
                         <div className="flex items-center gap-2 mb-3">

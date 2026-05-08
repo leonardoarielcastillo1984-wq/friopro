@@ -9,6 +9,8 @@ declare module 'fastify' {
       tenantId?: string;
       globalRole?: string;
       tenantRole?: string;
+      isImpersonating?: boolean;
+      originalUserId?: string;
     } | null;
   }
 
@@ -18,6 +20,8 @@ declare module 'fastify' {
       tenantId?: string;
       globalRole?: string;
       tenantRole?: string;
+      isImpersonating?: boolean;
+      originalUserId?: string;
     }): string;
 
     signRefreshToken(payload: {

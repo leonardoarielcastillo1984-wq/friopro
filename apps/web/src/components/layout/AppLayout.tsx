@@ -15,6 +15,7 @@ import { DemoWatermark } from '@/components/DemoWatermark';
 import { DemoChecklist } from '@/components/DemoChecklist';
 import { DemoExpiredModal } from '@/components/DemoExpiredModal';
 import { SugerenciaBot } from '@/components/clima/SugerenciaBot';
+import ImpersonationBanner, { getImpersonationState } from '@/components/ImpersonationBanner';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -25,7 +26,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const { user, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
   const tenantId = getTenantId();
+
+  useEffect(() => {
+    setIsImpersonating(!!getImpersonationState()?.isImpersonating);
+    const handler = () => setIsImpersonating(!!getImpersonationState()?.isImpersonating);
+    window.addEventListener('impersonation-change', handler);
+    return () => window.removeEventListener('impersonation-change', handler);
+  }, []);
   
   // Skip tenant-dependent components for Super Admin without tenant or on select-tenant page
   const isSelectTenantPage = typeof window !== 'undefined' && window.location.pathname === '/select-tenant';
@@ -61,7 +70,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-100/50">
+    <div className={`min-h-screen bg-neutral-100/50 ${isImpersonating ? 'pt-9' : ''}`}>
+      {/* Impersonation Banner */}
+      <ImpersonationBanner />
+
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div

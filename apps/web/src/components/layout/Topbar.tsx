@@ -7,8 +7,9 @@ import { apiFetch } from '@/lib/api';
 import {
   Bell, MessageSquare, ChevronDown, Loader2, Menu,
   Check, CheckCheck, AlertTriangle, Shield, BrainCircuit,
-  BookOpen, Users, AlertCircle, X,
+  BookOpen, Users, AlertCircle, X, Eye,
 } from 'lucide-react';
+import { getImpersonationState } from '@/components/ImpersonationBanner';
 
 type Notification = {
   id: string;
@@ -64,7 +65,14 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const router = useRouter();
   const { user, loading, logout, tenant, tenantRole } = useAuth();
 
+  const [impersonationState, setImpersonationStateLocal] = useState(() => getImpersonationState());
   const [showNotifs, setShowNotifs] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setImpersonationStateLocal(getImpersonationState());
+    window.addEventListener('impersonation-change', handler);
+    return () => window.removeEventListener('impersonation-change', handler);
+  }, []);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
@@ -166,8 +174,21 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             <Menu className="h-5 w-5" />
           </button>
           <div>
-            <h2 className="text-lg font-semibold text-neutral-900">{match.title}</h2>
-            {match.subtitle && <p className="text-sm text-neutral-500 hidden sm:block">{match.subtitle}</p>}
+            {impersonationState?.isImpersonating ? (
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 font-medium">
+                <Eye className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-neutral-400">SUPER_ADMIN</span>
+                <span className="text-neutral-300">→</span>
+                <span className="text-amber-500 font-bold">IMPERSONANDO</span>
+                <span className="text-neutral-300">→</span>
+                <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">{impersonationState.tenantName}</span>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold text-neutral-900">{match.title}</h2>
+                {match.subtitle && <p className="text-sm text-neutral-500 hidden sm:block">{match.subtitle}</p>}
+              </>
+            )}
           </div>
         </div>
 
