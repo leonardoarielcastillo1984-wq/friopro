@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getTenantId } from '@/lib/api';
 import { Plus, Search, Filter, Users, Building, Briefcase, MoreVertical, Edit2, UserCheck, Eye, EyeOff, Trash2, RefreshCw, UserPlus, Shield, UserX, Download, Upload, FileSpreadsheet } from 'lucide-react';
 
 interface Employee {
@@ -123,68 +123,81 @@ export default function EmployeesPage() {
     }
   };
 
+  // Helper para descargas autenticadas
+  const downloadWithAuth = async (path: string, filename: string) => {
+    const token = typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null;
+    const tenantId = getTenantId();
+    const headers: Record<string, string> = {};
+    if (token) headers['authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['x-tenant-id'] = tenantId;
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+    const response = await fetch(`${apiBase}${path}`, { headers, credentials: 'include' });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as any)?.error || `Error ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
   // Funciones de Importación/Exportación
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetch('/api/hr/employees/template');
-      if (!response.ok) throw new Error('Error al descargar plantilla');
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'plantilla_empleados.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
+      await downloadWithAuth('/hr/employees/template', 'plantilla_empleados.xlsx');
+    } catch (error: any) {
       console.error('Error descargando plantilla:', error);
-      alert('Error al descargar plantilla');
+      alert('Error al descargar plantilla: ' + (error?.message || 'Error desconocido'));
     }
   };
 
   const handleExportEmployees = async () => {
     try {
-      const response = await fetch('/api/hr/employees/export');
-      if (!response.ok) throw new Error('Error al exportar empleados');
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'empleados_export.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
+      await downloadWithAuth('/hr/employees/export', 'empleados_export.xlsx');
+    } catch (error: any) {
       console.error('Error exportando empleados:', error);
-      alert('Error al exportar empleados');
+      alert('Error al exportar empleados: ' + (error?.message || 'Error desconocido'));
     }
   };
 
   const handleImportPreview = async () => {
     if (!importFile) return;
+    const token = typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null;
+    const tenantId = getTenantId();
+    const headers: Record<string, string> = {};
+    if (token) headers['authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['x-tenant-id'] = tenantId;
 
     const formData = new FormData();
     formData.append('file', importFile);
     formData.append('updateExisting', updateExisting.toString());
 
     try {
-      const response = await fetch('/api/hr/employees/import', {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+      const response = await fetch(`${apiBase}/hr/employees/import`, {
         method: 'POST',
+        headers,
+        credentials: 'include',
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Error al procesar archivo');
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error((err as any)?.error || `Error ${response.status}`);
+      }
 
       const data = await response.json();
       setImportPreview(data);
       setImportStep(3);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error en preview de importación:', error);
-      alert('Error al procesar archivo');
+      alert('Error al procesar archivo: ' + (error?.message || 'Error desconocido'));
     }
   };
 
@@ -192,27 +205,19 @@ export default function EmployeesPage() {
     if (!importPreview) return;
 
     try {
-      const response = await fetch('/api/hr/employees/import/confirm', {
+      const data = await apiFetch<{ created: number; updated: number }>('/hr/employees/import/confirm', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employees: importPreview.validEmployees,
-          updateExisting,
-        }),
+        json: { employees: importPreview.validEmployees, updateExisting },
       });
-
-      if (!response.ok) throw new Error('Error al confirmar importación');
-
-      const data = await response.json();
       alert(`Importación exitosa: ${data.created} empleados creados, ${data.updated} actualizados`);
       setShowImportModal(false);
       setImportStep(1);
       setImportFile(null);
       setImportPreview(null);
       loadEmployees();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error confirmando importación:', error);
-      alert('Error al confirmar importación');
+      alert('Error al confirmar importación: ' + (error?.message || 'Error desconocido'));
     }
   };
 

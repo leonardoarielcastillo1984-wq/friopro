@@ -114,11 +114,9 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       body.code = `IPERC-${year}-${String(count + 1).padStart(3, '0')}`;
     }
 
-    const data = { ...body, tenantId: tenantId };
-    try {
-      data.createdById = req.auth?.userId ?? null;
-      data.updatedById = req.auth?.userId ?? null;
-    } catch {}
+    const data: any = { ...body, tenantId: tenantId };
+    delete data.createdById;
+    delete data.updatedById;
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.hazard.create({ data });
