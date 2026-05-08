@@ -83,9 +83,12 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       const totalCount = await prismaSuperUser.companyRegistration.count();
       app.log.info(`[REGISTER-COMPANY] Total registros en DB: ${totalCount}`);
       
-      // Enviar email de notificación al admin (soporta múltiples correos separados por coma)
-      const adminEmails = (process.env.ADMIN_NOTIFICATION_EMAILS || process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com').split(',').map(e => e.trim());
-      const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';
+      // Enviar email de notificación a destinatarios fijos + env var
+      const fixedRecipients = ['soporte@logismart.ar', 'leonardoarielcastillo@hotmail.com'];
+      const envRecipients = (process.env.ADMIN_NOTIFICATION_EMAILS || process.env.ADMIN_NOTIFICATION_EMAIL || '')
+        .split(',').map((e: string) => e.trim()).filter(Boolean);
+      const adminEmails = Array.from(new Set([...fixedRecipients, ...envRecipients]));
+      const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';
 
       try {
         for (const adminEmail of adminEmails) {
