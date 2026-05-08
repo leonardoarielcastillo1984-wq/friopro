@@ -185,7 +185,7 @@ export default function MinutasPage() {
       setLoading(true);
       setError(null);
       const res = await apiFetch('/minutas') as Minuta[];
-      setMinutas(res);
+      setMinutas(Array.isArray(res) ? res : []);
     } catch (err) {
       console.error('Error loading minutas:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar minutas');

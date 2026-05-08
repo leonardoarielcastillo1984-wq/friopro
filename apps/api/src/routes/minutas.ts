@@ -1,14 +1,16 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { createLLMProvider } from '../services/llm/factory.js';
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 
 const emptyToUndefined = <T>(val: T): T | undefined => (val === '' ? undefined : val);
 
 export const minutasRoutes: FastifyPluginAsync = async (app) => {
   // GET /minutas — Listar minutas del tenant
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) return reply.send([]);
 
     const items = await app.runWithDbContext(req, async (tx: any) => {
       return tx.minuta.findMany({
@@ -21,9 +23,9 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /minutas/:id — Obtener minuta por ID
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const tenantId = req.db.tenantId;
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.minuta.findFirst({
@@ -37,8 +39,8 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /minutas — Crear minuta
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const schema = z.object({
       title: z.string().min(1),
@@ -85,9 +87,9 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // PATCH /minutas/:id — Actualizar minuta
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const tenantId = req.db.tenantId;
 
     const schema = z.object({
       title: z.string().optional(),
@@ -135,9 +137,9 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // DELETE /minutas/:id — Eliminar minuta (soft delete)
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const tenantId = req.db.tenantId;
 
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.minuta.update({
@@ -151,9 +153,9 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /minutas/:id/blocks — Obtener bloques de una minuta
   app.get('/:id/blocks', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const tenantId = req.db.tenantId;
 
     // Verificar que la minuta pertenece al tenant
     const minuta = await app.runWithDbContext(req, async (tx: any) => {
@@ -176,9 +178,9 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /minutas/:id/blocks — Crear un bloque en una minuta
   app.post('/:id/blocks', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const tenantId = req.db.tenantId;
 
     // Verificar que la minuta pertenece al tenant
     const minuta = await app.runWithDbContext(req, async (tx: any) => {
@@ -237,9 +239,9 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // PATCH /minutas/:id/blocks/:blockId — Actualizar un bloque
   app.patch('/:id/blocks/:blockId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id, blockId } = req.params as { id: string; blockId: string };
-    const tenantId = req.db.tenantId;
 
     // Verificar que la minuta pertenece al tenant
     const minuta = await app.runWithDbContext(req, async (tx: any) => {
@@ -283,9 +285,9 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // DELETE /minutas/:id/blocks/:blockId — Eliminar un bloque
   app.delete('/:id/blocks/:blockId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id, blockId } = req.params as { id: string; blockId: string };
-    const tenantId = req.db.tenantId;
 
     // Verificar que la minuta pertenece al tenant
     const minuta = await app.runWithDbContext(req, async (tx: any) => {
@@ -307,9 +309,9 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /minutas/:id/summarize — Generar resumen con IA
   app.post('/:id/summarize', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const tenantId = req.db.tenantId;
 
     const minuta = await app.runWithDbContext(req, async (tx: any) => {
       return tx.minuta.findFirst({
@@ -359,9 +361,9 @@ export const minutasRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /minutas/:id/detect-actions — Detectar acciones automáticamente con IA
   app.post('/:id/detect-actions', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const tenantId = req.db.tenantId;
 
     const minuta = await app.runWithDbContext(req, async (tx: any) => {
       return tx.minuta.findFirst({
@@ -469,9 +471,9 @@ Minuta:\n${content}`;
 
   // POST /minutas/:id/blocks/:blockId/create-capa — Crear CAPA desde bloque de acción
   app.post('/:id/blocks/:blockId/create-capa', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id, blockId } = req.params as { id: string; blockId: string };
-    const tenantId = req.db.tenantId;
 
     const block = await app.runWithDbContext(req, async (tx: any) => {
       return tx.minutaBlock.findFirst({
@@ -542,9 +544,9 @@ Minuta:\n${content}`;
 
   // POST /minutas/:id/blocks/:blockId/create-risk — Crear Riesgo desde bloque de decisión
   app.post('/:id/blocks/:blockId/create-risk', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id, blockId } = req.params as { id: string; blockId: string };
-    const tenantId = req.db.tenantId;
 
     const block = await app.runWithDbContext(req, async (tx: any) => {
       return tx.minutaBlock.findFirst({
@@ -583,9 +585,9 @@ Minuta:\n${content}`;
 
   // POST /minutas/:id/create-project — Crear Proyecto desde minuta
   app.post('/:id/create-project', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const tenantId = req.db.tenantId;
 
     const minuta = await app.runWithDbContext(req, async (tx: any) => {
       return tx.minuta.findFirst({
@@ -651,9 +653,9 @@ Minuta:\n${content}`;
 
   // POST /minutas/:id/transcribe — Transcribir audio con IA (Whisper de Ollama)
   app.post('/:id/transcribe', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    const tenantId = req.db.tenantId;
 
     const minuta = await app.runWithDbContext(req, async (tx: any) => {
       return tx.minuta.findFirst({
@@ -716,8 +718,9 @@ Minuta:\n${content}`;
 
   // GET /minutas/departments — Obtener lista de departamentos
   app.get('/departments', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) return reply.send({ departments: [] });
 
     try {
       const departments = await app.runWithDbContext(req, async (tx: any) => {
@@ -742,8 +745,9 @@ Minuta:\n${content}`;
 
   // GET /minutas/employees — Obtener lista de empleados
   app.get('/employees', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId && !isSuperAdmin(req)) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) return reply.send({ employees: [] });
 
     try {
       const employees = await app.runWithDbContext(req, async (tx: any) => {
