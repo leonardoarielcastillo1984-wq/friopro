@@ -385,7 +385,8 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /clauses/:clauseId/evidences ──
   app.get('/clauses/:clauseId/evidences', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db!.tenantId;
 
     const { clauseId } = z.object({ clauseId: z.string().uuid() }).parse(req.params);
@@ -417,7 +418,8 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
   // ── POST /clauses/:clauseId/evidences ──
   app.post('/clauses/:clauseId/evidences', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db!.tenantId;
 
     const { clauseId } = z.object({ clauseId: z.string().uuid() }).parse(req.params);
@@ -460,7 +462,8 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
   // ── DELETE /clauses/:clauseId/evidences/:id ──
   app.delete('/clauses/:clauseId/evidences/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db!.tenantId;
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -477,7 +480,8 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /normativos/:id/compliance-detail ──
   app.get('/:id/compliance-detail', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db!.tenantId;
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -531,7 +535,8 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /normativos/:id/clauses/:clauseId/compliance ──
   app.get('/:id/clauses/:clauseId/compliance', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const tenantId = req.db!.tenantId;
 
     const { clauseId } = z.object({ clauseId: z.string().uuid() }).parse(req.params);
@@ -554,7 +559,8 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /compliance/modules — listar módulos disponibles ──
   app.get('/compliance/modules', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const modules = [
       { key: 'suppliers', label: 'Proveedores', icon: 'Truck' },
@@ -585,7 +591,8 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
   // ── POST /clauses/:clauseId/ai-analyze — Análisis IA de cumplimiento ──
   app.post('/clauses/:clauseId/ai-analyze', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (requiresTenantContext(req) && !req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const tenantId = req.db!.tenantId;
     const paramsSchema = z.object({ clauseId: z.string().uuid() });

@@ -342,9 +342,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         globalRole: req.auth?.globalRole
       });
 
-      if (requiresTenantContext(req) && !req.db?.tenantId) {
-        console.log('[DOCUMENTS_UPLOAD] Tenant context required - no tenantId and not superadmin');
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       }
 
       const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);

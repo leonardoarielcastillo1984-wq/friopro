@@ -21,8 +21,8 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       // TEMP: deshabilitar requireFeature para diagnosticar
       // app.requireFeature(req, FEATURE_KEY);
 
-      const tenantId = req.db?.tenantId || (req.headers['x-tenant-id'] as string);
-      if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
 
       const normativos = await app.prisma.normativeStandard.findMany({
         where: { tenantId, deletedAt: null },

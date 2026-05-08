@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { createLoggingLLMProvider } from '../services/llm/factory.js';
@@ -40,7 +41,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
         { role: 'user', content: message },
       ];
 
-      const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId ?? null;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       const llm = createLoggingLLMProvider(req.tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'centro-ayuda');
 
       // Verificar si soporta streaming
@@ -115,7 +116,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
         { role: 'user', content: message },
       ];
 
-      const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId ?? null;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       const llm = createLoggingLLMProvider(req.tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'centro-ayuda');
       const result = await llm.chat(messages, 1500);
 
@@ -220,7 +221,7 @@ async function detectAndExecuteTool(
   req: FastifyRequest
 ): Promise<{ toolName: string; summary: string } | null> {
   const msg = message.toLowerCase();
-  const tenantId = req.headers['x-tenant-id'] as string || req.db?.tenantId;
+  const tenantId = await getEffectiveTenantId(req, app.prisma);
   if (!tenantId) return null;
 
   const prisma = (req.server as any).prisma;

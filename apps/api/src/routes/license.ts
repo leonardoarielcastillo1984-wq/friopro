@@ -545,7 +545,7 @@ export async function licenseRoutes(app: FastifyInstance) {
   // Verificar si tiene acceso a un módulo
   app.get('/check-access/:module', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       const userId = (req as any).auth?.userId;
       if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
 
@@ -648,7 +648,7 @@ export async function licenseRoutes(app: FastifyInstance) {
   // Obtener notificaciones de licencia
   app.get('/notifications', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       const userId = (req as any).auth?.userId;
       if (!tenantId || !userId) return reply.code(401).send({ error: 'Unauthorized' });
 
@@ -967,7 +967,7 @@ export async function licenseRoutes(app: FastifyInstance) {
   // GET /api/modules/access - Obtener acceso a módulos
   app.get('/modules/access', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       const globalRole = (req as any).auth?.globalRole;
       
       console.log('[/modules/access] tenantId:', tenantId);
@@ -1313,7 +1313,7 @@ export async function licenseRoutes(app: FastifyInstance) {
   // Crear preferencia de pago
   app.post('/checkout', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = (req as any).auth?.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       const userId = (req as any).auth?.userId;
       
       console.log('[CHECKOUT] Iniciando checkout:', { tenantId, userId });
@@ -1494,7 +1494,7 @@ export async function licenseRoutes(app: FastifyInstance) {
   app.post('/activate', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = req.body as any;
-      let tenantId = req.db?.tenantId || body.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
       // Fallback para testing: buscar primer tenant si no hay contexto
       if (!tenantId) {
         const firstTenant = await app.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });

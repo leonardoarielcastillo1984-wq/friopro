@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getNCRIntelligenceService } from '../services/ncrIntelligence.js';
@@ -10,7 +11,7 @@ export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
   app.post('/analyze-ncr/:ncrId', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
@@ -96,7 +97,7 @@ export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
   app.get('/ncr-suggestion/:ncrId', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }

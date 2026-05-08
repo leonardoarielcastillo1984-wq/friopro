@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 // ──────────────────────────────────────────────────────────────
 // Rutas de Auditoría IA
 // ──────────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     // Verificar tenant context - primero intentar req.db, luego el token JWT
-    const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
@@ -126,7 +127,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     // Verificar tenant context - primero intentar req.db, luego el token JWT
-    const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
@@ -168,7 +169,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     // Verificar tenant context - primero intentar req.db, luego el token JWT
-    const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
@@ -233,7 +234,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     // Verificar tenant context - primero intentar req.db, luego el token JWT
-    const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
@@ -295,7 +296,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
   app.delete('/findings/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
@@ -353,7 +354,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
   app.post('/findings/:findingId/convert-to-ncr', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
 
-    const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
@@ -452,7 +453,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     // Verificar tenant context - primero intentar req.db, luego el token JWT
-    const effectiveTenantId = req.db?.tenantId ?? req.auth?.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!effectiveTenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }

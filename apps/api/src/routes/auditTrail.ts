@@ -42,8 +42,8 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/trail/:entityType/:entityId',
     async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId)
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
         const { entityType, entityId } = req.params as {
@@ -81,8 +81,8 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /audit-trail/logs ──
   // Get audit logs with flexible filtering
   app.get('/logs', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId)
-      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     try {
       const query = auditLogsQuerySchema.parse(req.query);
@@ -127,8 +127,8 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/summary/users',
     async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId)
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
         const query = auditSummaryQuerySchema.parse(req.query);
@@ -167,8 +167,8 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/summary/entities',
     async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId)
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
         const query = auditSummaryQuerySchema.parse(req.query);
@@ -203,8 +203,8 @@ export const auditTrailRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /audit-trail/export ──
   // Export audit logs as CSV
   app.get('/export', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId)
-      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     try {
       const query = auditLogsQuerySchema.parse(req.query);
