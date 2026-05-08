@@ -7,10 +7,6 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
   app.get('/webhooks', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
-
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const webhooks = await app.runWithDbContext(req, async (tx: any) => {
       return tx.webhookConfig.findMany({
