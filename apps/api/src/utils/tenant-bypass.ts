@@ -77,16 +77,27 @@ export async function getEffectiveTenantId(req: FastifyRequest, prisma: any): Pr
   
   // Si es SUPER_ADMIN sin tenantId, buscar el primer tenant disponible
   console.log('[TENANT_BYPASS] SUPER_ADMIN without tenantId, selecting first available tenant');
-  const firstTenant = await prisma.tenant.findFirst({
-    where: { status: 'ACTIVE', deletedAt: null },
-    select: { id: true }
+  
+  // Intentar primero con tenant ACTIVE
+  let firstTenant = await prisma.tenant.findFirst({
+    where: { status: 'ACTIVE' },
+    select: { id: true },
+    orderBy: { createdAt: 'asc' }
   });
+
+  // Si no hay ACTIVE, tomar cualquier tenant
+  if (!firstTenant) {
+    firstTenant = await prisma.tenant.findFirst({
+      select: { id: true },
+      orderBy: { createdAt: 'asc' }
+    });
+  }
   
   if (firstTenant) {
     console.log('[TENANT_BYPASS] Selected tenant for SUPER_ADMIN:', firstTenant.id);
     return firstTenant.id;
   }
   
-  console.log('[TENANT_BYPASS] No active tenant found for SUPER_ADMIN');
+  console.log('[TENANT_BYPASS] No tenant found for SUPER_ADMIN');
   return null;
 }
