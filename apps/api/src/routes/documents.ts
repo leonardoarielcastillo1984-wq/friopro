@@ -343,16 +343,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       });
 
       const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-      }
-
-      const effectiveTenantId = await getEffectiveTenantId(req, app.prisma);
-      console.log('[DOCUMENTS_UPLOAD] Effective tenantId:', effectiveTenantId);
-      
-      if (!effectiveTenantId) {
-        console.log('[DOCUMENTS_UPLOAD] No tenant available for operation');
-        return reply.code(400).send({ error: 'No tenant available for operation' });
-      }
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       let data;
       try {
@@ -388,7 +379,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const fileBuffer = Buffer.concat(chunks);
 
     // Verificar cuota de almacenamiento antes de guardar
-    const quota = await checkStorageQuota((app as any).prisma, effectiveTenantId, fileBuffer.length);
+    const quota = await checkStorageQuota((app as any).prisma, tenantId, fileBuffer.length);
     if (!quota.allowed) {
       const usedMB = (quota.used / 1024 / 1024).toFixed(1);
       const limitMB = (quota.limit / 1024 / 1024 / 1024).toFixed(0);
@@ -400,13 +391,13 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
     // Save file to disk — volumen externo con estructura por tenant
     const storageBase = process.env.STORAGE_LOCAL_PATH || '/app/uploads';
-    const uploadDir = path.resolve(storageBase, effectiveTenantId, 'documentos');
+    const uploadDir = path.resolve(storageBase, tenantId, 'documentos');
     await fs.mkdir(uploadDir, { recursive: true });
 
     const fileName = `${Date.now()}-${data.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const filePath = path.join(uploadDir, fileName);
     await fs.writeFile(filePath, fileBuffer);
-    await incrementStorageUsed((app as any).prisma, effectiveTenantId, fileBuffer.length);
+    await incrementStorageUsed((app as any).prisma, tenantId, fileBuffer.length);
 
     // Extract text from file
     let content = '';
@@ -458,7 +449,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const created = await app.runWithDbContext(req, async (tx: any) => {
       const doc = await tx.document.create({
         data: {
-          tenantId: effectiveTenantId,
+          tenantId: tenantId,
           title,
           type: docType,
           content,
