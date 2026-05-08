@@ -264,8 +264,7 @@ export default function DocumentDetailPage() {
     }
     
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const res = await fetch(`${apiBase}/documents/${doc.id}/download`, {
+      const res = await fetch(`/api/documents/${doc.id}/download`, {
         credentials: 'include',
       });
       
@@ -524,8 +523,7 @@ export default function DocumentDetailPage() {
 
   async function downloadVersion(versionId: string, fileName: string) {
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const res = await fetch(`${apiBase}/documents/${id}/versions/${versionId}/download`, {
+      const res = await fetch(`/api/documents/${id}/versions/${versionId}/download`, {
         credentials: 'include',
       });
       if (!res.ok) throw new Error(`Error HTTP ${res.status}`);

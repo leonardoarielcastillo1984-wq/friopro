@@ -42,7 +42,7 @@ function getRiskLabel(level: number): string {
 }
 
 function apiBase() {
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+  return '/api';
 }
 
 export default function RiesgosPage() {
@@ -278,7 +278,7 @@ export default function RiesgosPage() {
       const token = typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null;
       const tenantId = typeof window !== 'undefined' ? window.localStorage.getItem('tenantId') : null;
 
-      const res = await fetch(`${apiBase()}/export/risks?${params.toString()}`, {
+      const res = await fetch(`/api/export/risks?${params.toString()}`, {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -317,7 +317,7 @@ export default function RiesgosPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch(`${apiBase()}/risks/import`, {
+      const res = await fetch(`/api/risks/import`, {
         method: 'POST',
         credentials: 'include',
         headers: {

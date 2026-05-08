@@ -130,11 +130,16 @@ export default function EmployeesPage() {
     const headers: Record<string, string> = {};
     if (token) headers['authorization'] = `Bearer ${token}`;
     if (tenantId) headers['x-tenant-id'] = tenantId;
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-    const response = await fetch(`${apiBase}${path}`, { headers, credentials: 'include' });
+    // Usar /api como prefijo relativo (igual que apiFetch) — Nginx lo reescribe al backend
+    // NO usar process.env.NEXT_PUBLIC_API_URL que se embebe en build-time y puede quedar stale
+    const response = await fetch(`/api${path}`, { headers, credentials: 'include' });
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error((err as any)?.error || `Error ${response.status}`);
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error((err as any)?.error || `Error ${response.status}`);
+      }
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
@@ -179,8 +184,7 @@ export default function EmployeesPage() {
     formData.append('updateExisting', updateExisting.toString());
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const response = await fetch(`${apiBase}/hr/employees/import`, {
+      const response = await fetch(`/api/hr/employees/import`, {
         method: 'POST',
         headers,
         credentials: 'include',

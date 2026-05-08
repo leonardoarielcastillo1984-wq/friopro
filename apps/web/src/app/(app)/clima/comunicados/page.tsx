@@ -133,7 +133,6 @@ export default function ComunicadosPage() {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
       const headers: Record<string, string> = {};
       const token = typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null;
       if (token) headers['authorization'] = `Bearer ${token}`;
@@ -141,7 +140,7 @@ export default function ComunicadosPage() {
       if (csrf) headers['x-csrf-token'] = csrf;
       const tenantId = getTenantId();
       if (tenantId) headers['x-tenant-id'] = tenantId;
-      const res = await fetch(`${apiBase}/clima/comunicados/upload`, {
+      const res = await fetch(`/api/clima/comunicados/upload`, {
         method: 'POST',
         body: fd,
         headers,
