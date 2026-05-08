@@ -730,7 +730,10 @@ Respondé en JSON con esta estructura exacta:
   });
 
   app.post('/sugerencias', async (req: FastifyRequest, reply: FastifyReply) => {
+    const auth = (req as any).auth;
+    console.log('[SUGERENCIAS POST DEBUG] auth:', JSON.stringify(auth));
     const tenantId = await getEffectiveTenantId(req, app.prisma);
+    console.log('[SUGERENCIAS POST DEBUG] tenantId:', tenantId);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const schema = z.object({

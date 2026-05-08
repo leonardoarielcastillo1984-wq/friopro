@@ -19,6 +19,7 @@ const ALWAYS_ALLOWED_PATHS = [
   '/mercadopago-config',
   '/company-registrations',
   '/register-company',
+  '/clima', // Temporal: permitir acceso a clima para pruebas
 ];
 
 const ALWAYS_ALLOWED_METHODS = ['GET', 'HEAD', 'OPTIONS'];
