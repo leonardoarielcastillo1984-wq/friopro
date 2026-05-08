@@ -315,6 +315,8 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:year', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { year } = req.params as { year: string };
+    const y = parseInt(year, 10);
 
     const item = await app.runWithDbContext(req, async (tx: any) => {
       return tx.organizationContext.findUnique({ where: { tenantId_year: { tenantId, year: y } } });
@@ -325,6 +327,8 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
   app.put('/:year', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { year } = req.params as { year: string };
+    const y = parseInt(year, 10);
     const rawBody = req.body;
     const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody as any;
 
