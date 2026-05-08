@@ -165,7 +165,7 @@ export default function MinutasPage() {
   async function loadEmployees() {
     try {
       const res = await apiFetch('/minutas/employees') as { employees: any[] };
-      setEmployees(res.employees);
+      setEmployees(Array.isArray(res?.employees) ? res.employees : []);
     } catch (err) {
       console.error('Error loading employees:', err);
     }
@@ -174,7 +174,7 @@ export default function MinutasPage() {
   async function loadDepartments() {
     try {
       const res = await apiFetch('/minutas/departments') as { departments: any[] };
-      setDepartments(res.departments);
+      setDepartments(Array.isArray(res?.departments) ? res.departments : []);
     } catch (err) {
       console.error('Error loading departments:', err);
     }
