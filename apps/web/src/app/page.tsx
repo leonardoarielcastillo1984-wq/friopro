@@ -57,11 +57,11 @@ export default function Home() {
   const [formData, setFormData] = useState({ companyName: '', email: '', phone: '' });
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/landing/settings`)
+    fetch(`/api/landing/settings`)
       .then(r => r.json())
       .then(data => { if (data.settings) setLandingSettings(data.settings); })
       .catch(() => {});
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/landing/stats`)
+    fetch(`/api/landing/stats`)
       .then(r => r.json())
       .then(data => { if (data) setRealStats(data); })
       .catch(() => {});
@@ -90,7 +90,7 @@ export default function Home() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/register-company`, {
+      const res = await fetch(`/api/register-company`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyName: formData.companyName, socialReason: formData.companyName, email: formData.email, phone: formData.phone, rut: `PENDIENTE-${Date.now()}`, website: '', address: 'N/A', primaryColor: '#E8541A' }),

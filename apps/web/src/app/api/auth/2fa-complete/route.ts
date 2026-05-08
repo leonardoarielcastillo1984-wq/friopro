@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-function getApiBase() {
-  const raw = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:3002';
-  return raw.endsWith('/') ? raw.slice(0, -1) : raw;
-}
+import { getServerApiBase } from '@/lib/server-api';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward to API server
-    const response = await fetch(`${getApiBase()}/api/auth/2fa-complete`, {
+    const response = await fetch(`${getServerApiBase()}/api/auth/2fa-complete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionToken }),

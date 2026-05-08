@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerApiBase } from '@/lib/server-api';
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,9 +33,7 @@ export async function POST(req: NextRequest) {
       requestBody.append('logo', data.logo as File);
     }
 
-    // Enviar al API de Fastify (usar API_URL server-side, no la pública)
-    const apiUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-    const response = await fetch(`${apiUrl}/register-company`, {
+    const response = await fetch(`${getServerApiBase()}/register-company`, {
       method: 'POST',
       body: requestBody,
     });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerApiBase } from '@/lib/server-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Forward to API server with tenant context
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:3002'}/dashboard`, {
+    const response = await fetch(`${getServerApiBase()}/dashboard`, {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${accessToken}`,

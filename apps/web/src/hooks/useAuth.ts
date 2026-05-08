@@ -21,10 +21,6 @@ interface AuthContextType {
   isLoading: boolean;
 }
 
-function getApiUrl(): string {
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-}
-
 export function useAuth(): AuthContextType {
   const [requires2FA, setRequires2FA] = useState(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -33,7 +29,7 @@ export function useAuth(): AuthContextType {
   const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${getApiUrl()}/api/auth/login`, {
+      const response = await fetch(`/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -88,7 +84,7 @@ export function useAuth(): AuthContextType {
       if (!token) throw new Error('2FA session expired');
 
       // Step 1: Verify the TOTP/Recovery code
-      const verifyResponse = await fetch(`${getApiUrl()}/api/2fa/verify`, {
+      const verifyResponse = await fetch(`/api/2fa/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionToken: token, token: code })
@@ -100,7 +96,7 @@ export function useAuth(): AuthContextType {
       }
 
       // Step 2: Complete 2FA login and get auth tokens
-      const tokensResponse = await fetch(`${getApiUrl()}/api/auth/2fa-complete`, {
+      const tokensResponse = await fetch(`/api/auth/2fa-complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionToken: token })

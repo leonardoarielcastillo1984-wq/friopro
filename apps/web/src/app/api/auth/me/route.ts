@@ -1,36 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerApiBase } from '@/lib/server-api';
 
 export const dynamic = 'force-dynamic';
 
-function getApiBases() {
-  // Prioritize API_URL (server-side internal URL) over NEXT_PUBLIC_API_URL (browser URL)
-  // because this code runs on the server and may not reach the public URL.
-  // Also filter out relative URLs like "/api" which only work in the browser.
-  const isAbsolute = (v?: string) => !!v && /^https?:\/\//.test(v);
-  const candidates = [
-    process.env.API_URL,
-    process.env.NEXT_PUBLIC_API_URL,
-    'http://localhost:3002',
-  ];
-  const bases = candidates
-    .filter((v): v is string => isAbsolute(v))
-    .map((v) => (v.endsWith('/') ? v.slice(0, -1) : v));
-  return Array.from(new Set(bases));
-}
-
 async function fetchWithFallback(path: string, init: RequestInit) {
-  const bases = getApiBases();
-  let lastError: unknown = null;
-
-  for (const base of bases) {
-    try {
-      return await fetch(`${base}${path}`, init);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError ?? new Error('API unreachable');
+  return fetch(`${getServerApiBase()}${path}`, init);
 }
 
 export async function GET(request: NextRequest) {
@@ -67,7 +41,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('❌ [Route Handler] Error:', error);
     return NextResponse.json(
-      { error: 'No se pudo conectar con la API (puertos 3001/3002)' },
+      { error: 'No se pudo conectar con la API' },
       { status: 500 }
     );
   }

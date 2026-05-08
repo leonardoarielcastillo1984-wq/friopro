@@ -8,17 +8,9 @@ let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
 function normalizePath(path: string) {
-  const base = apiBase();
-  // Only prepend /api to auth paths if the base URL is NOT already /api (to avoid /api/api/...)
-  if (base === '/api') {
-    // Base already includes /api, so just return auth paths as-is
-    if (path === '/auth') return '/auth';
-    if (path.startsWith('/auth/')) return path;
-    return path;
-  }
-  // For absolute base URLs (e.g. http://localhost:3002), prepend /api to auth paths
-  if (path === '/auth') return '/api/auth';
-  if (path.startsWith('/auth/')) return `/api${path}`;
+  // apiBase() always returns '/api' — never prepend /api again to avoid /api/api/...
+  if (path === '/auth') return '/auth';
+  if (path.startsWith('/auth/')) return path;
   return path;
 }
 
@@ -101,7 +93,10 @@ export function getTenantId() {
 }
 
 function apiBase() {
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+  // Always use relative /api proxy — resolved by Nginx on both testing and production.
+  // NEVER use process.env.NEXT_PUBLIC_API_URL here: it is embedded at build-time and
+  // may contain a stale absolute URL (e.g. localhost:3002) that breaks client-side fetches.
+  return '/api';
 }
 
 async function tryRefreshToken(): Promise<boolean> {
@@ -155,7 +150,7 @@ async function rawFetch<T>(
     ...(init.headers as any),
   };
 
-  // Bearer auth for cross-origin API calls (localhost:3000 -> localhost:3001)
+  // Attach Bearer token from localStorage
   if (typeof window !== 'undefined') {
     const token = window.localStorage.getItem('accessToken');
     if (token && !headers.authorization && !headers.Authorization) {
@@ -200,33 +195,18 @@ async function rawFetch<T>(
     console.log('  Auth Token:', headers.authorization ? 'present' : 'missing');
   }
 
-  const primaryBase = apiBase();
-  const fallbackBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+  const base = apiBase();
 
-  const doFetch = (base: string) =>
-    fetch(`${base}${normalizedPath}`, {
+  try {
+    return await fetch(`${base}${normalizedPath}`, {
       ...init,
       headers,
       credentials: 'include',
       body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
     });
-
-  try {
-    const res = await doFetch(primaryBase);
-    return res;
   } catch (err) {
-    // If primary fetch fails, retry with fallback
-    if (primaryBase !== fallbackBase) {
-      return await doFetch(fallbackBase);
-    }
-    // Debug logging for clause mapping errors
     if (normalizedPath.includes('clause-mappings')) {
-      console.log('❌ [API] Clause mapping error:');
-      console.log('  Path:', normalizedPath);
-      console.log('  Method:', method);
-      console.log('  Error:', err);
-      console.log('  Error name:', (err as any)?.name || 'unknown');
-      console.log('  Error message:', (err as any)?.message || 'no message');
+      console.log('❌ [API] Clause mapping error:', normalizedPath, err);
     }
     throw err;
   }
@@ -289,10 +269,7 @@ export async function apiFetch<T>(
         try {
           retryData = retryText ? JSON.parse(retryText) : null;
         } catch {
-          if (!retryRes.ok) {
-            if (method === 'GET') return {} as T;
-            throw new Error(`HTTP ${retryRes.status}`);
-          }
+          if (!retryRes.ok) throw new Error(`HTTP ${retryRes.status}`);
           return null as T;
         }
 
