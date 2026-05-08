@@ -1085,6 +1085,35 @@ Respondé en JSON con esta estructura exacta:
       data: { status: 'COMPLETED', completedAt: new Date() },
     });
 
+    // Notificación in-app a los admins del tenant
+    (async () => {
+      try {
+        const adminMemberships = await app.prisma.tenantMembership.findMany({
+          where: { tenantId: recipient.survey.tenantId, role: 'TENANT_ADMIN', status: 'ACTIVE', deletedAt: null },
+          select: { userId: true },
+        });
+        const appUrl = process.env.CORS_ORIGIN || process.env.WEB_BASE_URL || 'https://logismart.ar';
+        const surveyData = recipient.survey;
+        const respondentName = surveyData.isAnonymous ? 'Un empleado (anónimo)' : (recipient.name || 'Un empleado');
+        for (const { userId } of adminMemberships) {
+          await app.prisma.notification.create({
+            data: {
+              tenantId: surveyData.tenantId,
+              userId,
+              type: 'SYSTEM_ALERT',
+              title: `Encuesta completada: ${surveyData.title}`,
+              message: `${respondentName} completó la encuesta "${surveyData.title}".`,
+              link: `${appUrl}/clima/encuestas/${recipient.surveyId}/resultados`,
+              entityType: 'clima_survey',
+              entityId: recipient.surveyId,
+            },
+          });
+        }
+      } catch (e) {
+        app.log.error(`[CLIMA] Error creando notificación in-app: ${e}`);
+      }
+    })();
+
     // Análisis IA de sentimiento en background
     const textAnswers = answersData.filter(a => a.textValue).map(a => a.textValue as string);
     if (textAnswers.length > 0) {
