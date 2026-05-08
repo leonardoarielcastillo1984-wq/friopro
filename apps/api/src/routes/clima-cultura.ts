@@ -734,6 +734,7 @@ Respondé en JSON con esta estructura exacta:
     console.log('[SUGERENCIAS POST DEBUG] auth:', JSON.stringify(auth));
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     console.log('[SUGERENCIAS POST DEBUG] tenantId:', tenantId);
+    console.log('[SUGERENCIAS POST DEBUG] body:', JSON.stringify(req.body));
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const schema = z.object({
