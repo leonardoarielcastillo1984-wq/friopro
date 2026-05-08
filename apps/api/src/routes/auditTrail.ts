@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 // ──────────────────────────────────────────────────────────────
 // Audit Trail Viewer Routes
 // ──────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 
@@ -50,8 +51,8 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/projects
   app.get('/projects', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { status, priority, origin } = req.query as any;
 
     const where: any = { tenantId, deletedAt: null };
@@ -70,8 +71,8 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // POST /project360/projects
   app.post('/projects', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
     const data = createProjectSchema.parse(body);
@@ -165,8 +166,8 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // GET /project360/stats
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const where = { tenantId, deletedAt: null };
 
     const [total, active, completed, overdue, critical] = await Promise.all([

@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import XLSX from 'xlsx';
@@ -263,8 +264,8 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // GET /risks/:id — Detalle
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const risk = await app.runWithDbContext(req, async (tx: any) => {
@@ -284,8 +285,8 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // POST /risks — Crear
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const body = createSchema.parse(req.body);
     const riskLevel = body.probability * body.impact;
@@ -323,8 +324,8 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // POST /risks/import — Importar riesgos desde Excel (primera hoja)
   app.post('/import', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const data = await (req as any).file();
     if (!data) return reply.code(400).send({ error: 'No file uploaded' });
@@ -499,8 +500,8 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // PATCH /risks/:id — Actualizar
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = updateSchema.parse(req.body);
 
@@ -550,8 +551,8 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /risks/:id — Soft delete
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const deleted = await app.runWithDbContext(req, async (tx: any) => {

@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
@@ -45,9 +46,9 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /reports/risks — Reporte de Riesgos
   app.get('/risks', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const query = z
       .object({

@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { notifyNcrAssigned } from '../services/notifyService.js';
@@ -91,8 +92,8 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // POST /ncr — Crear no conformidad
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     let body: any;
     try {
@@ -156,8 +157,8 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // GET /ncr/:id — Detalle
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const ncr = await app.runWithDbContext(req, async (tx: any) => {
@@ -177,8 +178,8 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // PATCH /ncr/:id — Actualizar no conformidad
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
@@ -232,8 +233,8 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /ncr/:id — Eliminar no conformidad (soft delete)
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     // app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 

@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
@@ -1589,9 +1590,9 @@ export async function licenseRoutes(app: FastifyInstance) {
   // GET /license/usage - Obtener uso de licencia
   app.get('/usage', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-      const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       // Datos básicos de uso
       return reply.send({

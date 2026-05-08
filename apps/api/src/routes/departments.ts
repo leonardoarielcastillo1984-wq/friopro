@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';

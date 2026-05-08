@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import argon2 from 'argon2';
@@ -1289,9 +1290,9 @@ export default async function hrRoutes(fastify: FastifyInstance) {
 
   // GET /hr/competencies/matrix - all data needed for the versatility matrix
   fastify.get('/competencies/matrix', async (req, reply) => {
-    if (!req.db?.tenantId) return reply.status(403).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const prisma = req.db.prisma;
 
     const [employees, competencies, positionCompetencies, employeeCompetencies] = await Promise.all([

@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 /**
  * Rutas específicas para calibraciones de equipos de medición
  * Incluye CRUD de calibraciones y upload de certificados
@@ -11,8 +12,8 @@ import { existsSync } from 'fs';
 export const calibrationsRoutes: FastifyPluginAsync = async (app) => {
   // GET /calibrations/:equipmentId - Obtener calibraciones de un equipo
   app.get('/:equipmentId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { equipmentId } = z.object({ equipmentId: z.string().uuid() }).parse(req.params);
 
     const calibrations = await app.runWithDbContext(req, async (tx: any) => {
@@ -27,8 +28,8 @@ export const calibrationsRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /calibrations - Crear nueva calibración
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     let body = req.body as any;
     if (typeof body === 'string') {
       try {
@@ -78,8 +79,8 @@ export const calibrationsRoutes: FastifyPluginAsync = async (app) => {
 
   // PATCH /calibrations/:id - Actualizar calibración
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     let body = req.body as any;
     if (typeof body === 'string') {
@@ -135,8 +136,8 @@ export const calibrationsRoutes: FastifyPluginAsync = async (app) => {
 
   // DELETE /calibrations/:id - Eliminar calibración
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     try {
@@ -158,8 +159,8 @@ export const calibrationsRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /calibrations/upload - Subir certificado de calibración
   app.post('/upload', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     try {
       const data = await req.file();

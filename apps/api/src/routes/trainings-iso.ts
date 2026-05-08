@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
@@ -14,9 +15,9 @@ async function generateTrainingCode(tx: any, tenantId: string): Promise<string> 
 export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
   // GET /trainings — Listar capacitaciones
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const query = z.object({ 
       status: z.string().optional(),
       competencyId: z.string().optional(),
@@ -46,9 +47,9 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /trainings/stats — Estadísticas ISO
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     
     const [trainings, satisfactionAvg, effectivenessStats] = await app.runWithDbContext(req, async (tx: any) => {
       const trainings = await tx.sgiTraining.findMany({
@@ -106,9 +107,9 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /trainings/competencies — Obtener competencias disponibles
   app.get('/competencies', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const competencies = await app.prisma.competency.findMany({
       orderBy: { name: 'asc' },
       select: { id: true, name: true, category: true, description: true },
@@ -119,9 +120,9 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /trainings/:id — Detalle completo ISO
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const training = await app.runWithDbContext(req, async (tx: any) => {
@@ -154,9 +155,9 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /trainings — Crear capacitación ISO completa
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const schema = z.object({
       title: z.string().min(2),
       description: z.string().optional(),
@@ -224,9 +225,9 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /trainings/:id/attendees — Registrar asistencia
   app.post('/:id/attendees', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = z.object({
       userIds: z.array(z.string().uuid()),
@@ -298,9 +299,9 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /trainings/:id/satisfaction — Evaluación de satisfacción
   app.post('/:id/satisfaction', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = z.object({
       contentRelevance: z.number().int().min(1).max(5).optional(),
@@ -329,9 +330,9 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
   // POST /trainings/:id/effectiveness — Evaluación de efectividad
   app.post('/:id/effectiveness', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = z.object({
       attendeeId: z.string().uuid().optional(),
@@ -383,9 +384,9 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /trainings/:id/attendance-sheet — Generar lista de asistencia
   app.get('/:id/attendance-sheet', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const training = await app.prisma.sgiTraining.findFirst({
@@ -428,9 +429,9 @@ export const capacitacionesRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /trainings/iso-report — Reporte de auditoría ISO
   app.get('/iso-report', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const query = z.object({
       year: z.string().optional(),
       category: z.string().optional(),

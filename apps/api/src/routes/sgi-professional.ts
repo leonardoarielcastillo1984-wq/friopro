@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 /**
  * Rutas CRUD para los 9 módulos SGI profesionales agregados en Abr 2026.
  * Usa el mismo patrón que ncr.ts: runWithDbContext + soft delete + auto-code por año.
@@ -26,8 +27,8 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
   return async (app) => {
     // LIST
     app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-      const tenantId = req.db.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       const query = req.query as Record<string, string>;
       const where: any = { tenantId, deletedAt: null };
       if (opts.filterableFields) {
@@ -48,8 +49,8 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 
     // CREATE
     app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-      const tenantId = req.db.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       let body = req.body as any;
       // Parse body if it's a string JSON
       if (typeof body === 'string') {
@@ -113,8 +114,8 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 
     // GET by id
     app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-      const tenantId = req.db.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
       const item = await app.runWithDbContext(req, async (tx: any) => {
         return tx[opts.model].findFirst({ where: { id, tenantId, deletedAt: null } });
@@ -125,8 +126,8 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 
     // UPDATE
     app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-      const tenantId = req.db.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
       const body = req.body as any;
 
@@ -188,8 +189,8 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 
     // DELETE (soft)
     app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-      const tenantId = req.db.tenantId;
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
       const result = await app.runWithDbContext(req, async (tx: any) => {
@@ -352,8 +353,8 @@ export const contextRoutes: FastifyPluginAsync = async (app) => {
 // -------- CALENDARIO AGREGADOR --------
 export const calendarRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const from = (req.query as any)?.from ? new Date((req.query as any).from) : new Date();
     const to = (req.query as any)?.to ? new Date((req.query as any).to) : new Date(Date.now() + 180 * 24 * 3600 * 1000);

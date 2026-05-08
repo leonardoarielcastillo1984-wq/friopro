@@ -1,12 +1,13 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 
 export async function registerSurveyRoutes(app: FastifyInstance) {
   // GET /surveys - Listar encuestas
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const query = req.query as any;
     const type = query?.type;
     const isActive = query?.isActive;
@@ -36,9 +37,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // GET /surveys/:id - Detalle de encuesta con preguntas
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const survey = await app.prisma.survey.findFirst({
@@ -58,9 +59,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // POST /surveys - Crear encuesta
   app.post('/', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const schema = z.object({
       title: z.string().min(2),
@@ -105,9 +106,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // PATCH /surveys/:id - Actualizar encuesta
   app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const schema = z.object({
@@ -150,9 +151,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // DELETE /surveys/:id - Eliminar encuesta (soft delete)
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const survey = await app.prisma.survey.updateMany({
@@ -169,9 +170,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // POST /surveys/:id/questions - Agregar pregunta
   app.post('/:id/questions', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const schema = z.object({
@@ -221,9 +222,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // PATCH /surveys/:id/questions/:questionId - Actualizar pregunta
   app.patch('/:id/questions/:questionId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id, questionId } = z.object({ id: z.string().uuid(), questionId: z.string().uuid() }).parse(req.params);
 
     const schema = z.object({
@@ -261,9 +262,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // DELETE /surveys/:id/questions/:questionId - Eliminar pregunta
   app.delete('/:id/questions/:questionId', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id, questionId } = z.object({ id: z.string().uuid(), questionId: z.string().uuid() }).parse(req.params);
 
     // Verify survey belongs to tenant
@@ -281,9 +282,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // POST /surveys/:id/questions/:questionId/options - Agregar opción
   app.post('/:id/questions/:questionId/options', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id, questionId } = z.object({ id: z.string().uuid(), questionId: z.string().uuid() }).parse(req.params);
 
     const schema = z.object({
@@ -317,9 +318,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // GET /surveys/:id/responses - Ver respuestas de encuesta
   app.get('/:id/responses', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     // Verify survey belongs to tenant
@@ -342,9 +343,9 @@ export async function registerSurveyRoutes(app: FastifyInstance) {
 
   // POST /surveys/:id/send - Enviar encuesta a clientes
   app.post('/:id/send', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
 
-    const tenantId = req.db.tenantId;
+if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
 
     const schema = z.object({

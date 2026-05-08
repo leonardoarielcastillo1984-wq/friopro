@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import argon2 from 'argon2';
@@ -133,8 +134,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   // ── POST /settings/members — Invitar miembro al tenant ──
   app.post('/members', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const body = inviteMemberSchema.parse(req.body);
 

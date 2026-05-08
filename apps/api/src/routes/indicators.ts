@@ -1,3 +1,4 @@
+import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
@@ -266,8 +267,8 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
   // GET /indicadores/simple — Lista ligera para selects
   app.get('/simple', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
-    if (!req.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const tenantId = req.db.tenantId;
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const indicators = await app.runWithDbContext(req, async (tx: any) => {
       return tx.indicator.findMany({
         where: { tenantId, deletedAt: null },
