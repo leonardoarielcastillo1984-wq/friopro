@@ -158,9 +158,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       where: { id: req.auth.userId },
     });
 
-    if (!user) return reply.code(401).send({ error: 'Unauthorized' });
+    if (!user || !user.passwordHash) return reply.code(401).send({ error: 'Unauthorized' });
 
-    const ok = await argon2.verify(user.passwordHash, body.currentPassword);
+    let ok: boolean;
+    try {
+      ok = await argon2.verify(user.passwordHash, body.currentPassword);
+    } catch {
+      return reply.code(401).send({ error: 'Unauthorized' });
+    }
     if (!ok) return reply.code(400).send({ error: 'Contraseña actual incorrecta' });
 
     const newHash = await argon2.hash(body.newPassword);
@@ -265,7 +270,18 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(401).send({ error: 'Invalid credentials' });
     }
 
-    const ok = await argon2.verify(user.passwordHash, body.password);
+    if (!user.passwordHash) {
+      app.log.error(`[LOGIN] passwordHash nulo para usuario ${user.id}`);
+      return reply.code(401).send({ error: 'Invalid credentials' });
+    }
+
+    let ok: boolean;
+    try {
+      ok = await argon2.verify(user.passwordHash, body.password);
+    } catch (verifyErr) {
+      app.log.error(`[LOGIN] Error en argon2.verify para ${body.email}: ${verifyErr}`);
+      return reply.code(401).send({ error: 'Invalid credentials' });
+    }
     if (!ok) return reply.code(401).send({ error: 'Invalid credentials' });
 
     // 2FA is now optional - users can enable it in settings

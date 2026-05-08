@@ -24,65 +24,66 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    try {
-      // Forzar API Fixed v2 para evitar problemas de configuración
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const loginUrl = "/api/auth/login";
-      console.log('=== LOGIN DEBUG ===');
-      console.log('Login attempt to:', loginUrl);
-      console.log('Credentials:', { email, password: '***' });
-      console.log('Timestamp:', new Date().toISOString());
-      
-      // Agregar timestamp para evitar caché
-      const cacheBuster = `?t=${Date.now()}`;
-      const res = await fetch(`${loginUrl}${cacheBuster}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
-      });
+    const attemptLogin = async (): Promise<Response> => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+          signal: controller.signal,
+        });
+        return res;
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
 
-      console.log('Response status:', res.status);
-      console.log('Response headers:', Object.fromEntries(res.headers.entries()));
+    try {
+      let res: Response;
+      try {
+        res = await attemptLogin();
+      } catch (networkErr: any) {
+        if (networkErr.name === 'AbortError') {
+          throw new Error('El servidor tardó demasiado en responder. Intenta nuevamente.');
+        }
+        // Retry once on network error
+        await new Promise(r => setTimeout(r, 1500));
+        res = await attemptLogin();
+      }
+
+      // Retry once on 502/503 (servidor reiniciando)
+      if (res.status === 502 || res.status === 503) {
+        await new Promise(r => setTimeout(r, 2000));
+        res = await attemptLogin();
+      }
 
       const data = await res.json().catch(() => null);
-      console.log('Response data:', data);
-      console.log('=== END LOGIN DEBUG ===');
 
       if (!res.ok) {
-        throw new Error((data as any)?.error || `Error HTTP ${res.status}`);
+        if (res.status === 401) throw new Error('Email o contraseña incorrectos');
+        if (res.status === 429) throw new Error('Demasiados intentos. Esperá un momento e intentá de nuevo.');
+        if (res.status === 502 || res.status === 503) throw new Error('El servidor no está disponible. Intenta en unos segundos.');
+        throw new Error((data as any)?.error || `Error del servidor (${res.status})`);
       }
 
       const accessToken = (data as any)?.accessToken ?? (data as any)?.token;
       if (accessToken) localStorage.setItem('accessToken', accessToken);
       if ((data as any)?.user) {
         localStorage.setItem('user', JSON.stringify((data as any).user));
-        // Guardar globalRole específicamente
         if ((data as any).user.globalRole) {
           localStorage.setItem('globalRole', (data as any).user.globalRole);
-          console.log('Login: GlobalRole guardado:', (data as any).user.globalRole);
-        } else {
-          console.log('Login: user.globalRole no encontrado en:', (data as any).user);
         }
       }
-      localStorage.setItem('lastLoginEmail', email);
+      localStorage.setItem('lastLoginEmail', email.trim());
       if ((data as any)?.activeTenant?.id) localStorage.setItem('tenantId', (data as any).activeTenant.id);
       if ((data as any)?.csrfToken) localStorage.setItem('csrfToken', (data as any).csrfToken);
-      
-      // Debug final del localStorage
-      console.log('Login: Estado final del localStorage:');
-      console.log('- globalRole:', localStorage.getItem('globalRole'));
-      console.log('- user:', localStorage.getItem('user'));
-      console.log('- accessToken:', localStorage.getItem('accessToken') ? '***' : null);
 
       window.location.href = '/dashboard';
     } catch (e: any) {
-      console.error('Login error:', e);
-      setError('Credenciales inválidas o error de servidor. Por favor intenta nuevamente.');
+      setError(e.message || 'Error inesperado. Por favor intentá nuevamente.');
     } finally {
       setLoading(false);
     }
