@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
 import {
   Plus, Trash2, Pencil, X, ArrowRight, ArrowDown, CheckCircle, Building2,
@@ -718,7 +719,12 @@ export default function MapaProcesosContent() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-neutral-600 mb-1">Responsable / Dueño</label>
-                      <input value={drawer.owner ?? ''} onChange={e => setDrawer(p => ({ ...p, owner: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                      <EmployeeCombobox
+                        value={drawer.owner ?? ''}
+                        onChange={id => setDrawer(p => ({ ...p, owner: id }))}
+                        placeholder="Buscar responsable..."
+                        allowFreeText
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-neutral-600 mb-1">Sedes (separadas por coma)</label>

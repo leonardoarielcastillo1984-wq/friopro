@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { Compass, Save, Sparkles, Loader2, ArrowRight, X, Target } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
@@ -493,12 +494,11 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Responsable *</label>
-                      <input
-                        type="text"
+                      <EmployeeCombobox
                         value={strategicPlanForm.responsible}
-                        onChange={e => setStrategicPlanForm({ ...strategicPlanForm, responsible: e.target.value })}
-                        placeholder="Nombre del responsable"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={id => setStrategicPlanForm({ ...strategicPlanForm, responsible: id })}
+                        placeholder="Buscar responsable..."
+                        allowFreeText
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4">

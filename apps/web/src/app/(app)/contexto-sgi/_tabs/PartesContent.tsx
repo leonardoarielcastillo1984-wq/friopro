@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { t } from '@/lib/dictionary';
@@ -193,7 +194,7 @@ export default function PartesContent() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><label className="block text-sm font-medium mb-1">Cláusula</label><input type="text" value={ncForm.clause} onChange={e=>setNcForm({...ncForm,clause:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div><label className="block text-sm font-medium mb-1">Responsable (ID)</label><input type="text" value={ncForm.assignedToId} onChange={e=>setNcForm({...ncForm,assignedToId:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div><label className="block text-sm font-medium mb-1">Responsable</label><EmployeeCombobox value={ncForm.assignedToId} onChange={id=>setNcForm({...ncForm,assignedToId:id})} placeholder="Buscar responsable..." /></div>
             </div>
             <div className="flex gap-3 border-t pt-4">
               <button type="button" onClick={()=>setShowNcModal(false)} className="flex-1 px-4 py-2 border rounded-lg text-sm">Cancelar</button>
