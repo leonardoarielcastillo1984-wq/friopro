@@ -823,8 +823,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    // Si tiene contenido de texto, convertimos a HTML básico
-    if (doc.content) {
+    // Si tiene contenido de texto y no forzamos refresh desde archivo, usamos ese texto
+    if (doc.content && !forceRefresh) {
       const htmlContent = doc.content
         .split('\n')
         .map((line: string) => line.trim())
