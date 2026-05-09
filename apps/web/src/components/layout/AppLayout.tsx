@@ -15,6 +15,7 @@ import { DemoWatermark } from '@/components/DemoWatermark';
 import { DemoChecklist } from '@/components/DemoChecklist';
 import { DemoExpiredModal } from '@/components/DemoExpiredModal';
 import { SugerenciaBot } from '@/components/clima/SugerenciaBot';
+import { BackButton } from './BackButton';
 import ImpersonationBanner, { getImpersonationState } from '@/components/ImpersonationBanner';
 
 interface AppLayoutProps {
@@ -98,6 +99,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
         {/* Page content */}
         <main className="p-4 sm:p-6">
+          <BackButton />
           {children}
         </main>
       </div>
