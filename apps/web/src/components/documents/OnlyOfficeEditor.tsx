@@ -105,21 +105,20 @@ export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOffi
     if (window.DocsAPI) {
       initEditor();
     } else {
-      const existingScript = document.querySelector('script[data-oo-api]');
-      if (existingScript) {
-        existingScript.addEventListener('load', initEditor);
-      } else {
-        const script = document.createElement('script');
-        script.src = `${window.location.origin}/onlyoffice/web-apps/apps/api/documents/api.js`;
-        script.async = true;
-        script.setAttribute('data-oo-api', '1');
-        script.onload = () => initEditor();
-        script.onerror = () => {
-          setError('No se pudo cargar el editor. Verificá la conexión con el servidor.');
-          setLoading(false);
-        };
-        document.head.appendChild(script);
-      }
+      const script = document.createElement('script');
+      const ooHost = (window.location.hostname === 'logismart.ar' || window.location.hostname === 'www.logismart.ar')
+        ? 'https://docs.logismart.ar'
+        : `http://${window.location.hostname}:8080`;
+      const scriptSrc = `${ooHost}/web-apps/apps/api/documents/api.js`;
+      script.src = scriptSrc;
+      script.async = true;
+      script.setAttribute('data-oo-api', '1');
+      script.onload = () => initEditor();
+      script.onerror = () => {
+        setError('No se pudo cargar el editor. Verificá la conexión con el servidor.');
+        setLoading(false);
+      };
+      document.head.appendChild(script);
     }
 
     return () => {
