@@ -23,6 +23,20 @@ interface CrudOptions {
   filterableFields?: string[];
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v);
+
+function sanitizeUuidFields(data: Record<string, any>): void {
+  for (const k of Object.keys(data)) {
+    if (k.endsWith('Id') && data[k] !== null && data[k] !== undefined) {
+      if (!isUuid(data[k])) {
+        console.warn(`[makeCrud] Campo "${k}" con valor no-UUID "${data[k]}" → seteado a null`);
+        data[k] = null;
+      }
+    }
+  }
+}
+
 function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
   return async (app) => {
     // LIST
@@ -81,6 +95,10 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
           Object.keys(data).forEach((k) => {
             if (data[k] !== null && typeof data[k] === 'object' && !Array.isArray(data[k])) delete data[k];
           });
+
+          // Sanitize: any *Id field that is not a valid UUID must be nulled
+          // (prevents P2023 when user fills text-label in FK fields)
+          sanitizeUuidFields(data);
 
           // Convert date strings
           for (const k of Object.keys(data)) {
@@ -150,6 +168,9 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
           }
           if (data[k] === '') data[k] = null;
         }
+
+        // Sanitize: any *Id field that is not a valid UUID must be nulled
+        sanitizeUuidFields(data);
 
         const MODELS_WITH_AUDIT = new Set(['actionItem']);
         if (MODELS_WITH_AUDIT.has(opts.model)) {

@@ -38,6 +38,11 @@ export default function StakeholderClient() {
     delete d.createdAt;
     delete d.updatedAt;
     delete d.deletedAt;
+    // indicatorId en BD es UUID FK — si el usuario ingresó texto libre, strippearlo
+    // El backend también lo sanea, pero evitamos el campo directamente
+    if (d.indicatorId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.indicatorId)) {
+      delete d.indicatorId;
+    }
     if (d.complianceLevel !== undefined && (d.complianceLevel < 0 || d.complianceLevel > 100)) { alert('Nivel 0-100'); return; }
     if (d.requiresAction && d.complianceStatus === 'COMPLIES') { alert('No requiere acción si Cumple'); return; }
     setSaving(true);
@@ -140,7 +145,7 @@ export default function StakeholderClient() {
             </div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Fecha última evaluación</label><input type="date" value={editing.lastEvaluationDate||''} onChange={e=>setEditing({...editing,lastEvaluationDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Evidencia</label><textarea rows={3} value={editing.complianceEvidence||''} onChange={e=>setEditing({...editing,complianceEvidence:e.target.value})} placeholder="Ej: indicadores, auditorías" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-            <div className="mb-4"><label className="block text-sm font-medium mb-1">Indicador asociado</label><input type="text" value={editing.indicatorId||''} onChange={e=>setEditing({...editing,indicatorId:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+            <div className="mb-4"><label className="block text-sm font-medium mb-1">Indicador asociado (referencia)</label><input type="text" value={editing.indicatorNote||editing.indicatorId||''} onChange={e=>setEditing({...editing,indicatorNote:e.target.value,indicatorId:undefined})} placeholder="Ej: Nivel de cumplimiento normativo" className="w-full px-3 py-2 border rounded-lg text-sm"/><p className="text-xs text-gray-400 mt-1">Campo informativo, no vincula a un indicador del sistema</p></div>
             <div className="flex items-center gap-2"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere acción CAPA?</label></div>
             <div className="mt-2 p-3 bg-red-100 border border-red-500 text-red-700 font-bold text-center rounded">TEST: Button should appear below this</div>
             <div className="mt-2">
