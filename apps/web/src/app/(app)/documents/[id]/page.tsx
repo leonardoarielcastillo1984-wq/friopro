@@ -8,8 +8,10 @@ import ComboSelect from '@/components/ComboSelect';
 import {
   FileText, ArrowLeft, Download, Edit3, CheckCircle2,
   Clock, AlertCircle, Link2, Trash2, Shield, Cpu, History, Upload,
-  Plus, X, Search,
+  Plus, X, Search, PenLine,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+const DocumentEditor = dynamic(() => import('@/components/documents/DocumentEditor'), { ssr: false });
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   DRAFT: { label: 'Borrador', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
@@ -80,6 +82,7 @@ export default function DocumentDetailPage() {
   const [reviewing, setReviewing] = useState(false);
   const [aiValidation, setAiValidation] = useState<{ qualityStatus: string; complianceScore: number; gaps: string[]; recommendations: Array<{priority: string; action: string; moduleOrDocument: string}> } | null>(null);
   const [loadingAiValidation, setLoadingAiValidation] = useState(false);
+  const [showDocEditor, setShowDocEditor] = useState(false);
 
   const docTypeOptions = [
     { value: 'POLICY', label: 'Política' },
@@ -593,10 +596,16 @@ export default function DocumentDetailPage() {
             <Download className="h-4 w-4" /> Descargar
           </button>
           <button
+            onClick={() => setShowDocEditor(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 hover:bg-blue-100 font-medium"
+          >
+            <PenLine className="h-4 w-4" /> Editar Documento
+          </button>
+          <button
             onClick={() => setEditing(!editing)}
             className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-50"
           >
-            <Edit3 className="h-4 w-4" /> Editar
+            <Edit3 className="h-4 w-4" /> Editar metadata
           </button>
           <button
             onClick={handleDelete}
@@ -1457,6 +1466,16 @@ export default function DocumentDetailPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Editor de documento inline fullscreen */}
+      {showDocEditor && doc && (
+        <DocumentEditor
+          documentId={doc.id}
+          documentTitle={doc.title}
+          onClose={() => setShowDocEditor(false)}
+          onSaved={() => loadDocument()}
+        />
       )}
     </div>
   );

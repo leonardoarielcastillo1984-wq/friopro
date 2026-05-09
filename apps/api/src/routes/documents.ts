@@ -795,6 +795,159 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(201).send({ review: result });
   });
 
+  // ── GET /documents/:id/content — Obtener contenido HTML editable ──
+  app.get('/:id/content', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const doc = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.document.findFirst({
+        where: { id, deletedAt: null },
+        select: { id: true, title: true, content: true, htmlContent: true, filePath: true, type: true },
+      });
+    });
+    if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
+
+    // Si ya tiene HTML editado, devolvemos eso
+    if (doc.htmlContent) {
+      return reply.send({ htmlContent: doc.htmlContent, source: 'edited' });
+    }
+
+    // Si tiene contenido de texto, convertimos a HTML básico
+    if (doc.content) {
+      const htmlContent = doc.content
+        .split('\n')
+        .map((line: string) => line.trim())
+        .filter((line: string) => line.length > 0)
+        .map((line: string) => `<p>${line}</p>`)
+        .join('\n');
+      return reply.send({ htmlContent, source: 'text' });
+    }
+
+    // Si tiene archivo físico, extraemos HTML con mammoth
+    if (doc.filePath) {
+      try {
+        const mammoth = await import('mammoth');
+        const ext = path.extname(doc.filePath).toLowerCase();
+        let htmlContent = '';
+        if (ext === '.docx' || ext === '.doc') {
+          const result = await mammoth.convertToHtml({ path: doc.filePath });
+          htmlContent = result.value;
+        } else if (ext === '.pdf') {
+          const textContent = await extractTextFromPdf(await fs.readFile(doc.filePath));
+          htmlContent = textContent
+            .split('\n')
+            .filter((l: string) => l.trim())
+            .map((l: string) => `<p>${l}</p>`)
+            .join('\n');
+        } else {
+          htmlContent = `<p>Tipo de archivo no compatible para edición en línea (${ext}).</p>`;
+        }
+        return reply.send({ htmlContent, source: 'file' });
+      } catch (err) {
+        app.log.error(err, 'Error extracting HTML from file');
+        return reply.code(500).send({ error: 'Error al extraer contenido del archivo.' });
+      }
+    }
+
+    return reply.send({ htmlContent: '<p></p>', source: 'empty' });
+  });
+
+  // ── PUT /documents/:id/content — Guardar contenido HTML editado ──
+  app.put('/:id/content', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { htmlContent, changeNote } = z.object({
+      htmlContent: z.string(),
+      changeNote: z.string().optional(),
+    }).parse(req.body);
+
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      const doc = await tx.document.findFirst({ where: { id, deletedAt: null } });
+      if (!doc) return null;
+
+      // Guardar snapshot en DocumentVersion antes de actualizar
+      await tx.documentVersion.create({
+        data: {
+          documentId: id,
+          version: doc.version,
+          filePath: doc.filePath || '',
+          originalName: changeNote || `Edición en línea v${doc.version}`,
+          fileSize: (htmlContent.length),
+          createdById: req.auth?.userId ?? null,
+        },
+      });
+
+      // Extraer texto plano del HTML para el campo content (para búsqueda e IA)
+      const textContent = htmlContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+      return tx.document.update({
+        where: { id },
+        data: {
+          htmlContent,
+          content: textContent,
+          version: doc.version + 1,
+          updatedById: req.auth?.userId ?? null,
+          updatedAt: new Date(),
+        },
+      });
+    });
+
+    if (!updated) return reply.code(404).send({ error: 'Documento no encontrado' });
+    return reply.send({ document: updated, message: 'Contenido guardado y nueva versión creada.' });
+  });
+
+  // ── POST /documents/:id/export-docx — Exportar HTML editado a DOCX ──
+  app.post('/:id/export-docx', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const doc = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.document.findFirst({
+        where: { id, deletedAt: null },
+        select: { id: true, title: true, htmlContent: true, content: true },
+      });
+    });
+    if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
+
+    const textContent = doc.htmlContent
+      ? doc.htmlContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      : (doc.content || '');
+
+    try {
+      const { Document, Paragraph, TextRun, HeadingLevel, Packer } = await import('docx');
+
+      const paragraphs = textContent
+        .split(/\n+/)
+        .filter((p: string) => p.trim())
+        .map((p: string) => new Paragraph({ children: [new TextRun(p.trim())] }));
+
+      const wordDoc = new Document({
+        sections: [{
+          properties: {},
+          children: [
+            new Paragraph({
+              text: doc.title,
+              heading: HeadingLevel.HEADING_1,
+            }),
+            ...paragraphs,
+          ],
+        }],
+      });
+
+      const buffer = await Packer.toBuffer(wordDoc);
+
+      const sanitizedTitle = doc.title.replace(/[^a-zA-Z0-9._-]/g, '_');
+      return reply
+        .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        .header('Content-Disposition', `attachment; filename="${sanitizedTitle}.docx"`)
+        .send(buffer);
+    } catch (err: any) {
+      app.log.error(err, 'Error generating DOCX');
+      return reply.code(500).send({ error: 'Error al generar el DOCX.' });
+    }
+  });
+
   // ── POST /documents/:id/ai-validation — Validación documental con IA ──
   app.post('/:id/ai-validation', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');

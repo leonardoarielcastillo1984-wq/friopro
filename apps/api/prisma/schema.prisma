@@ -998,6 +998,7 @@ model Document {
   title        String
   type         String
   content      String?        @db.Text
+  htmlContent  String?        @db.Text
   filePath     String?
   standardTags Json?
   status       DocumentStatus @default(DRAFT)
