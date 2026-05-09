@@ -587,14 +587,15 @@ export default function MatrizPolivalenciaPage() {
               const posName = emp.position?.name || '';
               const fullName = `${emp.firstName} ${emp.lastName}`;
 
-              // Calculate averages per employee
+              // Calculate averages per employee — only for competencies where DEBE > 0
               const rowValues = filteredCompetencies.map((c) => {
                 const req = getRequired(emp, c.id);
                 const act = getActual(emp, c.id);
                 return { req, act, compId: c.id };
               });
-              const totalPct = rowValues.reduce((sum, v) => sum + (v.req > 0 ? (v.act / v.req) * 100 : 0), 0);
-              const avgPct = rowValues.length ? totalPct / rowValues.length : 0;
+              const applicableValues = rowValues.filter((v) => v.req > 0);
+              const totalPct = applicableValues.reduce((sum, v) => sum + (v.act / v.req) * 100, 0);
+              const avgPct = applicableValues.length ? totalPct / applicableValues.length : 0;
 
               return (
                 <React.Fragment key={emp.id}>
