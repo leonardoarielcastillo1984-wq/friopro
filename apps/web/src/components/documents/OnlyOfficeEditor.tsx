@@ -125,6 +125,11 @@ export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOffi
       try { editorRef.current?.destroyEditor?.(); } catch { /* ok */ }
       try { ooContainerRef.current?.remove(); } catch { /* ok */ }
       ooContainerRef.current = null;
+      // Limpiar DocsAPI para que la próxima apertura cargue una sesión nueva
+      try { delete (window as any).DocsAPI; } catch { /* ok */ }
+      // Remover el script tag para permitir recarga limpia
+      const oldScript = document.querySelector('script[data-oo-api]');
+      try { oldScript?.remove(); } catch { /* ok */ }
     };
   }, [documentId]);
 
