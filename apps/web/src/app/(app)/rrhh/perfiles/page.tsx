@@ -1210,7 +1210,7 @@ export default function PerfilesPage() {
                     }}
                   >
                     <option value="">+ Agregar competencia...</option>
-                    {competencies.filter(c => !positionCompetencies.find(pc => pc.competencyId === c.id)).map(c => (
+                    {competencies.filter(c => !positionCompetencies.find(pc => pc.competencyId === c.id)).sort((a, b) => a.name.localeCompare(b.name, 'es')).map(c => (
                       <option key={c.id} value={c.id}>{c.name} ({c.category})</option>
                     ))}
                   </select>
