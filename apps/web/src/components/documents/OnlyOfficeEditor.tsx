@@ -32,7 +32,7 @@ export default function OnlyOfficeEditor({ documentId, apiUrl, documentTitle }: 
         return;
       }
 
-      // Obtener la URL base actual para el callback
+      // URL base del sitio (funciona tanto en HTTP como HTTPS)
       const origin = window.location.origin;
       const fileUrl = `${origin}/api/documents/${documentId}/file`;
       const callbackUrl = `${origin}/api/documents/${documentId}/onlyoffice-callback`;
@@ -94,16 +94,17 @@ export default function OnlyOfficeEditor({ documentId, apiUrl, documentTitle }: 
       });
     };
 
-    // Cargar el script de OnlyOffice si no está ya
+    // Cargar el script de OnlyOffice desde el proxy /onlyoffice/ (HTTPS seguro)
     if (window.DocsAPI) {
       initEditor();
     } else {
       const script = document.createElement('script');
-      script.src = `${apiUrl}/web-apps/apps/api/documents/api.js`;
+      const scriptSrc = `${window.location.origin}/onlyoffice/web-apps/apps/api/documents/api.js`;
+      script.src = scriptSrc;
       script.async = true;
       script.onload = () => initEditor();
       script.onerror = () => {
-        setError('No se pudo conectar con el servidor de edición (puerto 8080). Verificá que OnlyOffice esté corriendo.');
+        setError('No se pudo cargar el editor de documentos. Contactá al administrador.');
         setLoading(false);
       };
       document.head.appendChild(script);

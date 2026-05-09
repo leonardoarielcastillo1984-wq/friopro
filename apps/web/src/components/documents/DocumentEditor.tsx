@@ -449,7 +449,7 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
           <OnlyOfficeEditor
             documentId={documentId}
             documentTitle={documentTitle}
-            apiUrl={typeof window !== 'undefined' ? `http://${window.location.hostname}:8080` : 'http://localhost:8080'}
+            apiUrl=""
           />
         </div>
 
