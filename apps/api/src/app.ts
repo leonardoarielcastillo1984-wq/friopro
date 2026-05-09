@@ -201,6 +201,11 @@ export async function buildApp() {
       }
     }
 
+    // Si el error tiene statusCode explícito (ej: 401 Token expired desde auth plugin)
+    if (error.statusCode && typeof error.statusCode === 'number' && error.statusCode < 500) {
+      return reply.code(error.statusCode).send({ error: error.message || 'Error de autenticación' });
+    }
+
     // Unexpected errors → 500 (log full error, return generic message)
     app.log.error(error);
     return reply.code(500).send({ error: 'Error interno del servidor. Por favor intentá nuevamente.' });
