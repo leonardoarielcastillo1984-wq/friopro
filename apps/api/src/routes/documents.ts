@@ -1162,34 +1162,30 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         if (!response.ok) throw new Error('No se pudo descargar el archivo editado');
         const buffer = Buffer.from(await response.arrayBuffer());
 
-        const doc = await app.runWithDbContext(req, async (tx: any) => {
-          return tx.document.findFirst({ where: { id, deletedAt: null }, select: { filePath: true, version: true } });
-        });
+        // Usar prisma directo (sin runWithDbContext) porque OnlyOffice llama sin token
+        const prisma = (app as any).prisma;
+        const doc = await prisma.document.findFirst({ where: { id, deletedAt: null }, select: { filePath: true, version: true } });
 
         if (doc?.filePath) {
           // Guardar snapshot de versión anterior
-          await app.runWithDbContext(req, async (tx: any) => {
-            await tx.documentVersion.create({
-              data: {
-                documentId: id,
-                version: doc.version,
-                filePath: doc.filePath,
-                originalName: `Versión ${doc.version} (OnlyOffice)`,
-                fileSize: buffer.length,
-                createdById: null,
-              },
-            });
+          await prisma.documentVersion.create({
+            data: {
+              documentId: id,
+              version: doc.version,
+              filePath: doc.filePath,
+              originalName: `Versión ${doc.version} (OnlyOffice)`,
+              fileSize: buffer.length,
+              createdById: null,
+            },
           });
 
           // Sobreescribir el archivo físico con la versión editada
           await fs.writeFile(doc.filePath, buffer);
 
           // Actualizar versión en BD
-          await app.runWithDbContext(req, async (tx: any) => {
-            await tx.document.update({
-              where: { id },
-              data: { version: doc.version + 1, updatedAt: new Date() },
-            });
+          await prisma.document.update({
+            where: { id },
+            data: { version: doc.version + 1, updatedAt: new Date() },
           });
 
           // Limpiar caché PDF

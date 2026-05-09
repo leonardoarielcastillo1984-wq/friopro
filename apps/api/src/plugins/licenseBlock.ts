@@ -20,6 +20,7 @@ const ALWAYS_ALLOWED_PATHS = [
   '/company-registrations',
   '/register-company',
   '/clima', // Temporal: permitir acceso a clima para pruebas
+  '/onlyoffice-callback', // OnlyOffice llama este endpoint sin token desde el servidor
 ];
 
 const ALWAYS_ALLOWED_METHODS = ['GET', 'HEAD', 'OPTIONS'];
