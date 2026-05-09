@@ -1007,6 +1007,68 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // ── GET /documents/:id/preview-pdf — Convertir DOC/DOCX a PDF y servir ──
+  app.get('/:id/preview-pdf', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const doc = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.document.findFirst({
+        where: { id, deletedAt: null },
+        select: { id: true, filePath: true, title: true },
+      });
+    });
+    if (!doc || !doc.filePath) return reply.code(404).send({ error: 'Archivo no encontrado' });
+    if (!existsSync(doc.filePath)) return reply.code(404).send({ error: 'Archivo no encontrado en disco' });
+
+    const ext = path.extname(doc.filePath).toLowerCase();
+    if (!['.doc', '.docx', '.odt'].includes(ext)) {
+      return reply.code(400).send({ error: 'Formato no soportado para preview' });
+    }
+
+    // Directorio temporal para la conversión
+    const tmpDir = `/tmp/sgi-preview-${id}`;
+    const pdfPath = path.join(tmpDir, path.basename(doc.filePath, ext) + '.pdf');
+
+    try {
+      await fs.mkdir(tmpDir, { recursive: true });
+
+      // Si ya existe el PDF cacheado (menos de 1 hora), devolverlo directamente
+      try {
+        const stat = await fs.stat(pdfPath);
+        if (Date.now() - stat.mtimeMs < 3600000) {
+          const pdfBuffer = await fs.readFile(pdfPath);
+          return reply
+            .header('Content-Type', 'application/pdf')
+            .header('Cache-Control', 'private, max-age=3600')
+            .send(pdfBuffer);
+        }
+      } catch { /* no existe, continuar con conversión */ }
+
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+
+      await execFileAsync('libreoffice', [
+        '--headless',
+        '--convert-to', 'pdf',
+        '--outdir', tmpDir,
+        doc.filePath,
+      ], { timeout: 60000 });
+
+      if (!existsSync(pdfPath)) return reply.code(500).send({ error: 'Error al convertir el documento' });
+
+      const pdfBuffer = await fs.readFile(pdfPath);
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Cache-Control', 'private, max-age=3600')
+        .send(pdfBuffer);
+    } catch (err: any) {
+      app.log.error(err, 'Error converting to PDF with LibreOffice');
+      return reply.code(500).send({ error: 'Error al generar preview PDF: ' + err.message });
+    }
+  });
+
   // ── POST /documents/:id/ai-action — Acciones IA copilot ──
   app.post('/:id/ai-action', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');

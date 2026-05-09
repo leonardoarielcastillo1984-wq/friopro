@@ -93,6 +93,9 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
   // Workflow
   const [docStatus, setDocStatus] = useState<string>('DRAFT');
   const [changingStatus, setChangingStatus] = useState(false);
+  // Visor PDF
+  const [showPdfViewer, setShowPdfViewer] = useState(true);
+  const [pdfError, setPdfError] = useState(false);
   // Autosave
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -518,10 +521,47 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
         </div>
       )}
 
-      {/* ── Body: Editor + AI Panel ── */}
+      {/* ── Body: PDF Viewer + Editor + AI Panel ── */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Editor area */}
-        <div className="flex-1 overflow-y-auto">
+
+        {/* ── Visor PDF ── */}
+        {showPdfViewer && (
+          <div className="flex flex-col border-r border-gray-200 bg-gray-100" style={{width: '48%', minWidth: 320}}>
+            <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800 text-white text-xs flex-shrink-0">
+              <span className="font-medium flex items-center gap-1.5">📄 Vista original del documento</span>
+              <button onClick={() => setShowPdfViewer(false)} className="text-gray-400 hover:text-white">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {pdfError ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-3">
+                <FileText className="w-12 h-12 text-gray-400" />
+                <p className="text-sm text-gray-500">Vista previa no disponible para este documento.<br/>Usá el editor de la derecha para editar el contenido.</p>
+                <button onClick={() => { setPdfError(false); }} className="text-xs text-blue-600 underline">Reintentar</button>
+              </div>
+            ) : (
+              <iframe
+                key={documentId}
+                src={`/api/documents/${documentId}/preview-pdf`}
+                className="flex-1 w-full border-0"
+                title="Vista previa del documento"
+                onError={() => setPdfError(true)}
+              />
+            )}
+          </div>
+        )}
+
+        {/* ── Editor area ── */}
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {!showPdfViewer && (
+            <div className="px-3 py-1 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+              <button onClick={() => { setShowPdfViewer(true); setPdfError(false); }}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800">
+                <FileText className="w-3.5 h-3.5" /> Mostrar vista original
+              </button>
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center space-y-3">
@@ -530,10 +570,11 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
               </div>
             </div>
           ) : (
-            <div className="max-w-4xl mx-auto my-4 bg-white rounded-xl shadow-sm border border-gray-200 min-h-[600px]">
+            <div className="mx-auto my-4 bg-white rounded-xl shadow-sm border border-gray-200 min-h-[600px]" style={{maxWidth: showPdfViewer ? '100%' : '4xl'}}>
               <EditorContent editor={editor} />
             </div>
           )}
+          </div>
         </div>
 
         {/* ── Panel IA lateral ── */}
