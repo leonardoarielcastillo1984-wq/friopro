@@ -156,11 +156,12 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); };
   }, [documentId]);
 
-  const loadContent = async () => {
+  const loadContent = async (refresh = false) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch<{ htmlContent: string; source: string; status?: string }>(`/documents/${documentId}/content`);
+      const url = `/documents/${documentId}/content${refresh ? '?refresh=true' : ''}`;
+      const res = await apiFetch<{ htmlContent: string; source: string; status?: string }>(url);
       setSource(res.source);
       if (res.status) setDocStatus(res.status);
       if (editor) {
@@ -405,10 +406,14 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
           <FileText className="w-5 h-5 text-blue-600 flex-shrink-0" />
           <div className="min-w-0">
             <h1 className="text-sm font-semibold text-gray-900 truncate max-w-md">{documentTitle}</h1>
-            <p className="text-xs text-gray-400">
-              {source === 'edited' ? 'Editado en línea' : source === 'file' ? 'Extraído del archivo' : 'Texto del documento'}
-              {' · '}{wordCount} palabras
-              {saved && <span className="ml-2 text-green-600">✓ Guardado</span>}
+            <p className="text-xs text-gray-400 flex items-center gap-2">
+              <span>{source === 'edited' ? 'Editado en línea' : source === 'file' ? 'Extraído del archivo' : 'Texto del documento'}</span>
+              {source === 'file' && (
+                <button onClick={() => loadContent(true)} title="Re-extraer del archivo original"
+                  className="text-blue-500 hover:text-blue-700 underline text-xs">re-extraer</button>
+              )}
+              <span>· {wordCount} palabras</span>
+              {saved && <span className="text-green-600">✓ Guardado</span>}
             </p>
           </div>
           {/* Workflow badge */}

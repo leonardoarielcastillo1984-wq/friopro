@@ -808,10 +808,11 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
 
-    // Si ya tiene HTML editado, devolvemos eso
     const status = doc.status;
+    const forceRefresh = (req.query as any)?.refresh === 'true';
 
-    if (doc.htmlContent) {
+    // Si ya tiene HTML editado y no forzamos refresh, devolvemos eso
+    if (doc.htmlContent && !forceRefresh) {
       return reply.send({ htmlContent: doc.htmlContent, source: 'edited', status });
     }
 
@@ -833,8 +834,33 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         const ext = path.extname(doc.filePath).toLowerCase();
         let htmlContent = '';
         if (ext === '.docx' || ext === '.doc') {
-          const result = await mammoth.convertToHtml({ path: doc.filePath });
-          htmlContent = result.value;
+          // Leer como buffer para mejor manejo de encoding
+          const fileBuffer = await fs.readFile(doc.filePath);
+          const result = await mammoth.convertToHtml({ buffer: fileBuffer }, {
+            styleMap: [
+              "p[style-name='Heading 1'] => h1:fresh",
+              "p[style-name='Heading 2'] => h2:fresh",
+              "p[style-name='Heading 3'] => h3:fresh",
+              "p[style-name='Título 1'] => h1:fresh",
+              "p[style-name='Título 2'] => h2:fresh",
+              "p[style-name='Título 3'] => h3:fresh",
+              "b => strong",
+              "i => em",
+            ],
+          });
+          // Decodificar entidades HTML y limpiar caracteres problemáticos
+          htmlContent = result.value
+            // Reemplazar entidades numéricas de caracteres latinos (ej: &#243; = ó)
+            .replace(/&#(\d+);/g, (_: string, num: string) => {
+              const code = parseInt(num, 10);
+              return code >= 32 && code <= 65535 ? String.fromCharCode(code) : '';
+            })
+            .replace(/&#x([0-9A-Fa-f]+);/g, (_: string, hex: string) => {
+              const code = parseInt(hex, 16);
+              return code >= 32 && code <= 65535 ? String.fromCharCode(code) : '';
+            })
+            // Reemplazar símbolo de reemplazo (U+FFFD) dejando espacio
+            .replace(/\uFFFD/g, '');
         } else if (ext === '.pdf') {
           const textContent = await extractTextFromPdf(await fs.readFile(doc.filePath));
           htmlContent = textContent
