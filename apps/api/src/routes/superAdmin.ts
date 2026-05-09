@@ -20,7 +20,7 @@ const prismaSuperUser = new PrismaClient();
 
 function requireSuperAdmin(req: FastifyRequest) {
   if (!(req as any).auth?.globalRole || (req as any).auth.globalRole !== 'SUPER_ADMIN') {
-    const err: any = new Error('Forbidden');
+    const err: any = new Error('Acceso denegado. Se requiere rol de Super Administrador.');
     err.statusCode = 403;
     throw err;
   }
@@ -542,7 +542,7 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (error) {
       app.log.error('Error reading MercadoPago config: ' + String(error));
-      return reply.code(500).send({ error: 'Failed to read configuration' });
+      return reply.code(500).send({ error: 'Error al leer la configuración.' });
     }
   });
 
@@ -594,7 +594,7 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       if (error.issues) {
         return reply.code(400).send({ error: 'Datos inválidos', details: error.issues });
       }
-      return reply.code(500).send({ error: 'Failed to save configuration' });
+      return reply.code(500).send({ error: 'Error al guardar la configuración.' });
     }
   });
 

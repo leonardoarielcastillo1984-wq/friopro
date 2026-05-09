@@ -161,7 +161,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ workOrder });
     } catch (error) {
       console.error('Error updating work order:', error);
-      return reply.code(500).send({ error: 'Failed to update work order' });
+      return reply.code(500).send({ error: 'Error al actualizar la orden de trabajo.' });
     }
   });
 
@@ -180,7 +180,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ message: 'Work order deleted' });
     } catch (error) {
       console.error('Error deleting work order:', error);
-      return reply.code(500).send({ error: 'Failed to delete work order' });
+      return reply.code(500).send({ error: 'Error al eliminar la orden de trabajo.' });
     }
   });
 
@@ -251,7 +251,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ technician });
     } catch (error) {
       console.error('Error updating technician:', error);
-      return reply.code(500).send({ error: 'Failed to update technician' });
+      return reply.code(500).send({ error: 'Error al actualizar el técnico.' });
     }
   });
 
@@ -270,7 +270,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ message: 'Technician deleted' });
     } catch (error) {
       console.error('Error deleting technician:', error);
-      return reply.code(500).send({ error: 'Failed to delete technician' });
+      return reply.code(500).send({ error: 'Error al eliminar el técnico.' });
     }
   });
 
@@ -355,7 +355,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ part });
     } catch (error) {
       console.error('Error updating spare part:', error);
-      return reply.code(500).send({ error: 'Failed to update spare part' });
+      return reply.code(500).send({ error: 'Error al actualizar el repuesto.' });
     }
   });
 
@@ -374,7 +374,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ message: 'Spare part deleted' });
     } catch (error) {
       console.error('Error deleting spare part:', error);
-      return reply.code(500).send({ error: 'Failed to delete spare part' });
+      return reply.code(500).send({ error: 'Error al eliminar el repuesto.' });
     }
   });
 
@@ -489,7 +489,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ plan: updatedPlan });
     } catch (error) {
       console.error('Error executing plan:', error);
-      return reply.code(500).send({ error: 'Failed to execute plan' });
+      return reply.code(500).send({ error: 'Error al ejecutar el plan de mantenimiento.' });
     }
   });
 
@@ -515,7 +515,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ plan });
     } catch (error) {
       console.error('Error updating plan:', error);
-      return reply.code(500).send({ error: 'Failed to update plan' });
+      return reply.code(500).send({ error: 'Error al actualizar el plan de mantenimiento.' });
     }
   });
 
@@ -534,7 +534,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ message: 'Plan deleted' });
     } catch (error) {
       console.error('Error deleting plan:', error);
-      return reply.code(500).send({ error: 'Failed to delete plan' });
+      return reply.code(500).send({ error: 'Error al eliminar el plan de mantenimiento.' });
     }
   });
 
@@ -628,7 +628,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ asset });
     } catch (error) {
       console.error('Error updating asset:', error);
-      return reply.code(500).send({ error: 'Failed to update asset' });
+      return reply.code(500).send({ error: 'Error al actualizar el activo.' });
     }
   });
 
@@ -647,7 +647,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.send({ message: 'Asset deleted' });
     } catch (error) {
       console.error('Error deleting asset:', error);
-      return reply.code(500).send({ error: 'Failed to delete asset' });
+      return reply.code(500).send({ error: 'Error al eliminar el activo.' });
     }
   });
 
@@ -684,7 +684,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       return reply.code(201).send({ cost });
     } catch (error) {
       console.error('Error adding maintenance cost:', error);
-      return reply.code(500).send({ error: 'Failed to add cost' });
+      return reply.code(500).send({ error: 'Error al registrar el costo de mantenimiento.' });
     }
   });
 

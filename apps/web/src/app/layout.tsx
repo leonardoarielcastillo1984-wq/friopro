@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import type { Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import Providers from './providers';
+import Script from 'next/script';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -27,12 +28,29 @@ export const metadata = {
     title: 'SGI 360',
     statusBarStyle: 'default',
   },
+  other: {
+    'google-ads-verification': 'AW-18147230024',
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="es" className={inter.variable}>
       <head>
+        <script
+          async
+          src="https://www.googletagmanager.com/gtag/js?id=AW-18147230024"
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'AW-18147230024');
+            `,
+          }}
+        />
       </head>
       <body className="min-h-screen bg-neutral-100/50 font-sans text-neutral-900 antialiased">
         <Providers>{children}</Providers>

@@ -117,7 +117,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({ overallCompliance, normatives: complianceSummary });
     } catch (error: any) {
       console.error('[COMPLIANCE-SUMMARY ERROR]', error?.message, error?.stack);
-      return reply.code(500).send({ error: error?.message || 'Failed to calculate compliance summary' });
+      return reply.code(500).send({ error: error?.message || 'Error al calcular el resumen de cumplimiento.' });
     }
   });
 
@@ -137,7 +137,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    if (!normativo) return reply.code(404).send({ error: 'Not found' });
+    if (!normativo) return reply.code(404).send({ error: 'Registro no encontrado.' });
     return reply.send({ normativo });
   });
 
@@ -362,7 +362,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    if (!updated) return reply.code(404).send({ error: 'Not found' });
+    if (!updated) return reply.code(404).send({ error: 'Registro no encontrado.' });
     return reply.send({ normativo: updated });
   });
 
@@ -383,7 +383,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       return existing;
     });
 
-    if (!deleted) return reply.code(404).send({ error: 'Not found' });
+    if (!deleted) return reply.code(404).send({ error: 'Registro no encontrado.' });
 
     // Decrementar uso y borrar archivo físico del storage
     if (deleted.filePath && deleted.fileSize) {
@@ -560,7 +560,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    if (!normativo) return reply.code(404).send({ error: 'Not found' });
+    if (!normativo) return reply.code(404).send({ error: 'Registro no encontrado.' });
 
     // Obtener progreso del job si está procesando
     let progress: number | null = null;
@@ -793,7 +793,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (error) {
       console.error('Error generating clause suggestions:', error);
-      return reply.code(500).send({ error: 'Failed to generate suggestions' });
+      return reply.code(500).send({ error: 'Error al generar sugerencias con IA. Intentá nuevamente.' });
     }
   });
 

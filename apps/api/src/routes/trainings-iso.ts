@@ -236,7 +236,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
     const training = await app.prisma.sgiTraining.findFirst({
       where: { id, tenantId },
     });
-    if (!training) return reply.code(404).send({ error: 'Training not found' });
+    if (!training) return reply.code(404).send({ error: 'Capacitación no encontrada.' });
 
     const created = await app.runWithDbContext(req, async (tx: any) => {
       return tx.sgiTrainingAttendee.createMany({
@@ -317,7 +317,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
     const training = await app.prisma.sgiTraining.findFirst({
       where: { id, tenantId },
     });
-    if (!training) return reply.code(404).send({ error: 'Training not found' });
+    if (!training) return reply.code(404).send({ error: 'Capacitación no encontrada.' });
 
     const evaluation = await app.prisma.trainingSatisfaction.create({
       data: {
@@ -349,7 +349,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
     const training = await app.prisma.sgiTraining.findFirst({
       where: { id, tenantId },
     });
-    if (!training) return reply.code(404).send({ error: 'Training not found' });
+    if (!training) return reply.code(404).send({ error: 'Capacitación no encontrada.' });
 
     const evaluation = await app.prisma.trainingEffectiveness.create({
       data: {
@@ -403,7 +403,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
       },
     });
 
-    if (!training) return reply.code(404).send({ error: 'Training not found' });
+    if (!training) return reply.code(404).send({ error: 'Capacitación no encontrada.' });
 
     // Generar lista de asistencia en formato para impresión
     const attendanceSheet = {
@@ -554,7 +554,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
       select: { title: true, category: true, objectives: true, contentProgram: true },
     });
 
-    if (!training) return reply.code(404).send({ error: 'Training not found' });
+    if (!training) return reply.code(404).send({ error: 'Capacitación no encontrada.' });
 
     // Preguntas genéricas basadas en la categoría de la capacitación
     const questions = [

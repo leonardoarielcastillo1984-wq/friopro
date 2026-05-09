@@ -38,7 +38,7 @@ export class MercadoPagoService {
           start_date: this.getStartDate(),
           end_date: this.getEndDate(plan.trialDays)
         },
-        back_url: `${process.env.WEB_BASE_URL}/subscription/success`,
+        back_url: `${process.env.WEB_BASE_URL}/licencias/pago-exitoso`,
         payer_email: customerEmail,
         external_reference: `${tenantId}_${planId}_monthly`,
         metadata: {
@@ -110,7 +110,7 @@ export class MercadoPagoService {
           start_date: this.getStartDate(),
           end_date: this.getEndDate(plan.trialDays)
         },
-        back_url: `${process.env.WEB_BASE_URL}/subscription/success`,
+        back_url: `${process.env.WEB_BASE_URL}/licencias/pago-exitoso`,
         payer_email: customerEmail,
         external_reference: `${tenantId}_${planId}_annual`,
         metadata: {

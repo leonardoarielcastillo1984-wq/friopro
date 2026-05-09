@@ -83,7 +83,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
         },
       });
     });
-    if (!item) return reply.code(404).send({ error: 'Not found' });
+    if (!item) return reply.code(404).send({ error: 'Registro no encontrado.' });
     return reply.send({ item });
   });
 
@@ -92,7 +92,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     delete body.id;
 
     stripNulls(body);
@@ -130,7 +130,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     delete body.id; delete body.tenantId; delete body.createdAt;
     stripNulls(body);
     parseDates(body);
@@ -159,7 +159,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     delete body.id; delete body.tenantId;
     stripNulls(body);
     parseDates(body);
@@ -219,7 +219,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     delete body.id; delete body.hazardId; delete body.tenantId; delete body.createdAt; delete body.updatedAt;
     stripNulls(body);
     parseDates(body);
@@ -247,7 +247,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id: hazardId, actionId } = z.object({ id: z.string().uuid(), actionId: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     delete body.id; delete body.hazardId; delete body.tenantId;
     stripNulls(body);
     parseDates(body);
@@ -298,7 +298,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     delete body.id; delete body.hazardId; delete body.tenantId; delete body.createdAt; delete body.updatedAt;
     stripNulls(body);
     parseDates(body);

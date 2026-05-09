@@ -194,16 +194,16 @@ export async function buildApp() {
         if (target && (Array.isArray(target) ? target.join(',') : String(target)).includes('management_reviews')) {
           return reply.code(409).send({ error: 'Ya existe un informe con ese título. Por favor usá un título diferente.' });
         }
-        return reply.code(409).send({ error: 'Resource already exists' });
+        return reply.code(409).send({ error: 'El registro ya existe. Verificá que no esté duplicado.' });
       }
       if (error.code === 'P2025') {
-        return reply.code(404).send({ error: 'Resource not found' });
+        return reply.code(404).send({ error: 'El registro no fue encontrado.' });
       }
     }
 
     // Unexpected errors → 500 (log full error, return generic message)
     app.log.error(error);
-    return reply.code(500).send({ error: 'Internal server error' });
+    return reply.code(500).send({ error: 'Error interno del servidor. Por favor intentá nuevamente.' });
   });
 
   await app.register(healthRoutes);

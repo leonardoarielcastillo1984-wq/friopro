@@ -35,7 +35,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         },
       });
 
-      if (!tenant) return reply.code(404).send({ error: 'Tenant not found' });
+      if (!tenant) return reply.code(404).send({ error: 'Empresa no encontrada.' });
       app.log.info(`[REPORT] Step 1 done`);
 
       // 2. Counts de entidades principales
@@ -649,7 +649,7 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       return reply.send(report);
     } catch (error: any) {
       app.log.error({ err: error, msg: 'Error generating tenant report', stack: error?.stack, detail: error?.message });
-      return reply.code(500).send({ error: 'Failed to generate report', message: error.message });
+      return reply.code(500).send({ error: 'Error al generar el reporte.', message: error.message });
     }
   });
 }

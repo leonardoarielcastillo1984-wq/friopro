@@ -40,7 +40,7 @@ export async function registerLandingSettingsRoutes(app: FastifyInstance) {
 
       return reply.send({ settings });
     } catch (error) {
-      return reply.code(500).send({ error: 'Failed to fetch landing settings' });
+      return reply.code(500).send({ error: 'Error al obtener la configuración del sitio.' });
     }
   });
 
@@ -58,7 +58,7 @@ export async function registerLandingSettingsRoutes(app: FastifyInstance) {
       return reply.send({ success: true, settings });
     } catch (error) {
       console.error('Error updating landing settings:', error);
-      return reply.code(500).send({ error: 'Failed to update landing settings' });
+      return reply.code(500).send({ error: 'Error al guardar la configuración del sitio.' });
     }
   });
 

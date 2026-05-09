@@ -80,7 +80,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
         },
       });
     });
-    if (!item) return reply.code(404).send({ error: 'Not found' });
+    if (!item) return reply.code(404).send({ error: 'Registro no encontrado.' });
     return reply.send(item);
   });
 
@@ -88,7 +88,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     const tId = tenantId(req);
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     let body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     stripNulls(body);
     parseDates(body);
 
@@ -127,14 +127,14 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     let body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     stripNulls(body);
     parseDates(body);
 
     const existing = await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillScenario.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
     });
-    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    if (!existing) return reply.code(404).send({ error: 'Registro no encontrado.' });
 
     const data: any = {};
     ['name','description','type','severity','category','status','scheduledDate','executionDate','responsibleId','riskId','environmentalAspectId','objectives','scope','schedule','coordinator','evaluators','resources','procedures','evaluationCriteria'].forEach((k) => {
@@ -154,7 +154,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     const existing = await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillScenario.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
     });
-    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    if (!existing) return reply.code(404).send({ error: 'Registro no encontrado.' });
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillScenario.update({ where: { id }, data: { deletedAt: new Date() } });
     });
@@ -197,7 +197,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     let body = parseBody(req);
-    if (!body || !body.result) return reply.code(400).send({ error: 'result required' });
+    if (!body || !body.result) return reply.code(400).send({ error: 'El campo resultado es obligatorio.' });
     const created = await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillResult.create({
         data: {
@@ -218,7 +218,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { resultId } = req.params as { resultId: string };
     let body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     const data: any = {};
     ['result','responseTime','observations','deviationsDetected'].forEach((k) => { if (body[k] !== undefined) data[k] = body[k]; });
     const updated = await app.runWithDbContext(req, async (tx: any) => {
@@ -257,8 +257,8 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     let body = parseBody(req);
-    if (!body || !body.description) return reply.code(400).send({ error: 'description required' });
-    if (body.responsibleId && !isValidUUID(body.responsibleId)) return reply.code(400).send({ error: 'responsibleId must be a valid UUID' });
+    if (!body || !body.description) return reply.code(400).send({ error: 'El campo descripción es obligatorio.' });
+    if (body.responsibleId && !isValidUUID(body.responsibleId)) return reply.code(400).send({ error: 'El responsable seleccionado no es válido.' });
     stripNulls(body);
     parseDates(body);
     const created = await app.runWithDbContext(req, async (tx: any) => {
@@ -282,7 +282,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { actionId } = req.params as { actionId: string };
     let body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     stripNulls(body);
     parseDates(body);
     const data: any = {};
@@ -322,7 +322,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     let body = parseBody(req);
-    if (!body || !body.employeeId) return reply.code(400).send({ error: 'employeeId required' });
+    if (!body || !body.employeeId) return reply.code(400).send({ error: 'El campo empleado es obligatorio.' });
     if (!isValidUUID(body.employeeId)) return reply.code(400).send({ error: 'employeeId must be a valid UUID' });
     const created = await app.runWithDbContext(req, async (tx: any) => {
       return tx.drillParticipant.create({
@@ -415,7 +415,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
         include: { drillResults: { orderBy: { createdAt: 'desc' }, take: 1 }, drillActions: true, drillParticipants: true }
       });
     });
-    if (!drill) return reply.code(404).send({ error: 'Not found' });
+    if (!drill) return reply.code(404).send({ error: 'Registro no encontrado.' });
 
     try {
       const llm = createLLMProvider(req.tenant);
@@ -423,7 +423,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
       const aiRes = await llm.chat([{ role: 'user', content: prompt }], 1500);
       return reply.send({ analysis: aiRes?.text || 'Sin respuesta del modelo' });
     } catch (e: any) {
-      return reply.code(500).send({ error: 'Error IA', details: e?.message });
+      return reply.code(500).send({ error: 'Error al procesar el análisis con IA. Intentá nuevamente.', details: e?.message });
     }
   });
 
@@ -534,7 +534,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     });
-    if (!item) return reply.code(404).send({ error: 'Not found' });
+    if (!item) return reply.code(404).send({ error: 'Registro no encontrado.' });
     return reply.send({ item });
   });
 
@@ -542,7 +542,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     const tId = tenantId(req);
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     let body = parseBody(req);
-    if (!body || !body.name) return reply.code(400).send({ error: 'name required' });
+    if (!body || !body.name) return reply.code(400).send({ error: 'El campo nombre es obligatorio.' });
     stripNulls(body);
     parseDates(body);
 
@@ -577,14 +577,14 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     let body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     stripNulls(body);
     parseDates(body);
 
     const existing = await app.runWithDbContext(req, async (tx: any) => {
       return tx.contingencyPlan.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
     });
-    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    if (!existing) return reply.code(404).send({ error: 'Registro no encontrado.' });
 
     const data: any = {};
     ['name','description','type','status','version','responsibleId','reviewDate','nextReviewDate','objectives','triggers','responsibilities','procedures','resources','communications','timeline'].forEach((k) => {
@@ -604,7 +604,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     const existing = await app.runWithDbContext(req, async (tx: any) => {
       return tx.contingencyPlan.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
     });
-    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    if (!existing) return reply.code(404).send({ error: 'Registro no encontrado.' });
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.contingencyPlan.update({ where: { id }, data: { deletedAt: new Date() } });
     });
@@ -635,7 +635,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
         include: { responsible: { select: { id: true, firstName: true, lastName: true } } }
       });
     });
-    if (!item) return reply.code(404).send({ error: 'Not found' });
+    if (!item) return reply.code(404).send({ error: 'Registro no encontrado.' });
     return reply.send({ item });
   });
 
@@ -643,7 +643,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     const tId = tenantId(req);
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     let body = parseBody(req);
-    if (!body || !body.name) return reply.code(400).send({ error: 'name required' });
+    if (!body || !body.name) return reply.code(400).send({ error: 'El campo nombre es obligatorio.' });
     stripNulls(body);
     parseDates(body);
 
@@ -677,14 +677,14 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     let body = parseBody(req);
-    if (!body) return reply.code(400).send({ error: 'Invalid body' });
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
     stripNulls(body);
     parseDates(body);
 
     const existing = await app.runWithDbContext(req, async (tx: any) => {
       return tx.emergencyResource.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
     });
-    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    if (!existing) return reply.code(404).send({ error: 'Registro no encontrado.' });
 
     const data: any = {};
     ['name','description','type','category','quantity','location','status','isOperational','maintenanceDate','expirationDate','responsibleId','contactInfo','specifications','maintenanceSchedule'].forEach((k) => {
@@ -704,7 +704,7 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     const existing = await app.runWithDbContext(req, async (tx: any) => {
       return tx.emergencyResource.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
     });
-    if (!existing) return reply.code(404).send({ error: 'Not found' });
+    if (!existing) return reply.code(404).send({ error: 'Registro no encontrado.' });
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.emergencyResource.update({ where: { id }, data: { deletedAt: new Date() } });
     });

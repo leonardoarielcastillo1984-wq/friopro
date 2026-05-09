@@ -48,6 +48,10 @@ export class HealthMonitor {
   }
 
   private async sendServiceAlert(): Promise<void> {
+    // ALERTAS DE EMAIL DESACTIVADAS - Solicitado por usuario
+    console.log(`[HEALTH_MONITOR] Service alert DISABLED - Email notifications disabled`);
+    return;
+
     // Check cooldown to avoid spamming alerts
     const now = new Date();
     if (this.lastServiceAlert && (now.getTime() - this.lastServiceAlert.getTime()) < this.ALERT_COOLDOWN) {

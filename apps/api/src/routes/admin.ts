@@ -97,7 +97,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     '/2fa/users',
     async (req: FastifyRequest, reply: FastifyReply) => {
       if (!req.auth?.userId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
+        return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
       }
 
       try {
@@ -186,7 +186,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     '/2fa/users/:userId/audit-logs',
     async (req: FastifyRequest, reply: FastifyReply) => {
       if (!req.auth?.userId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
+        return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
       }
 
       try {
@@ -258,7 +258,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     '/2fa/users/:userId/disable',
     async (req: FastifyRequest, reply: FastifyReply) => {
       if (!req.auth?.userId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
+        return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
       }
 
       try {
@@ -350,7 +350,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     '/2fa/users/:userId/alert',
     async (req: FastifyRequest, reply: FastifyReply) => {
       if (!req.auth?.userId) {
-        return reply.code(401).send({ error: 'Unauthorized' });
+        return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
       }
 
       try {
@@ -439,7 +439,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/2fa/stats', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.auth?.userId) {
-      return reply.code(401).send({ error: 'Unauthorized' });
+      return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
     }
 
     try {
@@ -515,7 +515,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/tenants', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.auth?.userId) {
-      return reply.code(401).send({ error: 'Unauthorized' });
+      return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
     }
 
     try {
@@ -578,7 +578,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/plans', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.auth?.userId) {
-      return reply.code(401).send({ error: 'Unauthorized' });
+      return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
     }
 
     try {

@@ -520,7 +520,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         .send(fileBuffer);
     } catch (err) {
       app.log.error(err, 'Error reading file');
-      return reply.code(500).send({ error: 'Failed to read file' });
+      return reply.code(500).send({ error: 'Error al leer el archivo.' });
     }
   });
 
@@ -563,7 +563,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           _llmUnavailable: true,
         });
       }
-      return reply.code(500).send({ error: 'Failed to generate summary' });
+      return reply.code(500).send({ error: 'Error al generar el resumen con IA. Intentá nuevamente.' });
     }
   });
 
@@ -713,7 +713,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         .send(fileBuffer);
     } catch (err) {
       app.log.error(err, 'Error reading version file');
-      return reply.code(500).send({ error: 'Failed to read file' });
+      return reply.code(500).send({ error: 'Error al leer el archivo.' });
     }
   });
 

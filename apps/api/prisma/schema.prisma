@@ -4906,7 +4906,7 @@ model Stakeholder {
   complianceLevel    Int?      @map("compliance_level") // 0-100
   lastEvaluationDate DateTime? @map("last_evaluation_date") @db.Timestamptz
   complianceEvidence String?   @map("compliance_evidence")
-  indicatorId        String?   @map("indicator_id") @db.Uuid
+  indicatorId        String?   @map("indicator_id")
   requiresAction     Boolean?  @default(false) @map("requires_action")
   actionItemId       String?   @map("action_item_id") @db.Uuid
   deletedAt          DateTime?
