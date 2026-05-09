@@ -96,6 +96,7 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
   // Visor PDF
   const [showPdfViewer, setShowPdfViewer] = useState(true);
   const [pdfError, setPdfError] = useState(false);
+  const [pdfKey, setPdfKey] = useState(Date.now());
   // Autosave
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -195,6 +196,8 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
       setChangeNote('');
       onSaved?.();
       setTimeout(() => setSaved(false), 3000);
+      // Recargar PDF ~8s después (tiempo para que LibreOffice genere el PDF)
+      setTimeout(() => setPdfKey(Date.now()), 8000);
     } catch (err: any) {
       setError('Error al guardar: ' + err.message);
     } finally {
@@ -541,8 +544,8 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
               </div>
             ) : (
               <iframe
-                key={documentId}
-                src={`/api/documents/${documentId}/preview-pdf`}
+                key={pdfKey}
+                src={`/api/documents/${documentId}/preview-pdf?t=${pdfKey}`}
                 className="flex-1 w-full border-0"
                 title="Vista previa del documento"
                 onError={() => setPdfError(true)}

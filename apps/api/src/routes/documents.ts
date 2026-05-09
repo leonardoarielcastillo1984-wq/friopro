@@ -953,6 +953,52 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (!updated) return reply.code(404).send({ error: 'Documento no encontrado' });
+
+    // Regenerar PDF cacheado en background (no bloquea la respuesta)
+    setImmediate(async () => {
+      try {
+        const { execFile } = await import('node:child_process');
+        const { promisify } = await import('node:util');
+        const execFileAsync = promisify(execFile);
+        const tmpDir = `/tmp/sgi-preview-${id}`;
+        await fs.mkdir(tmpDir, { recursive: true });
+
+        // Generar HTML completo con estilos para conversión a PDF
+        const htmlForPdf = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; color: #222; font-size: 11pt; line-height: 1.5; }
+  h1 { font-size: 18pt; color: #1e3a8a; border-bottom: 2px solid #2563eb; padding-bottom: 6px; }
+  h2 { font-size: 14pt; color: #1d4ed8; margin-top: 18px; }
+  h3 { font-size: 12pt; color: #374151; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #d1d5db; padding: 6px 10px; }
+  th { background: #eff6ff; font-weight: 600; }
+  blockquote { border-left: 4px solid #3b82f6; margin: 0; padding: 6px 14px; background: #f0f9ff; }
+  ul, ol { padding-left: 24px; }
+</style></head><body>${htmlContent}</body></html>`;
+
+        const htmlPath = path.join(tmpDir, 'edited.html');
+        await fs.writeFile(htmlPath, htmlForPdf, 'utf-8');
+
+        // Eliminar PDF anterior
+        try { await fs.unlink(path.join(tmpDir, 'edited.pdf')); } catch { /* ok */ }
+
+        await execFileAsync('libreoffice', [
+          '--headless', '--convert-to', 'pdf', '--outdir', tmpDir, htmlPath,
+        ], { timeout: 60000 });
+
+        // Renombrar para que el endpoint preview-pdf lo encuentre
+        const originalExt = updated.filePath ? path.extname(updated.filePath) : '';
+        const originalBase = updated.filePath ? path.basename(updated.filePath, originalExt) : 'document';
+        const generatedPdf = path.join(tmpDir, 'edited.pdf');
+        const targetPdf = path.join(tmpDir, originalBase + '.pdf');
+        try { await fs.rename(generatedPdf, targetPdf); } catch { /* ok si ya tiene el nombre correcto */ }
+      } catch (err) {
+        app.log.warn(err, 'Error regenerando PDF preview tras guardar');
+      }
+    });
+
     return reply.send({ document: updated, message: 'Contenido guardado y nueva versión creada.' });
   });
 
@@ -1028,22 +1074,27 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
     // Directorio temporal para la conversión
     const tmpDir = `/tmp/sgi-preview-${id}`;
-    const pdfPath = path.join(tmpDir, path.basename(doc.filePath, ext) + '.pdf');
+    const editedPdfPath = path.join(tmpDir, 'edited.pdf');
+    const originalPdfPath = path.join(tmpDir, path.basename(doc.filePath, ext) + '.pdf');
 
     try {
       await fs.mkdir(tmpDir, { recursive: true });
 
-      // Si ya existe el PDF cacheado (menos de 1 hora), devolverlo directamente
-      try {
-        const stat = await fs.stat(pdfPath);
-        if (Date.now() - stat.mtimeMs < 3600000) {
-          const pdfBuffer = await fs.readFile(pdfPath);
-          return reply
-            .header('Content-Type', 'application/pdf')
-            .header('Cache-Control', 'private, max-age=3600')
-            .send(pdfBuffer);
-        }
-      } catch { /* no existe, continuar con conversión */ }
+      // Priorizar el PDF generado desde el HTML editado (más reciente = versión editada)
+      for (const pdfPath of [editedPdfPath, originalPdfPath]) {
+        try {
+          const stat = await fs.stat(pdfPath);
+          if (Date.now() - stat.mtimeMs < 3600000) {
+            const pdfBuffer = await fs.readFile(pdfPath);
+            return reply
+              .header('Content-Type', 'application/pdf')
+              .header('Cache-Control', 'no-cache')
+              .send(pdfBuffer);
+          }
+        } catch { /* no existe, continuar */ }
+      }
+
+      // Ningún PDF cacheado válido — generar desde archivo original
 
       const { execFile } = await import('node:child_process');
       const { promisify } = await import('node:util');
@@ -1056,12 +1107,12 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         doc.filePath,
       ], { timeout: 60000 });
 
-      if (!existsSync(pdfPath)) return reply.code(500).send({ error: 'Error al convertir el documento' });
+      if (!existsSync(originalPdfPath)) return reply.code(500).send({ error: 'Error al convertir el documento' });
 
-      const pdfBuffer = await fs.readFile(pdfPath);
+      const pdfBuffer = await fs.readFile(originalPdfPath);
       return reply
         .header('Content-Type', 'application/pdf')
-        .header('Cache-Control', 'private, max-age=3600')
+        .header('Cache-Control', 'no-cache')
         .send(pdfBuffer);
     } catch (err: any) {
       app.log.error(err, 'Error converting to PDF with LibreOffice');
