@@ -78,7 +78,7 @@ export default function DocumentDetailPage() {
   const [reviewResult, setReviewResult] = useState<'APPROVED' | 'REQUIRES_UPDATE'>('APPROVED');
   const [reviewComments, setReviewComments] = useState('');
   const [reviewing, setReviewing] = useState(false);
-  const [aiValidation, setAiValidation] = useState<{ overallStatus: string; qualityScore: number; gaps: string[]; recommendations: string[] } | null>(null);
+  const [aiValidation, setAiValidation] = useState<{ qualityStatus: string; complianceScore: number; gaps: string[]; recommendations: Array<{priority: string; action: string; moduleOrDocument: string}> } | null>(null);
   const [loadingAiValidation, setLoadingAiValidation] = useState(false);
 
   const docTypeOptions = [
@@ -197,7 +197,7 @@ export default function DocumentDetailPage() {
   async function loadAiValidation() {
     setLoadingAiValidation(true);
     try {
-      const res = await apiFetch<{ overallStatus: string; qualityScore: number; gaps: string[]; recommendations: string[] }>(`/documents/${id}/ai-validation`, { method: 'POST' });
+      const res = await apiFetch<{ qualityStatus: string; complianceScore: number; gaps: string[]; recommendations: Array<{priority: string; action: string; moduleOrDocument: string}> }>(`/documents/${id}/ai-validation`, { method: 'POST' });
       setAiValidation(res);
     } catch (err: any) {
       setError(err?.message ?? 'Error en validación IA');
@@ -925,15 +925,15 @@ export default function DocumentDetailPage() {
                 <Cpu className="h-4 w-4 text-indigo-600" />
                 <h3 className="text-sm font-semibold text-indigo-900">Validación IA</h3>
                 <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
-                  aiValidation.overallStatus === 'ADEQUATE'
+                  aiValidation.qualityStatus === 'ADEQUATE'
                     ? 'bg-green-50 border-green-200 text-green-700'
-                    : aiValidation.overallStatus === 'IMPROVABLE'
+                    : aiValidation.qualityStatus === 'IMPROVABLE'
                     ? 'bg-amber-50 border-amber-200 text-amber-700'
                     : 'bg-red-50 border-red-200 text-red-700'
                 }`}>
-                  {aiValidation.overallStatus === 'ADEQUATE' ? 'Adecuado' : aiValidation.overallStatus === 'IMPROVABLE' ? 'Mejorable' : 'No conforme'}
+                  {aiValidation.qualityStatus === 'ADEQUATE' ? 'Adecuado' : aiValidation.qualityStatus === 'IMPROVABLE' ? 'Mejorable' : 'No conforme'}
                 </span>
-                <span className="text-xs text-neutral-500">Score: {aiValidation.qualityScore}/100</span>
+                <span className="text-xs text-neutral-500">Score: {aiValidation.complianceScore}/100</span>
               </div>
               {aiValidation.gaps?.length > 0 && (
                 <div className="mb-2">
@@ -950,7 +950,7 @@ export default function DocumentDetailPage() {
                   <p className="text-xs font-medium text-amber-700 mb-1">Recomendaciones:</p>
                   <ul className="list-disc list-inside text-xs text-amber-600 space-y-0.5">
                     {aiValidation.recommendations.map((rec, i) => (
-                      <li key={i}>{rec}</li>
+                      <li key={i}><span className="font-medium">[{rec.priority}]</span> {rec.action} <span className="text-neutral-400">— {rec.moduleOrDocument}</span></li>
                     ))}
                   </ul>
                 </div>
