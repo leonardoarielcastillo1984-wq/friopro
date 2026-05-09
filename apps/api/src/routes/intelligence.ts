@@ -12,7 +12,7 @@ export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!effectiveTenantId) {
+    if (!tenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
@@ -97,7 +97,7 @@ export const intelligenceRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!effectiveTenantId) {
+    if (!tenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
