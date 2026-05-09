@@ -1857,6 +1857,11 @@ model CompanySettings {
   primaryColor   String? @default("#2563eb") // Brand color
   commSignature  String? // Firma HTML para comunicados/difusión
 
+  // RRHH Configuration (stored as JSON arrays)
+  hrPositionCategories Json? // [{id, name, description, level}]
+  hrContractTypes      Json? // [{id, name, description, duration}]
+  hrTrainingCategories Json? // [{id, name, description, standard}]
+
   // Metadata
   updatedAt   DateTime @updatedAt @db.Timestamptz
   updatedById String   @db.Uuid

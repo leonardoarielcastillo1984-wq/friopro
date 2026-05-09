@@ -113,17 +113,20 @@ export default function ConfiguracionRRHHPage() {
       // Load departments
       const deptRes = await apiFetch<{ departments: Department[] }>('/hr/departments');
       setDepartments(deptRes.departments || []);
-      
-      // Load position categories
-      const posRes = await apiFetch<{ positions: any[] }>('/hr/positions');
-      // Extract unique categories from positions
-      const categories = [...new Set(posRes.positions?.map(p => p.category) || [])];
-      setPositionCategories(categories.map((cat, idx) => ({
-        id: String(idx),
-        name: cat,
-        description: '',
-        level: ''
-      })));
+
+      // Load RRHH config (position categories, contract types, training categories)
+      try {
+        const hrConfig = await apiFetch<{
+          positionCategories: PositionCategory[];
+          contractTypes: ContractType[];
+          trainingCategories: TrainingCategory[];
+        }>('/company/hr-config');
+        if (hrConfig.positionCategories?.length) setPositionCategories(hrConfig.positionCategories);
+        if (hrConfig.contractTypes?.length) setContractTypes(hrConfig.contractTypes);
+        if (hrConfig.trainingCategories?.length) setTrainingCategories(hrConfig.trainingCategories);
+      } catch {
+        // Mantener defaults si falla
+      }
 
       // Load competencies
       try {
@@ -136,6 +139,25 @@ export default function ConfiguracionRRHHPage() {
       setError(e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveHrConfig = async (overrides?: {
+    positionCategories?: PositionCategory[];
+    contractTypes?: ContractType[];
+    trainingCategories?: TrainingCategory[];
+  }) => {
+    try {
+      await apiFetch('/company/hr-config', {
+        method: 'PUT',
+        json: {
+          positionCategories: overrides?.positionCategories ?? positionCategories,
+          contractTypes: overrides?.contractTypes ?? contractTypes,
+          trainingCategories: overrides?.trainingCategories ?? trainingCategories,
+        },
+      });
+    } catch (e: any) {
+      setError(e.message);
     }
   };
 
@@ -223,82 +245,85 @@ export default function ConfiguracionRRHHPage() {
     }
   };
 
-  // Position category handlers (local state only - no API)
-  const handleCreatePosCat = () => {
+  // Position category handlers
+  const handleCreatePosCat = async () => {
     if (!posCatForm.name) return;
-    const newCat: PositionCategory = {
-      id: Date.now().toString(),
-      ...posCatForm,
-    };
-    setPositionCategories([...positionCategories, newCat]);
+    const newCat: PositionCategory = { id: Date.now().toString(), ...posCatForm };
+    const updated = [...positionCategories, newCat];
+    setPositionCategories(updated);
     setPosCatForm({ name: '', description: '', level: '' });
     setShowPosCatForm(false);
+    await saveHrConfig({ positionCategories: updated });
   };
 
-  const handleUpdatePosCat = () => {
+  const handleUpdatePosCat = async () => {
     if (!editingPosCat || !posCatForm.name) return;
-    setPositionCategories(positionCategories.map(c => 
-      c.id === editingPosCat.id ? { ...c, ...posCatForm } : c
-    ));
+    const updated = positionCategories.map(c => c.id === editingPosCat.id ? { ...c, ...posCatForm } : c);
+    setPositionCategories(updated);
     setEditingPosCat(null);
     setPosCatForm({ name: '', description: '', level: '' });
+    await saveHrConfig({ positionCategories: updated });
   };
 
-  const handleDeletePosCat = (id: string) => {
+  const handleDeletePosCat = async (id: string) => {
     if (!confirm('¿Eliminar esta categoría?')) return;
-    setPositionCategories(positionCategories.filter(c => c.id !== id));
+    const updated = positionCategories.filter(c => c.id !== id);
+    setPositionCategories(updated);
+    await saveHrConfig({ positionCategories: updated });
   };
 
   // Contract type handlers
-  const handleCreateContract = () => {
+  const handleCreateContract = async () => {
     if (!contractForm.name) return;
-    const newContract: ContractType = {
-      id: Date.now().toString(),
-      ...contractForm,
-    };
-    setContractTypes([...contractTypes, newContract]);
+    const newContract: ContractType = { id: Date.now().toString(), ...contractForm };
+    const updated = [...contractTypes, newContract];
+    setContractTypes(updated);
     setContractForm({ name: '', description: '', duration: '' });
     setShowContractForm(false);
+    await saveHrConfig({ contractTypes: updated });
   };
 
-  const handleUpdateContract = () => {
+  const handleUpdateContract = async () => {
     if (!editingContract || !contractForm.name) return;
-    setContractTypes(contractTypes.map(c => 
-      c.id === editingContract.id ? { ...c, ...contractForm } : c
-    ));
+    const updated = contractTypes.map(c => c.id === editingContract.id ? { ...c, ...contractForm } : c);
+    setContractTypes(updated);
     setEditingContract(null);
     setContractForm({ name: '', description: '', duration: '' });
+    await saveHrConfig({ contractTypes: updated });
   };
 
-  const handleDeleteContract = (id: string) => {
+  const handleDeleteContract = async (id: string) => {
     if (!confirm('¿Eliminar este tipo de contrato?')) return;
-    setContractTypes(contractTypes.filter(c => c.id !== id));
+    const updated = contractTypes.filter(c => c.id !== id);
+    setContractTypes(updated);
+    await saveHrConfig({ contractTypes: updated });
   };
 
   // Training category handlers
-  const handleCreateTrainingCat = () => {
+  const handleCreateTrainingCat = async () => {
     if (!trainingCatForm.name) return;
-    const newCat: TrainingCategory = {
-      id: Date.now().toString(),
-      ...trainingCatForm,
-    };
-    setTrainingCategories([...trainingCategories, newCat]);
+    const newCat: TrainingCategory = { id: Date.now().toString(), ...trainingCatForm };
+    const updated = [...trainingCategories, newCat];
+    setTrainingCategories(updated);
     setTrainingCatForm({ name: '', description: '', standard: '' });
     setShowTrainingCatForm(false);
+    await saveHrConfig({ trainingCategories: updated });
   };
 
-  const handleUpdateTrainingCat = () => {
+  const handleUpdateTrainingCat = async () => {
     if (!editingTrainingCat || !trainingCatForm.name) return;
-    setTrainingCategories(trainingCategories.map(c => 
-      c.id === editingTrainingCat.id ? { ...c, ...trainingCatForm } : c
-    ));
+    const updated = trainingCategories.map(c => c.id === editingTrainingCat.id ? { ...c, ...trainingCatForm } : c);
+    setTrainingCategories(updated);
     setEditingTrainingCat(null);
     setTrainingCatForm({ name: '', description: '', standard: '' });
+    await saveHrConfig({ trainingCategories: updated });
   };
 
-  const handleDeleteTrainingCat = (id: string) => {
+  const handleDeleteTrainingCat = async (id: string) => {
     if (!confirm('¿Eliminar esta categoría de capacitación?')) return;
-    setTrainingCategories(trainingCategories.filter(c => c.id !== id));
+    const updated = trainingCategories.filter(c => c.id !== id);
+    setTrainingCategories(updated);
+    await saveHrConfig({ trainingCategories: updated });
   };
 
   // Competency level handlers

@@ -2,6 +2,27 @@ import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 
+const PositionCategorySchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  description: z.string().optional().default(''),
+  level: z.string().optional().default(''),
+});
+
+const ContractTypeSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  description: z.string().optional().default(''),
+  duration: z.string().optional().default(''),
+});
+
+const TrainingCategorySchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  description: z.string().optional().default(''),
+  standard: z.string().optional().default(''),
+});
+
 const UpdateCompanySettingsSchema = z.object({
   companyName: z.string().min(2).optional(),
   legalName: z.string().optional(),
@@ -70,6 +91,64 @@ export async function registerCompanySettingsRoutes(app: FastifyInstance) {
     }
   });
   
+  // GET /company/hr-config - Obtener configuración RRHH
+  app.get('/company/hr-config', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const settings = await app.prisma.companySettings.findUnique({
+      where: { tenantId },
+      select: { hrPositionCategories: true, hrContractTypes: true, hrTrainingCategories: true },
+    });
+
+    return reply.send({
+      positionCategories: (settings?.hrPositionCategories as any[]) ?? [],
+      contractTypes: (settings?.hrContractTypes as any[]) ?? [],
+      trainingCategories: (settings?.hrTrainingCategories as any[]) ?? [],
+    });
+  });
+
+  // PUT /company/hr-config - Guardar configuración RRHH
+  app.put('/company/hr-config', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const bodySchema = z.object({
+      positionCategories: z.array(PositionCategorySchema).optional(),
+      contractTypes: z.array(ContractTypeSchema).optional(),
+      trainingCategories: z.array(TrainingCategorySchema).optional(),
+    });
+
+    const validation = bodySchema.safeParse(req.body);
+    if (!validation.success) return reply.code(400).send({ error: 'Validación fallida', details: validation.error.errors });
+
+    const { positionCategories, contractTypes, trainingCategories } = validation.data;
+
+    const settings = await app.prisma.companySettings.upsert({
+      where: { tenantId },
+      update: {
+        ...(positionCategories !== undefined && { hrPositionCategories: positionCategories }),
+        ...(contractTypes !== undefined && { hrContractTypes: contractTypes }),
+        ...(trainingCategories !== undefined && { hrTrainingCategories: trainingCategories }),
+        updatedById: req.auth!.userId,
+      },
+      create: {
+        tenantId,
+        companyName: 'Mi Empresa',
+        ...(positionCategories !== undefined && { hrPositionCategories: positionCategories }),
+        ...(contractTypes !== undefined && { hrContractTypes: contractTypes }),
+        ...(trainingCategories !== undefined && { hrTrainingCategories: trainingCategories }),
+        updatedById: req.auth!.userId,
+      },
+    });
+
+    return reply.send({
+      positionCategories: (settings.hrPositionCategories as any[]) ?? [],
+      contractTypes: (settings.hrContractTypes as any[]) ?? [],
+      trainingCategories: (settings.hrTrainingCategories as any[]) ?? [],
+    });
+  });
+
   // POST /company/logo - Subir logo (simulado - en producción usar S3)
   app.post('/company/logo', async (req: FastifyRequest<{ Body: { imageBase64: string; type: 'light' | 'dark' } }>, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
