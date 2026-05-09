@@ -63,9 +63,14 @@ export const featuresPlugin = fp(async (app: FastifyInstance) => {
       return;
     }
 
-    const effective: FeatureMap = { ...(sub.plan.features as any) };
+    const planFeatures = sub.plan.features as any;
+    // Support {"modules": ["*"]} format — wildcard means all features enabled
+    const isWildcard = Array.isArray(planFeatures?.modules) && planFeatures.modules.includes('*');
+    const effective: FeatureMap = isWildcard
+      ? new Proxy({} as FeatureMap, { get: () => true, has: () => true })
+      : { ...planFeatures };
     for (const o of overrides) {
-      effective[o.key] = o.enabled ? (o.config ?? true) : false;
+      (effective as Record<string, unknown>)[o.key] = o.enabled ? (o.config ?? true) : false;
     }
 
     const result = { effective, planTier: sub.plan.tier, limits: (sub.plan.limits as any) ?? undefined };
