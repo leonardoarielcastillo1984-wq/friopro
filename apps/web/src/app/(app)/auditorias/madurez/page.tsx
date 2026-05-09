@@ -44,40 +44,84 @@ export default function MaturityScorePage() {
   async function loadData() {
     try {
       setLoading(true);
-      // Simulación de datos - en producción vendrían de la API
-      const mockData: MaturityScore = {
-        overall: 78,
-        byArea: [
-          { area: 'Producción', score: 85, totalAudits: 12, findings: 8, compliantPercentage: 88, trend: 'UP' },
-          { area: 'Calidad', score: 92, totalAudits: 15, findings: 3, compliantPercentage: 95, trend: 'STABLE' },
-          { area: 'Mantenimiento', score: 72, totalAudits: 8, findings: 15, compliantPercentage: 75, trend: 'DOWN' },
-          { area: 'Logística', score: 68, totalAudits: 6, findings: 12, compliantPercentage: 70, trend: 'UP' },
-          { area: 'RRHH', score: 88, totalAudits: 10, findings: 5, compliantPercentage: 90, trend: 'STABLE' },
-          { area: 'Compras', score: 65, totalAudits: 5, findings: 18, compliantPercentage: 65, trend: 'DOWN' },
-        ],
-        byStandard: [
-          { standard: 'ISO 9001', score: 82, compliant: 245, nonCompliant: 32 },
-          { standard: 'ISO 14001', score: 75, compliant: 120, nonCompliant: 28 },
-          { standard: 'ISO 45001', score: 71, compliant: 98, nonCompliant: 35 },
-          { standard: 'IATF 16949', score: 88, compliant: 180, nonCompliant: 15 },
-        ],
-        trends: [
-          { month: 'Oct 2025', score: 72 },
-          { month: 'Nov 2025', score: 74 },
-          { month: 'Dic 2025', score: 73 },
-          { month: 'Ene 2026', score: 76 },
-          { month: 'Feb 2026', score: 77 },
-          { month: 'Mar 2026', score: 78 },
-        ],
-        topRisks: [
-          { area: 'Mantenimiento', risk: 'Falta de capacitación en nuevos equipos', severity: 'HIGH' },
-          { area: 'Compras', risk: 'Control de proveedores insuficiente', severity: 'HIGH' },
-          { area: 'Logística', risk: 'Trazabilidad de productos', severity: 'MEDIUM' },
-        ],
-      };
-      setData(mockData);
+
+      const [statsRes, auditsRes] = await Promise.allSettled([
+        apiFetch<{ stats: any }>('/audit/stats'),
+        apiFetch<{ audits: any[] }>('/audit/audits'),
+      ]);
+
+      const stats = statsRes.status === 'fulfilled' ? statsRes.value.stats : null;
+      const audits: any[] = auditsRes.status === 'fulfilled' ? (auditsRes.value.audits || []) : [];
+
+      if (!stats && audits.length === 0) {
+        setData(null);
+        return;
+      }
+
+      // Calcular score por área desde auditorías reales
+      const areaMap: Record<string, { total: number; completed: number; findings: number }> = {};
+      for (const audit of audits) {
+        const area = audit.area || audit.process || 'Sin área';
+        if (!areaMap[area]) areaMap[area] = { total: 0, completed: 0, findings: 0 };
+        areaMap[area].total += 1;
+        if (audit.status === 'COMPLETED' || audit.status === 'CLOSED') areaMap[area].completed += 1;
+        areaMap[area].findings += audit._count?.findings ?? 0;
+      }
+
+      const byArea = Object.entries(areaMap).map(([area, d]) => {
+        const completionRate = d.total > 0 ? (d.completed / d.total) * 100 : 0;
+        const findingPenalty = Math.min(d.findings * 2, 30);
+        const score = Math.max(0, Math.round(completionRate - findingPenalty + (d.completed > 0 ? 10 : 0)));
+        return {
+          area,
+          score: Math.min(score, 100),
+          totalAudits: d.total,
+          findings: d.findings,
+          compliantPercentage: Math.round(completionRate),
+          trend: 'STABLE' as 'UP' | 'DOWN' | 'STABLE',
+        };
+      });
+
+      // Score general
+      const overall = byArea.length > 0
+        ? Math.round(byArea.reduce((acc, a) => acc + a.score, 0) / byArea.length)
+        : (stats ? Math.round(((stats.auditsByStatus?.COMPLETED ?? 0) / Math.max(stats.totalAudits, 1)) * 100) : 0);
+
+      // Normas usadas en las auditorías
+      const standardMap: Record<string, { compliant: number; nonCompliant: number }> = {};
+      for (const audit of audits) {
+        const standards: string[] = audit.isoStandard ?? [];
+        for (const std of standards) {
+          if (!standardMap[std]) standardMap[std] = { compliant: 0, nonCompliant: 0 };
+          if (audit.status === 'COMPLETED' || audit.status === 'CLOSED') standardMap[std].compliant += 1;
+          else standardMap[std].nonCompliant += 1;
+        }
+      }
+      const byStandard = Object.entries(standardMap).map(([standard, d]) => {
+        const total = d.compliant + d.nonCompliant;
+        return {
+          standard,
+          score: total > 0 ? Math.round((d.compliant / total) * 100) : 0,
+          compliant: d.compliant,
+          nonCompliant: d.nonCompliant,
+        };
+      });
+
+      // Áreas críticas (con más hallazgos)
+      const topRisks = [...byArea]
+        .sort((a, b) => b.findings - a.findings)
+        .slice(0, 3)
+        .filter(a => a.findings > 0)
+        .map(a => ({
+          area: a.area,
+          risk: `${a.findings} hallazgo${a.findings !== 1 ? 's' : ''} registrado${a.findings !== 1 ? 's' : ''}`,
+          severity: (a.findings >= 5 ? 'HIGH' : 'MEDIUM') as 'HIGH' | 'MEDIUM' | 'LOW',
+        }));
+
+      setData({ overall, byArea, byStandard, trends: [], topRisks });
     } catch (err) {
       console.error('Error loading maturity data:', err);
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -115,8 +159,19 @@ export default function MaturityScorePage() {
 
   if (!data) {
     return (
-      <div className="text-center py-8">
-        <p className="text-gray-500">Error al cargar datos de madurez</p>
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Trophy className="w-8 h-8 text-yellow-600" />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Score de Madurez</h1>
+            <p className="text-gray-500">Análisis de madurez del sistema de gestión</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+          <BarChart3 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500 font-medium">No hay suficientes datos para calcular el score de madurez.</p>
+          <p className="text-gray-400 text-sm mt-1">Creá y completá auditorías desde <strong>RRHH → Auditorías</strong> para ver el análisis.</p>
+        </div>
       </div>
     );
   }
@@ -172,45 +227,52 @@ export default function MaturityScorePage() {
           </div>
           
           {/* Trend Chart (simplified) */}
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-3">Evolución del Score</h3>
-            <div className="h-32 flex items-end gap-2">
-              {data.trends.map((trend, i) => {
-                const height = (trend.score / 100) * 100;
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <div
-                      className="w-full bg-blue-500 rounded-t transition-all duration-300 hover:bg-blue-600"
-                      style={{ height: `${height}%` }}
-                    />
-                    <span className="text-xs text-gray-500">{trend.month}</span>
-                  </div>
-                );
-              })}
+          {data.trends.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Evolución del Score</h3>
+              <div className="h-32 flex items-end gap-2">
+                {data.trends.map((trend, i) => {
+                  const height = (trend.score / 100) * 100;
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                      <div
+                        className="w-full bg-blue-500 rounded-t transition-all duration-300 hover:bg-blue-600"
+                        style={{ height: `${height}%` }}
+                      />
+                      <span className="text-xs text-gray-500">{trend.month}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Top & Bottom Areas */}
-        <div className="space-y-4">
-          <div className="bg-green-50 rounded-xl p-4 border border-green-100">
-            <div className="flex items-center gap-2 mb-2">
-              <Award className="w-5 h-5 text-green-600" />
-              <span className="text-sm font-medium text-green-800">Mejor Área</span>
-            </div>
-            <p className="text-lg font-semibold text-green-900">{topArea.area}</p>
-            <p className="text-2xl font-bold text-green-600">{topArea.score}%</p>
+        {sortedAreas.length > 0 && (
+          <div className="space-y-4">
+            {topArea && (
+              <div className="bg-green-50 rounded-xl p-4 border border-green-100">
+                <div className="flex items-center gap-2 mb-2">
+                  <Award className="w-5 h-5 text-green-600" />
+                  <span className="text-sm font-medium text-green-800">Mejor Área</span>
+                </div>
+                <p className="text-lg font-semibold text-green-900">{topArea.area}</p>
+                <p className="text-2xl font-bold text-green-600">{topArea.score}%</p>
+              </div>
+            )}
+            {bottomArea && bottomArea !== topArea && (
+              <div className="bg-red-50 rounded-xl p-4 border border-red-100">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                  <span className="text-sm font-medium text-red-800">Área Crítica</span>
+                </div>
+                <p className="text-lg font-semibold text-red-900">{bottomArea.area}</p>
+                <p className="text-2xl font-bold text-red-600">{bottomArea.score}%</p>
+              </div>
+            )}
           </div>
-          
-          <div className="bg-red-50 rounded-xl p-4 border border-red-100">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-              <span className="text-sm font-medium text-red-800">Área Crítica</span>
-            </div>
-            <p className="text-lg font-semibold text-red-900">{bottomArea.area}</p>
-            <p className="text-2xl font-bold text-red-600">{bottomArea.score}%</p>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Ranking by Area */}

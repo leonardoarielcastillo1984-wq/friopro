@@ -38,67 +38,32 @@ export default function NotificationsPage() {
   async function loadNotifications() {
     try {
       setLoading(true);
-      // Simulación de notificaciones - en producción vendrían de la API
-      const mockNotifications: Notification[] = [
-        {
-          id: '1',
-          type: 'AUDIT_DUE',
-          title: 'Auditoría programada para mañana',
-          message: 'La auditoría AUD-2026-005 está programada para iniciar el 31/03/2026',
-          entityType: 'AUDIT',
-          entityId: 'audit-1',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: '2',
-          type: 'FINDING_OVERDUE',
-          title: 'Hallazgo crítico vencido',
-          message: 'El hallazgo H-003 lleva 5 días sin acciones correctivas registradas',
-          entityType: 'FINDING',
-          entityId: 'finding-1',
-          isRead: false,
-          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: '3',
-          type: 'ACTION_DUE',
-          title: 'Acción correctiva próxima a vencer',
-          message: 'La acción AC-012 vence en 3 días. Responsable: Juan Pérez',
-          entityType: 'ACTION',
-          entityId: 'action-1',
-          isRead: true,
-          createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: '4',
-          type: 'AUDIT_COMPLETED',
-          title: 'Auditoría finalizada',
-          message: 'La auditoría AUD-2026-004 ha sido completada. Revisa el informe.',
-          entityType: 'AUDIT',
-          entityId: 'audit-2',
-          isRead: true,
-          createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-      ];
-      setNotifications(mockNotifications);
+      const res = await apiFetch<{ notifications: Notification[] }>('/notifications');
+      setNotifications(res.notifications || []);
     } catch (err) {
       console.error('Error loading notifications:', err);
+      setNotifications([]);
     } finally {
       setLoading(false);
     }
   }
 
   async function markAsRead(id: string) {
-    setNotifications(notifications.map(n => 
-      n.id === id ? { ...n, isRead: true } : n
-    ));
+    try {
+      await apiFetch('/notifications/mark-read', { method: 'POST', json: { ids: [id] } });
+      setNotifications(notifications.map(n => n.id === id ? { ...n, isRead: true } : n));
+    } catch (err) {
+      console.error('Error marking as read:', err);
+    }
   }
 
   async function markAllAsRead() {
-    setNotifications(notifications.map(n => ({ ...n, isRead: true })));
+    try {
+      await apiFetch('/notifications/mark-all-read', { method: 'POST', json: {} });
+      setNotifications(notifications.map(n => ({ ...n, isRead: true })));
+    } catch (err) {
+      console.error('Error marking all as read:', err);
+    }
   }
 
   async function deleteNotification(id: string) {
