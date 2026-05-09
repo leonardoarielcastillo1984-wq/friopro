@@ -170,7 +170,13 @@ async function rawFetch<T>(
   // Temporarily skip CSRF for clause-mappings to debug
   const skipCsrf = normalizedPath.includes('clause-mappings');
   
-  if (isStateChanging && !skipCsrf && !currentCsrf) {
+  // Rutas públicas de auth no requieren CSRF ni refresh de token
+  const isPublicAuthRoute = normalizedPath.includes('/auth/forgot-password') ||
+    normalizedPath.includes('/auth/reset-password') ||
+    normalizedPath.includes('/auth/register') ||
+    normalizedPath.includes('/auth/login');
+
+  if (isStateChanging && !skipCsrf && !currentCsrf && !isPublicAuthRoute) {
     // If the session is valid but CSRF is missing (e.g. after restart), refresh CSRF once.
     await tryRefreshToken();
     currentCsrf = getCsrfToken();
@@ -228,8 +234,10 @@ export async function apiFetch<T>(
     throw error;
   }
 
-  // Auto-refresh on 401 (expired access token)
-  if (res.status === 401 && !path.startsWith('/auth/refresh') && !path.startsWith('/auth/login')) {
+  // Auto-refresh on 401 (expired access token) — excluir rutas públicas de auth
+  const isPublicAuth = path.startsWith('/auth/refresh') || path.startsWith('/auth/login') ||
+    path.startsWith('/auth/forgot-password') || path.startsWith('/auth/reset-password');
+  if (res.status === 401 && !isPublicAuth) {
     const refreshed = await getRefreshPromise();
     if (refreshed) {
       res = await rawFetch<T>(path, init);

@@ -43,7 +43,7 @@ function ResetPasswordForm() {
     try {
       await apiFetch('/auth/reset-password', {
         method: 'POST',
-        json: { token, newPassword },
+        json: { token, password: newPassword },
       });
       setSuccess(true);
     } catch (err: any) {
