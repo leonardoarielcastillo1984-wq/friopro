@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useState } from 'react';
 
 interface OnlyOfficeEditorProps {
   documentId: string;
@@ -16,121 +15,139 @@ declare global {
   }
 }
 
-export default function OnlyOfficeEditor({ documentId, apiUrl, documentTitle }: OnlyOfficeEditorProps) {
+export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOfficeEditorProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const ooContainerRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const containerId = `oo-editor-${documentId}`;
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
+    // Crear el div del editor FUERA del árbol React (appendChild directo al DOM)
+    // para evitar que React y OnlyOffice compitan en el mismo nodo
+    const containerId = `oo-container-${documentId}`;
+    const ooDiv = document.createElement('div');
+    ooDiv.id = containerId;
+    ooDiv.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0;';
+    wrapper.appendChild(ooDiv);
+    ooContainerRef.current = ooDiv;
 
     const initEditor = () => {
       if (!window.DocsAPI) {
-        setError('No se pudo conectar con el servidor de documentos (OnlyOffice).');
+        setError('No se pudo conectar con el servidor de documentos.');
         setLoading(false);
         return;
       }
 
-      // URL base del sitio (funciona tanto en HTTP como HTTPS)
       const origin = window.location.origin;
       const fileUrl = `${origin}/api/documents/${documentId}/file`;
       const callbackUrl = `${origin}/api/documents/${documentId}/onlyoffice-callback`;
 
-      // Detectar extensión desde el título
       const ext = (documentTitle || '').split('.').pop()?.toLowerCase() || 'docx';
       const docType = ['xlsx', 'xls', 'csv', 'ods'].includes(ext) ? 'cell'
         : ['pptx', 'ppt', 'odp'].includes(ext) ? 'slide'
         : 'word';
 
-      editorRef.current = new window.DocsAPI.DocEditor(containerId, {
-        document: {
-          fileType: ext,
-          key: `${documentId}-${Date.now()}`,
-          title: documentTitle || 'Documento',
-          url: fileUrl,
-          permissions: {
-            comment: true,
-            download: true,
-            edit: true,
-            fillForms: true,
-            modifyContentControl: true,
-            modifyFilter: true,
-            print: true,
-            review: true,
+      try {
+        editorRef.current = new window.DocsAPI.DocEditor(containerId, {
+          document: {
+            fileType: ext,
+            key: `${documentId}-${Date.now()}`,
+            title: documentTitle || 'Documento',
+            url: fileUrl,
+            permissions: {
+              comment: true,
+              download: true,
+              edit: true,
+              fillForms: true,
+              modifyContentControl: true,
+              modifyFilter: true,
+              print: true,
+              review: true,
+            },
           },
-        },
-        documentType: docType,
-        editorConfig: {
-          callbackUrl,
-          lang: 'es',
-          user: {
-            id: 'sgi-user',
-            name: 'Usuario SGI',
+          documentType: docType,
+          editorConfig: {
+            callbackUrl,
+            lang: 'es',
+            user: { id: 'sgi-user', name: 'Usuario SGI' },
+            customization: {
+              autosave: true,
+              forcesave: false,
+              logo: { visible: false },
+              chat: false,
+              comments: true,
+              compactHeader: true,
+              uiTheme: 'theme-light',
+            },
           },
-          customization: {
-            autosave: true,
-            forcesave: false,
-            logo: { visible: false },
-            toolbar: true,
-            statusBar: true,
-            chat: false,
-            comments: true,
-            compactHeader: true,
-            toolbarNoTabs: false,
-            uiTheme: 'theme-light',
+          events: {
+            onReady: () => setLoading(false),
+            onError: (err: any) => {
+              console.error('OnlyOffice error:', err);
+              setError('Error al abrir el documento. Verificá que el formato sea compatible.');
+              setLoading(false);
+            },
           },
-        },
-        events: {
-          onReady: () => setLoading(false),
-          onError: (err: any) => {
-            console.error('OnlyOffice error:', err);
-            setError('Error al cargar el editor. Verificá que el documento sea válido.');
-            setLoading(false);
-          },
-        },
-        width: '100%',
-        height: '100%',
-      });
+          width: '100%',
+          height: '100%',
+        });
+      } catch (e) {
+        console.error('OnlyOffice init error:', e);
+        setError('Error al inicializar el editor.');
+        setLoading(false);
+      }
     };
 
-    // Cargar el script de OnlyOffice desde el proxy /onlyoffice/ (HTTPS seguro)
     if (window.DocsAPI) {
       initEditor();
     } else {
-      const script = document.createElement('script');
-      const scriptSrc = `${window.location.origin}/onlyoffice/web-apps/apps/api/documents/api.js`;
-      script.src = scriptSrc;
-      script.async = true;
-      script.onload = () => initEditor();
-      script.onerror = () => {
-        setError('No se pudo cargar el editor de documentos. Contactá al administrador.');
-        setLoading(false);
-      };
-      document.head.appendChild(script);
+      const existingScript = document.querySelector('script[data-oo-api]');
+      if (existingScript) {
+        existingScript.addEventListener('load', initEditor);
+      } else {
+        const script = document.createElement('script');
+        script.src = `${window.location.origin}/onlyoffice/web-apps/apps/api/documents/api.js`;
+        script.async = true;
+        script.setAttribute('data-oo-api', '1');
+        script.onload = () => initEditor();
+        script.onerror = () => {
+          setError('No se pudo cargar el editor. Verificá la conexión con el servidor.');
+          setLoading(false);
+        };
+        document.head.appendChild(script);
+      }
     }
 
     return () => {
-      if (editorRef.current?.destroyEditor) {
-        editorRef.current.destroyEditor();
-      }
+      try { editorRef.current?.destroyEditor?.(); } catch { /* ok */ }
+      try { ooContainerRef.current?.remove(); } catch { /* ok */ }
+      ooContainerRef.current = null;
     };
   }, [documentId]);
 
   return (
-    <div className="relative w-full h-full">
+    <div ref={wrapperRef} className="relative w-full h-full bg-gray-100">
       {loading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10 gap-3">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-20 gap-3 pointer-events-none">
           <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
           <p className="text-sm text-gray-400">Cargando editor de documentos...</p>
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10 gap-3 p-8 text-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-20 gap-3 p-8 text-center">
           <p className="text-red-400 text-sm">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-xs text-blue-400 underline"
+          >
+            Reintentar
+          </button>
         </div>
       )}
-      <div id={`oo-editor-${documentId}`} ref={containerRef} className="w-full h-full" />
     </div>
   );
 }
