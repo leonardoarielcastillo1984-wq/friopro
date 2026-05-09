@@ -10,12 +10,14 @@ import * as XLSX from 'xlsx';
 export type SupportedMime =
   | 'application/pdf'
   | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  | 'application/msword'
   | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   | 'application/vnd.ms-excel';
 
 const SUPPORTED_MIMES: string[] = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword', // .doc
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-excel',
 ];
@@ -37,6 +39,8 @@ export function detectTypeByExtension(filename: string): string | null {
       return 'application/pdf';
     case 'docx':
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'doc':
+      return 'application/msword';
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     case 'xls':
@@ -64,6 +68,7 @@ export async function extractTextFromDocument(
     case 'application/pdf':
       return extractFromPdf(buffer);
     case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+    case 'application/msword': // .doc
       return extractFromDocx(buffer);
     case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
     case 'application/vnd.ms-excel':
@@ -119,7 +124,7 @@ function extractFromXlsx(buffer: Buffer): string {
 /**
  * Retorna las extensiones de archivo aceptadas para el input HTML.
  */
-export const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.xls';
+export const ACCEPTED_EXTENSIONS = '.pdf,.doc,.docx,.xlsx,.xls';
 
 /**
  * Retorna los MIME types aceptados para el input HTML.
