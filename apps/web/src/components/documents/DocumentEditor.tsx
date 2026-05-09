@@ -411,12 +411,10 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
               <span>· {wordCount} palabras</span>
               {saved && <span className="text-green-600">✓ Guardado</span>}
             </p>
-            {source === 'file' && (
-              <button onClick={() => loadContent(true)}
-                className="flex items-center gap-1 mt-0.5 px-2 py-0.5 text-xs bg-amber-50 border border-amber-300 text-amber-700 rounded-full hover:bg-amber-100 font-medium">
-                <RefreshCw className="w-3 h-3" /> Re-extraer del archivo (fix encoding)
-              </button>
-            )}
+            <button onClick={() => loadContent(true)}
+              className="flex items-center gap-1 mt-0.5 px-2 py-0.5 text-xs bg-amber-50 border border-amber-300 text-amber-700 rounded-full hover:bg-amber-100 font-medium">
+              <RefreshCw className="w-3 h-3" /> Re-extraer del archivo
+            </button>
           </div>
           {/* Workflow badge */}
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${currentStatus.color} flex-shrink-0`}>
