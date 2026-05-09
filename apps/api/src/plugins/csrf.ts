@@ -40,6 +40,7 @@ function shouldSkip(req: FastifyRequest) {
   if (url.includes('/seed-features-no-auth')) return true; // Seed features without auth
   if (url.match(/\/documents\/[^\/]+\/versions/)) return true;
   if (url.match(/\/documents\/[^\/]+\/clause-mappings/)) return true;
+  if (url.match(/\/documents\/[^\/]+\/onlyoffice-callback/)) return true;
   return false;
 }
 
