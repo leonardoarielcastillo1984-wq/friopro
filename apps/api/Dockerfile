@@ -20,7 +20,7 @@ RUN pnpm --filter api exec prisma generate
 FROM node:20-slim AS runner
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y openssl antiword && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 

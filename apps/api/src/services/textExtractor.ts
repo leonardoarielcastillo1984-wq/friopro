@@ -68,8 +68,9 @@ export async function extractTextFromDocument(
     case 'application/pdf':
       return extractFromPdf(buffer);
     case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-    case 'application/msword': // .doc
       return extractFromDocx(buffer);
+    case 'application/msword': // .doc — usar antiword
+      return extractFromDoc(buffer);
     case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
     case 'application/vnd.ms-excel':
       return extractFromXlsx(buffer);
@@ -84,10 +85,16 @@ async function extractFromPdf(buffer: Buffer): Promise<string> {
   return data.text;
 }
 
-// ── DOCX (Word) ──
+// ── DOCX (Word 2007+) ──
 async function extractFromDocx(buffer: Buffer): Promise<string> {
   const result = await mammoth.extractRawText({ buffer });
   return result.value;
+}
+
+// ── DOC (Word 97-2003 binario) ──
+async function extractFromDoc(buffer: Buffer): Promise<string> {
+  const { extractTextFromDoc } = await import('./docxParser.js');
+  return extractTextFromDoc(buffer);
 }
 
 // ── XLSX/XLS (Excel) ──

@@ -108,9 +108,12 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         const ext = path.extname(doc.filePath).toLowerCase();
         if (ext === '.pdf') {
           extractedContent = await extractTextFromPdf(fileBuffer);
-        } else if (ext === '.docx' || ext === '.doc') {
+        } else if (ext === '.docx') {
           const { extractTextFromDocx } = await import('../services/docxParser.js');
           extractedContent = await extractTextFromDocx(fileBuffer);
+        } else if (ext === '.doc') {
+          const { extractTextFromDoc } = await import('../services/docxParser.js');
+          extractedContent = await extractTextFromDoc(fileBuffer);
         } else if (ext === '.xlsx' || ext === '.xls') {
           extractedContent = `Archivo Excel: ${path.basename(doc.filePath)}`;
         }
@@ -415,9 +418,12 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       const ext = path.extname(data.filename).toLowerCase();
       if (ext === '.pdf') {
         content = await extractTextFromPdf(fileBuffer);
-      } else if (ext === '.docx' || ext === '.doc') {
+      } else if (ext === '.docx') {
         const { extractTextFromDocx } = await import('../services/docxParser.js');
         content = await extractTextFromDocx(fileBuffer);
+      } else if (ext === '.doc') {
+        const { extractTextFromDoc } = await import('../services/docxParser.js');
+        content = await extractTextFromDoc(fileBuffer);
       } else if (ext === '.xlsx' || ext === '.xls') {
         // Excel files: for now, just extract filename as content
         content = `Archivo Excel: ${data.filename}`;
