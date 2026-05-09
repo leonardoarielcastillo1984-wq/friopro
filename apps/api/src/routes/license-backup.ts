@@ -1180,6 +1180,12 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
         }
       });
 
+      // Desactivar modo demo al activar plan real
+      await (app.prisma as any).tenant.update({
+        where: { id: tenantId },
+        data: { isDemo: false, demoExpiresAt: null }
+      });
+
       // Habilitar módulos según plan
       const enabledModules = Object.entries(plan.features as Record<string, boolean>)
         .filter(([, enabled]) => enabled)
@@ -1422,9 +1428,9 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
               name: user.email.split('@')[0]
             },
             back_urls: {
-              success: `${process.env.APP_URL || 'http://localhost:3000'}/licencia/planes?status=success`,
-              failure: `${process.env.APP_URL || 'http://localhost:3000'}/licencia/planes?status=failure`,
-              pending: `${process.env.APP_URL || 'http://localhost:3000'}/licencia/planes?status=pending`
+              success: `${process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/licencias?status=success`,
+              failure: `${process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/licencias?status=failure`,
+              pending: `${process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/licencias?status=pending`
             },
             auto_return: 'approved',
             external_reference: `${tenantId}_${planTier}_${period}_${Date.now()}`,
@@ -1544,23 +1550,63 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
   app.post('/webhook/mercadopago', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = req.body as any;
-      app.log.info({ body }, 'Webhook received');
+      app.log.info({ body }, 'MP Webhook received');
 
-      // Procesar pago según el tipo de notificación
       if (body.type === 'payment' && body.data?.id) {
-        // Aquí procesaríamos el pago real con MercadoPago
-        // Por ahora simulamos un pago exitoso
-        
-        // Crear notificación para admin
-        await (app.prisma as any).adminNotification.create({
-          data: {
-            type: 'PAYMENT_RECEIVED',
-            title: 'Nuevo pago recibido',
-            message: `Pago de $${body.data?.amount || '0'} recibido. Revisa el panel para subir la factura.`,
-            data: JSON.stringify(body),
-            isRead: false
+        const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+
+        if (accessToken) {
+          // Consultar el pago real a MP
+          const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${body.data.id}`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          const payment = await mpRes.json();
+          app.log.info({ payment }, 'MP payment detail');
+
+          if (payment.status === 'approved' && payment.external_reference) {
+            // external_reference formato: "tenantId_planTier_period_timestamp"
+            const [tenantId, planTier, period] = payment.external_reference.split('_');
+
+            if (tenantId && planTier) {
+              // Buscar o crear el plan
+              let plan = await app.prisma.plan.findFirst({ where: { tier: planTier as any } });
+              if (!plan) {
+                plan = await app.prisma.plan.create({
+                  data: {
+                    tier: planTier as any,
+                    name: planTier.charAt(0) + planTier.slice(1).toLowerCase(),
+                    features: { modules: ['*'] },
+                    limits: { maxUsers: 999 },
+                  }
+                });
+              }
+
+              // Eliminar suscripción anterior y crear nueva ACTIVE
+              await app.prisma.tenantSubscription.deleteMany({ where: { tenantId } });
+              const periodDays = period === 'annual' ? 365 : 30;
+              await app.prisma.tenantSubscription.create({
+                data: {
+                  tenantId,
+                  planId: plan.id,
+                  status: 'ACTIVE',
+                  startedAt: new Date(),
+                  endsAt: new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000),
+                  price: payment.transaction_amount,
+                  provider: 'mercadopago',
+                  providerRef: String(payment.id),
+                }
+              });
+
+              // Desactivar modo demo
+              await (app.prisma as any).tenant.update({
+                where: { id: tenantId },
+                data: { isDemo: false, demoExpiresAt: null }
+              });
+
+              app.log.info(`[WEBHOOK] Plan ${planTier} activado para tenant ${tenantId}`);
+            }
           }
-        });
+        }
       }
 
       return reply.send({ success: true });
