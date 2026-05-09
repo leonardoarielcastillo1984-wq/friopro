@@ -816,6 +816,13 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({ htmlContent: doc.htmlContent, source: 'edited', status });
     }
 
+    // Si forzamos refresh, limpiar el htmlContent cacheado para re-extraer del archivo
+    if (forceRefresh && doc.htmlContent) {
+      await app.runWithDbContext(req, async (tx: any) => {
+        await tx.document.update({ where: { id }, data: { htmlContent: null } });
+      });
+    }
+
     // Si tiene contenido de texto, convertimos a HTML básico
     if (doc.content) {
       const htmlContent = doc.content
@@ -834,7 +841,6 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         const ext = path.extname(doc.filePath).toLowerCase();
         let htmlContent = '';
         if (ext === '.docx' || ext === '.doc') {
-          // Leer como buffer para mejor manejo de encoding
           const fileBuffer = await fs.readFile(doc.filePath);
           const result = await mammoth.convertToHtml({ buffer: fileBuffer }, {
             styleMap: [
@@ -844,23 +850,36 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
               "p[style-name='Título 1'] => h1:fresh",
               "p[style-name='Título 2'] => h2:fresh",
               "p[style-name='Título 3'] => h3:fresh",
-              "b => strong",
-              "i => em",
             ],
           });
-          // Decodificar entidades HTML y limpiar caracteres problemáticos
+
+          // Mapa de reemplazo para caracteres Windows-1252 / latin1 mal codificados
+          // que mammoth convierte a U+FFFD o entidades incorrectas
+          const win1252Map: Record<number, string> = {
+            0x80: '€', 0x82: '‚', 0x83: 'ƒ', 0x84: '„', 0x85: '…', 0x86: '†',
+            0x87: '‡', 0x88: 'ˆ', 0x89: '‰', 0x8A: 'Š', 0x8B: '‹', 0x8C: 'Œ',
+            0x8E: 'Ž', 0x91: '\u2018', 0x92: '\u2019', 0x93: '\u201C', 0x94: '\u201D',
+            0x95: '•', 0x96: '–', 0x97: '—', 0x98: '˜', 0x99: '™', 0x9A: 'š',
+            0x9B: '›', 0x9C: 'œ', 0x9E: 'ž', 0x9F: 'Ÿ',
+          };
+
           htmlContent = result.value
-            // Reemplazar entidades numéricas de caracteres latinos (ej: &#243; = ó)
+            // Decodificar entidades numéricas decimales
             .replace(/&#(\d+);/g, (_: string, num: string) => {
               const code = parseInt(num, 10);
-              return code >= 32 && code <= 65535 ? String.fromCharCode(code) : '';
+              if (win1252Map[code]) return win1252Map[code];
+              return code >= 32 ? String.fromCharCode(code) : '';
             })
+            // Decodificar entidades numéricas hex
             .replace(/&#x([0-9A-Fa-f]+);/g, (_: string, hex: string) => {
               const code = parseInt(hex, 16);
-              return code >= 32 && code <= 65535 ? String.fromCharCode(code) : '';
+              if (win1252Map[code]) return win1252Map[code];
+              return code >= 32 ? String.fromCharCode(code) : '';
             })
-            // Reemplazar símbolo de reemplazo (U+FFFD) dejando espacio
-            .replace(/\uFFFD/g, '');
+            // Limpiar U+FFFD (símbolo de reemplazo) y variantes visuales del mismo problema
+            .replace(/\uFFFD/g, '')
+            // El ♦ (U+25C6) y el ? en caja son síntomas del mismo problema en DOC legacy
+            .replace(/[♦\u25C6]/g, '');
         } else if (ext === '.pdf') {
           const textContent = await extractTextFromPdf(await fs.readFile(doc.filePath));
           htmlContent = textContent
