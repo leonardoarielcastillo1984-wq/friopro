@@ -5,7 +5,7 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/web/package.json apps/web/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 ARG SOURCE_TIMESTAMP=unknown
 RUN echo "Source timestamp: $SOURCE_TIMESTAMP"
