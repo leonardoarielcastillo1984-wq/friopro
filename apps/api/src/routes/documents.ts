@@ -840,24 +840,39 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         const mammoth = await import('mammoth');
         const ext = path.extname(doc.filePath).toLowerCase();
         let htmlContent = '';
-        if (ext === '.docx' || ext === '.doc') {
-          const fileBuffer = await fs.readFile(doc.filePath);
-
-          // Detectar encoding y re-decodificar si no es UTF-8
-          let processedBuffer = fileBuffer;
+        if (ext === '.doc') {
+          // .doc binario: usar antiword (instalado en el contenedor) para extraer texto correcto
           try {
-            const jschardet = await import('jschardet');
-            const iconv = await import('iconv-lite');
-            const detected = jschardet.detect(fileBuffer);
-            const encoding = (detected?.encoding || 'utf-8').toLowerCase();
-            // Si no es UTF-8 ni ASCII, re-encodear a UTF-8
-            if (encoding && !['utf-8', 'utf8', 'ascii', 'us-ascii'].includes(encoding)) {
-              const decoded = iconv.decode(fileBuffer, encoding);
-              processedBuffer = Buffer.from(decoded, 'utf-8');
-            }
-          } catch { /* continuar con el buffer original si falla la detección */ }
-
-          const result = await mammoth.convertToHtml({ buffer: processedBuffer }, {
+            const { execFile } = await import('node:child_process');
+            const { promisify } = await import('node:util');
+            const execFileAsync = promisify(execFile);
+            const { stdout } = await execFileAsync('antiword', ['-w', '0', '-m', 'UTF-8', doc.filePath]);
+            htmlContent = stdout
+              .split('\n')
+              .map((l: string) => l.trim())
+              .reduce((acc: string[], line: string) => {
+                if (line === '') {
+                  acc.push(''); // separador de párrafo
+                } else if (acc.length && acc[acc.length - 1] !== '') {
+                  acc[acc.length - 1] += ' ' + line; // unir líneas del mismo párrafo
+                } else {
+                  acc.push(line);
+                }
+                return acc;
+              }, [])
+              .filter((l: string) => l !== '')
+              .map((l: string) => `<p>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
+              .join('\n');
+          } catch {
+            // Si antiword falla, intentar con mammoth como fallback
+            const fileBuffer = await fs.readFile(doc.filePath);
+            const result = await mammoth.convertToHtml({ buffer: fileBuffer });
+            htmlContent = result.value.replace(/[\uFFFD\u25C6♦]/g, '');
+          }
+        } else if (ext === '.docx') {
+          // .docx moderno: mammoth funciona perfectamente
+          const fileBuffer = await fs.readFile(doc.filePath);
+          const result = await mammoth.convertToHtml({ buffer: fileBuffer }, {
             styleMap: [
               "p[style-name='Heading 1'] => h1:fresh",
               "p[style-name='Heading 2'] => h2:fresh",
@@ -867,19 +882,15 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
               "p[style-name='Título 3'] => h3:fresh",
             ],
           });
-
           htmlContent = result.value
-            // Decodificar entidades numéricas decimales (ej: &#243; → ó)
             .replace(/&#(\d+);/g, (_: string, num: string) => {
               const code = parseInt(num, 10);
               return code >= 32 && code <= 65535 ? String.fromCharCode(code) : '';
             })
-            // Decodificar entidades numéricas hex
             .replace(/&#x([0-9A-Fa-f]+);/g, (_: string, hex: string) => {
               const code = parseInt(hex, 16);
               return code >= 32 && code <= 65535 ? String.fromCharCode(code) : '';
             })
-            // Limpiar símbolo de reemplazo U+FFFD y ♦ legacy
             .replace(/[\uFFFD\u25C6♦]/g, '');
         } else if (ext === '.pdf') {
           const textContent = await extractTextFromPdf(await fs.readFile(doc.filePath));
