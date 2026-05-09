@@ -140,6 +140,17 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
     },
   });
 
+  const [pendingContent, setPendingContent] = useState<string | null>(null);
+
+  // Cuando el editor esté listo y haya contenido pendiente, aplicarlo
+  useEffect(() => {
+    if (editor && pendingContent !== null) {
+      editor.commands.setContent(pendingContent || '<p></p>');
+      setWordCount(editor.storage.characterCount?.words() ?? 0);
+      setPendingContent(null);
+    }
+  }, [editor, pendingContent]);
+
   useEffect(() => {
     loadContent();
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); };
@@ -150,10 +161,14 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
     setError(null);
     try {
       const res = await apiFetch<{ htmlContent: string; source: string; status?: string }>(`/documents/${documentId}/content`);
-      editor?.commands.setContent(res.htmlContent || '<p></p>');
       setSource(res.source);
       if (res.status) setDocStatus(res.status);
-      setWordCount(editor?.storage.characterCount?.words() ?? 0);
+      if (editor) {
+        editor.commands.setContent(res.htmlContent || '<p></p>');
+        setWordCount(editor.storage.characterCount?.words() ?? 0);
+      } else {
+        setPendingContent(res.htmlContent || '');
+      }
     } catch {
       setError('Error al cargar el contenido del documento.');
     } finally {

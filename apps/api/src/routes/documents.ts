@@ -803,14 +803,16 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const doc = await app.runWithDbContext(req, async (tx: any) => {
       return tx.document.findFirst({
         where: { id, deletedAt: null },
-        select: { id: true, title: true, content: true, htmlContent: true, filePath: true, type: true },
+        select: { id: true, title: true, content: true, htmlContent: true, filePath: true, type: true, status: true },
       });
     });
     if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
 
     // Si ya tiene HTML editado, devolvemos eso
+    const status = doc.status;
+
     if (doc.htmlContent) {
-      return reply.send({ htmlContent: doc.htmlContent, source: 'edited' });
+      return reply.send({ htmlContent: doc.htmlContent, source: 'edited', status });
     }
 
     // Si tiene contenido de texto, convertimos a HTML básico
@@ -821,7 +823,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         .filter((line: string) => line.length > 0)
         .map((line: string) => `<p>${line}</p>`)
         .join('\n');
-      return reply.send({ htmlContent, source: 'text' });
+      return reply.send({ htmlContent, source: 'text', status });
     }
 
     // Si tiene archivo físico, extraemos HTML con mammoth
@@ -843,14 +845,14 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         } else {
           htmlContent = `<p>Tipo de archivo no compatible para edición en línea (${ext}).</p>`;
         }
-        return reply.send({ htmlContent, source: 'file' });
+        return reply.send({ htmlContent, source: 'file', status });
       } catch (err) {
         app.log.error(err, 'Error extracting HTML from file');
         return reply.code(500).send({ error: 'Error al extraer contenido del archivo.' });
       }
     }
 
-    return reply.send({ htmlContent: '<p></p>', source: 'empty' });
+    return reply.send({ htmlContent: '<p></p>', source: 'empty', status });
   });
 
   // ── PUT /documents/:id/content — Guardar contenido HTML editado ──
