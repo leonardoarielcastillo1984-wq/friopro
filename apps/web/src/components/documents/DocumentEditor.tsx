@@ -18,6 +18,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { useEffect, useState, useCallback, useRef } from 'react';
+import OnlyOfficeEditor from './OnlyOfficeEditor';
 import { apiFetch } from '@/lib/api';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -405,22 +406,13 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
   const currentStatus = statusConfig[docStatus] || statusConfig.DRAFT;
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
+    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 flex-shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <FileText className="w-5 h-5 text-blue-600 flex-shrink-0" />
+          <FileText className="w-5 h-5 text-blue-400 flex-shrink-0" />
           <div className="min-w-0">
-            <h1 className="text-sm font-semibold text-gray-900 truncate max-w-md">{documentTitle}</h1>
-            <p className="text-xs text-gray-400 flex items-center gap-2 flex-wrap">
-              <span>{source === 'edited' ? 'Editado en línea' : source === 'file' ? 'Extraído del archivo' : 'Texto del documento'}</span>
-              <span>· {wordCount} palabras</span>
-              {saved && <span className="text-green-600">✓ Guardado</span>}
-            </p>
-            <button onClick={() => loadContent(true)}
-              className="flex items-center gap-1 mt-0.5 px-2 py-0.5 text-xs bg-amber-50 border border-amber-300 text-amber-700 rounded-full hover:bg-amber-100 font-medium">
-              <RefreshCw className="w-3 h-3" /> Re-extraer del archivo
-            </button>
+            <h1 className="text-sm font-semibold text-white truncate max-w-md">{documentTitle}</h1>
           </div>
           {/* Workflow badge */}
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${currentStatus.color} flex-shrink-0`}>
@@ -428,156 +420,37 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
           </span>
           {currentStatus.next && (
             <button onClick={() => handleChangeStatus(currentStatus.next!)} disabled={changingStatus}
-              className="text-xs px-2 py-0.5 border border-gray-300 rounded-full text-gray-600 hover:bg-gray-50 disabled:opacity-50 flex-shrink-0">
+              className="text-xs px-2 py-0.5 border border-gray-600 rounded-full text-gray-300 hover:bg-gray-700 disabled:opacity-50 flex-shrink-0">
               {changingStatus ? <Loader2 className="w-3 h-3 animate-spin" /> : currentStatus.nextLabel}
             </button>
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {/* IA Panel toggle */}
           <button onClick={() => { setShowAiPanel(p => !p); if (!aiSuggestions.length) handleAiAnalyze(); }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${showAiPanel ? 'bg-purple-600 text-white border-purple-600' : 'border-purple-300 text-purple-700 hover:bg-purple-50'}`}>
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${showAiPanel ? 'bg-purple-600 text-white border-purple-600' : 'border-purple-400 text-purple-300 hover:bg-gray-700'}`}>
             <Sparkles className="w-3.5 h-3.5" /> IA
           </button>
-          {/* Versiones */}
           <button onClick={handleLoadVersions}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700">
             <History className="w-3.5 h-3.5" /> Versiones
           </button>
-          {/* Export */}
-          <div className="relative group">
-            <button disabled={exporting}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-              {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Exportar
-            </button>
-            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[120px] hidden group-hover:block">
-              <button onClick={() => handleExport('docx')} className="w-full px-3 py-2 text-xs text-left hover:bg-gray-50 text-gray-700">📄 DOCX</button>
-              <button onClick={() => handleExport('pdf')} className="w-full px-3 py-2 text-xs text-left hover:bg-gray-50 text-gray-700">📋 PDF</button>
-            </div>
-          </div>
-          {/* Guardar */}
-          {showChangeNote ? (
-            <div className="flex items-center gap-1">
-              <input type="text" value={changeNote} onChange={e => setChangeNote(e.target.value)}
-                placeholder="Nota del cambio..." autoFocus
-                onKeyDown={e => e.key === 'Enter' && handleSave()}
-                className="px-2 py-1 text-xs border border-gray-300 rounded-lg w-40 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-              <button onClick={() => handleSave()} disabled={saving}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Guardar
-              </button>
-              <button onClick={() => setShowChangeNote(false)} className="p-1 text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>
-            </div>
-          ) : (
-            <button onClick={() => setShowChangeNote(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-              <Save className="w-3.5 h-3.5" /> Guardar
-            </button>
-          )}
           <button onClick={onClose}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-700">
             <X className="w-3.5 h-3.5" /> Cerrar
           </button>
         </div>
       </div>
 
-      {/* ── Toolbar ── */}
-      <div className="flex items-center flex-wrap gap-0.5 px-3 py-1.5 bg-white border-b border-gray-200 flex-shrink-0">
-        <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="Deshacer"><Undo className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} title="Rehacer"><Redo className="w-4 h-4" /></ToolbarBtn>
-        <Divider />
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive('heading', { level: 1 })} title="H1"><Heading1 className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} title="H2"><Heading2 className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive('heading', { level: 3 })} title="H3"><Heading3 className="w-4 h-4" /></ToolbarBtn>
-        <Divider />
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} title="Negrita"><Bold className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} title="Cursiva"><Italic className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive('underline')} title="Subrayado"><UnderlineIcon className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive('strike')} title="Tachado"><Strikethrough className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHighlight({ color: '#FEF08A' }).run()} active={editor.isActive('highlight')} title="Resaltar"><Highlighter className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={setLink} active={editor.isActive('link')} title="Enlace"><LinkIcon className="w-4 h-4" /></ToolbarBtn>
-        <Divider />
-        <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} title="Izquierda"><AlignLeft className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} title="Centrado"><AlignCenter className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} title="Derecha"><AlignRight className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} title="Justificado"><AlignJustify className="w-4 h-4" /></ToolbarBtn>
-        <Divider />
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Lista"><List className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numerada"><ListOrdered className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleTaskList().run()} active={editor.isActive('taskList')} title="Checklist"><CheckSquare className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive('blockquote')} title="Cita"><Quote className="w-4 h-4" /></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Línea"><Minus className="w-4 h-4" /></ToolbarBtn>
-        <Divider />
-        <ToolbarBtn onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insertar tabla"><TableIcon className="w-4 h-4" /></ToolbarBtn>
-        {editor.isActive('table') && <>
-          <ToolbarBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="Agregar columna"><ChevronRight className="w-4 h-4" /></ToolbarBtn>
-          <ToolbarBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="Agregar fila"><ChevronLeft className="w-4 h-4 rotate-90" /></ToolbarBtn>
-          <ToolbarBtn onClick={() => editor.chain().focus().deleteTable().run()} title="Eliminar tabla" active><X className="w-4 h-4" /></ToolbarBtn>
-        </>}
-      </div>
-
-      {/* ── Error ── */}
-      {error && (
-        <div className="mx-4 mt-1 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center justify-between flex-shrink-0">
-          {error}
-          <button onClick={() => setError(null)}><X className="w-3.5 h-3.5" /></button>
-        </div>
-      )}
-
-      {/* ── Body: PDF Viewer + Editor + AI Panel ── */}
+      {/* ── Body: OnlyOffice + Panel IA ── */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* ── Visor PDF ── */}
-        {showPdfViewer && (
-          <div className="flex flex-col border-r border-gray-200 bg-gray-100" style={{width: '48%', minWidth: 320}}>
-            <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800 text-white text-xs flex-shrink-0">
-              <span className="font-medium flex items-center gap-1.5">📄 Vista original del documento</span>
-              <button onClick={() => setShowPdfViewer(false)} className="text-gray-400 hover:text-white">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {pdfError ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-3">
-                <FileText className="w-12 h-12 text-gray-400" />
-                <p className="text-sm text-gray-500">Vista previa no disponible para este documento.<br/>Usá el editor de la derecha para editar el contenido.</p>
-                <button onClick={() => { setPdfError(false); }} className="text-xs text-blue-600 underline">Reintentar</button>
-              </div>
-            ) : (
-              <iframe
-                key={pdfKey}
-                src={`/api/documents/${documentId}/preview-pdf?t=${pdfKey}`}
-                className="flex-1 w-full border-0"
-                title="Vista previa del documento"
-                onError={() => setPdfError(true)}
-              />
-            )}
-          </div>
-        )}
-
-        {/* ── Editor area ── */}
-        <div className="flex flex-col flex-1 overflow-hidden">
-          {!showPdfViewer && (
-            <div className="px-3 py-1 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-              <button onClick={() => { setShowPdfViewer(true); setPdfError(false); }}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800">
-                <FileText className="w-3.5 h-3.5" /> Mostrar vista original
-              </button>
-            </div>
-          )}
-          <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-3">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
-                <p className="text-sm text-gray-500">Cargando contenido del documento...</p>
-              </div>
-            </div>
-          ) : (
-            <div className="mx-auto my-4 bg-white rounded-xl shadow-sm border border-gray-200 min-h-[600px]" style={{maxWidth: showPdfViewer ? '100%' : '4xl'}}>
-              <EditorContent editor={editor} />
-            </div>
-          )}
-          </div>
+        {/* ── OnlyOffice Editor ── */}
+        <div className="flex-1 relative">
+          <OnlyOfficeEditor
+            documentId={documentId}
+            documentTitle={documentTitle}
+            apiUrl={typeof window !== 'undefined' ? `http://${window.location.hostname}:8080` : 'http://localhost:8080'}
+          />
         </div>
 
         {/* ── Panel IA lateral ── */}

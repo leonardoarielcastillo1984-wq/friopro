@@ -1125,6 +1125,84 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // ── GET /documents/:id/file — Servir archivo para OnlyOffice ──
+  app.get('/:id/file', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const doc = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.document.findFirst({ where: { id, deletedAt: null }, select: { filePath: true, title: true } });
+    });
+    if (!doc?.filePath || !existsSync(doc.filePath)) return reply.code(404).send({ error: 'Archivo no encontrado' });
+    const ext = path.extname(doc.filePath).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.doc': 'application/msword',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.pdf': 'application/pdf',
+    };
+    const buffer = await fs.readFile(doc.filePath);
+    return reply
+      .header('Content-Type', mimeTypes[ext] || 'application/octet-stream')
+      .header('Content-Disposition', `inline; filename="${path.basename(doc.filePath)}"`)
+      .header('Access-Control-Allow-Origin', '*')
+      .send(buffer);
+  });
+
+  // ── POST /documents/:id/onlyoffice-callback — Callback de OnlyOffice para guardar ──
+  app.post('/:id/onlyoffice-callback', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const body = req.body as any;
+
+    // Status 2 = documento listo para guardar, 6 = error forzado de guardado
+    if (body.status === 2 || body.status === 6) {
+      try {
+        // Descargar el archivo editado desde OnlyOffice
+        const fetch = (await import('node-fetch')).default;
+        const response = await fetch(body.url);
+        if (!response.ok) throw new Error('No se pudo descargar el archivo editado');
+        const buffer = Buffer.from(await response.arrayBuffer());
+
+        const doc = await app.runWithDbContext(req, async (tx: any) => {
+          return tx.document.findFirst({ where: { id, deletedAt: null }, select: { filePath: true, version: true } });
+        });
+
+        if (doc?.filePath) {
+          // Guardar snapshot de versión anterior
+          await app.runWithDbContext(req, async (tx: any) => {
+            await tx.documentVersion.create({
+              data: {
+                documentId: id,
+                version: doc.version,
+                filePath: doc.filePath,
+                originalName: `Versión ${doc.version} (OnlyOffice)`,
+                fileSize: buffer.length,
+                createdById: null,
+              },
+            });
+          });
+
+          // Sobreescribir el archivo físico con la versión editada
+          await fs.writeFile(doc.filePath, buffer);
+
+          // Actualizar versión en BD
+          await app.runWithDbContext(req, async (tx: any) => {
+            await tx.document.update({
+              where: { id },
+              data: { version: doc.version + 1, updatedAt: new Date() },
+            });
+          });
+
+          // Limpiar caché PDF
+          try { await fs.rm(`/tmp/sgi-preview-${id}`, { recursive: true, force: true }); } catch { /* ok */ }
+        }
+      } catch (err) {
+        app.log.error(err, 'Error en callback OnlyOffice');
+        return reply.send({ error: 1 });
+      }
+    }
+    return reply.send({ error: 0 });
+  });
+
   // ── POST /documents/:id/ai-action — Acciones IA copilot ──
   app.post('/:id/ai-action', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
