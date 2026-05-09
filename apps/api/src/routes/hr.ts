@@ -1978,10 +1978,10 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   // ─── HR TRAININGS (modelo Training con assignments) ──────────────────────
 
   // GET /hr/trainings
-  app.get('/trainings', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
+  fastify.get('/trainings', async (req: any, reply: any) => {
+    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const trainings = await app.prisma.training.findMany({
+    const trainings = await fastify.prisma.training.findMany({
       where: { tenantId, deletedAt: null },
       include: { _count: { select: { assignments: true } } },
       orderBy: { createdAt: 'desc' },
@@ -1990,19 +1990,11 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   });
 
   // POST /hr/trainings
-  app.post('/trainings', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
+  fastify.post('/trainings', async (req: any, reply: any) => {
+    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const schema = z.object({
-      title: z.string().min(1),
-      description: z.string().optional(),
-      type: z.enum(['INTERNAL', 'EXTERNAL', 'ONLINE', 'WORKSHOP', 'CERTIFICATION']),
-      duration: z.number().int().positive().optional(),
-      cost: z.number().nonnegative().optional(),
-      competencyIds: z.array(z.string().uuid()).optional(),
-    });
-    const body = schema.parse(req.body);
-    const training = await app.prisma.training.create({
+    const body = createTrainingSchema.parse(req.body);
+    const training = await fastify.prisma.training.create({
       data: {
         tenantId,
         title: body.title,
@@ -2020,13 +2012,13 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   });
 
   // GET /hr/trainings/:id/assignments
-  app.get('/trainings/:id/assignments', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
+  fastify.get('/trainings/:id/assignments', async (req: any, reply: any) => {
+    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const training = await app.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
+    const training = await fastify.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
     if (!training) return reply.code(404).send({ error: 'Training not found' });
-    const assignments = await app.prisma.trainingAssignment.findMany({
+    const assignments = await fastify.prisma.trainingAssignment.findMany({
       where: { trainingId: id },
       include: { employee: { select: { id: true, firstName: true, lastName: true, email: true } } },
       orderBy: { assignedAt: 'desc' },
@@ -2035,16 +2027,16 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   });
 
   // POST /hr/trainings/:id/assignments
-  app.post('/trainings/:id/assignments', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
+  fastify.post('/trainings/:id/assignments', async (req: any, reply: any) => {
+    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const { employeeId } = z.object({ employeeId: z.string().uuid() }).parse(req.body);
-    const training = await app.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
+    const training = await fastify.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
     if (!training) return reply.code(404).send({ error: 'Training not found' });
-    const existing = await app.prisma.trainingAssignment.findUnique({ where: { trainingId_employeeId: { trainingId: id, employeeId } } });
+    const existing = await fastify.prisma.trainingAssignment.findUnique({ where: { trainingId_employeeId: { trainingId: id, employeeId } } });
     if (existing) return reply.code(409).send({ error: 'El empleado ya está asignado a esta capacitación' });
-    const assignment = await app.prisma.trainingAssignment.create({
+    const assignment = await fastify.prisma.trainingAssignment.create({
       data: { trainingId: id, employeeId },
       include: { employee: { select: { id: true, firstName: true, lastName: true, email: true } } },
     });
@@ -2052,12 +2044,12 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   });
 
   // PATCH /hr/trainings/assignments/:assignmentId
-  app.patch('/trainings/assignments/:assignmentId', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
+  fastify.patch('/trainings/assignments/:assignmentId', async (req: any, reply: any) => {
+    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { assignmentId } = z.object({ assignmentId: z.string().uuid() }).parse(req.params);
     const { status } = z.object({ status: z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'EXPIRED']) }).parse(req.body);
-    const assignment = await app.prisma.trainingAssignment.update({
+    const assignment = await fastify.prisma.trainingAssignment.update({
       where: { id: assignmentId },
       data: { status, completedAt: status === 'COMPLETED' ? new Date() : undefined },
       include: { employee: { select: { id: true, firstName: true, lastName: true, email: true } } },
@@ -2066,13 +2058,13 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   });
 
   // DELETE /hr/trainings/:id
-  app.delete('/trainings/:id', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
+  fastify.delete('/trainings/:id', async (req: any, reply: any) => {
+    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const existing = await app.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
+    const existing = await fastify.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
     if (!existing) return reply.code(404).send({ error: 'Training not found' });
-    await app.prisma.training.update({ where: { id }, data: { deletedAt: new Date(), updatedById: req.auth?.userId ?? null } });
+    await fastify.prisma.training.update({ where: { id }, data: { deletedAt: new Date(), updatedById: req.auth?.userId ?? null } });
     return reply.send({ success: true });
   });
 
