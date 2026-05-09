@@ -985,8 +985,12 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         try { await fs.unlink(path.join(tmpDir, 'edited.pdf')); } catch { /* ok */ }
 
         await execFileAsync('libreoffice', [
-          '--headless', '--convert-to', 'pdf', '--outdir', tmpDir, htmlPath,
-        ], { timeout: 60000 });
+          '--headless',
+          `--env:UserInstallation=file:///tmp/lo-profile-${id}`,
+          '--convert-to', 'pdf',
+          '--outdir', tmpDir,
+          htmlPath,
+        ], { timeout: 60000, env: { ...process.env, HOME: '/tmp' } });
 
         // Renombrar para que el endpoint preview-pdf lo encuentre
         const originalExt = updated.filePath ? path.extname(updated.filePath) : '';
@@ -1102,10 +1106,11 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
       await execFileAsync('libreoffice', [
         '--headless',
+        `--env:UserInstallation=file:///tmp/lo-profile-${id}`,
         '--convert-to', 'pdf',
         '--outdir', tmpDir,
         doc.filePath,
-      ], { timeout: 60000 });
+      ], { timeout: 60000, env: { ...process.env, HOME: '/tmp' } });
 
       if (!existsSync(originalPdfPath)) return reply.code(500).send({ error: 'Error al convertir el documento' });
 
