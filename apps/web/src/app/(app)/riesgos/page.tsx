@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import type { Risk, RiskStats } from '@/lib/types';
@@ -770,7 +771,12 @@ export default function RiesgosPage() {
                 )}
                 <div className="md:col-span-2 lg:col-span-2">
                   <label className="block text-sm font-medium text-neutral-700 mb-1">Responsable</label>
-                  <input className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm" placeholder="Nombre del responsable" value={form.responsible || ''} onChange={e => setForm({...form, responsible: e.target.value})} />
+                  <EmployeeCombobox
+                    value={form.responsible || ''}
+                    onChange={id => setForm({...form, responsible: id})}
+                    placeholder="Buscar responsable..."
+                    allowFreeText
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-1">Eficacia de Controles (%)</label>

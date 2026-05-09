@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
 import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit, Sparkles, Loader2, Target, AlertTriangle, FolderKanban, Mic, Upload, History, Volume2, BarChart3, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -1069,12 +1070,11 @@ export default function MinutasPage() {
 
             <div>
               <Label htmlFor="responsible">Responsable</Label>
-              <Input
-                id="responsible"
-                list="employees-list"
+              <EmployeeCombobox
                 value={formData.responsible}
-                onChange={(e) => setFormData({ ...formData, responsible: e.target.value })}
-                placeholder="Nombre del responsable"
+                onChange={id => setFormData({ ...formData, responsible: id })}
+                placeholder="Buscar responsable..."
+                allowFreeText
               />
             </div>
 
@@ -1383,11 +1383,11 @@ export default function MinutasPage() {
               <>
                 <div>
                   <Label htmlFor="blockResponsible">Responsable</Label>
-                  <Input
-                    id="blockResponsible"
+                  <EmployeeCombobox
                     value={blockFormData.responsible}
-                    onChange={(e) => setBlockFormData({ ...blockFormData, responsible: e.target.value })}
-                    placeholder="Nombre del responsable"
+                    onChange={id => setBlockFormData({ ...blockFormData, responsible: id })}
+                    placeholder="Buscar responsable..."
+                    allowFreeText
                   />
                 </div>
 
@@ -1465,14 +1465,15 @@ export default function MinutasPage() {
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <Label>Responsable</Label>
-                            <Input
+                            <EmployeeCombobox
                               value={action.responsible || ''}
-                              onChange={(e) => {
+                              onChange={id => {
                                 const updated = [...detectedActions];
-                                updated[index].responsible = e.target.value;
+                                updated[index].responsible = id;
                                 setDetectedActions(updated);
                               }}
-                              placeholder="Nombre del responsable"
+                              placeholder="Buscar responsable..."
+                              allowFreeText
                             />
                           </div>
                           <div>

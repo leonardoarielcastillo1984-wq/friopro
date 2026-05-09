@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
@@ -188,12 +189,11 @@ export default function DrillManagePage() {
             <h3 className="font-semibold mb-3">Nueva Acción</h3>
             <input placeholder="Descripción" value={newAction.description} onChange={(e) => setNewAction({...newAction, description: e.target.value})} className="w-full border rounded px-3 py-2 mb-2" />
             <div className="grid grid-cols-3 gap-3">
-              <select value={newAction.responsibleId} onChange={(e) => setNewAction({...newAction, responsibleId: e.target.value})} className="border rounded px-3 py-2">
-                <option value="">Sin responsable</option>
-                {employees.map((emp: any) => (
-                  <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
-                ))}
-              </select>
+              <EmployeeCombobox
+                value={newAction.responsibleId}
+                onChange={id => setNewAction({...newAction, responsibleId: id})}
+                placeholder="Sin responsable"
+              />
               <input type="date" placeholder="Fecha limite" value={newAction.dueDate} onChange={(e) => setNewAction({...newAction, dueDate: e.target.value})} className="border rounded px-3 py-2" />
               <select value={newAction.status} onChange={(e) => setNewAction({...newAction, status: e.target.value})} className="border rounded px-3 py-2">
                 <option value="PENDING">Pendiente</option>

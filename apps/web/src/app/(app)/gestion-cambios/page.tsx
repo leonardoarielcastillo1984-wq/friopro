@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
 import {
   RefreshCw, Plus, X, CheckCircle, Clock, AlertTriangle,
@@ -87,6 +88,7 @@ export default function GestionCambiosPage() {
   const [stats, setStats] = useState<Stats>({ total: 0, solicitados: 0, enRevision: 0, aprobados: 0, implementados: 0, rechazados: 0, cerrados: 0 });
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+  // members se mantiene para getMemberName en el detalle
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterTipo, setFilterTipo] = useState('all');
@@ -395,19 +397,19 @@ export default function GestionCambiosPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Responsable</label>
-                  <select value={form.responsableId} onChange={e => setForm({ ...form, responsableId: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                    <option value="">Seleccionar...</option>
-                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
+                  <EmployeeCombobox
+                    value={form.responsableId}
+                    onChange={id => setForm({ ...form, responsableId: id })}
+                    placeholder="Buscar responsable..."
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Aprobador</label>
-                  <select value={form.aprobadorId} onChange={e => setForm({ ...form, aprobadorId: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                    <option value="">Seleccionar...</option>
-                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
+                  <EmployeeCombobox
+                    value={form.aprobadorId}
+                    onChange={id => setForm({ ...form, aprobadorId: id })}
+                    placeholder="Buscar aprobador..."
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
