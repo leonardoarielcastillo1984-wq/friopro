@@ -1242,6 +1242,11 @@ export default function EmployeesPage() {
                         +
                       </button>
                     </div>
+                    {positions.length === 0 && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        No hay puestos creados. Usá el botón <strong>+</strong> para crear uno, o ingresá a <strong>RRHH → Perfiles de Puesto</strong>.
+                      </p>
+                    )}
                   </div>
 
                   {/* Positions List */}
@@ -2026,6 +2031,11 @@ export default function EmployeesPage() {
                         +
                       </button>
                     </div>
+                    {positions.length === 0 && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        No hay puestos creados. Usá el botón <strong>+</strong> para crear uno, o ingresá a <strong>RRHH → Perfiles de Puesto</strong>.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
