@@ -237,13 +237,15 @@ export async function apiFetch<T>(
   // Auto-refresh on 401 (expired access token) — excluir rutas públicas de auth
   const isPublicAuth = path.startsWith('/auth/refresh') || path.startsWith('/auth/login') ||
     path.startsWith('/auth/forgot-password') || path.startsWith('/auth/reset-password');
-  if (res.status === 401 && !isPublicAuth) {
+  const isOnLoginPage = typeof window !== 'undefined' &&
+    (window.location.pathname === '/login' || window.location.pathname.startsWith('/login'));
+  if (res.status === 401 && !isPublicAuth && !isOnLoginPage) {
     const refreshed = await getRefreshPromise();
     if (refreshed) {
       res = await rawFetch<T>(path, init);
     } else {
       // Refresh falló (token expirado o sesión inválida) → redirigir al login
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && !isOnLoginPage) {
         window.localStorage.removeItem('accessToken');
         window.localStorage.removeItem('csrfToken');
         window.localStorage.removeItem('tenantId');
