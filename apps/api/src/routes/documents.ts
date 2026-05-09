@@ -266,7 +266,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           version: body.bumpVersion ? existing.version + 1 : existing.version,
           departmentId: body.departmentId !== undefined ? body.departmentId : existing.departmentId,
           normativeId: body.normativeIds !== undefined 
-            ? (body.normativeIds.length > 0 ? body.normativeIds[0] : null)
+            ? ((body.normativeIds ?? []).length > 0 ? (body.normativeIds ?? [])[0] : null)
             : (body.normativeId !== undefined ? body.normativeId : existing.normativeId),
           process: body.process !== undefined ? body.process : existing.process,
           ownerId: validOwnerId,
@@ -290,7 +290,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       updated.ownerId !== req.auth?.userId
     ) {
       notifyDocumentReview(app.prisma, {
-        tenantId: req.db!.tenantId,
+        tenantId: req.db?.tenantId ?? req.auth?.tenantId ?? '',
         docId: updated.id,
         docTitle: updated.title,
         reviewerId: updated.ownerId,
@@ -945,6 +945,201 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     } catch (err: any) {
       app.log.error(err, 'Error generating DOCX');
       return reply.code(500).send({ error: 'Error al generar el DOCX.' });
+    }
+  });
+
+  // ── POST /documents/:id/ai-action — Acciones IA copilot ──
+  app.post('/:id/ai-action', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { prompt, actionId } = z.object({ prompt: z.string(), actionId: z.string().optional() }).parse(req.body);
+
+    const doc = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.document.findFirst({ where: { id, deletedAt: null }, select: { id: true, title: true, content: true, htmlContent: true } });
+    });
+    if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
+
+    try {
+      const tenantId = req.db?.tenantId ?? (req as any).auth?.tenantId ?? null;
+      const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'document-ai-action');
+      const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
+      return reply.send({ text: response.text });
+    } catch (err: any) {
+      return reply.code(503).send({ error: err?.message || 'IA no disponible' });
+    }
+  });
+
+  // ── POST /documents/:id/versions/:versionId/restore — Restaurar versión ──
+  app.post('/:id/versions/:versionId/restore', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id, versionId } = z.object({ id: z.string().uuid(), versionId: z.string().uuid() }).parse(req.params);
+
+    const result = await app.runWithDbContext(req, async (tx: any) => {
+      const doc = await tx.document.findFirst({ where: { id, deletedAt: null } });
+      if (!doc) return null;
+
+      const version = await tx.documentVersion.findFirst({ where: { id: versionId, documentId: id } });
+      if (!version) return null;
+
+      // Guardar estado actual como nueva versión antes de restaurar
+      await tx.documentVersion.create({
+        data: {
+          documentId: id,
+          version: doc.version,
+          filePath: doc.filePath || '',
+          originalName: `Punto de restauración v${doc.version}`,
+          fileSize: doc.htmlContent ? doc.htmlContent.length : 0,
+          createdById: req.auth?.userId ?? null,
+        },
+      });
+
+      // Si la versión tiene un filePath (archivo físico), extraer HTML
+      let htmlContent = doc.htmlContent || '';
+      if (version.filePath && existsSync(version.filePath)) {
+        try {
+          const ext = path.extname(version.filePath).toLowerCase();
+          if (ext === '.docx' || ext === '.doc') {
+            const mammoth = await import('mammoth');
+            const result = await mammoth.convertToHtml({ path: version.filePath });
+            htmlContent = result.value;
+          }
+        } catch { /* usar el HTML actual si falla */ }
+      }
+
+      // Actualizar documento restaurando versión
+      await tx.document.update({
+        where: { id },
+        data: {
+          htmlContent,
+          version: doc.version + 1,
+          updatedById: req.auth?.userId ?? null,
+          updatedAt: new Date(),
+        },
+      });
+
+      return { htmlContent, version: version.version };
+    });
+
+    if (!result) return reply.code(404).send({ error: 'Documento o versión no encontrada' });
+    return reply.send(result);
+  });
+
+  // ── POST /documents/:id/export-pdf — Exportar HTML a PDF ──
+  app.post('/:id/export-pdf', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const doc = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.document.findFirst({
+        where: { id, deletedAt: null },
+        select: { id: true, title: true, htmlContent: true, content: true },
+      });
+    });
+    if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
+
+    const htmlBody = doc.htmlContent || (doc.content
+      ? doc.content.split('\n').filter((l: string) => l.trim()).map((l: string) => `<p>${l}</p>`).join('')
+      : '<p>Sin contenido</p>');
+
+    // Generamos un PDF simple usando HTML embebido en un buffer básico
+    // Usamos una plantilla HTML que el browser puede imprimir como PDF
+    const fullHtml = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>${doc.title}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; color: #222; font-size: 12pt; line-height: 1.6; }
+  h1 { font-size: 20pt; border-bottom: 2px solid #2563eb; padding-bottom: 8px; color: #1e3a8a; }
+  h2 { font-size: 16pt; color: #1d4ed8; margin-top: 20px; }
+  h3 { font-size: 13pt; color: #374151; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #d1d5db; padding: 8px 12px; text-align: left; }
+  th { background: #eff6ff; font-weight: 600; }
+  blockquote { border-left: 4px solid #3b82f6; margin: 0; padding: 8px 16px; background: #f0f9ff; color: #374151; }
+  .header { margin-bottom: 32px; }
+  .meta { font-size: 10pt; color: #6b7280; margin-top: 4px; }
+  @media print { body { margin: 20px; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>${doc.title}</h1>
+    <div class="meta">SGI360 · Documento generado el ${new Date().toLocaleDateString('es-AR')}</div>
+  </div>
+  ${htmlBody}
+</body>
+</html>`;
+
+    const sanitizedTitle = doc.title.replace(/[^a-zA-Z0-9._-]/g, '_');
+    return reply
+      .header('Content-Type', 'text/html; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="${sanitizedTitle}.html"`)
+      .send(fullHtml);
+  });
+
+  // ── POST /documents/:id/cross-validate — Validación cruzada Fase 4 ──
+  app.post('/:id/cross-validate', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const tenantId = req.db?.tenantId ?? (req as any).auth?.tenantId;
+
+    const [doc, ncCount, auditCount, capaCount, trainingCount] = await Promise.all([
+      app.runWithDbContext(req, async (tx: any) =>
+        tx.document.findFirst({ where: { id, deletedAt: null }, select: { id: true, title: true, content: true, htmlContent: true, type: true } })
+      ),
+      (app as any).prisma.nonConformity?.count({ where: { tenantId } }).catch(() => 0),
+      (app as any).prisma.audit?.count({ where: { tenantId } }).catch(() => 0),
+      (app as any).prisma.cAPA?.count({ where: { tenantId } }).catch(() => 0),
+      (app as any).prisma.training?.count({ where: { tenantId } }).catch(() => 0),
+    ]);
+
+    if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
+
+    const textContent = (doc.htmlContent || doc.content || '').replace(/<[^>]+>/g, ' ').slice(0, 2000);
+
+    const systemContext = `El sistema SGI360 tiene actualmente:
+- ${ncCount ?? 0} no conformidades registradas
+- ${auditCount ?? 0} auditorías en el sistema
+- ${capaCount ?? 0} CAPAs (acciones correctivas) registradas
+- ${trainingCount ?? 0} capacitaciones registradas`;
+
+    try {
+      const prompt = `Sos un auditor experto en ISO 9001. Analizá si el siguiente documento de gestión "${doc.title}" (tipo: ${doc.type}) es consistente con los datos reales del sistema de gestión.
+
+${systemContext}
+
+Contenido del documento (primeros 2000 caracteres):
+${textContent}
+
+Tu tarea:
+1. Detectá posibles inconsistencias entre lo que dice el documento y los datos del sistema
+2. Identificá si el documento menciona procesos, evaluaciones o controles que deberían tener registros en el sistema
+3. Sugierí acciones concretas para cerrar las brechas detectadas
+
+Respondé en formato JSON sin markdown:
+{
+  "inconsistencies": ["descripción de inconsistencia 1", ...],
+  "missing_records": ["registro que debería existir pero no se evidencia", ...],
+  "recommendations": ["acción correctiva sugerida", ...],
+  "compliance_risk": "ALTO|MEDIO|BAJO",
+  "summary": "Resumen ejecutivo de 2-3 oraciones"
+}`;
+
+      const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'document-cross-validate');
+      const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
+
+      let parsed;
+      try {
+        parsed = JSON.parse(response.text.trim().replace(/^```json\s*|\s*```$/g, ''));
+      } catch {
+        parsed = { inconsistencies: [], missing_records: [], recommendations: [response.text.slice(0, 500)], compliance_risk: 'MEDIO', summary: 'Análisis completado.' };
+      }
+
+      return reply.send({ ...parsed, systemContext: { ncCount, auditCount, capaCount, trainingCount } });
+    } catch (err: any) {
+      return reply.code(503).send({ error: err?.message || 'IA no disponible' });
     }
   });
 
