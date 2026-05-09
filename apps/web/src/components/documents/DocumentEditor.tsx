@@ -406,15 +406,17 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
           <FileText className="w-5 h-5 text-blue-600 flex-shrink-0" />
           <div className="min-w-0">
             <h1 className="text-sm font-semibold text-gray-900 truncate max-w-md">{documentTitle}</h1>
-            <p className="text-xs text-gray-400 flex items-center gap-2">
+            <p className="text-xs text-gray-400 flex items-center gap-2 flex-wrap">
               <span>{source === 'edited' ? 'Editado en línea' : source === 'file' ? 'Extraído del archivo' : 'Texto del documento'}</span>
-              {source === 'file' && (
-                <button onClick={() => loadContent(true)} title="Re-extraer del archivo original"
-                  className="text-blue-500 hover:text-blue-700 underline text-xs">re-extraer</button>
-              )}
               <span>· {wordCount} palabras</span>
               {saved && <span className="text-green-600">✓ Guardado</span>}
             </p>
+            {source === 'file' && (
+              <button onClick={() => loadContent(true)}
+                className="flex items-center gap-1 mt-0.5 px-2 py-0.5 text-xs bg-amber-50 border border-amber-300 text-amber-700 rounded-full hover:bg-amber-100 font-medium">
+                <RefreshCw className="w-3 h-3" /> Re-extraer del archivo (fix encoding)
+              </button>
+            )}
           </div>
           {/* Workflow badge */}
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${currentStatus.color} flex-shrink-0`}>
