@@ -99,7 +99,7 @@ export async function processDocumentVsNormaJob(job: Job<ProcessDocumentVsNormaP
     });
     await job.updateProgress(10);
 
-    // 2. Cargar documento, normativa y solo las cláusulas VINCULADAS al documento
+    // 2. Cargar documento, normativa y cláusulas (vinculadas si existen, si no todas las activas)
     const [document, normative, linkedClauses] = await Promise.all([
       prisma.document.findUniqueOrThrow({
         where: { id: documentId },
@@ -124,12 +124,22 @@ export async function processDocumentVsNormaJob(job: Job<ProcessDocumentVsNormaP
     ]);
     await job.updateProgress(20);
 
-    if (linkedClauses.length === 0) {
+    // Si no hay cláusulas vinculadas, usar todas las activas de la norma
+    const clausesToAnalyze = linkedClauses.length > 0
+      ? linkedClauses
+      : await prisma.normativeClause.findMany({
+          where: { normativeId: normativeId, status: 'ACTIVE', deletedAt: null },
+          orderBy: { extractionOrder: 'asc' },
+        });
+
+    if (clausesToAnalyze.length === 0) {
       throw new Error(
-        `El documento "${document.title}" no tiene cláusulas vinculadas para la norma ${normative.code}. ` +
-        `Vincule cláusulas desde el menú Documentos antes de ejecutar el análisis.`
+        `La norma no tiene cláusulas procesadas. Procesá la norma primero desde el menú Normativos.`
       );
     }
+
+    console.log(`[AuditWorker] Usando ${clausesToAnalyze.length} cláusulas (${linkedClauses.length > 0 ? 'vinculadas' : 'todas las de la norma'})`);
+
 
     // 3. Extraer contenido del documento
     let documentContent: string;
@@ -143,13 +153,13 @@ export async function processDocumentVsNormaJob(job: Job<ProcessDocumentVsNormaP
     await job.updateProgress(40);
 
     // 4. Construir input de análisis
-    const totalClausesCount = linkedClauses.length;
+    const totalClausesCount = clausesToAnalyze.length;
     const analysisInput = {
       documentTitle: document.title,
       documentContent,
       normativeCode: normative.code,
       normativeName: normative.name,
-      clauses: linkedClauses.map((c) => ({
+      clauses: clausesToAnalyze.map((c) => ({
         id: c.id,
         clauseNumber: c.clauseNumber,
         title: c.title,
