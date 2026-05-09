@@ -98,7 +98,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    if (!doc) return reply.code(404).send({ error: 'Not found' });
+    if (!doc) return reply.code(404).send({ error: 'Documento no encontrado.' });
     
     // If content is null but file exists, extract content now
     let extractedContent = doc.content;
@@ -279,7 +279,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       return updated;
     });
 
-    if (!updated) return reply.code(404).send({ error: 'Not found' });
+    if (!updated) return reply.code(404).send({ error: 'Documento no encontrado.' });
 
     if (
       body.reviewStatus === 'REQUIRES_UPDATE' &&
@@ -311,7 +311,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       return existing;
     });
 
-    if (!deleted) return reply.code(404).send({ error: 'Not found' });
+    if (!deleted) return reply.code(404).send({ error: 'Documento no encontrado.' });
 
     // Decrementar uso y borrar archivo físico del disco
     if (deleted.filePath) {

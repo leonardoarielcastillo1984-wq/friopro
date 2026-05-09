@@ -868,7 +868,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
 
       const allowedResponse = new Set(['COMPLIES', 'DOES_NOT_COMPLY', 'NOT_APPLICABLE', null]);
       if ('response' in body && !allowedResponse.has(body.response ?? null)) {
-        return reply.code(400).send({ error: 'Invalid response value' });
+        return reply.code(400).send({ error: 'Valor de respuesta inválido.' });
       }
 
       const data: any = {};

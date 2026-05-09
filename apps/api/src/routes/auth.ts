@@ -145,7 +145,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   // ── POST /auth/change-password — Cambiar contraseña ──
   app.post('/change-password', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.auth?.userId) return reply.code(401).send({ error: 'Unauthorized' });
+    if (!req.auth?.userId) return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
 
     const schema = z.object({
       currentPassword: z.string().min(1),
@@ -158,13 +158,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       where: { id: req.auth.userId },
     });
 
-    if (!user || !user.passwordHash) return reply.code(401).send({ error: 'Unauthorized' });
+    if (!user || !user.passwordHash) return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
 
     let ok: boolean;
     try {
       ok = await argon2.verify(user.passwordHash, body.currentPassword);
     } catch {
-      return reply.code(401).send({ error: 'Unauthorized' });
+      return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
     }
     if (!ok) return reply.code(400).send({ error: 'Contraseña actual incorrecta' });
 
@@ -267,12 +267,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (!user || !user.isActive || user.deletedAt) {
-      return reply.code(401).send({ error: 'Invalid credentials' });
+      return reply.code(401).send({ error: 'Credenciales incorrectas. Verificá tu email y contraseña.' });
     }
 
     if (!user.passwordHash) {
       app.log.error(`[LOGIN] passwordHash nulo para usuario ${user.id}`);
-      return reply.code(401).send({ error: 'Invalid credentials' });
+      return reply.code(401).send({ error: 'Credenciales incorrectas. Verificá tu email y contraseña.' });
     }
 
     let ok: boolean;
@@ -280,9 +280,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       ok = await argon2.verify(user.passwordHash, body.password);
     } catch (verifyErr) {
       app.log.error(`[LOGIN] Error en argon2.verify para ${body.email}: ${verifyErr}`);
-      return reply.code(401).send({ error: 'Invalid credentials' });
+      return reply.code(401).send({ error: 'Credenciales incorrectas. Verificá tu email y contraseña.' });
     }
-    if (!ok) return reply.code(401).send({ error: 'Invalid credentials' });
+    if (!ok) return reply.code(401).send({ error: 'Credenciales incorrectas. Verificá tu email y contraseña.' });
 
     // 2FA is now optional - users can enable it in settings
     // For now, all users login directly without 2FA requirement
@@ -358,7 +358,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (!user || !user.isActive || user.deletedAt) {
-      return reply.code(401).send({ error: 'Invalid credentials' });
+      return reply.code(401).send({ error: 'Credenciales incorrectas. Verificá tu email y contraseña.' });
     }
 
     // Load tenant memberships for all users (including SUPER_ADMIN)
@@ -402,7 +402,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     if (memberships.length === 0) {
-      return reply.code(403).send({ error: 'No active tenant memberships' });
+      return reply.code(403).send({ error: 'No tenés acceso a ningún espacio de trabajo activo.' });
     }
 
     const selected = memberships[0];
@@ -430,16 +430,16 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/refresh', async (req: FastifyRequest, reply: FastifyReply) => {
     const cookieRefresh = (req.cookies as any)?.refresh_token as string | undefined;
-    if (!cookieRefresh) return reply.code(401).send({ error: 'Unauthorized' });
+    if (!cookieRefresh) return reply.code(401).send({ error: 'Sesión expirada. Iniciá sesión nuevamente.' });
 
     let payload: { userId: string; refreshTokenVersion: number; tokenType: 'refresh' };
     try {
       payload = app.verifyRefreshToken(cookieRefresh);
     } catch {
-      return reply.code(401).send({ error: 'Unauthorized' });
+      return reply.code(401).send({ error: 'Sesión inválida. Iniciá sesión nuevamente.' });
     }
 
-    if (payload.tokenType !== 'refresh') return reply.code(401).send({ error: 'Unauthorized' });
+    if (payload.tokenType !== 'refresh') return reply.code(401).send({ error: 'Token de sesión inválido.' });
 
     const bodySchema = z.object({ tenantId: z.string().uuid().optional() });
     const body = bodySchema.parse(req.body ?? {});
@@ -449,8 +449,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       select: { id: true, email: true, globalRole: true, isActive: true, deletedAt: true, refreshTokenVersion: true },
     });
 
-    if (!user || !user.isActive || user.deletedAt) return reply.code(401).send({ error: 'Unauthorized' });
-    if (user.refreshTokenVersion !== payload.refreshTokenVersion) return reply.code(401).send({ error: 'Unauthorized' });
+    if (!user || !user.isActive || user.deletedAt) return reply.code(401).send({ error: 'Usuario inactivo o eliminado.' });
+    if (user.refreshTokenVersion !== payload.refreshTokenVersion) return reply.code(401).send({ error: 'Sesión revocada. Iniciá sesión nuevamente.' });
 
     // Rotate refresh token version.
     const bumped = await app.prisma.platformUser.update({
@@ -503,12 +503,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       orderBy: { createdAt: 'asc' },
     });
 
-    if (memberships.length === 0) return reply.code(403).send({ error: 'No active tenant memberships' });
+    if (memberships.length === 0) return reply.code(403).send({ error: 'No tenés acceso a ningún espacio de trabajo activo.' });
 
     let selected = memberships[0];
     if (body.tenantId) {
       const match = memberships.find((m: any) => m.tenantId === body.tenantId);
-      if (!match) return reply.code(403).send({ error: 'Not a member of tenant' });
+      if (!match) return reply.code(403).send({ error: 'No tenés acceso a ese espacio de trabajo.' });
       selected = match;
     }
 
@@ -538,7 +538,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get('/me', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.auth) return reply.code(401).send({ error: 'Unauthorized' });
+    if (!req.auth) return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
 
     const user = await app.prisma.platformUser.findUnique({
       where: { id: req.auth.userId },
@@ -546,7 +546,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (!user || !user.isActive || user.deletedAt) {
-      return reply.code(401).send({ error: 'Unauthorized' });
+      return reply.code(401).send({ error: 'Usuario inactivo o no encontrado.' });
     }
 
     // Get user's tenant memberships to determine active tenant
@@ -616,7 +616,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get('/tenants', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.auth) return reply.code(401).send({ error: 'Unauthorized' });
+    if (!req.auth) return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
     if (req.auth.globalRole === 'SUPER_ADMIN') {
       const tenants = await app.prisma.tenant.findMany({
         where: { deletedAt: null },
@@ -654,7 +654,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/switch-tenant', async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.auth) return reply.code(401).send({ error: 'Unauthorized' });
+    if (!req.auth) return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
 
     const bodySchema = z.object({ tenantId: z.string().uuid() });
     const body = bodySchema.parse(req.body);

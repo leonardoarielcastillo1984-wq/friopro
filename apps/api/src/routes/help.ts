@@ -25,7 +25,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const parsed = AskSchema.safeParse(body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'Invalid request', details: parsed.error.errors });
+        return reply.code(400).send({ error: 'Solicitud inválida.', details: parsed.error.errors });
       }
 
       const { message, context, history = [] } = parsed.data;
@@ -97,7 +97,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const parsed = AskSchema.safeParse(body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'Invalid request', details: parsed.error.errors });
+        return reply.code(400).send({ error: 'Solicitud inválida.', details: parsed.error.errors });
       }
 
       const { message, context, history = [] } = parsed.data;

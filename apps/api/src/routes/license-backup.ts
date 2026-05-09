@@ -191,7 +191,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (error: any) {
       app.log.error(error);
-      return reply.code(500).send({ error: 'Failed to get setup status' });
+      return reply.code(500).send({ error: 'Error al obtener el estado de configuración.' });
     }
   });
 
@@ -240,7 +240,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (error: any) {
       app.log.error(error);
-      return reply.code(500).send({ error: 'Failed to process setup payment' });
+      return reply.code(500).send({ error: 'Error al procesar el pago de configuración.' });
     }
   });
 
@@ -341,7 +341,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(200).send({ plans });
     } catch (error: any) {
       app.log.error(error);
-      return reply.code(500).send({ error: 'Failed to get plans' });
+      return reply.code(500).send({ error: 'Error al obtener los planes disponibles.' });
     }
   });
 
@@ -351,7 +351,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(200).send({ modules: MODULE_CONFIG });
     } catch (error: any) {
       app.log.error({ error }, 'Error getting module access');
-      return reply.code(500).send({ error: 'Failed to get modules' });
+      return reply.code(500).send({ error: 'Error al obtener los módulos disponibles.' });
     }
   });
 
@@ -414,7 +414,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (error: any) {
       app.log.error({ error }, 'message');
-      return reply.code(500).send({ error: 'Failed to get subscription' });
+      return reply.code(500).send({ error: 'Error al obtener la suscripción.' });
     }
   });
 
@@ -485,7 +485,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (error: any) {
       app.log.error({ error }, 'message');
-      return reply.code(500).send({ error: 'Failed to create subscription' });
+      return reply.code(500).send({ error: 'Error al crear la suscripción.' });
     }
   });
 
@@ -508,7 +508,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(200).send({ payments });
     } catch (error: any) {
       app.log.error({ error }, 'message');
-      return reply.code(500).send({ error: 'Failed to get payments' });
+      return reply.code(500).send({ error: 'Error al obtener el historial de pagos.' });
     }
   });
 
@@ -554,7 +554,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(201).send({ payment });
     } catch (error: any) {
       app.log.error(error);
-      return reply.code(500).send({ error: 'Failed to record payment' });
+      return reply.code(500).send({ error: 'Error al registrar el pago.' });
     }
   });
 
@@ -571,7 +571,7 @@ export const licenseRoutes: FastifyPluginAsync = async (app) => {
     try {
       const tenantId = (req as any).auth?.tenantId;
       const userId = (req as any).auth?.userId;
-      if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+      if (!tenantId) return reply.code(401).send({ error: 'No autorizado. Iniciá sesión nuevamente.' });
 
       const { module } = req.params as { module: string };
 

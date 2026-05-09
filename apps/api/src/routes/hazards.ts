@@ -237,7 +237,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({ action });
     } catch (e: any) {
       app.log.error('Create action error:', e);
-      return reply.code(400).send({ error: 'Invalid action data', detail: e?.message });
+      return reply.code(400).send({ error: 'Datos de la acción inválidos.', detail: e?.message });
     }
   });
 
@@ -262,7 +262,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({ action });
     } catch (e: any) {
       app.log.error('Update action error:', e);
-      return reply.code(400).send({ error: 'Invalid action data', detail: e?.message });
+      return reply.code(400).send({ error: 'Datos de la acción inválidos.', detail: e?.message });
     }
   });
 
@@ -316,7 +316,7 @@ export const hazardsRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({ review });
     } catch (e: any) {
       app.log.error('Create review error:', e);
-      return reply.code(400).send({ error: 'Invalid review data', detail: e?.message });
+      return reply.code(400).send({ error: 'Datos de la revisión inválidos.', detail: e?.message });
     }
   });
 

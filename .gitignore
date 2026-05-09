@@ -1,3 +1,16 @@
+# Archivos temporales y de docs locales
+*.tar.gz
+docs/
+debug_*.py
+delete_*.py
+e2e_*.py
+fix_*.py
+schema_*.py
+training_*.py
+monitor-*.js
+logismart.conf
+apps/web/src/app/_document.tsx
+
 # Dependencies
 node_modules/
 */node_modules/

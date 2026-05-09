@@ -126,7 +126,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (error) {
       app.log.error('Dashboard error:', error);
-      return reply.code(500).send({ error: 'Failed to fetch dashboard data' });
+      return reply.code(500).send({ error: 'Error al obtener los datos del dashboard.' });
     }
   });
 };
