@@ -65,7 +65,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
 
     // Verificar tenant context - primero intentar req.db, luego el token JWT
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!effectiveTenantId) {
+    if (!tenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
@@ -127,7 +127,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
 
     // Verificar tenant context - primero intentar req.db, luego el token JWT
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!effectiveTenantId) {
+    if (!tenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
@@ -293,7 +293,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!effectiveTenantId) {
+    if (!tenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
@@ -350,7 +350,7 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
     app.requireFeature(req, FEATURE_KEY);
 
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!effectiveTenantId) {
+    if (!tenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
