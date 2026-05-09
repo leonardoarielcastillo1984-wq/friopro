@@ -55,6 +55,8 @@ services:
       DATABASE_URL: postgresql://sgi:sgi@postgres:5432/sgi
       REDIS_URL: redis://redis:6379
       JWT_SECRET: change-me-in-production
+      ACCESS_TOKEN_TTL: 8h
+      REFRESH_TOKEN_TTL: 30d
       CORS_ORIGIN: http://46.62.253.81:4000,http://localhost:3000,http://127.0.0.1:3000
       STORAGE_BACKEND: local
       STORAGE_LOCAL_PATH: /app/uploads

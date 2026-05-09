@@ -1,10 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Zap, Lock, Mail } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { Zap, Lock, Mail, Clock } from 'lucide-react';
 import Link from 'next/link';
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const sessionExpired = searchParams.get('reason') === 'session_expired';
+
   const [email, setEmail] = useState('');
 
   useEffect(() => {
@@ -106,6 +110,13 @@ export default function LoginPage() {
           <h2 className="text-xl font-semibold text-white mb-6 text-center">
             Iniciar sesión
           </h2>
+
+          {sessionExpired && !error && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4 flex items-start gap-2">
+              <Clock className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
+              <p className="text-amber-300 text-sm">Tu sesión expiró. Ingresá nuevamente para continuar.</p>
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">

@@ -241,6 +241,17 @@ export async function apiFetch<T>(
     const refreshed = await getRefreshPromise();
     if (refreshed) {
       res = await rawFetch<T>(path, init);
+    } else {
+      // Refresh falló (token expirado o sesión inválida) → redirigir al login
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('accessToken');
+        window.localStorage.removeItem('csrfToken');
+        window.localStorage.removeItem('tenantId');
+        window.localStorage.removeItem('user');
+        window.localStorage.removeItem('userPermissions');
+        window.location.href = '/login?reason=session_expired';
+      }
+      return {} as T;
     }
   }
 
