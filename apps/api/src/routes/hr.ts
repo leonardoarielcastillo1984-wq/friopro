@@ -902,6 +902,22 @@ export default async function hrRoutes(fastify: FastifyInstance) {
     return { message: 'Assignment removed successfully' };
   });
 
+  // Delete training (soft delete)
+  fastify.delete('/trainings/:id', async (request, reply) => {
+    const { tenantId } = request;
+    const { id } = request.params as { id: string };
+
+    const existing = await fastify.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
+    if (!existing) return reply.code(404).send({ error: 'Training not found' });
+
+    await fastify.prisma.training.update({
+      where: { id },
+      data: { deletedAt: new Date() }
+    });
+
+    return { success: true };
+  });
+
   // ========== EMPLOYEE COMPETENCIES ==========
 
   // Get competencies for an employee
@@ -1973,99 +1989,6 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
     reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     reply.header('Content-Disposition', 'attachment; filename=empleados_export.xlsx');
     return reply.send(buffer);
-  });
-
-  // ─── HR TRAININGS (modelo Training con assignments) ──────────────────────
-
-  // GET /hr/trainings
-  fastify.get('/trainings', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const trainings = await fastify.prisma.training.findMany({
-      where: { tenantId, deletedAt: null },
-      include: { _count: { select: { assignments: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    return reply.send({ trainings });
-  });
-
-  // POST /hr/trainings
-  fastify.post('/trainings', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const body = createTrainingSchema.parse(req.body);
-    const training = await fastify.prisma.training.create({
-      data: {
-        tenantId,
-        title: body.title,
-        description: body.description,
-        type: body.type,
-        duration: body.duration,
-        cost: body.cost,
-        competencyIds: body.competencyIds ?? [],
-        createdById: req.auth?.userId ?? null,
-        updatedById: req.auth?.userId ?? null,
-      },
-      include: { _count: { select: { assignments: true } } },
-    });
-    return reply.code(201).send({ training });
-  });
-
-  // GET /hr/trainings/:id/assignments
-  fastify.get('/trainings/:id/assignments', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const training = await fastify.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
-    if (!training) return reply.code(404).send({ error: 'Training not found' });
-    const assignments = await fastify.prisma.trainingAssignment.findMany({
-      where: { trainingId: id },
-      include: { employee: { select: { id: true, firstName: true, lastName: true, email: true } } },
-      orderBy: { assignedAt: 'desc' },
-    });
-    return reply.send({ assignments });
-  });
-
-  // POST /hr/trainings/:id/assignments
-  fastify.post('/trainings/:id/assignments', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const { employeeId } = z.object({ employeeId: z.string().uuid() }).parse(req.body);
-    const training = await fastify.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
-    if (!training) return reply.code(404).send({ error: 'Training not found' });
-    const existing = await fastify.prisma.trainingAssignment.findUnique({ where: { trainingId_employeeId: { trainingId: id, employeeId } } });
-    if (existing) return reply.code(409).send({ error: 'El empleado ya está asignado a esta capacitación' });
-    const assignment = await fastify.prisma.trainingAssignment.create({
-      data: { trainingId: id, employeeId },
-      include: { employee: { select: { id: true, firstName: true, lastName: true, email: true } } },
-    });
-    return reply.code(201).send({ assignment });
-  });
-
-  // PATCH /hr/trainings/assignments/:assignmentId
-  fastify.patch('/trainings/assignments/:assignmentId', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const { assignmentId } = z.object({ assignmentId: z.string().uuid() }).parse(req.params);
-    const { status } = z.object({ status: z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'EXPIRED']) }).parse(req.body);
-    const assignment = await fastify.prisma.trainingAssignment.update({
-      where: { id: assignmentId },
-      data: { status, completedAt: status === 'COMPLETED' ? new Date() : undefined },
-      include: { employee: { select: { id: true, firstName: true, lastName: true, email: true } } },
-    });
-    return reply.send({ assignment });
-  });
-
-  // DELETE /hr/trainings/:id
-  fastify.delete('/trainings/:id', async (req: any, reply: any) => {
-    const tenantId = await getEffectiveTenantId(req, fastify.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const existing = await fastify.prisma.training.findFirst({ where: { id, tenantId, deletedAt: null } });
-    if (!existing) return reply.code(404).send({ error: 'Training not found' });
-    await fastify.prisma.training.update({ where: { id }, data: { deletedAt: new Date(), updatedById: req.auth?.userId ?? null } });
-    return reply.send({ success: true });
   });
 
 }
