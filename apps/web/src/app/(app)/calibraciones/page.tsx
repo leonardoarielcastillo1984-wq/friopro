@@ -130,8 +130,8 @@ export default function CalibracionesPage() {
       let certificateUrl = calibrationForm.certificateNumber || null;
 
       if (calibrationFile) {
-        if (calibrationFile.size > 10 * 1024 * 1024) {
-          alert('El archivo es demasiado grande. Máximo 10MB.');
+        if (calibrationFile.size > 50 * 1024 * 1024) {
+          alert('El archivo es demasiado grande. Máximo 50MB.');
           return;
         }
         setUploadingFile(true);
@@ -596,7 +596,7 @@ export default function CalibracionesPage() {
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-purple-400 transition-colors">
                   <input
                     type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                     onChange={(e) => setCalibrationFile(e.target.files?.[0] || null)}
                     className="hidden"
                     id="calibration-upload"
@@ -612,7 +612,7 @@ export default function CalibracionesPage() {
                     <span className="text-sm text-gray-600 text-center">
                       {calibrationFile ? calibrationFile.name : 'Click para subir informe'}
                     </span>
-                    <span className="text-xs text-gray-400 mt-1">Máx. 10MB</span>
+                    <span className="text-xs text-gray-400 mt-1">Máx. 50MB</span>
                   </label>
                 </div>
               </div>

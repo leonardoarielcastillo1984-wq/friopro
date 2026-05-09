@@ -424,7 +424,7 @@ export default function DocumentsPage() {
           </div>
           <div className="mt-4">
             <label className="block text-sm font-medium text-neutral-700 mb-1">Archivo</label>
-            <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx,.xls" onChange={handleFileChange} className="block w-full text-sm text-neutral-600 file:mr-4 file:rounded-lg file:border-0 file:bg-brand-600 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700 file:cursor-pointer" required />
+            <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png" onChange={handleFileChange} className="block w-full text-sm text-neutral-600 file:mr-4 file:rounded-lg file:border-0 file:bg-brand-600 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700 file:cursor-pointer" required />
           </div>
           <button
             type="submit"

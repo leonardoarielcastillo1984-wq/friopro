@@ -104,8 +104,8 @@ export default function AuditorsPage() {
       if (res.auditor) {
         // Subir certificados si hay archivos
         for (const file of newAuditorFiles) {
-          if (file.size > 10 * 1024 * 1024) {
-            alert(`El archivo ${file.name} es demasiado grande. Máximo 10MB.`);
+          if (file.size > 50 * 1024 * 1024) {
+            alert(`El archivo ${file.name} es demasiado grande. Máximo 50MB.`);
             continue;
           }
           if (file.type !== 'application/pdf') {
@@ -258,8 +258,8 @@ export default function AuditorsPage() {
     const file = e.target.files?.[0];
     if (!file || !editingAuditor) return;
 
-    if (file.size > 10 * 1024 * 1024) {
-      alert('El archivo es demasiado grande. Máximo 10MB.');
+    if (file.size > 50 * 1024 * 1024) {
+      alert('El archivo es demasiado grande. Máximo 50MB.');
       return;
     }
 
@@ -636,7 +636,7 @@ export default function AuditorsPage() {
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors">
                   <input
                     type="file"
-                    accept=".pdf"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                     multiple
                     onChange={(e) => {
                       const files = Array.from(e.target.files || []);
@@ -652,7 +652,7 @@ export default function AuditorsPage() {
                     <span className="text-sm text-gray-600 text-center">
                       Click para subir certificados PDF
                     </span>
-                    <span className="text-xs text-gray-400 mt-1">Máx. 10MB por archivo</span>
+                    <span className="text-xs text-gray-400 mt-1">Máx. 50MB por archivo</span>
                   </label>
                 </div>
               </div>
@@ -818,7 +818,7 @@ export default function AuditorsPage() {
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors">
                   <input
                     type="file"
-                    accept=".pdf"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                     onChange={handleFileUpload}
                     disabled={uploadingFile}
                     className="hidden"
@@ -835,7 +835,7 @@ export default function AuditorsPage() {
                     <span className="text-sm text-gray-600 text-center">
                       {uploadingFile ? 'Subiendo...' : 'Click para subir certificado PDF'}
                     </span>
-                    <span className="text-xs text-gray-400 mt-1">Máx. 10MB</span>
+                    <span className="text-xs text-gray-400 mt-1">Máx. 50MB</span>
                   </label>
                 </div>
               </div>

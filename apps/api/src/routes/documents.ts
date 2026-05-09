@@ -366,9 +366,19 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       'application/msword', // .doc
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
       'application/vnd.ms-excel', // .xls
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+      'application/vnd.ms-powerpoint', // .ppt
+      'text/plain', // .txt
+      'text/csv', // .csv
+      'application/csv',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/octet-stream', // fallback para archivos que el SO no detecta el MIME correctamente
     ];
     if (!allowedMimes.includes(data.mimetype)) {
-      return reply.code(400).send({ error: 'Solo se aceptan archivos PDF, Word (.docx, .doc) o Excel (.xlsx, .xls)' });
+      return reply.code(400).send({ error: `Tipo de archivo no permitido: ${data.mimetype}. Se aceptan PDF, Word, Excel, PowerPoint, imágenes y archivos de texto.` });
     }
 
     // Read file buffer

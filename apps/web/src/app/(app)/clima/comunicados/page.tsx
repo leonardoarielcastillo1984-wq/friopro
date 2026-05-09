@@ -548,7 +548,7 @@ export default function ComunicadosPage() {
                   {uploadingFile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
                   {uploadingFile ? 'Subiendo...' : 'Adjuntar archivo'}
                 </button>
-                <input ref={fileInputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
+                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.txt,image/*" className="hidden" onChange={handleUpload} />
               </div>
 
               {/* Destinatarios empleados */}
