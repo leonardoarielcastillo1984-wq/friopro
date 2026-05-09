@@ -119,6 +119,7 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
       TableCell,
     ],
     content: '',
+    immediatelyRender: false,
     onUpdate: ({ editor }) => {
       setWordCount(editor.storage.characterCount?.words() ?? 0);
       setSaved(false);
