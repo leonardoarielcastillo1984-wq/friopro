@@ -23,7 +23,7 @@ interface Position {
   requirements?: string[];
   authority?: AuthorityLevel;
   relationships?: DepartmentRelationship[];
-  kpis?: KPI[];
+  kpis?: string[];
   evaluationMethod?: EvaluationCriteria;
   trainingPlan?: TrainingRequirement[];
   competencies?: PositionCompetency[];
@@ -435,294 +435,159 @@ export default function PerfilesPage() {
   const categories = ['ALL', ...Array.from(new Set(positions.map(p => p.category).filter(Boolean)))];
 
   const renderCompetencyMatrix = (position: Position) => {
-    // Mock employee data with competency levels
-    const mockEmployees = [
-      {
-        id: '1',
-        name: 'Juan Pérez',
-        positionId: position.id,
-        positionName: position.name,
-        competencies: [
-          { name: 'Programación', currentLevel: 4, requiredLevel: 5 },
-          { name: 'Liderazgo', currentLevel: 2, requiredLevel: 3 }
-        ]
-      },
-      {
-        id: '2', 
-        name: 'María García',
-        positionId: position.id,
-        positionName: position.name,
-        competencies: [
-          { name: 'Programación', currentLevel: 3, requiredLevel: 5 },
-          { name: 'Liderazgo', currentLevel: 4, requiredLevel: 3 }
-        ]
-      },
-      {
-        id: '3',
-        name: 'Carlos Rodríguez',
-        positionId: position.id,
-        positionName: position.name,
-        competencies: [
-          { name: 'Programación', currentLevel: 2, requiredLevel: 5 },
-          { name: 'Liderazgo', currentLevel: 1, requiredLevel: 3 }
-        ]
-      }
-    ];
+    // Empleados reales asignados a este puesto
+    const positionEmployees = employees.filter((e: any) => e.positionId === position.id && !e.deletedAt);
 
-    const mockCompetencies = getMockCompetencies();
+    // Competencias requeridas del puesto (del estado positionCompetencies o de position.competencies)
+    const requiredComps: { competencyId: string; requiredLevel: number; name?: string; category?: string }[] =
+      (position.competencies && position.competencies.length > 0)
+        ? position.competencies.map((pc: any) => ({
+            competencyId: pc.competencyId ?? pc.id,
+            requiredLevel: pc.requiredLevel ?? 3,
+            name: pc.name ?? competencies.find((c: any) => c.id === pc.competencyId)?.name ?? 'Sin nombre',
+            category: pc.category ?? competencies.find((c: any) => c.id === pc.competencyId)?.category ?? '',
+          }))
+        : [];
+
+    if (positionEmployees.length === 0 && requiredComps.length === 0) {
+      return (
+        <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+          <p className="text-gray-500 text-sm">No hay empleados ni competencias asignados a este puesto aún.</p>
+          <p className="text-gray-400 text-xs mt-1">Asigná empleados desde <strong>RRHH → Empleados</strong> y competencias desde la pestaña de edición del perfil.</p>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-6">
-        {/* Employee Competency Matrix */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-semibold text-gray-900">Matriz de Competencias del Personal</h4>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">Brechas identificadas:</span>
-              <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">
-                {mockEmployees.filter(emp => 
-                  emp.competencies.some(comp => comp.currentLevel < comp.requiredLevel)
-                ).length}
-              </span>
-            </div>
-          </div>
-          
-          {/* Employee Matrix Table */}
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Empleado
-                  </th>
-                  {mockCompetencies.map(comp => (
-                    <th key={comp.id} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {comp.name}
-                    </th>
-                  ))}
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {mockEmployees.map(employee => (
-                  <tr key={employee.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{employee.name}</div>
-                        <div className="text-sm text-gray-500">{employee.positionName}</div>
+        {/* Requisitos de Competencias del Puesto */}
+        {requiredComps.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h4 className="font-semibold text-gray-900 mb-3">Requisitos de Competencias del Puesto</h4>
+            <div className="space-y-3">
+              {requiredComps.map(pc => {
+                const comp = competencies.find((c: any) => c.id === pc.competencyId);
+                return (
+                  <div key={pc.competencyId} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-medium text-gray-900">{pc.name ?? comp?.name ?? 'Competencia'}</p>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          (pc.category ?? comp?.category) === 'technical' ? 'bg-blue-100 text-blue-800' :
+                          (pc.category ?? comp?.category) === 'behavioral' ? 'bg-green-100 text-green-800' :
+                          'bg-purple-100 text-purple-800'
+                        }`}>
+                          {(pc.category ?? comp?.category) === 'technical' ? 'Técnica' :
+                           (pc.category ?? comp?.category) === 'behavioral' ? 'Comportamental' : 'Liderazgo'}
+                        </span>
                       </div>
-                    </td>
-                    {employee.competencies.map((comp, index) => {
-                      const gap = comp.requiredLevel - comp.currentLevel;
-                      const percentage = (comp.currentLevel / comp.requiredLevel) * 100;
-                      
-                      return (
-                        <td key={index} className="px-4 py-4 whitespace-nowrap text-center">
-                          <div className="flex flex-col items-center space-y-1">
-                            <div className="flex items-center gap-1">
-                              <span className="text-sm font-medium text-gray-900">
-                                {comp.currentLevel}/{comp.requiredLevel}
-                              </span>
-                              {gap > 0 && (
-                                <span className={`px-1 py-0.5 rounded text-xs font-medium ${
-                                  gap >= 2 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
-                                }`}>
-                                  -{gap}
-                                </span>
-                              )}
-                            </div>
-                            <div className="w-16 bg-gray-200 rounded-full h-1.5">
-                              <div 
-                                className={`h-1.5 rounded-full transition-all duration-300 ${
-                                  percentage >= 100 ? 'bg-green-500' : 
-                                  percentage >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-                                }`}
-                                style={{ width: `${Math.min(percentage, 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                      );
-                    })}
-                    <td className="px-4 py-4 whitespace-nowrap text-center">
-                      <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                        Ver Plan
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Position Competency Requirements */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <h4 className="font-semibold text-gray-900 mb-3">Requisitos de Competencias del Puesto</h4>
-          <div className="space-y-3">
-            {mockCompetencies.map(comp => (
-              <div key={comp.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-medium text-gray-900">{comp.name}</p>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      comp.category === 'technical' ? 'bg-blue-100 text-blue-800' :
-                      comp.category === 'behavioral' ? 'bg-green-100 text-green-800' :
-                      'bg-purple-100 text-purple-800'
-                    }`}>
-                      {comp.category === 'technical' ? 'Técnica' : 
-                       comp.category === 'behavioral' ? 'Comportamental' : 
-                       'Liderazgo'}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600">{comp.description}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex flex-col items-center">
-                    <span className="text-xs text-gray-500 mb-1">Nivel Req.</span>
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map(level => (
-                        <div
-                          key={level}
-                          className={`w-2 h-2 rounded-full ${
-                            level <= 3 ? 'bg-blue-500' : 'bg-gray-300'
-                          }`}
-                        />
-                      ))}
+                      {comp?.description && <p className="text-sm text-gray-600">{comp.description}</p>}
+                    </div>
+                    <div className="flex flex-col items-center ml-4">
+                      <span className="text-xs text-gray-500 mb-1">Nivel Req.</span>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map(level => (
+                          <div key={level} className={`w-2 h-2 rounded-full ${
+                            level <= pc.requiredLevel ? 'bg-blue-500' : 'bg-gray-300'
+                          }`} />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Training Needs Summary */}
+        {/* Matriz de Empleados */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <h4 className="font-semibold text-gray-900 mb-3">Resumen de Necesidades de Capacitación</h4>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-red-900">Críticas</span>
-                <span className="text-lg font-bold text-red-600">3</span>
-              </div>
-              <p className="text-xs text-red-700">Brechas ≥ 2 niveles</p>
+          <h4 className="font-semibold text-gray-900 mb-4">Matriz de Competencias del Personal</h4>
+          {positionEmployees.length === 0 ? (
+            <p className="text-sm text-gray-500 py-4 text-center">No hay empleados asignados a este puesto todavía.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Empleado</th>
+                    {requiredComps.map(pc => (
+                      <th key={pc.competencyId} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {pc.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {positionEmployees.map((emp: any) => (
+                    <tr key={emp.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{emp.firstName} {emp.lastName}</div>
+                        <div className="text-sm text-gray-500">{position.name}</div>
+                      </td>
+                      {requiredComps.map(pc => {
+                        const empComp = (emp.employeeCompetencies ?? []).find((ec: any) => ec.competencyId === pc.competencyId);
+                        const current = empComp?.currentLevel ?? null;
+                        const gap = current !== null ? pc.requiredLevel - current : null;
+                        const pct = current !== null ? (current / pc.requiredLevel) * 100 : 0;
+                        return (
+                          <td key={pc.competencyId} className="px-4 py-4 whitespace-nowrap text-center">
+                            {current !== null ? (
+                              <div className="flex flex-col items-center space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm font-medium text-gray-900">{current}/{pc.requiredLevel}</span>
+                                  {gap !== null && gap > 0 && (
+                                    <span className={`px-1 py-0.5 rounded text-xs font-medium ${
+                                      gap >= 2 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
+                                    }`}>-{gap}</span>
+                                  )}
+                                </div>
+                                <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                                  <div className={`h-1.5 rounded-full transition-all duration-300 ${
+                                    pct >= 100 ? 'bg-green-500' : pct >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                                  }`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">Sin evaluar</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-yellow-900">Moderadas</span>
-                <span className="text-lg font-bold text-yellow-600">2</span>
-              </div>
-              <p className="text-xs text-yellow-700">Brechas de 1 nivel</p>
-            </div>
-            
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-green-900">Cumplidas</span>
-                <span className="text-lg font-bold text-green-600">1</span>
-              </div>
-              <p className="text-xs text-green-700">Sin brechas</p>
-            </div>
-          </div>
-
-          {/* Priority Actions */}
-          <div>
-            <h5 className="font-medium text-gray-900 mb-2">Acciones Prioritarias</h5>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between p-2 bg-red-50 rounded border-l-4 border-red-500">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">Carlos Rodríguez - Programación</p>
-                  <p className="text-xs text-gray-600">Brecha crítica: Nivel 2/5 (-3)</p>
-                </div>
-                <button className="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium">
-                  Asignar Capacitación
-                </button>
-              </div>
-              
-              <div className="flex items-center justify-between p-2 bg-yellow-50 rounded border-l-4 border-yellow-500">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">Juan Pérez - Programación</p>
-                  <p className="text-xs text-gray-600">Brecha moderada: Nivel 4/5 (-1)</p>
-                </div>
-                <button className="px-3 py-1 bg-yellow-600 text-white rounded text-xs font-medium">
-                  Planificar
-                </button>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     );
   };
 
   const renderKPIs = (position: Position) => {
-    const mockKPIs: KPI[] = [
-      {
-        id: '1',
-        name: 'Productividad',
-        description: 'Tareas completadas por semana',
-        target: 50,
-        current: 42,
-        unit: 'tareas',
-        category: 'productivity',
-        frequency: 'weekly',
-        formula: 'COUNT(tareas_completadas) / 7'
-      },
-      {
-        id: '2',
-        name: 'Calidad',
-        description: 'Porcentaje de código sin errores',
-        target: 95,
-        current: 88,
-        unit: '%',
-        category: 'quality',
-        frequency: 'monthly',
-        formula: '(1 - (errores / total_lineas)) * 100'
-      }
-    ];
-    
+    const kpis = position.kpis ?? [];
+
+    if (kpis.length === 0) {
+      return (
+        <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+          <p className="text-gray-500 text-sm">No hay indicadores KPI definidos para este puesto.</p>
+          <p className="text-gray-400 text-xs mt-1">Editá el perfil de puesto para agregar KPIs.</p>
+        </div>
+      );
+    }
+
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {mockKPIs.map(kpi => (
-          <div key={kpi.id} className="bg-white rounded-lg border border-gray-200 p-4">
+        {kpis.map((kpi, index) => (
+          <div key={index} className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-start justify-between mb-2">
               <div className="flex-1">
-                <h4 className="font-semibold text-gray-900">{kpi.name}</h4>
-                <p className="text-sm text-gray-500">{kpi.description}</p>
+                <h4 className="font-semibold text-gray-900">{kpi}</h4>
               </div>
-              <div className={`px-2 py-1 rounded text-xs font-medium ${
-                kpi.category === 'quality' ? 'bg-green-100 text-green-800' :
-                kpi.category === 'productivity' ? 'bg-blue-100 text-blue-800' :
-                kpi.category === 'efficiency' ? 'bg-purple-100 text-purple-800' :
-                kpi.category === 'safety' ? 'bg-red-100 text-red-800' :
-                'bg-yellow-100 text-yellow-800'
-              }`}>
-                {kpi.category}
-              </div>
+              <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">KPI</span>
             </div>
-            
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Progreso</span>
-                <span className="text-sm font-medium">
-                  {kpi.current} / {kpi.target} {kpi.unit}
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min((kpi.current / kpi.target) * 100, 100)}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>{kpi.frequency}</span>
-                <span>{Math.round((kpi.current / kpi.target) * 100)}%</span>
-              </div>
-            </div>
+            <p className="text-xs text-gray-400 mt-2">Definido en el perfil del puesto</p>
           </div>
         ))}
       </div>
@@ -730,55 +595,56 @@ export default function PerfilesPage() {
   };
 
   const renderEvaluationMethod = (position: Position) => {
-    const mockEvaluation: EvaluationCriteria = {
-      frequency: 'quarterly',
-      methods: ['self_eval', 'manager_eval', 'peer_eval'],
-      weightings: {
-        'self_eval': 20,
-        'manager_eval': 50,
-        'peer_eval': 30
-      },
-      objectives: [
-        'Evaluar desempeño técnico',
-        'Medir habilidades blandas',
-        'Identificar áreas de mejora',
-        'Definir plan de desarrollo'
-      ]
-    };
+    const evalMethod = position.evaluationMethod;
+
+    if (!evalMethod) {
+      return (
+        <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+          <p className="text-gray-500 text-sm">No hay método de evaluación configurado para este puesto.</p>
+          <p className="text-gray-400 text-xs mt-1">Editá el perfil de puesto para configurar la evaluación.</p>
+        </div>
+      );
+    }
 
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <h4 className="font-semibold text-gray-900 mb-4">Método de Evaluación</h4>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">Frecuencia</p>
-            <p className="text-gray-900 capitalize">{mockEvaluation.frequency}</p>
-          </div>
-          
-          <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">Métodos</p>
-            <div className="flex flex-wrap gap-2">
-              {mockEvaluation.methods.map(method => (
-                <span key={method} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
-                  {method === 'self_eval' ? 'Autoevaluación' :
-                   method === 'manager_eval' ? 'Evaluación Jefe' :
-                   method === 'peer_eval' ? 'Evaluación Pares' :
-                   'Evaluación Subordinados'}
-                </span>
-              ))}
+          {evalMethod.frequency && (
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">Frecuencia</p>
+              <p className="text-gray-900 capitalize">{evalMethod.frequency}</p>
             </div>
-          </div>
+          )}
+          
+          {evalMethod.methods && evalMethod.methods.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">Métodos</p>
+              <div className="flex flex-wrap gap-2">
+                {evalMethod.methods.map((method: string) => (
+                  <span key={method} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                    {method === 'self_eval' ? 'Autoevaluación' :
+                     method === 'manager_eval' ? 'Evaluación Jefe' :
+                     method === 'peer_eval' ? 'Evaluación Pares' :
+                     'Evaluación Subordinados'}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="mt-4">
-          <p className="text-sm font-medium text-gray-700 mb-2">Objetivos de Evaluación</p>
-          <ul className="list-disc list-inside space-y-1">
-            {mockEvaluation.objectives.map((objective, index) => (
-              <li key={index} className="text-sm text-gray-600">{objective}</li>
-            ))}
-          </ul>
-        </div>
+        {evalMethod.objectives && evalMethod.objectives.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm font-medium text-gray-700 mb-2">Objetivos de Evaluación</p>
+            <ul className="list-disc list-inside space-y-1">
+              {evalMethod.objectives.map((objective: string, index: number) => (
+                <li key={index} className="text-sm text-gray-600">{objective}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   };
