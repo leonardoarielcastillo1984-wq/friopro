@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -672,11 +673,21 @@ export default function Objectives360Page() {
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label>Responsable</Label>
-                  <Input value={formData.owner || ''} onChange={(e) => update('owner', e.target.value)} />
+                  <EmployeeCombobox
+                    value={formData.owner || ''}
+                    onChange={id => update('owner', id)}
+                    placeholder="Buscar responsable..."
+                    allowFreeText
+                  />
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label>Responsable alternativo</Label>
-                  <Input value={formData.responsible || ''} onChange={(e) => update('responsible', e.target.value)} />
+                  <EmployeeCombobox
+                    value={formData.responsible || ''}
+                    onChange={id => update('responsible', id)}
+                    placeholder="Buscar responsable alternativo..."
+                    allowFreeText
+                  />
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label>Sede</Label>
