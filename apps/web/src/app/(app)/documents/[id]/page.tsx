@@ -1164,7 +1164,7 @@ export default function DocumentDetailPage() {
                           Creada: {new Date(version.createdAt).toLocaleDateString('es-ES')}
                         </p>
                         <p className="text-xs text-neutral-400">
-                          Por: {version.createdBy}
+                          Por: {version.createdBy?.email ?? version.createdBy ?? '—'}
                         </p>
                       </div>
                       <button
