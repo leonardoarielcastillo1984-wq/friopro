@@ -481,8 +481,50 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
   };
 
   const handleDownloadPDF = () => {
-    if (!qrData?.token) return;
-    window.open(`/api/clima/canal-qr/pdf`, '_blank');
+    if (!qrData?.publicUrl) return;
+    const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData.publicUrl)}&bgcolor=ffffff&color=1a1a2e&qzone=2`;
+    const primaryColor = '#2563eb';
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Cartel Institucional</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Segoe UI',sans-serif; background:linear-gradient(135deg,#667eea,#764ba2); min-height:100vh; display:flex; justify-content:center; align-items:center; padding:20px; }
+    .poster { background:white; border-radius:24px; padding:48px; max-width:480px; width:100%; text-align:center; box-shadow:0 25px 50px -12px rgba(0,0,0,.25); }
+    .company { font-size:13px; color:#6b7280; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px; }
+    h1 { font-size:30px; font-weight:800; color:${primaryColor}; margin-bottom:12px; line-height:1.2; }
+    .subtitle { font-size:17px; color:#374151; margin-bottom:28px; line-height:1.5; }
+    .qr-wrap { background:#f3f4f6; border-radius:20px; padding:28px; margin-bottom:24px; }
+    .qr-wrap img { border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,.1); }
+    .qr-url { font-size:11px; color:#9ca3af; margin-top:10px; font-family:monospace; word-break:break-all; }
+    .message { font-size:15px; color:#4b5563; margin-bottom:20px; line-height:1.6; }
+    .footer-line { border-top:1px solid #e5e7eb; padding-top:16px; font-size:11px; color:#9ca3af; }
+    .print-btn { position:fixed; top:20px; right:20px; background:${primaryColor}; color:white; border:none; padding:12px 24px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+    @media print { body{background:white;padding:0;} .poster{box-shadow:none;max-width:100%;} .print-btn{display:none;} }
+  </style>
+</head>
+<body>
+  <button class="print-btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+  <div class="poster">
+    <div class="company">${qrData.tenantName || ''}</div>
+    <h1>${cartel.title || 'Tu Voz Importa'}</h1>
+    <p class="subtitle">${cartel.subtitle || '¿Tenés una sugerencia, reclamo o mejora?'}</p>
+    <div class="qr-wrap">
+      <img src="${qrImgUrl}" width="220" height="220" alt="QR Canal">
+      <div class="qr-url">${qrData.publicUrl}</div>
+    </div>
+    <p class="message">${cartel.message || 'Escaneá el código QR y ayudanos a mejorar juntos.'}</p>
+    <div class="footer-line">
+      <p>${cartel.footer || 'Acceso rápido desde tu celular · Comunicación directa'}</p>
+      <p style="margin-top:8px;font-size:10px;">Canal #${qrData.token?.slice(-6).toUpperCase()} · SGI360</p>
+    </div>
+  </div>
+  <script>window.onload=()=>{ const img=document.querySelector('img'); if(img.complete) return; img.onload=()=>{}; };</script>
+</body></html>`;
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); }
   };
 
   const copyToClipboard = (text: string) => {
