@@ -88,7 +88,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: apps/web/Dockerfile.prod
+      dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: /api
     container_name: sgi-web
