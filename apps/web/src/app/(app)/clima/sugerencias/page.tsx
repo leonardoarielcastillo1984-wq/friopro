@@ -222,8 +222,10 @@ export default function SugerenciasPage() {
                       )}
                     </div>
                     <p className="text-xs text-gray-500 line-clamp-2">{item.content}</p>
-                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 flex-wrap">
                       <span>{item.isAnonymous ? 'Anónimo' : item.employeeName}</span>
+                      {!item.isAnonymous && item.contactEmail && <span className="text-blue-500">✉ {item.contactEmail}</span>}
+                      {!item.isAnonymous && item.contactPhone && <span>📱 {item.contactPhone}</span>}
                       <span>{new Date(item.createdAt).toLocaleDateString('es-AR')}</span>
                     </div>
                   </div>
@@ -305,11 +307,18 @@ export default function SugerenciasPage() {
             </div>
             <div className="p-5 space-y-4">
               <p className="text-sm text-gray-700">{selected.content}</p>
-              <div className="flex gap-2 text-xs text-gray-500">
+              <div className="flex flex-wrap gap-2 text-xs text-gray-500">
                 <span>Por: {selected.isAnonymous ? 'Anónimo' : selected.employeeName}</span>
                 <span>·</span>
                 <span>{new Date(selected.createdAt).toLocaleDateString('es-AR')}</span>
               </div>
+              {!selected.isAnonymous && (selected.contactEmail || selected.contactPhone) && (
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">Datos de contacto</p>
+                  {selected.contactEmail && <p className="text-sm text-gray-700">✉ {selected.contactEmail}</p>}
+                  {selected.contactPhone && <p className="text-sm text-gray-700">📱 {selected.contactPhone}</p>}
+                </div>
+              )}
               {selected.response && (
                 <div className="bg-teal-50 rounded-xl p-3 border border-teal-100">
                   <p className="text-xs font-semibold text-teal-700 mb-1">Respuesta</p>

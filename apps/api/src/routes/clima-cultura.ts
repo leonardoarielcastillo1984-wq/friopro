@@ -725,7 +725,9 @@ Respondé en JSON con esta estructura exacta:
 
     return reply.send({ suggestions: suggestions.map(s => ({
       ...s,
-      employeeName: s.isAnonymous ? 'Anónimo' : (s.employee ? `${s.employee.firstName} ${s.employee.lastName}` : 'Externo'),
+      employeeName: s.isAnonymous ? 'Anónimo' : (s.employee ? `${s.employee.firstName} ${s.employee.lastName}` : (s.contactEmail || s.contactPhone ? 'Externo (canal QR)' : 'Externo')),
+      contactEmail: s.isAnonymous ? null : s.contactEmail,
+      contactPhone: s.isAnonymous ? null : s.contactPhone,
     }))});
   });
 
