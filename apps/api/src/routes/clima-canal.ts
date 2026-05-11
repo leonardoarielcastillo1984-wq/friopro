@@ -207,21 +207,27 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ error: 'Canal no encontrado o inactivo' });
       }
 
+      // Mapear tipos del canal QR a tipos del schema ClimaSuggestion
+      const typeMap: Record<string, string> = {
+        SUGGESTION: 'SUGERENCIA', COMPLAINT: 'RECLAMO', ALERT: 'ALERTA',
+        RISK: 'ALERTA', CONCERN: 'INQUIETUD', OPPORTUNITY: 'MEJORA',
+        INCIDENT: 'RECLAMO', IDEA: 'MEJORA',
+      };
+      const priorityMap: Record<string, string> = {
+        LOW: 'BAJA', MEDIUM: 'MEDIA', HIGH: 'ALTA', CRITICAL: 'CRITICA',
+      };
+
       // Crear sugerencia
       const suggestion = await app.prisma.climaSuggestion.create({
         data: {
           tenantId: canalQR.tenantId,
-          type: body.data.type,
+          type: typeMap[body.data.type] || 'SUGERENCIA',
           category: body.data.category || 'OTHER',
           title: body.data.title,
-          description: body.data.description,
+          content: body.data.description,
           isAnonymous: body.data.isAnonymous,
-          contactEmail: body.data.contactEmail,
-          contactPhone: body.data.contactPhone,
-          priority: body.data.priority,
-          status: 'PENDING',
-          source: 'CANAL_QR',
-          canalQRId: canalQR.id,
+          priority: priorityMap[body.data.priority] || 'MEDIA',
+          status: 'ABIERTO',
         },
       });
 
@@ -239,8 +245,7 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
         try {
           const admins = await app.prisma.platformUser.findMany({
             where: {
-              tenantId: canalQR.tenantId,
-              role: { in: ['SUPER_ADMIN', 'TENANT_ADMIN'] },
+              memberships: { some: { tenantId: canalQR.tenantId } },
               deletedAt: null,
             },
             select: { email: true },

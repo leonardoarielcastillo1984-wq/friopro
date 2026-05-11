@@ -424,17 +424,25 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [qrData, setQrData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
+  const [regenerating, setSaving] = useState(false);
+  const [tab, setTab] = useState<'qr' | 'cartel'>('qr');
+  const [cartel, setCartel] = useState({ title: '', subtitle: '', message: '', footer: '' });
+  const [savingCartel, setSavingCartel] = useState(false);
+  const [savedCartel, setSavedCartel] = useState(false);
 
-  useEffect(() => {
-    loadQRData();
-  }, []);
+  useEffect(() => { loadQRData(); }, []);
 
   const loadQRData = async () => {
     try {
       setLoading(true);
-      const res = await apiFetch('/clima/canal-qr');
+      const res: any = await apiFetch('/clima/canal-qr');
       setQrData(res);
+      setCartel({
+        title: res.config?.title || 'Tu Voz Importa',
+        subtitle: res.config?.subtitle || '¿Tenés una sugerencia, reclamo o mejora?',
+        message: res.config?.message || 'Escaneá el código QR y ayudanos a mejorar juntos.',
+        footer: res.config?.footer || 'Acceso rápido desde tu celular · Comunicación directa',
+      });
     } catch (err) {
       setError('Error cargando datos del QR');
     } finally {
@@ -445,64 +453,94 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
   const handleRegenerate = async () => {
     if (!confirm('¿Generar nuevo QR? El anterior dejará de funcionar.')) return;
     try {
-      setRegenerating(true);
-      const res = await apiFetch('/clima/canal-qr', { method: 'POST' });
+      setSaving(true);
+      const res: any = await apiFetch('/clima/canal-qr', { method: 'POST' });
       setQrData(res);
     } catch (err) {
-      setError('Error regenerando QR');
+      alert('Error regenerando QR');
     } finally {
-      setRegenerating(false);
+      setSaving(false);
+    }
+  };
+
+  const handleSaveCartel = async () => {
+    try {
+      setSavingCartel(true);
+      const res: any = await apiFetch('/clima/canal-qr', {
+        method: 'POST',
+        body: JSON.stringify(cartel),
+      });
+      setQrData(res);
+      setSavedCartel(true);
+      setTimeout(() => setSavedCartel(false), 2000);
+    } catch (err) {
+      alert('Error guardando cartel');
+    } finally {
+      setSavingCartel(false);
     }
   };
 
   const handleDownloadPDF = () => {
-    if (!qrData) return;
-    // Abrir en nueva pestaña para generar PDF
-    window.open(`/api/clima/canal-qr/pdf?token=${qrData.token}`, '_blank');
+    if (!qrData?.token) return;
+    window.open(`/api/clima/canal-qr/pdf`, '_blank');
   };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert('¡Enlace copiado al portapapeles!');
+    alert('¡Enlace copiado!');
   };
+
+  const qrUrl = qrData?.publicUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData.publicUrl)}&bgcolor=ffffff&color=1a1a2e&qzone=2`
+    : null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+        {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <div>
             <h3 className="font-semibold text-gray-900">Canal QR Institucional</h3>
             <p className="text-sm text-gray-500">Compartí este QR para recibir sugerencias anónimas</p>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-100">
+          <button onClick={() => setTab('qr')} className={`flex-1 py-2.5 text-sm font-medium transition-colors ${tab === 'qr' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+            QR y estadísticas
+          </button>
+          <button onClick={() => setTab('cartel')} className={`flex-1 py-2.5 text-sm font-medium transition-colors ${tab === 'cartel' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+            Editar cartel
           </button>
         </div>
 
         <div className="p-5 space-y-5">
           {loading ? (
-            <div className="text-center py-8">
+            <div className="text-center py-10">
               <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-2" />
               <p className="text-gray-500">Cargando...</p>
             </div>
           ) : error ? (
-            <div className="text-center py-8">
+            <div className="text-center py-10">
               <p className="text-red-500 mb-2">{error}</p>
               <button onClick={loadQRData} className="text-blue-600 text-sm underline">Reintentar</button>
             </div>
-          ) : qrData ? (
+          ) : qrData && tab === 'qr' ? (
             <>
-              {/* QR Preview */}
+              {/* QR Real */}
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 text-center">
-                <div className="bg-white rounded-xl p-4 shadow-lg inline-block mb-3">
-                  {/* Aquí iría el QR code real - usando placeholder por ahora */}
-                  <div className="w-48 h-48 bg-gray-900 rounded-lg flex items-center justify-center">
-                    <QrCode className="w-32 h-32 text-white" />
-                  </div>
+                <div className="bg-white rounded-xl p-3 shadow-lg inline-block mb-3">
+                  {qrUrl ? (
+                    <img src={qrUrl} alt="QR Canal" width={200} height={200} className="rounded" />
+                  ) : (
+                    <div className="w-[200px] h-[200px] flex items-center justify-center text-gray-400">Sin URL</div>
+                  )}
                 </div>
                 <p className="text-sm font-medium text-gray-700">Escaneá para participar</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Válido desde: {qrData?.stats?.generatedAt ? new Date(qrData.stats.generatedAt).toLocaleDateString() : 'Nuevo'}
+                  Válido desde: {qrData?.stats?.generatedAt ? new Date(qrData.stats.generatedAt).toLocaleDateString('es-AR') : 'Hoy'}
                 </p>
               </div>
 
@@ -510,17 +548,10 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">URL del canal</label>
                 <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={qrData?.publicUrl || ''}
-                    readOnly
-                    className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50"
-                  />
-                  <button
-                    onClick={() => qrData?.publicUrl && copyToClipboard(qrData.publicUrl)}
-                    disabled={!qrData?.publicUrl}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
-                  >
+                  <input type="text" value={qrData?.publicUrl || ''} readOnly
+                    className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50" />
+                  <button onClick={() => qrData?.publicUrl && copyToClipboard(qrData.publicUrl)}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium transition-colors">
                     Copiar
                   </button>
                 </div>
@@ -533,32 +564,76 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
                   <p className="text-xs text-gray-500">Visitas</p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-gray-900">{qrData?.isActive ? 'Activo' : 'Inactivo'}</p>
+                  <p className="text-lg font-bold text-gray-900">{qrData?.isActive ? 'Activo' : 'Inactivo'}</p>
                   <p className="text-xs text-gray-500">Estado</p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-gray-900">{qrData?.stats?.lastUsedAt ? new Date(qrData.stats.lastUsedAt).toLocaleDateString() : 'Nunca'}</p>
+                  <p className="text-lg font-bold text-gray-900">{qrData?.stats?.lastUsedAt ? new Date(qrData.stats.lastUsedAt).toLocaleDateString('es-AR') : 'Nunca'}</p>
                   <p className="text-xs text-gray-500">Último uso</p>
                 </div>
               </div>
 
               {/* Actions */}
               <div className="space-y-2 pt-2">
-                <button
-                  onClick={handleDownloadPDF}
-                  disabled={!qrData?.token}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
-                >
-                  <Download className="w-4 h-4" />
-                  Descargar cartel PDF
+                <button onClick={handleDownloadPDF} disabled={!qrData?.token}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
+                  <Download className="w-4 h-4" /> Descargar cartel PDF
                 </button>
-                <button
-                  onClick={handleRegenerate}
-                  disabled={regenerating}
-                  className="w-full flex items-center justify-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
-                >
+                <button onClick={handleRegenerate} disabled={regenerating}
+                  className="w-full flex items-center justify-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
                   <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
                   {regenerating ? 'Generando...' : 'Regenerar QR'}
+                </button>
+              </div>
+            </>
+          ) : qrData && tab === 'cartel' ? (
+            <>
+              <p className="text-sm text-gray-600">Personalizá el texto del cartel institucional que se imprime para colgar en la empresa.</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Título principal</label>
+                  <input type="text" value={cartel.title} onChange={e => setCartel(p => ({ ...p, title: e.target.value }))}
+                    placeholder="Tu Voz Importa"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Subtítulo</label>
+                  <input type="text" value={cartel.subtitle} onChange={e => setCartel(p => ({ ...p, subtitle: e.target.value }))}
+                    placeholder="¿Tenés una sugerencia, reclamo o mejora?"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Mensaje del cartel</label>
+                  <textarea value={cartel.message} onChange={e => setCartel(p => ({ ...p, message: e.target.value }))}
+                    placeholder="Escaneá el código QR y ayudanos a mejorar juntos."
+                    rows={3}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Pie del cartel</label>
+                  <input type="text" value={cartel.footer} onChange={e => setCartel(p => ({ ...p, footer: e.target.value }))}
+                    placeholder="Acceso rápido desde tu celular · Comunicación directa"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
+                </div>
+
+                {/* Vista previa del cartel */}
+                <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                  <p className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wide">Vista previa</p>
+                  <div className="bg-white rounded-lg p-4 text-center border border-gray-100 shadow-sm">
+                    <p className="text-xl font-bold text-gray-900 mb-1">{cartel.title || 'Tu Voz Importa'}</p>
+                    <p className="text-sm text-gray-600 mb-2">{cartel.subtitle || 'Subtítulo'}</p>
+                    <div className="w-24 h-24 bg-gray-200 rounded mx-auto my-3 flex items-center justify-center">
+                      <QrCode className="w-12 h-12 text-gray-400" />
+                    </div>
+                    <p className="text-sm text-gray-600 mb-1">{cartel.message || 'Mensaje'}</p>
+                    <p className="text-xs text-gray-400 mt-2">{cartel.footer || 'Pie'}</p>
+                  </div>
+                </div>
+
+                <button onClick={handleSaveCartel} disabled={savingCartel}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
+                  {savingCartel ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</> :
+                   savedCartel ? '✓ Guardado' : 'Guardar cambios del cartel'}
                 </button>
               </div>
             </>
