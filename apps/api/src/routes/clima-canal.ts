@@ -16,11 +16,11 @@ const generateQRSchema = z.object({
 const submitSuggestionSchema = z.object({
   type: z.enum(['SUGGESTION', 'COMPLAINT', 'ALERT', 'RISK', 'CONCERN', 'OPPORTUNITY', 'INCIDENT', 'IDEA']),
   category: z.enum(['WORK_ENVIRONMENT', 'PROCESS', 'SAFETY', 'QUALITY', 'COMMUNICATION', 'OTHER']).optional(),
-  title: z.string().min(3).max(200),
-  description: z.string().min(10).max(5000),
+  title: z.string().min(1).max(200),
+  description: z.string().min(1).max(5000),
   isAnonymous: z.boolean().default(true),
-  contactEmail: z.string().email().optional(),
-  contactPhone: z.string().max(50).optional(),
+  contactEmail: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
+  contactPhone: z.string().max(50).optional().or(z.literal('')).transform(v => v || undefined),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
 });
 
