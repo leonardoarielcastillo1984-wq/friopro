@@ -40,7 +40,7 @@ model NonConformity {
   process   String? // Nombre del proceso para análisis IA
 
   // Trazabilidad desde Partes Interesadas
-  stakeholderId String? @db.Uuid
+  stakeholderId String?      @db.Uuid
   stakeholder   Stakeholder? @relation("NcrStakeholder", fields: [stakeholderId], references: [id], onDelete: SetNull)
 
   // Trazabilidad desde Indicadores (KPI)
@@ -230,16 +230,16 @@ enum WebhookProvider {
 }
 
 model Tenant {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String @id @default(uuid()) @db.Uuid
   name        String
-  slug        String   @unique
-  status      String   @default("ACTIVE")
-  storageUsed Int      @default(0) @map("storage_used")
+  slug        String @unique
+  status      String @default("ACTIVE")
+  storageUsed Int    @default(0) @map("storage_used")
 
   // Demo mode
-  isDemo         Boolean   @default(false)
-  demoStartedAt  DateTime? @db.Timestamptz
-  demoExpiresAt  DateTime? @db.Timestamptz
+  isDemo        Boolean   @default(false)
+  demoStartedAt DateTime? @db.Timestamptz
+  demoExpiresAt DateTime? @db.Timestamptz
 
   // LLM config (per-tenant overrides)
   llmProvider String?
@@ -248,21 +248,21 @@ model Tenant {
   llmApiKey   String?
 
   // License management
-  licensePlan       String?    @default("BASIC")
-  licenseStartAt    DateTime?  @db.Timestamptz
-  licenseEndAt      DateTime?  @db.Timestamptz
-  licenseStatus     LicenseStatus @default(ACTIVE)
-  graceEndAt        DateTime?  @db.Timestamptz
-  lastPaymentId     String?
-  autoRenew         Boolean    @default(false)
-  notified7Days     Boolean    @default(false)
-  notified3Days     Boolean    @default(false)
-  notified1Day      Boolean    @default(false)
-  notifiedExpired   Boolean    @default(false)
-  notifiedGrace     Boolean    @default(false)
+  licensePlan     String?       @default("BASIC")
+  licenseStartAt  DateTime?     @db.Timestamptz
+  licenseEndAt    DateTime?     @db.Timestamptz
+  licenseStatus   LicenseStatus @default(ACTIVE)
+  graceEndAt      DateTime?     @db.Timestamptz
+  lastPaymentId   String?
+  autoRenew       Boolean       @default(false)
+  notified7Days   Boolean       @default(false)
+  notified3Days   Boolean       @default(false)
+  notified1Day    Boolean       @default(false)
+  notifiedExpired Boolean       @default(false)
+  notifiedGrace   Boolean       @default(false)
 
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
 
   createdById String?       @db.Uuid
   createdBy   PlatformUser? @relation("TenantCreatedBy", fields: [createdById], references: [id])
@@ -306,7 +306,7 @@ model Tenant {
   surveys   Survey[]
 
   // Clima y Cultura Relations
-  climaSurveys    ClimaSurvey[]
+  climaSurveys     ClimaSurvey[]
   climaSuggestions ClimaSuggestion[]
   climaActionPlans ClimaActionPlan[]
   climaComms       ClimaComms[]
@@ -336,6 +336,7 @@ model Tenant {
   incidents                Incident[]
   processMaps              ProcessMap[]
   Subscription             Subscription?
+  ClimaCanalQR             ClimaCanalQR[]
 }
 
 model PlatformUser {
@@ -370,10 +371,10 @@ model PlatformUser {
   membershipsCreated TenantMembership[] @relation("MembershipCreatedBy")
   membershipsUpdated TenantMembership[] @relation("MembershipUpdatedBy")
 
-  documentsCreated  Document[]       @relation("DocumentCreatedBy")
-  documentsUpdated  Document[]       @relation("DocumentUpdatedBy")
-  documentsOwned    Document[]       @relation("DocumentOwner")
-  documentReviews   DocumentReview[] @relation("DocumentReviewBy")
+  documentsCreated Document[]       @relation("DocumentCreatedBy")
+  documentsUpdated Document[]       @relation("DocumentUpdatedBy")
+  documentsOwned   Document[]       @relation("DocumentOwner")
+  documentReviews  DocumentReview[] @relation("DocumentReviewBy")
 
   ncrsAssigned NonConformity[] @relation("NcrAssignedTo")
   ncrsCreated  NonConformity[] @relation("NcrCreatedBy")
@@ -460,14 +461,14 @@ model PlatformUser {
   projectComments     ProjectComment[]
 
   // Clima y Cultura Relations
-  climaSurveysCreated    ClimaSurvey[]     @relation("ClimaSurveyCreatedBy")
-  climaSurveysUpdated    ClimaSurvey[]     @relation("ClimaSurveyUpdatedBy")
-  climaSuggestionsCreated ClimaSuggestion[] @relation("ClimaSuggestionCreatedBy")
-  climaSuggestionsResponded ClimaSuggestion[] @relation("ClimaSuggestionRespondedBy")
-  climaCommsCreated      ClimaComms[]      @relation("ClimaCommsCreatedBy")
-  climaActionPlansCreated ClimaActionPlan[] @relation("ClimaActionPlanCreatedBy")
+  climaSurveysCreated         ClimaSurvey[]     @relation("ClimaSurveyCreatedBy")
+  climaSurveysUpdated         ClimaSurvey[]     @relation("ClimaSurveyUpdatedBy")
+  climaSuggestionsCreated     ClimaSuggestion[] @relation("ClimaSuggestionCreatedBy")
+  climaSuggestionsResponded   ClimaSuggestion[] @relation("ClimaSuggestionRespondedBy")
+  climaCommsCreated           ClimaComms[]      @relation("ClimaCommsCreatedBy")
+  climaActionPlansCreated     ClimaActionPlan[] @relation("ClimaActionPlanCreatedBy")
   climaActionPlansResponsible ClimaActionPlan[] @relation("ClimaActionPlanResponsible")
-  climaCanalQRs          ClimaCanalQR[]
+  climaCanalQRs               ClimaCanalQR[]
 }
 
 model TenantMembership {
@@ -563,7 +564,7 @@ model Risk {
   updatedById String?       @db.Uuid
   updatedBy   PlatformUser? @relation("RiskUpdatedBy", fields: [updatedById], references: [id])
 
-  deletedAt DateTime? @db.Timestamptz
+  deletedAt DateTime?       @db.Timestamptz
   drills    DrillScenario[] @relation("DrillRisk")
 
   @@unique([tenantId, code])
@@ -607,12 +608,12 @@ model Indicator {
   process     String?
   standard    String?
 
-  currentValue Float?
-  targetValue  Float?
-  yearTargetValue Float?           // Meta anual para YTD
-  minValue     Float?
-  maxValue     Float?
-  unit         String
+  currentValue    Float?
+  targetValue     Float?
+  yearTargetValue Float? // Meta anual para YTD
+  minValue        Float?
+  maxValue        Float?
+  unit            String
 
   direction IndicatorDirection @default(HIGHER_BETTER)
 
@@ -621,14 +622,14 @@ model Indicator {
   criticalValue Float?
 
   // Configuración avanzada de meta
-  hasTarget         Boolean @default(true)   // Toggle: ¿usa meta?
-  tolerancePercent  Int     @default(5)    // % de tolerancia para estado WARNING
-  monthlyTargets    Json    @default("{}")  // Metas variables por mes: {"2024-01": 100}
+  hasTarget        Boolean @default(true) // Toggle: ¿usa meta?
+  tolerancePercent Int     @default(5) // % de tolerancia para estado WARNING
+  monthlyTargets   Json    @default("{}") // Metas variables por mes: {"2024-01": 100}
 
   // Metadata del indicador
-  formula    String?  // Fórmula de cálculo
-  dataSource String?  // Fuente de datos
-  area       String?  // Área / Proceso asociado
+  formula    String? // Fórmula de cálculo
+  dataSource String? // Fuente de datos
+  area       String? // Área / Proceso asociado
 
   status IndicatorStatus @default(NO_DATA)
 
@@ -1009,10 +1010,10 @@ model Document {
   ownerId String?       @db.Uuid
   owner   PlatformUser? @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
-  reviewDate             DateTime? @db.Timestamptz
-  nextReviewDate         DateTime? @db.Timestamptz
-  reviewStatus           String?
-  documentQualityStatus  String?
+  reviewDate            DateTime? @db.Timestamptz
+  nextReviewDate        DateTime? @db.Timestamptz
+  reviewStatus          String?
+  documentQualityStatus String?
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -1062,7 +1063,7 @@ model DocumentReview {
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   result     String // APPROVED, REQUIRES_UPDATE
-  comments   String? @db.Text
+  comments   String?  @db.Text
   reviewedAt DateTime @default(now()) @db.Timestamptz
 
   reviewedById String?       @db.Uuid
@@ -1854,10 +1855,10 @@ model CompanySettings {
   faviconUrl  String?
 
   // Report Settings
-  headerText     String? // Custom text for report headers
-  footerText     String? // Custom text for report footers
-  primaryColor   String? @default("#2563eb") // Brand color
-  commSignature  String? // Firma HTML para comunicados/difusión
+  headerText    String? // Custom text for report headers
+  footerText    String? // Custom text for report footers
+  primaryColor  String? @default("#2563eb") // Brand color
+  commSignature String? // Firma HTML para comunicados/difusión
 
   // RRHH Configuration (stored as JSON arrays)
   hrPositionCategories Json? // [{id, name, description, level}]
@@ -1922,23 +1923,23 @@ model Audit {
   isoStandard  String[] @map("isostandard")
   scope        String?
   objective    String?
-  interviewees String?       @db.Text
+  interviewees String?  @db.Text
 
   // Professional Report Fields
-  auditCriteria      Json? @map("auditcriteria") // Normas, procedimientos, requisitos legales
-  structuredScope    Json? @map("structuredscope") // Procesos, ubicaciones, exclusiones
-  auditTeamDetails   Json? @map("auditteamdetails") // Equipo auditor detallado
-  auditorOpinion     String? @map("auditoropinion") // Conforme / No conforme
-  maturityLevel      String? @map("maturitylevel") // bajo / medio / alto
+  auditCriteria               Json?   @map("auditcriteria") // Normas, procedimientos, requisitos legales
+  structuredScope             Json?   @map("structuredscope") // Procesos, ubicaciones, exclusiones
+  auditTeamDetails            Json?   @map("auditteamdetails") // Equipo auditor detallado
+  auditorOpinion              String? @map("auditoropinion") // Conforme / No conforme
+  maturityLevel               String? @map("maturitylevel") // bajo / medio / alto
   certificationRecommendation String? @map("certificationrecommendation")
-  mainRisks          String? @db.Text @map("mainrisks")
-  reportVersion      Int     @default(1) @map("reportversion")
+  mainRisks                   String? @map("mainrisks") @db.Text
+  reportVersion               Int     @default(1) @map("reportversion")
 
   // Metadata
-  createdById    String          @db.Uuid
-  createdAt      DateTime        @default(now()) @db.Timestamptz
-  updatedAt      DateTime        @updatedAt @db.Timestamptz
-  deletedAt      DateTime?       @db.Timestamptz
+  createdById    String               @db.Uuid
+  createdAt      DateTime             @default(now()) @db.Timestamptz
+  updatedAt      DateTime             @updatedAt @db.Timestamptz
+  deletedAt      DateTime?            @db.Timestamptz
   auditSchedules AuditSchedule[]
   auditTeams     AuditTeam[]
   checklist      AuditChecklistItem[]
@@ -2066,10 +2067,10 @@ model AuditTemplateItem {
 // Checklist Items (instances from template)
 model AuditChecklistItem {
   id      String @id @default(uuid()) @db.Uuid
-  auditId String @db.Uuid @map("auditId")
-  audit   Audit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  auditId String @map("auditId") @db.Uuid
+  audit   Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
 
-  templateItemId String? @db.Uuid @map("templateItemId")
+  templateItemId String? @map("templateItemId") @db.Uuid
 
   clause      String
   requirement String
@@ -2098,7 +2099,7 @@ model AuditFinding {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @db.Uuid
   auditId  String @db.Uuid
-  audit    Audit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  audit    Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
 
   // Identification
   code     String
@@ -2616,8 +2617,8 @@ model DrillScenario {
   responsibleId String?   @db.Uuid
   responsible   Employee? @relation("DrillResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
 
-  riskId               String?              @db.Uuid
-  risk                 Risk?                @relation("DrillRisk", fields: [riskId], references: [id], onDelete: SetNull)
+  riskId String? @db.Uuid
+  risk   Risk?   @relation("DrillRisk", fields: [riskId], references: [id], onDelete: SetNull)
 
   environmentalAspectId String?              @db.Uuid
   environmentalAspect   EnvironmentalAspect? @relation("DrillAspect", fields: [environmentalAspectId], references: [id], onDelete: SetNull)
@@ -2632,7 +2633,7 @@ model DrillScenario {
 
   scheduledDate DateTime? @db.Timestamptz
   executionDate DateTime? @db.Timestamptz
-  responseTime  Int?      // in minutes
+  responseTime  Int? // in minutes
 
   createdAt   DateTime  @default(now()) @db.Timestamptz
   updatedAt   DateTime  @updatedAt @db.Timestamptz
@@ -3316,9 +3317,9 @@ model ActionProject {
   originReference String? // referencia legible
 
   // Asignación y Responsabilidad
-  tenantId      String @db.Uuid
+  tenantId      String       @db.Uuid
   tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  responsibleId String @db.Uuid
+  responsibleId String       @db.Uuid
   responsible   PlatformUser @relation(fields: [responsibleId], references: [id])
 
   // Temporalidad
@@ -3332,7 +3333,7 @@ model ActionProject {
   progress Float         @default(0) // 0-100
 
   // Métricas y KPIs
-  indicatorId  String? @db.Uuid
+  indicatorId  String?    @db.Uuid
   indicator    Indicator? @relation(fields: [indicatorId], references: [id])
   targetValue  Float?
   currentValue Float?
@@ -3366,7 +3367,7 @@ model ActionProject {
 
 model ActionTask {
   id        String        @id @default(uuid()) @db.Uuid
-  projectId String @db.Uuid
+  projectId String        @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   // Información básica
@@ -3374,7 +3375,7 @@ model ActionTask {
   description String?
 
   // Asignación
-  responsibleId String @db.Uuid
+  responsibleId String       @db.Uuid
   responsible   PlatformUser @relation(fields: [responsibleId], references: [id])
 
   // Temporalidad
@@ -3538,7 +3539,7 @@ model Calibration {
 
 model Client {
   id      String  @id @default(uuid()) @db.Uuid
-  userId  String @db.Uuid  @map("user_id")
+  userId  String  @map("user_id") @db.Uuid
   name    String
   phone   String?
   email   String?
@@ -3595,7 +3596,7 @@ model CustomerImprovementPlan {
 }
 
 model Diagnosis {
-  workOrderId       String @db.Uuid  @id @map("workorder_id")
+  workOrderId       String  @id @map("workorder_id") @db.Uuid
   aiHypotheses      Json?   @map("ai_hypotheses")
   aiRecommendations String? @map("ai_recommendations")
   aiClientSummary   String? @map("ai_client_summary")
@@ -3768,8 +3769,8 @@ model EnvironmentalReview {
 
 model Equipment {
   id              String        @id @default(uuid()) @db.Uuid
-  userId          String @db.Uuid        @map("user_id")
-  clientId        String? @db.Uuid       @map("client_id")
+  userId          String        @map("user_id") @db.Uuid
+  clientId        String?       @map("client_id") @db.Uuid
   type            EquipmentType
   customType      String?       @map("custom_type")
   brand           String?
@@ -3804,7 +3805,7 @@ enum EquipmentType {
 
 model EvidencePhoto {
   id          String   @id @default(uuid()) @db.Uuid
-  workOrderId String @db.Uuid   @map("workorder_id")
+  workOrderId String   @map("workorder_id") @db.Uuid
   category    String?
   fileUrl     String   @map("file_url")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -4007,8 +4008,8 @@ model Incident {
 
 model License {
   id        String        @id @default(uuid()) @db.Uuid
-  userId    String @db.Uuid        @map("user_id")
-  planId    String @db.Uuid        @map("plan_id")
+  userId    String        @map("user_id") @db.Uuid
+  planId    String        @map("plan_id") @db.Uuid
   startsAt  DateTime      @map("starts_at")
   expiresAt DateTime      @map("expires_at")
   active    Boolean       @default(true)
@@ -4059,10 +4060,10 @@ model MaintenancePlanExecution {
   notes      String?
 
   // Relaciones
-  planId String @db.Uuid
+  planId String          @db.Uuid
   plan   MaintenancePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  workOrderId String? @db.Uuid
+  workOrderId String?    @db.Uuid
   workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
 
   // Auditoría
@@ -4088,7 +4089,7 @@ enum MaintenanceWorkOrderStatus {
 }
 
 model Measurements {
-  workOrderId       String @db.Uuid  @id @map("workorder_id")
+  workOrderId       String  @id @map("workorder_id") @db.Uuid
   suctionPressure   Float?  @map("suction_pressure")
   dischargePressure Float?  @map("discharge_pressure")
   returnTemp        Float?  @map("return_temp")
@@ -4144,9 +4145,9 @@ enum MilestoneStatus {
 
 model NotificationLog {
   id          String   @id @default(uuid()) @db.Uuid
-  userId      String @db.Uuid   @map("user_id")
-  clientId    String? @db.Uuid  @map("client_id")
-  equipmentId String? @db.Uuid  @map("equipment_id")
+  userId      String   @map("user_id") @db.Uuid
+  clientId    String?  @map("client_id") @db.Uuid
+  equipmentId String?  @map("equipment_id") @db.Uuid
   channel     String
   to          String
   content     String
@@ -4295,7 +4296,7 @@ model PaymentTransaction {
   periodEnd   DateTime
 
   // Detalles
-  planId       String @db.Uuid
+  planId       String       @db.Uuid
   addons       Json? // IDs de addons incluidos
   billingCycle BillingCycle
 
@@ -4309,7 +4310,7 @@ model PaymentTransaction {
 }
 
 model PdfReport {
-  workOrderId String @db.Uuid @id @map("workorder_id")
+  workOrderId String @id @map("workorder_id") @db.Uuid
   fileUrl     String @map("file_url")
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
@@ -4358,36 +4359,36 @@ model Policy {
 }
 
 model Minuta {
-  id                 String    @id @default(uuid()) @db.Uuid
-  tenantId           String    @db.Uuid
-  title              String
-  date               DateTime  @db.Timestamptz
-  time               String?   // HH:MM
-  duration           String?   // en minutos
-  area               String?   // Departamento/Área
-  type               String    // Revisión por la Dirección, Comité de Calidad, Reunión Operativa, etc.
-  participants       String[]  // Array de nombres o IDs de participantes
-  responsible        String?   // Responsable de la minuta
-  clientId           String?   @db.Uuid
-  client             Client?   @relation(fields: [clientId], references: [id])
-  supplierId         String?   @db.Uuid
-  supplier           Supplier? @relation(fields: [supplierId], references: [id])
-  projectId          String?   @db.Uuid
-  project            Project360? @relation(fields: [projectId], references: [id])
-  tags               String[]  // Etiquetas
-  priority           Priority  @default(MEDIUM)
-  status             String    @default("DRAFT") // DRAFT, IN_PROGRESS, COMPLETED, CANCELLED
-  confidentiality     String    @default("INTERNAL") // INTERNAL, CONFIDENTIAL, RESTRICTED
-  attachments        String[]  // URLs de archivos adjuntos
-  audioUrl           String?   // URL del audio de la reunión
-  content            String?   @db.Text // Contenido enriquecido de la minuta (deprecated, usar blocks)
-  summary            String?   @db.Text // Resumen ejecutivo generado por IA
-  aiProcessed        Boolean   @default(false) // Si la IA ya procesó la minuta
-  deletedAt          DateTime?
-  createdAt          DateTime  @default(now()) @db.Timestamptz
-  updatedAt          DateTime  @updatedAt @db.Timestamptz
+  id              String      @id @default(uuid()) @db.Uuid
+  tenantId        String      @db.Uuid
+  title           String
+  date            DateTime    @db.Timestamptz
+  time            String? // HH:MM
+  duration        String? // en minutos
+  area            String? // Departamento/Área
+  type            String // Revisión por la Dirección, Comité de Calidad, Reunión Operativa, etc.
+  participants    String[] // Array de nombres o IDs de participantes
+  responsible     String? // Responsable de la minuta
+  clientId        String?     @db.Uuid
+  client          Client?     @relation(fields: [clientId], references: [id])
+  supplierId      String?     @db.Uuid
+  supplier        Supplier?   @relation(fields: [supplierId], references: [id])
+  projectId       String?     @db.Uuid
+  project         Project360? @relation(fields: [projectId], references: [id])
+  tags            String[] // Etiquetas
+  priority        Priority    @default(MEDIUM)
+  status          String      @default("DRAFT") // DRAFT, IN_PROGRESS, COMPLETED, CANCELLED
+  confidentiality String      @default("INTERNAL") // INTERNAL, CONFIDENTIAL, RESTRICTED
+  attachments     String[] // URLs de archivos adjuntos
+  audioUrl        String? // URL del audio de la reunión
+  content         String?     @db.Text // Contenido enriquecido de la minuta (deprecated, usar blocks)
+  summary         String?     @db.Text // Resumen ejecutivo generado por IA
+  aiProcessed     Boolean     @default(false) // Si la IA ya procesó la minuta
+  deletedAt       DateTime?
+  createdAt       DateTime    @default(now()) @db.Timestamptz
+  updatedAt       DateTime    @updatedAt @db.Timestamptz
 
-  blocks             MinutaBlock[]
+  blocks MinutaBlock[]
 
   @@index([tenantId])
   @@index([date])
@@ -4397,18 +4398,18 @@ model Minuta {
 }
 
 model MinutaBlock {
-  id           String   @id @default(uuid()) @db.Uuid
-  minutaId     String   @db.Uuid
-  minuta       Minuta   @relation(fields: [minutaId], references: [id], onDelete: Cascade)
-  type         String   // CONVERSATION, DECISION, ACTION
-  content      String   @db.Text // Contenido del bloque
-  order        Int      // Orden de visualización
-  responsible  String?  // Responsable (para acciones)
-  dueDate      DateTime? @db.Timestamptz // Fecha límite (para acciones)
-  completed    Boolean  @default(false) // Completado (para acciones)
-  tags         String[] // Etiquetas del bloque
-  createdAt    DateTime @default(now()) @db.Timestamptz
-  updatedAt    DateTime @updatedAt @db.Timestamptz
+  id          String    @id @default(uuid()) @db.Uuid
+  minutaId    String    @db.Uuid
+  minuta      Minuta    @relation(fields: [minutaId], references: [id], onDelete: Cascade)
+  type        String // CONVERSATION, DECISION, ACTION
+  content     String    @db.Text // Contenido del bloque
+  order       Int // Orden de visualización
+  responsible String? // Responsable (para acciones)
+  dueDate     DateTime? @db.Timestamptz // Fecha límite (para acciones)
+  completed   Boolean   @default(false) // Completado (para acciones)
+  tags        String[] // Etiquetas del bloque
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
 
   @@index([minutaId])
   @@index([type])
@@ -4641,17 +4642,17 @@ model Project360Task {
 
 model ProjectComment {
   id        String        @id @default(uuid()) @db.Uuid
-  projectId String @db.Uuid
+  projectId String        @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taskId    String? @db.Uuid
+  taskId    String?       @db.Uuid
   task      ActionTask?   @relation(fields: [taskId], references: [id])
 
   content  String
-  authorId String @db.Uuid
+  authorId String       @db.Uuid
   author   PlatformUser @relation(fields: [authorId], references: [id])
 
   // Referencia a otros comentarios
-  parentCommentId String? @db.Uuid
+  parentCommentId String?          @db.Uuid
   parentComment   ProjectComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
   replies         ProjectComment[] @relation("CommentReplies")
 
@@ -4667,9 +4668,9 @@ model ProjectComment {
 
 model ProjectEvidence {
   id        String        @id @default(uuid()) @db.Uuid
-  projectId String @db.Uuid
+  projectId String        @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taskId    String? @db.Uuid
+  taskId    String?       @db.Uuid
   task      ActionTask?   @relation(fields: [taskId], references: [id])
 
   // Información del archivo
@@ -4693,7 +4694,7 @@ model ProjectEvidence {
 
 model ProjectMilestone {
   id        String        @id @default(uuid()) @db.Uuid
-  projectId String @db.Uuid
+  projectId String        @db.Uuid
   project   ActionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   title       String
@@ -4763,7 +4764,7 @@ model QualityRelation {
 
 model QuoteItem {
   id          String  @id @default(uuid()) @db.Uuid
-  workOrderId String @db.Uuid  @map("workorder_id")
+  workOrderId String  @map("workorder_id") @db.Uuid
   category    String?
   description String
   qty         Int     @default(1)
@@ -4884,7 +4885,7 @@ model SgiObjective {
 }
 
 model Signature {
-  workOrderId      String @db.Uuid   @id @map("workorder_id")
+  workOrderId      String   @id @map("workorder_id") @db.Uuid
   signerName       String   @map("signer_name")
   signatureFileUrl String   @map("signature_file_url")
   signedAt         DateTime @map("signed_at")
@@ -4929,11 +4930,11 @@ model Stakeholder {
 
 model Subscription {
   id       String @id @default(uuid()) @db.Uuid
-  tenantId String @db.Uuid @unique
+  tenantId String @unique @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Plan actual
-  planId String @db.Uuid
+  planId String              @db.Uuid
   plan   Plan                @relation(fields: [planId], references: [id])
   addons SubscriptionAddon[]
 
@@ -4972,9 +4973,9 @@ model Subscription {
 
 model SubscriptionAddon {
   id             String       @id @default(uuid()) @db.Uuid
-  subscriptionId String @db.Uuid
+  subscriptionId String       @db.Uuid
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  addonId        String @db.Uuid
+  addonId        String       @db.Uuid
   addon          Addon        @relation(fields: [addonId], references: [id])
 
   // Precios al momento de contratación
@@ -5032,15 +5033,15 @@ model Supplier {
 model EvaluationConcept {
   id          String   @id @default(uuid()) @db.Uuid
   tenantId    String   @db.Uuid
-  name        String   // Nombre del concepto (ej: "Calidad", "Tiempo de entrega")
-  description String?  // Descripción opcional
+  name        String // Nombre del concepto (ej: "Calidad", "Tiempo de entrega")
+  description String? // Descripción opcional
   weight      Float    @default(1.0) // Peso para cálculo de score (1.0 = estándar)
   isActive    Boolean  @default(true)
   order       Int      @default(0) // Orden de visualización
   createdAt   DateTime @default(now()) @db.Timestamptz
   updatedAt   DateTime @updatedAt @db.Timestamptz
 
-  scores      EvaluationScore[]
+  scores EvaluationScore[]
 
   @@index([tenantId])
   @@map("evaluation_concepts")
@@ -5061,14 +5062,14 @@ model SupplierEvaluation {
   updatedAt     DateTime @updatedAt @db.Timestamptz
 
   // Scores dinámicos por concepto
-  scores        EvaluationScore[]
+  scores EvaluationScore[]
 
   // Campos legados para compatibilidad (se calculan de los scores dinámicos)
-  qualityScore       Float    @default(0) // calidad
-  deliveryScore      Float    @default(0) // cumplimiento
-  priceScore         Float    @default(0) // precio
-  serviceScore       Float    @default(0) // servicio
-  documentationScore Float    @default(0) // documentacion
+  qualityScore       Float @default(0) // calidad
+  deliveryScore      Float @default(0) // cumplimiento
+  priceScore         Float @default(0) // precio
+  serviceScore       Float @default(0) // servicio
+  documentationScore Float @default(0) // documentacion
 
   @@index([supplierId])
   @@index([tenantId])
@@ -5076,15 +5077,15 @@ model SupplierEvaluation {
 }
 
 model EvaluationScore {
-  id              String            @id @default(uuid()) @db.Uuid
-  tenantId        String            @db.Uuid
-  evaluationId    String            @db.Uuid
-  evaluation      SupplierEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
-  conceptId       String            @db.Uuid
-  concept         EvaluationConcept @relation(fields: [conceptId], references: [id])
-  score           Float             // Score 1-5
-  comments        String?
-  createdAt       DateTime          @default(now()) @db.Timestamptz
+  id           String             @id @default(uuid()) @db.Uuid
+  tenantId     String             @db.Uuid
+  evaluationId String             @db.Uuid
+  evaluation   SupplierEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  conceptId    String             @db.Uuid
+  concept      EvaluationConcept  @relation(fields: [conceptId], references: [id])
+  score        Float // Score 1-5
+  comments     String?
+  createdAt    DateTime           @default(now()) @db.Timestamptz
 
   @@unique([evaluationId, conceptId])
   @@index([evaluationId])
@@ -5111,7 +5112,7 @@ enum TenantStatus {
 
 model UsageEvent {
   id        String         @id @default(uuid()) @db.Uuid
-  licenseId String @db.Uuid         @map("license_id")
+  licenseId String         @map("license_id") @db.Uuid
   type      UsageEventType
   createdAt DateTime       @default(now()) @map("created_at")
   meta      Json?
@@ -5131,7 +5132,7 @@ enum UsageEventType {
 
 model UsageMetrics {
   id           String   @id @default(uuid()) @db.Uuid
-  tenantId     String @db.Uuid
+  tenantId     String   @db.Uuid
   metric       String // users, storage, api_calls, etc.
   currentValue Int      @default(0)
   maxValue     Int
@@ -5187,23 +5188,23 @@ model ClimaSurvey {
   // BIENESTAR, RIESGOS_PSICOSOCIALES, CULTURA_SEGURIDAD, CULTURA_CALIDAD,
   // EVALUACION_INTERNA, CULTURA_VIAL, BURNOUT, COMUNICACION_INTERNA, PERSONALIZADA
 
-  isAnonymous   Boolean @default(true)
-  isRequired    Boolean @default(false)
-  isActive      Boolean @default(true)
-  periodicidad  String? // UNICA, MENSUAL, TRIMESTRAL, SEMESTRAL, ANUAL
+  isAnonymous  Boolean @default(true)
+  isRequired   Boolean @default(false)
+  isActive     Boolean @default(true)
+  periodicidad String? // UNICA, MENSUAL, TRIMESTRAL, SEMESTRAL, ANUAL
 
   startDate DateTime?
   endDate   DateTime?
 
-  targetSectors  Json? // Array of departmentIds
+  targetSectors   Json? // Array of departmentIds
   targetEmployees Json? // Array of employeeIds (null = todos)
 
   estimatedMinutes Int @default(5)
 
-  questions    ClimaQuestion[]
-  recipients   ClimaRecipient[]
-  responses    ClimaResponse[]
-  actionPlans  ClimaActionPlan[]
+  questions   ClimaQuestion[]
+  recipients  ClimaRecipient[]
+  responses   ClimaResponse[]
+  actionPlans ClimaActionPlan[]
 
   createdAt   DateTime      @default(now()) @db.Timestamptz
   updatedAt   DateTime      @updatedAt @db.Timestamptz
@@ -5224,7 +5225,7 @@ model ClimaQuestion {
   surveyId String      @db.Uuid
   survey   ClimaSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
-  order       Int    @default(0)
+  order       Int     @default(0)
   text        String
   description String?
   type        String
@@ -5238,7 +5239,7 @@ model ClimaQuestion {
   options ClimaQuestionOption[]
   answers ClimaAnswer[]
 
-  createdAt DateTime @default(now()) @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
   deletedAt DateTime? @db.Timestamptz
 
   @@index([surveyId, order])
@@ -5263,23 +5264,23 @@ model ClimaRecipient {
   surveyId String      @db.Uuid
   survey   ClimaSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
-  employeeId   String?   @db.Uuid
-  employee     Employee? @relation("ClimaRecipientEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  employeeId String?   @db.Uuid
+  employee   Employee? @relation("ClimaRecipientEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
 
-  email       String?
-  phone       String?
-  name        String?
+  email String?
+  phone String?
+  name  String?
 
-  token       String    @unique
-  status      String    @default("PENDING")
+  token  String @unique
+  status String @default("PENDING")
   // PENDING, SENT, OPENED, COMPLETED, EXPIRED
 
   sentAt      DateTime?
   openedAt    DateTime?
   completedAt DateTime?
-  sentMethod  String?   // EMAIL, WHATSAPP, INTERNAL
+  sentMethod  String? // EMAIL, WHATSAPP, INTERNAL
 
-  response    ClimaResponse?
+  response ClimaResponse?
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
@@ -5300,12 +5301,12 @@ model ClimaResponse {
   answers      ClimaAnswer[]
   overallScore Float?
   comments     String?
-  isComplete   Boolean   @default(false)
+  isComplete   Boolean       @default(false)
   completedAt  DateTime?
   ipAddress    String?
 
-  aiAnalysis   String?
-  aiSentiment  String?  // POSITIVO, NEUTRAL, NEGATIVO
+  aiAnalysis  String?
+  aiSentiment String? // POSITIVO, NEUTRAL, NEGATIVO
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
@@ -5341,23 +5342,23 @@ model ClimaSuggestion {
   employeeId String?   @db.Uuid
   employee   Employee? @relation("ClimaSuggestionEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
 
-  type      String @default("SUGERENCIA")
+  type String @default("SUGERENCIA")
   // SUGERENCIA, RECLAMO, INQUIETUD, MEJORA, COMENTARIO, ALERTA
 
-  category  String?
-  priority  String  @default("MEDIA")
+  category String?
+  priority String  @default("MEDIA")
   // BAJA, MEDIA, ALTA, CRITICA
 
-  title     String
-  content   String
+  title       String
+  content     String
   isAnonymous Boolean @default(false)
 
-  status    String  @default("ABIERTO")
+  status String @default("ABIERTO")
   // ABIERTO, EN_PROCESO, RESUELTO, CERRADO
 
-  response  String?
-  respondedAt DateTime?
-  respondedById String?  @db.Uuid
+  response      String?
+  respondedAt   DateTime?
+  respondedById String?       @db.Uuid
   respondedBy   PlatformUser? @relation("ClimaSuggestionRespondedBy", fields: [respondedById], references: [id], onDelete: SetNull)
 
   attachmentUrl String?
@@ -5391,7 +5392,8 @@ model ClimaCanalQR {
   footer      String   @default("Acceso rápido desde tu celular · Comunicación directa")
 
   // Metadata
-  generatedBy String?  @db.Uuid
+  generatedById String?  @db.Uuid
+  generatedBy   PlatformUser? @relation(fields: [generatedById], references: [id], onDelete: SetNull)
   generatedAt DateTime @default(now()) @db.Timestamptz
   lastUsedAt  DateTime? @db.Timestamptz
   useCount    Int      @default(0)
@@ -5407,26 +5409,26 @@ model ClimaActionPlan {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  surveyId     String?      @db.Uuid
-  survey       ClimaSurvey? @relation(fields: [surveyId], references: [id], onDelete: SetNull)
+  surveyId String?      @db.Uuid
+  survey   ClimaSurvey? @relation(fields: [surveyId], references: [id], onDelete: SetNull)
 
   suggestionId String?          @db.Uuid
   suggestion   ClimaSuggestion? @relation(fields: [suggestionId], references: [id], onDelete: SetNull)
 
-  title        String
-  description  String?
-  origin       String  @default("ENCUESTA")
+  title       String
+  description String?
+  origin      String  @default("ENCUESTA")
   // ENCUESTA, SUGERENCIA, RECLAMO, IA, MANUAL
 
-  criticality  String  @default("MEDIA")
-  status       String  @default("ABIERTO")
+  criticality String @default("MEDIA")
+  status      String @default("ABIERTO")
   // ABIERTO, EN_PROCESO, COMPLETADO, VENCIDO, CANCELADO
 
   responsibleId String?       @db.Uuid
   responsible   PlatformUser? @relation("ClimaActionPlanResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
 
-  dueDate       DateTime?
-  completedAt   DateTime?
+  dueDate     DateTime?
+  completedAt DateTime?
 
   actions       Json?
   evidenceNotes String?
@@ -5449,21 +5451,21 @@ model ClimaComms {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  title    String
-  body     String
+  title       String
+  body        String
   // Adjuntos: [{name, url, type}]
-  attachments Json @default("[]")
+  attachments Json   @default("[]")
 
   // Destinatarios registrados
-  recipients  Json @default("[]")
+  recipients Json @default("[]")
   // [{type: 'employee'|'email', id?, email, name?}]
 
   // Emails libres adicionales
   extraEmails Json @default("[]")
 
-  sentAt      DateTime?
-  sentCount   Int      @default(0)
-  status      String   @default("BORRADOR")
+  sentAt    DateTime?
+  sentCount Int       @default(0)
+  status    String    @default("BORRADOR")
   // BORRADOR, ENVIADO
 
   createdAt   DateTime      @default(now()) @db.Timestamptz
@@ -5472,7 +5474,7 @@ model ClimaComms {
   createdBy   PlatformUser? @relation("ClimaCommsCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   deletedAt   DateTime?     @db.Timestamptz
 
-  views       ClimaCommsView[]
+  views ClimaCommsView[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -5480,12 +5482,12 @@ model ClimaComms {
 }
 
 model ClimaCommsView {
-  id        String     @id @default(uuid()) @db.Uuid
-  commId    String     @db.Uuid
-  comm      ClimaComms @relation(fields: [commId], references: [id], onDelete: Cascade)
-  email     String
-  name      String?
-  viewedAt  DateTime   @default(now()) @db.Timestamptz
+  id       String     @id @default(uuid()) @db.Uuid
+  commId   String     @db.Uuid
+  comm     ClimaComms @relation(fields: [commId], references: [id], onDelete: Cascade)
+  email    String
+  name     String?
+  viewedAt DateTime   @default(now()) @db.Timestamptz
 
   @@index([commId])
   @@map("clima_comms_views")
@@ -5499,10 +5501,10 @@ model AIUsageLog {
   userId String?       @db.Uuid
   user   PlatformUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  module      String  // help, audit-chat, ncr-analysis, document-analysis, etc.
-  model       String
-  tokensUsed  Int     @default(0)
-  promptLen   Int     @default(0)
+  module     String // help, audit-chat, ncr-analysis, document-analysis, etc.
+  model      String
+  tokensUsed Int    @default(0)
+  promptLen  Int    @default(0)
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
