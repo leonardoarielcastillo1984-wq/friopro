@@ -5375,6 +5375,32 @@ model ClimaSuggestion {
   @@map("clima_suggestions")
 }
 
+model ClimaCanalQR {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  token       String   @unique
+  isActive    Boolean  @default(true)
+
+  // Configuración del cartel (personalizable)
+  title       String   @default("Tu Voz Importa")
+  subtitle    String   @default("¿Tenés una sugerencia, reclamo o mejora?")
+  message     String   @default("Escaneá el código QR y ayudanos a mejorar juntos.")
+  footer      String   @default("Acceso rápido desde tu celular · Comunicación directa")
+
+  // Metadata
+  generatedBy String?  @db.Uuid
+  generatedAt DateTime @default(now()) @db.Timestamptz
+  lastUsedAt  DateTime? @db.Timestamptz
+  useCount    Int      @default(0)
+
+  @@index([tenantId])
+  @@index([token])
+  @@index([isActive])
+  @@map("clima_canal_qr")
+}
+
 model ClimaActionPlan {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @db.Uuid

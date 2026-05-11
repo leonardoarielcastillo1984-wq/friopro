@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Plus, Search, X, CheckCircle, Clock, ArrowUp, ArrowLeft, Trash2, ClipboardList, CheckCircle2 } from 'lucide-react';
+import { MessageSquare, Plus, Search, X, CheckCircle, Clock, ArrowUp, ArrowLeft, Trash2, ClipboardList, CheckCircle2, QrCode } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 const TIPOS = [
@@ -58,6 +58,7 @@ export default function SugerenciasPage() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ type: '', status: '', priority: '', search: '' });
+  const [showQRModal, setShowQRModal] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [newForm, setNewForm] = useState({ type: 'SUGERENCIA', title: '', content: '', priority: 'MEDIA', isAnonymous: true, category: '' });
@@ -148,6 +149,14 @@ export default function SugerenciasPage() {
           <h1 className="text-xl font-bold text-gray-900">Sugerencias y Reclamos</h1>
           <p className="text-sm text-gray-500 mt-0.5">Escucha permanente del equipo</p>
         </div>
+        <button
+          onClick={() => setShowQRModal(true)}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow transition-colors"
+          title="Canal de participación QR"
+        >
+          <QrCode className="w-4 h-4" />
+          QR Institucional
+        </button>
         <button
           onClick={() => setShowNew(true)}
           className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow transition-colors"
@@ -397,6 +406,185 @@ export default function SugerenciasPage() {
           </div>
         </div>
       )}
+
+      {/* QR Institucional Modal */}
+      {showQRModal && <QRInstitucionalModal onClose={() => setShowQRModal(false)} />}
     </div>
+  );
+}
+
+// Componente Modal QR Institucional
+function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [qrData, setQrData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
+
+  useEffect(() => {
+    loadQRData();
+  }, []);
+
+  const loadQRData = async () => {
+    try {
+      setLoading(true);
+      const res = await apiFetch('/clima/canal-qr');
+      setQrData(res);
+    } catch (err) {
+      setError('Error cargando datos del QR');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (!confirm('¿Generar nuevo QR? El anterior dejará de funcionar.')) return;
+    try {
+      setRegenerating(true);
+      const res = await apiFetch('/clima/canal-qr', { method: 'POST' });
+      setQrData(res);
+    } catch (err) {
+      setError('Error regenerando QR');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const handleDownloadPDF = () => {
+    if (!qrData) return;
+    // Abrir en nueva pestaña para generar PDF
+    window.open(`/api/clima/canal-qr/pdf?token=${qrData.token}`, '_blank');
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('¡Enlace copiado al portapapeles!');
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div>
+            <h3 className="font-semibold text-gray-900">Canal QR Institucional</h3>
+            <p className="text-sm text-gray-500">Compartí este QR para recibir sugerencias anónimas</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {loading ? (
+            <div className="text-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-2" />
+              <p className="text-gray-500">Cargando...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-red-500 mb-2">{error}</p>
+              <button onClick={loadQRData} className="text-blue-600 text-sm underline">Reintentar</button>
+            </div>
+          ) : qrData ? (
+            <>
+              {/* QR Preview */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 text-center">
+                <div className="bg-white rounded-xl p-4 shadow-lg inline-block mb-3">
+                  {/* Aquí iría el QR code real - usando placeholder por ahora */}
+                  <div className="w-48 h-48 bg-gray-900 rounded-lg flex items-center justify-center">
+                    <QrCode className="w-32 h-32 text-white" />
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-gray-700">Escaneá para participar</p>
+                <p className="text-xs text-gray-500 mt-1">Válido desde: {new Date(qrData.stats.generatedAt).toLocaleDateString()}</p>
+              </div>
+
+              {/* URL Pública */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">URL del canal</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={qrData.publicUrl}
+                    readOnly
+                    className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50"
+                  />
+                  <button
+                    onClick={() => copyToClipboard(qrData.publicUrl)}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium transition-colors"
+                  >
+                    Copiar
+                  </button>
+                </div>
+              </div>
+
+              {/* Estadísticas */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-gray-900">{qrData.stats.useCount}</p>
+                  <p className="text-xs text-gray-500">Visitas</p>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-gray-900">{qrData.isActive ? 'Activo' : 'Inactivo'}</p>
+                  <p className="text-xs text-gray-500">Estado</p>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-gray-900">{qrData.stats.lastUsedAt ? new Date(qrData.stats.lastUsedAt).toLocaleDateString() : 'Nunca'}</p>
+                  <p className="text-xs text-gray-500">Último uso</p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2 pt-2">
+                <button
+                  onClick={handleDownloadPDF}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar cartel PDF
+                </button>
+                <button
+                  onClick={handleRegenerate}
+                  disabled={regenerating}
+                  className="w-full flex items-center justify-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
+                  {regenerating ? 'Generando...' : 'Regenerar QR'}
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Icons needed
+function Loader2(props: any) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+    </svg>
+  );
+}
+
+function Download(props: any) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" x2="12" y1="15" y2="3"/>
+    </svg>
+  );
+}
+
+function RefreshCw(props: any) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+      <path d="M21 3v5h-5"/>
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+      <path d="M8 16H3v5"/>
+    </svg>
   );
 }

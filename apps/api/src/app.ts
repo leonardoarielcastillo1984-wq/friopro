@@ -52,6 +52,7 @@ import { emergencyRoutes } from './routes/emergency.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerSurveyRoutes } from './routes/surveys.js';
 import { climaCulturaRoutes } from './routes/clima-cultura.js';
+import { climaCanalRoutes } from './routes/clima-canal.js';
 import { licenseRoutes } from './routes/license.js';
 import { storageRoutes } from './routes/storage.js';
 import { superAdminRoutes } from './routes/superAdmin.js';
@@ -251,6 +252,7 @@ export async function buildApp() {
   await app.register(tenantReportRoutes);
   await app.register(surveyPublicRoutes, { prefix: '/survey' });
   await app.register(climaCulturaRoutes, { prefix: '/clima' });
+  await app.register(climaCanalRoutes, { prefix: '/clima' });
   await app.register(registerCompanyRoutes); // Registro de empresas
   await app.register(saasRoutes);
 
