@@ -337,6 +337,12 @@ model Tenant {
   processMaps              ProcessMap[]
   Subscription             Subscription?
   climaCanalQRs            ClimaCanalQR[]
+
+  // Inspecciones Inteligentes Relations
+  inspeccionPlantillas  InspeccionPlantilla[]
+  inspeccionQRs         InspeccionQR[]
+  inspecciones          Inspeccion[]
+  inspeccionHallazgos   InspeccionHallazgo[]
 }
 
 model PlatformUser {
