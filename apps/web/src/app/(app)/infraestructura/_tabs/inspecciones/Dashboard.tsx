@@ -14,7 +14,7 @@ export default function InspeccionesDashboard() {
   }, []);
 
   if (loading) return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>;
-  if (!data) return <p className="text-sm text-gray-500 text-center py-12">Sin datos. Creá una plantilla y generá un QR para comenzar.</p>;
+  if (!data || !data.kpis) return <p className="text-sm text-gray-500 text-center py-12">Sin datos. Creá una plantilla y generá un QR para comenzar.</p>;
 
   const { kpis, tendencia, hallazgosPorTipo, topActivos } = data;
 
