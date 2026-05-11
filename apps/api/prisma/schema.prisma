@@ -336,7 +336,7 @@ model Tenant {
   incidents                Incident[]
   processMaps              ProcessMap[]
   Subscription             Subscription?
-  ClimaCanalQR             ClimaCanalQR[]
+  climaCanalQRs            ClimaCanalQR[]
 }
 
 model PlatformUser {
@@ -468,7 +468,7 @@ model PlatformUser {
   climaCommsCreated           ClimaComms[]      @relation("ClimaCommsCreatedBy")
   climaActionPlansCreated     ClimaActionPlan[] @relation("ClimaActionPlanCreatedBy")
   climaActionPlansResponsible ClimaActionPlan[] @relation("ClimaActionPlanResponsible")
-  climaCanalQRs               ClimaCanalQR[]
+  climaCanalQRs               ClimaCanalQR[] @relation("ClimaCanalQRGeneratedBy")
 }
 
 model TenantMembership {
@@ -1112,7 +1112,6 @@ model TenantSubscription {
 
   // Relaciones
   payments Payment[]
-  climaCanalQRs ClimaCanalQR[]
 
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
@@ -5394,7 +5393,7 @@ model ClimaCanalQR {
 
   // Metadata
   generatedById String?  @db.Uuid
-  generatedBy   PlatformUser? @relation(fields: [generatedById], references: [id], onDelete: SetNull)
+  generatedBy   PlatformUser? @relation("ClimaCanalQRGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
   generatedAt DateTime @default(now()) @db.Timestamptz
   lastUsedAt  DateTime? @db.Timestamptz
   useCount    Int      @default(0)
