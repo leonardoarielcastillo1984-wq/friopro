@@ -1112,6 +1112,7 @@ model TenantSubscription {
 
   // Relaciones
   payments Payment[]
+  climaCanalQRs ClimaCanalQR[]
 
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz

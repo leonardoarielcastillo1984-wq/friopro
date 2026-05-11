@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { MessageSquare, Plus, Search, X, CheckCircle, Clock, ArrowUp, ArrowLeft, Trash2, ClipboardList, CheckCircle2, QrCode } from 'lucide-react';
 
 // TODO: Reactivar cuando el backend QR esté completo con QR real y edición de cartel
-const QR_ENABLED = false;
+const QR_ENABLED = true;
 
 import { apiFetch } from '@/lib/api';
 
