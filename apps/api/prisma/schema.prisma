@@ -467,6 +467,7 @@ model PlatformUser {
   climaCommsCreated      ClimaComms[]      @relation("ClimaCommsCreatedBy")
   climaActionPlansCreated ClimaActionPlan[] @relation("ClimaActionPlanCreatedBy")
   climaActionPlansResponsible ClimaActionPlan[] @relation("ClimaActionPlanResponsible")
+  climaCanalQRs          ClimaCanalQR[]
 }
 
 model TenantMembership {
