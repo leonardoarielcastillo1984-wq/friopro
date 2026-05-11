@@ -495,7 +495,9 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
                   </div>
                 </div>
                 <p className="text-sm font-medium text-gray-700">Escaneá para participar</p>
-                <p className="text-xs text-gray-500 mt-1">Válido desde: {new Date(qrData.stats.generatedAt).toLocaleDateString()}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Válido desde: {qrData?.stats?.generatedAt ? new Date(qrData.stats.generatedAt).toLocaleDateString() : 'Nuevo'}
+                </p>
               </div>
 
               {/* URL Pública */}
@@ -504,13 +506,14 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={qrData.publicUrl}
+                    value={qrData?.publicUrl || ''}
                     readOnly
                     className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50"
                   />
                   <button
-                    onClick={() => copyToClipboard(qrData.publicUrl)}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium transition-colors"
+                    onClick={() => qrData?.publicUrl && copyToClipboard(qrData.publicUrl)}
+                    disabled={!qrData?.publicUrl}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
                   >
                     Copiar
                   </button>
@@ -520,15 +523,15 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
               {/* Estadísticas */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-gray-50 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-gray-900">{qrData.stats.useCount}</p>
+                  <p className="text-2xl font-bold text-gray-900">{qrData?.stats?.useCount || 0}</p>
                   <p className="text-xs text-gray-500">Visitas</p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-gray-900">{qrData.isActive ? 'Activo' : 'Inactivo'}</p>
+                  <p className="text-2xl font-bold text-gray-900">{qrData?.isActive ? 'Activo' : 'Inactivo'}</p>
                   <p className="text-xs text-gray-500">Estado</p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-gray-900">{qrData.stats.lastUsedAt ? new Date(qrData.stats.lastUsedAt).toLocaleDateString() : 'Nunca'}</p>
+          <p className="text-2xl font-bold text-gray-900">{qrData?.stats?.lastUsedAt ? new Date(qrData.stats.lastUsedAt).toLocaleDateString() : 'Nunca'}</p>
                   <p className="text-xs text-gray-500">Último uso</p>
                 </div>
               </div>
@@ -537,7 +540,8 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
               <div className="space-y-2 pt-2">
                 <button
                   onClick={handleDownloadPDF}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors"
+                  disabled={!qrData?.token}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
                 >
                   <Download className="w-4 h-4" />
                   Descargar cartel PDF
