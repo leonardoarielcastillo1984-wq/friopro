@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageSquare, Plus, Search, X, CheckCircle, Clock, ArrowUp, ArrowLeft, Trash2, ClipboardList, CheckCircle2, QrCode } from 'lucide-react';
+
+// TODO: Reactivar cuando el backend QR esté completo con QR real y edición de cartel
+const QR_ENABLED = false;
+
 import { apiFetch } from '@/lib/api';
 
 const TIPOS = [
@@ -149,14 +153,16 @@ export default function SugerenciasPage() {
           <h1 className="text-xl font-bold text-gray-900">Sugerencias y Reclamos</h1>
           <p className="text-sm text-gray-500 mt-0.5">Escucha permanente del equipo</p>
         </div>
-        <button
-          onClick={() => setShowQRModal(true)}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow transition-colors"
-          title="Canal de participación QR"
-        >
-          <QrCode className="w-4 h-4" />
-          QR Institucional
-        </button>
+        {QR_ENABLED && (
+          <button
+            onClick={() => setShowQRModal(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow transition-colors"
+            title="Canal de participación QR"
+          >
+            <QrCode className="w-4 h-4" />
+            QR Institucional
+          </button>
+        )}
         <button
           onClick={() => setShowNew(true)}
           className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow transition-colors"
