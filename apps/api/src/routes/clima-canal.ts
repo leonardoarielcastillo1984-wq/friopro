@@ -1,7 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
+import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 
 // Schema Zod para validación
 const generateQRSchema = z.object({
@@ -29,8 +31,8 @@ function generateToken(): string {
 
 export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
   // GET /clima/canal-qr - Obtener o generar QR del tenant
-  app.get('/clima/canal-qr', { preHandler: [app.authenticate] }, async (req, reply) => {
-    const tenantId = req.auth?.tenantId;
+  app.get('/clima/canal-qr', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
 
     try {
@@ -46,7 +48,7 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
           data: {
             tenantId,
             token: generateToken(),
-            generatedBy: req.auth?.userId,
+            generatedById: (req as any).auth?.userId ?? null,
           },
         });
       }
@@ -79,8 +81,8 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /clima/canal-qr - Regenerar/actualizar QR
-  app.post('/clima/canal-qr', { preHandler: [app.authenticate] }, async (req, reply) => {
-    const tenantId = req.auth?.tenantId;
+  app.post('/clima/canal-qr', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
 
     const body = generateQRSchema.safeParse(req.body);
@@ -100,11 +102,11 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
         data: {
           tenantId,
           token: generateToken(),
-          generatedBy: req.auth?.userId,
-          title: body.data.title,
-          subtitle: body.data.subtitle,
-          message: body.data.message,
-          footer: body.data.footer,
+          generatedById: (req as any).auth?.userId ?? null,
+          ...(body.data.title && { title: body.data.title }),
+          ...(body.data.subtitle && { subtitle: body.data.subtitle }),
+          ...(body.data.message && { message: body.data.message }),
+          ...(body.data.footer && { footer: body.data.footer }),
         },
       });
 
@@ -265,8 +267,8 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // GET /clima/canal-qr/pdf - HTML para imprimir cartel institucional
-  app.get('/clima/canal-qr/pdf', { preHandler: [app.authenticate] }, async (req, reply) => {
-    const tenantId = req.auth?.tenantId;
+  app.get('/clima/canal-qr/pdf', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
 
     try {
@@ -510,7 +512,7 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // GET /clima/canal/:token/stats - Estadísticas del canal (admin only)
-  app.get('/clima/canal/:token/stats', { preHandler: [app.authenticate] }, async (req, reply) => {
+  app.get('/clima/canal/:token/stats', async (req: FastifyRequest, reply: FastifyReply) => {
     const { token } = req.params as { token: string };
     const tenantId = req.auth?.tenantId;
 
