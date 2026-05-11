@@ -40,18 +40,27 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
       let canalQR = await app.prisma.climaCanalQR.findFirst({
         where: { tenantId, isActive: true },
         orderBy: { generatedAt: 'desc' },
+        include: { tenant: { select: { id: true, name: true } } },
       });
 
       // Si no existe, generar uno nuevo
       if (!canalQR) {
-        canalQR = await app.prisma.climaCanalQR.create({
+        const created = await app.prisma.climaCanalQR.create({
           data: {
             tenantId,
             token: generateToken(),
             generatedById: (req as any).auth?.userId ?? null,
           },
+          include: { tenant: { select: { id: true, name: true } } },
         });
+        canalQR = created;
       }
+
+      // Obtener logo
+      const settings = await app.prisma.companySettings.findUnique({
+        where: { tenantId },
+        select: { logoUrl: true, primaryColor: true },
+      }).catch(() => null);
 
       // Construir URL pública
       const baseUrl = process.env.APP_URL || 'https://logismart.ar';
@@ -62,6 +71,9 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
         token: canalQR.token,
         publicUrl,
         isActive: canalQR.isActive,
+        tenantName: canalQR.tenant.name,
+        logoUrl: settings?.logoUrl ?? null,
+        primaryColor: settings?.primaryColor ?? '#2563eb',
         config: {
           title: canalQR.title,
           subtitle: canalQR.subtitle,
@@ -218,6 +230,8 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
           isAnonymous: body.data.isAnonymous,
           priority: priorityMap[body.data.priority] || 'MEDIA',
           status: 'ABIERTO',
+          contactEmail: body.data.contactEmail || null,
+          contactPhone: body.data.contactPhone || null,
         },
       });
 

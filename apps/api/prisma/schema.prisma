@@ -5363,6 +5363,8 @@ model ClimaSuggestion {
 
   attachmentUrl String?
   sectorId      String? @db.Uuid
+  contactEmail  String?
+  contactPhone  String?
 
   actionPlans ClimaActionPlan[]
 

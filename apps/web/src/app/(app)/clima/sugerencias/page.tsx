@@ -483,7 +483,9 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
   const handleDownloadPDF = () => {
     if (!qrData?.publicUrl) return;
     const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData.publicUrl)}&bgcolor=ffffff&color=1a1a2e&qzone=2`;
-    const primaryColor = '#2563eb';
+    const primaryColor = qrData.primaryColor || '#2563eb';
+    const logoUrl = qrData.logoUrl || null;
+    const tenantName = qrData.tenantName || '';
     const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -508,7 +510,8 @@ function QRInstitucionalModal({ onClose }: { onClose: () => void }) {
 <body>
   <button class="print-btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
   <div class="poster">
-    <div class="company">${qrData.tenantName || ''}</div>
+    ${logoUrl ? `<img src="${logoUrl}" alt="${tenantName}" style="max-height:60px;max-width:180px;object-fit:contain;margin:0 auto 16px;display:block;">` : ''}
+    <div class="company">${tenantName}</div>
     <h1>${cartel.title || 'Tu Voz Importa'}</h1>
     <p class="subtitle">${cartel.subtitle || '¿Tenés una sugerencia, reclamo o mejora?'}</p>
     <div class="qr-wrap">
