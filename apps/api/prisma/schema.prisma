@@ -5495,6 +5495,180 @@ model ClimaCommsView {
   @@map("clima_comms_views")
 }
 
+// ─────────────────────────────────────────────
+// INSPECCIONES INTELIGENTES
+// ─────────────────────────────────────────────
+
+model InspeccionPlantilla {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nombre       String
+  descripcion  String?
+  categoria    String  @default("GENERAL")
+  // CAMION, AUTOELEVADOR, MAQUINARIA, SEGURIDAD, INFRAESTRUCTURA, ELECTRICO, GENERAL
+  equipoTipo   String?
+  isActive     Boolean @default(true)
+  isBuiltIn    Boolean @default(false)
+  version      Int     @default(1)
+
+  items        InspeccionItem[]
+  instancias   InspeccionQR[]
+
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+  createdById  String?  @db.Uuid
+
+  @@index([tenantId])
+  @@map("inspeccion_plantillas")
+}
+
+model InspeccionItem {
+  id          String              @id @default(uuid()) @db.Uuid
+  plantillaId String              @db.Uuid
+  plantilla   InspeccionPlantilla @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+
+  label            String
+  tipo             String  @default("CHECKBOX")
+  // CHECKBOX, SI_NO, TEXTO, NUMERO, OPCION, ESCALA, FECHA, FOTO, FIRMA, OBSERVACION
+  opciones         Json?
+  orden            Int     @default(0)
+  seccion          String?
+  isRequerido      Boolean @default(true)
+  triggerHallazgo  Boolean @default(false)
+  valorUmbral      String?
+
+  respuestas       InspeccionRespuestaItem[]
+
+  @@index([plantillaId])
+  @@map("inspeccion_items")
+}
+
+model InspeccionQR {
+  id          String              @id @default(uuid()) @db.Uuid
+  tenantId    String              @db.Uuid
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plantillaId String              @db.Uuid
+  plantilla   InspeccionPlantilla @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+
+  token         String   @unique
+  isActive      Boolean  @default(true)
+
+  activoId      String?  @db.Uuid
+  activoNombre  String
+  activoCodigo  String?
+  ubicacion     String?
+  sector        String?
+
+  // Config cartel
+  titulo        String?
+  subtitulo     String?
+  instrucciones String?
+  pie           String?
+
+  useCount      Int      @default(0)
+  lastUsedAt    DateTime?
+  generatedAt   DateTime @default(now()) @db.Timestamptz
+
+  inspecciones  Inspeccion[]
+
+  @@index([tenantId])
+  @@index([token])
+  @@map("inspeccion_qrs")
+}
+
+model Inspeccion {
+  id       String       @id @default(uuid()) @db.Uuid
+  tenantId String       @db.Uuid
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  qrId     String?      @db.Uuid
+  qr       InspeccionQR? @relation(fields: [qrId], references: [id], onDelete: SetNull)
+
+  inspectorNombre String
+  inspectorEmail  String?
+  inspectorPhone  String?
+
+  activoNombre    String
+  activoCodigo    String?
+  sector          String?
+
+  estado          String  @default("COMPLETA")
+  // COMPLETA, CON_HALLAZGOS, CRITICA, INCOMPLETA
+  puntaje         Float?
+  hallazgosCount  Int     @default(0)
+  itemsTotal      Int     @default(0)
+  itemsOk         Int     @default(0)
+
+  notas           String?
+  lat             Float?
+  lng             Float?
+
+  otId            String?
+  ncrId           String?
+  capaId          String?
+
+  respuestas      InspeccionRespuestaItem[]
+  hallazgos       InspeccionHallazgo[]
+
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([qrId])
+  @@map("inspecciones")
+}
+
+model InspeccionRespuestaItem {
+  id           String     @id @default(uuid()) @db.Uuid
+  inspeccionId String     @db.Uuid
+  inspeccion   Inspeccion @relation(fields: [inspeccionId], references: [id], onDelete: Cascade)
+  itemId       String     @db.Uuid
+  item         InspeccionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  valor        Json
+  esOk         Boolean?
+  observacion  String?
+  fotoUrl      String?
+
+  @@index([inspeccionId])
+  @@map("inspeccion_respuestas")
+}
+
+model InspeccionHallazgo {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @db.Uuid
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inspeccionId String     @db.Uuid
+  inspeccion   Inspeccion @relation(fields: [inspeccionId], references: [id], onDelete: Cascade)
+
+  descripcion  String
+  tipo         String  @default("OPERATIVO")
+  // MECANICO, ELECTRICO, SEGURIDAD, OPERATIVO, INFRAESTRUCTURA, DOCUMENTACION
+  severidad    String  @default("MODERADO")
+  // LEVE, MODERADO, CRITICO
+  estado       String  @default("ABIERTO")
+  // ABIERTO, EN_PROCESO, RESUELTO, CERRADO
+
+  itemLabel    String?
+  fotoUrl      String?
+  accion       String?
+  responsable  String?
+  fechaLimite  DateTime?
+  resolvedAt   DateTime?
+
+  otGenerada   Boolean @default(false)
+  ncrGenerada  Boolean @default(false)
+
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, estado])
+  @@map("inspeccion_hallazgos")
+}
+
 model AIUsageLog {
   id       String  @id @default(uuid()) @db.Uuid
   tenantId String? @db.Uuid

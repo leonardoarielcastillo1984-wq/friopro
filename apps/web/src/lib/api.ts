@@ -239,7 +239,8 @@ export async function apiFetch<T>(
     path.startsWith('/auth/forgot-password') || path.startsWith('/auth/reset-password');
   const isOnLoginPage = typeof window !== 'undefined' &&
     (window.location.pathname === '/login' || window.location.pathname.startsWith('/login') ||
-     window.location.pathname.startsWith('/canal/') || window.location.pathname.startsWith('/responder/'));
+     window.location.pathname.startsWith('/canal/') || window.location.pathname.startsWith('/responder/') ||
+     window.location.pathname.startsWith('/inspeccionar/'));
   if (res.status === 401 && !isPublicAuth && !isOnLoginPage) {
     const refreshed = await getRefreshPromise();
     if (refreshed) {
