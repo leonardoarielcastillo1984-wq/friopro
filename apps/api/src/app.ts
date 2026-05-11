@@ -18,6 +18,7 @@ import { featuresPlugin } from './plugins/features.js';
 import { userPermissionsPlugin } from './plugins/user-permissions.js';
 
 import { healthRoutes } from './routes/health.js';
+import { readyRoutes } from './routes/ready.js';
 import saasRoutes from './routes/saas.js';
 import { authRoutes } from './routes/auth.js';
 import { documentRoutes } from './routes/documents.js';
@@ -212,6 +213,7 @@ export async function buildApp() {
   });
 
   await app.register(healthRoutes);
+  await app.register(readyRoutes);
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(documentRoutes, { prefix: '/documents' });
   await app.register(clauseMappingRoutes, { prefix: '/documents' });
