@@ -97,7 +97,7 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
 
-    const body = generateQRSchema.safeParse(req.body);
+    const body = generateQRSchema.safeParse(req.body ?? {});
     if (!body.success) {
       return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
     }
