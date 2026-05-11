@@ -137,33 +137,23 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
     try {
       const canalQR = await app.prisma.climaCanalQR.findFirst({
         where: { token, isActive: true },
-        include: {
-          tenant: {
-            select: {
-              id: true,
-              name: true,
-              companySettings: {
-                select: {
-                  logoUrl: true,
-                  primaryColor: true,
-                },
-              },
-            },
-          },
-        },
+        include: { tenant: { select: { id: true, name: true } } },
       });
 
       if (!canalQR) {
         return reply.code(404).send({ error: 'Canal no encontrado o inactivo' });
       }
 
+      // Obtener logo y branding del tenant
+      const settings = await app.prisma.companySettings.findUnique({
+        where: { tenantId: canalQR.tenantId },
+        select: { logoUrl: true, primaryColor: true },
+      }).catch(() => null);
+
       // Actualizar último uso
       await app.prisma.climaCanalQR.update({
         where: { id: canalQR.id },
-        data: {
-          lastUsedAt: new Date(),
-          useCount: { increment: 1 },
-        },
+        data: { lastUsedAt: new Date(), useCount: { increment: 1 } },
       });
 
       return reply.send({
@@ -171,8 +161,8 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
         tenant: {
           id: canalQR.tenant.id,
           name: canalQR.tenant.name,
-          logoUrl: canalQR.tenant.companySettings?.logoUrl,
-          primaryColor: canalQR.tenant.companySettings?.primaryColor,
+          logoUrl: settings?.logoUrl ?? null,
+          primaryColor: settings?.primaryColor ?? '#2563eb',
         },
         config: {
           title: canalQR.title,
@@ -280,25 +270,24 @@ export const climaCanalRoutes: FastifyPluginAsync = async (app) => {
       // Buscar QR activo
       const canalQR = await app.prisma.climaCanalQR.findFirst({
         where: { tenantId, isActive: true },
-        include: {
-          tenant: {
-            include: {
-              companySettings: true,
-            },
-          },
-        },
+        include: { tenant: { select: { id: true, name: true } } },
       });
 
       if (!canalQR) {
         return reply.code(404).send({ error: 'No hay QR activo. Generá uno primero.' });
       }
 
+      const settings = await app.prisma.companySettings.findUnique({
+        where: { tenantId },
+        select: { logoUrl: true, primaryColor: true },
+      }).catch(() => null);
+
       const baseUrl = process.env.APP_URL || 'https://logismart.ar';
       const publicUrl = `${baseUrl}/canal/${canalQR.token}`;
-      
+
       const companyName = canalQR.tenant.name;
-      const logoUrl = canalQR.tenant.companySettings?.logoUrl;
-      const primaryColor = canalQR.tenant.companySettings?.primaryColor || '#2563eb';
+      const logoUrl = settings?.logoUrl ?? null;
+      const primaryColor = settings?.primaryColor || '#2563eb';
 
       // Generar HTML del cartel
       const html = `
