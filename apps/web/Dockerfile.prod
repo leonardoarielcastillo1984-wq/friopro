@@ -1,0 +1,34 @@
+FROM node:20-alpine
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/web/package.json apps/web/
+COPY apps/api/package.json apps/api/
+
+RUN pnpm install --no-frozen-lockfile
+
+COPY apps/web apps/web/
+COPY apps/api apps/api/
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_PUBLIC_API_URL=/api
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+WORKDIR /app/apps/web
+
+# Build de producción
+RUN pnpm build
+
+# Verificación de build: checkear que existan los chunks principales
+RUN ls -la .next/static/chunks/ | head -20 && \
+    if [ ! -f .next/build-manifest.json ]; then echo "ERROR: build-manifest.json no existe" && exit 1; fi && \
+    if [ ! -d .next/static/chunks ]; then echo "ERROR: chunks directory no existe" && exit 1; fi && \
+    echo "Build verificado correctamente"
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["pnpm", "start"]
