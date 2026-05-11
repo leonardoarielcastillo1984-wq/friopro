@@ -238,7 +238,8 @@ export async function apiFetch<T>(
   const isPublicAuth = path.startsWith('/auth/refresh') || path.startsWith('/auth/login') ||
     path.startsWith('/auth/forgot-password') || path.startsWith('/auth/reset-password');
   const isOnLoginPage = typeof window !== 'undefined' &&
-    (window.location.pathname === '/login' || window.location.pathname.startsWith('/login'));
+    (window.location.pathname === '/login' || window.location.pathname.startsWith('/login') ||
+     window.location.pathname.startsWith('/canal/') || window.location.pathname.startsWith('/responder/'));
   if (res.status === 401 && !isPublicAuth && !isOnLoginPage) {
     const refreshed = await getRefreshPromise();
     if (refreshed) {
