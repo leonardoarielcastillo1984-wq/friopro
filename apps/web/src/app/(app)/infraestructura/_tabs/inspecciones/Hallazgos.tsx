@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { AlertTriangle, X, CheckCircle2, RefreshCw, ChevronDown } from 'lucide-react';
+import { AlertTriangle, X, CheckCircle2, RefreshCw, ChevronDown, Wrench, ExternalLink } from 'lucide-react';
 
 const SEV_COLOR: Record<string, string> = { LEVE: 'bg-yellow-100 text-yellow-700 border-yellow-200', MODERADO: 'bg-orange-100 text-orange-700 border-orange-200', CRITICO: 'bg-red-100 text-red-700 border-red-200' };
 const ESTADO_COLOR: Record<string, string> = { ABIERTO: 'bg-red-100 text-red-700', EN_PROCESO: 'bg-amber-100 text-amber-700', RESUELTO: 'bg-emerald-100 text-emerald-700', CERRADO: 'bg-gray-100 text-gray-500' };
@@ -15,6 +15,19 @@ interface ModalState {
   accion: string;
   responsable: string;
   inspeccion?: any;
+  activoNombre?: string;
+  otCreada?: string;
+}
+
+interface OTForm {
+  assetId: string;
+  assetName: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  scheduledDate: string;
+  technicianId: string;
 }
 
 export default function InspeccionesHallazgos() {
@@ -26,6 +39,13 @@ export default function InspeccionesHallazgos() {
   const [updating, setUpdating] = useState(false);
   const [empSearch, setEmpSearch] = useState('');
   const [showEmpList, setShowEmpList] = useState(false);
+  const [showOTModal, setShowOTModal] = useState(false);
+  const [assets, setAssets] = useState<any[]>([]);
+  const [technicians, setTechnicians] = useState<any[]>([]);
+  const [otForm, setOTForm] = useState<OTForm>({ assetId: '', assetName: '', title: '', description: '', type: 'CORRECTIVE', priority: 'HIGH', scheduledDate: '', technicianId: '' });
+  const [savingOT, setSavingOT] = useState(false);
+  const [assetSearch, setAssetSearch] = useState('');
+  const [showAssetList, setShowAssetList] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,12 +53,16 @@ export default function InspeccionesHallazgos() {
       const params = new URLSearchParams();
       if (filter.estado) params.set('estado', filter.estado);
       if (filter.severidad) params.set('severidad', filter.severidad);
-      const [r, e] = await Promise.all([
+      const [r, e, a, t] = await Promise.all([
         apiFetch(`/inspecciones/hallazgos?${params.toString()}`) as any,
         apiFetch('/hr/employees?limit=200') as any,
+        apiFetch('/maintenance/assets') as any,
+        apiFetch('/maintenance/technicians') as any,
       ]);
       setHallazgos(r.hallazgos || []);
       setEmpleados(e.employees || e.data || []);
+      setAssets(a.assets || []);
+      setTechnicians(t.technicians || []);
     } finally { setLoading(false); }
   }, [filter]);
 
@@ -54,10 +78,69 @@ export default function InspeccionesHallazgos() {
       accion: h.accion || '',
       responsable: h.responsable || '',
       inspeccion: h.inspeccion,
+      activoNombre: h.inspeccion?.activoNombre,
+      otCreada: h.otId || undefined,
     });
     setEmpSearch(h.responsable || '');
     setShowEmpList(false);
   };
+
+  const openOTModal = () => {
+    if (!modal) return;
+    const matchedAsset = assets.find((a: any) =>
+      a.name?.toLowerCase().includes((modal.activoNombre || '').toLowerCase()) ||
+      (modal.activoNombre || '').toLowerCase().includes(a.name?.toLowerCase())
+    );
+    const fechaHoy = new Date();
+    fechaHoy.setDate(fechaHoy.getDate() + 1);
+    const scheduledDate = fechaHoy.toISOString().slice(0, 16);
+    setOTForm({
+      assetId: matchedAsset?.id || '',
+      assetName: matchedAsset?.name || modal.activoNombre || '',
+      title: `Corrección: ${modal.descripcion}`.slice(0, 100),
+      description: `Hallazgo detectado en inspección.\nItem: ${modal.itemLabel || ''}\nActivo: ${modal.activoNombre || ''}\n\nDescripción: ${modal.descripcion}`,
+      type: 'CORRECTIVE',
+      priority: modal.severidad === 'CRITICO' ? 'CRITICAL' : modal.severidad === 'MODERADO' ? 'HIGH' : 'MEDIUM',
+      scheduledDate,
+      technicianId: '',
+    });
+    setAssetSearch(matchedAsset?.name || modal.activoNombre || '');
+    setShowAssetList(false);
+    setShowOTModal(true);
+  };
+
+  const handleCreateOT = async () => {
+    if (!otForm.assetId) { alert('Seleccioná un activo/equipo de la lista'); return; }
+    if (!otForm.scheduledDate) { alert('Ingresá una fecha programada'); return; }
+    setSavingOT(true);
+    try {
+      const r: any = await apiFetch('/maintenance/work-orders', {
+        method: 'POST',
+        json: {
+          title: otForm.title,
+          description: otForm.description,
+          type: otForm.type,
+          priority: otForm.priority,
+          assetId: otForm.assetId,
+          technicianId: otForm.technicianId || undefined,
+          scheduledDate: new Date(otForm.scheduledDate).toISOString(),
+          estimatedDuration: 60,
+          laborCost: 0,
+          partsCost: 0,
+        },
+      });
+      setShowOTModal(false);
+      setModal(null);
+      alert(`✅ Orden de trabajo ${r.workOrder?.code || ''} creada correctamente`);
+      load();
+    } catch (err: any) {
+      alert('Error al crear OT: ' + (err?.message || 'intente nuevamente'));
+    } finally { setSavingOT(false); }
+  };
+
+  const filteredAssets = assets.filter((a: any) =>
+    assetSearch.length === 0 || a.name?.toLowerCase().includes(assetSearch.toLowerCase())
+  ).slice(0, 8);
 
   const handleUpdate = async () => {
     if (!modal) return;
@@ -213,11 +296,129 @@ export default function InspeccionesHallazgos() {
                 </div>
               </div>
 
+              {/* Botón generar OT */}
+              <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-blue-800">¿Requiere intervención técnica?</p>
+                  <p className="text-xs text-blue-600 mt-0.5">Generá una Orden de Trabajo directamente desde este hallazgo</p>
+                </div>
+                <button onClick={openOTModal}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                  <Wrench className="w-3.5 h-3.5" />Generar OT
+                </button>
+              </div>
+
               <div className="flex gap-3">
                 <button onClick={() => setModal(null)} className="flex-1 text-sm border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
                 <button onClick={handleUpdate} disabled={updating}
                   className="flex-1 bg-blue-600 text-white text-sm font-medium py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-60">
                   {updating ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal crear OT */}
+      {showOTModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white flex items-center justify-between p-5 border-b border-gray-100 z-10">
+              <div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Wrench className="w-4 h-4 text-blue-600" />Nueva Orden de Trabajo</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Generada desde hallazgo de inspección</p>
+              </div>
+              <button onClick={() => setShowOTModal(false)}><X className="w-4 h-4 text-gray-500" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Título *</label>
+                <input value={otForm.title} onChange={e => setOTForm(p => ({ ...p, title: e.target.value }))}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/30" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Descripción</label>
+                <textarea value={otForm.description} onChange={e => setOTForm(p => ({ ...p, description: e.target.value }))}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none resize-none h-24" />
+              </div>
+
+              {/* Activo con autocomplete */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Activo / Equipo *</label>
+                <div className="relative">
+                  <input value={assetSearch}
+                    onChange={e => { setAssetSearch(e.target.value); setOTForm(p => ({ ...p, assetId: '', assetName: e.target.value })); setShowAssetList(true); }}
+                    onFocus={() => setShowAssetList(true)}
+                    onBlur={() => setTimeout(() => setShowAssetList(false), 150)}
+                    className={`w-full text-sm border rounded-xl px-3 py-2.5 outline-none pr-7 ${otForm.assetId ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200'}`}
+                    placeholder="Buscar activo registrado en Mantenimiento..." />
+                  <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2 top-3 pointer-events-none" />
+                  {showAssetList && filteredAssets.length > 0 && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-44 overflow-y-auto">
+                      {filteredAssets.map((a: any) => (
+                        <button key={a.id} type="button"
+                          onMouseDown={() => { setAssetSearch(a.name); setOTForm(p => ({ ...p, assetId: a.id, assetName: a.name })); setShowAssetList(false); }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-blue-50 border-b border-gray-50 last:border-0">
+                          <p className="text-sm font-medium text-gray-800">{a.name}</p>
+                          <p className="text-xs text-gray-400">{a.code} · {a.category} · {a.location}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {assets.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">⚠️ No hay activos registrados en Mantenimiento. Creá uno primero desde la pestaña Mantenimiento → Activos.</p>
+                  )}
+                  {!otForm.assetId && assetSearch && assets.length > 0 && (
+                    <p className="text-xs text-amber-600 mt-1">Seleccioná un activo de la lista para continuar</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Tipo</label>
+                  <select value={otForm.type} onChange={e => setOTForm(p => ({ ...p, type: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none bg-white">
+                    <option value="CORRECTIVE">Correctivo</option>
+                    <option value="PREVENTIVE">Preventivo</option>
+                    <option value="EMERGENCY">Emergencia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Prioridad</label>
+                  <select value={otForm.priority} onChange={e => setOTForm(p => ({ ...p, priority: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none bg-white">
+                    <option value="LOW">Baja</option>
+                    <option value="MEDIUM">Media</option>
+                    <option value="HIGH">Alta</option>
+                    <option value="CRITICAL">Crítica</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Fecha programada *</label>
+                  <input type="datetime-local" value={otForm.scheduledDate} onChange={e => setOTForm(p => ({ ...p, scheduledDate: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Técnico asignado</label>
+                  <select value={otForm.technicianId} onChange={e => setOTForm(p => ({ ...p, technicianId: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none bg-white">
+                    <option value="">Sin asignar</option>
+                    {technicians.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => setShowOTModal(false)} className="flex-1 text-sm border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
+                <button onClick={handleCreateOT} disabled={savingOT || !otForm.assetId}
+                  className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                  <Wrench className="w-3.5 h-3.5" />{savingOT ? 'Creando...' : 'Crear Orden de Trabajo'}
                 </button>
               </div>
             </div>
