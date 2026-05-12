@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, Zap, Trash2, X, ListChecks, Wrench, Truck, Package, Settings, ShieldAlert, Building2 } from 'lucide-react';
+import { Plus, Zap, Trash2, X, ListChecks, Wrench, Truck, Package, Settings, ShieldAlert, Building2, Pencil } from 'lucide-react';
 
 const CAT_ICON: Record<string, any> = { CAMION: Truck, AUTOELEVADOR: Package, MAQUINARIA: Settings, SEGURIDAD: ShieldAlert, INFRAESTRUCTURA: Building2, ELECTRICO: Zap, GENERAL: Wrench };
 const CAT_COLOR: Record<string, string> = { CAMION: 'bg-blue-100 text-blue-700', AUTOELEVADOR: 'bg-amber-100 text-amber-700', MAQUINARIA: 'bg-purple-100 text-purple-700', SEGURIDAD: 'bg-red-100 text-red-700', INFRAESTRUCTURA: 'bg-emerald-100 text-emerald-700', ELECTRICO: 'bg-orange-100 text-orange-700', GENERAL: 'bg-gray-100 text-gray-600' };
@@ -12,6 +12,7 @@ export default function InspeccionesPlantillas() {
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [showBuiltIn, setShowBuiltIn] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ nombre: '', descripcion: '', categoria: 'GENERAL' });
   const [items, setItems] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
@@ -29,11 +30,36 @@ export default function InspeccionesPlantillas() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const openNew = () => {
+    setEditingId(null);
+    setForm({ nombre: '', descripcion: '', categoria: 'GENERAL' });
+    setItems([]);
+    setShowNew(true);
+  };
+
+  const openEdit = async (p: any) => {
+    const r: any = await apiFetch(`/inspecciones/plantillas/${p.id}`);
+    const plantilla = r.plantilla;
+    setEditingId(plantilla.id);
+    setForm({ nombre: plantilla.nombre, descripcion: plantilla.descripcion || '', categoria: plantilla.categoria });
+    setItems((plantilla.items || []).map((it: any) => ({
+      label: it.label, tipo: it.tipo, seccion: it.seccion || '',
+      isRequerido: it.isRequerido, triggerHallazgo: it.triggerHallazgo,
+    })));
+    setShowNew(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      await apiFetch('/inspecciones/plantillas', { method: 'POST', json: { ...form, items: items.map((it, i) => ({ ...it, orden: i })) } });
-      setShowNew(false); setForm({ nombre: '', descripcion: '', categoria: 'GENERAL' }); setItems([]); load();
+      const payload = { ...form, items: items.map((it, i) => ({ ...it, orden: i })) };
+      if (editingId) {
+        await apiFetch(`/inspecciones/plantillas/${editingId}`, { method: 'PATCH', json: payload });
+      } else {
+        await apiFetch('/inspecciones/plantillas', { method: 'POST', json: payload });
+      }
+      setShowNew(false); setEditingId(null);
+      setForm({ nombre: '', descripcion: '', categoria: 'GENERAL' }); setItems([]); load();
     } finally { setSaving(false); }
   };
 
@@ -55,7 +81,7 @@ export default function InspeccionesPlantillas() {
           <button onClick={() => setShowBuiltIn(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
             <Zap className="w-3.5 h-3.5 text-amber-500" />Templates built-in
           </button>
-          <button onClick={() => setShowNew(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
+          <button onClick={openNew} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
             <Plus className="w-3.5 h-3.5" />Nueva plantilla
           </button>
         </div>
@@ -82,7 +108,10 @@ export default function InspeccionesPlantillas() {
                   <div key={p.id} className="bg-white border border-gray-100 rounded-2xl p-4 hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-3">
                       <div className={`p-2 rounded-lg ${CAT_COLOR[p.categoria] || 'bg-gray-100 text-gray-600'}`}><Icon className="w-4 h-4" /></div>
-                      <button onClick={() => handleDelete(p.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => openEdit(p)} className="text-gray-300 hover:text-blue-500 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleDelete(p.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
                     </div>
                     <p className="font-semibold text-gray-800 text-sm">{p.nombre}</p>
                     {p.descripcion && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.descripcion}</p>}
@@ -124,10 +153,10 @@ export default function InspeccionesPlantillas() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white flex items-center justify-between p-5 border-b border-gray-100 z-10">
-              <h3 className="font-semibold text-gray-900">Nueva plantilla de inspección</h3>
+              <h3 className="font-semibold text-gray-900">{editingId ? 'Editar plantilla' : 'Nueva plantilla de inspección'}</h3>
               <button onClick={() => setShowNew(false)}><X className="w-4 h-4 text-gray-500" /></button>
             </div>
-            <form onSubmit={handleCreate} className="p-5 space-y-4">
+            <form onSubmit={handleSave} className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">Nombre *</label>
@@ -176,7 +205,7 @@ export default function InspeccionesPlantillas() {
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowNew(false)} className="flex-1 text-sm border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
                 <button type="submit" disabled={saving} className="flex-1 bg-blue-600 text-white text-sm font-medium py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-60">
-                  {saving ? 'Guardando...' : 'Crear plantilla'}
+                  {saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear plantilla'}
                 </button>
               </div>
             </form>

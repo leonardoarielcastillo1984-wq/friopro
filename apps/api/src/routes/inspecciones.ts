@@ -212,10 +212,33 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    const schema = z.object({ nombre: z.string().optional(), descripcion: z.string().optional(), isActive: z.boolean().optional() });
+    const itemSchema = z.object({
+      label: z.string().min(1),
+      tipo: z.enum(['SI_NO', 'TEXTO', 'NUMERO', 'ESCALA', 'FECHA']).default('SI_NO'),
+      seccion: z.string().optional(),
+      isRequerido: z.boolean().default(true),
+      triggerHallazgo: z.boolean().default(false),
+      orden: z.number().default(0),
+    });
+    const schema = z.object({
+      nombre: z.string().optional(),
+      descripcion: z.string().optional(),
+      categoria: z.string().optional(),
+      isActive: z.boolean().optional(),
+      items: z.array(itemSchema).optional(),
+    });
     const body = schema.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
-    await (app.prisma as any).inspeccionPlantilla.updateMany({ where: { id, tenantId }, data: body.data });
+    const { items, ...rest } = body.data;
+    await (app.prisma as any).inspeccionPlantilla.updateMany({ where: { id, tenantId }, data: rest });
+    if (items !== undefined) {
+      await (app.prisma as any).inspeccionItem.deleteMany({ where: { plantillaId: id } });
+      if (items.length > 0) {
+        await (app.prisma as any).inspeccionItem.createMany({
+          data: items.map((it, i) => ({ ...it, plantillaId: id, orden: i })),
+        });
+      }
+    }
     return reply.send({ ok: true });
   });
 
