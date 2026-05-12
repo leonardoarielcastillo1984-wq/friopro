@@ -369,6 +369,8 @@ interface WorkOrder {
     name: string;
     specialty: string;
   };
+  origen?: string;
+  activoNombreLibre?: string;
   scheduledDate: string;
   completionDate?: string;
   estimatedDuration: number; // hours
@@ -1090,6 +1092,11 @@ export default function MantenimientoPage() {
                           <span className={`px-2 py-1 rounded text-xs font-medium ${getPriorityColor(order.priority)}`}>
                             {getPriorityLabel(order.priority)}
                           </span>
+                          {order.origen === 'INSPECCION' && (
+                            <span className="px-2 py-1 rounded text-xs font-medium bg-violet-100 text-violet-700">
+                              🔍 Inspección
+                            </span>
+                          )}
                           {isOverdue(order) && (
                             <span className="px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-700">
                               Vencida
@@ -1102,7 +1109,7 @@ export default function MantenimientoPage() {
                         <div className="flex items-center gap-6 text-sm text-gray-500">
                           <div className="flex items-center gap-1">
                             <WrenchIcon className="w-4 h-4" />
-                            <span>{order.asset?.name} ({order.asset?.code})</span>
+                            <span>{order.activoNombreLibre || (order.asset ? `${order.asset.name} (${order.asset.code})` : 'Sin activo')}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <Users className="w-4 h-4" />
