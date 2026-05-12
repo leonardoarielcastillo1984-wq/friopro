@@ -440,6 +440,79 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  // ── ÓRDENES DE TRABAJO DESDE INSPECCIÓN ────────────────────────────────────
+  app.post('/ot', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      hallazgoId: z.string().uuid().optional(),
+      title: z.string().min(1).max(200),
+      description: z.string().optional(),
+      type: z.enum(['PREVENTIVE', 'CORRECTIVE', 'PREDICTIVE', 'EMERGENCY']).default('CORRECTIVE'),
+      priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('HIGH'),
+      activoNombreLibre: z.string().optional(),
+      technicianNombre: z.string().optional(),
+      scheduledDate: z.string(),
+      notas: z.string().optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const d = body.data;
+    const code = `OT-INS-${Date.now().toString().slice(-6)}`;
+    const ot = await (app.prisma as any).workOrder.create({
+      data: {
+        tenantId,
+        code,
+        title: d.title,
+        description: d.description,
+        type: d.type,
+        priority: d.priority,
+        status: 'PENDING',
+        origen: 'INSPECCION',
+        origenId: d.hallazgoId ?? null,
+        activoNombreLibre: d.activoNombreLibre ?? null,
+        scheduledDate: new Date(d.scheduledDate),
+        estimatedDuration: 0,
+        laborCost: 0,
+        partsCost: 0,
+        totalCost: 0,
+      },
+    });
+    return reply.code(201).send({ ot });
+  });
+
+  app.get('/ot', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const where: any = { tenantId, origen: 'INSPECCION' };
+    if (q.status) where.status = q.status;
+    const ots = await (app.prisma as any).workOrder.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    return reply.send({ ots });
+  });
+
+  app.patch('/ot/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      status: z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'ON_HOLD']).optional(),
+      technicianNombre: z.string().optional(),
+      notas: z.string().optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    await (app.prisma as any).workOrder.updateMany({
+      where: { id, tenantId, origen: 'INSPECCION' },
+      data: { ...body.data },
+    });
+    return reply.send({ ok: true });
+  });
+
   // ── KPI ────────────────────────────────────────────────────────────────────
   app.get('/kpi', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);

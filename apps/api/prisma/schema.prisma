@@ -3108,8 +3108,12 @@ model WorkOrder {
   priority String @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
   status   String @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, CANCELLED, ON_HOLD
 
-  assetId String           @db.Uuid
-  asset   MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId String?           @db.Uuid
+  asset   MaintenanceAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  origen            String? // MANTENIMIENTO | INSPECCION
+  origenId          String? @db.Uuid  // hallazgoId cuando viene de inspección
+  activoNombreLibre String?            // nombre del activo cuando no hay assetId
 
   technicianId String?                @db.Uuid
   technician   MaintenanceTechnician? @relation(fields: [technicianId], references: [id], onDelete: SetNull)
@@ -3142,6 +3146,7 @@ model WorkOrder {
   @@index([tenantId])
   @@index([assetId])
   @@index([technicianId])
+  @@index([origen])
   @@index([status])
   @@map("work_orders")
 }

@@ -1,11 +1,12 @@
 'use client';
 import { useState } from 'react';
-import { LayoutDashboard, ListChecks, ClipboardCheck, ScanLine, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard, ListChecks, ClipboardCheck, ScanLine, AlertTriangle, ArrowLeft, Wrench } from 'lucide-react';
 import InspeccionesDashboard from './inspecciones/Dashboard';
 import InspeccionesPlantillas from './inspecciones/Plantillas';
 import InspeccionesLista from './inspecciones/Lista';
 import InspeccionesQRs from './inspecciones/QRs';
 import InspeccionesHallazgos from './inspecciones/Hallazgos';
+import InspeccionesOTs from './inspecciones/OTs';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -13,6 +14,7 @@ const TABS = [
   { key: 'inspecciones', label: 'Inspecciones', icon: ClipboardCheck },
   { key: 'qrs', label: 'QR Operativos', icon: ScanLine },
   { key: 'hallazgos', label: 'Hallazgos', icon: AlertTriangle },
+  { key: 'ots', label: 'Órdenes de Trabajo', icon: Wrench },
 ] as const;
 
 type TabKey = typeof TABS[number]['key'];
@@ -47,6 +49,7 @@ export default function InspeccionesContent() {
       {tab === 'inspecciones' && <InspeccionesLista />}
       {tab === 'qrs' && <InspeccionesQRs />}
       {tab === 'hallazgos' && <InspeccionesHallazgos />}
+      {tab === 'ots' && <InspeccionesOTs />}
     </div>
   );
 }
