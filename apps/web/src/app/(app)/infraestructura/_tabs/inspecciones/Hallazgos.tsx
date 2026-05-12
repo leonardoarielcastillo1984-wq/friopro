@@ -1,17 +1,31 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { AlertTriangle, X, CheckCircle2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, X, CheckCircle2, RefreshCw, ChevronDown } from 'lucide-react';
 
 const SEV_COLOR: Record<string, string> = { LEVE: 'bg-yellow-100 text-yellow-700 border-yellow-200', MODERADO: 'bg-orange-100 text-orange-700 border-orange-200', CRITICO: 'bg-red-100 text-red-700 border-red-200' };
 const ESTADO_COLOR: Record<string, string> = { ABIERTO: 'bg-red-100 text-red-700', EN_PROCESO: 'bg-amber-100 text-amber-700', RESUELTO: 'bg-emerald-100 text-emerald-700', CERRADO: 'bg-gray-100 text-gray-500' };
 
+interface ModalState {
+  id: string;
+  descripcion: string;
+  itemLabel?: string;
+  severidad: string;
+  estado: string;
+  accion: string;
+  responsable: string;
+  inspeccion?: any;
+}
+
 export default function InspeccionesHallazgos() {
   const [hallazgos, setHallazgos] = useState<any[]>([]);
+  const [empleados, setEmpleados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<any>(null);
+  const [modal, setModal] = useState<ModalState | null>(null);
   const [filter, setFilter] = useState({ estado: '', severidad: '' });
   const [updating, setUpdating] = useState(false);
+  const [empSearch, setEmpSearch] = useState('');
+  const [showEmpList, setShowEmpList] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -19,21 +33,55 @@ export default function InspeccionesHallazgos() {
       const params = new URLSearchParams();
       if (filter.estado) params.set('estado', filter.estado);
       if (filter.severidad) params.set('severidad', filter.severidad);
-      const r: any = await apiFetch(`/inspecciones/hallazgos?${params.toString()}`);
+      const [r, e] = await Promise.all([
+        apiFetch(`/inspecciones/hallazgos?${params.toString()}`) as any,
+        apiFetch('/hr/employees?limit=200') as any,
+      ]);
       setHallazgos(r.hallazgos || []);
+      setEmpleados(e.employees || e.data || []);
     } finally { setLoading(false); }
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleUpdate = async (id: string, data: any) => {
+  const openModal = (h: any) => {
+    setModal({
+      id: h.id,
+      descripcion: h.descripcion,
+      itemLabel: h.itemLabel,
+      severidad: h.severidad,
+      estado: h.estado,
+      accion: h.accion || '',
+      responsable: h.responsable || '',
+      inspeccion: h.inspeccion,
+    });
+    setEmpSearch(h.responsable || '');
+    setShowEmpList(false);
+  };
+
+  const handleUpdate = async () => {
+    if (!modal) return;
     setUpdating(true);
     try {
-      await apiFetch(`/inspecciones/hallazgos/${id}`, { method: 'PATCH', json: data });
-      setSelected((prev: any) => prev ? { ...prev, ...data } : prev);
+      await apiFetch(`/inspecciones/hallazgos/${modal.id}`, {
+        method: 'PATCH',
+        json: {
+          estado: modal.estado,
+          accion: modal.accion || undefined,
+          responsable: modal.responsable || undefined,
+        },
+      });
+      setModal(null);
       load();
+    } catch (err: any) {
+      alert('Error al guardar: ' + (err?.message || 'intente nuevamente'));
     } finally { setUpdating(false); }
   };
+
+  const filteredEmps = empleados.filter((e: any) => {
+    const name = `${e.firstName || ''} ${e.lastName || ''}`.toLowerCase();
+    return empSearch.length === 0 || name.includes(empSearch.toLowerCase());
+  }).slice(0, 8);
 
   const criticos = hallazgos.filter(h => h.severidad === 'CRITICO' && h.estado === 'ABIERTO').length;
   const abiertos = hallazgos.filter(h => h.estado === 'ABIERTO').length;
@@ -48,7 +96,6 @@ export default function InspeccionesHallazgos() {
         <button onClick={load} className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50"><RefreshCw className="w-3.5 h-3.5 text-gray-400" /></button>
       </div>
 
-      {/* Filtros */}
       <div className="flex gap-2 flex-wrap">
         <select value={filter.estado} onChange={e => setFilter(p => ({ ...p, estado: e.target.value }))}
           className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 outline-none bg-white">
@@ -76,7 +123,7 @@ export default function InspeccionesHallazgos() {
             <div className="space-y-2">
               {hallazgos.map((h: any) => (
                 <div key={h.id} className={`bg-white border rounded-xl p-4 hover:shadow-sm transition-shadow cursor-pointer ${SEV_COLOR[h.severidad] || 'border-gray-100'}`}
-                  onClick={() => setSelected(h)}>
+                  onClick={() => openModal(h)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 line-clamp-2">{h.descripcion}</p>
@@ -84,6 +131,7 @@ export default function InspeccionesHallazgos() {
                         {h.itemLabel && <span className="text-gray-400">📋 {h.itemLabel}</span>}
                         <span>Activo: {h.inspeccion?.activoNombre}</span>
                         <span>{new Date(h.createdAt).toLocaleDateString('es-AR')}</span>
+                        {h.responsable && <span className="text-blue-600">👤 {h.responsable}</span>}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -96,47 +144,78 @@ export default function InspeccionesHallazgos() {
             </div>
           )}
 
-      {/* Modal detalle hallazgo */}
-      {selected && (
+      {/* Modal gestionar hallazgo */}
+      {modal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <h3 className="font-semibold text-gray-900">Gestionar hallazgo</h3>
-              <button onClick={() => setSelected(null)}><X className="w-4 h-4 text-gray-500" /></button>
+              <button onClick={() => setModal(null)}><X className="w-4 h-4 text-gray-500" /></button>
             </div>
             <div className="p-5 space-y-4">
               <div className="p-3 bg-gray-50 rounded-xl">
-                <p className="text-sm text-gray-800">{selected.descripcion}</p>
-                {selected.itemLabel && <p className="text-xs text-gray-500 mt-1">Item: {selected.itemLabel}</p>}
-                {selected.inspeccion?.activoNombre && <p className="text-xs text-gray-500 mt-0.5">Activo: {selected.inspeccion.activoNombre}</p>}
+                <p className="text-sm text-gray-800">{modal.descripcion}</p>
+                {modal.itemLabel && <p className="text-xs text-gray-500 mt-1">Item: {modal.itemLabel}</p>}
+                {modal.inspeccion?.activoNombre && <p className="text-xs text-gray-500 mt-0.5">Activo: {modal.inspeccion.activoNombre}</p>}
               </div>
+
               <div className="flex gap-2 flex-wrap">
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${SEV_COLOR[selected.severidad]?.split(' ').slice(0, 2).join(' ') || ''}`}>{selected.severidad}</span>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${ESTADO_COLOR[selected.estado] || ''}`}>{selected.estado}</span>
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${SEV_COLOR[modal.severidad]?.split(' ').slice(0, 2).join(' ') || ''}`}>{modal.severidad}</span>
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${ESTADO_COLOR[modal.estado] || ''}`}>{modal.estado}</span>
               </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">Acción tomada</label>
-                <textarea defaultValue={selected.accion || ''} onBlur={e => setSelected((p: any) => ({ ...p, accion: e.target.value }))}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none resize-none h-20" placeholder="Describí la acción tomada..." />
+                <textarea
+                  value={modal.accion}
+                  onChange={e => setModal(p => p ? { ...p, accion: e.target.value } : p)}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none resize-none h-20"
+                  placeholder="Describí la acción tomada..." />
               </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">Responsable</label>
-                  <input defaultValue={selected.responsable || ''} onBlur={e => setSelected((p: any) => ({ ...p, responsable: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none" placeholder="Nombre" />
+                  <div className="relative">
+                    <input
+                      value={empSearch}
+                      onChange={e => { setEmpSearch(e.target.value); setModal(p => p ? { ...p, responsable: e.target.value } : p); setShowEmpList(true); }}
+                      onFocus={() => setShowEmpList(true)}
+                      onBlur={() => setTimeout(() => setShowEmpList(false), 150)}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none pr-7"
+                      placeholder="Buscar o escribir..."
+                    />
+                    <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2 top-2.5 pointer-events-none" />
+                    {showEmpList && filteredEmps.length > 0 && (
+                      <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                        {filteredEmps.map((e: any) => {
+                          const name = `${e.firstName || ''} ${e.lastName || ''}`.trim();
+                          return (
+                            <button key={e.id} type="button"
+                              onMouseDown={() => { setEmpSearch(name); setModal(p => p ? { ...p, responsable: name } : p); setShowEmpList(false); }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 hover:text-blue-700">
+                              {name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">Estado</label>
-                  <select value={selected.estado} onChange={e => setSelected((p: any) => ({ ...p, estado: e.target.value }))}
+                  <select
+                    value={modal.estado}
+                    onChange={e => setModal(p => p ? { ...p, estado: e.target.value } : p)}
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none bg-white">
                     {['ABIERTO', 'EN_PROCESO', 'RESUELTO', 'CERRADO'].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
               </div>
+
               <div className="flex gap-3">
-                <button onClick={() => setSelected(null)} className="flex-1 text-sm border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
-                <button disabled={updating}
-                  onClick={() => handleUpdate(selected.id, { estado: selected.estado, accion: selected.accion, responsable: selected.responsable })}
+                <button onClick={() => setModal(null)} className="flex-1 text-sm border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
+                <button onClick={handleUpdate} disabled={updating}
                   className="flex-1 bg-blue-600 text-white text-sm font-medium py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-60">
                   {updating ? 'Guardando...' : 'Guardar cambios'}
                 </button>
