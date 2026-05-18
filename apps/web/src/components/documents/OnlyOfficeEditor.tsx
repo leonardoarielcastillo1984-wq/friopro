@@ -30,7 +30,7 @@ export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOffi
   const iframeSrc = `${ooBase}/editor?${params.toString()}`;
 
   return (
-    <div className="relative w-full h-full bg-gray-900">
+    <div className="absolute inset-0 bg-gray-900">
       {loading && !error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center z-20 gap-3 pointer-events-none">
           <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
@@ -47,7 +47,7 @@ export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOffi
         <iframe
           key={documentId}
           src={iframeSrc}
-          className="w-full h-full border-0"
+          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
           onLoad={() => setLoading(false)}
           onError={() => { setError(true); setLoading(false); }}
           allow="fullscreen"

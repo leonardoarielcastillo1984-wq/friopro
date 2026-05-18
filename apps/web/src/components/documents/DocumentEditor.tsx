@@ -440,10 +440,10 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
       </div>
 
       {/* ── Body: OnlyOffice + Panel IA ── */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
 
         {/* ── OnlyOffice Editor ── */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative min-h-0">
           <OnlyOfficeEditor
             documentId={documentId}
             documentTitle={documentTitle}
