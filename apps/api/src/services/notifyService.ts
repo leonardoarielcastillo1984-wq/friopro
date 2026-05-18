@@ -178,6 +178,86 @@ export async function notifyAuditScheduled(
   }
 }
 
+// ── Inspección: nuevo hallazgo ────────────────────────────────────────────────
+
+export async function notifyInspeccionHallazgo(
+  prisma: PrismaClient,
+  { tenantId, activoNombre, hallazgosCount, haysCriticos, inspeccionId }: {
+    tenantId: string; activoNombre: string; hallazgosCount: number; haysCriticos: boolean; inspeccionId: string;
+  }
+) {
+  try {
+    const admins = await prisma.platformUser.findMany({
+      where: { tenantId, role: { in: ['TENANT_ADMIN', 'SUPER_ADMIN'] } },
+      select: { id: true, email: true },
+    });
+    if (!admins.length) return;
+
+    const link = `${APP_URL}/infraestructura?tab=inspecciones`;
+    const color = haysCriticos ? '#DC2626' : '#D97706';
+    const severity = haysCriticos ? '🚨 CRÍTICO' : '⚠️ Moderado';
+    const title = `${severity} — ${hallazgosCount} hallazgo${hallazgosCount > 1 ? 's' : ''} detectado${hallazgosCount > 1 ? 's' : ''}`;
+    const message = `Se registró una inspección en el activo <strong>${activoNombre}</strong> con ${hallazgosCount} hallazgo${hallazgosCount > 1 ? 's' : ''}${haysCriticos ? ' de severidad <strong>CRÍTICA</strong>' : ''}. Revisá los hallazgos y tomá acción.`;
+    const branding = await getCompanyBranding(prisma, tenantId);
+
+    for (const admin of admins) {
+      await createNotification(prisma, {
+        tenantId, userId: admin.id, type: 'INSPECCION',
+        title, message: message.replace(/<[^>]+>/g, ''), link, entityType: 'inspeccion', entityId: inspeccionId,
+      });
+      if (admin.email) {
+        await sendEmail({
+          to: admin.email,
+          subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver hallazgos', link, color, branding),
+          text: `${title}\n\nActivo: ${activoNombre}\nHallazgos: ${hallazgosCount}\n\n${link}`,
+        }).catch(e => console.error('[notifyService] Email error hallazgo:', e));
+      }
+    }
+  } catch (e) {
+    console.error('[notifyService] notifyInspeccionHallazgo error:', e);
+  }
+}
+
+// ── Inspección: OT creada ─────────────────────────────────────────────────────
+
+export async function notifyInspeccionOT(
+  prisma: PrismaClient,
+  { tenantId, otCode, otTitle, activoNombre, otId }: {
+    tenantId: string; otCode: string; otTitle: string; activoNombre: string; otId: string;
+  }
+) {
+  try {
+    const admins = await prisma.platformUser.findMany({
+      where: { tenantId, role: { in: ['TENANT_ADMIN', 'SUPER_ADMIN'] } },
+      select: { id: true, email: true },
+    });
+    if (!admins.length) return;
+
+    const link = `${APP_URL}/infraestructura?tab=inspecciones&sub=ots`;
+    const title = `OT creada desde inspección: ${otCode}`;
+    const message = `Se generó la orden de trabajo <strong>${otCode}</strong> — "${otTitle}" para el activo <strong>${activoNombre}</strong>.`;
+    const branding = await getCompanyBranding(prisma, tenantId);
+
+    for (const admin of admins) {
+      await createNotification(prisma, {
+        tenantId, userId: admin.id, type: 'INSPECCION_OT',
+        title, message: message.replace(/<[^>]+>/g, ''), link, entityType: 'work_order', entityId: otId,
+      });
+      if (admin.email) {
+        await sendEmail({
+          to: admin.email,
+          subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver OT', link, '#2563EB', branding),
+          text: `${title}\n\nOT: ${otCode}\nActivo: ${activoNombre}\n\n${link}`,
+        }).catch(e => console.error('[notifyService] Email error OT:', e));
+      }
+    }
+  } catch (e) {
+    console.error('[notifyService] notifyInspeccionOT error:', e);
+  }
+}
+
 // ── HTML template ─────────────────────────────────────────────────────────────
 
 function buildEmailHtml(

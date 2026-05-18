@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import crypto from 'crypto';
+import { notifyInspeccionHallazgo, notifyInspeccionOT } from '../services/notifyService.js';
 
 const generateToken = () => crypto.randomBytes(20).toString('hex');
 
@@ -376,6 +377,16 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
 
     await (app.prisma as any).inspeccionQR.update({ where: { id: qr.id }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
 
+    if (hallazgos.length > 0) {
+      notifyInspeccionHallazgo(app.prisma, {
+        tenantId: qr.tenantId,
+        activoNombre: qr.activoNombre || 'Sin nombre',
+        hallazgosCount: hallazgos.length,
+        haysCriticos: hallazgos.some((h: any) => h.severidad === 'CRITICO'),
+        inspeccionId: inspeccion.id,
+      }).catch((e: any) => console.error('[inspecciones] notify error:', e));
+    }
+
     return reply.code(201).send({
       ok: true, inspeccionId: inspeccion.id, estado, puntaje, hallazgosCount: hallazgos.length,
       mensaje: hallazgos.length > 0
@@ -481,9 +492,9 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const body = schema.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
     const d = body.data;
-    const code = `OT-INS-${Date.now().toString().slice(-6)}`;
-    const ot = await (app.prisma as any).workOrder.create({
-      data: {
+    try {
+      const code = `OT-INS-${Date.now().toString().slice(-6)}`;
+      const createData: any = {
         tenantId,
         code,
         title: d.title,
@@ -491,17 +502,29 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         type: d.type,
         priority: d.priority,
         status: 'PENDING',
-        origen: 'INSPECCION',
-        origenId: d.hallazgoId ?? null,
-        activoNombreLibre: d.activoNombreLibre ?? null,
         scheduledDate: new Date(d.scheduledDate),
         estimatedDuration: 0,
         laborCost: 0,
         partsCost: 0,
         totalCost: 0,
-      },
-    });
-    return reply.code(201).send({ ot });
+      };
+      try { createData.origen = 'INSPECCION'; createData.origenId = d.hallazgoId ?? null; createData.activoNombreLibre = d.activoNombreLibre ?? null; } catch {}
+      const ot = await (app.prisma as any).workOrder.create({ data: createData });
+      if (d.hallazgoId) {
+        await (app.prisma as any).inspeccionHallazgo.updateMany({ where: { id: d.hallazgoId, tenantId }, data: { otId: ot.id } }).catch(() => {});
+      }
+      notifyInspeccionOT(app.prisma, {
+        tenantId,
+        otCode: code,
+        otTitle: d.title,
+        activoNombre: d.activoNombreLibre || 'Sin activo',
+        otId: ot.id,
+      }).catch((e: any) => console.error('[inspecciones] notify OT error:', e));
+      return reply.code(201).send({ ot });
+    } catch (err: any) {
+      console.error('[inspecciones] Error creando OT:', err);
+      return reply.code(500).send({ error: 'Error interno al crear OT', detail: err?.message });
+    }
   });
 
   app.get('/ot', async (req: FastifyRequest, reply: FastifyReply) => {
