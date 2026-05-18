@@ -83,7 +83,7 @@ document.head.appendChild(s);
           onLoad={() => setLoading(false)}
           onError={() => { setError(true); setLoading(false); }}
           allow="fullscreen"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
+          sandbox="allow-scripts allow-forms allow-popups allow-downloads allow-modals"
           title="Editor de documentos"
         />
       )}
