@@ -217,7 +217,7 @@ export async function buildApp() {
 
   await app.register(healthRoutes);
   await app.register(readyRoutes);
-  await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(authRoutes, { prefix: '/auth' });
   await app.register(documentRoutes, { prefix: '/documents' });
   await app.register(clauseMappingRoutes, { prefix: '/documents' });
   await app.register(departmentRoutes, { prefix: '/departments' });
