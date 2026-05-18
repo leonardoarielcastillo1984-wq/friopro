@@ -582,7 +582,7 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
 
       {/* ── Footer ── */}
       <div className="px-4 py-1.5 bg-white border-t border-gray-200 flex items-center justify-between text-xs text-gray-400 flex-shrink-0">
-        <span>{wordCount} palabras · {editor.storage.characterCount?.characters() ?? 0} caracteres · Autoguardado cada 30s</span>
+        <span>{wordCount} palabras · {editor?.storage?.characterCount?.characters() ?? 0} caracteres · Autoguardado cada 30s</span>
         <span>Ctrl+Z deshacer · Ctrl+S guardar</span>
       </div>
     </div>
