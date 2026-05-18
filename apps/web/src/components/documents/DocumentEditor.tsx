@@ -388,8 +388,6 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
     }
   };
 
-  if (!editor) return null;
-
   const ToolbarBtn = ({ onClick, active, title, children, disabled }: { onClick: () => void; active?: boolean; title: string; children: React.ReactNode; disabled?: boolean }) => (
     <button type="button" onClick={onClick} title={title} disabled={disabled}
       className={`p-1.5 rounded hover:bg-gray-100 transition-colors disabled:opacity-40 ${active ? 'bg-blue-100 text-blue-700' : 'text-gray-600'}`}>
