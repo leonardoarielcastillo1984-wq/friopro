@@ -536,7 +536,7 @@ export default function MantenimientoPage() {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'plans' | 'technicians' | 'parts' | 'assets' | 'calendar' | 'kpis' | 'flota-vehiculos' | 'flota-neumaticos' | 'flota-conductores' | 'flota-vencimientos' | 'flota-combustible'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'plans' | 'technicians' | 'parts' | 'assets' | 'calendar' | 'kpis' | 'flota-dashboard' | 'flota-vehiculos' | 'flota-neumaticos' | 'flota-conductores' | 'flota-vencimientos' | 'flota-combustible'>('orders');
 
   // ── Estado Flota ──────────────────────────────────────────────
   const [flotaVehiculos, setFlotaVehiculos] = useState<any[]>([]);
@@ -544,6 +544,7 @@ export default function MantenimientoPage() {
   const [flotaNeumaticos, setFlotaNeumaticos] = useState<any[]>([]);
   const [flotaVencimientos, setFlotaVencimientos] = useState<any[]>([]);
   const [flotaStats, setFlotaStats] = useState<any>(null);
+  const [flotaDashboard, setFlotaDashboard] = useState<any>(null);
   const [flotaLoaded, setFlotaLoaded] = useState(false);
   const [showVehModal, setShowVehModal] = useState(false);
   const [showConductorModal, setShowConductorModal] = useState(false);
@@ -621,13 +622,14 @@ export default function MantenimientoPage() {
 
   const loadFlotaData = async () => {
     try {
-      const [v, c, n, vto, s, rep] = await Promise.all([
+      const [v, c, n, vto, s, rep, dash] = await Promise.all([
         apiFetch('/flota/vehiculos'),
         apiFetch('/flota/conductores'),
         apiFetch('/flota/neumaticos'),
         apiFetch('/flota/vencimientos'),
         apiFetch('/flota/stats'),
         apiFetch('/flota/neumaticos/repuestos'),
+        apiFetch('/flota/dashboard'),
       ]) as any;
       setFlotaVehiculos(v.vehiculos || []);
       setFlotaConductores(c.conductores || []);
@@ -635,6 +637,7 @@ export default function MantenimientoPage() {
       setFlotaVencimientos(vto.vencimientos || []);
       setFlotaStats(s.stats || null);
       setFlotaRepuestos(rep.parts || []);
+      setFlotaDashboard(dash || null);
       setFlotaLoaded(true);
     } catch (e) { console.error('Flota load error:', e); }
   };
@@ -1116,6 +1119,7 @@ export default function MantenimientoPage() {
               <div className="w-px h-5 bg-gray-200" />
             </div>
             {([
+              { id: 'flota-dashboard', label: 'Dashboard', icon: <TrendingUp className="w-3.5 h-3.5" /> },
               { id: 'flota-vehiculos', label: 'Vehículos', icon: <Truck className="w-3.5 h-3.5" /> },
               { id: 'flota-neumaticos', label: 'Neumáticos', icon: <Circle className="w-3.5 h-3.5" /> },
               { id: 'flota-conductores', label: 'Conductores', icon: <Users className="w-3.5 h-3.5" /> },
@@ -1621,6 +1625,261 @@ export default function MantenimientoPage() {
           {activeTab === 'kpis' && (
             <div className="p-4">
               <AdvancedKPIs workOrders={workOrders} assets={assets} />
+            </div>
+          )}
+
+          {/* ══ FLOTA: DASHBOARD EJECUTIVO ══ */}
+          {activeTab === 'flota-dashboard' && (
+            <div className="p-4 space-y-5">
+              {!flotaDashboard ? (
+                <div className="text-center py-16 text-gray-400">Cargando dashboard...</div>
+              ) : (() => {
+                const f = flotaDashboard.flota || {};
+                const m = flotaDashboard.mantenimiento || {};
+                const comb = f.combustible || {};
+                const neu = f.neumaticos || {};
+                const venc = f.vencimientos || {};
+                const cond = f.conductores || {};
+
+                const dispColor = f.disponibilidadPct >= 80 ? 'text-emerald-600' : f.disponibilidadPct >= 60 ? 'text-amber-600' : 'text-red-600';
+                const dispBg = f.disponibilidadPct >= 80 ? 'bg-emerald-50 border-emerald-200' : f.disponibilidadPct >= 60 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
+
+                const TIPO_LABELS_OT: any = { CORRECTIVE: 'Correctivo', PREVENTIVE: 'Preventivo', PREDICTIVE: 'Predictivo', EMERGENCY: 'Emergencia' };
+                const PRIOR_COLORS: any = { CRITICAL: 'bg-red-500', HIGH: 'bg-orange-400', MEDIUM: 'bg-amber-400', LOW: 'bg-blue-400' };
+
+                return (
+                  <>
+                    {/* ── Fila 1: KPIs principales ── */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {/* Disponibilidad */}
+                      <div className={`rounded-2xl border p-4 flex flex-col items-center justify-center ${dispBg}`}>
+                        <p className={`text-4xl font-extrabold ${dispColor}`}>{f.disponibilidadPct}%</p>
+                        <p className="text-xs font-semibold text-gray-500 mt-1 uppercase tracking-wide">Disponibilidad</p>
+                        <div className="flex gap-2 mt-2 text-xs">
+                          <span className="text-emerald-600 font-bold">{f.activos} activos</span>
+                          <span className="text-amber-600 font-bold">{f.enTaller} en taller</span>
+                        </div>
+                      </div>
+                      {/* Combustible mes */}
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                        <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">Combustible mes</p>
+                        <p className="text-2xl font-bold text-gray-900">{(comb.litrosMes || 0).toLocaleString('es-AR')} L</p>
+                        {comb.variacionLitros != null && (
+                          <p className={`text-xs mt-1 font-semibold ${comb.variacionLitros > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {comb.variacionLitros > 0 ? '▲' : '▼'} {Math.abs(comb.variacionLitros)}% vs mes ant.
+                          </p>
+                        )}
+                        {comb.l100km && <p className="text-xs text-gray-500 mt-1">{comb.l100km} L/100km promedio</p>}
+                        {comb.costoMes > 0 && <p className="text-xs text-gray-400 mt-0.5">${(comb.costoMes || 0).toLocaleString('es-AR')} total</p>}
+                      </div>
+                      {/* OTs */}
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                        <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">Órdenes de trabajo</p>
+                        <p className="text-2xl font-bold text-gray-900">{m.otAbiertas} <span className="text-sm font-medium text-gray-400">abiertas</span></p>
+                        <p className="text-xs text-gray-500 mt-1">{m.otCerradasMes} cerradas este mes</p>
+                        {m.mttrHoras != null && <p className="text-xs text-blue-600 font-semibold mt-1">MTTR: {m.mttrHoras}h</p>}
+                        {m.costoOTMes > 0 && <p className="text-xs text-gray-400 mt-0.5">${(m.costoOTMes || 0).toLocaleString('es-AR')} en mant.</p>}
+                      </div>
+                      {/* Alertas consolidadas */}
+                      <div className={`rounded-2xl border p-4 ${(venc.vencidos + neu.enAlerta + cond.enAlerta?.length) > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                        <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">Alertas activas</p>
+                        <p className={`text-2xl font-bold ${(venc.vencidos + neu.enAlerta + (cond.enAlerta?.length || 0)) > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {(venc.vencidos || 0) + (neu.enAlerta || 0) + (cond.enAlerta?.length || 0)}
+                        </p>
+                        <div className="space-y-0.5 mt-2 text-xs">
+                          {venc.vencidos > 0 && <p className="text-red-600 font-semibold">⛔ {venc.vencidos} docs vencidos</p>}
+                          {neu.enAlerta > 0 && <p className="text-orange-600 font-semibold">⚠ {neu.enAlerta} neumáticos</p>}
+                          {(cond.enAlerta?.length || 0) > 0 && <p className="text-amber-600 font-semibold">🪪 {cond.enAlerta.length} conductores</p>}
+                          {(venc.vencidos + neu.enAlerta + (cond.enAlerta?.length || 0)) === 0 && <p className="text-emerald-600 font-semibold">✓ Sin alertas</p>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── Fila 2: Flota status + Neumáticos + Conductores ── */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Estado de la flota */}
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><Truck className="w-4 h-4 text-blue-500" />Estado de flota</p>
+                        <div className="space-y-2">
+                          {[
+                            { label: 'Activos', count: f.activos, total: f.totalVehiculos, color: 'bg-emerald-500' },
+                            { label: 'En taller', count: f.enTaller, total: f.totalVehiculos, color: 'bg-amber-500' },
+                            { label: 'Inactivos', count: f.inactivos, total: f.totalVehiculos, color: 'bg-gray-300' },
+                          ].map(s => (
+                            <div key={s.label}>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="text-gray-500">{s.label}</span>
+                                <span className="font-bold text-gray-700">{s.count || 0}/{s.total}</span>
+                              </div>
+                              <div className="w-full bg-gray-100 rounded-full h-2">
+                                <div className={`${s.color} h-2 rounded-full`} style={{ width: `${s.total > 0 ? Math.round(((s.count || 0) / s.total) * 100) : 0}%` }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Neumáticos */}
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><Circle className="w-4 h-4 text-purple-500" />Neumáticos</p>
+                        <div className="grid grid-cols-2 gap-2 text-center">
+                          {[
+                            { label: 'Total', v: neu.total || 0, color: 'text-gray-700' },
+                            { label: 'Montados', v: neu.montados || 0, color: 'text-blue-600' },
+                            { label: 'Disponibles', v: neu.disponibles || 0, color: 'text-emerald-600' },
+                            { label: 'En alerta', v: neu.enAlerta || 0, color: neu.enAlerta > 0 ? 'text-red-600' : 'text-gray-400' },
+                          ].map(k => (
+                            <div key={k.label} className="bg-gray-50 rounded-xl p-2">
+                              <p className={`text-xl font-bold ${k.color}`}>{k.v}</p>
+                              <p className="text-xs text-gray-400">{k.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Vencimientos próximos */}
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-500" />Vencimientos próximos</p>
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                          {(venc.lista || []).length === 0 && <p className="text-xs text-gray-400 text-center py-4">Sin vencimientos próximos</p>}
+                          {(venc.lista || []).map((v: any, i: number) => (
+                            <div key={i} className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-xs ${v.diasRestantes < 0 ? 'bg-red-50' : v.diasRestantes <= 7 ? 'bg-orange-50' : 'bg-amber-50'}`}>
+                              <span className="font-semibold text-gray-700 truncate max-w-[6rem]">{v.dominio}</span>
+                              <span className="text-gray-500 truncate">{v.tipo}</span>
+                              <span className={`font-bold shrink-0 ml-1 ${v.diasRestantes < 0 ? 'text-red-600' : v.diasRestantes <= 7 ? 'text-orange-600' : 'text-amber-600'}`}>
+                                {v.diasRestantes < 0 ? `${Math.abs(v.diasRestantes)}d venc.` : `${v.diasRestantes}d`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── Fila 3: OTs por tipo + Consumidores + Conductores alerta ── */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* OTs por tipo */}
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><Wrench className="w-4 h-4 text-gray-500" />OTs últimos 30 días</p>
+                        {(m.otPorTipo || []).length === 0 && <p className="text-xs text-gray-400 text-center py-4">Sin OTs recientes</p>}
+                        <div className="space-y-2">
+                          {(m.otPorTipo || []).map((t: any) => {
+                            const total = (m.otPorTipo || []).reduce((s: number, x: any) => s + x.count, 0);
+                            const pct = total > 0 ? Math.round((t.count / total) * 100) : 0;
+                            const colors: any = { CORRECTIVE: 'bg-red-400', PREVENTIVE: 'bg-blue-400', PREDICTIVE: 'bg-purple-400', EMERGENCY: 'bg-orange-500' };
+                            return (
+                              <div key={t.tipo}>
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span className="text-gray-500">{TIPO_LABELS_OT[t.tipo] || t.tipo}</span>
+                                  <span className="font-bold text-gray-700">{t.count} ({pct}%)</span>
+                                </div>
+                                <div className="w-full bg-gray-100 rounded-full h-2">
+                                  <div className={`${colors[t.tipo] || 'bg-gray-400'} h-2 rounded-full`} style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Por prioridad */}
+                        {(m.otPorPrioridad || []).length > 0 && (
+                          <div className="flex gap-1.5 mt-3 flex-wrap">
+                            {(m.otPorPrioridad || []).map((p: any) => (
+                              <span key={p.prioridad} className={`text-xs text-white px-2 py-0.5 rounded-full font-semibold ${PRIOR_COLORS[p.prioridad] || 'bg-gray-400'}`}>
+                                {p.prioridad} ×{p.count}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Top consumidores */}
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><Fuel className="w-4 h-4 text-blue-500" />Top consumo combustible</p>
+                        {(f.topConsumidores || []).length === 0 && <p className="text-xs text-gray-400 text-center py-4">Sin registros este mes</p>}
+                        <div className="space-y-2">
+                          {(f.topConsumidores || []).map((v: any, i: number) => {
+                            const maxL = (f.topConsumidores || [])[0]?.litros || 1;
+                            return (
+                              <div key={v.dominio}>
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span className="font-semibold text-gray-700">{v.dominio}</span>
+                                  <span className="text-gray-500">{v.litros.toLocaleString('es-AR')} L{v.costo > 0 ? ` · $${v.costo.toLocaleString('es-AR')}` : ''}</span>
+                                </div>
+                                <div className="w-full bg-gray-100 rounded-full h-2">
+                                  <div className={`${i === 0 ? 'bg-red-400' : i === 1 ? 'bg-orange-400' : 'bg-blue-400'} h-2 rounded-full`} style={{ width: `${Math.round((v.litros / maxL) * 100)}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Conductores en alerta */}
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><Users className="w-4 h-4 text-indigo-500" />Conductores — docs</p>
+                        {(cond.enAlerta || []).length === 0 ? (
+                          <div className="text-center py-4">
+                            <p className="text-emerald-600 font-semibold text-sm">✓ Todo al día</p>
+                            <p className="text-xs text-gray-400 mt-1">{cond.total} conductores activos</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {(cond.enAlerta || []).map((c: any) => (
+                              <div key={c.nombre} className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                                <p className="text-xs font-semibold text-gray-800">{c.nombre}</p>
+                                <div className="flex gap-3 mt-0.5 text-xs">
+                                  {c.licDias != null && <span className={c.licDias < 0 ? 'text-red-600 font-bold' : c.licDias <= 7 ? 'text-orange-600 font-bold' : 'text-amber-600'}>
+                                    Lic: {c.licDias < 0 ? `vencida ${Math.abs(c.licDias)}d` : `${c.licDias}d`}
+                                  </span>}
+                                  {c.psicoDias != null && c.psicoDias <= 30 && <span className={c.psicoDias < 0 ? 'text-red-600 font-bold' : 'text-amber-600'}>
+                                    Psico: {c.psicoDias < 0 ? `vencido ${Math.abs(c.psicoDias)}d` : `${c.psicoDias}d`}
+                                  </span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── Fila 4: MTTR + Resumen texto ejecutivo ── */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Resumen ejecutivo */}
+                      <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 text-white">
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Resumen ejecutivo</p>
+                        <div className="space-y-2 text-sm">
+                          <p>
+                            <span className={`font-bold text-lg ${dispColor.replace('text-', 'text-')}`}>{f.disponibilidadPct}%</span>
+                            <span className="text-slate-300"> de disponibilidad — {f.activos}/{f.totalVehiculos} unidades operativas</span>
+                          </p>
+                          {comb.l100km && <p className="text-slate-300">Consumo promedio: <span className="text-white font-bold">{comb.l100km} L/100km</span></p>}
+                          {m.mttrHoras != null && <p className="text-slate-300">Tiempo medio de reparación: <span className="text-white font-bold">{m.mttrHoras}h</span></p>}
+                          {m.costoOTMes > 0 && <p className="text-slate-300">Costo mantenimiento mes: <span className="text-white font-bold">${m.costoOTMes.toLocaleString('es-AR')}</span></p>}
+                          {(venc.vencidos || 0) > 0 && <p className="text-red-400 font-semibold">⚠ {venc.vencidos} documentos vencidos requieren acción inmediata</p>}
+                          {(cond.enAlerta?.length || 0) > 0 && <p className="text-amber-400 font-semibold">⚠ {cond.enAlerta.length} conductores con documentación próxima a vencer</p>}
+                          {f.disponibilidadPct >= 80 && (venc.vencidos || 0) === 0 && <p className="text-emerald-400 font-semibold">✓ Flota en buen estado operativo</p>}
+                        </div>
+                      </div>
+                      {/* Métricas de mantenimiento */}
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-3">Indicadores mantenimiento</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { label: 'OTs abiertas', v: m.otAbiertas, color: m.otAbiertas > 5 ? 'text-red-600' : 'text-gray-800' },
+                            { label: 'Cerradas mes', v: m.otCerradasMes, color: 'text-emerald-600' },
+                            { label: 'MTTR (hs)', v: m.mttrHoras != null ? `${m.mttrHoras}h` : '—', color: 'text-blue-600' },
+                            { label: 'Costo OT mes', v: m.costoOTMes > 0 ? `$${(m.costoOTMes || 0).toLocaleString('es-AR')}` : '—', color: 'text-gray-700' },
+                          ].map(k => (
+                            <div key={k.label} className="bg-gray-50 rounded-xl p-3 text-center">
+                              <p className={`text-xl font-bold ${k.color}`}>{k.v}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">{k.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 

@@ -467,6 +467,202 @@ export default async function flotaRoutes(app: FastifyInstance) {
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // DASHBOARD EJECUTIVO
+  // ═══════════════════════════════════════════════════════════════
+
+  app.get('/dashboard', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const hoy = new Date();
+    const hace30 = new Date(hoy); hace30.setDate(hoy.getDate() - 30);
+    const en30dias = new Date(hoy); en30dias.setDate(hoy.getDate() + 30);
+    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const inicioMesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    const finMesAnterior = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+
+    const [
+      vehiculos,
+      neumaticos,
+      vencimientos,
+      combustibleMes,
+      combustibleMesAnt,
+      otAbiertas,
+      otCerradasMes,
+      otUltimas30,
+      conductores,
+    ] = await Promise.all([
+      (app.prisma as any).vehiculo.findMany({
+        where: { tenantId },
+        select: { id: true, dominio: true, tipo: true, status: true, currentOdometer: true },
+      }),
+      (app.prisma as any).neumatico.findMany({
+        where: { tenantId },
+        select: { id: true, status: true, kmAcumulados: true, profBanda: true },
+      }),
+      (app.prisma as any).vencimientoDocumento.findMany({
+        where: { tenantId, renovado: false, fechaVto: { lte: en30dias } },
+        include: { vehiculo: { select: { dominio: true } } },
+        orderBy: { fechaVto: 'asc' },
+      }),
+      (app.prisma as any).registroCombustible.findMany({
+        where: { tenantId, fecha: { gte: inicioMes } },
+        select: { vehiculoId: true, litros: true, costoTotal: true, rendimiento: true },
+      }),
+      (app.prisma as any).registroCombustible.findMany({
+        where: { tenantId, fecha: { gte: inicioMesAnterior, lte: finMesAnterior } },
+        select: { litros: true, costoTotal: true },
+      }),
+      (app.prisma as any).workOrder.count({
+        where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
+      }),
+      (app.prisma as any).workOrder.findMany({
+        where: { tenantId, completedAt: { gte: inicioMes }, status: 'COMPLETED' },
+        select: { id: true, startedAt: true, completedAt: true, totalCost: true, type: true },
+      }),
+      (app.prisma as any).workOrder.findMany({
+        where: { tenantId, createdAt: { gte: hace30 } },
+        select: { id: true, status: true, type: true, priority: true, totalCost: true, startedAt: true, completedAt: true, createdAt: true },
+      }),
+      (app.prisma as any).conductor.findMany({
+        where: { tenantId, status: 'ACTIVO' },
+        select: { id: true, nombre: true, licenciaVto: true, psicofisicoVto: true },
+      }),
+    ]);
+
+    // ── KPIs Flota ────────────────────────────────────────────────
+    const totalVeh = vehiculos.length;
+    const activosCount = vehiculos.filter((v: any) => v.status === 'ACTIVO').length;
+    const enTallerCount = vehiculos.filter((v: any) => v.status === 'EN_TALLER').length;
+    const disponibilidadPct = totalVeh > 0 ? Math.round((activosCount / totalVeh) * 100) : 0;
+
+    // Combustible
+    const litrosMes = combustibleMes.reduce((s: number, r: any) => s + r.litros, 0);
+    const costoCombuMes = combustibleMes.reduce((s: number, r: any) => s + (r.costoTotal || 0), 0);
+    const litrosMesAnt = combustibleMesAnt.reduce((s: number, r: any) => s + r.litros, 0);
+    const costoCombuMesAnt = combustibleMesAnt.reduce((s: number, r: any) => s + (r.costoTotal || 0), 0);
+    const rendimientos = combustibleMes.filter((r: any) => r.rendimiento != null).map((r: any) => r.rendimiento);
+    const promedioKmL = rendimientos.length > 0 ? Math.round((rendimientos.reduce((s: number, r: number) => s + r, 0) / rendimientos.length) * 100) / 100 : null;
+    // L/100km: inverso de km/L * 100
+    const l100km = promedioKmL && promedioKmL > 0 ? Math.round((100 / promedioKmL) * 100) / 100 : null;
+
+    // Consumo por vehículo este mes
+    const consumoPorVeh: Record<string, { litros: number; costo: number }> = {};
+    for (const r of combustibleMes as any[]) {
+      if (!consumoPorVeh[r.vehiculoId]) consumoPorVeh[r.vehiculoId] = { litros: 0, costo: 0 };
+      consumoPorVeh[r.vehiculoId].litros += r.litros;
+      consumoPorVeh[r.vehiculoId].costo += r.costoTotal || 0;
+    }
+    const topConsumidores = vehiculos
+      .filter((v: any) => consumoPorVeh[v.id])
+      .map((v: any) => ({ dominio: v.dominio, tipo: v.tipo, ...consumoPorVeh[v.id] }))
+      .sort((a: any, b: any) => b.litros - a.litros)
+      .slice(0, 5);
+
+    // Neumáticos en alerta (banda < 3mm o km > 80k)
+    const neumaticosAlerta = neumaticos.filter((n: any) =>
+      (n.profBanda != null && n.profBanda < 3) || n.kmAcumulados > 80000
+    ).length;
+    const neumaticosDisponibles = neumaticos.filter((n: any) => n.status === 'DISPONIBLE').length;
+    const neumaticosMontados = neumaticos.filter((n: any) => n.status === 'EN_USO').length;
+
+    // Vencimientos críticos (vencidos = fecha < hoy)
+    const vencimientosVencidos = vencimientos.filter((v: any) => new Date(v.fechaVto) < hoy);
+    const vencimientosProximos = vencimientos.filter((v: any) => new Date(v.fechaVto) >= hoy);
+
+    // Conductores con documentos por vencer
+    const conductoresAlerta = conductores.filter((c: any) => {
+      const licDias = c.licenciaVto ? Math.ceil((new Date(c.licenciaVto).getTime() - hoy.getTime()) / 86400000) : 999;
+      const psicoDias = c.psicofisicoVto ? Math.ceil((new Date(c.psicofisicoVto).getTime() - hoy.getTime()) / 86400000) : 999;
+      return licDias <= 30 || psicoDias <= 30;
+    }).map((c: any) => {
+      const licDias = c.licenciaVto ? Math.ceil((new Date(c.licenciaVto).getTime() - hoy.getTime()) / 86400000) : null;
+      const psicoDias = c.psicofisicoVto ? Math.ceil((new Date(c.psicofisicoVto).getTime() - hoy.getTime()) / 86400000) : null;
+      return { nombre: c.nombre, licDias, psicoDias };
+    });
+
+    // ── KPIs Mantenimiento ────────────────────────────────────────
+    const otCerradas = otCerradasMes.length;
+    // MTTR: tiempo medio de reparación en horas
+    const otConDuracion = otCerradasMes.filter((o: any) => o.startedAt && o.completedAt);
+    const mttr = otConDuracion.length > 0
+      ? Math.round(otConDuracion.reduce((s: number, o: any) => {
+          return s + (new Date(o.completedAt).getTime() - new Date(o.startedAt).getTime()) / 3600000;
+        }, 0) / otConDuracion.length * 10) / 10
+      : null;
+
+    const costoOTMes = otCerradasMes.reduce((s: number, o: any) => s + (o.totalCost || 0), 0);
+
+    // OTs por tipo (últimas 30 días)
+    const otPorTipo: Record<string, number> = {};
+    for (const o of otUltimas30 as any[]) {
+      otPorTipo[o.type] = (otPorTipo[o.type] || 0) + 1;
+    }
+    const otPorPrioridad: Record<string, number> = {};
+    for (const o of otUltimas30 as any[]) {
+      otPorPrioridad[o.priority] = (otPorPrioridad[o.priority] || 0) + 1;
+    }
+
+    // Tendencia OTs: agrupar por semana
+    const otPorSemana: Record<string, { abiertas: number; cerradas: number }> = {};
+    for (const o of otUltimas30 as any[]) {
+      const sem = `S${Math.ceil(new Date(o.createdAt).getDate() / 7)}`;
+      if (!otPorSemana[sem]) otPorSemana[sem] = { abiertas: 0, cerradas: 0 };
+      if (o.status === 'COMPLETED') otPorSemana[sem].cerradas++;
+      else otPorSemana[sem].abiertas++;
+    }
+
+    return reply.send({
+      flota: {
+        totalVehiculos: totalVeh,
+        activos: activosCount,
+        enTaller: enTallerCount,
+        inactivos: totalVeh - activosCount - enTallerCount,
+        disponibilidadPct,
+        combustible: {
+          litrosMes: Math.round(litrosMes * 10) / 10,
+          costoMes: Math.round(costoCombuMes),
+          litrosMesAnt: Math.round(litrosMesAnt * 10) / 10,
+          costoMesAnt: Math.round(costoCombuMesAnt),
+          variacionLitros: litrosMesAnt > 0 ? Math.round(((litrosMes - litrosMesAnt) / litrosMesAnt) * 100) : null,
+          promedioKmL,
+          l100km,
+        },
+        topConsumidores,
+        neumaticos: {
+          total: neumaticos.length,
+          disponibles: neumaticosDisponibles,
+          montados:neumaticosMontados,
+          enAlerta: neumaticosAlerta,
+        },
+        vencimientos: {
+          vencidos: vencimientosVencidos.length,
+          proximos: vencimientosProximos.length,
+          lista: vencimientos.slice(0, 8).map((v: any) => ({
+            tipo: v.tipo,
+            dominio: v.vehiculo?.dominio,
+            fechaVto: v.fechaVto,
+            diasRestantes: Math.ceil((new Date(v.fechaVto).getTime() - hoy.getTime()) / 86400000),
+          })),
+        },
+        conductores: {
+          total: conductores.length,
+          enAlerta: conductoresAlerta,
+        },
+      },
+      mantenimiento: {
+        otAbiertas,
+        otCerradasMes: otCerradas,
+        mttrHoras: mttr,
+        costoOTMes: Math.round(costoOTMes),
+        otPorTipo: Object.entries(otPorTipo).map(([tipo, count]) => ({ tipo, count })),
+        otPorPrioridad: Object.entries(otPorPrioridad).map(([prioridad, count]) => ({ prioridad, count })),
+        tendencia: Object.entries(otPorSemana).map(([semana, v]) => ({ semana, ...v })),
+      },
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // STATS / DASHBOARD
   // ═══════════════════════════════════════════════════════════════
 
