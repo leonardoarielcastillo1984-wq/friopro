@@ -937,10 +937,12 @@ async function verificarPlanesPorKm(prisma: any, tenantId: string, vehiculoId: s
     if (kmDesdeUltima >= triggerKm) {
       await prisma.maintenancePlan.updateMany({
         where: { id: plan.id, tenantId },
-        data: { 
-          nextExecutionDate: new Date(), // Marcar como vencido/vencido
-        },
+        data: { nextExecutionDate: new Date() },
       });
     }
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// GARANTÍAS DE VEHÍCULOS
+// ═══════════════════════════════════════════════════════════════

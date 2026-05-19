@@ -352,6 +352,8 @@ model Tenant {
   vencimientosDocumento VencimientoDocumento[]
   registrosCombustible  RegistroCombustible[]
   otRepuestos           OTRepuesto[]
+  vehiculoHistorialMantenimiento VehiculoHistorialMantenimiento[]
+  garantiasVehiculo     GarantiaVehiculo[]
 }
 
 model PlatformUser {
@@ -5789,6 +5791,7 @@ model Vehiculo {
   registrosCombustible RegistroCombustible[]
   posicionesNeumatico  NeumaticoPosicion[]
   historialMantenimiento VehiculoHistorialMantenimiento[]
+  garantias          GarantiaVehiculo[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -5966,4 +5969,36 @@ model OTRepuesto {
   @@index([workOrderId])
   @@index([sparePartId])
   @@map("ot_repuestos")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GARANTÍAS DE VEHÍCULOS Y COMPONENTES
+// ═══════════════════════════════════════════════════════════════
+
+model GarantiaVehiculo {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  tipo        String // MOTOR, CAJA, DIFERENCIAL, NEUMATICOS, BATERIA, OTRO
+  proveedor   String? // Quién da la garantía (concesionario, fabricante)
+  numero      String? // Número de garantía
+  fechaInicio DateTime @default(now())
+  fechaFin    DateTime
+  kilometrajeInicio Float @default(0)
+  kilometrajeLimite Float? // Hasta cuántos KM cubre
+  descripcion String?
+  status      String @default("ACTIVA") // ACTIVA, VENCIDA, CANCELADA
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@index([fechaFin])
+  @@index([status])
+  @@map("garantias_vehiculo")
 }
