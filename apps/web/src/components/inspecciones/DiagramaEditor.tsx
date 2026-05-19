@@ -27,11 +27,18 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
   const foto = fotos[activeIdx] ?? { url: '', titulo: '', puntos: [] };
 
   function onFileChange(idx: number, file: File) {
+    console.log('[DiagramaEditor] onFileChange idx=', idx, 'file=', file.name, file.type, file.size);
     const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setFotos(prev => prev.map((f, i) => i === idx ? { ...f, url: dataUrl } : f));
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      console.log('[DiagramaEditor] FileReader loaded, dataUrl length=', dataUrl?.length);
+      setFotos(prev => {
+        const next = prev.map((f, i) => i === idx ? { ...f, url: dataUrl } : f);
+        console.log('[DiagramaEditor] setFotos next[idx].url length=', next[idx]?.url?.length);
+        return next;
+      });
     };
+    reader.onerror = (err) => console.error('[DiagramaEditor] FileReader error', err);
     reader.readAsDataURL(file);
   }
 
@@ -74,6 +81,8 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
       setSaving(false);
     }
   }
+
+  console.log('[DiagramaEditor] render activeIdx=', activeIdx, 'foto.url length=', foto.url?.length, 'fotos.length=', fotos.length);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 9999, overflowY: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16 }}>
