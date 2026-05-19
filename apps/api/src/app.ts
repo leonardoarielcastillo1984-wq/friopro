@@ -80,6 +80,7 @@ import {
 import { calibrationsRoutes } from './routes/calibrations.js';
 import { hazardsRoutes } from './routes/hazards.js';
 import { aspectsRoutes } from './routes/aspects.js';
+import flotaRoutes from './routes/flota.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -256,6 +257,7 @@ export async function buildApp() {
   await app.register(climaCulturaRoutes, { prefix: '/clima' });
   await app.register(climaCanalRoutes, { prefix: '/clima' });
   await app.register(inspeccionesRoutes, { prefix: '/inspecciones' });
+  await app.register(flotaRoutes, { prefix: '/flota' });
   await app.register(registerCompanyRoutes); // Registro de empresas
   await app.register(saasRoutes);
 

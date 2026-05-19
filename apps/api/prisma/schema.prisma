@@ -343,6 +343,15 @@ model Tenant {
   inspeccionQRs         InspeccionQR[]
   inspecciones          Inspeccion[]
   inspeccionHallazgos   InspeccionHallazgo[]
+
+  // Flota360 Relations
+  vehiculos             Vehiculo[]
+  conductores           Conductor[]
+  neumaticos            Neumatico[]
+  neumaticoPosiciones   NeumaticoPosicion[]
+  vencimientosDocumento VencimientoDocumento[]
+  registrosCombustible  RegistroCombustible[]
+  otRepuestos           OTRepuesto[]
 }
 
 model PlatformUser {
@@ -5713,4 +5722,215 @@ model AIUsageLog {
   @@index([createdAt])
   @@index([tenantId, createdAt])
   @@map("ai_usage_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FLOTA 360
+// ═══════════════════════════════════════════════════════════════
+
+model Vehiculo {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Identificación
+  dominio      String  // patente
+  tipo         String  @default("CAMION") // CAMION, TRACTOR, SEMI, UTILITARIO, OTRO
+  marca        String?
+  modelo       String?
+  anio         Int?
+  color        String?
+  chasis       String?
+  motor        String?
+
+  // Odómetro
+  currentOdometer Float?  // km actuales (se actualiza con cada registro)
+
+  // Estado
+  status  String @default("ACTIVO") // ACTIVO, EN_TALLER, INACTIVO, BAJA
+  notas   String?
+
+  // Relaciones
+  conductorId String?    @db.Uuid
+  conductor   Conductor? @relation(fields: [conductorId], references: [id], onDelete: SetNull)
+
+  // Vinculación con activo de mantenimiento existente
+  maintenanceAssetId String? @db.Uuid
+
+  vencimientos       VencimientoDocumento[]
+  registrosCombustible RegistroCombustible[]
+  posicionesNeumatico  NeumaticoPosicion[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([dominio])
+  @@map("flota_vehiculos")
+}
+
+model Conductor {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nombre    String
+  dni       String?
+  telefono  String?
+  email     String?
+  categoria String? // A, B, C, D, E (categoría de licencia)
+
+  // Licencia
+  nroLicencia      String?
+  licenciaVto      DateTime?
+
+  // Psicofísico
+  psicofisicoVto   DateTime?
+
+  status  String @default("ACTIVO") // ACTIVO, INACTIVO, SUSPENDIDO
+  notas   String?
+
+  vehiculos Vehiculo[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("flota_conductores")
+}
+
+model VencimientoDocumento {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  tipo        String   // VTV, SEGURO, HABILITACION, RUTA, OTRO
+  descripcion String?
+  fechaVto    DateTime
+  alertaDias  Int      @default(30) // alertar N días antes
+  renovado    Boolean  @default(false)
+  notas       String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@index([fechaVto])
+  @@map("flota_vencimientos")
+}
+
+model Neumatico {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  codigo   String  // código interno
+  marca    String?
+  modelo   String?
+  medida   String? // ej: 295/80R22.5
+  dot      String? // fecha de fabricación DOT
+
+  // Estado
+  status       String @default("DISPONIBLE") // DISPONIBLE, EN_USO, EN_REPARACION, BAJA
+  kmAcumulados Float  @default(0)
+  profBanda    Float? // mm de profundidad de banda (desgaste)
+  notas        String?
+
+  posiciones NeumaticoPosicion[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([codigo])
+  @@map("flota_neumaticos")
+}
+
+model NeumaticoPosicion {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  neumaticoId String    @db.Uuid
+  neumatico   Neumatico @relation(fields: [neumaticoId], references: [id], onDelete: Cascade)
+
+  // Posición exacta
+  eje      Int    // 1=delantero, 2=primer trasero, 3=segundo trasero, etc.
+  lado     String // IZQ, DER
+  posicion String @default("SIMPLE") // SIMPLE, EXT (doble externo), INT (doble interno)
+
+  // Odómetro al montar/desmontar
+  kmAlMontar     Float?
+  kmAlDesmontar  Float?
+  profBandaInicio Float?
+  profBandaFin    Float?
+
+  montadoAt   DateTime  @default(now())
+  desmontadoAt DateTime?
+  activo       Boolean   @default(true) // posición actualmente montada
+
+  notas String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@index([neumaticoId])
+  @@map("flota_neumatico_posiciones")
+}
+
+model RegistroCombustible {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  conductorId String? @db.Uuid
+
+  fecha      DateTime @default(now())
+  litros     Float
+  precioPorLitro Float?
+  costoTotal Float?
+  odometro   Float?   // km al momento de cargar
+  rendimiento Float?  // km/L calculado vs carga anterior
+  estacion   String?
+  tipoCombustible String @default("DIESEL") // DIESEL, NAFTA, GNC, ELECTRICO
+
+  notas String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@map("flota_combustible")
+}
+
+model OTRepuesto {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  workOrderId String @db.Uuid
+
+  sparePartId String @db.Uuid
+
+  cantidad   Float
+  precioUnit Float?
+  subtotal   Float?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([workOrderId])
+  @@index([sparePartId])
+  @@map("ot_repuestos")
 }

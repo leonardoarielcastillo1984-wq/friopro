@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import {
   Wrench, Calendar, Users, AlertTriangle, CheckCircle, Clock, TrendingUp,
   Filter, Search, Plus, Eye, Edit, Trash2, FileText, BarChart3, Settings,
   Download, Upload, RefreshCw, Zap, Shield, HardDrive, WrenchIcon, X,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Truck, Circle, Fuel, MapPin
 } from 'lucide-react';
 
 // CalendarView Component
@@ -536,7 +536,25 @@ export default function MantenimientoPage() {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'plans' | 'technicians' | 'parts' | 'assets' | 'calendar' | 'kpis'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'plans' | 'technicians' | 'parts' | 'assets' | 'calendar' | 'kpis' | 'flota-vehiculos' | 'flota-neumaticos' | 'flota-conductores' | 'flota-vencimientos' | 'flota-combustible'>('orders');
+
+  // ── Estado Flota ──────────────────────────────────────────────
+  const [flotaVehiculos, setFlotaVehiculos] = useState<any[]>([]);
+  const [flotaConductores, setFlotaConductores] = useState<any[]>([]);
+  const [flotaNeumaticos, setFlotaNeumaticos] = useState<any[]>([]);
+  const [flotaVencimientos, setFlotaVencimientos] = useState<any[]>([]);
+  const [flotaStats, setFlotaStats] = useState<any>(null);
+  const [flotaLoaded, setFlotaLoaded] = useState(false);
+  const [showVehModal, setShowVehModal] = useState(false);
+  const [showConductorModal, setShowConductorModal] = useState(false);
+  const [showNeumaticoModal, setShowNeumaticoModal] = useState(false);
+  const [showVtoModal, setShowVtoModal] = useState<string | null>(null);
+  const [showMontarModal, setShowMontarModal] = useState<string | null>(null);
+  const [showCombustibleModal, setShowCombustibleModal] = useState<string | null>(null);
+  const [editingVeh, setEditingVeh] = useState<any>(null);
+  const [editingCond, setEditingCond] = useState<any>(null);
+  const [selectedVehComb, setSelectedVehComb] = useState<any>(null);
+  const [combustibleReg, setCombustibleReg] = useState<any[]>([]);
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
   const [showViewOrderModal, setShowViewOrderModal] = useState(false);
   const [showEditOrderModal, setShowEditOrderModal] = useState(false);
@@ -566,6 +584,12 @@ export default function MantenimientoPage() {
     loadMaintenanceData();
   }, []);
 
+  useEffect(() => {
+    if (activeTab.startsWith('flota') && !flotaLoaded) {
+      loadFlotaData();
+    }
+  }, [activeTab, flotaLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadMaintenanceData = async () => {
     try {
       setLoading(true);
@@ -590,6 +614,93 @@ export default function MantenimientoPage() {
       setLoading(false);
     }
   };
+
+  const loadFlotaData = async () => {
+    try {
+      const [v, c, n, vto, s] = await Promise.all([
+        apiFetch('/flota/vehiculos'),
+        apiFetch('/flota/conductores'),
+        apiFetch('/flota/neumaticos'),
+        apiFetch('/flota/vencimientos'),
+        apiFetch('/flota/stats'),
+      ]) as any;
+      setFlotaVehiculos(v.vehiculos || []);
+      setFlotaConductores(c.conductores || []);
+      setFlotaNeumaticos(n.neumaticos || []);
+      setFlotaVencimientos(vto.vencimientos || []);
+      setFlotaStats(s.stats || null);
+      setFlotaLoaded(true);
+    } catch (e) { console.error('Flota load error:', e); }
+  };
+
+  const loadCombustible = async (vehiculoId: string) => {
+    const data = await apiFetch(`/flota/vehiculos/${vehiculoId}/combustible`) as any;
+    setCombustibleReg(data.registros || []);
+  };
+
+  const saveVehiculo = async (data: any) => {
+    if (editingVeh) {
+      await apiFetch(`/flota/vehiculos/${editingVeh.id}`, { method: 'PATCH', json: data });
+    } else {
+      await apiFetch('/flota/vehiculos', { method: 'POST', json: data });
+    }
+    setShowVehModal(false); setEditingVeh(null); loadFlotaData();
+  };
+
+  const saveConductor = async (data: any) => {
+    if (editingCond) {
+      await apiFetch(`/flota/conductores/${editingCond.id}`, { method: 'PATCH', json: data });
+    } else {
+      await apiFetch('/flota/conductores', { method: 'POST', json: data });
+    }
+    setShowConductorModal(false); setEditingCond(null); loadFlotaData();
+  };
+
+  const saveNeumatico = async (data: any) => {
+    await apiFetch('/flota/neumaticos', { method: 'POST', json: data });
+    setShowNeumaticoModal(false); loadFlotaData();
+  };
+
+  const montarNeumatico = async (neumaticoId: string, data: any) => {
+    await apiFetch(`/flota/neumaticos/${neumaticoId}/montar`, { method: 'POST', json: data });
+    setShowMontarModal(null); loadFlotaData();
+  };
+
+  const desmontarNeumatico = async (neumaticoId: string) => {
+    if (!confirm('¿Desmontar neumático?')) return;
+    await apiFetch(`/flota/neumaticos/${neumaticoId}/desmontar`, { method: 'POST', json: {} });
+    loadFlotaData();
+  };
+
+  const saveVencimiento = async (vehiculoId: string, data: any) => {
+    await apiFetch(`/flota/vehiculos/${vehiculoId}/vencimientos`, { method: 'POST', json: data });
+    setShowVtoModal(null); loadFlotaData();
+  };
+
+  const renovarVencimiento = async (id: string) => {
+    await apiFetch(`/flota/vencimientos/${id}`, { method: 'PATCH', json: { renovado: true } });
+    loadFlotaData();
+  };
+
+  const eliminarVencimiento = async (id: string) => {
+    if (!confirm('¿Eliminar vencimiento?')) return;
+    await apiFetch(`/flota/vencimientos/${id}`, { method: 'DELETE' });
+    loadFlotaData();
+  };
+
+  const saveCombustible = async (vehiculoId: string, data: any) => {
+    await apiFetch(`/flota/vehiculos/${vehiculoId}/combustible`, { method: 'POST', json: data });
+    setShowCombustibleModal(null); loadCombustible(vehiculoId); loadFlotaData();
+  };
+
+  const diasHastaVto = (fecha: string) => Math.ceil((new Date(fecha).getTime() - Date.now()) / 86400000);
+
+  const vtoOrdenados = useMemo(() => [...flotaVencimientos].sort((a, b) => new Date(a.fechaVto).getTime() - new Date(b.fechaVto).getTime()), [flotaVencimientos]);
+  const vtoVencidos = vtoOrdenados.filter(v => diasHastaVto(v.fechaVto) < 0);
+  const vtoPorVencer = vtoOrdenados.filter(v => { const d = diasHastaVto(v.fechaVto); return d >= 0 && d <= 30; });
+
+  const TIPO_LABELS: Record<string, string> = { CAMION: 'Camión', TRACTOR: 'Tractor', SEMI: 'Semi', UTILITARIO: 'Utilitario', OTRO: 'Otro' };
+  const VEH_STATUS_COLOR: Record<string, string> = { ACTIVO: 'bg-emerald-100 text-emerald-700', EN_TALLER: 'bg-amber-100 text-amber-700', INACTIVO: 'bg-gray-100 text-gray-500', BAJA: 'bg-red-100 text-red-600' };
 
   const handleCreateWorkOrder = async (orderData: any) => {
     try {
@@ -962,74 +1073,46 @@ export default function MantenimientoPage() {
 
       {/* Navigation Tabs */}
       <div className="bg-white rounded-lg border border-gray-200 mb-6">
-        <div className="flex items-center gap-6 p-4 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
-              activeTab === 'orders' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Wrench className="w-4 h-4" />
-            Órdenes de Trabajo
-          </button>
-          <button
-            onClick={() => setActiveTab('plans')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
-              activeTab === 'plans' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            Planes de Mantenimiento
-          </button>
-          <button
-            onClick={() => setActiveTab('technicians')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
-              activeTab === 'technicians' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            Técnicos
-          </button>
-          <button
-            onClick={() => setActiveTab('parts')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
-              activeTab === 'parts' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <HardDrive className="w-4 h-4" />
-            Repuestos
-          </button>
-          <button
-            onClick={() => setActiveTab('assets')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
-              activeTab === 'assets' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Wrench className="w-4 h-4" />
-            Activos/Equipos
-          </button>
-          <button
-            onClick={() => setActiveTab('calendar')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
-              activeTab === 'calendar' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            Calendario
-          </button>
-          <button
-            onClick={() => setActiveTab('kpis')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${
-              activeTab === 'kpis' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <TrendingUp className="w-4 h-4" />
-            KPIs
-          </button>
+        <div className="overflow-x-auto">
+          <div className="flex items-center gap-1 px-4 pt-3 pb-0 border-b border-gray-200 min-w-max">
+            {/* Mantenimiento group */}
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 mr-1">Mantenimiento</span>
+            {([
+              { id: 'orders', label: 'OT', icon: <Wrench className="w-3.5 h-3.5" /> },
+              { id: 'plans', label: 'Planes', icon: <Calendar className="w-3.5 h-3.5" /> },
+              { id: 'assets', label: 'Activos', icon: <HardDrive className="w-3.5 h-3.5" /> },
+              { id: 'parts', label: 'Repuestos', icon: <HardDrive className="w-3.5 h-3.5" /> },
+              { id: 'technicians', label: 'Técnicos', icon: <Users className="w-3.5 h-3.5" /> },
+              { id: 'calendar', label: 'Calendario', icon: <Calendar className="w-3.5 h-3.5" /> },
+              { id: 'kpis', label: 'KPIs', icon: <TrendingUp className="w-3.5 h-3.5" /> },
+            ] as any[]).map(t => (
+              <button key={t.id} onClick={() => setActiveTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+                {t.icon}{t.label}
+              </button>
+            ))}
+            {/* Divider */}
+            <div className="w-px h-5 bg-gray-200 mx-2" />
+            {/* Flota 360 group */}
+            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wide px-2 mr-1 flex items-center gap-1"><Truck className="w-3 h-3" />Flota</span>
+            {([
+              { id: 'flota-vehiculos', label: 'Vehículos', icon: <Truck className="w-3.5 h-3.5" /> },
+              { id: 'flota-neumaticos', label: 'Neumáticos', icon: <Circle className="w-3.5 h-3.5" /> },
+              { id: 'flota-conductores', label: 'Conductores', icon: <Users className="w-3.5 h-3.5" /> },
+              { id: 'flota-vencimientos', label: 'Vencimientos', icon: <AlertTriangle className="w-3.5 h-3.5" />, badge: vtoVencidos.length + vtoPorVencer.length || 0 },
+              { id: 'flota-combustible', label: 'Combustible', icon: <Fuel className="w-3.5 h-3.5" /> },
+            ] as any[]).map(t => (
+              <button key={t.id} onClick={() => setActiveTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap relative ${activeTab === t.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+                {t.icon}{t.label}
+                {t.badge > 0 && <span className="ml-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{t.badge > 9 ? '9+' : t.badge}</span>}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Filters */}
-        <div className="p-4">
+        <div className={`p-4 ${activeTab.startsWith('flota') ? 'hidden' : ''}`}>
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2 flex-1 min-w-[300px]">
               <Search className="w-4 h-4 text-gray-500" />
@@ -1520,6 +1603,227 @@ export default function MantenimientoPage() {
               <AdvancedKPIs workOrders={workOrders} assets={assets} />
             </div>
           )}
+
+          {/* ══ FLOTA: VEHÍCULOS ══ */}
+          {activeTab === 'flota-vehiculos' && (
+            <div className="p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><Truck className="w-5 h-5 text-blue-600" />Vehículos ({flotaVehiculos.length})</h3>
+                <button onClick={() => { setEditingVeh(null); setShowVehModal(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><Plus className="w-4 h-4" />Nuevo vehículo</button>
+              </div>
+              {flotaStats && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                  {[
+                    { label: 'Activos', v: flotaStats.activos, color: 'emerald' },
+                    { label: 'En taller', v: flotaStats.enTaller, color: 'amber' },
+                    { label: 'Vtos. próximos', v: flotaStats.vencimientosProximos, color: flotaStats.vencimientosProximos > 0 ? 'red' : 'gray' },
+                    { label: 'Neumáticos', v: flotaStats.neumaticos, color: 'purple' },
+                  ].map(k => (
+                    <div key={k.label} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-200">
+                      <p className="text-xl font-bold text-gray-900">{k.v}</p>
+                      <p className="text-xs text-gray-500">{k.label}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {flotaVehiculos.length === 0 ? (
+                <div className="text-center py-16 bg-gray-50 rounded-xl"><Truck className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-500">Sin vehículos registrados</p></div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {flotaVehiculos.map((v: any) => {
+                    const vtoAlert = (v.vencimientos || []).filter((vt: any) => !vt.renovado && diasHastaVto(vt.fechaVto) <= 30);
+                    return (
+                      <div key={v.id} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg font-bold text-gray-900">{v.dominio}</span>
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${VEH_STATUS_COLOR[v.status] || 'bg-gray-100 text-gray-500'}`}>{v.status}</span>
+                            </div>
+                            <p className="text-sm text-gray-500">{TIPO_LABELS[v.tipo] || v.tipo}{v.marca ? ` · ${v.marca}` : ''}{v.modelo ? ` ${v.modelo}` : ''}{v.anio ? ` (${v.anio})` : ''}</p>
+                          </div>
+                          <button onClick={() => { setEditingVeh(v); setShowVehModal(true); }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"><Edit className="w-3.5 h-3.5" /></button>
+                        </div>
+                        {v.currentOdometer != null && (
+                          <div className="bg-blue-50 rounded-lg px-3 py-1.5 mb-2 flex items-center gap-2">
+                            <span className="text-base">🔢</span>
+                            <p className="text-sm font-bold text-blue-700">{v.currentOdometer.toLocaleString('es-AR')} km</p>
+                          </div>
+                        )}
+                        {v.conductor && (
+                          <p className="text-xs text-gray-500 mb-2 flex items-center gap-1"><Users className="w-3 h-3" />{v.conductor.nombre}{v.conductor.categoria ? ` · Cat. ${v.conductor.categoria}` : ''}</p>
+                        )}
+                        {(v.posicionesNeumatico || []).length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {(v.posicionesNeumatico || []).map((p: any) => (
+                              <span key={p.id} className="text-xs bg-purple-50 text-purple-700 border border-purple-100 px-1.5 py-0.5 rounded">E{p.eje}-{p.lado}{p.posicion !== 'SIMPLE' ? `-${p.posicion}` : ''}</span>
+                            ))}
+                          </div>
+                        )}
+                        {vtoAlert.length > 0 && (
+                          <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mb-2">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />{vtoAlert.length} doc. por vencer ({vtoAlert.map((vt: any) => vt.tipo).join(', ')})
+                          </div>
+                        )}
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => setShowVtoModal(v.id)} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50 flex items-center justify-center gap-1"><Calendar className="w-3 h-3" />Vencimientos</button>
+                          <button onClick={() => { setSelectedVehComb(v); setShowCombustibleModal(v.id); loadCombustible(v.id); }} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50 flex items-center justify-center gap-1"><Fuel className="w-3 h-3" />Combustible</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ FLOTA: NEUMÁTICOS ══ */}
+          {activeTab === 'flota-neumaticos' && (
+            <div className="p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><Circle className="w-5 h-5 text-purple-600" />Neumáticos ({flotaNeumaticos.length})</h3>
+                <button onClick={() => setShowNeumaticoModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><Plus className="w-4 h-4" />Nuevo neumático</button>
+              </div>
+              {flotaNeumaticos.length === 0 ? (
+                <div className="text-center py-16 bg-gray-50 rounded-xl"><Circle className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-500">Sin neumáticos registrados</p></div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {flotaNeumaticos.map((n: any) => {
+                    const montadoEn = (n.posiciones || []).find((p: any) => p.activo);
+                    const sColor: any = { DISPONIBLE: 'bg-emerald-100 text-emerald-700', EN_USO: 'bg-blue-100 text-blue-700', EN_REPARACION: 'bg-amber-100 text-amber-700', BAJA: 'bg-red-100 text-red-600' };
+                    return (
+                      <div key={n.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div><p className="font-bold text-gray-900">{n.codigo}</p><p className="text-sm text-gray-500">{[n.marca, n.modelo, n.medida].filter(Boolean).join(' · ')}</p></div>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${sColor[n.status] || 'bg-gray-100 text-gray-500'}`}>{n.status}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs text-center my-3">
+                          <div className="bg-gray-50 rounded-lg p-2"><p className="font-bold">{n.kmAcumulados.toLocaleString('es-AR')}</p><p className="text-gray-400">km acum.</p></div>
+                          <div className="bg-gray-50 rounded-lg p-2"><p className={`font-bold ${n.profBanda != null && n.profBanda < 3 ? 'text-red-600' : ''}`}>{n.profBanda != null ? `${n.profBanda}mm` : '—'}</p><p className="text-gray-400">banda</p></div>
+                          <div className="bg-gray-50 rounded-lg p-2"><p className="font-bold">{n.dot || '—'}</p><p className="text-gray-400">DOT</p></div>
+                        </div>
+                        {montadoEn && <div className="bg-blue-50 rounded-lg px-3 py-2 mb-2 text-xs text-blue-700"><p className="font-semibold">En {montadoEn.vehiculo?.dominio} · E{montadoEn.eje}-{montadoEn.lado}</p></div>}
+                        <div className="flex gap-2 mt-2">
+                          {n.status === 'DISPONIBLE' && <button onClick={() => setShowMontarModal(n.id)} className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-1.5 hover:bg-blue-700 flex items-center justify-center gap-1"><Plus className="w-3 h-3" />Montar</button>}
+                          {n.status === 'EN_USO' && <button onClick={() => desmontarNeumatico(n.id)} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50 flex items-center justify-center gap-1"><X className="w-3 h-3" />Desmontar</button>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ FLOTA: CONDUCTORES ══ */}
+          {activeTab === 'flota-conductores' && (
+            <div className="p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><Users className="w-5 h-5 text-indigo-600" />Conductores ({flotaConductores.length})</h3>
+                <button onClick={() => { setEditingCond(null); setShowConductorModal(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><Plus className="w-4 h-4" />Nuevo conductor</button>
+              </div>
+              {flotaConductores.length === 0 ? (
+                <div className="text-center py-16 bg-gray-50 rounded-xl"><Users className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-500">Sin conductores registrados</p></div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {flotaConductores.map((c: any) => {
+                    const licDias = c.licenciaVto ? diasHastaVto(c.licenciaVto) : null;
+                    const psicoDias = c.psicofisicoVto ? diasHastaVto(c.psicofisicoVto) : null;
+                    return (
+                      <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="font-bold text-gray-900">{c.nombre}</p>
+                            <p className="text-sm text-gray-500">{[c.dni ? `DNI ${c.dni}` : null, c.telefono].filter(Boolean).join(' · ')}</p>
+                          </div>
+                          <div className="flex gap-1 items-center">
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.status === 'ACTIVO' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{c.status}</span>
+                            <button onClick={() => { setEditingCond(c); setShowConductorModal(true); }} className="p-1 text-gray-400 hover:text-blue-600"><Edit className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs my-2">
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="text-gray-400 mb-0.5">Lic. cat. {c.categoria || '—'}</p>
+                            {licDias != null && <p className={licDias < 0 ? 'text-red-600 font-semibold' : licDias <= 30 ? 'text-amber-600' : 'text-gray-500'}>{licDias < 0 ? '⚠️ Vencida' : `En ${licDias}d`}</p>}
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="text-gray-400 mb-0.5">Psicofísico</p>
+                            {psicoDias != null && <p className={psicoDias < 0 ? 'text-red-600 font-semibold' : psicoDias <= 30 ? 'text-amber-600' : 'text-gray-500'}>{psicoDias < 0 ? '⚠️ Vencido' : `En ${psicoDias}d`}</p>}
+                          </div>
+                        </div>
+                        {(c.vehiculos || []).length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">{(c.vehiculos || []).map((v: any) => <span key={v.id} className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded">{v.dominio}</span>)}</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ FLOTA: VENCIMIENTOS ══ */}
+          {activeTab === 'flota-vencimientos' && (
+            <div className="p-4 space-y-5">
+              {[
+                { label: '⛔ Vencidos', items: vtoVencidos, ringColor: 'bg-red-500' },
+                { label: '⚠️ Por vencer (≤30 días)', items: vtoPorVencer, ringColor: 'bg-amber-500' },
+                { label: '✅ Al día', items: vtoOrdenados.filter(v => diasHastaVto(v.fechaVto) > 30), ringColor: 'bg-emerald-500' },
+              ].map(group => group.items.length > 0 && (
+                <div key={group.label}>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">{group.label} ({group.items.length})</p>
+                  <div className="space-y-2">
+                    {group.items.map((v: any) => {
+                      const dias = diasHastaVto(v.fechaVto);
+                      return (
+                        <div key={v.id} className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3">
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${group.ringColor}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold border border-gray-200 text-gray-600 px-2 py-0.5 rounded">{v.tipo}</span>
+                              <span className="font-semibold text-gray-900">{v.vehiculo?.dominio}</span>
+                              {v.descripcion && <span className="text-xs text-gray-400">{v.descripcion}</span>}
+                            </div>
+                            <p className="text-xs text-gray-500">{new Date(v.fechaVto).toLocaleDateString('es-AR')}{dias < 0 ? ` — hace ${Math.abs(dias)}d` : ` — en ${dias}d`}</p>
+                          </div>
+                          <button onClick={() => renovarVencimiento(v.id)} className="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded-lg hover:bg-emerald-700 shrink-0">Renovar</button>
+                          <button onClick={() => eliminarVencimiento(v.id)} className="text-gray-300 hover:text-red-500 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              {vtoOrdenados.length === 0 && (
+                <div className="text-center py-16 bg-gray-50 rounded-xl">
+                  <AlertTriangle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">Sin vencimientos registrados</p>
+                  <p className="text-xs text-gray-400 mt-1">Entrá a un vehículo y agregá sus documentos (VTV, seguro, etc.)</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ FLOTA: COMBUSTIBLE ══ */}
+          {activeTab === 'flota-combustible' && (
+            <div className="p-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2"><Fuel className="w-5 h-5 text-blue-600" />Combustible — seleccioná un vehículo</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {flotaVehiculos.map((v: any) => (
+                  <button key={v.id} onClick={() => { setSelectedVehComb(v); setShowCombustibleModal(v.id); loadCombustible(v.id); }}
+                    className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-blue-300 transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center"><Fuel className="w-5 h-5 text-blue-600" /></div>
+                      <div><p className="font-bold text-gray-900">{v.dominio}</p><p className="text-xs text-gray-500">{TIPO_LABELS[v.tipo]} · {v._count?.registrosCombustible || 0} registros</p></div>
+                    </div>
+                    {v.currentOdometer != null && <p className="text-xs text-blue-600 font-medium mt-2">🔢 {v.currentOdometer.toLocaleString('es-AR')} km</p>}
+                  </button>
+                ))}
+                {flotaVehiculos.length === 0 && <p className="text-gray-400 text-sm col-span-3 text-center py-8">Primero registrá vehículos en la pestaña Vehículos</p>}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 
@@ -2683,6 +2987,289 @@ export default function MantenimientoPage() {
           </div>
         </div>
       )}
+
+      {/* ══ MODALS FLOTA ══ */}
+
+      {showVehModal && (
+        <FlotaModal title={editingVeh ? `Editar ${editingVeh.dominio}` : 'Nuevo vehículo'} onClose={() => { setShowVehModal(false); setEditingVeh(null); }}>
+          <FlotaVehiculoForm vehiculo={editingVeh} conductores={flotaConductores} tipoLabels={TIPO_LABELS} onSave={saveVehiculo} onClose={() => { setShowVehModal(false); setEditingVeh(null); }} />
+        </FlotaModal>
+      )}
+
+      {showConductorModal && (
+        <FlotaModal title={editingCond ? `Editar ${editingCond.nombre}` : 'Nuevo conductor'} onClose={() => { setShowConductorModal(false); setEditingCond(null); }}>
+          <FlotaConductorForm conductor={editingCond} onSave={saveConductor} onClose={() => { setShowConductorModal(false); setEditingCond(null); }} />
+        </FlotaModal>
+      )}
+
+      {showNeumaticoModal && (
+        <FlotaModal title="Nuevo neumático" onClose={() => setShowNeumaticoModal(false)}>
+          <FlotaNeumaticoForm onSave={saveNeumatico} onClose={() => setShowNeumaticoModal(false)} />
+        </FlotaModal>
+      )}
+
+      {showMontarModal && (
+        <FlotaModal title="Montar neumático en vehículo" onClose={() => setShowMontarModal(null)}>
+          <FlotaMontarForm neumaticoId={showMontarModal} vehiculos={flotaVehiculos} tipoLabels={TIPO_LABELS} onSave={montarNeumatico} onClose={() => setShowMontarModal(null)} />
+        </FlotaModal>
+      )}
+
+      {showVtoModal && (
+        <FlotaModal title={`Vencimientos — ${flotaVehiculos.find(v => v.id === showVtoModal)?.dominio || ''}`} onClose={() => setShowVtoModal(null)}>
+          <FlotaVtoForm
+            vehiculoId={showVtoModal}
+            vencimientos={flotaVencimientos.filter(v => v.vehiculoId === showVtoModal)}
+            diasHastaVto={diasHastaVto}
+            onSave={saveVencimiento}
+            onRenovar={renovarVencimiento}
+            onEliminar={eliminarVencimiento}
+            onClose={() => setShowVtoModal(null)}
+          />
+        </FlotaModal>
+      )}
+
+      {showCombustibleModal && selectedVehComb && (
+        <FlotaModal title={`Combustible — ${selectedVehComb.dominio}`} onClose={() => { setShowCombustibleModal(null); setSelectedVehComb(null); setCombustibleReg([]); }}>
+          <FlotaCombustibleForm
+            vehiculo={selectedVehComb}
+            registros={combustibleReg}
+            onSave={saveCombustible}
+            onClose={() => { setShowCombustibleModal(null); setSelectedVehComb(null); setCombustibleReg([]); }}
+          />
+        </FlotaModal>
+      )}
+
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FLOTA MODAL COMPONENTS
+// ═══════════════════════════════════════════════════════════════
+
+function FlotaModal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+          <h2 className="font-bold text-gray-900">{title}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const FI = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div><label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>{children}</div>
+);
+const inp = "w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500";
+
+function FlotaVehiculoForm({ vehiculo, conductores, tipoLabels, onSave, onClose }: any) {
+  const [f, setF] = useState({
+    dominio: vehiculo?.dominio || '', tipo: vehiculo?.tipo || 'CAMION', marca: vehiculo?.marca || '',
+    modelo: vehiculo?.modelo || '', anio: vehiculo?.anio?.toString() || '', color: vehiculo?.color || '',
+    chasis: vehiculo?.chasis || '', motor: vehiculo?.motor || '', status: vehiculo?.status || 'ACTIVO',
+    conductorId: vehiculo?.conductorId || '', currentOdometer: vehiculo?.currentOdometer?.toString() || '', notas: vehiculo?.notas || '',
+  });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2"><FI label="Dominio / Patente *"><input value={f.dominio} onChange={set('dominio')} className={inp + ' uppercase'} placeholder="ABC123" /></FI></div>
+        <FI label="Tipo"><select value={f.tipo} onChange={set('tipo')} className={inp}>{Object.entries(tipoLabels).map(([k, v]: any) => <option key={k} value={k}>{v}</option>)}</select></FI>
+        <FI label="Estado"><select value={f.status} onChange={set('status')} className={inp}>{['ACTIVO','EN_TALLER','INACTIVO','BAJA'].map(s => <option key={s}>{s}</option>)}</select></FI>
+        <FI label="Marca"><input value={f.marca} onChange={set('marca')} className={inp} placeholder="Volvo, Scania..." /></FI>
+        <FI label="Modelo"><input value={f.modelo} onChange={set('modelo')} className={inp} /></FI>
+        <FI label="Año"><input type="number" value={f.anio} onChange={set('anio')} className={inp} placeholder="2022" /></FI>
+        <FI label="Color"><input value={f.color} onChange={set('color')} className={inp} /></FI>
+        <FI label="Nº Chasis"><input value={f.chasis} onChange={set('chasis')} className={inp} /></FI>
+        <FI label="Nº Motor"><input value={f.motor} onChange={set('motor')} className={inp} /></FI>
+        <FI label="Odómetro actual (km)"><input type="number" value={f.currentOdometer} onChange={set('currentOdometer')} className={inp} placeholder="125000" /></FI>
+        <FI label="Conductor asignado">
+          <select value={f.conductorId} onChange={set('conductorId')} className={inp}>
+            <option value="">Sin asignar</option>
+            {conductores.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </FI>
+        <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-14 resize-none'} /></FI></div>
+      </div>
+      <div className="flex gap-3 pt-2">
+        <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
+        <button onClick={() => { if (!f.dominio.trim()) return alert('Dominio requerido'); onSave({ ...f, anio: f.anio ? parseInt(f.anio) : undefined, currentOdometer: f.currentOdometer ? parseFloat(f.currentOdometer) : undefined, conductorId: f.conductorId || null }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Guardar</button>
+      </div>
+    </div>
+  );
+}
+
+function FlotaConductorForm({ conductor, onSave, onClose }: any) {
+  const [f, setF] = useState({
+    nombre: conductor?.nombre || '', dni: conductor?.dni || '', telefono: conductor?.telefono || '',
+    email: conductor?.email || '', categoria: conductor?.categoria || '', nroLicencia: conductor?.nroLicencia || '',
+    licenciaVto: conductor?.licenciaVto?.split('T')[0] || '', psicofisicoVto: conductor?.psicofisicoVto?.split('T')[0] || '',
+    status: conductor?.status || 'ACTIVO', notas: conductor?.notas || '',
+  });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2"><FI label="Nombre completo *"><input value={f.nombre} onChange={set('nombre')} className={inp} /></FI></div>
+        <FI label="DNI"><input value={f.dni} onChange={set('dni')} className={inp} /></FI>
+        <FI label="Teléfono"><input value={f.telefono} onChange={set('telefono')} className={inp} /></FI>
+        <FI label="Email"><input type="email" value={f.email} onChange={set('email')} className={inp} /></FI>
+        <FI label="Categoría lic."><select value={f.categoria} onChange={set('categoria')} className={inp}><option value="">—</option>{['A','B','C','D','E'].map(c => <option key={c}>{c}</option>)}</select></FI>
+        <FI label="Nº Licencia"><input value={f.nroLicencia} onChange={set('nroLicencia')} className={inp} /></FI>
+        <FI label="Estado"><select value={f.status} onChange={set('status')} className={inp}>{['ACTIVO','INACTIVO','SUSPENDIDO'].map(s => <option key={s}>{s}</option>)}</select></FI>
+        <FI label="Vto. Licencia"><input type="date" value={f.licenciaVto} onChange={set('licenciaVto')} className={inp} /></FI>
+        <FI label="Vto. Psicofísico"><input type="date" value={f.psicofisicoVto} onChange={set('psicofisicoVto')} className={inp} /></FI>
+        <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-14 resize-none'} /></FI></div>
+      </div>
+      <div className="flex gap-3 pt-2">
+        <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
+        <button onClick={() => { if (!f.nombre.trim()) return alert('Nombre requerido'); onSave(f); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Guardar</button>
+      </div>
+    </div>
+  );
+}
+
+function FlotaNeumaticoForm({ onSave, onClose }: any) {
+  const [f, setF] = useState({ codigo: '', marca: '', modelo: '', medida: '', dot: '', profBanda: '', notas: '' });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2"><FI label="Código interno *"><input value={f.codigo} onChange={set('codigo')} className={inp} placeholder="NM-001" /></FI></div>
+        <FI label="Marca"><input value={f.marca} onChange={set('marca')} className={inp} placeholder="Bridgestone..." /></FI>
+        <FI label="Modelo"><input value={f.modelo} onChange={set('modelo')} className={inp} /></FI>
+        <FI label="Medida"><input value={f.medida} onChange={set('medida')} className={inp} placeholder="295/80R22.5" /></FI>
+        <FI label="DOT"><input value={f.dot} onChange={set('dot')} className={inp} placeholder="2452" /></FI>
+        <div className="col-span-2"><FI label="Prof. banda inicial (mm)"><input type="number" step="0.1" value={f.profBanda} onChange={set('profBanda')} className={inp} placeholder="12" /></FI></div>
+        <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-12 resize-none'} /></FI></div>
+      </div>
+      <div className="flex gap-3 pt-2">
+        <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
+        <button onClick={() => { if (!f.codigo.trim()) return alert('Código requerido'); onSave({ ...f, profBanda: f.profBanda ? parseFloat(f.profBanda) : undefined }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Crear</button>
+      </div>
+    </div>
+  );
+}
+
+function FlotaMontarForm({ neumaticoId, vehiculos, tipoLabels, onSave, onClose }: any) {
+  const [f, setF] = useState({ vehiculoId: '', eje: '1', lado: 'IZQ', posicion: 'SIMPLE', kmAlMontar: '', profBandaInicio: '' });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2"><FI label="Vehículo *"><select value={f.vehiculoId} onChange={set('vehiculoId')} className={inp}><option value="">Seleccionar...</option>{vehiculos.map((v: any) => <option key={v.id} value={v.id}>{v.dominio} — {tipoLabels[v.tipo] || v.tipo}</option>)}</select></FI></div>
+        <FI label="Eje *"><select value={f.eje} onChange={set('eje')} className={inp}>{[1,2,3,4,5].map(n => <option key={n} value={n}>Eje {n}</option>)}</select></FI>
+        <FI label="Lado *"><select value={f.lado} onChange={set('lado')} className={inp}><option value="IZQ">Izquierdo</option><option value="DER">Derecho</option></select></FI>
+        <FI label="Posición"><select value={f.posicion} onChange={set('posicion')} className={inp}><option value="SIMPLE">Simple</option><option value="EXT">Doble externo</option><option value="INT">Doble interno</option></select></FI>
+        <FI label="Odómetro al montar"><input type="number" value={f.kmAlMontar} onChange={set('kmAlMontar')} className={inp} /></FI>
+        <div className="col-span-2"><FI label="Prof. banda al montar (mm)"><input type="number" step="0.1" value={f.profBandaInicio} onChange={set('profBandaInicio')} className={inp} /></FI></div>
+      </div>
+      <div className="flex gap-3 pt-2">
+        <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
+        <button onClick={() => { if (!f.vehiculoId) return alert('Seleccioná un vehículo'); onSave(neumaticoId, { vehiculoId: f.vehiculoId, eje: parseInt(f.eje), lado: f.lado, posicion: f.posicion, kmAlMontar: f.kmAlMontar ? parseFloat(f.kmAlMontar) : undefined, profBandaInicio: f.profBandaInicio ? parseFloat(f.profBandaInicio) : undefined }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Montar</button>
+      </div>
+    </div>
+  );
+}
+
+function FlotaVtoForm({ vehiculoId, vencimientos, diasHastaVto, onSave, onRenovar, onEliminar, onClose }: any) {
+  const [adding, setAdding] = useState(false);
+  const [f, setF] = useState({ tipo: 'VTV', descripcion: '', fechaVto: '', alertaDias: '30' });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  return (
+    <div>
+      <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
+        {vencimientos.length === 0 && !adding && <p className="text-sm text-gray-400 text-center py-4">Sin vencimientos</p>}
+        {vencimientos.map((v: any) => {
+          const dias = diasHastaVto(v.fechaVto);
+          return (
+            <div key={v.id} className={`flex items-center gap-3 rounded-xl px-3 py-2 border ${dias < 0 ? 'bg-red-50 border-red-200' : dias <= 30 ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+              <span className="text-xs font-bold bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded shrink-0">{v.tipo}</span>
+              <div className="flex-1 min-w-0">
+                {v.descripcion && <p className="text-xs text-gray-500 truncate">{v.descripcion}</p>}
+                <p className="text-xs font-medium text-gray-700">{new Date(v.fechaVto).toLocaleDateString('es-AR')}{dias < 0 ? ` ⛔ hace ${Math.abs(dias)}d` : ` · en ${dias}d`}</p>
+              </div>
+              {!v.renovado && <button onClick={() => onRenovar(v.id)} className="text-xs bg-emerald-600 text-white px-2 py-1 rounded-lg shrink-0">Renovar</button>}
+              <button onClick={() => onEliminar(v.id)} className="text-gray-300 hover:text-red-500 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          );
+        })}
+      </div>
+      {adding ? (
+        <div className="border border-blue-200 bg-blue-50 rounded-xl p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <FI label="Tipo *"><select value={f.tipo} onChange={set('tipo')} className={inp}>{['VTV','SEGURO','HABILITACION','RUTA','OTRO'].map(t => <option key={t}>{t}</option>)}</select></FI>
+            <FI label="Descripción"><input value={f.descripcion} onChange={set('descripcion')} className={inp} /></FI>
+            <FI label="Fecha vencimiento *"><input type="date" value={f.fechaVto} onChange={set('fechaVto')} className={inp} /></FI>
+            <FI label="Alertar N días antes"><input type="number" value={f.alertaDias} onChange={set('alertaDias')} className={inp} /></FI>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setAdding(false)} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-1.5 text-sm">Cancelar</button>
+            <button onClick={() => { if (!f.fechaVto) return alert('Fecha requerida'); onSave(vehiculoId, { ...f, alertaDias: parseInt(f.alertaDias) }); setAdding(false); setF({ tipo: 'VTV', descripcion: '', fechaVto: '', alertaDias: '30' }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-1.5 text-sm">Agregar</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setAdding(true)} className="w-full border-2 border-dashed border-gray-200 text-gray-400 rounded-xl py-3 text-sm hover:border-blue-300 hover:text-blue-500 flex items-center justify-center gap-2">
+          <Plus className="w-4 h-4" />Agregar vencimiento
+        </button>
+      )}
+      <button onClick={onClose} className="w-full mt-3 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cerrar</button>
+    </div>
+  );
+}
+
+function FlotaCombustibleForm({ vehiculo, registros, onSave, onClose }: any) {
+  const [adding, setAdding] = useState(false);
+  const [f, setF] = useState({ litros: '', precioPorLitro: '', odometro: '', estacion: '', tipoCombustible: 'DIESEL', fecha: new Date().toISOString().split('T')[0], notas: '' });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  const totalLitros = registros.reduce((s: number, r: any) => s + r.litros, 0);
+  const totalCosto = registros.reduce((s: number, r: any) => s + (r.costoTotal || 0), 0);
+  const rends = registros.filter((r: any) => r.rendimiento);
+  const rendProm = rends.length ? rends.reduce((s: number, r: any) => s + r.rendimiento, 0) / rends.length : 0;
+  return (
+    <div>
+      {registros.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="bg-blue-50 rounded-xl p-3 text-center"><p className="text-lg font-bold text-blue-700">{totalLitros.toLocaleString('es-AR', { maximumFractionDigits: 0 })} L</p><p className="text-xs text-blue-500">Total cargado</p></div>
+          <div className="bg-green-50 rounded-xl p-3 text-center"><p className="text-lg font-bold text-green-700">${totalCosto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p><p className="text-xs text-green-500">Costo total</p></div>
+          <div className="bg-purple-50 rounded-xl p-3 text-center"><p className="text-lg font-bold text-purple-700">{rendProm > 0 ? `${rendProm.toFixed(1)} km/L` : '—'}</p><p className="text-xs text-purple-500">Rendimiento</p></div>
+        </div>
+      )}
+      <div className="space-y-2 max-h-48 overflow-y-auto mb-4">
+        {registros.slice(0, 10).map((r: any) => (
+          <div key={r.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2 text-sm">
+            <Fuel className="w-4 h-4 text-gray-400 shrink-0" />
+            <div className="flex-1"><span className="font-medium">{r.litros} L</span>{r.precioPorLitro && <span className="text-gray-500"> · ${r.precioPorLitro}/L</span>}{r.rendimiento && <span className="text-emerald-600 font-medium"> · {r.rendimiento} km/L</span>}</div>
+            <div className="text-xs text-gray-400 text-right"><p>{new Date(r.fecha).toLocaleDateString('es-AR')}</p>{r.odometro && <p>{r.odometro.toLocaleString('es-AR')} km</p>}</div>
+          </div>
+        ))}
+        {registros.length === 0 && !adding && <p className="text-sm text-gray-400 text-center py-4">Sin registros</p>}
+      </div>
+      {adding ? (
+        <div className="border border-blue-200 bg-blue-50 rounded-xl p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <FI label="Litros *"><input type="number" step="0.01" value={f.litros} onChange={set('litros')} className={inp} placeholder="120" /></FI>
+            <FI label="Precio/litro"><input type="number" step="0.01" value={f.precioPorLitro} onChange={set('precioPorLitro')} className={inp} placeholder="1200" /></FI>
+            <FI label="Odómetro (km)"><input type="number" value={f.odometro} onChange={set('odometro')} className={inp} /></FI>
+            <FI label="Tipo"><select value={f.tipoCombustible} onChange={set('tipoCombustible')} className={inp}>{['DIESEL','NAFTA','GNC','ELECTRICO'].map(t => <option key={t}>{t}</option>)}</select></FI>
+            <FI label="Estación"><input value={f.estacion} onChange={set('estacion')} className={inp} /></FI>
+            <FI label="Fecha"><input type="date" value={f.fecha} onChange={set('fecha')} className={inp} /></FI>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setAdding(false)} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-1.5 text-sm">Cancelar</button>
+            <button onClick={() => { if (!f.litros) return alert('Litros requerido'); onSave(vehiculo.id, { ...f, litros: parseFloat(f.litros), precioPorLitro: f.precioPorLitro ? parseFloat(f.precioPorLitro) : undefined, odometro: f.odometro ? parseFloat(f.odometro) : undefined }); setAdding(false); }} className="flex-1 bg-blue-600 text-white rounded-lg py-1.5 text-sm">Registrar carga</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setAdding(true)} className="w-full border-2 border-dashed border-gray-200 text-gray-400 rounded-xl py-3 text-sm hover:border-blue-300 hover:text-blue-500 flex items-center justify-center gap-2">
+          <Plus className="w-4 h-4" />Nueva carga de combustible
+        </button>
+      )}
+      <button onClick={onClose} className="w-full mt-3 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cerrar</button>
     </div>
   );
 }
