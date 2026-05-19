@@ -447,6 +447,13 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       },
     });
     if (!inspeccion) return reply.code(404).send({ error: 'No encontrada' });
+    if (inspeccion.qr?.plantilla) {
+      const pf = await (app.prisma as any).inspeccionPlantilla.findUnique({
+        where: { id: inspeccion.qr.plantilla.id },
+        select: { diagramaFotos: true },
+      });
+      inspeccion.qr.plantilla.diagramaFotos = pf?.diagramaFotos ?? null;
+    }
     return reply.send({ inspeccion });
   });
 

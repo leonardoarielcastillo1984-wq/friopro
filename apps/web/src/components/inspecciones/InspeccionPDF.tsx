@@ -42,6 +42,33 @@ export default function InspeccionPDFButton({ inspeccion, empresa = 'SGI 360', l
         </tr>${rows}`;
     }).join('');
 
+    const diagramaFotos: any[] = inspeccion.qr?.plantilla?.diagramaFotos ?? [];
+    const fotosConUrl = diagramaFotos.filter((f: any) => f.url);
+    const diagramaHtml = fotosConUrl.length > 0 ? `
+      <div style="margin-bottom:16px;">
+        <div style="font-weight:bold;font-size:11px;color:#475569;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Diagrama de control</div>
+        <div style="display:grid;grid-template-columns:${fotosConUrl.length === 1 ? '1fr' : '1fr 1fr'};gap:8px;">
+          ${fotosConUrl.map((foto: any) => `
+            <div style="position:relative;border-radius:6px;overflow:hidden;border:1px solid #e2e8f0;">
+              <img src="${foto.url}" style="width:100%;display:block;max-height:180px;object-fit:cover;" />
+              <div style="position:absolute;top:4px;left:6px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-weight:bold;padding:2px 6px;border-radius:3px;">${foto.titulo || ''}</div>
+              ${(foto.puntos || []).map((p: any, pi: number) => `
+                <div style="position:absolute;left:${p.x}%;top:${p.y}%;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;background:${primaryColor};border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:8px;font-weight:bold;box-shadow:0 1px 4px rgba(0,0,0,.4);">${pi + 1}</div>
+              `).join('')}
+            </div>
+          `).join('')}
+        </div>
+        ${fotosConUrl.some((f: any) => f.puntos?.length > 0) ? `
+        <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
+          ${fotosConUrl.flatMap((f: any) => (f.puntos || []).map((p: any, pi: number) => `
+            <div style="display:flex;gap:5px;align-items:center;font-size:9px;color:#475569;">
+              <span style="width:14px;height:14px;border-radius:50%;background:${primaryColor};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:7px;font-weight:bold;flex-shrink:0;">${pi + 1}</span>
+              ${p.label}
+            </div>
+          `)).join('')}
+        </div>` : ''}
+      </div>` : '';
+
     const hallazgosHtml = inspeccion.hallazgos?.length > 0 ? `
       <div style="margin-top:16px;">
         <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 14px;">
@@ -109,6 +136,8 @@ ${inspeccion.puntaje !== null ? `<div class="puntaje">
   <div style="flex:1;"><div class="bar-bg"><div class="bar-fill"></div></div></div>
   <span style="font-size:11px;color:#475569;">${inspeccion.itemsOk}/${inspeccion.itemsTotal} ítems OK</span>
 </div>` : ''}
+
+${diagramaHtml}
 
 <table>
   <thead><tr>

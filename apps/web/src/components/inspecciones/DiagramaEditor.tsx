@@ -122,10 +122,13 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
           <div className="w-44 border-r border-gray-100 flex flex-col p-3 gap-2 shrink-0">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-1 mb-1">Vistas</p>
             {fotos.map((f, idx) => (
-              <button
+              <div
                 key={idx}
+                role="button"
+                tabIndex={0}
                 onClick={() => { setActiveFoto(idx); setAddingPoint(false); setEditingPoint(null); }}
-                className={`relative text-left px-3 py-2.5 rounded-xl text-xs font-medium transition-colors group ${
+                onKeyDown={e => e.key === 'Enter' && setActiveFoto(idx)}
+                className={`relative cursor-pointer text-left px-3 py-2.5 rounded-xl text-xs font-medium transition-colors group select-none ${
                   activeFoto === idx ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
@@ -133,6 +136,7 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
                   <span className="truncate">{f.titulo || `Vista ${idx + 1}`}</span>
                   {fotos.length > 1 && (
                     <button
+                      type="button"
                       onClick={e => { e.stopPropagation(); removeFoto(idx); }}
                       className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
                     >
@@ -148,7 +152,7 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
                   <ImagePlus className="w-3 h-3 text-gray-400" />
                 </div>}
                 <span className="text-xs text-gray-400">{f.puntos.length} puntos</span>
-              </button>
+              </div>
             ))}
             {fotos.length < 4 && (
               <button
