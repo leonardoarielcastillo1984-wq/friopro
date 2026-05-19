@@ -148,6 +148,16 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     const updateData = request.body as any;
 
     try {
+      // Obtener orden actual para verificar cambio de estado
+      const ordenActual = await getPrisma(request).workOrder.findFirst({
+        where: { id, tenantId: request.db.tenantId },
+        include: { asset: true }
+      });
+      
+      if (!ordenActual) {
+        return reply.code(404).send({ error: 'Orden de trabajo no encontrada' });
+      }
+
       const workOrder = await getPrisma(request).workOrder.update({
         where: { id, tenantId: request.db.tenantId },
         data: {
@@ -158,6 +168,47 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
         },
         include: { asset: true, technician: true }
       });
+
+      // ═══════════════════════════════════════════════════════════════
+      // INTEGRACIÓN OT ↔ FLOTA
+      // ═══════════════════════════════════════════════════════════════
+      const seCompleto = ordenActual.status !== 'COMPLETED' && updateData.status === 'COMPLETED';
+      
+      if (seCompleto && workOrder.assetId) {
+        // Verificar si el asset está vinculado a un vehículo
+        const vehiculo = await getPrisma(request).vehiculo.findFirst({
+          where: { id: workOrder.assetId, tenantId: request.db.tenantId },
+        });
+        
+        if (vehiculo) {
+          // Si se proporcionó odómetro en la OT, actualizar vehículo
+          if (updateData.finalOdometer || updateData.odometro) {
+            const nuevoOdometro = updateData.finalOdometer || updateData.odometro;
+            await getPrisma(request).vehiculo.update({
+              where: { id: vehiculo.id, tenantId: request.db.tenantId },
+              data: { currentOdometer: nuevoOdometro }
+            });
+            
+            // Verificar planes de mantenimiento por KM
+            await verificarPlanesKmDespuesDeOt(getPrisma(request), request.db.tenantId, vehiculo.id, nuevoOdometro);
+          }
+          
+          // Registrar en historial de mantenimiento del vehículo
+          await getPrisma(request).vehiculoHistorialMantenimiento.create({
+            data: {
+              tenantId: request.db.tenantId,
+              vehiculoId: vehiculo.id,
+              workOrderId: workOrder.id,
+              fecha: new Date(),
+              tipo: workOrder.type,
+              descripcion: workOrder.title,
+              costo: workOrder.totalCost || 0,
+              odometro: updateData.finalOdometer || updateData.odometro || vehiculo.currentOdometer,
+              notas: workOrder.description || '',
+            }
+          });
+        }
+      }
 
       return reply.send({ workOrder });
     } catch (error) {
@@ -822,4 +873,31 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       }
     });
   });
+}
+
+// Función auxiliar para verificar planes por KM después de completar una OT
+async function verificarPlanesKmDespuesDeOt(prisma: any, tenantId: string, vehiculoId: string, odometer: number) {
+  try {
+    const planes = await prisma.maintenancePlan.findMany({
+      where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM', assetId: vehiculoId },
+      select: { id: true, triggerKm: true, lastOdometerExecution: true },
+    });
+    
+    for (const plan of planes) {
+      const kmDesdeUltima = plan.lastOdometerExecution 
+        ? odometer - plan.lastOdometerExecution 
+        : odometer;
+      const triggerKm = plan.triggerKm || 0;
+      
+      // Si alcanzó o superó el umbral, actualizar nextExecutionDate
+      if (kmDesdeUltima >= triggerKm) {
+        await prisma.maintenancePlan.updateMany({
+          where: { id: plan.id, tenantId },
+          data: { nextExecutionDate: new Date() },
+        });
+      }
+    }
+  } catch (e) {
+    // Silenciar errores - no debe bloquear la operación principal
+  }
 }

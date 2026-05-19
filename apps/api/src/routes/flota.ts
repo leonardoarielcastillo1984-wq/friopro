@@ -786,6 +786,138 @@ export default async function flotaRoutes(app: FastifyInstance) {
     
     return reply.send({ pendientes, total: pendientes.length, critical: pendientes.filter((p: any) => p.alerta === 'CRITICAL').length });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // ANÁLISIS TCO (Total Cost of Ownership) — Costo por KM
+  // ═══════════════════════════════════════════════════════════════
+
+  app.get('/tco/analisis', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const { desde, hasta } = req.query as any;
+    const fechaDesde = desde ? new Date(desde) : new Date(new Date().getFullYear(), 0, 1);
+    const fechaHasta = hasta ? new Date(hasta) : new Date();
+
+    // Obtener todos los vehículos activos
+    const vehiculos = await (app.prisma as any).vehiculo.findMany({
+      where: { tenantId, status: 'ACTIVO' },
+      select: { id: true, dominio: true, tipo: true, currentOdometer: true, marca: true, modelo: true },
+    });
+
+    const resultados = await Promise.all((vehiculos as any[]).map(async (v: any) => {
+      // 1. Costo de combustible
+      const combustibleAgg = await (app.prisma as any).registroCombustible.aggregate({
+        where: { vehiculoId: v.id, tenantId, fecha: { gte: fechaDesde, lte: fechaHasta } },
+        _sum: { costoTotal: true, litros: true },
+      });
+
+      // 2. Costo de mantenimiento (OTs)
+      const mantenimientoAgg = await (app.prisma as any).workOrder.aggregate({
+        where: {
+          tenantId,
+          assetId: v.id,
+          status: 'COMPLETED',
+          completedDate: { gte: fechaDesde, lte: fechaHasta },
+        },
+        _sum: { totalCost: true, laborCost: true, partsCost: true },
+        _count: true,
+      });
+
+      // 3. Costo de neumáticos (desmontajes en el período)
+      const neumaticosAgg = await (app.prisma as any).neumaticoPosicion.aggregate({
+        where: {
+          vehiculoId: v.id,
+          tenantId,
+          desmontadoAt: { gte: fechaDesde, lte: fechaHasta },
+          activo: false,
+        },
+        _count: true,
+      });
+
+      // Calcular totales
+      const costoCombustible = combustibleAgg._sum?.costoTotal || 0;
+      const costoMantenimiento = mantenimientoAgg._sum?.totalCost || 0;
+      const costoNeumaticos = (neumaticosAgg._count || 0) * 50000; // Estimado $50.000 por neumático desmontado
+
+      const costoTotal = costoCombustible + costoMantenimiento + costoNeumaticos;
+      const kmRecorridos = v.currentOdometer || 0;
+      const costoPorKm = kmRecorridos > 0 ? costoTotal / kmRecorridos : 0;
+
+      return {
+        vehiculoId: v.id,
+        dominio: v.dominio,
+        tipo: v.tipo,
+        marca: v.marca,
+        modelo: v.modelo,
+        kmRecorridos: Math.round(kmRecorridos),
+        costoTotal: Math.round(costoTotal),
+        costoPorKm: Math.round(costoPorKm * 100) / 100,
+        desglose: {
+          combustible: Math.round(costoCombustible),
+          mantenimiento: Math.round(costoMantenimiento),
+          neumaticos: Math.round(costoNeumaticos),
+        },
+        eficiencia: {
+          litrosTotales: Math.round((combustibleAgg._sum?.litros || 0) * 100) / 100,
+          rendimientoPromedio: combustibleAgg._sum?.litros > 0 
+            ? Math.round((kmRecorridos / combustibleAgg._sum.litros) * 100) / 100 
+            : 0,
+          otsCompletadas: mantenimientoAgg._count || 0,
+        },
+        alerta: costoPorKm > 150 ? 'HIGH_COST' : costoPorKm > 100 ? 'MEDIUM_COST' : 'NORMAL',
+      };
+    }));
+
+    // Ordenar por costo por km (mayor a menor)
+    resultados.sort((a: any, b: any) => b.costoPorKm - a.costoPorKm);
+
+    return reply.send({
+      periodo: { desde: fechaDesde, hasta: fechaHasta },
+      totalVehiculos: resultados.length,
+      promedioCostoPorKm: Math.round((resultados.reduce((s: number, r: any) => s + r.costoPorKm, 0) / (resultados.length || 1)) * 100) / 100,
+      vehiculos: resultados,
+    });
+  });
+
+  // TCO por vehículo individual
+  app.get('/vehiculos/:vehiculoId/tco', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { vehiculoId } = req.params as any;
+
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+      where: { id: vehiculoId, tenantId },
+      select: { id: true, dominio: true, tipo: true, currentOdometer: true, marca: true, modelo: true, anio: true },
+    });
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+
+    // Historial mensual de costos
+    const historial = await (app.prisma as any).$queryRaw`
+      SELECT 
+        DATE_TRUNC('month', fecha) as mes,
+        SUM(costo_total) as combustible,
+        COUNT(*) as cargas
+      FROM flota_registros_combustible
+      WHERE vehiculo_id = ${vehiculoId} AND tenant_id = ${tenantId}
+      GROUP BY DATE_TRUNC('month', fecha)
+      ORDER BY mes DESC
+      LIMIT 12
+    `.catch(() => []);
+
+    // Mantenimiento por tipo
+    const mantenimientoPorTipo = await (app.prisma as any).$queryRaw`
+      SELECT 
+        type,
+        COUNT(*) as cantidad,
+        SUM(total_cost) as costo
+      FROM work_orders
+      WHERE asset_id = ${vehiculoId} AND tenant_id = ${tenantId} AND status = 'COMPLETED'
+      GROUP BY type
+    `.catch(() => []);
+
+    return reply.send({ vehiculo, historial, mantenimientoPorTipo });
+  });
 }
 
 // Función auxiliar para verificar planes por KM (ejecutada en background)
