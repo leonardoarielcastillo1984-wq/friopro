@@ -1091,10 +1091,12 @@ export default function MantenimientoPage() {
                 {t.icon}{t.label}
               </button>
             ))}
-            {/* Divider */}
-            <div className="w-px h-5 bg-gray-200 mx-2" />
-            {/* Flota 360 group */}
-            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wide px-2 mr-1 flex items-center gap-1"><Truck className="w-3 h-3" />Flota</span>
+            {/* Divider + Flota label */}
+            <div className="flex items-center gap-1.5 mx-3 select-none pointer-events-none">
+              <div className="w-px h-5 bg-gray-200" />
+              <span className="text-xs font-bold text-blue-400 uppercase tracking-widest flex items-center gap-1 ml-1"><Truck className="w-3 h-3" />Flota 360</span>
+              <div className="w-px h-5 bg-gray-200" />
+            </div>
             {([
               { id: 'flota-vehiculos', label: 'Vehículos', icon: <Truck className="w-3.5 h-3.5" /> },
               { id: 'flota-neumaticos', label: 'Neumáticos', icon: <Circle className="w-3.5 h-3.5" /> },
