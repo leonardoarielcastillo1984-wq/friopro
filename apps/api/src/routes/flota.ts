@@ -24,6 +24,117 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ vehiculos });
   });
 
+  // GET vehículo completo con datos unificados de mantenimiento
+  app.get('/vehiculos/:id/completo', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+      where: { id, tenantId },
+      include: {
+        conductor: true,
+        vencimientos: { orderBy: { fechaVto: 'asc' } },
+        posicionesNeumatico: { where: { activo: true }, include: { neumatico: true } },
+        historialMantenimiento: { orderBy: { fecha: 'desc' }, take: 10 },
+        garantias: { where: { status: 'ACTIVA' } },
+        _count: { select: { registrosCombustible: true } },
+      }
+    });
+
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+
+    // Datos del activo de mantenimiento vinculado
+    let maintenanceAsset = null;
+    let digitalTwin = null;
+    let workOrders = [];
+    let maintenancePlans = [];
+    let predictions = [];
+
+    if (vehiculo.maintenanceAssetId) {
+      maintenanceAsset = await (app.prisma as any).maintenanceAsset.findFirst({
+        where: { id: vehiculo.maintenanceAssetId, tenantId },
+        select: {
+          id: true, code: true, name: true, status: true,
+          totalMaintenanceCost: true, lastMaintenanceDate: true, nextMaintenanceDate: true,
+          currentOdometer: true,
+        }
+      });
+
+      if (maintenanceAsset) {
+        digitalTwin = await (app.prisma as any).assetDigitalTwin.findUnique({
+          where: { assetId_tenantId: { assetId: maintenanceAsset.id, tenantId } },
+          include: {
+            predictions: {
+              where: { validadoAt: null, workOrderId: null },
+              orderBy: { probabilidad: 'desc' },
+              take: 5,
+            }
+          }
+        });
+
+        workOrders = await (app.prisma as any).workOrder.findMany({
+          where: { assetId: maintenanceAsset.id, tenantId },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          select: {
+            id: true, code: true, title: true, status: true, priority: true,
+            type: true, scheduledDate: true, completedDate: true, totalCost: true,
+          }
+        });
+
+        maintenancePlans = await (app.prisma as any).maintenancePlan.findMany({
+          where: { assetId: maintenanceAsset.id, tenantId, status: 'ACTIVE' },
+          select: {
+            id: true, title: true, frequencyUnit: true, frequencyValue: true,
+            triggerKm: true, nextExecutionDate: true, lastExecutionDate: true,
+          }
+        });
+
+        predictions = digitalTwin?.predictions || [];
+      }
+    }
+
+    // KPIs calculados
+    const otsPendientes = workOrders.filter((ot: any) => ['PENDING', 'IN_PROGRESS'].includes(ot.status)).length;
+    const otsCompletadas = workOrders.filter((ot: any) => ot.status === 'COMPLETED').length;
+    const costoTotalMantenimiento = workOrders.reduce((sum: number, ot: any) => sum + (ot.totalCost || 0), 0);
+    const planesPorKm = maintenancePlans.filter((p: any) => p.frequencyUnit === 'KM');
+    const planesPorTiempo = maintenancePlans.filter((p: any) => ['DAYS', 'WEEKS', 'MONTHS'].includes(p.frequencyUnit));
+
+    return reply.send({
+      vehiculo,
+      mantenimiento: {
+        asset: maintenanceAsset,
+        digitalTwin,
+        workOrders,
+        maintenancePlans,
+        predictions,
+        kpis: {
+          otsPendientes,
+          otsCompletadas,
+          otsTotal: workOrders.length,
+          costoTotalMantenimiento,
+          planesActivos: maintenancePlans.length,
+          planesPorKm: planesPorKm.length,
+          planesPorTiempo: planesPorTiempo.length,
+          prediccionesActivas: predictions.length,
+          ultimaFechaMantenimiento: maintenanceAsset?.lastMaintenanceDate,
+          proximaFechaMantenimiento: maintenanceAsset?.nextMaintenanceDate,
+        }
+      },
+      alertas: {
+        vencimientosProximos: vehiculo.vencimientos?.filter((v: any) => {
+          const dias = Math.ceil((new Date(v.fechaVto).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          return dias <= 30 && dias >= 0;
+        }).length || 0,
+        prediccionesCriticas: predictions.filter((p: any) => p.severidad === 'CRITICA').length,
+        prediccionesAltas: predictions.filter((p: any) => p.severidad === 'ALTA').length,
+        otsVencidas: workOrders.filter((ot: any) => ot.status === 'PENDING' && ot.scheduledDate && new Date(ot.scheduledDate) < new Date()).length,
+      }
+    });
+  });
+
   app.post('/vehiculos', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
@@ -41,11 +152,80 @@ export default async function flotaRoutes(app: FastifyInstance) {
       conductorId: z.string().uuid().optional().nullable(),
       maintenanceAssetId: z.string().uuid().optional().nullable(),
       notas: z.string().optional(),
+      // Campos adicionales para crear el activo de mantenimiento automáticamente
+      crearActivoMantenimiento: z.boolean().default(true),
+      acquisitionCost: z.number().optional(),
+      manufacturer: z.string().optional(),
+      purchaseDate: z.string().datetime().optional(),
     });
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
-    const vehiculo = await (app.prisma as any).vehiculo.create({ data: { ...body.data, tenantId } });
-    return reply.code(201).send({ vehiculo });
+
+    const { crearActivoMantenimiento, acquisitionCost, manufacturer, purchaseDate, ...vehiculoData } = body.data;
+
+    // Crear vehículo inicialmente sin maintenanceAssetId
+    let vehiculo = await (app.prisma as any).vehiculo.create({
+      data: { ...vehiculoData, tenantId, maintenanceAssetId: null }
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    // AUTO-CREAR ACTIVO DE MANTENIMIENTO VINCULADO
+    // ═══════════════════════════════════════════════════════════════
+    let maintenanceAsset = null;
+    if (crearActivoMantenimiento && !vehiculoData.maintenanceAssetId) {
+      const assetCode = `V-${vehiculo.dominio}`;
+      const assetName = `${vehiculo.marca || ''} ${vehiculo.modelo || ''} ${vehiculo.dominio}`.trim();
+      
+      maintenanceAsset = await (app.prisma as any).maintenanceAsset.create({
+        data: {
+          tenantId,
+          code: assetCode,
+          name: assetName || vehiculo.dominio,
+          description: `Vehículo de flota: ${vehiculo.dominio}. Tipo: ${vehiculo.tipo}. Creado automáticamente desde Flota 360.`,
+          category: 'VEHICLE',
+          status: 'ACTIVE',
+          manufacturer: manufacturer || vehiculo.marca || 'Sin especificar',
+          model: vehiculo.modelo || 'Sin especificar',
+          serialNumber: vehiculo.chasis || vehiculo.motor || undefined,
+          acquisitionCost: acquisitionCost || 0,
+          purchaseDate: purchaseDate ? new Date(purchaseDate) : undefined,
+          currentOdometer: vehiculo.currentOdometer,
+          location: 'Flota',
+        }
+      });
+
+      // Actualizar vehículo con el ID del activo creado
+      vehiculo = await (app.prisma as any).vehiculo.update({
+        where: { id: vehiculo.id, tenantId },
+        data: { maintenanceAssetId: maintenanceAsset.id }
+      });
+
+      // Crear Digital Twin automáticamente para el activo
+      await (app.prisma as any).assetDigitalTwin.create({
+        data: {
+          tenantId,
+          assetId: maintenanceAsset.id,
+          healthScore: 100,
+          riskScore: 0,
+          componentes: JSON.stringify({
+            motor: { salud: 100, riesgo: 0, kmRestantes: 100000 },
+            frenos: { salud: 100, riesgo: 0, kmRestantes: 50000 },
+            caja: { salud: 100, riesgo: 0, kmRestantes: 80000 },
+            diferencial: { salud: 100, riesgo: 0, kmRestantes: 70000 },
+            neumaticos: { salud: 100, riesgo: 0, kmRestantes: 40000 },
+          }),
+          syncSource: 'AUTO',
+        }
+      });
+    }
+
+    return reply.code(201).send({
+      vehiculo,
+      maintenanceAsset,
+      mensaje: maintenanceAsset
+        ? 'Vehículo creado con activo de mantenimiento vinculado automáticamente'
+        : 'Vehículo creado sin activo de mantenimiento'
+    });
   });
 
   app.patch('/vehiculos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -69,6 +249,23 @@ export default async function flotaRoutes(app: FastifyInstance) {
     }).passthrough();
     const body = schema.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    // ═══════════════════════════════════════════════════════════════
+    // SINCRONIZAR ODÓMETRO CON ACTIVO DE MANTENIMIENTO
+    // ═══════════════════════════════════════════════════════════════
+    if (body.data.currentOdometer !== undefined) {
+      const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+        where: { id, tenantId },
+        select: { maintenanceAssetId: true }
+      });
+      if (vehiculo?.maintenanceAssetId) {
+        await (app.prisma as any).maintenanceAsset.updateMany({
+          where: { id: vehiculo.maintenanceAssetId, tenantId },
+          data: { currentOdometer: body.data.currentOdometer }
+        });
+      }
+    }
+
     await (app.prisma as any).vehiculo.updateMany({ where: { id, tenantId }, data: body.data });
     return reply.send({ ok: true });
   });
