@@ -414,6 +414,9 @@ export default async function flotaRoutes(app: FastifyInstance) {
       }
       // Actualizar odómetro del vehículo
       await (app.prisma as any).vehiculo.updateMany({ where: { id: vehiculoId }, data: { currentOdometer: body.data.odometro } });
+      
+      // Verificar planes de mantenimiento por KM (ejecutar en background)
+      verificarPlanesPorKm(app.prisma, tenantId, vehiculoId, body.data.odometro).catch(() => {});
     }
 
     const costoTotal = body.data.precioPorLitro ? body.data.litros * body.data.precioPorLitro : null;
@@ -696,4 +699,116 @@ export default async function flotaRoutes(app: FastifyInstance) {
     ]);
     return reply.send({ stats: { totalVehiculos, activos, enTaller, vencimientosProximos, conductores, neumaticos } });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // PLANES DE MANTENIMIENTO POR KM
+  // ═══════════════════════════════════════════════════════════════
+
+  // Obtener planes de mantenimiento por KM próximos a vencer para un vehículo
+  app.get('/vehiculos/:vehiculoId/planes-km', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { vehiculoId } = req.params as any;
+    
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+      where: { id: vehiculoId, tenantId },
+      select: { id: true, dominio: true, currentOdometer: true },
+    });
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+    
+    const planes = await (app.prisma as any).maintenancePlan.findMany({
+      where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM', assetId: vehiculoId },
+      select: { id: true, code: true, title: true, triggerKm: true, lastOdometerExecution: true },
+    });
+    
+    const planesConAlerta = planes.map((p: any) => {
+      const kmDesdeUltima = vehiculo.currentOdometer && p.lastOdometerExecution 
+        ? vehiculo.currentOdometer - p.lastOdometerExecution 
+        : 0;
+      const kmRestantes = (p.triggerKm || 0) - kmDesdeUltima;
+      const porcentaje = p.triggerKm > 0 ? Math.round((kmDesdeUltima / p.triggerKm) * 100) : 0;
+      return {
+        ...p,
+        kmDesdeUltima: Math.round(kmDesdeUltima),
+        kmRestantes: Math.round(kmRestantes),
+        porcentajeUso: porcentaje,
+        alerta: porcentaje >= 90 ? 'CRITICAL' : porcentaje >= 80 ? 'WARNING' : null,
+      };
+    }).sort((a: any, b: any) => b.porcentajeUso - a.porcentajeUso);
+    
+    return reply.send({ vehiculo, planes: planesConAlerta });
+  });
+
+  // Verificar planes por KM para toda la flota (dashboard)
+  app.get('/planes-km/pendientes', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    
+    const [vehiculos, planes] = await Promise.all([
+      (app.prisma as any).vehiculo.findMany({
+        where: { tenantId, status: 'ACTIVO' },
+        select: { id: true, dominio: true, currentOdometer: true, tipo: true },
+      }),
+      (app.prisma as any).maintenancePlan.findMany({
+        where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM' },
+        select: { id: true, code: true, title: true, triggerKm: true, lastOdometerExecution: true, assetId: true },
+      }),
+    ]);
+    
+    const vehMap = new Map((vehiculos as any[]).map((v: any) => [v.id, v]));
+    
+    const pendientes = (planes as any[])
+      .map((p: any) => {
+        const veh = vehMap.get(p.assetId) as any;
+        if (!veh || !veh.currentOdometer) return null;
+        const kmDesdeUltima = p.lastOdometerExecution 
+          ? veh.currentOdometer - p.lastOdometerExecution 
+          : veh.currentOdometer;
+        const kmRestantes = (p.triggerKm || 0) - kmDesdeUltima;
+        const porcentaje = p.triggerKm > 0 ? (kmDesdeUltima / p.triggerKm) * 100 : 0;
+        if (porcentaje < 70) return null; // Solo mostrar los que están al 70% o más
+        return {
+          planId: p.id,
+          planCode: p.code,
+          planTitle: p.title,
+          triggerKm: p.triggerKm,
+          vehiculoId: veh.id,
+          dominio: veh.dominio,
+          tipo: veh.tipo,
+          kmDesdeUltima: Math.round(kmDesdeUltima),
+          kmRestantes: Math.round(kmRestantes),
+          porcentajeUso: Math.round(porcentaje),
+          alerta: porcentaje >= 90 ? 'CRITICAL' : porcentaje >= 80 ? 'WARNING' : 'INFO',
+        };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => b.porcentajeUso - a.porcentajeUso);
+    
+    return reply.send({ pendientes, total: pendientes.length, critical: pendientes.filter((p: any) => p.alerta === 'CRITICAL').length });
+  });
+}
+
+// Función auxiliar para verificar planes por KM (ejecutada en background)
+async function verificarPlanesPorKm(prisma: any, tenantId: string, vehiculoId: string, odometer: number) {
+  const planes = await prisma.maintenancePlan.findMany({
+    where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM', assetId: vehiculoId },
+    select: { id: true, triggerKm: true, lastOdometerExecution: true },
+  });
+  
+  for (const plan of planes) {
+    const kmDesdeUltima = plan.lastOdometerExecution 
+      ? odometer - plan.lastOdometerExecution 
+      : odometer;
+    const triggerKm = plan.triggerKm || 0;
+    
+    // Si alcanzó o superó el umbral, actualizar nextExecutionDate para marcar como vencido
+    if (kmDesdeUltima >= triggerKm) {
+      await prisma.maintenancePlan.updateMany({
+        where: { id: plan.id, tenantId },
+        data: { 
+          nextExecutionDate: new Date(), // Marcar como vencido/vencido
+        },
+      });
+    }
+  }
 }
