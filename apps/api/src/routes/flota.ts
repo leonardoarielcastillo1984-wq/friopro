@@ -207,12 +207,35 @@ export default async function flotaRoutes(app: FastifyInstance) {
       include: {
         posiciones: {
           where: { activo: true },
-          include: { vehiculo: { select: { id: true, dominio: true, tipo: true } } },
+          include: { vehiculo: { select: { id: true, dominio: true, tipo: true, currentOdometer: true } } },
         },
       },
       orderBy: { codigo: 'asc' },
     });
-    return reply.send({ neumaticos });
+    // Enrich with sparePart name if linked
+    const sparePartIds = neumaticos.filter((n: any) => n.sparePartId).map((n: any) => n.sparePartId);
+    let spareParts: any[] = [];
+    if (sparePartIds.length > 0) {
+      spareParts = await (app.prisma as any).maintenanceSparePart.findMany({
+        where: { id: { in: sparePartIds } },
+        select: { id: true, code: true, name: true, currentStock: true, unitCost: true, medida: true },
+      });
+    }
+    const spMap = Object.fromEntries(spareParts.map((s: any) => [s.id, s]));
+    const enriched = neumaticos.map((n: any) => ({ ...n, sparePart: n.sparePartId ? spMap[n.sparePartId] || null : null }));
+    return reply.send({ neumaticos: enriched });
+  });
+
+  // GET repuestos categoria neumatico para selector
+  app.get('/neumaticos/repuestos', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const parts = await (app.prisma as any).maintenanceSparePart.findMany({
+      where: { tenantId },
+      select: { id: true, code: true, name: true, currentStock: true, unitCost: true },
+      orderBy: { name: 'asc' },
+    });
+    return reply.send({ parts });
   });
 
   app.post('/neumaticos', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -226,6 +249,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       dot: z.string().optional(),
       condicion: z.enum(['NUEVA', 'USADA', 'RECAPADA']).optional().default('NUEVA'),
       profBanda: z.number().optional(),
+      sparePartId: z.string().uuid().optional().nullable(),
       notas: z.string().optional(),
     });
     const body = schema.safeParse(req.body);
@@ -242,7 +266,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
-  // Montar neumático en vehículo
+  // Montar neumático en vehículo — descuenta stock del repuesto vinculado
   app.post('/neumaticos/:neumaticoId/montar', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
@@ -258,31 +282,64 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
 
-    // Desmontar si estaba montado en otro lugar
+    // Desmontar posición previa si existía
     await (app.prisma as any).neumaticoPosicion.updateMany({
       where: { neumaticoId, activo: true, tenantId },
       data: { activo: false, desmontadoAt: new Date(), kmAlDesmontar: body.data.kmAlMontar },
     });
 
+    // Si no se pasó kmAlMontar, tomarlo del odómetro actual del vehículo
+    let kmAlMontar = body.data.kmAlMontar;
+    if (kmAlMontar == null) {
+      const veh = await (app.prisma as any).vehiculo.findFirst({ where: { id: body.data.vehiculoId, tenantId }, select: { currentOdometer: true } });
+      if (veh?.currentOdometer) kmAlMontar = veh.currentOdometer;
+    }
+
     const posicion = await (app.prisma as any).neumaticoPosicion.create({
-      data: { ...body.data, neumaticoId, tenantId, activo: true },
+      data: { ...body.data, kmAlMontar, neumaticoId, tenantId, activo: true },
     });
+
+    // Actualizar estado del neumático
     await (app.prisma as any).neumatico.updateMany({ where: { id: neumaticoId }, data: { status: 'EN_USO' } });
+
+    // Descontar 1 unidad del stock del repuesto vinculado
+    const neum = await (app.prisma as any).neumatico.findFirst({ where: { id: neumaticoId }, select: { sparePartId: true } });
+    if (neum?.sparePartId) {
+      await (app.prisma as any).maintenanceSparePart.updateMany({
+        where: { id: neum.sparePartId, tenantId, currentStock: { gt: 0 } },
+        data: { currentStock: { decrement: 1 } },
+      });
+    }
+
     return reply.code(201).send({ posicion });
   });
 
-  // Desmontar neumático
+  // Desmontar neumático — calcula km recorridos y actualiza acumulado
   app.post('/neumaticos/:neumaticoId/desmontar', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { neumaticoId } = req.params as any;
     const { kmAlDesmontar, profBandaFin } = req.body as any;
+
+    // Buscar posición activa para calcular km recorridos
+    const posActiva = await (app.prisma as any).neumaticoPosicion.findFirst({
+      where: { neumaticoId, activo: true, tenantId },
+      select: { kmAlMontar: true },
+    });
+
     await (app.prisma as any).neumaticoPosicion.updateMany({
       where: { neumaticoId, activo: true, tenantId },
       data: { activo: false, desmontadoAt: new Date(), kmAlDesmontar: kmAlDesmontar || null, profBandaFin: profBandaFin || null },
     });
-    await (app.prisma as any).neumatico.updateMany({ where: { id: neumaticoId }, data: { status: 'DISPONIBLE', profBanda: profBandaFin || undefined } });
-    return reply.send({ ok: true });
+
+    // Acumular km recorridos en el neumático
+    const neum = await (app.prisma as any).neumatico.findFirst({ where: { id: neumaticoId }, select: { kmAcumulados: true } });
+    const kmRecorridos = (posActiva?.kmAlMontar != null && kmAlDesmontar) ? (kmAlDesmontar - posActiva.kmAlMontar) : 0;
+    const updateData: any = { status: 'DISPONIBLE' };
+    if (profBandaFin != null) updateData.profBanda = profBandaFin;
+    if (kmRecorridos > 0) updateData.kmAcumulados = (neum?.kmAcumulados || 0) + kmRecorridos;
+    await (app.prisma as any).neumatico.updateMany({ where: { id: neumaticoId }, data: updateData });
+    return reply.send({ ok: true, kmRecorridos: Math.max(0, kmRecorridos) });
   });
 
   // Historial de posiciones de un neumático

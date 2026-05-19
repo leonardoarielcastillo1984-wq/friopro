@@ -550,6 +550,10 @@ export default function MantenimientoPage() {
   const [showNeumaticoModal, setShowNeumaticoModal] = useState(false);
   const [showVtoModal, setShowVtoModal] = useState<string | null>(null);
   const [showMontarModal, setShowMontarModal] = useState<string | null>(null);
+  const [showDesmontarModal, setShowDesmontarModal] = useState<string | null>(null);
+  const [showHistorialNeumModal, setShowHistorialNeumModal] = useState<string | null>(null);
+  const [historialNeum, setHistorialNeum] = useState<any[]>([]);
+  const [flotaRepuestos, setFlotaRepuestos] = useState<any[]>([]);
   const [showCombustibleModal, setShowCombustibleModal] = useState<string | null>(null);
   const [editingVeh, setEditingVeh] = useState<any>(null);
   const [editingCond, setEditingCond] = useState<any>(null);
@@ -617,20 +621,34 @@ export default function MantenimientoPage() {
 
   const loadFlotaData = async () => {
     try {
-      const [v, c, n, vto, s] = await Promise.all([
+      const [v, c, n, vto, s, rep] = await Promise.all([
         apiFetch('/flota/vehiculos'),
         apiFetch('/flota/conductores'),
         apiFetch('/flota/neumaticos'),
         apiFetch('/flota/vencimientos'),
         apiFetch('/flota/stats'),
+        apiFetch('/flota/neumaticos/repuestos'),
       ]) as any;
       setFlotaVehiculos(v.vehiculos || []);
       setFlotaConductores(c.conductores || []);
       setFlotaNeumaticos(n.neumaticos || []);
       setFlotaVencimientos(vto.vencimientos || []);
       setFlotaStats(s.stats || null);
+      setFlotaRepuestos(rep.parts || []);
       setFlotaLoaded(true);
     } catch (e) { console.error('Flota load error:', e); }
+  };
+
+  const loadHistorialNeum = async (neumaticoId: string) => {
+    const data = await apiFetch(`/flota/neumaticos/${neumaticoId}/historial`) as any;
+    setHistorialNeum(data.historial || []);
+    setShowHistorialNeumModal(neumaticoId);
+  };
+
+  const desmontarNeumaticoConKm = async (neumaticoId: string, kmAlDesmontar: number | null, profBandaFin: number | null) => {
+    await apiFetch(`/flota/neumaticos/${neumaticoId}/desmontar`, { method: 'POST', json: { kmAlDesmontar, profBandaFin } });
+    setShowDesmontarModal(null);
+    loadFlotaData();
   };
 
   const loadCombustible = async (vehiculoId: string) => {
@@ -1683,9 +1701,23 @@ export default function MantenimientoPage() {
           {activeTab === 'flota-neumaticos' && (
             <div className="p-4">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><Circle className="w-5 h-5 text-purple-600" />Neumáticos ({flotaNeumaticos.length})</h3>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><Circle className="w-5 h-5 text-purple-600" />Neumáticos ({flotaNeumaticos.length})</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Cada neumático es una unidad física. Vinculala a un artículo de Repuestos para gestionar stock.</p>
+                </div>
                 <button onClick={() => setShowNeumaticoModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><Plus className="w-4 h-4" />Nuevo neumático</button>
               </div>
+              {/* Resumen por estado */}
+              {flotaNeumaticos.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 mb-4">
+                  {(['DISPONIBLE','EN_USO','EN_REPARACION','BAJA'] as const).map(s => {
+                    const cnt = flotaNeumaticos.filter((n: any) => n.status === s).length;
+                    const colors: any = { DISPONIBLE: 'bg-emerald-50 text-emerald-700 border-emerald-200', EN_USO: 'bg-blue-50 text-blue-700 border-blue-200', EN_REPARACION: 'bg-amber-50 text-amber-700 border-amber-200', BAJA: 'bg-red-50 text-red-700 border-red-200' };
+                    const labels: any = { DISPONIBLE: 'Disponibles', EN_USO: 'Montados', EN_REPARACION: 'En reparación', BAJA: 'De baja' };
+                    return <div key={s} className={`rounded-xl border p-2 text-center ${colors[s]}`}><p className="text-lg font-bold">{cnt}</p><p className="text-xs">{labels[s]}</p></div>;
+                  })}
+                </div>
+              )}
               {flotaNeumaticos.length === 0 ? (
                 <div className="text-center py-16 bg-gray-50 rounded-xl"><Circle className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-500">Sin neumáticos registrados</p></div>
               ) : (
@@ -1693,25 +1725,40 @@ export default function MantenimientoPage() {
                   {flotaNeumaticos.map((n: any) => {
                     const montadoEn = (n.posiciones || []).find((p: any) => p.activo);
                     const sColor: any = { DISPONIBLE: 'bg-emerald-100 text-emerald-700', EN_USO: 'bg-blue-100 text-blue-700', EN_REPARACION: 'bg-amber-100 text-amber-700', BAJA: 'bg-red-100 text-red-600' };
+                    const bandaAlert = n.profBanda != null && n.profBanda < 3;
                     return (
-                      <div key={n.id} className="bg-white rounded-xl border border-gray-200 p-4">
-                        <div className="flex items-start justify-between mb-2">
+                      <div key={n.id} className={`bg-white rounded-xl border p-4 ${bandaAlert ? 'border-red-300' : 'border-gray-200'}`}>
+                        <div className="flex items-start justify-between mb-1">
                           <div>
                             <p className="font-bold text-gray-900">{n.codigo}</p>
-                            <p className="text-sm text-gray-500">{[n.marca, n.modelo, n.medida].filter(Boolean).join(' · ')}</p>
-                            {n.condicion && n.condicion !== 'NUEVA' && <span className={`text-xs font-medium px-1.5 py-0.5 rounded mt-0.5 inline-block ${n.condicion === 'RECAPADA' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>{n.condicion}</span>}
+                            <p className="text-xs text-gray-500">{[n.marca, n.modelo, n.medida].filter(Boolean).join(' · ')}</p>
                           </div>
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${sColor[n.status] || 'bg-gray-100 text-gray-500'}`}>{n.status}</span>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${sColor[n.status] || 'bg-gray-100 text-gray-500'}`}>{n.status}</span>
                         </div>
-                        <div className="grid grid-cols-3 gap-2 text-xs text-center my-3">
-                          <div className="bg-gray-50 rounded-lg p-2"><p className="font-bold">{n.kmAcumulados.toLocaleString('es-AR')}</p><p className="text-gray-400">km acum.</p></div>
-                          <div className="bg-gray-50 rounded-lg p-2"><p className={`font-bold ${n.profBanda != null && n.profBanda < 3 ? 'text-red-600' : ''}`}>{n.profBanda != null ? `${n.profBanda}mm` : '—'}</p><p className="text-gray-400">banda</p></div>
-                          <div className="bg-gray-50 rounded-lg p-2"><p className="font-bold">{n.dot || '—'}</p><p className="text-gray-400">DOT</p></div>
+                        {/* Condición + articulo repuesto */}
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {n.condicion && <span className={`text-xs px-1.5 py-0.5 rounded ${n.condicion === 'NUEVA' ? 'bg-emerald-50 text-emerald-700' : n.condicion === 'RECAPADA' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>{n.condicion}</span>}
+                          {n.sparePart && <span className="text-xs bg-purple-50 text-purple-700 border border-purple-100 px-1.5 py-0.5 rounded">📦 {n.sparePart.name} · stock: {n.sparePart.currentStock}</span>}
+                          {bandaAlert && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-semibold">⚠ banda baja</span>}
                         </div>
-                        {montadoEn && <div className="bg-blue-50 rounded-lg px-3 py-2 mb-2 text-xs text-blue-700"><p className="font-semibold">En {montadoEn.vehiculo?.dominio} · E{montadoEn.eje}-{montadoEn.lado}</p></div>}
-                        <div className="flex gap-2 mt-2">
+                        {/* Métricas */}
+                        <div className="grid grid-cols-3 gap-1.5 text-xs text-center mb-2">
+                          <div className="bg-gray-50 rounded-lg p-1.5"><p className="font-bold text-gray-800">{(n.kmAcumulados || 0).toLocaleString('es-AR')}</p><p className="text-gray-400">km acum.</p></div>
+                          <div className={`rounded-lg p-1.5 ${bandaAlert ? 'bg-red-50' : 'bg-gray-50'}`}><p className={`font-bold ${bandaAlert ? 'text-red-600' : 'text-gray-800'}`}>{n.profBanda != null ? `${n.profBanda}mm` : '—'}</p><p className="text-gray-400">banda</p></div>
+                          <div className="bg-gray-50 rounded-lg p-1.5"><p className="font-bold text-gray-800">{n.dot || '—'}</p><p className="text-gray-400">DOT</p></div>
+                        </div>
+                        {/* Montado en */}
+                        {montadoEn && (
+                          <div className="bg-blue-50 rounded-lg px-3 py-1.5 mb-2 text-xs text-blue-700 flex justify-between items-center">
+                            <span className="font-semibold">🚛 {montadoEn.vehiculo?.dominio} · E{montadoEn.eje}-{montadoEn.lado}</span>
+                            {montadoEn.kmAlMontar != null && <span className="text-blue-500">desde {montadoEn.kmAlMontar.toLocaleString('es-AR')} km</span>}
+                          </div>
+                        )}
+                        {/* Acciones */}
+                        <div className="flex gap-1.5 mt-2">
                           {n.status === 'DISPONIBLE' && <button onClick={() => setShowMontarModal(n.id)} className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-1.5 hover:bg-blue-700 flex items-center justify-center gap-1"><Plus className="w-3 h-3" />Montar</button>}
-                          {n.status === 'EN_USO' && <button onClick={() => desmontarNeumatico(n.id)} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50 flex items-center justify-center gap-1"><X className="w-3 h-3" />Desmontar</button>}
+                          {n.status === 'EN_USO' && <button onClick={() => setShowDesmontarModal(n.id)} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50 flex items-center justify-center gap-1"><X className="w-3 h-3" />Desmontar</button>}
+                          <button onClick={() => loadHistorialNeum(n.id)} className="text-xs border border-gray-200 text-gray-500 rounded-lg py-1.5 px-2 hover:bg-gray-50">Historial</button>
                         </div>
                       </div>
                     );
@@ -3010,15 +3057,64 @@ export default function MantenimientoPage() {
 
       {showNeumaticoModal && (
         <FlotaModal title="Nuevo neumático" onClose={() => setShowNeumaticoModal(false)}>
-          <FlotaNeumaticoForm onSave={saveNeumatico} onClose={() => setShowNeumaticoModal(false)} />
+          <FlotaNeumaticoForm repuestos={flotaRepuestos} onSave={saveNeumatico} onClose={() => setShowNeumaticoModal(false)} />
         </FlotaModal>
       )}
 
       {showMontarModal && (
         <FlotaModal title="Montar neumático en vehículo" onClose={() => setShowMontarModal(null)}>
-          <FlotaMontarForm neumaticoId={showMontarModal} vehiculos={flotaVehiculos} tipoLabels={TIPO_LABELS} onSave={montarNeumatico} onClose={() => setShowMontarModal(null)} />
+          <FlotaMontarForm
+            neumaticoId={showMontarModal}
+            vehiculos={flotaVehiculos}
+            tipoLabels={TIPO_LABELS}
+            onSave={montarNeumatico}
+            onClose={() => setShowMontarModal(null)}
+          />
         </FlotaModal>
       )}
+
+      {showDesmontarModal && (() => {
+        const n = flotaNeumaticos.find(x => x.id === showDesmontarModal);
+        const posActiva = n ? (n.posiciones || []).find((p: any) => p.activo) : null;
+        return (
+          <FlotaModal title="Desmontar neumático" onClose={() => setShowDesmontarModal(null)}>
+            <FlotaDesmontarForm
+              neumatico={n}
+              posActiva={posActiva}
+              vehiculo={posActiva ? flotaVehiculos.find(v => v.id === posActiva.vehiculoId) : null}
+              onSave={desmontarNeumaticoConKm}
+              onClose={() => setShowDesmontarModal(null)}
+            />
+          </FlotaModal>
+        );
+      })()}
+
+      {showHistorialNeumModal && (() => {
+        const n = flotaNeumaticos.find(x => x.id === showHistorialNeumModal);
+        return (
+          <FlotaModal title={`Historial — ${n?.codigo || ''}`} onClose={() => { setShowHistorialNeumModal(null); setHistorialNeum([]); }}>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {historialNeum.length === 0 && <p className="text-sm text-gray-400 text-center py-6">Sin historial de montajes</p>}
+              {historialNeum.map((h: any, i: number) => (
+                <div key={h.id || i} className="border border-gray-200 rounded-xl px-3 py-2 text-sm">
+                  <div className="flex justify-between items-start">
+                    <span className="font-semibold text-gray-800">{h.vehiculo?.dominio} · E{h.eje}-{h.lado}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${h.activo ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{h.activo ? 'Montado' : 'Desmontado'}</span>
+                  </div>
+                  <div className="flex gap-4 mt-1 text-xs text-gray-500">
+                    <span>Montado: {h.kmAlMontar != null ? `${h.kmAlMontar.toLocaleString('es-AR')} km` : '—'}</span>
+                    <span>Desmontado: {h.kmAlDesmontar != null ? `${h.kmAlDesmontar.toLocaleString('es-AR')} km` : '—'}</span>
+                    {h.kmAlMontar != null && h.kmAlDesmontar != null && <span className="text-purple-600 font-semibold">+{(h.kmAlDesmontar - h.kmAlMontar).toLocaleString('es-AR')} km</span>}
+                  </div>
+                  {(h.profBandaInicio != null || h.profBandaFin != null) && (
+                    <p className="text-xs text-gray-400 mt-0.5">Banda: {h.profBandaInicio ?? '—'}mm → {h.profBandaFin ?? '—'}mm</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </FlotaModal>
+        );
+      })()}
 
       {showVtoModal && (
         <FlotaModal title={`Vencimientos — ${flotaVehiculos.find(v => v.id === showVtoModal)?.dominio || ''}`} onClose={() => setShowVtoModal(null)}>
@@ -3139,14 +3235,24 @@ function FlotaConductorForm({ conductor, onSave, onClose }: any) {
   );
 }
 
-function FlotaNeumaticoForm({ onSave, onClose }: any) {
-  const [f, setF] = useState({ codigo: '', marca: '', modelo: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '', notas: '' });
+function FlotaNeumaticoForm({ repuestos, onSave, onClose }: any) {
+  const [f, setF] = useState({ codigo: '', marca: '', modelo: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '', sparePartId: '', notas: '' });
   const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  const selPart = repuestos.find((r: any) => r.id === f.sparePartId);
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2"><FI label="Código interno *"><input value={f.codigo} onChange={set('codigo')} className={inp} placeholder="NM-001" /></FI></div>
-        <FI label="Marca"><input value={f.marca} onChange={set('marca')} className={inp} placeholder="Bridgestone..." /></FI>
+        <div className="col-span-2">
+          <FI label="Artículo de Repuesto (opcional)">
+            <select value={f.sparePartId} onChange={set('sparePartId')} className={inp}>
+              <option value="">Sin vincular a repuesto</option>
+              {repuestos.map((r: any) => <option key={r.id} value={r.id}>{r.code} — {r.name} (stock: {r.currentStock})</option>)}
+            </select>
+          </FI>
+          {selPart && <p className="text-xs text-purple-600 mt-1">📦 Al montar esta rueda, se descontará 1 unidad del stock ({selPart.currentStock} disponibles)</p>}
+        </div>
+        <div className="col-span-2"><FI label="Código / Nº serie *"><input value={f.codigo} onChange={set('codigo')} className={inp} placeholder={selPart ? selPart.code + '-001' : 'NM-001'} /></FI></div>
+        <FI label="Marca"><input value={f.marca} onChange={set('marca')} className={inp} placeholder={selPart?.name?.split(' ')[0] || 'Bridgestone...'} /></FI>
         <FI label="Modelo"><input value={f.modelo} onChange={set('modelo')} className={inp} /></FI>
         <FI label="Medida"><input value={f.medida} onChange={set('medida')} className={inp} placeholder="295/80R22.5" /></FI>
         <FI label="DOT"><input value={f.dot} onChange={set('dot')} className={inp} placeholder="2452" /></FI>
@@ -3156,7 +3262,7 @@ function FlotaNeumaticoForm({ onSave, onClose }: any) {
       </div>
       <div className="flex gap-3 pt-2">
         <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
-        <button onClick={() => { if (!f.codigo.trim()) return alert('Código requerido'); onSave({ ...f, profBanda: f.profBanda ? parseFloat(f.profBanda) : undefined }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Crear</button>
+        <button onClick={() => { if (!f.codigo.trim()) return alert('Código requerido'); onSave({ ...f, profBanda: f.profBanda ? parseFloat(f.profBanda) : undefined, sparePartId: f.sparePartId || null }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Crear</button>
       </div>
     </div>
   );
@@ -3165,19 +3271,70 @@ function FlotaNeumaticoForm({ onSave, onClose }: any) {
 function FlotaMontarForm({ neumaticoId, vehiculos, tipoLabels, onSave, onClose }: any) {
   const [f, setF] = useState({ vehiculoId: '', eje: '1', lado: 'IZQ', posicion: 'SIMPLE', kmAlMontar: '', profBandaInicio: '' });
   const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  // Pre-carga KM del vehículo seleccionado
+  const vehSel = vehiculos.find((v: any) => v.id === f.vehiculoId);
+  const handleVehiculo = (e: any) => {
+    const veh = vehiculos.find((v: any) => v.id === e.target.value);
+    setF(p => ({ ...p, vehiculoId: e.target.value, kmAlMontar: veh?.currentOdometer != null ? String(veh.currentOdometer) : '' }));
+  };
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2"><FI label="Vehículo *"><select value={f.vehiculoId} onChange={set('vehiculoId')} className={inp}><option value="">Seleccionar...</option>{vehiculos.map((v: any) => <option key={v.id} value={v.id}>{v.dominio} — {tipoLabels[v.tipo] || v.tipo}</option>)}</select></FI></div>
+        <div className="col-span-2">
+          <FI label="Vehículo *">
+            <select value={f.vehiculoId} onChange={handleVehiculo} className={inp}>
+              <option value="">Seleccionar...</option>
+              {vehiculos.map((v: any) => <option key={v.id} value={v.id}>{v.dominio} — {tipoLabels[v.tipo] || v.tipo}{v.currentOdometer ? ` (${v.currentOdometer.toLocaleString('es-AR')} km)` : ''}</option>)}
+            </select>
+          </FI>
+        </div>
         <FI label="Eje *"><select value={f.eje} onChange={set('eje')} className={inp}>{[1,2,3,4,5].map(n => <option key={n} value={n}>Eje {n}</option>)}</select></FI>
         <FI label="Lado *"><select value={f.lado} onChange={set('lado')} className={inp}><option value="IZQ">Izquierdo</option><option value="DER">Derecho</option></select></FI>
         <FI label="Posición"><select value={f.posicion} onChange={set('posicion')} className={inp}><option value="SIMPLE">Simple</option><option value="EXT">Doble externo</option><option value="INT">Doble interno</option></select></FI>
-        <FI label="Odómetro al montar"><input type="number" value={f.kmAlMontar} onChange={set('kmAlMontar')} className={inp} /></FI>
-        <div className="col-span-2"><FI label="Prof. banda al montar (mm)"><input type="number" step="0.1" value={f.profBandaInicio} onChange={set('profBandaInicio')} className={inp} /></FI></div>
+        <FI label="Odómetro al montar (km)">
+          <input type="number" value={f.kmAlMontar} onChange={set('kmAlMontar')} className={inp} placeholder={vehSel?.currentOdometer ? String(vehSel.currentOdometer) : '0'} />
+        </FI>
+        <div className="col-span-2"><FI label="Prof. banda al montar (mm)"><input type="number" step="0.1" value={f.profBandaInicio} onChange={set('profBandaInicio')} className={inp} placeholder="12" /></FI></div>
       </div>
+      {vehSel?.currentOdometer && !f.kmAlMontar && <p className="text-xs text-blue-600">🔢 Odómetro actual de {vehSel.dominio}: {vehSel.currentOdometer.toLocaleString('es-AR')} km (pre-cargado automáticamente)</p>}
       <div className="flex gap-3 pt-2">
         <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
-        <button onClick={() => { if (!f.vehiculoId) return alert('Seleccioná un vehículo'); onSave(neumaticoId, { vehiculoId: f.vehiculoId, eje: parseInt(f.eje), lado: f.lado, posicion: f.posicion, kmAlMontar: f.kmAlMontar ? parseFloat(f.kmAlMontar) : undefined, profBandaInicio: f.profBandaInicio ? parseFloat(f.profBandaInicio) : undefined }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Montar</button>
+        <button onClick={() => { if (!f.vehiculoId) return alert('Selección un vehículo'); onSave(neumaticoId, { vehiculoId: f.vehiculoId, eje: parseInt(f.eje), lado: f.lado, posicion: f.posicion, kmAlMontar: f.kmAlMontar ? parseFloat(f.kmAlMontar) : undefined, profBandaInicio: f.profBandaInicio ? parseFloat(f.profBandaInicio) : undefined }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Montar</button>
+      </div>
+    </div>
+  );
+}
+
+function FlotaDesmontarForm({ neumatico, posActiva, vehiculo, onSave, onClose }: any) {
+  const defaultKm = vehiculo?.currentOdometer != null ? String(vehiculo.currentOdometer) : '';
+  const [km, setKm] = useState(defaultKm);
+  const [banda, setBanda] = useState('');
+  const kmRecorridos = posActiva?.kmAlMontar != null && km ? parseFloat(km) - posActiva.kmAlMontar : null;
+  return (
+    <div className="space-y-4">
+      {posActiva && (
+        <div className="bg-blue-50 rounded-xl p-3 text-sm">
+          <p className="font-semibold text-blue-800">🚛 Montado en: {vehiculo?.dominio || '—'} · E{posActiva.eje}-{posActiva.lado}</p>
+          {posActiva.kmAlMontar != null && <p className="text-blue-600 text-xs mt-0.5">KM al montar: {posActiva.kmAlMontar.toLocaleString('es-AR')} km</p>}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <FI label="Odómetro al desmontar (km)">
+            <input type="number" value={km} onChange={e => setKm(e.target.value)} className={inp} placeholder={vehiculo?.currentOdometer ? String(vehiculo.currentOdometer) : '0'} />
+          </FI>
+          {kmRecorridos != null && kmRecorridos > 0 && <p className="text-xs text-purple-600 mt-1">🛣 Km recorridos en este montaje: <strong>{kmRecorridos.toLocaleString('es-AR')} km</strong></p>}
+        </div>
+        <div className="col-span-2">
+          <FI label="Prof. banda al desmontar (mm)">
+            <input type="number" step="0.1" value={banda} onChange={e => setBanda(e.target.value)} className={inp} placeholder="Ej: 4.5" />
+          </FI>
+          {banda && parseFloat(banda) < 3 && <p className="text-xs text-red-600 mt-1">⚠ Banda por debajo de 3mm — considerar reemplazo</p>}
+        </div>
+      </div>
+      <div className="flex gap-3 pt-1">
+        <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
+        <button onClick={() => onSave(neumatico.id, km ? parseFloat(km) : null, banda ? parseFloat(banda) : null)} className="flex-1 bg-amber-600 text-white rounded-lg py-2 hover:bg-amber-700 text-sm">Confirmar desmontaje</button>
       </div>
     </div>
   );

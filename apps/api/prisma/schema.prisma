@@ -5828,12 +5828,15 @@ model Neumatico {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  codigo   String  // código interno
+  codigo   String  // código interno / nro serie
   marca    String?
   modelo   String?
   medida   String? // ej: 295/80R22.5
   dot       String? // fecha de fabricación DOT
   condicion String  @default("NUEVA") // NUEVA, USADA, RECAPADA
+
+  // Vínculo opcional con artículo de Repuestos (descuenta stock al montar)
+  sparePartId String? @db.Uuid
 
   // Estado
   status       String @default("DISPONIBLE") // DISPONIBLE, EN_USO, EN_REPARACION, BAJA
