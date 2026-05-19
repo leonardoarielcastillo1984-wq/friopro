@@ -708,6 +708,16 @@ export default function MantenimientoPage() {
     }
   };
 
+  const reactivarVehiculo = async (id: string) => {
+    if (!confirm('¿Reactivar este vehículo? Volverá a estado ACTIVO.')) return;
+    try {
+      await apiFetch(`/flota/vehiculos/${id}`, { method: 'PATCH', json: { status: 'ACTIVO' } });
+      loadFlotaData();
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo reactivar el vehículo.');
+    }
+  };
+
   const deleteConductor = async (id: string) => {
     if (!confirm('¿Eliminar este conductor?')) return;
     try {
@@ -1959,7 +1969,11 @@ export default function MantenimientoPage() {
                           </div>
                           <div className="flex gap-1">
                             <button onClick={() => { setEditingVeh(v); setShowVehModal(true); }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"><Edit className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => deleteVehiculo(v.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
+                            {v.status === 'BAJA' ? (
+                              <button onClick={() => reactivarVehiculo(v.id)} className="p-1.5 text-gray-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50" title="Reactivar"><RefreshCw className="w-3.5 h-3.5" /></button>
+                            ) : (
+                              <button onClick={() => deleteVehiculo(v.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Eliminar (marcar BAJA)"><Trash2 className="w-3.5 h-3.5" /></button>
+                            )}
                           </div>
                         </div>
                         {v.currentOdometer != null && (
