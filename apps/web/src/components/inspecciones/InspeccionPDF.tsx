@@ -48,10 +48,10 @@ export default function InspeccionPDFButton({ inspeccion, empresa = 'SGI 360', l
     // Genera celdas de la tabla con imagen + puntos SVG superpuestos (compatible con print)
     const celdaFoto = (foto: any, globalOffset: number) => `
       <td style="padding:4px;vertical-align:top;width:50%;">
-        <div style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;position:relative;">
+        <div style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
           <div style="background:#1e293b;color:#fff;font-size:9px;font-weight:700;padding:3px 8px;">${foto.titulo || ''}</div>
           <div style="position:relative;line-height:0;">
-            <img src="${foto.url}" style="width:100%;display:block;height:160px;object-fit:cover;" />
+            <img src="${foto.url}" style="width:100%;display:block;height:auto;max-height:220px;object-fit:contain;background:#f8fafc;" />
             <svg style="position:absolute;top:0;left:0;width:100%;height:100%;" viewBox="0 0 100 100" preserveAspectRatio="none">
               ${(foto.puntos || []).map((p: any, pi: number) => `
                 <circle cx="${p.x}" cy="${p.y}" r="4.5" fill="${primaryColor}" stroke="white" stroke-width="1.5"/>
