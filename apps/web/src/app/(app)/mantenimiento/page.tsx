@@ -698,6 +698,26 @@ export default function MantenimientoPage() {
     }
   };
 
+  const deleteVehiculo = async (id: string) => {
+    if (!confirm('¿Eliminar este vehículo? Se marcará como BAJA y no aparecerá en la lista.')) return;
+    try {
+      await apiFetch(`/flota/vehiculos/${id}`, { method: 'DELETE' });
+      loadFlotaData();
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo eliminar el vehículo.');
+    }
+  };
+
+  const deleteConductor = async (id: string) => {
+    if (!confirm('¿Eliminar este conductor?')) return;
+    try {
+      await apiFetch(`/flota/conductores/${id}`, { method: 'DELETE' });
+      loadFlotaData();
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo eliminar el conductor.');
+    }
+  };
+
   const montarNeumatico = async (neumaticoId: string, data: any) => {
     await apiFetch(`/flota/neumaticos/${neumaticoId}/montar`, { method: 'POST', json: data });
     setShowMontarModal(null); loadFlotaData();
@@ -1937,7 +1957,10 @@ export default function MantenimientoPage() {
                             </div>
                             <p className="text-sm text-gray-500">{TIPO_LABELS[v.tipo] || v.tipo}{v.marca ? ` · ${v.marca}` : ''}{v.modelo ? ` ${v.modelo}` : ''}{v.anio ? ` (${v.anio})` : ''}</p>
                           </div>
-                          <button onClick={() => { setEditingVeh(v); setShowVehModal(true); }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"><Edit className="w-3.5 h-3.5" /></button>
+                          <div className="flex gap-1">
+                            <button onClick={() => { setEditingVeh(v); setShowVehModal(true); }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"><Edit className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => deleteVehiculo(v.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
                         </div>
                         {v.currentOdometer != null && (
                           <div className="bg-blue-50 rounded-lg px-3 py-1.5 mb-2 flex items-center gap-2">
@@ -2069,6 +2092,7 @@ export default function MantenimientoPage() {
                           <div className="flex gap-1 items-center">
                             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.status === 'ACTIVO' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{c.status}</span>
                             <button onClick={() => { setEditingCond(c); setShowConductorModal(true); }} className="p-1 text-gray-400 hover:text-blue-600"><Edit className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => deleteConductor(c.id)} className="p-1 text-gray-400 hover:text-red-600" title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-xs my-2">
