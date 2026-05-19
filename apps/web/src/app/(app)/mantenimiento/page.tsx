@@ -577,7 +577,7 @@ export default function MantenimientoPage() {
       
       setWorkOrders(ordersData.workOrders || []);
       setMaintenancePlans(plansData.plans || []);
-      setTechnicians(techniciansData.technicians || []);
+      setTechnicians((techniciansData.technicians || []).sort((a: any, b: any) => a.name.localeCompare(b.name)));
       setSpareParts(partsData.parts || []);
       setAssets(assetsData.assets || []);
       setStats(statsData.stats || stats);

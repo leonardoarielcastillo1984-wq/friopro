@@ -130,7 +130,7 @@ export default function GestionCambiosPage() {
         const name = `${e.firstName || ''} ${e.lastName || ''}`.trim()
           || e.email || `ID: ${id}`;
         return { id, name };
-      })))
+      }).sort((a: any, b: any) => a.name.localeCompare(b.name))))
       .catch(() => {});
   }, []);
 

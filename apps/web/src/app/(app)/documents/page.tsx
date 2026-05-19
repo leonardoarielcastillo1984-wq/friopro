@@ -132,7 +132,7 @@ export default function DocumentsPage() {
       setDocs([...(res?.documents ?? []), ...storageDocuments]);
       setDepartments(deptsRes.departments ?? []);
       setNormatives(normsRes.normativos ?? []);
-      setEmployees(empsRes.employees ?? []);
+      setEmployees((empsRes.employees ?? []).sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
     } catch (err: any) {
       const msg = err?.message ?? 'Error al cargar documentos';
       setError(msg);

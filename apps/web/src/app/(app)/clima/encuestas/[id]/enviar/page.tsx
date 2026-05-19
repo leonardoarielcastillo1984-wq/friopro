@@ -20,7 +20,7 @@ export default function EnviarEncuestaPage() {
   useEffect(() => {
     Promise.all([
       apiFetch(`/clima/encuestas/${id}`).then((d: any) => setSurvey(d.survey)),
-      apiFetch('/hr/employees').then((d: any) => setEmployees(d.employees || d || [])),
+      apiFetch('/hr/employees').then((d: any) => setEmployees((d.employees || d || []).sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)))),
     ]).catch(() => {});
   }, [id]);
 

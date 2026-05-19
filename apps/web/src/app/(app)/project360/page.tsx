@@ -127,7 +127,7 @@ export default function Project360Page() {
         id: e.id,
         name: `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.email,
         email: e.email,
-      }))))
+      })).sort((a: any, b: any) => a.name.localeCompare(b.name))))
       .catch(() => {});
   }, []);
 

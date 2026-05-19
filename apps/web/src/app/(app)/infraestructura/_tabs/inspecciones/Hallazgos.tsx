@@ -58,7 +58,7 @@ export default function InspeccionesHallazgos() {
         apiFetch('/hr/employees?limit=200') as any,
       ]);
       setHallazgos(r.hallazgos || []);
-      setEmpleados(e.employees || e.data || []);
+      setEmpleados((e.employees || e.data || []).sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
     } finally { setLoading(false); }
   }, [filter]);
 

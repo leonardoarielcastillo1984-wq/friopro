@@ -31,7 +31,7 @@ export default function DrillManagePage() {
 
   useEffect(() => { loadDrill(); }, [drillId]);
   useEffect(() => {
-    apiFetch('/hr/employees').then((data: any) => setEmployees(data.employees || [])).catch(() => setEmployees([]));
+    apiFetch('/hr/employees').then((data: any) => setEmployees((data.employees || []).sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)))).catch(() => setEmployees([]));
   }, []);
   useEffect(() => { loadTab(); }, [activeTab, drillId]);
 

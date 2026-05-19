@@ -1,24 +1,42 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { apiFetch } from '@/lib/api';
-import { ClipboardCheck, Eye, X, AlertCircle, Wrench } from 'lucide-react';
+import { ClipboardCheck, Eye, X, AlertCircle, Wrench, Search } from 'lucide-react';
 import InspeccionPDFButton from '@/components/inspecciones/InspeccionPDF';
 import { useAuth } from '@/lib/auth-context';
 
 const ESTADO_COLOR: Record<string, string> = { COMPLETA: 'bg-emerald-100 text-emerald-700', CON_HALLAZGOS: 'bg-amber-100 text-amber-700', CRITICA: 'bg-red-100 text-red-700', INCOMPLETA: 'bg-gray-100 text-gray-500' };
 const SEV_COLOR: Record<string, string> = { LEVE: 'bg-yellow-100 text-yellow-700', MODERADO: 'bg-orange-100 text-orange-700', CRITICO: 'bg-red-100 text-red-700' };
+const ESTADOS = ['TODOS', 'COMPLETA', 'CON_HALLAZGOS', 'CRITICA', 'INCOMPLETA'];
 
 export default function InspeccionesLista() {
   const { tenant } = useAuth();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any>(null);
+  const [filterEstado, setFilterEstado] = useState('TODOS');
+  const [filterSearch, setFilterSearch] = useState('');
 
   useEffect(() => {
     (apiFetch('/inspecciones/') as any)
       .then((r: any) => { setData(r.inspecciones || []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  const filtered = useMemo(() => {
+    let d = data;
+    if (filterEstado !== 'TODOS') d = d.filter(i => i.estado === filterEstado);
+    if (filterSearch.trim()) {
+      const q = filterSearch.toLowerCase();
+      d = d.filter(i =>
+        i.activoNombre?.toLowerCase().includes(q) ||
+        i.activoCodigo?.toLowerCase().includes(q) ||
+        i.inspectorNombre?.toLowerCase().includes(q) ||
+        i.sector?.toLowerCase().includes(q)
+      );
+    }
+    return d;
+  }, [data, filterEstado, filterSearch]);
 
   const loadDetail = async (id: string) => {
     const r: any = await apiFetch(`/inspecciones/${id}`);
@@ -27,24 +45,45 @@ export default function InspeccionesLista() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="font-semibold text-gray-800">Inspecciones realizadas</h2>
-        <span className="text-xs text-gray-400">{data.length} registros</span>
+        <span className="text-xs text-gray-400">{filtered.length} de {data.length} registros</span>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            value={filterSearch}
+            onChange={e => setFilterSearch(e.target.value)}
+            placeholder="Buscar por unidad, inspector, sector..."
+            className="w-full pl-8 pr-3 py-2 text-xs border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20"
+          />
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {ESTADOS.map(e => (
+            <button key={e} onClick={() => setFilterEstado(e)}
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${filterEstado === e ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              {e === 'TODOS' ? 'Todos' : e === 'CON_HALLAZGOS' ? 'Con hallazgos' : e.charAt(0) + e.slice(1).toLowerCase()}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading
         ? <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
-        : data.length === 0
+        : filtered.length === 0
           ? (
             <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-2xl">
               <ClipboardCheck className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm font-medium text-gray-500">Sin inspecciones aún</p>
-              <p className="text-xs text-gray-400 mt-1">Compartí un QR para recibir la primera inspección</p>
+              <p className="text-sm font-medium text-gray-500">{data.length === 0 ? 'Sin inspecciones aún' : 'Sin resultados para el filtro'}</p>
+              <p className="text-xs text-gray-400 mt-1">{data.length === 0 ? 'Compartí un QR para recibir la primera inspección' : 'Probá cambiando los filtros'}</p>
             </div>
           )
           : (
             <div className="space-y-2">
-              {data.map((ins: any) => (
+              {filtered.map((ins: any) => (
                 <div key={ins.id} className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-4 hover:shadow-sm transition-shadow cursor-pointer" onClick={() => loadDetail(ins.id)}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">

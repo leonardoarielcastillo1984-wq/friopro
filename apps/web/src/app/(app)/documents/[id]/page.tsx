@@ -218,7 +218,7 @@ export default function DocumentDetailPage() {
       ]);
       setDepartments(deptsRes.departments);
       setNormatives(normsRes.normativos);
-      setEmployees(empsRes.employees ?? []);
+      setEmployees((empsRes.employees ?? []).sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
     } catch (err) {
       console.error('Error loading departments and normatives:', err);
     }

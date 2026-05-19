@@ -106,7 +106,7 @@ export default function CapacitacionesPage() {
   const loadEmployees = async () => {
     try {
       const res = await apiFetch<{ employees: Employee[] }>('/hr/employees');
-      setEmployees(res.employees || []);
+      setEmployees((res.employees || []).sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
     } catch (err) {
       console.error('Error loading employees:', err);
     }

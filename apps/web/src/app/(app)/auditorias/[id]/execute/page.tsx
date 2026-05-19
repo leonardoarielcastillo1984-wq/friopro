@@ -122,7 +122,7 @@ export default function AuditExecutePage() {
         setTeam(fullRes.audit.team || []);
         setSchedule(fullRes.audit.schedule || []);
       }
-      if (empRes.employees) setEmployees(empRes.employees);
+      if (empRes.employees) setEmployees([...empRes.employees].sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
       if (audRes.auditors) setAuditors(audRes.auditors);
     } catch (err) { setError('Error al cargar la auditoría'); }
     finally { setLoading(false); }
