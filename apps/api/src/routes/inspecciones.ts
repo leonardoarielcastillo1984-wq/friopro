@@ -447,14 +447,18 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       },
     });
     if (!inspeccion) return reply.code(404).send({ error: 'No encontrada' });
-    if (inspeccion.qr?.plantilla) {
+    let diagramaFotos = null;
+    if (inspeccion.qr?.plantilla?.id) {
       const pf = await (app.prisma as any).inspeccionPlantilla.findUnique({
         where: { id: inspeccion.qr.plantilla.id },
         select: { diagramaFotos: true },
       });
-      inspeccion.qr.plantilla.diagramaFotos = pf?.diagramaFotos ?? null;
+      diagramaFotos = pf?.diagramaFotos ?? null;
     }
-    return reply.send({ inspeccion });
+    // Prisma objects are frozen — build a plain serializable response
+    const result = JSON.parse(JSON.stringify(inspeccion));
+    if (result.qr?.plantilla) result.qr.plantilla.diagramaFotos = diagramaFotos;
+    return reply.send({ inspeccion: result });
   });
 
   // ── HALLAZGOS ──────────────────────────────────────────────────────────────
