@@ -485,6 +485,8 @@ interface Asset {
   nextMaintenanceDate?: string;
   createdAt: string;
   updatedAt: string;
+  _count?: { inspeccionQRs: number; workOrders: number };
+  inspeccionQRs?: { lastUsedAt: string | null }[];
 }
 
 interface MaintenanceStats {
@@ -1477,6 +1479,22 @@ export default function MantenimientoPage() {
                           <p>Último mantenimiento: {new Date(asset.lastMaintenanceDate).toLocaleDateString()}</p>
                         )}
                       </div>
+                      <div className="mt-2 flex gap-2 flex-wrap">
+                        {(asset._count?.inspeccionQRs || 0) > 0
+                          ? <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-medium">
+                              🔗 {asset._count.inspeccionQRs} QR{asset._count.inspeccionQRs !== 1 ? 's' : ''} vinculado{asset._count.inspeccionQRs !== 1 ? 's' : ''}
+                            </span>
+                          : <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Sin QR vinculado</span>
+                        }
+                        {asset.inspeccionQRs?.[0]?.lastUsedAt && (
+                          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                            📋 Última insp: {new Date(asset.inspeccionQRs[0].lastUsedAt).toLocaleDateString('es-AR')}
+                          </span>
+                        )}
+                        {asset.status === 'MAINTENANCE' && (
+                          <span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full font-medium">⚠️ En mantenimiento</span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1553,7 +1571,9 @@ export default function MantenimientoPage() {
                             <p className="text-sm font-medium text-gray-800 truncate">{ot.title}</p>
                             <p className="text-xs text-gray-400">{ot.code} · {ot.type} · {new Date(ot.createdAt).toLocaleDateString('es-AR')}</p>
                             {ot.technician && <p className="text-xs text-blue-500">Técnico: {ot.technician.name}</p>}
-                            {ot.origen === 'INSPECCION' && <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">Auto-generada por inspección</span>}
+                            {ot.origen === 'INSPECCION' && (
+                              <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">🔍 Origen: Inspección QR</span>
+                            )}
                           </div>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
                             ot.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :

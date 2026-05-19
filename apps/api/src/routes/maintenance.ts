@@ -554,7 +554,11 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
 
     const assets = await getPrisma(request).maintenanceAsset.findMany({
       where,
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      include: {
+        _count: { select: { inspeccionQRs: true, workOrders: true } },
+        inspeccionQRs: { select: { lastUsedAt: true }, orderBy: { lastUsedAt: 'desc' }, take: 1 },
+      },
     });
 
     console.log('🔧 GET /assets - found:', assets.length, 'assets');

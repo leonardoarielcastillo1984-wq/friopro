@@ -308,6 +308,25 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     return reply.code(201).send({ qr: { ...qr, publicUrl: `${baseUrl}/inspeccionar/${qr.token}` } });
   });
 
+  app.put('/qrs/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      activoNombre: z.string().min(1).max(200).optional(),
+      activoCodigo: z.string().optional(),
+      ubicacion: z.string().optional(),
+      sector: z.string().optional(),
+      titulo: z.string().optional(),
+      pie: z.string().optional(),
+      maintenanceAssetId: z.string().uuid().optional().nullable().or(z.literal('').transform(() => null)),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const qr = await (app.prisma as any).inspeccionQR.updateMany({ where: { id, tenantId }, data: body.data });
+    return reply.send({ ok: true, qr });
+  });
+
   app.delete('/qrs/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
@@ -394,6 +413,19 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     });
 
     await (app.prisma as any).inspeccionQR.update({ where: { id: qr.id }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
+
+    // Auto-actualizar estado del activo si hay hallazgos críticos
+    if (qr.maintenanceAssetId) {
+      try {
+        const hayCriticos = hallazgos.some((h: any) => h.severidad === 'CRITICO');
+        const updateData: any = { lastMaintenanceDate: new Date() };
+        if (hayCriticos) updateData.status = 'MAINTENANCE';
+        await (app.prisma as any).maintenanceAsset.updateMany({
+          where: { id: qr.maintenanceAssetId },
+          data: updateData,
+        });
+      } catch (e: any) { console.error('[inspecciones] asset status update error:', e); }
+    }
 
     // Auto-crear OT por hallazgo si el QR está vinculado a un activo de mantenimiento
     if (hallazgos.length > 0 && qr.maintenanceAssetId) {

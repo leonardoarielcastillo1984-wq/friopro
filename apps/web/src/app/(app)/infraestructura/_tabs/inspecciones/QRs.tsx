@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, Trash2, X, QrCode, ExternalLink, Printer, Link2, Link2Off } from 'lucide-react';
+import { Plus, Trash2, X, QrCode, ExternalLink, Printer, Link2, Link2Off, Pencil } from 'lucide-react';
 
 export default function InspeccionesQRs() {
   const [qrs, setQrs] = useState<any[]>([]);
@@ -11,6 +11,9 @@ export default function InspeccionesQRs() {
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ plantillaId: '', activoNombre: '', activoCodigo: '', ubicacion: '', sector: '', titulo: '', pie: '', maintenanceAssetId: '' });
   const [saving, setSaving] = useState(false);
+  const [editingQR, setEditingQR] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ maintenanceAssetId: '', activoNombre: '', activoCodigo: '' });
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -31,6 +34,19 @@ export default function InspeccionesQRs() {
       load();
     } catch (err: any) { alert(err?.message || 'Error generando QR'); }
     finally { setSaving(false); }
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault(); setEditSaving(true);
+    try {
+      await apiFetch(`/inspecciones/qrs/${editingQR.id}`, { method: 'PUT', json: {
+        maintenanceAssetId: editForm.maintenanceAssetId || null,
+        activoNombre: editForm.activoNombre,
+        activoCodigo: editForm.activoCodigo,
+      }});
+      setEditingQR(null); load();
+    } catch (err: any) { alert(err?.message || 'Error guardando'); }
+    finally { setEditSaving(false); }
   };
 
   const handleDelete = async (id: string) => {
@@ -119,6 +135,9 @@ ${qr.sector ? `<p class="sector">📍 ${qr.sector}</p>` : ''}
                       <a href={qr.publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1 text-xs border border-gray-200 px-2.5 py-1.5 rounded-lg hover:bg-gray-50">
                         <ExternalLink className="w-3 h-3" />
                       </a>
+                      <button onClick={() => { setEditingQR(qr); setEditForm({ maintenanceAssetId: qr.maintenanceAssetId || '', activoNombre: qr.activoNombre, activoCodigo: qr.activoCodigo || '' }); }} className="flex items-center justify-center text-xs border border-blue-100 px-2.5 py-1.5 rounded-lg hover:bg-blue-50 text-blue-400 hover:text-blue-600" title="Editar vinculación">
+                        <Pencil className="w-3 h-3" />
+                      </button>
                       <button onClick={() => handleDelete(qr.id)} className="flex items-center justify-center text-xs border border-red-100 px-2.5 py-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600">
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -128,6 +147,48 @@ ${qr.sector ? `<p class="sector">📍 ${qr.sector}</p>` : ''}
               })}
             </div>
           )}
+
+      {/* Modal editar QR */}
+      {editingQR && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">Editar QR — {editingQR.activoNombre}</h3>
+              <button onClick={() => setEditingQR(null)}><X className="w-4 h-4 text-gray-500" /></button>
+            </div>
+            <form onSubmit={handleEdit} className="p-5 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Nombre del activo</label>
+                  <input value={editForm.activoNombre} onChange={e => setEditForm(p => ({ ...p, activoNombre: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Código</label>
+                  <input value={editForm.activoCodigo} onChange={e => setEditForm(p => ({ ...p, activoCodigo: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
+                </div>
+              </div>
+              <div className="border border-emerald-100 bg-emerald-50 rounded-xl p-3">
+                <label className="block text-xs font-semibold text-emerald-700 mb-1.5">🔗 Activo de Mantenimiento vinculado</label>
+                <select value={editForm.maintenanceAssetId} onChange={e => {
+                  const sel = assets.find((a: any) => a.id === e.target.value);
+                  setEditForm(p => ({ ...p, maintenanceAssetId: e.target.value, activoNombre: sel ? sel.name : p.activoNombre, activoCodigo: sel ? (sel.code || p.activoCodigo) : p.activoCodigo }));
+                }} className="w-full text-sm border border-emerald-200 rounded-xl px-3 py-2.5 outline-none bg-white">
+                  <option value="">Sin vincular</option>
+                  {assets.map((a: any) => <option key={a.id} value={a.id}>{a.name} — {a.code}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditingQR(null)} className="flex-1 text-sm border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50">Cancelar</button>
+                <button type="submit" disabled={editSaving} className="flex-1 bg-blue-600 text-white text-sm font-medium py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-60">
+                  {editSaving ? 'Guardando...' : '💾 Guardar cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal nuevo QR */}
       {showNew && (
