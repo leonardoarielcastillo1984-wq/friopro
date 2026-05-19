@@ -715,10 +715,14 @@ export default function MantenimientoPage() {
       return;
     }
     try {
-      await apiFetch(`/flota/vehiculos/${id}?permanente=true`, { method: 'DELETE' });
+      const url = `/flota/vehiculos/${id}?permanente=true`;
+      console.log('[Frontend] Enviando DELETE a:', url);
+      const response = await apiFetch(url, { method: 'DELETE' });
+      console.log('[Frontend] Respuesta:', response);
       loadFlotaData();
       alert('Vehículo eliminado permanentemente.');
     } catch (e: any) {
+      console.error('[Frontend] Error:', e);
       alert(e?.message || 'No se pudo eliminar el vehículo. Verifique que no tenga neumáticos montados u otros datos vinculados.');
     }
   };
