@@ -15,7 +15,7 @@ export default function InspeccionarPage() {
   const [error, setError] = useState('');
   const [data, setData] = useState<any>(null);
   const [paso, setPaso] = useState<'intro' | 'form' | 'enviando' | 'ok' | 'error'>('intro');
-  const [inspector, setInspector] = useState({ nombre: '', email: '', phone: '' });
+  const [inspector, setInspector] = useState({ nombre: '', email: '', phone: '', dominioTractor: '', dominioSemi: '', ruta: '' });
   const [respuestas, setRespuestas] = useState<Record<string, Respuesta>>({});
   const [notas, setNotas] = useState('');
   const [resultado, setResultado] = useState<any>(null);
@@ -63,7 +63,12 @@ export default function InspeccionarPage() {
           inspectorNombre: inspector.nombre,
           inspectorEmail: inspector.email || undefined,
           inspectorPhone: inspector.phone || undefined,
-          notas: notas || undefined,
+          notas: [
+            inspector.dominioTractor ? `Dominio tractor: ${inspector.dominioTractor}` : '',
+            inspector.dominioSemi ? `Dominio semi: ${inspector.dominioSemi}` : '',
+            inspector.ruta ? `Ruta: ${inspector.ruta}` : '',
+            notas,
+          ].filter(Boolean).join(' | ') || undefined,
           respuestas: Object.values(respuestas).filter(r => r.valor !== null || r.esOk !== undefined),
         }),
       });
@@ -166,26 +171,23 @@ export default function InspeccionarPage() {
               {data?.qr?.sector && <p className="text-xs text-blue-500 mb-4">📍 {data?.qr?.sector}</p>}
               {data?.qr?.instrucciones && <p className="text-sm text-gray-600 mb-4">{data?.qr?.instrucciones}</p>}
 
-              {/* Diagrama de puntos de control */}
-              {data?.plantilla?.categoria && (
-                <div className="mb-5 -mx-6">
-                  <AssetDiagram
-                    categoria={data.plantilla.categoria}
-                    logoUrl={data?.empresa?.logoUrl}
-                    companyName={data?.empresa?.nombre}
-                    primaryColor={primary}
-                    diagramaFotos={data?.plantilla?.diagramaFotos || null}
-                  />
-                </div>
-              )}
-
-              <div className="bg-gray-50 rounded-xl p-4 text-left mb-6 space-y-2">
+              <div className="bg-gray-50 rounded-xl p-4 text-left mb-4 space-y-2">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datos del inspector</p>
-                <input placeholder="Tu nombre completo *" value={inspector.nombre} onChange={e => setInspector(p => ({ ...p, nombre: e.target.value }))}
+                <input placeholder="Nombre y apellido *" value={inspector.nombre} onChange={e => setInspector(p => ({ ...p, nombre: e.target.value }))}
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
                 <input placeholder="Email (opcional)" type="email" value={inspector.email} onChange={e => setInspector(p => ({ ...p, email: e.target.value }))}
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
                 <input placeholder="Teléfono (opcional)" type="tel" value={inspector.phone} onChange={e => setInspector(p => ({ ...p, phone: e.target.value }))}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4 text-left mb-6 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datos del viaje</p>
+                <input placeholder="Dominio tractor" value={inspector.dominioTractor} onChange={e => setInspector(p => ({ ...p, dominioTractor: e.target.value }))}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none uppercase" />
+                <input placeholder="Dominio semi (opcional)" value={inspector.dominioSemi} onChange={e => setInspector(p => ({ ...p, dominioSemi: e.target.value }))}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none uppercase" />
+                <input placeholder="Ruta" value={inspector.ruta} onChange={e => setInspector(p => ({ ...p, ruta: e.target.value }))}
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
               </div>
               <button onClick={() => { if (!inspector.nombre.trim()) { alert('Ingresá tu nombre para continuar'); return; } setPaso('form'); }}
@@ -201,17 +203,55 @@ export default function InspeccionarPage() {
         {/* Formulario */}
         {paso === 'form' && (
           <>
+            {/* Resumen inspector + viaje */}
             <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-xs font-bold" style={{ color: primary }}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-xs font-bold shrink-0" style={{ color: primary }}>
                   {inspector.nombre.charAt(0).toUpperCase()}
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-800">{inspector.nombre}</p>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{inspector.nombre}</p>
                   <p className="text-xs text-gray-400">{data?.qr?.activoNombre} · {new Date().toLocaleDateString('es-AR')}</p>
                 </div>
               </div>
+              {(inspector.dominioTractor || inspector.dominioSemi || inspector.ruta) && (
+                <div className="flex flex-wrap gap-2">
+                  {inspector.dominioTractor && (
+                    <span className="text-xs bg-blue-50 text-blue-700 font-semibold px-2.5 py-1 rounded-lg border border-blue-100">
+                      🚛 Tractor: {inspector.dominioTractor.toUpperCase()}
+                    </span>
+                  )}
+                  {inspector.dominioSemi && (
+                    <span className="text-xs bg-slate-50 text-slate-700 font-semibold px-2.5 py-1 rounded-lg border border-slate-100">
+                      🚜 Semi: {inspector.dominioSemi.toUpperCase()}
+                    </span>
+                  )}
+                  {inspector.ruta && (
+                    <span className="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2.5 py-1 rounded-lg border border-emerald-100">
+                      📍 Ruta: {inspector.ruta}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* Diagrama de puntos de control */}
+            {data?.plantilla?.diagramaFotos?.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Diagrama de control del activo</p>
+                </div>
+                <div className="p-2">
+                  <AssetDiagram
+                    categoria={data.plantilla.categoria}
+                    logoUrl={data?.empresa?.logoUrl}
+                    companyName={data?.empresa?.nombre}
+                    primaryColor={primary}
+                    diagramaFotos={data.plantilla.diagramaFotos}
+                  />
+                </div>
+              </div>
+            )}
 
             {secciones.map(seccion => {
               const secItems = items.filter(i => (i.seccion || 'General') === seccion);
