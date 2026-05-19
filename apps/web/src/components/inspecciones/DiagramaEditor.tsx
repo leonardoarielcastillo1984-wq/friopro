@@ -27,18 +27,35 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
   const foto = fotos[activeIdx] ?? { url: '', titulo: '', puntos: [] };
 
   function onFileChange(idx: number, file: File) {
-    console.log('[DiagramaEditor] onFileChange idx=', idx, 'file=', file.name, file.type, file.size);
+    const isHeic = file.type === 'image/heic' || file.type === 'image/heif' || file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
+    if (isHeic) {
+      // Convertir HEIC a JPEG via canvas
+      const objectUrl = URL.createObjectURL(file);
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { alert('No se pudo procesar la imagen HEIC. Convertila a JPG antes de subir.'); return; }
+        ctx.drawImage(img, 0, 0);
+        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        URL.revokeObjectURL(objectUrl);
+        setFotos(prev => prev.map((f, i) => i === idx ? { ...f, url: jpegDataUrl } : f));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        alert('El browser no puede abrir archivos HEIC directamente.\nConvertí la foto a JPG o PNG antes de subirla.\n\nEn iPhone: Ajustes → Cámara → Formatos → "Más compatible" para que guarde en JPG.');
+      };
+      img.src = objectUrl;
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string;
-      console.log('[DiagramaEditor] FileReader loaded, dataUrl length=', dataUrl?.length);
-      setFotos(prev => {
-        const next = prev.map((f, i) => i === idx ? { ...f, url: dataUrl } : f);
-        console.log('[DiagramaEditor] setFotos next[idx].url length=', next[idx]?.url?.length);
-        return next;
-      });
+      setFotos(prev => prev.map((f, i) => i === idx ? { ...f, url: dataUrl } : f));
     };
-    reader.onerror = (err) => console.error('[DiagramaEditor] FileReader error', err);
+    reader.onerror = () => alert('Error al leer el archivo. Intentá con otro formato.');
     reader.readAsDataURL(file);
   }
 
@@ -81,8 +98,6 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
       setSaving(false);
     }
   }
-
-  console.log('[DiagramaEditor] render activeIdx=', activeIdx, 'foto.url length=', foto.url?.length, 'fotos.length=', fotos.length);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 9999, overflowY: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16 }}>
