@@ -1073,8 +1073,8 @@ export default function MantenimientoPage() {
 
       {/* Navigation Tabs */}
       <div className="bg-white rounded-lg border border-gray-200 mb-6">
-        <div className="overflow-x-auto">
-          <div className="flex items-center gap-1 px-4 pt-3 pb-0 border-b border-gray-200 min-w-max">
+        <div className="overflow-x-auto" style={{overflowY:'visible'}}>
+          <div className="flex items-center gap-1 px-4 py-2 border-b border-gray-200 min-w-max relative z-10">
             {/* Mantenimiento group */}
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 mr-1">Mantenimiento</span>
             {([
@@ -1087,7 +1087,7 @@ export default function MantenimientoPage() {
               { id: 'kpis', label: 'KPIs', icon: <TrendingUp className="w-3.5 h-3.5" /> },
             ] as any[]).map(t => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${activeTab === t.id ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'}`}>
                 {t.icon}{t.label}
               </button>
             ))}
@@ -1103,7 +1103,7 @@ export default function MantenimientoPage() {
               { id: 'flota-combustible', label: 'Combustible', icon: <Fuel className="w-3.5 h-3.5" /> },
             ] as any[]).map(t => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap relative ${activeTab === t.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap relative ${activeTab === t.id ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'}`}>
                 {t.icon}{t.label}
                 {t.badge > 0 && <span className="ml-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">{t.badge > 9 ? '9+' : t.badge}</span>}
               </button>
