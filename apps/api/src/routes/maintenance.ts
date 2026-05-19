@@ -713,6 +713,38 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     });
   });
 
+  // GET /maintenance/assets/:id/historial - Hoja de vida del activo (inspecciones + OTs)
+  app.get('/assets/:id/historial', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.db?.tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = request.params as { id: string };
+    const tenantId = request.db.tenantId;
+
+    const [asset, workOrders, qrs] = await Promise.all([
+      getPrisma(request).maintenanceAsset.findFirst({
+        where: { id, tenantId },
+        include: { plans: { orderBy: { createdAt: 'desc' }, take: 5 } },
+      }),
+      getPrisma(request).workOrder.findMany({
+        where: { assetId: id, tenantId },
+        orderBy: { createdAt: 'desc' },
+        include: { technician: { select: { name: true } } },
+      }),
+      (getPrisma(request) as any).inspeccionQR.findMany({
+        where: { maintenanceAssetId: id, tenantId },
+        select: { id: true, activoNombre: true, activoCodigo: true, token: true,
+          inspecciones: { orderBy: { createdAt: 'desc' }, take: 20,
+            select: { id: true, estado: true, puntaje: true, inspectorNombre: true, hallazgosCount: true, createdAt: true, notas: true } } },
+      }),
+    ]);
+
+    if (!asset) return reply.code(404).send({ error: 'Activo no encontrado' });
+
+    const inspecciones = qrs.flatMap((q: any) => q.inspecciones.map((i: any) => ({ ...i, qrActivoNombre: q.activoNombre })));
+    inspecciones.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return reply.send({ asset, workOrders, inspecciones, qrs });
+  });
+
   // GET /maintenance/stats - Estadísticas
   app.get('/stats', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {

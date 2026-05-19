@@ -551,6 +551,11 @@ export default function MantenimientoPage() {
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [maintenanceHistory, setMaintenanceHistory] = useState<any[]>([]);
+  const [showHistorialModal, setShowHistorialModal] = useState(false);
+  const [historialAsset, setHistorialAsset] = useState<Asset | null>(null);
+  const [historialData, setHistorialData] = useState<any>(null);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialTab, setHistorialTab] = useState<'ots' | 'inspecciones'>('ots');
 
   useEffect(() => {
     loadMaintenanceData();
@@ -770,6 +775,15 @@ export default function MantenimientoPage() {
     } catch (error) {
       console.error('Error loading maintenance history:', error);
     }
+  };
+
+  const openHistorial = async (asset: Asset) => {
+    setHistorialAsset(asset); setShowHistorialModal(true); setHistorialLoading(true); setHistorialData(null); setHistorialTab('ots');
+    try {
+      const r = await apiFetch(`/maintenance/assets/${asset.id}/historial`) as any;
+      setHistorialData(r);
+    } catch (e) { console.error('historial error', e); }
+    finally { setHistorialLoading(false); }
   };
 
   const handleAddMaintenanceCost = async (assetId: string, costData: any) => {
@@ -1430,6 +1444,13 @@ export default function MantenimientoPage() {
                             </svg>
                           </button>
                           <button
+                            onClick={() => openHistorial(asset)}
+                            className="p-1 text-purple-600 hover:bg-purple-50 rounded"
+                            title="Hoja de vida del activo"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                          </button>
+                          <button
                             onClick={() => { setSelectedAsset(asset); setShowMaintenanceCostsModal(true); }}
                             className="p-1 text-green-600 hover:bg-green-50 rounded"
                             title="Ver costos de mantenimiento"
@@ -1475,6 +1496,106 @@ export default function MantenimientoPage() {
           )}
         </div>
       </div>
+
+      {/* Hoja de Vida del Activo Modal */}
+      {showHistorialModal && historialAsset && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b border-gray-200 flex justify-between items-start">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">📋 Hoja de Vida — {historialAsset.name}</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{historialAsset.code} · {historialAsset.category}</p>
+              </div>
+              <button onClick={() => setShowHistorialModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+
+            {/* Resumen */}
+            {historialData && (
+              <div className="grid grid-cols-3 gap-3 p-4 bg-gray-50 border-b border-gray-100 text-center text-sm">
+                <div>
+                  <p className="text-xl font-bold text-blue-600">{historialData.workOrders?.length || 0}</p>
+                  <p className="text-xs text-gray-500">Órdenes de trabajo</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-purple-600">{historialData.inspecciones?.length || 0}</p>
+                  <p className="text-xs text-gray-500">Inspecciones</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-emerald-600">{historialData.qrs?.length || 0}</p>
+                  <p className="text-xs text-gray-500">QRs vinculados</p>
+                </div>
+              </div>
+            )}
+
+            {/* Tabs */}
+            <div className="flex border-b border-gray-100">
+              <button onClick={() => setHistorialTab('ots')} className={`flex-1 py-2.5 text-sm font-medium ${historialTab === 'ots' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                🔧 Órdenes de Trabajo
+              </button>
+              <button onClick={() => setHistorialTab('inspecciones')} className={`flex-1 py-2.5 text-sm font-medium ${historialTab === 'inspecciones' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                📋 Inspecciones QR
+              </button>
+            </div>
+
+            <div className="p-4">
+              {historialLoading && (
+                <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+              )}
+
+              {!historialLoading && historialData && historialTab === 'ots' && (
+                <div className="space-y-2">
+                  {historialData.workOrders?.length === 0
+                    ? <p className="text-sm text-gray-400 text-center py-8">Sin órdenes de trabajo para este activo aún.</p>
+                    : historialData.workOrders.map((ot: any) => (
+                      <div key={ot.id} className="border border-gray-100 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{ot.title}</p>
+                            <p className="text-xs text-gray-400">{ot.code} · {ot.type} · {new Date(ot.createdAt).toLocaleDateString('es-AR')}</p>
+                            {ot.technician && <p className="text-xs text-blue-500">Técnico: {ot.technician.name}</p>}
+                            {ot.origen === 'INSPECCION' && <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">Auto-generada por inspección</span>}
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
+                            ot.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                            ot.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
+                            ot.status === 'PENDING' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                          }`}>{ot.status}</span>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+
+              {!historialLoading && historialData && historialTab === 'inspecciones' && (
+                <div className="space-y-2">
+                  {historialData.inspecciones?.length === 0
+                    ? <p className="text-sm text-gray-400 text-center py-8">Sin inspecciones registradas aún. Vinculá un QR operativo a este activo.</p>
+                    : historialData.inspecciones.map((ins: any) => (
+                      <div key={ins.id} className="border border-gray-100 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800">{ins.inspectorNombre}</p>
+                            <p className="text-xs text-gray-400">{new Date(ins.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                            {ins.hallazgosCount > 0 && <span className="text-xs bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-medium">{ins.hallazgosCount} hallazgo{ins.hallazgosCount !== 1 ? 's' : ''}</span>}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className={`text-sm font-bold ${ins.puntaje >= 80 ? 'text-green-600' : ins.puntaje >= 60 ? 'text-amber-500' : 'text-red-600'}`}>{ins.puntaje}%</p>
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                              ins.estado === 'COMPLETA' ? 'bg-green-100 text-green-700' :
+                              ins.estado === 'CON_HALLAZGOS' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                            }`}>{ins.estado}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* View Order Modal */}
       {showViewOrderModal && selectedOrder && (

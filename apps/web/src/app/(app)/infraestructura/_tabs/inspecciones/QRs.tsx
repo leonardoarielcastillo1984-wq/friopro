@@ -1,21 +1,22 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, Trash2, X, QrCode, ExternalLink, Printer } from 'lucide-react';
+import { Plus, Trash2, X, QrCode, ExternalLink, Printer, Link2, Link2Off } from 'lucide-react';
 
 export default function InspeccionesQRs() {
   const [qrs, setQrs] = useState<any[]>([]);
   const [plantillas, setPlantillas] = useState<any[]>([]);
+  const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ plantillaId: '', activoNombre: '', activoCodigo: '', ubicacion: '', sector: '', titulo: '', pie: '' });
+  const [form, setForm] = useState({ plantillaId: '', activoNombre: '', activoCodigo: '', ubicacion: '', sector: '', titulo: '', pie: '', maintenanceAssetId: '' });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [q, p] = await Promise.all([apiFetch('/inspecciones/qrs') as any, apiFetch('/inspecciones/plantillas') as any]);
-      setQrs(q.qrs || []); setPlantillas(p.plantillas || []);
+      const [q, p, a] = await Promise.all([apiFetch('/inspecciones/qrs') as any, apiFetch('/inspecciones/plantillas') as any, apiFetch('/maintenance/assets') as any]);
+      setQrs(q.qrs || []); setPlantillas(p.plantillas || []); setAssets(a.assets || []);
     } finally { setLoading(false); }
   }, []);
 
@@ -26,7 +27,7 @@ export default function InspeccionesQRs() {
     try {
       await apiFetch('/inspecciones/qrs', { method: 'POST', json: form });
       setShowNew(false);
-      setForm({ plantillaId: '', activoNombre: '', activoCodigo: '', ubicacion: '', sector: '', titulo: '', pie: '' });
+      setForm({ plantillaId: '', activoNombre: '', activoCodigo: '', ubicacion: '', sector: '', titulo: '', pie: '', maintenanceAssetId: '' });
       load();
     } catch (err: any) { alert(err?.message || 'Error generando QR'); }
     finally { setSaving(false); }
@@ -102,6 +103,9 @@ ${qr.sector ? `<p class="sector">📍 ${qr.sector}</p>` : ''}
                         {qr.activoCodigo && <p className="text-xs text-gray-400">{qr.activoCodigo}</p>}
                         {qr.sector && <p className="text-xs text-blue-500 mt-0.5">📍 {qr.sector}</p>}
                         <p className="text-xs text-gray-400 mt-1">{qr.plantilla?.nombre}</p>
+                        {qr.maintenanceAssetId
+                          ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium mt-0.5"><Link2 className="w-3 h-3" />Activo vinculado</span>
+                          : <span className="inline-flex items-center gap-1 text-xs text-gray-300 mt-0.5"><Link2Off className="w-3 h-3" />Sin vincular</span>}
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-xs text-gray-400 mb-3">
@@ -166,6 +170,25 @@ ${qr.sector ? `<p class="sector">📍 ${qr.sector}</p>` : ''}
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" placeholder="Ej: Planta Norte" />
                 </div>
               </div>
+              {/* Vincular a activo de mantenimiento */}
+              <div className="border border-emerald-100 bg-emerald-50 rounded-xl p-3">
+                <label className="block text-xs font-semibold text-emerald-700 mb-1.5">🔗 Vincular a Activo/Equipo de Mantenimiento</label>
+                <p className="text-xs text-emerald-600 mb-2">Si vinculás este QR a un activo, cada hallazgo generará una OT automáticamente y quedará en la hoja de vida del equipo.</p>
+                <select value={form.maintenanceAssetId} onChange={e => {
+                  const sel = assets.find((a: any) => a.id === e.target.value);
+                  setForm(p => ({
+                    ...p,
+                    maintenanceAssetId: e.target.value,
+                    activoNombre: sel ? sel.name : p.activoNombre,
+                    activoCodigo: sel ? (sel.code || p.activoCodigo) : p.activoCodigo,
+                  }));
+                }}
+                  className="w-full text-sm border border-emerald-200 rounded-xl px-3 py-2.5 outline-none bg-white">
+                  <option value="">Sin vincular (opcional)</option>
+                  {assets.map((a: any) => <option key={a.id} value={a.id}>{a.name} — {a.code}</option>)}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">Título del cartel (opcional)</label>
                 <input value={form.titulo} onChange={e => setForm(p => ({ ...p, titulo: e.target.value }))}

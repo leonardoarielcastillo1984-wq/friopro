@@ -3003,9 +3003,10 @@ model MaintenanceAsset {
   lastMaintenanceDate  DateTime?
   nextMaintenanceDate  DateTime?
 
-  workOrders WorkOrder[]
-  plans      MaintenancePlan[]
-  costs      MaintenanceCost[]
+  workOrders    WorkOrder[]
+  plans         MaintenancePlan[]
+  costs         MaintenanceCost[]
+  inspeccionQRs InspeccionQR[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -5570,11 +5571,14 @@ model InspeccionQR {
   token         String   @unique
   isActive      Boolean  @default(true)
 
-  activoId      String?  @db.Uuid
-  activoNombre  String
-  activoCodigo  String?
-  ubicacion     String?
-  sector        String?
+  activoId            String?          @db.Uuid
+  activoNombre        String
+  activoCodigo        String?
+  ubicacion           String?
+  sector              String?
+
+  maintenanceAssetId  String?          @db.Uuid
+  maintenanceAsset    MaintenanceAsset? @relation(fields: [maintenanceAssetId], references: [id], onDelete: SetNull)
 
   // Config cartel
   titulo        String?

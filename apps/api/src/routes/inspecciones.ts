@@ -294,6 +294,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       subtitulo: z.string().optional(),
       instrucciones: z.string().optional(),
       pie: z.string().optional(),
+      maintenanceAssetId: z.string().uuid().optional().or(z.literal('').transform(() => undefined)),
     });
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
@@ -342,7 +343,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const { token } = req.params as any;
     const qr = await (app.prisma as any).inspeccionQR.findFirst({
       where: { token, isActive: true },
-      include: { plantilla: { include: { items: true } } },
+      include: { plantilla: { include: { items: true } }, maintenanceAsset: { select: { id: true, name: true, code: true } } },
     });
     if (!qr) return reply.code(404).send({ error: 'QR no encontrado o inactivo' });
 
@@ -393,6 +394,34 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     });
 
     await (app.prisma as any).inspeccionQR.update({ where: { id: qr.id }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
+
+    // Auto-crear OT por hallazgo si el QR está vinculado a un activo de mantenimiento
+    if (hallazgos.length > 0 && qr.maintenanceAssetId) {
+      try {
+        const hallazgosCreados = await (app.prisma as any).inspeccionHallazgo.findMany({
+          where: { inspeccionId: inspeccion.id },
+          select: { id: true, descripcion: true, severidad: true },
+        });
+        for (const h of hallazgosCreados) {
+          const prioridad = h.severidad === 'CRITICO' ? 'CRITICAL' : h.severidad === 'GRAVE' ? 'HIGH' : 'MEDIUM';
+          await (app.prisma as any).workOrder.create({
+            data: {
+              code: `OT-INSP-${Date.now().toString().slice(-6)}`,
+              title: `Hallazgo inspección: ${h.descripcion.slice(0, 80)}`,
+              description: `Generado automáticamente por inspección QR. Inspector: ${body.data.inspectorNombre}. Activo: ${qr.activoNombre}.`,
+              type: 'CORRECTIVE',
+              priority: prioridad,
+              status: 'PENDING',
+              assetId: qr.maintenanceAssetId,
+              origen: 'INSPECCION',
+              origenId: h.id,
+              activoNombreLibre: qr.activoNombre,
+              tenantId: qr.tenantId,
+            },
+          });
+        }
+      } catch (e: any) { console.error('[inspecciones] auto OT error:', e); }
+    }
 
     if (hallazgos.length > 0) {
       notifyInspeccionHallazgo(app.prisma, {
