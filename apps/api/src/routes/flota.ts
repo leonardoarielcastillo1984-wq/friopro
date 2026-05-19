@@ -279,9 +279,9 @@ export default async function flotaRoutes(app: FastifyInstance) {
     // Debug: log what we receive
     console.log('[DELETE VEHICULO]', { id, permanente: query.permanente, tipo: typeof query.permanente });
 
-    // Check if permanent deletion requested - accept both string and boolean
-    const esPermanente = query.permanente === 'true' || query.permanente === true;
-    const esBaja = !query.permanente || query.permanente === 'false' || query.permanente === false;
+    // Check if permanent deletion requested - accept any truthy value
+    const esPermanente = query.permanente != null && query.permanente !== '' && query.permanente !== 'false' && query.permanente !== false;
+    console.log('[DEBUG] esPermanente evaluado como:', esPermanente, 'valor recibido:', query.permanente);
 
     const vehiculo = await (app.prisma as any).vehiculo.findFirst({
       where: { id, tenantId },
