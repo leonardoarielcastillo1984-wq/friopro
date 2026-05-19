@@ -354,6 +354,11 @@ model Tenant {
   otRepuestos           OTRepuesto[]
   vehiculoHistorialMantenimiento VehiculoHistorialMantenimiento[]
   garantiasVehiculo     GarantiaVehiculo[]
+
+  // Digital Twin Relations
+  assetDigitalTwins     AssetDigitalTwin[]
+  assetHealthPredictions AssetHealthPrediction[]
+  assetTelemetry        AssetTelemetry[]
 }
 
 model PlatformUser {
@@ -3020,6 +3025,8 @@ model MaintenanceAsset {
   plans         MaintenancePlan[]
   costs         MaintenanceCost[]
   inspeccionQRs InspeccionQR[]
+  digitalTwin   AssetDigitalTwin?
+  telemetry     AssetTelemetry[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -3163,6 +3170,7 @@ model WorkOrder {
   quoteItems                QuoteItem[]
   signatures                Signature[]
   vehiculoHistorial         VehiculoHistorialMantenimiento[]
+  healthPredictions         AssetHealthPrediction[]
 
   @@index([tenantId])
   @@index([assetId])
@@ -5969,6 +5977,120 @@ model OTRepuesto {
   @@index([workOrderId])
   @@index([sparePartId])
   @@map("ot_repuestos")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DIGITAL TWIN — Gemelos Digitales de Activos
+// ═══════════════════════════════════════════════════════════════
+
+model AssetDigitalTwin {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  assetId String           @db.Uuid
+  asset   MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Estado actual simulado
+  healthScore       Float  @default(100) // 0-100 salud general
+  riskScore         Float  @default(0)  // 0-100 riesgo de falla
+  remainingLifeKm   Float? // Km estimados de vida útil restante
+  remainingLifeDays Int?   // Días estimados de vida útil restante
+
+  // Componentes críticos con su estado
+  componentes Json? // { motor: { salud: 85, riesgo: 15, kmRestantes: 50000 }, frenos: {...} }
+
+  // Última actualización
+  lastSyncAt DateTime @updatedAt
+  syncSource String   @default("AUTO") // AUTO, MANUAL, SENSOR
+
+  // Predicciones vinculadas
+  predictions AssetHealthPrediction[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@unique([assetId, tenantId])
+  @@index([tenantId])
+  @@index([assetId])
+  @@index([healthScore])
+  @@map("asset_digital_twins")
+}
+
+// Predicciones de salud/falla por activo
+model AssetHealthPrediction {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  twinId String           @db.Uuid
+  twin   AssetDigitalTwin @relation(fields: [twinId], references: [id], onDelete: Cascade)
+
+  // Qué se predice
+  componente   String // motor, frenos, caja, diferencial, etc.
+  tipoFalla    String // desgaste, sobrecalentamiento, filtración, etc.
+  probabilidad Float  // 0-100%
+
+  // Cuándo
+  diasEstimados   Int? // Días hasta la falla estimada
+  kmEstimados     Float? // KM hasta la falla estimada
+  fechaPrediccion DateTime @default(now())
+
+  // Severidad y acción recomendada
+  severidad        String @default("MEDIA") // BAJA, MEDIA, ALTA, CRITICA
+  accionRecomendada String? // Mensaje de acción
+
+  // Si se convirtió en OT
+  workOrderId String?    @db.Uuid
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+
+  // Validación de la predicción (para ML feedback)
+  acerto      Boolean? // La falla ocurrió como se predijo?
+  validadoAt  DateTime?
+  comentario  String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([twinId])
+  @@index([componente])
+  @@index([probabilidad])
+  @@index([severidad])
+  @@index([workOrderId])
+  @@map("asset_health_predictions")
+}
+
+// Historial de datos para entrenamiento de modelos
+model AssetTelemetry {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  assetId String           @db.Uuid
+  asset   MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Métricas clave
+  odometro      Float?
+  horasOperacion Float?
+  temperatura   Float? // Motor
+  presionAceite Float?
+  vibracion     Float? // Para maquinaria
+
+  // Eventos
+  eventoTipo   String? // ALTA_TEMP, VIBRACION_ANORMAL, etc.
+  eventoValor  Float?
+
+  // Contexto
+  conductorId   String? @db.Uuid
+  condiciones   String? // CLIMA, CARGA, TERRENO
+  observaciones String?
+
+  fechaHora DateTime @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([assetId])
+  @@index([fechaHora])
+  @@index([eventoTipo])
+  @@map("asset_telemetry")
 }
 
 // ═══════════════════════════════════════════════════════════════
