@@ -179,6 +179,9 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
                 <input type="file" accept="image/*" style={{ display: 'none' }}
                   onChange={e => { const fl = e.target.files?.[0]; if (fl) onFileChange(activeIdx, fl); }} />
               </label>
+              <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                JPG · PNG · WebP &nbsp;·&nbsp; máx. 5 MB &nbsp;·&nbsp; recomendado 1280×720 px
+              </span>
               {foto.url && (
                 <button type="button" onClick={() => setAddingPoint(v => !v)}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: addingPoint ? '#f97316' : '#ecfdf5', border: `1px solid ${addingPoint ? '#ea580c' : '#bbf7d0'}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: addingPoint ? '#fff' : '#15803d', cursor: 'pointer' }}>
