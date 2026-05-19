@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, Zap, Trash2, X, ListChecks, Wrench, Truck, Package, Settings, ShieldAlert, Building2, Pencil, Eye, LayoutTemplate } from 'lucide-react';
+import { Plus, Zap, Trash2, X, ListChecks, Wrench, Truck, Package, Settings, ShieldAlert, Building2, Pencil, Eye, LayoutTemplate, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
 import AssetDiagram from '@/components/inspecciones/AssetDiagram';
 import DiagramaEditor from '@/components/inspecciones/DiagramaEditor';
 
@@ -23,6 +23,7 @@ export default function InspeccionesPlantillas() {
   const [saving, setSaving] = useState(false);
   const [previewCat, setPreviewCat] = useState<string | null>(null);
   const [diagramaPlantilla, setDiagramaPlantilla] = useState<any | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -205,32 +206,99 @@ export default function InspeccionesPlantillas() {
                 </div>
               )}
 
+              {/* Items agrupados por sección */}
               <div>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-3">
                   <label className="text-xs font-medium text-gray-600">Items del checklist ({items.length})</label>
-                  <button type="button" onClick={() => setItems(p => [...p, { label: '', tipo: 'SI_NO', seccion: '', isRequerido: true, triggerHallazgo: false }])}
-                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus className="w-3 h-3" />Agregar item</button>
+                  <button type="button"
+                    onClick={() => {
+                      const newSec = `Sección ${[...new Set(items.map(x => x.seccion || 'General'))].length + 1}`;
+                      setItems(p => [...p, { label: '', tipo: 'SI_NO', seccion: newSec, isRequerido: true, triggerHallazgo: false }]);
+                    }}
+                    className="text-xs bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium">
+                    <Plus className="w-3 h-3" />Nueva sección
+                  </button>
                 </div>
-                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                  {items.map((item, i) => (
-                    <div key={i} className="flex gap-1.5 items-center p-2 bg-gray-50 rounded-lg flex-wrap">
-                      <input placeholder="Descripción del item *" value={item.label}
-                        onChange={e => setItems(p => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
-                        className="flex-1 min-w-[100px] text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none" />
-                      <select value={item.tipo} onChange={e => setItems(p => p.map((x, j) => j === i ? { ...x, tipo: e.target.value } : x))}
-                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white">
-                        {['SI_NO', 'TEXTO', 'NUMERO', 'ESCALA', 'FECHA'].map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <input placeholder="Sección" value={item.seccion}
-                        onChange={e => setItems(p => p.map((x, j) => j === i ? { ...x, seccion: e.target.value } : x))}
-                        className="w-20 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none" />
-                      <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer whitespace-nowrap">
-                        <input type="checkbox" checked={item.triggerHallazgo} onChange={e => setItems(p => p.map((x, j) => j === i ? { ...x, triggerHallazgo: e.target.checked } : x))} />
-                        Hallazgo
-                      </label>
-                      <button type="button" onClick={() => setItems(p => p.filter((_, j) => j !== i))} className="text-gray-300 hover:text-red-500"><X className="w-3 h-3" /></button>
+
+                {/* Renderizado por grupos */}
+                <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                  {(() => {
+                    const secciones = [...new Set(items.map(x => x.seccion || 'General'))];
+                    return secciones.map(sec => {
+                      const secItems = items.map((x, i) => ({ ...x, _idx: i })).filter(x => (x.seccion || 'General') === sec);
+                      const isCollapsed = collapsedSections[sec];
+                      return (
+                        <div key={sec} className="border border-gray-200 rounded-xl overflow-hidden">
+                          {/* Cabecera de sección */}
+                          <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 border-b border-gray-100">
+                            <button type="button" onClick={() => setCollapsedSections(p => ({ ...p, [sec]: !p[sec] }))} className="text-gray-400 hover:text-gray-600 shrink-0">
+                              {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            </button>
+                            <input
+                              value={sec === 'General' && secItems[0]?.seccion === '' ? '' : sec}
+                              placeholder="Nombre del grupo"
+                              onChange={e => {
+                                const newSec = e.target.value;
+                                setItems(p => p.map((x, i) => secItems.find(s => s._idx === i) ? { ...x, seccion: newSec } : x));
+                                if (collapsedSections[sec] !== undefined) {
+                                  setCollapsedSections(p => { const n = { ...p }; n[newSec] = n[sec]; delete n[sec]; return n; });
+                                }
+                              }}
+                              className="flex-1 text-xs font-semibold bg-transparent border-none outline-none text-gray-700 placeholder:text-gray-400"
+                            />
+                            <span className="text-xs text-gray-400 shrink-0">{secItems.length} item{secItems.length !== 1 ? 's' : ''}</span>
+                            <button type="button"
+                              onClick={() => {
+                                if (secItems.length > 0 && !confirm(`¿Eliminar la sección "${sec}" y sus ${secItems.length} items?`)) return;
+                                setItems(p => p.filter((_, i) => !secItems.find(s => s._idx === i)));
+                              }}
+                              className="text-gray-300 hover:text-red-500 shrink-0"><Trash2 className="w-3 h-3" /></button>
+                          </div>
+
+                          {/* Items de la sección */}
+                          {!isCollapsed && (
+                            <div className="divide-y divide-gray-50">
+                              {secItems.map(item => (
+                                <div key={item._idx} className="flex gap-1.5 items-center px-3 py-2 hover:bg-gray-50/50 flex-wrap">
+                                  <GripVertical className="w-3 h-3 text-gray-300 shrink-0" />
+                                  <input placeholder="Descripción del item *" value={item.label}
+                                    onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, label: e.target.value } : x))}
+                                    className="flex-1 min-w-[120px] text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-300" />
+                                  <select value={item.tipo} onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, tipo: e.target.value } : x))}
+                                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white">
+                                    {['SI_NO', 'TEXTO', 'NUMERO', 'ESCALA', 'FECHA'].map(t => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                  <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap">
+                                    <input type="checkbox" checked={item.triggerHallazgo} onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, triggerHallazgo: e.target.checked } : x))} />
+                                    Hallazgo
+                                  </label>
+                                  <button type="button" onClick={() => setItems(p => p.filter((_, j) => j !== item._idx))} className="text-gray-300 hover:text-red-500 shrink-0"><X className="w-3 h-3" /></button>
+                                </div>
+                              ))}
+                              <div className="px-3 py-2">
+                                <button type="button"
+                                  onClick={() => setItems(p => {
+                                    const lastIdx = Math.max(...secItems.map(s => s._idx));
+                                    const next = [...p];
+                                    next.splice(lastIdx + 1, 0, { label: '', tipo: 'SI_NO', seccion: sec, isRequerido: true, triggerHallazgo: false });
+                                    return next;
+                                  })}
+                                  className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1">
+                                  <Plus className="w-3 h-3" />Agregar item en "{sec}"
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+
+                  {items.length === 0 && (
+                    <div className="text-center py-8 text-gray-400 text-xs border-2 border-dashed border-gray-200 rounded-xl">
+                      Sin items aún. Creá una sección para empezar.
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
