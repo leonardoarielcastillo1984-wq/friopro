@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { getEffectiveTenantId } from '../utils/tenant.js';
+import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 
 // GET /garantias - Listar todas las garantías
 export async function listGarantias(app: FastifyInstance, req: FastifyRequest, reply: FastifyReply) {
