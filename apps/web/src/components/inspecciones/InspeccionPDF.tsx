@@ -33,7 +33,7 @@ export default function InspeccionPDFButton({ inspeccion, empresa = 'SGI 360', l
           <td style="text-align:center;color:#64748b;font-size:11px;">${itemNum++}</td>
           <td style="font-size:12px;">${item.label}</td>
           <td style="text-align:center;font-size:16px;color:#16a34a;font-weight:bold;">${ok ? '✓' : ''}</td>
-          <td style="text-align:center;font-size:16px;color:#dc2626;font-weight:bold;">${ng ? '✗' : ''}</td>
+          <td style="text-align:center;font-size:14px;color:#dc2626;font-weight:bold;">${ng ? 'NOK' : ''}</td>
           <td style="font-size:11px;color:#475569;">${obs}</td>
         </tr>`;
       }).join('');
@@ -115,7 +115,7 @@ ${inspeccion.puntaje !== null ? `<div class="puntaje">
     <th style="width:32px;">#</th>
     <th>ÍTEM DE CONTROL</th>
     <th style="width:48px;">OK</th>
-    <th style="width:48px;">NG</th>
+    <th style="width:48px;">NOK</th>
     <th style="width:200px;">OBSERVACIONES</th>
   </tr></thead>
   <tbody>${seccionesHtml}</tbody>
