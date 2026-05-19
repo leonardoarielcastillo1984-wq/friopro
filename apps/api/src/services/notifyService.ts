@@ -180,6 +180,14 @@ export async function notifyAuditScheduled(
 
 // ── Inspección: nuevo hallazgo ────────────────────────────────────────────────
 
+async function getInspeccionAlertEmails(prisma: PrismaClient, tenantId: string, tipo: 'alertaHallazgo' | 'alertaOT'): Promise<string[]> {
+  try {
+    const s = await prisma.companySettings.findUnique({ where: { tenantId }, select: { inspeccionAlertEmails: true } });
+    const list: any[] = Array.isArray(s?.inspeccionAlertEmails) ? s.inspeccionAlertEmails : [];
+    return list.filter((e: any) => e[tipo] !== false && e.email).map((e: any) => e.email as string);
+  } catch { return []; }
+}
+
 export async function notifyInspeccionHallazgo(
   prisma: PrismaClient,
   { tenantId, activoNombre, hallazgosCount, haysCriticos, inspeccionId }: {
@@ -191,7 +199,6 @@ export async function notifyInspeccionHallazgo(
       where: { tenantId, role: { in: ['TENANT_ADMIN', 'SUPER_ADMIN'] } },
       select: { id: true, email: true },
     });
-    if (!admins.length) return;
 
     const link = `${APP_URL}/infraestructura?tab=inspecciones`;
     const color = haysCriticos ? '#DC2626' : '#D97706';
@@ -212,6 +219,20 @@ export async function notifyInspeccionHallazgo(
           html: buildEmailHtml(title, message, 'Ver hallazgos', link, color, branding),
           text: `${title}\n\nActivo: ${activoNombre}\nHallazgos: ${hallazgosCount}\n\n${link}`,
         }).catch(e => console.error('[notifyService] Email error hallazgo:', e));
+      }
+    }
+
+    // Emails adicionales configurados por el tenant
+    const extraEmails = await getInspeccionAlertEmails(prisma, tenantId, 'alertaHallazgo');
+    const adminEmails = new Set(admins.map((a: any) => a.email).filter(Boolean));
+    for (const email of extraEmails) {
+      if (!adminEmails.has(email)) {
+        await sendEmail({
+          to: email,
+          subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver hallazgos', link, color, branding),
+          text: `${title}\n\nActivo: ${activoNombre}\nHallazgos: ${hallazgosCount}\n\n${link}`,
+        }).catch(e => console.error('[notifyService] Email extra hallazgo:', e));
       }
     }
   } catch (e) {
@@ -251,6 +272,19 @@ export async function notifyInspeccionOT(
           html: buildEmailHtml(title, message, 'Ver OT', link, '#2563EB', branding),
           text: `${title}\n\nOT: ${otCode}\nActivo: ${activoNombre}\n\n${link}`,
         }).catch(e => console.error('[notifyService] Email error OT:', e));
+      }
+    }
+
+    const extraEmails = await getInspeccionAlertEmails(prisma, tenantId, 'alertaOT');
+    const adminEmails = new Set(admins.map((a: any) => a.email).filter(Boolean));
+    for (const email of extraEmails) {
+      if (!adminEmails.has(email)) {
+        await sendEmail({
+          to: email,
+          subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver OT', link, '#2563EB', branding),
+          text: `${title}\n\nOT: ${otCode}\nActivo: ${activoNombre}\n\n${link}`,
+        }).catch(e => console.error('[notifyService] Email extra OT:', e));
       }
     }
   } catch (e) {

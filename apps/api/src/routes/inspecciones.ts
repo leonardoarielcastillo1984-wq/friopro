@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import crypto from 'crypto';
 import { notifyInspeccionHallazgo, notifyInspeccionOT } from '../services/notifyService.js';
+import ExcelJS from 'exceljs';
 
 const generateToken = () => crypto.randomBytes(20).toString('hex');
 
@@ -555,6 +556,174 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     await (app.prisma as any).workOrder.updateMany({
       where: { id, tenantId, origen: 'INSPECCION' },
       data: { ...body.data },
+    });
+    return reply.send({ ok: true });
+  });
+
+  // ── EXPORT EXCEL ───────────────────────────────────────────────────────────
+  app.get('/:id/excel', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const inspeccion = await (app.prisma as any).inspeccion.findFirst({
+      where: { id, tenantId },
+      include: {
+        qr: { include: { plantilla: { include: { items: { orderBy: { orden: 'asc' } } } } } },
+        respuestas: { include: { item: true }, orderBy: { item: { orden: 'asc' } } },
+        hallazgos: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+    if (!inspeccion) return reply.code(404).send({ error: 'No encontrada' });
+
+    const settings = await (app.prisma as any).companySettings.findUnique({ where: { tenantId }, select: { companyName: true, logoUrl: true, primaryColor: true } });
+    const empresa = settings?.companyName || 'SGI 360';
+    const color = (settings?.primaryColor || '#2563eb').replace('#', '');
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = empresa;
+    const ws = wb.addWorksheet('Inspección', { pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true } });
+
+    ws.columns = [
+      { width: 5 }, { width: 40 }, { width: 12 }, { width: 12 }, { width: 35 },
+    ];
+
+    // Membrete
+    ws.mergeCells('A1:E1');
+    const titleCell = ws.getCell('A1');
+    titleCell.value = empresa.toUpperCase() + ' — ' + (inspeccion.qr?.plantilla?.nombre || 'Inspección');
+    titleCell.font = { bold: true, size: 16, color: { argb: 'FF' + color } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+    ws.getRow(1).height = 32;
+
+    // Código de registro
+    ws.mergeCells('A2:E2');
+    ws.getCell('A2').value = 'MR-CHK-01 · ' + empresa;
+    ws.getCell('A2').font = { size: 9, color: { argb: 'FF64748B' } };
+    ws.getCell('A2').alignment = { horizontal: 'right' };
+
+    ws.addRow([]);
+
+    // Encabezado datos
+    const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+    const addDataRow = (label: string, value: string) => {
+      const r = ws.addRow(['', label, value, '', '']);
+      r.getCell(2).font = { bold: true, size: 10 };
+      r.getCell(3).font = { size: 10 };
+      r.getCell(2).fill = headerFill;
+      ws.mergeCells(`C${r.number}:E${r.number}`);
+    };
+
+    const fecha = new Date(inspeccion.createdAt);
+    addDataRow('FECHA:', fecha.toLocaleDateString('es-AR') + ' ' + fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }));
+    addDataRow('NOMBRE Y APELLIDO:', inspeccion.inspectorNombre || '');
+    addDataRow('LUGAR / SECTOR:', inspeccion.sector || inspeccion.qr?.sector || '');
+    addDataRow('ACTIVO / UNIDAD:', inspeccion.activoNombre || '');
+    addDataRow('CÓDIGO:', inspeccion.activoCodigo || '—');
+    addDataRow('CONTROL REALIZADO POR:', inspeccion.inspectorNombre || '');
+
+    ws.addRow([]);
+
+    // Secciones de items
+    const items = inspeccion.qr?.plantilla?.items || [];
+    const respMap: Record<string, any> = {};
+    for (const r of inspeccion.respuestas) respMap[r.itemId] = r;
+
+    const secciones = [...new Set(items.map((i: any) => i.seccion || 'General'))];
+    let itemNum = 1;
+
+    for (const sec of secciones) {
+      // Encabezado de sección
+      const secRow = ws.addRow(['', (sec as string).toUpperCase(), 'OK', 'NG', 'OBSERVACIONES']);
+      secRow.eachCell(cell => {
+        cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + color } };
+        cell.alignment = { horizontal: 'center' };
+        cell.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+      });
+      secRow.getCell(2).alignment = { horizontal: 'left' };
+
+      const secItems = items.filter((i: any) => (i.seccion || 'General') === sec);
+      for (const item of secItems) {
+        const resp = respMap[item.id];
+        const ok = resp?.esOk === true ? '✓' : '';
+        const ng = resp?.esOk === false ? '✗' : '';
+        const obs = resp?.observacion || '';
+        const r = ws.addRow([itemNum++, item.label, ok, ng, obs]);
+        r.getCell(1).alignment = { horizontal: 'center' };
+        r.getCell(3).alignment = { horizontal: 'center' };
+        r.getCell(3).font = { color: { argb: 'FF16A34A' }, bold: true, size: 12 };
+        r.getCell(4).alignment = { horizontal: 'center' };
+        r.getCell(4).font = { color: { argb: 'FFDC2626' }, bold: true, size: 12 };
+        r.eachCell(cell => {
+          cell.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+        });
+        if (resp?.esOk === false) r.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+      }
+    }
+
+    // Puntaje
+    ws.addRow([]);
+    const puntRow = ws.addRow(['', 'PUNTAJE DE CUMPLIMIENTO:', `${inspeccion.puntaje}%`, '', '']);
+    puntRow.getCell(2).font = { bold: true, size: 11 };
+    puntRow.getCell(3).font = { bold: true, size: 14, color: { argb: inspeccion.puntaje >= 80 ? 'FF16A34A' : inspeccion.puntaje >= 60 ? 'FFD97706' : 'FFDC2626' } };
+
+    // Hallazgos
+    if (inspeccion.hallazgos?.length > 0) {
+      ws.addRow([]);
+      const hRow = ws.addRow(['', 'HALLAZGOS DETECTADOS', '', '', '']);
+      ws.mergeCells(`B${hRow.number}:E${hRow.number}`);
+      hRow.getCell(2).font = { bold: true, size: 11, color: { argb: 'FFDC2626' } };
+      hRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+
+      for (const h of inspeccion.hallazgos) {
+        const hr = ws.addRow(['', '⚠ ' + h.descripcion, h.severidad, '', h.tipo]);
+        hr.getCell(2).font = { size: 10 };
+        hr.getCell(3).font = { size: 9, color: { argb: 'FFDC2626' } };
+      }
+    }
+
+    // Notas generales
+    if (inspeccion.notas) {
+      ws.addRow([]);
+      ws.addRow(['', 'OBSERVACIONES GENERALES:', '', '', '']);
+      ws.addRow(['', inspeccion.notas, '', '', '']);
+    }
+
+    // Firma / pie
+    ws.addRow([]);
+    const firmaRow = ws.addRow(['', 'Firma del Inspector:', '', '', '']);
+    firmaRow.getCell(2).font = { bold: true, size: 10 };
+    ws.addRow(['', '_________________________', '', '', '']);
+    ws.addRow(['', inspeccion.inspectorNombre || '', '', '', '']);
+    ws.addRow([]);
+    const pieRow = ws.addRow(['', `Generado por ${empresa} · www.logismart.ar · ${new Date().toLocaleDateString('es-AR')}`, '', '', '']);
+    ws.mergeCells(`B${pieRow.number}:E${pieRow.number}`);
+    pieRow.getCell(2).font = { size: 8, color: { argb: 'FF94A3B8' }, italic: true };
+    pieRow.getCell(2).alignment = { horizontal: 'center' };
+
+    const buf = await wb.xlsx.writeBuffer();
+    const filename = `inspeccion-${inspeccion.activoNombre?.replace(/\s+/g, '-') || id}-${fecha.toISOString().slice(0,10)}.xlsx`;
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+    return reply.send(Buffer.from(buf));
+  });
+
+  // ── ALERT CONFIG ───────────────────────────────────────────────────────────
+  app.get('/alert-config', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const s = await (app.prisma as any).companySettings.findUnique({ where: { tenantId }, select: { inspeccionAlertEmails: true } });
+    return reply.send({ alertEmails: s?.inspeccionAlertEmails || [] });
+  });
+
+  app.patch('/alert-config', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const body = req.body as any;
+    await (app.prisma as any).companySettings.updateMany({
+      where: { tenantId },
+      data: { inspeccionAlertEmails: body.alertEmails ?? [] },
     });
     return reply.send({ ok: true });
   });
