@@ -274,7 +274,14 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    const { permanente } = req.query as any;
+    const query = req.query as any;
+    
+    // Debug: log what we receive
+    console.log('[DELETE VEHICULO]', { id, permanente: query.permanente, tipo: typeof query.permanente });
+
+    // Check if permanent deletion requested - accept both string and boolean
+    const esPermanente = query.permanente === 'true' || query.permanente === true;
+    const esBaja = !query.permanente || query.permanente === 'false' || query.permanente === false;
 
     const vehiculo = await (app.prisma as any).vehiculo.findFirst({
       where: { id, tenantId },
@@ -283,8 +290,10 @@ export default async function flotaRoutes(app: FastifyInstance) {
 
     if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
 
-    // Eliminación lógica (BAJA) - por defecto
-    if (!permanente || permanente === 'false') {
+    // ═══════════════════════════════════════════════════════════════
+    // ELIMINACIÓN LÓGICA (BAJA) - por defecto
+    // ═══════════════════════════════════════════════════════════════
+    if (!esPermanente) {
       await (app.prisma as any).vehiculo.updateMany({ where: { id, tenantId }, data: { status: 'BAJA' } });
       return reply.send({ ok: true, mensaje: 'Vehículo marcado como BAJA' });
     }
@@ -292,7 +301,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     // ═══════════════════════════════════════════════════════════════
     // ELIMINACIÓN FÍSICA PERMANENTE
     // ═══════════════════════════════════════════════════════════════
-    if (permanente === 'true') {
+    if (esPermanente) {
       // Verificar si tiene datos que impiden eliminación
       const tieneCombustible = vehiculo.registrosCombustible?.length > 0;
       const tieneNeumaticosMontados = vehiculo.posicionesNeumatico?.some((p: any) => p.activo);
