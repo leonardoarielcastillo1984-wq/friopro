@@ -1,12 +1,11 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import { X, Plus, Upload, Trash2, Save, ImagePlus, MapPin } from 'lucide-react';
 
 interface Punto { x: number; y: number; label: string }
 interface FotoCuadrante { url: string; titulo: string; puntos: Punto[] }
-
-const TITULOS_DEFAULT = ['Frente', 'Lateral izquierdo', 'Lateral derecho', 'Trasera'];
+const TITULOS = ['Frente', 'Lateral izquierdo', 'Lateral derecho', 'Trasera'];
 
 interface Props {
   plantillaId: string;
@@ -20,70 +19,48 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
   const [fotos, setFotos] = useState<FotoCuadrante[]>(
     initialFotos?.length ? initialFotos : [{ url: '', titulo: 'Frente', puntos: [] }]
   );
-  const [activeFoto, setActiveFoto] = useState(0);
+  const [activeIdx, setActiveIdx] = useState(0);
   const [addingPoint, setAddingPoint] = useState(false);
   const [saving, setSaving] = useState(false);
-  // previewUrls: objectURL para mostrar en UI sin re-encodear base64
-  const [previewUrls, setPreviewUrls] = useState<Record<number, string>>({});
-  const imgRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const foto = fotos[activeFoto] ?? { url: '', titulo: '', puntos: [] };
-  const previewSrc = previewUrls[activeFoto] || foto.url;
+  const foto = fotos[activeIdx] ?? { url: '', titulo: '', puntos: [] };
 
-  const handleFileUpload = useCallback((idx: number, file: File) => {
-    // 1) Mostrar preview inmediato via objectURL
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrls(prev => ({ ...prev, [idx]: objectUrl }));
-    // 2) Leer base64 para guardar en BD
+  function onFileChange(idx: number, file: File) {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64 = e.target?.result as string;
-      setFotos(prev => prev.map((f, i) => i === idx ? { ...f, url: base64 } : f));
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setFotos(prev => prev.map((f, i) => i === idx ? { ...f, url: dataUrl } : f));
     };
     reader.readAsDataURL(file);
-  }, []);
+  }
 
-  const handleImageClick = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+  function onImgClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!addingPoint) return;
-    const img = e.currentTarget;
-    const rect = img.getBoundingClientRect();
+    const div = containerRef.current;
+    if (!div) return;
+    const rect = div.getBoundingClientRect();
     const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
     const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
     setFotos(prev => prev.map((f, i) =>
-      i === activeFoto ? { ...f, puntos: [...f.puntos, { x, y, label: `Punto ${f.puntos.length + 1}` }] } : f
+      i === activeIdx ? { ...f, puntos: [...f.puntos, { x, y, label: `Punto ${f.puntos.length + 1}` }] } : f
     ));
     setAddingPoint(false);
-  }, [addingPoint, activeFoto]);
+  }
 
-  const updateLabel = (pIdx: number, label: string) =>
+  function removePoint(pIdx: number) {
     setFotos(prev => prev.map((f, i) =>
-      i === activeFoto ? { ...f, puntos: f.puntos.map((p, j) => j === pIdx ? { ...p, label } : p) } : f
+      i === activeIdx ? { ...f, puntos: f.puntos.filter((_, j) => j !== pIdx) } : f
     ));
+  }
 
-  const removePunto = (pIdx: number) =>
+  function updateLabel(pIdx: number, label: string) {
     setFotos(prev => prev.map((f, i) =>
-      i === activeFoto ? { ...f, puntos: f.puntos.filter((_, j) => j !== pIdx) } : f
+      i === activeIdx ? { ...f, puntos: f.puntos.map((p, j) => j === pIdx ? { ...p, label } : p) } : f
     ));
+  }
 
-  const addFoto = () => {
-    if (fotos.length >= 4) return;
-    const idx = fotos.length;
-    setFotos(prev => [...prev, { url: '', titulo: TITULOS_DEFAULT[idx] || `Vista ${idx + 1}`, puntos: [] }]);
-    setActiveFoto(idx);
-  };
-
-  const removeFoto = (idx: number) => {
-    const next = fotos.filter((_, i) => i !== idx);
-    setFotos(next);
-    setPreviewUrls(prev => {
-      const np = { ...prev };
-      delete np[idx];
-      return np;
-    });
-    setActiveFoto(Math.max(0, Math.min(activeFoto, next.length - 1)));
-  };
-
-  const save = async () => {
+  async function save() {
     setSaving(true);
     try {
       await apiFetch(`/inspecciones/plantillas/${plantillaId}/diagrama`, {
@@ -91,180 +68,176 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
         json: { fotos },
       });
       onSaved();
-    } catch (err: any) {
-      alert(`Error al guardar: ${err?.message || 'intentá de nuevo'}`);
+    } catch (e: any) {
+      alert('Error al guardar: ' + (e?.message || 'intentá de nuevo'));
     } finally {
       setSaving(false);
     }
-  };
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-start justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-4">
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 9999, overflowY: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 900, margin: '16px 0', boxShadow: '0 25px 50px rgba(0,0,0,.25)' }}>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid #f1f5f9' }}>
           <div>
-            <h2 className="font-bold text-gray-900">Editor de Diagrama</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{plantillaNombre} · Hasta 4 fotos · Modelo maestro para todos los equipos con esta plantilla</p>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#111' }}>Editor de Diagrama</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{plantillaNombre} · Modelo maestro — aplica a todos los equipos con esta plantilla</div>
           </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={save} disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-              <Save className="w-4 h-4" />{saving ? 'Guardando…' : 'Guardar'}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={save} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: saving ? .6 : 1 }}>
+              <Save size={15} />{saving ? 'Guardando…' : 'Guardar'}
             </button>
-            <button type="button" onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
-              <X className="w-4 h-4 text-gray-500" />
+            <button type="button" onClick={onClose} style={{ padding: 8, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+              <X size={18} />
             </button>
           </div>
         </div>
 
-        {/* Banner maestro */}
-        <div className="mx-6 mt-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
-          <strong>Modelo maestro:</strong> Este diagrama se aplica automáticamente a todos los equipos que usen esta plantilla. Configuralo una sola vez.
-        </div>
-
-        <div className="flex">
-          {/* Sidebar vistas */}
-          <div className="w-44 border-r border-gray-100 flex flex-col p-3 gap-2 shrink-0 mt-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-1 mb-1">Vistas</p>
-            {fotos.map((f, idx) => {
-              const thumb = previewUrls[idx] || f.url;
-              return (
-                <div
-                  key={idx}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => { setActiveFoto(idx); setAddingPoint(false); }}
-                  onKeyDown={e => e.key === 'Enter' && setActiveFoto(idx)}
-                  className={`relative cursor-pointer px-3 py-2 rounded-xl text-xs font-medium transition-colors group select-none ${
-                    activeFoto === idx ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 hover:bg-gray-50 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="truncate">{f.titulo || `Vista ${idx + 1}`}</span>
-                    {fotos.length > 1 && (
-                      <button type="button"
-                        onClick={e => { e.stopPropagation(); removeFoto(idx); }}
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500">
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="w-full h-10 rounded overflow-hidden bg-gray-100">
-                    {thumb
-                      ? <img src={thumb} alt="" className="w-full h-full object-cover" />
-                      : <div className="w-full h-full flex items-center justify-center"><ImagePlus className="w-4 h-4 text-gray-300" /></div>
-                    }
-                  </div>
-                  <span className="text-gray-400 text-xs">{f.puntos.length} pts</span>
+        <div style={{ display: 'flex' }}>
+          {/* Sidebar */}
+          <div style={{ width: 160, borderRight: '1px solid #f1f5f9', padding: 12, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.05em', padding: '0 4px 4px' }}>Vistas</div>
+            {fotos.map((f, idx) => (
+              <div
+                key={idx}
+                onClick={() => { setActiveIdx(idx); setAddingPoint(false); }}
+                style={{
+                  cursor: 'pointer', padding: '8px 10px', borderRadius: 10, fontSize: 11, fontWeight: 600,
+                  background: activeIdx === idx ? '#eff6ff' : 'transparent',
+                  border: activeIdx === idx ? '1px solid #bfdbfe' : '1px solid transparent',
+                  color: activeIdx === idx ? '#1d4ed8' : '#475569',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.titulo || `Vista ${idx + 1}`}</span>
+                  {fotos.length > 1 && (
+                    <span onClick={e => { e.stopPropagation(); setFotos(prev => prev.filter((_, i) => i !== idx)); setActiveIdx(Math.max(0, idx - 1)); }}
+                      style={{ color: '#94a3b8', cursor: 'pointer', marginLeft: 4 }}>
+                      <X size={11} />
+                    </span>
+                  )}
                 </div>
-              );
-            })}
+                {/* thumbnail */}
+                <div style={{ width: '100%', height: 40, borderRadius: 6, overflow: 'hidden', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {f.url
+                    ? <img src={f.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <ImagePlus size={16} color="#cbd5e1" />
+                  }
+                </div>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>{f.puntos.length} puntos</div>
+              </div>
+            ))}
             {fotos.length < 4 && (
-              <button type="button" onClick={addFoto}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs text-gray-500 hover:bg-gray-50 border border-dashed border-gray-300 transition-colors">
-                <Plus className="w-3 h-3" />Agregar vista
+              <button type="button" onClick={() => {
+                const idx = fotos.length;
+                setFotos(prev => [...prev, { url: '', titulo: TITULOS[idx] || `Vista ${idx + 1}`, puntos: [] }]);
+                setActiveIdx(idx);
+              }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', background: 'none', border: '1px dashed #cbd5e1', borderRadius: 10, fontSize: 11, color: '#64748b', cursor: 'pointer' }}>
+                <Plus size={12} />Agregar vista
               </button>
             )}
           </div>
 
-          {/* Editor principal */}
-          <div className="flex-1 flex flex-col p-5 gap-4 min-w-0">
-            {/* Controles */}
-            <div className="flex items-center gap-3 flex-wrap">
+          {/* Área principal */}
+          <div style={{ flex: 1, padding: 20, display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+            {/* Controles cuadrante */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <input
                 value={foto.titulo}
-                onChange={e => setFotos(prev => prev.map((f, i) => i === activeFoto ? { ...f, titulo: e.target.value } : f))}
-                className="flex-1 min-w-0 text-sm font-semibold border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={e => setFotos(prev => prev.map((f, i) => i === activeIdx ? { ...f, titulo: e.target.value } : f))}
+                style={{ flex: 1, minWidth: 120, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontWeight: 600, outline: 'none' }}
                 placeholder="Nombre de esta vista (ej: Frente)"
               />
-              <label className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-lg cursor-pointer transition-colors whitespace-nowrap">
-                <Upload className="w-3.5 h-3.5" />
-                {previewSrc ? 'Cambiar foto' : 'Subir foto'}
-                <input type="file" accept="image/*" className="hidden"
-                  onChange={e => { const fl = e.target.files?.[0]; if (fl) handleFileUpload(activeFoto, fl); e.target.value = ''; }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>
+                <Upload size={13} />{foto.url ? 'Cambiar foto' : 'Subir foto'}
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: 'none' }}
+                  onChange={e => { const fl = e.target.files?.[0]; if (fl) onFileChange(activeIdx, fl); e.target.value = ''; }} />
               </label>
-              {previewSrc && (
-                <button type="button"
-                  onClick={() => setAddingPoint(v => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
-                    addingPoint ? 'bg-orange-500 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                  }`}>
-                  <MapPin className="w-3.5 h-3.5" />
-                  {addingPoint ? '▶ Click en la foto' : 'Agregar punto'}
+              {foto.url && (
+                <button type="button" onClick={() => setAddingPoint(v => !v)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: addingPoint ? '#f97316' : '#ecfdf5', border: `1px solid ${addingPoint ? '#ea580c' : '#bbf7d0'}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: addingPoint ? '#fff' : '#15803d', cursor: 'pointer' }}>
+                  <MapPin size={13} />{addingPoint ? '▶ Click en la foto' : 'Agregar punto'}
                 </button>
               )}
             </div>
 
-            {/* Zona imagen */}
-            {previewSrc ? (
-              <div className={`relative rounded-xl border-2 transition-colors overflow-hidden ${
-                addingPoint ? 'border-orange-400' : 'border-gray-200'
-              }`}>
+            {/* Imagen principal */}
+            {foto.url ? (
+              <div
+                ref={containerRef}
+                onClick={onImgClick}
+                style={{
+                  position: 'relative',
+                  border: `2px solid ${addingPoint ? '#f97316' : '#e2e8f0'}`,
+                  borderRadius: 12,
+                  cursor: addingPoint ? 'crosshair' : 'default',
+                  lineHeight: 0,
+                  userSelect: 'none',
+                }}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  ref={imgRef}
-                  src={previewSrc}
+                  src={foto.url}
                   alt="diagrama"
-                  onClick={handleImageClick}
-                  className={`w-full block object-contain ${addingPoint ? 'cursor-crosshair' : 'cursor-default'}`}
-                  style={{ maxHeight: 500 }}
+                  style={{ width: '100%', borderRadius: 10, display: 'block', maxHeight: 500, objectFit: 'contain' }}
                   draggable={false}
                 />
-                {/* Puntos superpuestos — sobre la imagen */}
+                {/* Puntos */}
                 {foto.puntos.map((p, pIdx) => (
-                  <div
-                    key={pIdx}
-                    className="absolute pointer-events-none"
-                    style={{ left: `${p.x}%`, top: `${p.y}%`, transform: 'translate(-50%,-50%)' }}
-                  >
-                    <div className="w-6 h-6 rounded-full bg-blue-600 border-2 border-white shadow-lg flex items-center justify-center text-white font-bold"
-                      style={{ fontSize: 10 }}>
-                      {pIdx + 1}
-                    </div>
+                  <div key={pIdx} style={{
+                    position: 'absolute',
+                    left: `${p.x}%`, top: `${p.y}%`,
+                    transform: 'translate(-50%,-50%)',
+                    width: 24, height: 24,
+                    borderRadius: '50%',
+                    background: '#2563eb',
+                    border: '2px solid #fff',
+                    boxShadow: '0 2px 6px rgba(0,0,0,.35)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontSize: 10, fontWeight: 700,
+                    pointerEvents: 'none',
+                  }}>
+                    {pIdx + 1}
                   </div>
                 ))}
                 {addingPoint && (
-                  <div className="absolute inset-x-0 bottom-3 flex justify-center pointer-events-none">
-                    <div className="bg-orange-500 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-xl">
-                      Hacé click en la foto para colocar el punto
-                    </div>
+                  <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', background: '#f97316', color: '#fff', padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, pointerEvents: 'none', boxShadow: '0 2px 8px rgba(0,0,0,.2)' }}>
+                    Hacé click donde quieras colocar el punto
                   </div>
                 )}
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors" style={{ minHeight: 300 }}>
-                <ImagePlus className="w-12 h-12 mb-3 text-gray-300" />
-                <p className="font-medium text-sm text-gray-500">Subí una foto de este ángulo del equipo</p>
-                <p className="text-xs text-gray-400 mt-1">JPG, PNG — cualquier imagen</p>
-                <input type="file" accept="image/*" className="hidden"
-                  onChange={e => { const fl = e.target.files?.[0]; if (fl) handleFileUpload(activeFoto, fl); e.target.value = ''; }} />
+              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 280, border: '2px dashed #e2e8f0', borderRadius: 12, cursor: 'pointer', background: '#fafafa' }}>
+                <ImagePlus size={40} color="#cbd5e1" style={{ marginBottom: 12 }} />
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8' }}>Subí una foto de este ángulo del equipo</div>
+                <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 4 }}>JPG, PNG — cualquier imagen</div>
+                <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
+                  onChange={e => { const fl = e.target.files?.[0]; if (fl) onFileChange(activeIdx, fl); e.target.value = ''; }} />
               </label>
             )}
 
             {/* Lista puntos */}
             {foto.puntos.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
                   Puntos de control — {foto.titulo}
-                </p>
-                <div className="grid grid-cols-2 gap-2">
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   {foto.puntos.map((p, pIdx) => (
-                    <div key={pIdx} className="flex items-center gap-2 p-2 rounded-lg border border-gray-100 bg-gray-50">
-                      <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shrink-0"
-                        style={{ fontSize: 10 }}>
+                    <div key={pIdx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#2563eb', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {pIdx + 1}
                       </div>
                       <input
                         value={p.label}
                         onChange={e => updateLabel(pIdx, e.target.value)}
-                        className="flex-1 text-xs bg-transparent border-none outline-none min-w-0"
+                        style={{ flex: 1, fontSize: 12, border: 'none', background: 'none', outline: 'none', minWidth: 0 }}
                         placeholder="Descripción del punto"
                       />
-                      <button type="button" onClick={() => removePunto(pIdx)}
-                        className="text-gray-300 hover:text-red-500 transition-colors shrink-0">
-                        <Trash2 className="w-3.5 h-3.5" />
+                      <button type="button" onClick={() => removePoint(pIdx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', flexShrink: 0 }}>
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   ))}
