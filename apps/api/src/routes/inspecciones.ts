@@ -230,7 +230,10 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       items: z.array(itemSchema).optional(),
     });
     const body = schema.safeParse(req.body ?? {});
-    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    if (!body.success) {
+      console.error('[PATCH /plantillas] Zod errors:', JSON.stringify(body.error.errors));
+      return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    }
     const { items, ...rest } = body.data;
     await (app.prisma as any).inspeccionPlantilla.updateMany({ where: { id, tenantId }, data: rest });
     if (items !== undefined) {

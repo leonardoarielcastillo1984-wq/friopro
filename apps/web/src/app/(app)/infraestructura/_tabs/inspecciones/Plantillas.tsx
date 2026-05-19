@@ -61,6 +61,7 @@ export default function InspeccionesPlantillas() {
     e.preventDefault(); setSaving(true);
     try {
       const payload = { ...form, items: items.map((it, i) => { const { _idx, ...clean } = it as any; return { ...clean, orden: i }; }) };
+      console.log('[handleSave] payload:', JSON.stringify(payload, null, 2));
       if (editingId) {
         await apiFetch(`/inspecciones/plantillas/${editingId}`, { method: 'PATCH', json: payload });
       } else {
@@ -68,6 +69,9 @@ export default function InspeccionesPlantillas() {
       }
       setShowNew(false); setEditingId(null);
       setForm({ nombre: '', descripcion: '', categoria: 'GENERAL' }); setItems([]); load();
+    } catch (err: any) {
+      console.error('[handleSave] error:', err);
+      alert(`Error: ${err?.message || 'desconocido'}\n${err?.details ? JSON.stringify(err.details, null, 2) : ''}`);
     } finally { setSaving(false); }
   };
 
