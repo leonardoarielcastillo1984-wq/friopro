@@ -5832,7 +5832,8 @@ model Neumatico {
   marca    String?
   modelo   String?
   medida   String? // ej: 295/80R22.5
-  dot      String? // fecha de fabricación DOT
+  dot       String? // fecha de fabricación DOT
+  condicion String  @default("NUEVA") // NUEVA, USADA, RECAPADA
 
   // Estado
   status       String @default("DISPONIBLE") // DISPONIBLE, EN_USO, EN_REPARACION, BAJA

@@ -36,6 +36,8 @@ export default async function flotaRoutes(app: FastifyInstance) {
       color: z.string().optional(),
       chasis: z.string().optional(),
       motor: z.string().optional(),
+      status: z.string().optional().default('ACTIVO'),
+      currentOdometer: z.number().optional(),
       conductorId: z.string().uuid().optional().nullable(),
       maintenanceAssetId: z.string().uuid().optional().nullable(),
       notas: z.string().optional(),
@@ -222,6 +224,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       modelo: z.string().optional(),
       medida: z.string().optional(),
       dot: z.string().optional(),
+      condicion: z.enum(['NUEVA', 'USADA', 'RECAPADA']).optional().default('NUEVA'),
       profBanda: z.number().optional(),
       notas: z.string().optional(),
     });

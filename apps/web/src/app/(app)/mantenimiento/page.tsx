@@ -1696,7 +1696,11 @@ export default function MantenimientoPage() {
                     return (
                       <div key={n.id} className="bg-white rounded-xl border border-gray-200 p-4">
                         <div className="flex items-start justify-between mb-2">
-                          <div><p className="font-bold text-gray-900">{n.codigo}</p><p className="text-sm text-gray-500">{[n.marca, n.modelo, n.medida].filter(Boolean).join(' · ')}</p></div>
+                          <div>
+                            <p className="font-bold text-gray-900">{n.codigo}</p>
+                            <p className="text-sm text-gray-500">{[n.marca, n.modelo, n.medida].filter(Boolean).join(' · ')}</p>
+                            {n.condicion && n.condicion !== 'NUEVA' && <span className={`text-xs font-medium px-1.5 py-0.5 rounded mt-0.5 inline-block ${n.condicion === 'RECAPADA' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>{n.condicion}</span>}
+                          </div>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${sColor[n.status] || 'bg-gray-100 text-gray-500'}`}>{n.status}</span>
                         </div>
                         <div className="grid grid-cols-3 gap-2 text-xs text-center my-3">
@@ -3136,7 +3140,7 @@ function FlotaConductorForm({ conductor, onSave, onClose }: any) {
 }
 
 function FlotaNeumaticoForm({ onSave, onClose }: any) {
-  const [f, setF] = useState({ codigo: '', marca: '', modelo: '', medida: '', dot: '', profBanda: '', notas: '' });
+  const [f, setF] = useState({ codigo: '', marca: '', modelo: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '', notas: '' });
   const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
   return (
     <div className="space-y-3">
@@ -3146,7 +3150,8 @@ function FlotaNeumaticoForm({ onSave, onClose }: any) {
         <FI label="Modelo"><input value={f.modelo} onChange={set('modelo')} className={inp} /></FI>
         <FI label="Medida"><input value={f.medida} onChange={set('medida')} className={inp} placeholder="295/80R22.5" /></FI>
         <FI label="DOT"><input value={f.dot} onChange={set('dot')} className={inp} placeholder="2452" /></FI>
-        <div className="col-span-2"><FI label="Prof. banda inicial (mm)"><input type="number" step="0.1" value={f.profBanda} onChange={set('profBanda')} className={inp} placeholder="12" /></FI></div>
+        <FI label="Condición *"><select value={f.condicion} onChange={set('condicion')} className={inp}><option value="NUEVA">Nueva</option><option value="USADA">Usada</option><option value="RECAPADA">Recapada</option></select></FI>
+        <FI label="Prof. banda inicial (mm)"><input type="number" step="0.1" value={f.profBanda} onChange={set('profBanda')} className={inp} placeholder="12" /></FI>
         <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-12 resize-none'} /></FI></div>
       </div>
       <div className="flex gap-3 pt-2">
