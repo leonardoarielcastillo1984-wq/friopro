@@ -274,14 +274,19 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    const query = req.query as any;
     
-    // Debug: log what we receive
-    console.log('[DELETE VEHICULO]', { id, permanente: query.permanente, tipo: typeof query.permanente });
+    // Parse query params from URL manually (Fastify query parsing can be inconsistent)
+    const url = req.url || '';
+    const queryString = url.split('?')[1] || '';
+    const params = new URLSearchParams(queryString);
+    const permanenteValue = params.get('permanente');
+    
+    console.log('[DELETE VEHICULO URL]', url);
+    console.log('[DELETE VEHICULO]', { id, permanenteValue, queryParams: Object.fromEntries(params) });
 
-    // Check if permanent deletion requested - accept any truthy value
-    const esPermanente = query.permanente != null && query.permanente !== '' && query.permanente !== 'false' && query.permanente !== false;
-    console.log('[DEBUG] esPermanente evaluado como:', esPermanente, 'valor recibido:', query.permanente);
+    // Check if permanent deletion requested
+    const esPermanente = permanenteValue === 'true';
+    console.log('[DEBUG] esPermanente evaluado como:', esPermanente);
 
     const vehiculo = await (app.prisma as any).vehiculo.findFirst({
       where: { id, tenantId },
