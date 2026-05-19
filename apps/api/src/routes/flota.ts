@@ -270,21 +270,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
-  // DELETE - Marcar como BAJA (eliminación lógica)
-  app.delete('/vehiculos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
-    const { id } = req.params as any;
-    
-    await (app.prisma as any).vehiculo.updateMany({ 
-      where: { id, tenantId }, 
-      data: { status: 'BAJA' } 
-    });
-    
-    return reply.send({ ok: true, mensaje: 'Vehículo marcado como BAJA' });
-  });
-
-  // POST /vehiculos/:id/eliminar - Eliminación física permanente
+  // POST /vehiculos/:id/eliminar - Eliminación física permanente (REGISTRAR ANTES DEL DELETE)
   app.post('/vehiculos/:id/eliminar', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
@@ -361,6 +347,20 @@ export default async function flotaRoutes(app: FastifyInstance) {
       mensaje: 'Vehículo eliminado permanentemente',
       eliminado: { vehiculoId: id }
     });
+  });
+
+  // DELETE /vehiculos/:id - Marcar como BAJA (eliminación lógica)
+  app.delete('/vehiculos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    
+    await (app.prisma as any).vehiculo.updateMany({ 
+      where: { id, tenantId }, 
+      data: { status: 'BAJA' } 
+    });
+    
+    return reply.send({ ok: true, mensaje: 'Vehículo marcado como BAJA' });
   });
 
   // ═══════════════════════════════════════════════════════════════
