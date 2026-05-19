@@ -715,9 +715,9 @@ export default function MantenimientoPage() {
       return;
     }
     try {
-      const url = `/flota/vehiculos/${id}?permanente=true`;
-      console.log('[Frontend] Enviando DELETE a:', url);
-      const response = await apiFetch(url, { method: 'DELETE' });
+      const url = `/flota/vehiculos/${id}/eliminar`;
+      console.log('[Frontend] Enviando POST a:', url);
+      const response = await apiFetch(url, { method: 'POST', json: {} });
       console.log('[Frontend] Respuesta:', response);
       loadFlotaData();
       alert('Vehículo eliminado permanentemente.');

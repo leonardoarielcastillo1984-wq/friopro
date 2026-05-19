@@ -270,21 +270,25 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  // DELETE - Marcar como BAJA (eliminación lógica)
   app.delete('/vehiculos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
     
-    // Parse query param manually from raw URL (Fastify query parsing unreliable)
-    const rawUrl = req.raw.url || '';
-    const urlObj = new URL(rawUrl, `http://localhost`);
-    const permanenteValue = urlObj.searchParams.get('permanente');
+    await (app.prisma as any).vehiculo.updateMany({ 
+      where: { id, tenantId }, 
+      data: { status: 'BAJA' } 
+    });
     
-    console.log('[DELETE VEHICULO]', { id, rawUrl, permanenteValue });
+    return reply.send({ ok: true, mensaje: 'Vehículo marcado como BAJA' });
+  });
 
-    // Check if permanent deletion requested
-    const esPermanente = permanenteValue === 'true';
-    console.log('[DEBUG] esPermanente:', esPermanente);
+  // POST /vehiculos/:id/eliminar - Eliminación física permanente
+  app.post('/vehiculos/:id/eliminar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
 
     const vehiculo = await (app.prisma as any).vehiculo.findFirst({
       where: { id, tenantId },
@@ -293,93 +297,70 @@ export default async function flotaRoutes(app: FastifyInstance) {
 
     if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
 
-    // ═══════════════════════════════════════════════════════════════
-    // ELIMINACIÓN LÓGICA (BAJA) - por defecto
-    // ═══════════════════════════════════════════════════════════════
-    if (!esPermanente) {
-      await (app.prisma as any).vehiculo.updateMany({ where: { id, tenantId }, data: { status: 'BAJA' } });
-      return reply.send({ ok: true, mensaje: 'Vehículo marcado como BAJA' });
+    // Verificar si tiene datos que impiden eliminación
+    const tieneCombustible = vehiculo.registrosCombustible?.length > 0;
+    const tieneNeumaticosMontados = vehiculo.posicionesNeumatico?.some((p: any) => p.activo);
+
+    if (tieneNeumaticosMontados) {
+      return reply.code(400).send({
+        error: 'No se puede eliminar: tiene neumáticos montados. Desmonte todos los neumáticos primero.'
+      });
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // ELIMINACIÓN FÍSICA PERMANENTE
-    // ═══════════════════════════════════════════════════════════════
-    if (esPermanente) {
-      // Verificar si tiene datos que impiden eliminación
-      const tieneCombustible = vehiculo.registrosCombustible?.length > 0;
-      const tieneNeumaticosMontados = vehiculo.posicionesNeumatico?.some((p: any) => p.activo);
+    // Desvincular neumáticos de posiciones históricas
+    await (app.prisma as any).neumaticoPosicion.updateMany({
+      where: { vehiculoId: id, tenantId },
+      data: { vehiculoId: null }
+    });
 
-      if (tieneNeumaticosMontados) {
-        return reply.code(400).send({
-          error: 'No se puede eliminar: tiene neumáticos montados. Desmonte todos los neumáticos primero.'
-        });
-      }
+    // Eliminar vencimientos del vehículo
+    await (app.prisma as any).vencimientoDocumento.deleteMany({
+      where: { vehiculoId: id, tenantId }
+    });
 
-      // Desvincular neumáticos de posiciones históricas (mantener historial pero sin vehiculoId)
-      await (app.prisma as any).neumaticoPosicion.updateMany({
-        where: { vehiculoId: id, tenantId },
-        data: { vehiculoId: null }
+    // Eliminar historial de mantenimiento del vehículo
+    await (app.prisma as any).vehiculoHistorialMantenimiento.deleteMany({
+      where: { vehiculoId: id, tenantId }
+    });
+
+    // Eliminar garantías del vehículo
+    await (app.prisma as any).garantiaVehiculo.deleteMany({
+      where: { vehiculoId: id, tenantId }
+    });
+
+    // Desvincular o eliminar activo de mantenimiento
+    if (vehiculo.maintenanceAssetId) {
+      const assetData = await (app.prisma as any).maintenanceAsset.findFirst({
+        where: { id: vehiculo.maintenanceAssetId, tenantId },
+        include: { workOrders: { take: 1 }, costs: { take: 1 }, digitalTwin: true }
       });
 
-      // Eliminar vencimientos del vehículo
-      await (app.prisma as any).vencimientoDocumento.deleteMany({
-        where: { vehiculoId: id, tenantId }
-      });
+      const tieneOTs = assetData?.workOrders?.length > 0;
+      const tieneCostos = assetData?.costs?.length > 0;
 
-      // Eliminar historial de mantenimiento del vehículo
-      await (app.prisma as any).vehiculoHistorialMantenimiento.deleteMany({
-        where: { vehiculoId: id, tenantId }
-      });
-
-      // Eliminar garantías del vehículo
-      await (app.prisma as any).garantiaVehiculo.deleteMany({
-        where: { vehiculoId: id, tenantId }
-      });
-
-      // Desvincular o eliminar activo de mantenimiento
-      if (vehiculo.maintenanceAssetId) {
-        // Verificar si el activo tiene OTs o costos - si no tiene, eliminarlo también
-        const assetData = await (app.prisma as any).maintenanceAsset.findFirst({
-          where: { id: vehiculo.maintenanceAssetId, tenantId },
-          include: { workOrders: { take: 1 }, costs: { take: 1 }, digitalTwin: true }
-        });
-
-        const tieneOTs = assetData?.workOrders?.length > 0;
-        const tieneCostos = assetData?.costs?.length > 0;
-
-        if (!tieneOTs && !tieneCostos) {
-          // Eliminar Digital Twin si existe
-          if (assetData?.digitalTwin) {
-            await (app.prisma as any).assetHealthPrediction.deleteMany({
-              where: { twinId: assetData.digitalTwin.id, tenantId }
-            });
-            await (app.prisma as any).assetDigitalTwin.delete({
-              where: { id: assetData.digitalTwin.id }
-            });
-          }
-          // Eliminar activo de mantenimiento vacío
-          await (app.prisma as any).maintenanceAsset.deleteMany({
-            where: { id: vehiculo.maintenanceAssetId, tenantId }
+      if (!tieneOTs && !tieneCostos) {
+        if (assetData?.digitalTwin) {
+          await (app.prisma as any).assetHealthPrediction.deleteMany({
+            where: { twinId: assetData.digitalTwin.id, tenantId }
+          });
+          await (app.prisma as any).assetDigitalTwin.delete({
+            where: { id: assetData.digitalTwin.id }
           });
         }
-        // Si tiene OTs o costos, se deja el activo como "histórico" pero sin vehículo vinculado
+        await (app.prisma as any).maintenanceAsset.deleteMany({
+          where: { id: vehiculo.maintenanceAssetId, tenantId }
+        });
       }
-
-      // Finalmente, eliminar el vehículo físicamente
-      await (app.prisma as any).vehiculo.deleteMany({ where: { id, tenantId } });
-
-      return reply.send({
-        ok: true,
-        mensaje: 'Vehículo eliminado permanentemente',
-        eliminado: {
-          vehiculoId: id,
-          assetEliminado: !vehiculo.maintenanceAssetId,
-          combustiblePreservado: tieneCombustible // Estos quedan huérfanos o se eliminan según necesidad
-        }
-      });
     }
 
-    return reply.code(400).send({ error: 'Parámetro permanente inválido' });
+    // Finalmente, eliminar el vehículo físicamente
+    await (app.prisma as any).vehiculo.deleteMany({ where: { id, tenantId } });
+
+    return reply.send({
+      ok: true,
+      mensaje: 'Vehículo eliminado permanentemente',
+      eliminado: { vehiculoId: id }
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
