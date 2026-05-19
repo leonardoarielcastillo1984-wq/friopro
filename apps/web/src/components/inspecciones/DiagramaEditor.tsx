@@ -152,8 +152,8 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
               />
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>
                 <Upload size={13} />{foto.url ? 'Cambiar foto' : 'Subir foto'}
-                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: 'none' }}
-                  onChange={e => { const fl = e.target.files?.[0]; if (fl) onFileChange(activeIdx, fl); e.target.value = ''; }} />
+                <input type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => { const fl = e.target.files?.[0]; if (fl) onFileChange(activeIdx, fl); }} />
               </label>
               {foto.url && (
                 <button type="button" onClick={() => setAddingPoint(v => !v)}
@@ -213,8 +213,8 @@ export default function DiagramaEditor({ plantillaId, plantillaNombre, initialFo
                 <ImagePlus size={40} color="#cbd5e1" style={{ marginBottom: 12 }} />
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8' }}>Subí una foto de este ángulo del equipo</div>
                 <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 4 }}>JPG, PNG — cualquier imagen</div>
-                <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
-                  onChange={e => { const fl = e.target.files?.[0]; if (fl) onFileChange(activeIdx, fl); e.target.value = ''; }} />
+                <input type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => { const fl = e.target.files?.[0]; if (fl) onFileChange(activeIdx, fl); }} />
               </label>
             )}
 
