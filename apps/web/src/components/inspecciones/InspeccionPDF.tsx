@@ -44,29 +44,49 @@ export default function InspeccionPDFButton({ inspeccion, empresa = 'SGI 360', l
 
     const diagramaFotos: any[] = inspeccion.qr?.plantilla?.diagramaFotos ?? [];
     const fotosConUrl = diagramaFotos.filter((f: any) => f.url);
-    const diagramaHtml = fotosConUrl.length > 0 ? `
-      <div style="margin-bottom:16px;">
-        <div style="font-weight:bold;font-size:11px;color:#475569;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Diagrama de control</div>
-        <div style="display:grid;grid-template-columns:${fotosConUrl.length === 1 ? '1fr' : '1fr 1fr'};gap:8px;">
-          ${fotosConUrl.map((foto: any) => `
-            <div style="position:relative;border-radius:6px;overflow:hidden;border:1px solid #e2e8f0;">
-              <img src="${foto.url}" style="width:100%;display:block;max-height:180px;object-fit:cover;" />
-              <div style="position:absolute;top:4px;left:6px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-weight:bold;padding:2px 6px;border-radius:3px;">${foto.titulo || ''}</div>
+
+    // Genera celdas de la tabla con imagen + puntos SVG superpuestos (compatible con print)
+    const celdaFoto = (foto: any, globalOffset: number) => `
+      <td style="padding:4px;vertical-align:top;width:50%;">
+        <div style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;position:relative;">
+          <div style="background:#1e293b;color:#fff;font-size:9px;font-weight:700;padding:3px 8px;">${foto.titulo || ''}</div>
+          <div style="position:relative;line-height:0;">
+            <img src="${foto.url}" style="width:100%;display:block;height:160px;object-fit:cover;" />
+            <svg style="position:absolute;top:0;left:0;width:100%;height:100%;" viewBox="0 0 100 100" preserveAspectRatio="none">
               ${(foto.puntos || []).map((p: any, pi: number) => `
-                <div style="position:absolute;left:${p.x}%;top:${p.y}%;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;background:${primaryColor};border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:8px;font-weight:bold;box-shadow:0 1px 4px rgba(0,0,0,.4);">${pi + 1}</div>
+                <circle cx="${p.x}" cy="${p.y}" r="4.5" fill="${primaryColor}" stroke="white" stroke-width="1.5"/>
+                <text x="${p.x}" y="${p.y + 1.5}" text-anchor="middle" dominant-baseline="middle" fill="white" font-size="4.5" font-weight="bold" font-family="Arial">${globalOffset + pi + 1}</text>
               `).join('')}
-            </div>
-          `).join('')}
+            </svg>
+          </div>
         </div>
-        ${fotosConUrl.some((f: any) => f.puntos?.length > 0) ? `
-        <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
-          ${fotosConUrl.flatMap((f: any) => (f.puntos || []).map((p: any, pi: number) => `
-            <div style="display:flex;gap:5px;align-items:center;font-size:9px;color:#475569;">
-              <span style="width:14px;height:14px;border-radius:50%;background:${primaryColor};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:7px;font-weight:bold;flex-shrink:0;">${pi + 1}</span>
-              ${p.label}
-            </div>
-          `)).join('')}
-        </div>` : ''}
+      </td>`;
+
+    let offset = 0;
+    const rows: string[] = [];
+    for (let i = 0; i < fotosConUrl.length; i += 2) {
+      const f1 = fotosConUrl[i];
+      const f2 = fotosConUrl[i + 1];
+      const o1 = offset; offset += (f1?.puntos?.length || 0);
+      const o2 = offset; offset += (f2?.puntos?.length || 0);
+      rows.push(`<tr>${celdaFoto(f1, o1)}${f2 ? celdaFoto(f2, o2) : '<td></td>'}</tr>`);
+    }
+
+    const allPuntos = fotosConUrl.flatMap((f: any) => (f.puntos || []).map((p: any) => ({ label: p.label })));
+    const leyendaHtml = allPuntos.length > 0 ? `
+      <table style="width:100%;border-collapse:collapse;margin-top:6px;">
+        <tr>${allPuntos.map((p: any, i: number) => `
+          <td style="padding:2px 8px 2px 0;font-size:9px;color:#475569;white-space:nowrap;width:${Math.floor(100/Math.min(allPuntos.length,4))}%;">
+            <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${primaryColor};color:#fff;text-align:center;line-height:14px;font-size:7px;font-weight:bold;margin-right:4px;">${i+1}</span>${p.label}
+          </td>`).join('')}
+        </tr>
+      </table>` : '';
+
+    const diagramaHtml = fotosConUrl.length > 0 ? `
+      <div style="margin-bottom:16px;page-break-inside:avoid;">
+        <div style="font-weight:bold;font-size:11px;color:#475569;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Diagrama de control del activo</div>
+        <table style="width:100%;border-collapse:collapse;">${rows.join('')}</table>
+        ${leyendaHtml}
       </div>` : '';
 
     const hallazgosHtml = inspeccion.hallazgos?.length > 0 ? `
@@ -167,7 +187,20 @@ ${inspeccion.notas ? `<div style="margin-top:12px;padding:8px 12px;background:#f
     win.document.write(html);
     win.document.close();
     win.focus();
-    setTimeout(() => { win.print(); }, 400);
+    // Esperar a que todas las imágenes carguen antes de imprimir
+    const imgs = win.document.images;
+    if (imgs.length === 0) {
+      setTimeout(() => win.print(), 300);
+    } else {
+      let loaded = 0;
+      const tryPrint = () => { loaded++; if (loaded >= imgs.length) win.print(); };
+      const fallback = setTimeout(() => win.print(), 3000);
+      Array.from(imgs).forEach(img => {
+        if (img.complete) { tryPrint(); }
+        else { img.onload = tryPrint; img.onerror = tryPrint; }
+      });
+      win.onafterprint = () => clearTimeout(fallback);
+    }
   };
 
   return (
