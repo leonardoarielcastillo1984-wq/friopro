@@ -1,15 +1,15 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { ClipboardCheck, Eye, X, AlertCircle, FileDown } from 'lucide-react';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
-const downloadExcel = (id: string) => { window.open(`${API_BASE}/inspecciones/${id}/excel`, '_blank'); };
+import { ClipboardCheck, Eye, X, AlertCircle } from 'lucide-react';
+import InspeccionPDFButton from '@/components/inspecciones/InspeccionPDF';
+import { useAuth } from '@/lib/auth-context';
 
 const ESTADO_COLOR: Record<string, string> = { COMPLETA: 'bg-emerald-100 text-emerald-700', CON_HALLAZGOS: 'bg-amber-100 text-amber-700', CRITICA: 'bg-red-100 text-red-700', INCOMPLETA: 'bg-gray-100 text-gray-500' };
 const SEV_COLOR: Record<string, string> = { LEVE: 'bg-yellow-100 text-yellow-700', MODERADO: 'bg-orange-100 text-orange-700', CRITICO: 'bg-red-100 text-red-700' };
 
 export default function InspeccionesLista() {
+  const { tenant } = useAuth();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any>(null);
@@ -59,10 +59,7 @@ export default function InspeccionesLista() {
                       <span>{new Date(ins.createdAt).toLocaleDateString('es-AR')}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => downloadExcel(ins.id)} title="Exportar Excel" className="text-gray-300 hover:text-emerald-600 transition-colors"><FileDown className="w-4 h-4" /></button>
-                    <Eye className="w-4 h-4 text-gray-300" />
-                  </div>
+                  <Eye className="w-4 h-4 text-gray-300 shrink-0" />
                 </div>
               ))}
             </div>
@@ -79,9 +76,7 @@ export default function InspeccionesLista() {
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${ESTADO_COLOR[selected.estado] || ''}`}>{selected.estado}</span>
-                <button onClick={() => downloadExcel(selected.id)} title="Exportar Excel" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">
-                  <FileDown className="w-3.5 h-3.5" />Excel
-                </button>
+                <InspeccionPDFButton inspeccion={selected} empresa={tenant?.name} />
                 <button onClick={() => setSelected(null)}><X className="w-4 h-4 text-gray-500" /></button>
               </div>
             </div>
