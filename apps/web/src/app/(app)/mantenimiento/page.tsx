@@ -3505,7 +3505,7 @@ function FlotaVehiculoForm({ vehiculo, conductores, tipoLabels, onSave, onClose 
       </div>
       <div className="flex gap-3 pt-2">
         <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
-        <button onClick={() => { if (!f.dominio.trim()) return alert('Dominio requerido'); onSave({ ...f, anio: f.anio ? parseInt(f.anio) : undefined, currentOdometer: f.currentOdometer ? parseFloat(f.currentOdometer) : undefined, conductorId: f.conductorId || null }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Guardar</button>
+        <button onClick={() => { if (!f.dominio.trim()) return alert('Dominio requerido'); onSave({ ...f, anio: f.anio ? parseInt(f.anio) : undefined, currentOdometer: f.currentOdometer ? parseFloat(f.currentOdometer) : undefined, conductorId: f.conductorId || null, crearActivoMantenimiento: !vehiculo }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Guardar</button>
       </div>
     </div>
   );
