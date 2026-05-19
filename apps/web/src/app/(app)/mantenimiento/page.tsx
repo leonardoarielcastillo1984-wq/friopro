@@ -558,6 +558,7 @@ export default function MantenimientoPage() {
   const [showCombustibleModal, setShowCombustibleModal] = useState<string | null>(null);
   const [editingVeh, setEditingVeh] = useState<any>(null);
   const [editingCond, setEditingCond] = useState<any>(null);
+  const [editingNeum, setEditingNeum] = useState<any>(null);
   const [selectedVehComb, setSelectedVehComb] = useState<any>(null);
   const [combustibleReg, setCombustibleReg] = useState<any[]>([]);
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
@@ -680,6 +681,21 @@ export default function MantenimientoPage() {
   const saveNeumatico = async (data: any) => {
     await apiFetch('/flota/neumaticos', { method: 'POST', json: data });
     setShowNeumaticoModal(false); loadFlotaData();
+  };
+
+  const updateNeumatico = async (id: string, data: any) => {
+    await apiFetch(`/flota/neumaticos/${id}`, { method: 'PATCH', json: data });
+    setShowNeumaticoModal(false); setEditingNeum(null); loadFlotaData();
+  };
+
+  const deleteNeumatico = async (id: string) => {
+    if (!confirm('¿Eliminar este neumático? Solo se pueden eliminar los que estén DISPONIBLES (no montados).')) return;
+    try {
+      await apiFetch(`/flota/neumaticos/${id}`, { method: 'DELETE' });
+      loadFlotaData();
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo eliminar. Verifique que el neumático esté DISPONIBLE.');
+    }
   };
 
   const montarNeumatico = async (neumaticoId: string, data: any) => {
@@ -1964,7 +1980,7 @@ export default function MantenimientoPage() {
                   <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><Circle className="w-5 h-5 text-purple-600" />Neumáticos ({flotaNeumaticos.length})</h3>
                   <p className="text-xs text-gray-400 mt-0.5">Cada neumático es una unidad física. Vinculala a un artículo de Repuestos para gestionar stock.</p>
                 </div>
-                <button onClick={() => setShowNeumaticoModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><Plus className="w-4 h-4" />Nuevo neumático</button>
+                <button onClick={() => { setEditingNeum(null); setShowNeumaticoModal(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><Plus className="w-4 h-4" />Nuevo neumático</button>
               </div>
               {/* Resumen por estado */}
               {flotaNeumaticos.length > 0 && (
@@ -2018,6 +2034,8 @@ export default function MantenimientoPage() {
                           {n.status === 'DISPONIBLE' && <button onClick={() => setShowMontarModal(n.id)} className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-1.5 hover:bg-blue-700 flex items-center justify-center gap-1"><Plus className="w-3 h-3" />Montar</button>}
                           {n.status === 'EN_USO' && <button onClick={() => setShowDesmontarModal(n.id)} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50 flex items-center justify-center gap-1"><X className="w-3 h-3" />Desmontar</button>}
                           <button onClick={() => loadHistorialNeum(n.id)} className="text-xs border border-gray-200 text-gray-500 rounded-lg py-1.5 px-2 hover:bg-gray-50">Historial</button>
+                          <button onClick={() => { setEditingNeum(n); setShowNeumaticoModal(true); }} className="text-xs border border-gray-200 text-gray-500 rounded-lg py-1.5 px-2 hover:bg-gray-50" title="Editar"><Edit className="w-3 h-3" /></button>
+                          {n.status === 'DISPONIBLE' && <button onClick={() => deleteNeumatico(n.id)} className="text-xs border border-red-200 text-red-500 rounded-lg py-1.5 px-2 hover:bg-red-50" title="Eliminar"><Trash2 className="w-3 h-3" /></button>}
                         </div>
                       </div>
                     );
@@ -3315,8 +3333,13 @@ export default function MantenimientoPage() {
       )}
 
       {showNeumaticoModal && (
-        <FlotaModal title="Nuevo neumático" onClose={() => setShowNeumaticoModal(false)}>
-          <FlotaNeumaticoForm repuestos={flotaRepuestos} onSave={saveNeumatico} onClose={() => setShowNeumaticoModal(false)} />
+        <FlotaModal title={editingNeum ? 'Editar neumático' : 'Nuevo neumático'} onClose={() => { setShowNeumaticoModal(false); setEditingNeum(null); }}>
+          <FlotaNeumaticoForm
+            repuestos={flotaRepuestos}
+            neumatico={editingNeum}
+            onSave={editingNeum ? (data: any) => updateNeumatico(editingNeum.id, data) : saveNeumatico}
+            onClose={() => { setShowNeumaticoModal(false); setEditingNeum(null); }}
+          />
         </FlotaModal>
       )}
 
@@ -3494,8 +3517,27 @@ function FlotaConductorForm({ conductor, onSave, onClose }: any) {
   );
 }
 
-function FlotaNeumaticoForm({ repuestos, onSave, onClose }: any) {
+function FlotaNeumaticoForm({ repuestos, neumatico, onSave, onClose }: any) {
+  const isEditing = !!neumatico;
   const [f, setF] = useState({ codigo: '', marca: '', modelo: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '', sparePartId: '', notas: '' });
+  
+  // Initialize form with neumatico data when editing
+  useEffect(() => {
+    if (neumatico) {
+      setF({
+        codigo: neumatico.codigo || '',
+        marca: neumatico.marca || '',
+        modelo: neumatico.modelo || '',
+        medida: neumatico.medida || '',
+        dot: neumatico.dot || '',
+        condicion: neumatico.condicion || 'NUEVA',
+        profBanda: neumatico.profBanda != null ? String(neumatico.profBanda) : '',
+        sparePartId: neumatico.sparePartId || '',
+        notas: neumatico.notas || '',
+      });
+    }
+  }, [neumatico]);
+  
   const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
   const selPart = repuestos.find((r: any) => r.id === f.sparePartId);
   return (
@@ -3503,12 +3545,13 @@ function FlotaNeumaticoForm({ repuestos, onSave, onClose }: any) {
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <FI label="Artículo de Repuesto (opcional)">
-            <select value={f.sparePartId} onChange={set('sparePartId')} className={inp}>
+            <select value={f.sparePartId} onChange={set('sparePartId')} className={inp} disabled={isEditing}>
               <option value="">Sin vincular a repuesto</option>
               {repuestos.map((r: any) => <option key={r.id} value={r.id}>{r.code} — {r.name} (stock: {r.currentStock})</option>)}
             </select>
           </FI>
-          {selPart && <p className="text-xs text-purple-600 mt-1">📦 Al montar esta rueda, se descontará 1 unidad del stock ({selPart.currentStock} disponibles)</p>}
+          {selPart && !isEditing && <p className="text-xs text-purple-600 mt-1">📦 Al montar esta rueda, se descontará 1 unidad del stock ({selPart.currentStock} disponibles)</p>}
+          {isEditing && selPart && <p className="text-xs text-gray-400 mt-1">📦 Vinculado a: {selPart.name}</p>}
         </div>
         <div className="col-span-2"><FI label="Código / Nº serie *"><input value={f.codigo} onChange={set('codigo')} className={inp} placeholder={selPart ? selPart.code + '-001' : 'NM-001'} /></FI></div>
         <FI label="Marca"><input value={f.marca} onChange={set('marca')} className={inp} placeholder={selPart?.name?.split(' ')[0] || 'Bridgestone...'} /></FI>
@@ -3516,12 +3559,12 @@ function FlotaNeumaticoForm({ repuestos, onSave, onClose }: any) {
         <FI label="Medida"><input value={f.medida} onChange={set('medida')} className={inp} placeholder="295/80R22.5" /></FI>
         <FI label="DOT"><input value={f.dot} onChange={set('dot')} className={inp} placeholder="2452" /></FI>
         <FI label="Condición *"><select value={f.condicion} onChange={set('condicion')} className={inp}><option value="NUEVA">Nueva</option><option value="USADA">Usada</option><option value="RECAPADA">Recapada</option></select></FI>
-        <FI label="Prof. banda inicial (mm)"><input type="number" step="0.1" value={f.profBanda} onChange={set('profBanda')} className={inp} placeholder="12" /></FI>
+        <FI label="Prof. banda (mm)"><input type="number" step="0.1" value={f.profBanda} onChange={set('profBanda')} className={inp} placeholder="12" /></FI>
         <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-12 resize-none'} /></FI></div>
       </div>
       <div className="flex gap-3 pt-2">
         <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
-        <button onClick={() => { if (!f.codigo.trim()) return alert('Código requerido'); onSave({ ...f, profBanda: f.profBanda ? parseFloat(f.profBanda) : undefined, sparePartId: f.sparePartId || null }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Crear</button>
+        <button onClick={() => { if (!f.codigo.trim()) return alert('Código requerido'); onSave({ ...f, profBanda: f.profBanda ? parseFloat(f.profBanda) : undefined, sparePartId: f.sparePartId || null }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">{isEditing ? 'Guardar cambios' : 'Crear'}</button>
       </div>
     </div>
   );

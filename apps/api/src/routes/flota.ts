@@ -266,6 +266,20 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  // Eliminar neumático (solo si está DISPONIBLE, no montado)
+  app.delete('/neumaticos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const neum = await (app.prisma as any).neumatico.findFirst({ where: { id, tenantId } });
+    if (!neum) return reply.code(404).send({ error: 'Neumático no encontrado' });
+    if (neum.status !== 'DISPONIBLE') return reply.code(400).send({ error: 'No se puede eliminar: el neumático está EN_USO o DESCARTADO' });
+    // Eliminar posiciones históricas primero
+    await (app.prisma as any).neumaticoPosicion.deleteMany({ where: { neumaticoId: id, tenantId } });
+    await (app.prisma as any).neumatico.deleteMany({ where: { id, tenantId } });
+    return reply.send({ ok: true });
+  });
+
   // Montar neumático en vehículo — descuenta stock del repuesto vinculado
   app.post('/neumaticos/:neumaticoId/montar', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
