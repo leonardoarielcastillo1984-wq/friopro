@@ -1125,12 +1125,11 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  // ── GET /documents/:id/file — Servir archivo para OnlyOffice ──
+  // ── GET /documents/:id/file — Servir archivo para OnlyOffice (sin auth) ──
   app.get('/:id/file', async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const doc = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.document.findFirst({ where: { id, deletedAt: null }, select: { filePath: true, title: true } });
-    });
+    const prisma = (app as any).prisma;
+    const doc = await prisma.document.findFirst({ where: { id, deletedAt: null }, select: { filePath: true, title: true } });
     if (!doc?.filePath || !existsSync(doc.filePath)) return reply.code(404).send({ error: 'Archivo no encontrado' });
     const ext = path.extname(doc.filePath).toLowerCase();
     const mimeTypes: Record<string, string> = {

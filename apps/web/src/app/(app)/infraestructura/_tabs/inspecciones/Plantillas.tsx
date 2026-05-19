@@ -1,10 +1,14 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, Zap, Trash2, X, ListChecks, Wrench, Truck, Package, Settings, ShieldAlert, Building2, Pencil } from 'lucide-react';
+import { Plus, Zap, Trash2, X, ListChecks, Wrench, Truck, Package, Settings, ShieldAlert, Building2, Pencil, Eye } from 'lucide-react';
+import AssetDiagram from '@/components/inspecciones/AssetDiagram';
 
 const CAT_ICON: Record<string, any> = { CAMION: Truck, AUTOELEVADOR: Package, MAQUINARIA: Settings, SEGURIDAD: ShieldAlert, INFRAESTRUCTURA: Building2, ELECTRICO: Zap, GENERAL: Wrench };
 const CAT_COLOR: Record<string, string> = { CAMION: 'bg-blue-100 text-blue-700', AUTOELEVADOR: 'bg-amber-100 text-amber-700', MAQUINARIA: 'bg-purple-100 text-purple-700', SEGURIDAD: 'bg-red-100 text-red-700', INFRAESTRUCTURA: 'bg-emerald-100 text-emerald-700', ELECTRICO: 'bg-orange-100 text-orange-700', GENERAL: 'bg-gray-100 text-gray-600' };
+
+const DIAGRAM_CATS = ['CAMION', 'AUTOELEVADOR', 'EXTINTOR', 'MAQUINARIA', 'EDIFICIO'];
+const CAT_TO_DIAGRAM: Record<string, string> = { CAMION: 'CAMION', AUTOELEVADOR: 'AUTOELEVADOR', EXTINTOR: 'EXTINTOR', MAQUINARIA: 'MAQUINARIA', INFRAESTRUCTURA: 'EDIFICIO', SEGURIDAD: 'EDIFICIO' };
 
 export default function InspeccionesPlantillas() {
   const [plantillas, setPlantillas] = useState<any[]>([]);
@@ -16,6 +20,7 @@ export default function InspeccionesPlantillas() {
   const [form, setForm] = useState({ nombre: '', descripcion: '', categoria: 'GENERAL' });
   const [items, setItems] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [previewCat, setPreviewCat] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,6 +123,11 @@ export default function InspeccionesPlantillas() {
                     <div className="flex items-center gap-2 mt-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLOR[p.categoria] || 'bg-gray-100 text-gray-600'}`}>{p.categoria}</span>
                       <span className="text-xs text-gray-400">{p._count?.items || 0} items · {p._count?.instancias || 0} QRs</span>
+                      {CAT_TO_DIAGRAM[p.categoria] && (
+                        <button onClick={() => setPreviewCat(CAT_TO_DIAGRAM[p.categoria])} className="ml-auto text-gray-300 hover:text-blue-500 transition-colors" title="Ver diagrama">
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -174,6 +184,13 @@ export default function InspeccionesPlantillas() {
               <input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
                 className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" placeholder="Descripción (opcional)" />
 
+              {CAT_TO_DIAGRAM[form.categoria] && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Vista previa del diagrama de puntos de control:</p>
+                  <AssetDiagram categoria={CAT_TO_DIAGRAM[form.categoria]} />
+                </div>
+              )}
+
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-medium text-gray-600">Items del checklist ({items.length})</label>
@@ -209,6 +226,15 @@ export default function InspeccionesPlantillas() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Modal preview diagrama */}
+      {previewCat && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setPreviewCat(null)}>
+          <div className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <AssetDiagram categoria={previewCat} />
+            <button onClick={() => setPreviewCat(null)} className="mt-3 w-full text-sm text-white/70 hover:text-white text-center">Cerrar</button>
           </div>
         </div>
       )}

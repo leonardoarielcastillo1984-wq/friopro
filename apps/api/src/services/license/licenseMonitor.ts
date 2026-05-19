@@ -4,6 +4,13 @@ import { getLicenseStatus } from './licenseStatus.js';
 
 const GRACE_PERIOD_DAYS = 7;
 
+// Helper to check if running in production environment
+function isProductionEnvironment(): boolean {
+  const corsOrigin = process.env.CORS_ORIGIN || '';
+  const isTesting = corsOrigin.includes('test.logismart.ar') || corsOrigin.includes('localhost:4000');
+  return process.env.NODE_ENV === 'production' && !isTesting;
+}
+
 interface NotifyResult {
   tenantId: string;
   tenantName: string;
@@ -127,6 +134,11 @@ export class LicenseMonitor {
     daysLeft: number,
     urgency: 'leve' | 'visible' | 'urgente'
   ) {
+    if (!isProductionEnvironment()) {
+      console.log(`[LICENSE_MONITOR] notifyExpiring suppressed - not in production environment`);
+      return;
+    }
+    
     const environment = process.env.ENVIRONMENT || 'PROD';
     const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
     
@@ -161,6 +173,11 @@ export class LicenseMonitor {
   }
 
   private async notifyGrace(tenant: any, daysRemaining: number) {
+    if (!isProductionEnvironment()) {
+      console.log(`[LICENSE_MONITOR] notifyGrace suppressed - not in production environment`);
+      return;
+    }
+    
     const environment = process.env.ENVIRONMENT || 'PROD';
     const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
     const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';
@@ -187,6 +204,11 @@ export class LicenseMonitor {
   }
 
   private async notifyExpired(tenant: any) {
+    if (!isProductionEnvironment()) {
+      console.log(`[LICENSE_MONITOR] notifyExpired suppressed - not in production environment`);
+      return;
+    }
+    
     const environment = process.env.ENVIRONMENT || 'PROD';
     const envPrefix = environment === 'TESTING' ? '[TESTING] ' : '[PROD] ';
     const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';

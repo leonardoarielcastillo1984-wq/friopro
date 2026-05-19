@@ -97,6 +97,16 @@ export class DatabaseMonitor {
       return;
     }
 
+    // Skip alerts for testing environments
+    const corsOrigin = process.env.CORS_ORIGIN || '';
+    const isTesting = corsOrigin.includes('test.logismart.ar') || corsOrigin.includes('localhost:4000');
+    const isProduction = process.env.NODE_ENV === 'production' && !isTesting;
+    
+    if (!isProduction) {
+      console.log(`[DATABASE_MONITOR] Slow query alert suppressed - not in production environment (CORS: ${corsOrigin})`);
+      return;
+    }
+
     try {
       const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'leonardoarielcastillo@hotmail.com';
       const appUrl = process.env.CORS_ORIGIN || 'http://localhost:3000';

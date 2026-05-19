@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { 
   ArrowLeft, Briefcase, Plus, Search, Edit2, Trash2, Users, X, 
@@ -143,12 +144,16 @@ interface LinkedInEducation {
 }
 
 export default function PerfilesPage() {
+  const searchParams = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
+  const autoOpenDone = useRef(false);
+
   const [positions, setPositions] = useState<Position[]>([]);
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(urlSearch);
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [showForm, setShowForm] = useState(false);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
@@ -175,6 +180,19 @@ export default function PerfilesPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!urlSearch || autoOpenDone.current || loading || positions.length === 0) return;
+    const match = positions.find(p => p.name.toLowerCase() === urlSearch.toLowerCase());
+    if (match) {
+      setExpandedPosition(match.id);
+      setActiveTab('basic');
+      autoOpenDone.current = true;
+      setTimeout(() => {
+        document.getElementById(`position-card-${match.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 200);
+    }
+  }, [positions, loading, urlSearch]);
 
   const loadData = async () => {
     try {
@@ -707,7 +725,7 @@ export default function PerfilesPage() {
     const employeeCount = position._count?.employees || 0;
     
     return (
-      <div key={position.id} className="bg-white rounded-lg border border-gray-200 shadow-sm">
+      <div key={position.id} id={`position-card-${position.id}`} className="bg-white rounded-lg border border-gray-200 shadow-sm">
         <div className="p-6">
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">

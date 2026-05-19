@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { CheckCircle2, AlertCircle, ChevronRight, Send, ClipboardCheck } from 'lucide-react';
+import AssetDiagram from '@/components/inspecciones/AssetDiagram';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
 
@@ -164,6 +165,19 @@ export default function InspeccionarPage() {
               <p className="text-sm text-gray-500 mb-1">{data?.qr?.activoNombre}</p>
               {data?.qr?.sector && <p className="text-xs text-blue-500 mb-4">📍 {data?.qr?.sector}</p>}
               {data?.qr?.instrucciones && <p className="text-sm text-gray-600 mb-4">{data?.qr?.instrucciones}</p>}
+
+              {/* Diagrama de puntos de control */}
+              {data?.plantilla?.categoria && (
+                <div className="mb-5 -mx-6">
+                  <AssetDiagram
+                    categoria={data.plantilla.categoria}
+                    logoUrl={data?.empresa?.logoUrl}
+                    companyName={data?.empresa?.nombre}
+                    primaryColor={primary}
+                  />
+                </div>
+              )}
+
               <div className="bg-gray-50 rounded-xl p-4 text-left mb-6 space-y-2">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datos del inspector</p>
                 <input placeholder="Tu nombre completo *" value={inspector.nombre} onChange={e => setInspector(p => ({ ...p, nombre: e.target.value }))}

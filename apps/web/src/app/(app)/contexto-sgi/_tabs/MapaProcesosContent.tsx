@@ -95,6 +95,44 @@ export default function MapaProcesosContent() {
   const [filterSite, setFilterSite] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
 
+  // Process menu (for delete/edit actions)
+  const [openMenuPid, setOpenMenuPid] = useState<string | null>(null);
+
+  // Diagram view modal
+  const [showDiagram, setShowDiagram] = useState(false);
+
+  // Employees lookup for showing names instead of IDs
+  const [employees, setEmployees] = useState<{ id: string; firstName: string; lastName: string; email: string }[]>([]);
+
+  async function loadEmployees() {
+    try {
+      console.log('Loading employees...');
+      const response = await apiFetch<any>('/hr/employees');
+      console.log('Raw response:', response);
+      // Handle multiple response formats: array, { employees: array }, { data: array }
+      let data: any[] = [];
+      if (Array.isArray(response)) {
+        data = response;
+      } else if (response?.employees && Array.isArray(response.employees)) {
+        data = response.employees;
+      } else if (response?.data && Array.isArray(response.data)) {
+        data = response.data;
+      }
+      console.log('Employees parsed:', data?.length || 0, data);
+      setEmployees(data);
+    } catch (e: any) {
+      console.error('Error loading employees:', e?.message || e);
+    }
+  }
+
+  function getEmployeeName(id?: string) {
+    if (!id) return '-';
+    const emp = employees.find(e => e.id === id);
+    console.log('Looking up employee:', id, 'found:', emp?.firstName || 'NOT FOUND', 'total employees:', employees.length);
+    if (!emp) return id.length > 8 ? id.substring(0, 8) + '...' : id;
+    return `${emp.firstName} ${emp.lastName}`.trim() || emp.email || id;
+  }
+
   async function load() {
     setLoading(true);
     try {
@@ -111,7 +149,15 @@ export default function MapaProcesosContent() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadEmployees(); }, []);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!openMenuPid) return;
+    const handleClick = () => setOpenMenuPid(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [openMenuPid]);
 
   async function saveMap() {
     setSaving(true);
@@ -255,7 +301,7 @@ export default function MapaProcesosContent() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50">
+                <button onClick={() => setShowDiagram(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50">
                   <Eye className="h-3.5 w-3.5" /> Ver como diagrama
                 </button>
                 <button onClick={() => openNewProcess('OPERATIONAL')} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
@@ -353,9 +399,30 @@ export default function MapaProcesosContent() {
                                       )}
                                     </div>
                                   </div>
-                                  <button onClick={e => { e.stopPropagation(); }} className="p-1 rounded hover:bg-neutral-100 text-neutral-300 hover:text-neutral-500">
-                                    <MoreVertical className="h-3.5 w-3.5" />
-                                  </button>
+                                  <div className="relative">
+                                    <button 
+                                      onClick={e => { e.stopPropagation(); setOpenMenuPid(openMenuPid === p.id ? null : p.id); }} 
+                                      className="p-1 rounded hover:bg-neutral-100 text-neutral-300 hover:text-neutral-500"
+                                    >
+                                      <MoreVertical className="h-3.5 w-3.5" />
+                                    </button>
+                                    {openMenuPid === p.id && (
+                                      <div className="absolute right-0 top-full mt-1 bg-white border border-neutral-200 rounded-lg shadow-lg z-20 min-w-[120px] py-1">
+                                        <button 
+                                          onClick={e => { e.stopPropagation(); setOpenMenuPid(null); openEdit(p); }} 
+                                          className="w-full text-left px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
+                                        >
+                                          <Pencil className="h-3 w-3" /> Editar
+                                        </button>
+                                        <button 
+                                          onClick={e => { e.stopPropagation(); setOpenMenuPid(null); deleteProcess(p.id); }} 
+                                          className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                        >
+                                          <Trash2 className="h-3 w-3" /> Eliminar
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 {/* KPI y estado */}
                                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
@@ -774,6 +841,137 @@ export default function MapaProcesosContent() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Vista de Diagrama de Procesos */}
+      {showDiagram && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto m-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h3 className="font-semibold text-neutral-900">{selected.name}</h3>
+                <p className="text-xs text-neutral-500">Diagrama de flujo de procesos — ISO 9001</p>
+              </div>
+              <button onClick={() => setShowDiagram(false)} className="p-2 rounded-lg hover:bg-neutral-100">
+                <X className="h-5 w-5 text-neutral-400" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {/* Diagrama de tortuga simplificado */}
+              <div className="grid grid-cols-3 gap-4">
+                {/* Entradas */}
+                <div className="col-span-3 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-blue-700 uppercase mb-2">ENTRADAS (INPUTS)</p>
+                  <p className="text-sm text-blue-900">{selected.inputLabel || 'Requisitos del cliente / Partes Interesadas'}</p>
+                </div>
+                
+                {/* Proveedores - Proceso - Clientes */}
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-green-700 uppercase mb-2">PROVEEDORES</p>
+                  <ul className="text-sm text-green-900 space-y-1">
+                    <li>• Proveedores externos</li>
+                    <li>• Áreas internas</li>
+                    <li>• Partes interesadas</li>
+                  </ul>
+                </div>
+                
+                <div className="bg-brand-50 border-2 border-brand-300 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-brand-700 uppercase mb-2 text-center">PROCESO</p>
+                  <div className="space-y-2">
+                    {selected.processes.map((p, i) => (
+                      <div key={p.id} className="bg-white rounded-lg p-2 border border-brand-200 text-center">
+                        <p className="text-sm font-medium text-brand-900">{p.code || `P${i+1}`}</p>
+                        <p className="text-xs text-brand-700 truncate">{p.name}</p>
+                      </div>
+                    ))}
+                    {selected.processes.length === 0 && (
+                      <p className="text-xs text-brand-400 text-center italic">Sin procesos definidos</p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-purple-700 uppercase mb-2">CLIENTES</p>
+                  <ul className="text-sm text-purple-900 space-y-1">
+                    <li>• Clientes externos</li>
+                    <li>• Usuarios internos</li>
+                    <li>• Reguladores</li>
+                  </ul>
+                </div>
+                
+                {/* Salidas */}
+                <div className="col-span-3 bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-orange-700 uppercase mb-2">SALIDAS (OUTPUTS)</p>
+                  <p className="text-sm text-orange-900">{selected.outputLabel || 'Satisfacción del cliente / Productos/Servicios conformes'}</p>
+                </div>
+              </div>
+              
+              {/* Tabla de procesos detallada */}
+              <div>
+                <h4 className="text-sm font-semibold text-neutral-900 mb-3">Detalle de Procesos</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-neutral-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500">Código</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500">Nombre</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500">Capa</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500">Responsable</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100">
+                      {selected.processes.map(p => (
+                        <tr key={p.id} className="hover:bg-neutral-50">
+                          <td className="px-3 py-2 font-mono text-xs">{p.code || '-'}</td>
+                          <td className="px-3 py-2 font-medium">{p.name}</td>
+                          <td className="px-3 py-2">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${LAYER_CONFIG[p.layer].badge}`}>
+                              {LAYER_CONFIG[p.layer].label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-neutral-600">{getEmployeeName(p.owner)}</td>
+                          <td className="px-3 py-2">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${p.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                              {p.status === 'active' ? 'Activo' : 'Inactivo'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              {/* Métricas */}
+              <div className="grid grid-cols-4 gap-4">
+                <div className="bg-neutral-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-neutral-900">{selected.processes.length}</p>
+                  <p className="text-xs text-neutral-500">Total Procesos</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-700">{selected.processes.filter(p => p.layer === 'STRATEGIC').length}</p>
+                  <p className="text-xs text-blue-600">Estratégicos</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-green-700">{selected.processes.filter(p => p.layer === 'OPERATIONAL').length}</p>
+                  <p className="text-xs text-green-600">Operativos</p>
+                </div>
+                <div className="bg-orange-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-orange-700">{selected.processes.filter(p => p.layer === 'SUPPORT').length}</p>
+                  <p className="text-xs text-orange-600">Soporte</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 border-t flex justify-end">
+              <button onClick={() => setShowDiagram(false)} className="px-4 py-2 text-sm bg-neutral-100 text-neutral-700 rounded-lg hover:bg-neutral-200">
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

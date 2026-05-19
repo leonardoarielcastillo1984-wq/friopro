@@ -42,6 +42,7 @@ function shouldSkip(req: FastifyRequest) {
   if (url.match(/\/documents\/[^\/]+\/versions/)) return true;
   if (url.match(/\/documents\/[^\/]+\/clause-mappings/)) return true;
   if (url.match(/\/documents\/[^\/]+\/onlyoffice-callback/)) return true;
+  if (url.match(/\/documents\/[^\/]+\/file/)) return true;
   return false;
 }
 

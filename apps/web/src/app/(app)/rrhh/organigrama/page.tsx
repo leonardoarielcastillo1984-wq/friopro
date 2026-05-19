@@ -1,12 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { 
-  ArrowLeft, Users, Building, ChevronDown, ChevronRight, User, 
-  Search, Filter, Download, Maximize2, Minimize2, Edit3,
-  Mail, Phone, Briefcase, Calendar, UserPlus
-} from 'lucide-react';
+import { useCompany } from '@/lib/company-context';
+import { ArrowLeft, Users, Search, Download, ZoomIn, ZoomOut, Maximize2, Building2, Layers, Tags } from 'lucide-react';
 import Link from 'next/link';
 
 interface OrgChartEmployee {
@@ -24,111 +21,296 @@ interface OrgChartEmployee {
   children?: OrgChartEmployee[];
 }
 
-interface LevelConfig {
-  color: string;
-  bgGradient: string;
-  borderColor: string;
-  textColor: string;
+// ── Hierarchy colors (by tree depth) ──────────────────────────────────────
+const HIERARCHY_PALETTE = [
+  { bg: '#EFF6FF', border: '#1D4ED8', text: '#1E3A8A', avatar: '#1D4ED8', label: 'Dirección' },
+  { bg: '#F0FDF4', border: '#16A34A', text: '#14532D', avatar: '#16A34A', label: 'Gerencia' },
+  { bg: '#FFF7ED', border: '#EA580C', text: '#7C2D12', avatar: '#EA580C', label: 'Supervisión' },
+  { bg: '#FAF5FF', border: '#9333EA', text: '#581C87', avatar: '#9333EA', label: 'Jefatura' },
+  { bg: '#F1F5F9', border: '#64748B', text: '#1E293B', avatar: '#64748B', label: 'Staff' },
+];
+
+function getHierarchyLevelFromPosition(positionName: string = ''): number {
+  const p = positionName.toLowerCase();
+  // Level 0 — Dirección
+  if (
+    p.includes('director') || p.includes('directora') ||
+    p.includes('presidente') || p.includes('ceo') ||
+    p.includes('vicepresidente') || p.includes('socio') ||
+    p.includes('propietario') || p.includes('titular')
+  ) return 0;
+  // Level 1 — Gerencia
+  if (
+    p.includes('gerente') || p.includes('gerencia') ||
+    p.includes('responsable') || p.includes('coordinador') ||
+    p.includes('coordinadora') || p.includes('jefe') ||
+    p.includes('jefa') || p.includes('encargado') ||
+    p.includes('encargada') || p.includes('manager')
+  ) return 1;
+  // Level 2 — Supervisión
+  if (
+    p.includes('supervisor') || p.includes('supervisora') ||
+    p.includes('lider') || p.includes('líder') ||
+    p.includes('team lead') || p.includes('referente')
+  ) return 2;
+  // Level 3 — Jefatura / Técnico senior
+  if (
+    p.includes('senior') || p.includes('analista') ||
+    p.includes('especialista') || p.includes('técnico') ||
+    p.includes('tecnico') || p.includes('asistente de gerencia') ||
+    p.includes('administrativo') || p.includes('administrativo senior')
+  ) return 3;
+  // Level 4 — Staff
+  return 4;
 }
 
-const LEVEL_CONFIG: Record<string, LevelConfig> = {
-  CEO: {
-    color: '#1e40af',
-    bgGradient: '#1e40af',
-    borderColor: '#e5e7eb',
-    textColor: 'text-gray-900'
-  },
-  DIRECTOR: {
-    color: '#059669',
-    bgGradient: '#059669',
-    borderColor: '#e5e7eb',
-    textColor: 'text-gray-900'
-  },
-  MANAGER: {
-    color: '#ea580c',
-    bgGradient: '#ea580c',
-    borderColor: '#e5e7eb',
-    textColor: 'text-gray-900'
-  },
-  SUPERVISOR: {
-    color: '#7c3aed',
-    bgGradient: '#7c3aed',
-    borderColor: '#e5e7eb',
-    textColor: 'text-gray-900'
-  },
-  STAFF: {
-    color: '#6b7280',
-    bgGradient: '#6b7280',
-    borderColor: '#e5e7eb',
-    textColor: 'text-gray-900'
+function getHierarchyColor(positionName?: string, depth?: number) {
+  const level = positionName ? getHierarchyLevelFromPosition(positionName) : Math.min(depth ?? 4, 4);
+  return HIERARCHY_PALETTE[level];
+}
+
+// ── Department colors (by area) ────────────────────────────────────────────
+const DEPT_COLORS: Record<string, { bg: string; border: string; text: string; avatar: string }> = {};
+const COLOR_PALETTE = [
+  { bg: '#EFF6FF', border: '#3B82F6', text: '#1E40AF', avatar: '#3B82F6' },
+  { bg: '#F0FDF4', border: '#22C55E', text: '#166534', avatar: '#22C55E' },
+  { bg: '#FFF7ED', border: '#F97316', text: '#9A3412', avatar: '#F97316' },
+  { bg: '#FAF5FF', border: '#A855F7', text: '#6B21A8', avatar: '#A855F7' },
+  { bg: '#FFF1F2', border: '#F43F5E', text: '#9F1239', avatar: '#F43F5E' },
+  { bg: '#F0F9FF', border: '#0EA5E9', text: '#0C4A6E', avatar: '#0EA5E9' },
+  { bg: '#FEFCE8', border: '#EAB308', text: '#713F12', avatar: '#EAB308' },
+  { bg: '#FDF4FF', border: '#D946EF', text: '#701A75', avatar: '#D946EF' },
+  { bg: '#F0FDFA', border: '#14B8A6', text: '#134E4A', avatar: '#14B8A6' },
+  { bg: '#FFF5F5', border: '#EF4444', text: '#991B1B', avatar: '#EF4444' },
+];
+
+function getDeptColor(deptName: string) {
+  if (!DEPT_COLORS[deptName]) {
+    const idx = Object.keys(DEPT_COLORS).length % COLOR_PALETTE.length;
+    DEPT_COLORS[deptName] = COLOR_PALETTE[idx];
   }
-};
-
-function getEmployeeLevel(employee: OrgChartEmployee, allEmployees: OrgChartEmployee[]): string {
-  // Count subordinates to determine hierarchy level
-  const directReports = allEmployees.filter(e => e.supervisorId === employee.id).length;
-  const totalReports = countTotalReports(employee.id, allEmployees);
-  
-  if (totalReports >= 10) return 'CEO';
-  if (totalReports >= 5) return 'DIRECTOR';
-  if (directReports >= 3) return 'MANAGER';
-  if (directReports >= 1) return 'SUPERVISOR';
-  return 'STAFF';
-}
-
-function countTotalReports(employeeId: string, allEmployees: OrgChartEmployee[]): number {
-  const direct = allEmployees.filter(e => e.supervisorId === employeeId);
-  return direct.length + direct.reduce((sum, e) => sum + countTotalReports(e.id, allEmployees), 0);
+  return DEPT_COLORS[deptName];
 }
 
 function getInitials(firstName: string, lastName: string): string {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 }
 
-function getStatusColor(status: string = 'ACTIVE'): string {
-  switch (status) {
-    case 'ACTIVE': return 'border-green-500';
-    case 'INACTIVE': return 'border-gray-400';
-    case 'VACANT': return 'border-yellow-500';
-    default: return 'border-gray-400';
+function flattenTree(nodes: OrgChartEmployee[]): OrgChartEmployee[] {
+  const result: OrgChartEmployee[] = [];
+  const traverse = (arr: OrgChartEmployee[]) => {
+    arr.forEach(n => {
+      result.push(n);
+      if (n.children) traverse(n.children);
+    });
+  };
+  traverse(nodes);
+  return result;
+}
+
+// Card dimensions
+const CARD_W = 180;
+const CARD_H = 92;
+const H_GAP = 40;    // horizontal gap between siblings
+const V_GAP = 80;    // vertical gap between levels (tree mode)
+const V_GAP_H = 140; // vertical gap in hierarchy mode (levels further apart)
+
+interface LayoutNode {
+  emp: OrgChartEmployee;
+  x: number;
+  y: number;
+  width: number;
+  depth: number;
+}
+
+function layoutTree(
+  node: OrgChartEmployee,
+  depth: number,
+  expanded: Set<string>,
+  useHierarchyRows = false
+): { nodes: LayoutNode[]; width: number } {
+  const posLevel = useHierarchyRows ? getHierarchyLevelFromPosition(node.position?.name) : depth;
+  const rowH = useHierarchyRows ? (CARD_H + V_GAP_H) : (CARD_H + V_GAP);
+  const hasChildren = node.children && node.children.length > 0 && expanded.has(node.id);
+
+  if (!hasChildren) {
+    return {
+      nodes: [{ emp: node, x: 0, y: posLevel * rowH, width: CARD_W, depth: posLevel }],
+      width: CARD_W,
+    };
   }
+
+  const childLayouts = node.children!.map(child => layoutTree(child, depth + 1, expanded, useHierarchyRows));
+  const totalChildrenWidth = childLayouts.reduce((sum, l) => sum + l.width, 0) + H_GAP * (childLayouts.length - 1);
+  const myWidth = Math.max(CARD_W, totalChildrenWidth);
+
+  let xCursor = (myWidth - totalChildrenWidth) / 2;
+  const allNodes: LayoutNode[] = [];
+
+  childLayouts.forEach(cl => {
+    cl.nodes.forEach(n => allNodes.push({ ...n, x: n.x + xCursor }));
+    xCursor += cl.width + H_GAP;
+  });
+
+  const parentX = (myWidth - CARD_W) / 2;
+  allNodes.push({ emp: node, x: parentX, y: posLevel * rowH, width: CARD_W, depth: posLevel });
+
+  return { nodes: allNodes, width: myWidth };
+}
+
+function OrgNode({
+  node,
+  onToggle,
+  expanded,
+  highlighted,
+  colorMode,
+}: {
+  node: LayoutNode;
+  onToggle: (id: string) => void;
+  expanded: Set<string>;
+  highlighted: string | null;
+  colorMode: 'dept' | 'hierarchy';
+}) {
+  const [tooltip, setTooltip] = useState(false);
+  const emp = node.emp;
+  const hasChildren = emp.children && emp.children.length > 0;
+  const isExpanded = expanded.has(emp.id);
+  const dept = emp.department?.name || '';
+  const colors = colorMode === 'hierarchy' ? getHierarchyColor(emp.position?.name) : getDeptColor(dept || 'default');
+  const isHighlighted = highlighted === emp.id;
+
+  return (
+    <g transform={`translate(${node.x},${node.y})`}>
+      {/* Card background */}
+      <rect
+        x={0} y={0}
+        width={CARD_W} height={CARD_H}
+        rx={10} ry={10}
+        fill={isHighlighted ? '#DBEAFE' : 'white'}
+        stroke={isHighlighted ? '#3B82F6' : colors.border}
+        strokeWidth={isHighlighted ? 2.5 : 1.5}
+        filter="url(#shadow)"
+        style={{ cursor: 'default' }}
+        onMouseEnter={() => setTooltip(true)}
+        onMouseLeave={() => setTooltip(false)}
+      />
+
+      {/* Left color bar */}
+      <rect x={0} y={0} width={5} height={CARD_H} rx={4} ry={0} fill={colors.avatar} />
+      <rect x={0} y={0} width={5} height={CARD_H} fill={colors.avatar} />
+      {/* round only left corners */}
+      <rect x={0} y={0} width={5} height={10} fill={colors.avatar} />
+      <rect x={0} y={CARD_H - 10} width={5} height={10} fill={colors.avatar} />
+
+      {/* Avatar circle */}
+      <circle cx={32} cy={CARD_H / 2} r={20} fill={colors.bg} stroke={colors.border} strokeWidth={1.5} />
+      <text
+        x={32} y={CARD_H / 2}
+        textAnchor="middle" dominantBaseline="central"
+        fontSize={12} fontWeight="700" fill={colors.text}
+      >
+        {getInitials(emp.firstName, emp.lastName)}
+      </text>
+
+      {/* Name — 2 lines: Apellido / Nombre */}
+      <text x={60} y={14} fontSize={10.5} fontWeight="700" fill="#111827" style={{ pointerEvents: 'none' }}>
+        {emp.lastName.length > 17 ? emp.lastName.substring(0, 16) + '…' : emp.lastName}
+      </text>
+      <text x={60} y={27} fontSize={10} fontWeight="500" fill="#374151" style={{ pointerEvents: 'none' }}>
+        {emp.firstName.length > 17 ? emp.firstName.substring(0, 16) + '…' : emp.firstName}
+      </text>
+
+      {/* Position — clickable link */}
+      <text
+        x={60} y={44}
+        fontSize={9} fill="#2563EB"
+        textDecoration="underline"
+        style={{ cursor: 'pointer' }}
+        onClick={() => window.open(`/rrhh/perfiles?search=${encodeURIComponent(emp.position?.name || '')}`, '_blank')}
+      >
+        {(emp.position?.name || 'Sin puesto').length > 23
+          ? (emp.position?.name || 'Sin puesto').substring(0, 22) + '…'
+          : emp.position?.name || 'Sin puesto'}
+      </text>
+
+      {/* Department badge */}
+      <rect x={60} y={52} width={Math.min(dept.length * 5.2 + 10, 110)} height={13} rx={6} fill={colors.bg} />
+      <text x={65} y={62} fontSize={8.5} fill={colors.text} fontWeight="500">
+        {dept.length > 17 ? dept.substring(0, 16) + '…' : dept}
+      </text>
+
+      {/* Subordinates count */}
+      {(emp.subordinates?.length || 0) > 0 && (
+        <>
+          <circle cx={CARD_W - 16} cy={14} r={10} fill={colors.avatar} />
+          <text x={CARD_W - 16} y={14} textAnchor="middle" dominantBaseline="central" fontSize={8} fontWeight="700" fill="white">
+            {emp.subordinates.length}
+          </text>
+        </>
+      )}
+
+      {/* Expand/collapse button */}
+      {hasChildren && (
+        <g
+          transform={`translate(${CARD_W / 2 - 10}, ${CARD_H - 4})`}
+          onClick={() => onToggle(emp.id)}
+          style={{ cursor: 'pointer' }}
+        >
+          <circle cx={10} cy={10} r={10} fill={colors.avatar} />
+          <text x={10} y={10} textAnchor="middle" dominantBaseline="central" fontSize={14} fill="white" fontWeight="bold">
+            {isExpanded ? '−' : '+'}
+          </text>
+        </g>
+      )}
+
+      {/* Tooltip */}
+      {tooltip && (
+        <g transform={`translate(${CARD_W + 8}, 0)`}>
+          <rect x={0} y={0} width={200} height={110} rx={8} fill="white" stroke="#E5E7EB" strokeWidth={1} filter="url(#shadow)" />
+          <text x={12} y={22} fontSize={11} fontWeight="700" fill="#111827">{emp.lastName} {emp.firstName}</text>
+          <text x={12} y={38} fontSize={9.5} fill="#6B7280">{emp.position?.name || 'Sin puesto'}</text>
+          <line x1={12} y1={45} x2={188} y2={45} stroke="#F3F4F6" strokeWidth={1} />
+          <text x={12} y={60} fontSize={9} fill="#6B7280">📧 {(emp.email || 'Sin email').substring(0, 26)}</text>
+          <text x={12} y={75} fontSize={9} fill="#6B7280">📞 {emp.phone || 'Sin teléfono'}</text>
+          <text x={12} y={90} fontSize={9} fill="#6B7280">🏢 {(dept || 'Sin área').substring(0, 26)}</text>
+          <text x={12} y={105} fontSize={9} fill="#6B7280">👥 {emp.subordinates?.length || 0} reportes directos</text>
+        </g>
+      )}
+    </g>
+  );
 }
 
 export default function OrgChartPage() {
+  const { settings: companySettings } = useCompany();
   const [orgChart, setOrgChart] = useState<OrgChartEmployee[]>([]);
-  const [allEmployees, setAllEmployees] = useState<OrgChartEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('ALL');
-  const [isCompact, setIsCompact] = useState(false);
-  const [showEdit, setShowEdit] = useState(false);
-  const [hoveredEmployee, setHoveredEmployee] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const [colorMode, setColorMode] = useState<'dept' | 'hierarchy'>('dept');
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    loadOrgChart();
-  }, []);
+  useEffect(() => { loadOrgChart(); }, []);
 
   const loadOrgChart = async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await apiFetch<{ orgChart: OrgChartEmployee[] }>('/hr/org-chart');
-      setOrgChart(res.orgChart || []);
-      setAllEmployees(res.orgChart || []);
-      
-      // Expand all by default
-      const allIds = new Set<string>();
-      const collectIds = (nodes: OrgChartEmployee[]) => {
-        nodes.forEach(node => {
-          allIds.add(node.id);
-          if (node.children) collectIds(node.children);
+      const chart = res.orgChart || [];
+      setOrgChart(chart);
+      // Expand first 2 levels by default
+      const ids = new Set<string>();
+      const collect = (nodes: OrgChartEmployee[], depth: number) => {
+        nodes.forEach(n => {
+          if (depth < 2) { ids.add(n.id); if (n.children) collect(n.children, depth + 1); }
         });
       };
-      collectIds(res.orgChart || []);
-      setExpanded(allIds);
-      setError(null);
+      collect(chart, 0);
+      setExpanded(ids);
     } catch (err: any) {
       setError(err?.message || 'Error al cargar organigrama');
     } finally {
@@ -136,417 +318,364 @@ export default function OrgChartPage() {
     }
   };
 
-  const toggleExpand = (id: string) => {
+  const toggleExpand = useCallback((id: string) => {
     setExpanded(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
     });
-  };
+  }, []);
 
-  const exportToPDF = () => {
-    try {
-      // Simple print-based PDF export
-      const element = document.getElementById('org-chart-content');
-      if (!element) {
-        alert('No se encontró el contenido del organigrama');
-        return;
-      }
-
-      // Store original styles
-      const originalOverflow = document.body.style.overflow;
-      
-      // Prepare for printing
-      document.body.style.overflow = 'visible';
-      element.classList.add('print-mode');
-      
-      // Add print styles
-      const printStyles = document.createElement('style');
-      printStyles.innerHTML = `
-        @media print {
-          body { overflow: visible !important; }
-          .print-mode { 
-            overflow: visible !important; 
-            page-break-inside: avoid;
-          }
-          .no-print { display: none !important; }
-        }
-      `;
-      document.head.appendChild(printStyles);
-
-      // Trigger print dialog
-      window.print();
-
-      // Restore styles
-      setTimeout(() => {
-        document.body.style.overflow = originalOverflow;
-        element.classList.remove('print-mode');
-        document.head.removeChild(printStyles);
-      }, 1000);
-
-    } catch (error) {
-      console.error('Error exporting PDF:', error);
-      alert('Error al exportar el PDF. Por favor, intente nuevamente.');
-    }
-  };
+  const allFlat = useMemo(() => flattenTree(orgChart), [orgChart]);
 
   const departments = useMemo(() => {
-    const depts = new Set(allEmployees.map(e => e.department?.name).filter(Boolean));
-    return ['ALL', ...Array.from(depts)] as string[];
-  }, [allEmployees]);
+    const d = new Set(allFlat.map(e => e.department?.name).filter(Boolean));
+    return ['ALL', ...Array.from(d)] as string[];
+  }, [allFlat]);
 
-  const filteredEmployees = useMemo(() => {
-    return allEmployees.filter(employee => {
-      const matchesSearch = `${employee.firstName} ${employee.lastName} ${employee.position?.name}`.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesDepartment = selectedDepartment === 'ALL' || employee.department?.name === selectedDepartment;
-      
-      // Check if searching for new employees
-      const isNewEmployeeSearch = searchTerm.toLowerCase().includes('nuevo') || searchTerm.toLowerCase().includes('new');
-      const employeeIsNew = employee.hireDate && 
-        new Date(employee.hireDate) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      
-      const matchesNewFilter = !isNewEmployeeSearch || employeeIsNew;
-      
-      return matchesSearch && matchesDepartment && matchesNewFilter;
+  // Filter: rebuild tree with only matching employees visible as roots/subtrees
+  const filteredRoots = useMemo(() => {
+    if (searchTerm === '' && selectedDepartment === 'ALL') return orgChart;
+    const term = searchTerm.toLowerCase();
+    const matches = (emp: OrgChartEmployee): boolean => {
+      const nameMatch = `${emp.firstName} ${emp.lastName} ${emp.position?.name || ''}`.toLowerCase().includes(term);
+      const deptMatch = selectedDepartment === 'ALL' || emp.department?.name === selectedDepartment;
+      return nameMatch && deptMatch;
+    };
+    // Collect IDs of matching nodes
+    const matchIds = new Set(allFlat.filter(matches).map(e => e.id));
+    if (matchIds.size > 0) setHighlighted(matchIds.size === 1 ? [...matchIds][0] : null);
+    return orgChart;
+  }, [orgChart, allFlat, searchTerm, selectedDepartment]);
+
+  const highlightedId = useMemo(() => {
+    if (!searchTerm && selectedDepartment === 'ALL') return null;
+    const term = searchTerm.toLowerCase();
+    const matches = allFlat.filter(e => {
+      const nameMatch = `${e.firstName} ${e.lastName} ${e.position?.name || ''}`.toLowerCase().includes(term);
+      const deptMatch = selectedDepartment === 'ALL' || e.department?.name === selectedDepartment;
+      return nameMatch && deptMatch;
     });
-  }, [allEmployees, searchTerm, selectedDepartment]);
+    return matches.length === 1 ? matches[0].id : null;
+  }, [allFlat, searchTerm, selectedDepartment]);
 
-  const renderNode = (employee: OrgChartEmployee, level: number = 0) => {
-    const isExpanded = expanded.has(employee.id);
-    const hasChildren = employee.children && employee.children.length > 0;
-    const employeeLevel = getEmployeeLevel(employee, allEmployees);
-    const levelConfig = LEVEL_CONFIG[employeeLevel];
-    const isHovered = hoveredEmployee === employee.id;
-    const isNewEmployee = employee.hireDate && 
-      new Date(employee.hireDate) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  // Layout: tree always — hierarchy mode uses position-level for Y row
+  const { allNodes, svgWidth, svgHeight, connections, bandLabels } = useMemo(() => {
+    const connections: { x1: number; y1: number; x2: number; y2: number; midY: number }[] = [];
+    const bandLabels: { label: string; y: number; color: string }[] = [];
+    const isHierarchy = colorMode === 'hierarchy';
+    const rowH = isHierarchy ? (CARD_H + V_GAP_H) : (CARD_H + V_GAP);
 
-    return (
-      <div key={employee.id} className="select-none">
-        {/* Connection Line - Minimalist dots */}
-        {level > 0 && (
-          <div className="relative">
-            <div className="absolute left-6 flex items-center" style={{ top: '-12px' }}>
-              <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-            </div>
-          </div>
-        )}
+    // ── Build tree layout ─────────────────────────────────────────────────────
+    const allNodes: LayoutNode[] = [];
+    let xOffset = 0;
+    const TREE_GAP = 60;
 
-        {/* Employee Card - Minimalist Design */}
-        <div
-          className={`relative group transition-all duration-200 ${isCompact ? 'mb-3' : 'mb-4'}`}
-          style={{ marginLeft: level > 0 ? '48px' : '0' }}
-          onMouseEnter={() => setHoveredEmployee(employee.id)}
-          onMouseLeave={() => setHoveredEmployee(null)}
-        >
-          <div
-            className={`relative bg-white border rounded-lg shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden ${
-              isCompact ? 'p-3' : 'p-4'
-            }`}
-            style={{ borderColor: levelConfig.borderColor }}
-          >
-            {/* Left accent bar */}
-            <div 
-              className="absolute left-0 top-0 bottom-0 w-1"
-              style={{ backgroundColor: levelConfig.color }}
-            />
+    filteredRoots.forEach(root => {
+      const layout = layoutTree(root, 0, expanded, isHierarchy);
+      layout.nodes.forEach(n => allNodes.push({ ...n, x: n.x + xOffset }));
+      xOffset += layout.width + TREE_GAP;
+    });
 
-            {/* New Employee Badge */}
-            {isNewEmployee && (
-              <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
-                NUEVO
-              </div>
-            )}
+    // Build connections — mid-point is halfway between actual Y positions
+    allNodes.forEach(n => {
+      if (!n.emp.children || !expanded.has(n.emp.id)) return;
+      n.emp.children.forEach(child => {
+        const childNode = allNodes.find(c => c.emp.id === child.id);
+        if (!childNode) return;
+        const px = n.x + CARD_W / 2;
+        const py = n.y + CARD_H;
+        const cx = childNode.x + CARD_W / 2;
+        const cy = childNode.y;
+        const midY = (py + cy) / 2; // true midpoint so lines follow actual Y gap
+        connections.push({ x1: px, y1: py, x2: cx, y2: cy, midY });
+      });
+    });
 
-            <div className="flex items-center gap-4">
-              {/* Avatar - Minimalist */}
-              <div className={`relative ${isCompact ? 'w-10 h-10' : 'w-12 h-12'} bg-gray-100 rounded-full flex items-center justify-center`}>
-                <span className={`font-semibold ${isCompact ? 'text-sm' : 'text-base'}`} style={{ color: levelConfig.color }}>
-                  {getInitials(employee.firstName, employee.lastName)}
-                </span>
-                {/* Online Indicator */}
-                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-white rounded-full"></div>
-              </div>
+    // ── Row labels for hierarchy mode ─────────────────────────────────────────
+    if (isHierarchy) {
+      HIERARCHY_PALETTE.forEach((p, i) => {
+        const rowY = i * rowH;
+        // Only add label if there's at least one node on this row
+        if (allNodes.some(n => n.depth === i)) {
+          bandLabels.push({ label: p.label, y: rowY, color: p.avatar });
+        }
+      });
+    }
 
-              {/* Employee Info */}
-              <div className="flex-1 min-w-0">
-                <h3 className={`font-semibold text-gray-900 ${isCompact ? 'text-sm' : 'text-base'} truncate`}>
-                  {employee.firstName} {employee.lastName}
-                </h3>
-                <p className={`text-gray-600 ${isCompact ? 'text-xs' : 'text-sm'} truncate`}>
-                  {employee.position?.name || 'Sin puesto'}
-                </p>
-                {!isCompact && employee.department?.name && (
-                  <p className="text-gray-500 text-xs truncate mt-1">
-                    {employee.department.name}
-                  </p>
-                )}
-              </div>
+    const maxX = allNodes.reduce((m, n) => Math.max(m, n.x + CARD_W), 0);
+    const maxY = allNodes.reduce((m, n) => Math.max(m, n.y + CARD_H), 0);
+    return { allNodes, svgWidth: maxX + 60, svgHeight: maxY + 80, connections, bandLabels };
+  }, [filteredRoots, expanded, colorMode]);
 
-              {/* Actions */}
-              <div className="flex items-center gap-2">
-                {hasChildren && (
-                  <button
-                    onClick={() => toggleExpand(employee.id)}
-                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    {isExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-gray-500" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-gray-500" />
-                    )}
-                  </button>
-                )}
-                
-                <Link
-                  href={`/rrhh/empleados?id=${employee.id}`}
-                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <User className="h-4 w-4 text-gray-500" />
-                </Link>
-              </div>
-            </div>
-
-            {/* Hover Card - Cleaner Design */}
-            {isHovered && !isCompact && (
-              <div className="absolute top-full left-0 mt-2 p-4 bg-white rounded-lg shadow-lg z-10 min-w-72 border border-gray-100">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                      <span className="font-semibold text-sm" style={{ color: levelConfig.color }}>
-                        {getInitials(employee.firstName, employee.lastName)}
-                      </span>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">
-                        {employee.firstName} {employee.lastName}
-                      </h4>
-                      <p className="text-sm text-gray-600">{employee.position?.name}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Mail className="h-4 w-4" />
-                      {employee.email || 'Sin email'}
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Phone className="h-4 w-4" />
-                      {employee.phone || 'Sin teléfono'}
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Building className="h-4 w-4" />
-                      {employee.department?.name || 'Sin departamento'}
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Calendar className="h-4 w-4" />
-                      {employee.hireDate ? new Date(employee.hireDate).toLocaleDateString() : 'Sin fecha'}
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Users className="h-4 w-4" />
-                      {employee.subordinates?.length || 0} reportes directos
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Subtree */}
-          {isExpanded && hasChildren && (
-            <div className="relative mt-4">
-              {level === 0 && (
-                <div className="absolute left-6 top-0 flex flex-col items-center">
-                  <div className="w-px h-full bg-gray-200"></div>
-                </div>
-              )}
-              <div className="space-y-4">
-                {employee.children!.map(child => renderNode(child, level + 1))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  const exportToPDF = () => {
+    const svgEl = containerRef.current?.querySelector('svg');
+    if (!svgEl) return;
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const isoYear = today.getFullYear();
+    const isoMonth = String(today.getMonth() + 1).padStart(2, '0');
+    const docCode = `RRHH-ORG-001`;
+    const revision = `Rev. ${isoYear}.${isoMonth}`;
+    const companyName = companySettings?.companyName || 'Organización';
+    const logoUrl = companySettings?.logoUrl || '';
+    const logoHtml = logoUrl
+      ? `<img src="${logoUrl}" style="max-height:56px;max-width:120px;object-fit:contain;" alt="Logo" />`
+      : `<div style="width:56px;height:56px;background:#1D4ED8;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:18px;">${companyName.charAt(0)}</div>`;
+    const vb = svgEl.getAttribute('viewBox') || `0 0 ${svgWidth} ${svgHeight}`;
+    const innerSVG = svgEl.innerHTML;
+    const printWindow = window.open('', '_blank', 'width=1200,height=900');
+    if (!printWindow) return;
+    printWindow.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Organigrama \u2014 ${companyName}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: white; color: #111827; padding: 12px; }
+    @page { size: A3 landscape; margin: 12mm; }
+    @media print { .no-print { display: none !important; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    .iso-header { display: flex; align-items: stretch; border: 2px solid #1D4ED8; border-radius: 4px; margin-bottom: 14px; overflow: hidden; }
+    .iso-logo { padding: 10px 16px; display: flex; align-items: center; justify-content: center; background: #F8FAFF; border-right: 1px solid #CBD5E1; min-width: 140px; }
+    .iso-title { flex: 1; padding: 8px 16px; display: flex; flex-direction: column; justify-content: center; border-right: 1px solid #CBD5E1; }
+    .iso-title h1 { font-size: 15px; font-weight: 700; color: #1D4ED8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .iso-title p { font-size: 11px; color: #6B7280; margin-top: 3px; }
+    .iso-meta { display: flex; flex-direction: column; justify-content: center; min-width: 190px; }
+    .iso-meta-row { display: flex; align-items: center; padding: 4px 12px; border-bottom: 1px solid #E5E7EB; font-size: 10px; }
+    .iso-meta-row:last-child { border-bottom: none; }
+    .iso-meta-label { color: #6B7280; width: 90px; flex-shrink: 0; }
+    .iso-meta-value { font-weight: 600; color: #111827; }
+    .chart-container { overflow: visible; }
+    .iso-footer { margin-top: 10px; border-top: 1px solid #E5E7EB; padding-top: 7px; display: flex; justify-content: space-between; font-size: 8.5px; color: #9CA3AF; }
+    .print-btn { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px 0; padding: 8px 20px; background: #1D4ED8; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .print-btn:hover { background: #1e40af; }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">\uD83D\uDDA8\uFE0F Imprimir / Guardar como PDF</button>
+  <div class="iso-header">
+    <div class="iso-logo">${logoHtml}</div>
+    <div class="iso-title">
+      <h1>Organigrama Institucional</h1>
+      <p>${companyName}</p>
+    </div>
+    <div class="iso-meta">
+      <div class="iso-meta-row"><span class="iso-meta-label">C\u00f3digo:</span><span class="iso-meta-value">${docCode}</span></div>
+      <div class="iso-meta-row"><span class="iso-meta-label">Revisi\u00f3n:</span><span class="iso-meta-value">${revision}</span></div>
+      <div class="iso-meta-row"><span class="iso-meta-label">Fecha:</span><span class="iso-meta-value">${dateStr}</span></div>
+      <div class="iso-meta-row"><span class="iso-meta-label">Norma:</span><span class="iso-meta-value">ISO 9001:2015</span></div>
+      <div class="iso-meta-row"><span class="iso-meta-label">Secci\u00f3n:</span><span class="iso-meta-value">7.3 \u2014 RRHH</span></div>
+      <div class="iso-meta-row"><span class="iso-meta-label">Aprobado por:</span><span class="iso-meta-value">Direcci\u00f3n</span></div>
+    </div>
+  </div>
+  <div class="chart-container">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" style="max-width:100%;height:auto;display:block;">${innerSVG}</svg>
+  </div>
+  <div class="iso-footer">
+    <span>Documento controlado \u2014 No v\u00e1lido si es impresi\u00f3n no autorizada</span>
+    <span>${companyName} \u00b7 Sistema de Gesti\u00f3n Integrado \u00b7 ${docCode} \u00b7 ${revision}</span>
+    <span>Emitido el ${dateStr}</span>
+  </div>
+</body>
+</html>`);
+    printWindow.document.close();
+    printWindow.focus();
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando organigrama...</p>
-        </div>
+  if (loading) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Cargando organigrama...</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Error al cargar organigrama</h1>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={loadOrgChart}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Reintentar
-          </button>
-        </div>
+  if (error) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="text-red-500 text-5xl mb-4">⚠️</div>
+        <h1 className="text-xl font-bold text-gray-900 mb-2">Error al cargar organigrama</h1>
+        <p className="text-gray-600 mb-4">{error}</p>
+        <button onClick={loadOrgChart} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Reintentar</button>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-slate-100">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200 no-print">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+      <div className="bg-white shadow-sm border-b border-gray-200 flex-shrink-0 no-print">
+        <div className="px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
               <Link href="/rrhh" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                 <ArrowLeft className="h-5 w-5 text-gray-600" />
               </Link>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">Organigrama</h1>
-                <p className="text-sm text-gray-500">{allEmployees.length} colaboradores</p>
+                <h1 className="text-lg font-semibold text-gray-900">Organigrama</h1>
+                <p className="text-xs text-gray-500">{allFlat.length} colaboradores · {departments.length - 1} áreas</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 no-print">
+            <div className="flex items-center gap-2">
               {/* Search */}
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Buscar colaborador..."
+                  placeholder="Buscar persona o puesto..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-52"
                 />
               </div>
 
-              {/* Department Filter */}
+              {/* Department */}
               <select
                 value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={e => setSelectedDepartment(e.target.value)}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {departments.map(dept => (
-                  <option key={dept} value={dept}>
-                    {dept === 'ALL' ? 'Todos los departamentos' : dept}
-                  </option>
+                {departments.map(d => (
+                  <option key={d} value={d}>{d === 'ALL' ? 'Todos los departamentos' : d}</option>
                 ))}
               </select>
 
-              {/* New Employees Filter */}
+              {/* Zoom */}
+              <div className="flex items-center gap-1 border border-gray-300 rounded-lg overflow-hidden">
+                <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="p-1.5 hover:bg-gray-100 transition-colors">
+                  <ZoomOut className="h-4 w-4 text-gray-600" />
+                </button>
+                <span className="px-2 text-xs font-medium text-gray-700 min-w-[3rem] text-center">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="p-1.5 hover:bg-gray-100 transition-colors">
+                  <ZoomIn className="h-4 w-4 text-gray-600" />
+                </button>
+              </div>
+
+              <button onClick={() => setZoom(1)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Restablecer zoom">
+                <Maximize2 className="h-4 w-4 text-gray-600" />
+              </button>
+
+              {/* Color mode toggle */}
               <button
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  searchTerm.includes('NUEVO') || searchTerm.includes('new')
-                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                onClick={() => setColorMode(m => m === 'dept' ? 'hierarchy' : 'dept')}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                  colorMode === 'hierarchy'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
                 }`}
-                onClick={() => {
-                  if (searchTerm.includes('NUEVO')) {
-                    setSearchTerm('');
-                  } else {
-                    setSearchTerm('NUEVO');
-                  }
-                }}
+                title={colorMode === 'dept' ? 'Cambiar a colores por jerarquía' : 'Cambiar a colores por departamento'}
               >
-                👤 Nuevos
+                {colorMode === 'hierarchy' ? <Layers className="h-3.5 w-3.5" /> : <Tags className="h-3.5 w-3.5" />}
+                {colorMode === 'hierarchy' ? 'Jerarquía' : 'Departamento'}
               </button>
 
-              {/* View Toggle */}
-              <button
-                onClick={() => setIsCompact(!isCompact)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title={isCompact ? 'Vista expandida' : 'Vista compacta'}
-              >
-                {isCompact ? <Maximize2 className="h-5 w-5" /> : <Minimize2 className="h-5 w-5" />}
-              </button>
-
-              {/* Export */}
-              <button
-                onClick={exportToPDF}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors no-print"
-                title="Exportar a PDF (Imprimir)"
-              >
-                <Download className="h-5 w-5" />
-              </button>
-
-              {/* Edit Mode */}
-              <button
-                onClick={() => setShowEdit(!showEdit)}
-                className={`p-2 rounded-lg transition-colors no-print ${
-                  showEdit ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'
-                }`}
-                title="Modo edición"
-              >
-                <Edit3 className="h-5 w-5" />
+              <button onClick={exportToPDF} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Imprimir / Exportar PDF">
+                <Download className="h-4 w-4 text-gray-600" />
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="bg-white border-b border-gray-200 no-print">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex items-center gap-6 text-sm">
-            <span className="text-gray-600 font-medium">Jerarquía:</span>
-            {Object.entries(LEVEL_CONFIG).map(([level, config]) => (
-              <div key={level} className="flex items-center gap-2">
-                <div 
-                  className="w-4 h-4 rounded"
-                  style={{ background: config.bgGradient }}
-                />
-                <span className="text-gray-600">{level}</span>
+      {/* Legend bar */}
+      <div className="bg-white border-b border-gray-200 px-6 py-2 flex items-center gap-4 flex-wrap flex-shrink-0 no-print">
+        {colorMode === 'dept' ? (
+          <>
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Áreas:</span>
+            {departments.filter(d => d !== 'ALL').map(d => {
+              const c = getDeptColor(d);
+              return (
+                <button
+                  key={d}
+                  onClick={() => setSelectedDepartment(selectedDepartment === d ? 'ALL' : d)}
+                  className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full border transition-all"
+                  style={{
+                    backgroundColor: selectedDepartment === d ? c.avatar : c.bg,
+                    borderColor: c.border,
+                    color: selectedDepartment === d ? 'white' : c.text,
+                  }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: selectedDepartment === d ? 'white' : c.avatar }} />
+                  {d}
+                </button>
+              );
+            })}
+          </>
+        ) : (
+          <>
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Niveles:</span>
+            {HIERARCHY_PALETTE.map((h, i) => (
+              <div key={i} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full border" style={{ backgroundColor: h.bg, borderColor: h.border, color: h.text }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: h.avatar }} />
+                {h.label}
               </div>
             ))}
-            <div>
-              <p className="text-sm text-gray-500">Jefes Directos</p>
-              <p className="text-xl font-bold text-gray-900">
-                {orgChart.filter(node => node.subordinates.length > 0).length}
-              </p>
-            </div>
-          </div>
+          </>
+        )}
+      </div>
+
+      {/* SVG Canvas */}
+      <div ref={containerRef} className="flex-1 overflow-auto">
+        <div style={{ minWidth: svgWidth * zoom + 80, minHeight: svgHeight * zoom + 80, padding: 40 }}>
+          <svg
+            width={svgWidth * zoom}
+            height={svgHeight * zoom}
+            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            style={{ display: 'block', transformOrigin: 'top left' }}
+          >
+            <defs>
+              <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+                <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#00000015" />
+              </filter>
+            </defs>
+
+            {/* Row labels for each hierarchy level */}
+            {bandLabels.map((band, i) => (
+              <g key={i}>
+                <line x1={0} y1={band.y - 10} x2={svgWidth} y2={band.y - 10} stroke={band.color} strokeWidth={1} strokeDasharray="4 4" opacity={0.4} />
+                <rect x={0} y={band.y - 26} width={100} height={18} rx={4} fill={band.color} opacity={0.12} />
+                <text x={8} y={band.y - 12} fontSize={10} fontWeight="700" fill={band.color} letterSpacing="0.5">
+                  {band.label.toUpperCase()}
+                </text>
+              </g>
+            ))}
+
+            {/* Connector lines */}
+            {connections.map((c, i) => (
+              <path
+                key={i}
+                d={`M${c.x1},${c.y1} L${c.x1},${c.midY} L${c.x2},${c.midY} L${c.x2},${c.y2}`}
+                fill="none"
+                stroke="#CBD5E1"
+                strokeWidth={1.5}
+                strokeDasharray="none"
+              />
+            ))}
+
+            {/* Nodes */}
+            {allNodes.map(n => (
+              <OrgNode
+                key={n.emp.id}
+                node={n}
+                onToggle={toggleExpand}
+                expanded={expanded}
+                highlighted={highlightedId}
+                colorMode={colorMode}
+              />
+            ))}
+          </svg>
         </div>
       </div>
 
-      {/* Org Chart */}
-      <div id="org-chart-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Organigrama Organizacional</h2>
-          <p className="text-gray-600">
-            Generado el {new Date().toLocaleDateString('es-ES', { 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
-            {searchTerm && ` • Filtrado: "${searchTerm}"`}
-            {selectedDepartment !== 'ALL' && ` • Departamento: ${selectedDepartment}`}
-          </p>
-        </div>
-
-        {filteredEmployees.length === 0 ? (
-          <div className="text-center py-12">
-            <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No se encontraron colaboradores</h3>
-            <p className="text-gray-600">Intenta ajustar los filtros de búsqueda</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredEmployees
-              .filter(emp => !emp.supervisorId) // Root nodes only
-              .map(employee => renderNode(employee, 0))}
-          </div>
-        )}
+      {/* Footer stats */}
+      <div className="bg-white border-t border-gray-200 px-6 py-2 flex items-center gap-6 flex-shrink-0 no-print text-xs text-gray-500">
+        <span>👥 <strong className="text-gray-700">{allFlat.length}</strong> empleados</span>
+        <span>🏢 <strong className="text-gray-700">{departments.length - 1}</strong> departamentos</span>
+        <span>👔 <strong className="text-gray-700">{allFlat.filter(e => (e.subordinates?.length || 0) > 0).length}</strong> jefes directos</span>
+        <span className="ml-auto text-gray-400">Clic en <strong>+/−</strong> para expandir · Hover para detalles</span>
       </div>
     </div>
   );

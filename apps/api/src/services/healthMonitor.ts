@@ -48,6 +48,16 @@ export class HealthMonitor {
   }
 
   private async sendServiceAlert(): Promise<void> {
+    // Skip alerts for testing environments
+    const corsOrigin = process.env.CORS_ORIGIN || '';
+    const isTesting = corsOrigin.includes('test.logismart.ar') || corsOrigin.includes('localhost:4000');
+    const isProduction = process.env.NODE_ENV === 'production' && !isTesting;
+    
+    if (!isProduction) {
+      console.log(`[HEALTH_MONITOR] Service alert suppressed - not in production environment (CORS: ${corsOrigin})`);
+      return;
+    }
+
     // ALERTAS DE EMAIL DESACTIVADAS - Solicitado por usuario
     console.log(`[HEALTH_MONITOR] Service alert DISABLED - Email notifications disabled`);
     return;

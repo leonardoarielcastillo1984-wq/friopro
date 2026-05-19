@@ -4,6 +4,7 @@ import { z } from 'zod';
 import argon2 from 'argon2';
 import { sendEmail, notificationEmail } from '../services/email.js';
 import ExcelJS from 'exceljs';
+import XLSX from 'xlsx';
 
 // Validation schemas
 const emptyToUndefined = (val: unknown) => (val === '' || val === null || val === undefined ? undefined : val);
@@ -1547,17 +1548,49 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const prisma = req.db?.prisma || fastify.prisma;
-    const body = req.body as any;
     
     try {
-      const data = await req.file();
-      if (!data) return reply.code(400).send({ error: 'No se proporcionó archivo' });
+      const parts = req.parts();
+      let fileBuffer: Buffer | null = null;
+      let updateExistingField = 'false';
 
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.read(data.file);
-      
-      const sheet = workbook.getWorksheet('EMPLEADOS');
-      if (!sheet) return reply.code(400).send({ error: 'Hoja EMPLEADOS no encontrada' });
+      for await (const part of parts) {
+        if (part.type === 'file' && part.fieldname === 'file') {
+          const chunks: Buffer[] = [];
+          for await (const chunk of part.file) {
+            chunks.push(chunk);
+          }
+          fileBuffer = Buffer.concat(chunks);
+        } else if (part.type === 'field' && part.fieldname === 'updateExisting') {
+          updateExistingField = (part as any).value as string;
+        }
+      }
+
+      if (!fileBuffer || fileBuffer.length === 0) {
+        return reply.code(400).send({ error: 'No se proporcionó archivo' });
+      }
+
+      console.log(`[HR_IMPORT] File buffer size: ${fileBuffer.length} bytes, first bytes: ${fileBuffer.slice(0, 4).toString('hex')}`);
+
+      // Validate it's a valid xlsx (ZIP magic bytes: 50 4B 03 04)
+      if (fileBuffer[0] !== 0x50 || fileBuffer[1] !== 0x4B) {
+        return reply.code(400).send({ error: 'El archivo no es un Excel válido (.xlsx). Asegurate de subir un archivo .xlsx generado con la plantilla oficial.' });
+      }
+
+      let xlsxWorkbook: any;
+      try {
+        xlsxWorkbook = XLSX.read(fileBuffer, { type: 'buffer' });
+      } catch (xlsxErr: any) {
+        console.error('[HR_IMPORT] XLSX parse error:', xlsxErr.message);
+        return reply.code(400).send({ error: 'No se pudo leer el archivo Excel. Verificá que sea un .xlsx válido y usá la plantilla oficial.' });
+      }
+
+      // Buscar hoja EMPLEADOS (case-insensitive)
+      const sheetName = xlsxWorkbook.SheetNames.find((n: string) => n.toUpperCase() === 'EMPLEADOS') || xlsxWorkbook.SheetNames[0];
+      if (!sheetName) return reply.code(400).send({ error: 'Hoja EMPLEADOS no encontrada. Asegurate de usar la plantilla oficial.' });
+
+      const xlsxSheet = xlsxWorkbook.Sheets[sheetName];
+      const allRows = XLSX.utils.sheet_to_json<any[]>(xlsxSheet, { header: 1, defval: '' }) as any[][];
 
       const validEmployees: any[] = [];
       const errors: any[] = [];
@@ -1571,34 +1604,36 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
       const deptMap = new Map(existingDepts.map(d => [d.name.toLowerCase(), d.id]));
       const positionMap = new Map(existingPositions.map(p => [p.name.toLowerCase(), p.id]));
-      const dniMap = new Map(existingEmployees.map(e => [e.dni, e.id]));
+      const dniMap = new Map(existingEmployees.map(e => [String(e.dni), e.id]));
       const employeeNameMap = new Map(existingEmployees.map(e => [`${e.firstName} ${e.lastName}`.toLowerCase(), e.id]));
 
-      const updateExisting = body?.updateExisting === true;
+      const updateExisting = updateExistingField === 'true';
 
-      // Leer filas (saltando encabezado)
-      sheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return; // Saltar encabezado
+      // Leer filas (saltando encabezado - fila 0)
+      for (let i = 1; i < allRows.length; i++) {
+        const cells = allRows[i];
+        const rowNumber = i + 1;
+        // Skip completely empty rows
+        if (!cells || cells.every((c: any) => c === '' || c === null || c === undefined)) continue;
 
-        const cells = row.values as any[];
         const rowData = {
           row: rowNumber,
-          nombre: cells[1],
-          apellido: cells[2],
-          dni: cells[3],
-          cuil: cells[4],
-          fechaNacimiento: cells[5],
-          email: cells[6],
-          telefono: cells[7],
-          direccion: cells[8],
-          departamento: cells[9],
-          puesto: cells[10],
-          supervisorTipo: cells[11],
-          supervisor: cells[12],
-          tipoContrato: cells[13],
-          fechaIngreso: cells[14],
-          estado: cells[15],
-          notas: cells[16],
+          nombre: cells[0] ? String(cells[0]).trim() : '',
+          apellido: cells[1] ? String(cells[1]).trim() : '',
+          dni: cells[2] ? String(cells[2]).trim() : '',
+          cuil: cells[3] ? String(cells[3]).trim() : '',
+          fechaNacimiento: cells[4] ? String(cells[4]).trim() : '',
+          email: cells[5] ? String(cells[5]).trim() : '',
+          telefono: cells[6] ? String(cells[6]).trim() : '',
+          direccion: cells[7] ? String(cells[7]).trim() : '',
+          departamento: cells[8] ? String(cells[8]).trim() : '',
+          puesto: cells[9] ? String(cells[9]).trim() : '',
+          supervisorTipo: cells[10] ? String(cells[10]).trim() : '',
+          supervisor: cells[11] ? String(cells[11]).trim() : '',
+          tipoContrato: cells[12] ? String(cells[12]).trim() : '',
+          fechaIngreso: cells[13] ? String(cells[13]).trim() : '',
+          estado: cells[14] ? String(cells[14]).trim() : '',
+          notas: cells[15] ? String(cells[15]).trim() : '',
         };
 
         // Validaciones
@@ -1665,7 +1700,16 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
           'Permanente': 'PERMANENT',
           'Temporal': 'TEMPORARY',
           'Pasantía': 'INTERN',
+          'Pasante': 'INTERN',
           'Contratista': 'CONTRACTOR',
+          'MENSUAL': 'PERMANENT',
+          'Mensual': 'PERMANENT',
+          'FULL_TIME': 'PERMANENT',
+          'Full Time': 'PERMANENT',
+          'Tiempo Completo': 'PERMANENT',
+          'tiempo completo': 'PERMANENT',
+          'Part-time': 'PART_TIME',
+          'Medio tiempo': 'PART_TIME',
         };
         const contractType = contractTypeMap[rowData.tipoContrato] || 'PERMANENT';
 
@@ -1693,7 +1737,7 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
             warnings: rowWarnings,
           });
         }
-      });
+      }
 
       // Preparar respuesta de preview
       return reply.send({
@@ -1705,7 +1749,21 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
           nombre: e.nombre,
           apellido: e.apellido,
           dni: e.dni,
+          cuil: e.cuil,
           email: e.email,
+          telefono: e.telefono,
+          direccion: e.direccion,
+          departamento: e.departamento,
+          puesto: e.puesto,
+          supervisorTipo: e.supervisorTipo,
+          supervisor: e.supervisor,
+          tipoContrato: e.tipoContrato,
+          contractType: e.contractType,
+          fechaIngreso: e.fechaIngreso,
+          fechaNacimiento: e.fechaNacimiento,
+          estado: e.estado,
+          status: e.status,
+          notas: e.notas,
           warnings: e.warnings,
         })),
         validationErrors: errors.map(e => ({
@@ -1740,6 +1798,17 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
       'Pasante': 'INTERN',
       'Part-time': 'PART_TIME',
       'Medio tiempo': 'PART_TIME',
+      'MENSUAL': 'PERMANENT',
+      'Mensual': 'PERMANENT',
+      'FULL_TIME': 'PERMANENT',
+      'Full Time': 'PERMANENT',
+      'Tiempo Completo': 'PERMANENT',
+      'tiempo completo': 'PERMANENT',
+      'PERMANENT': 'PERMANENT',
+      'TEMPORARY': 'TEMPORARY',
+      'CONTRACTOR': 'CONTRACTOR',
+      'INTERN': 'INTERN',
+      'PART_TIME': 'PART_TIME',
     };
     return map[val] || 'PERMANENT';
   }
@@ -1846,9 +1915,9 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
               positionId,
               supervisorId,
               reportsToPositionId,
-              contractType: mapContractType(emp.TipoContrato) as any,
+              contractType: mapContractType(emp.tipoContrato) as any,
               hireDate: parseDate(emp.fechaIngreso) ?? new Date(),
-              status: mapStatus(emp.Estado) as any,
+              status: mapStatus(emp.estado) as any,
               notes: emp.notas,
             },
           });
@@ -1868,9 +1937,9 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
             positionId,
             supervisorId,
             reportsToPositionId,
-            contractType: mapContractType(emp.TipoContrato) as any,
+            contractType: mapContractType(emp.tipoContrato) as any,
             hireDate: parseDate(emp.fechaIngreso) ?? new Date(),
-            status: mapStatus(emp.Estado) as any,
+            status: mapStatus(emp.estado) as any,
             notes: emp.notas,
             createdById: req.auth?.userId,
           };
