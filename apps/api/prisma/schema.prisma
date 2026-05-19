@@ -5526,6 +5526,7 @@ model InspeccionPlantilla {
   isActive     Boolean @default(true)
   isBuiltIn    Boolean @default(false)
   version      Int     @default(1)
+  diagramaFotos Json?  // [{url, titulo, puntos:[{x,y,label}]}] — hasta 4 cuadrantes
 
   items        InspeccionItem[]
   instancias   InspeccionQR[]

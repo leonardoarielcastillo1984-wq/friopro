@@ -252,6 +252,22 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  // PATCH /plantillas/:id/diagrama — guarda configuración de fotos + puntos de control
+  app.patch('/plantillas/:id/diagrama', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const body = req.body as any;
+    // body.fotos = [{url: string (base64 o URL), titulo: string, puntos:[{x,y,label}]}]
+    const fotos = Array.isArray(body?.fotos) ? body.fotos.slice(0, 4) : [];
+    const updated = await (app.prisma as any).inspeccionPlantilla.updateMany({
+      where: { id, tenantId },
+      data: { diagramaFotos: fotos },
+    });
+    if (updated.count === 0) return reply.code(404).send({ error: 'Plantilla no encontrada' });
+    return reply.send({ ok: true });
+  });
+
   // ── QR OPERATIVOS ──────────────────────────────────────────────────────────
   app.get('/qrs', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -316,7 +332,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     return reply.send({
       qr: { id: qr.id, activoNombre: qr.activoNombre, activoCodigo: qr.activoCodigo, ubicacion: qr.ubicacion,
         sector: qr.sector, titulo: qr.titulo, subtitulo: qr.subtitulo, instrucciones: qr.instrucciones, pie: qr.pie },
-      plantilla: { id: qr.plantilla.id, nombre: qr.plantilla.nombre, categoria: qr.plantilla.categoria, items: qr.plantilla.items },
+      plantilla: { id: qr.plantilla.id, nombre: qr.plantilla.nombre, categoria: qr.plantilla.categoria, items: qr.plantilla.items, diagramaFotos: qr.plantilla.diagramaFotos ?? null },
       empresa: { nombre: qr.tenant.name, logoUrl: settings?.logoUrl ?? null, primaryColor: settings?.primaryColor ?? '#2563eb' },
     });
   });

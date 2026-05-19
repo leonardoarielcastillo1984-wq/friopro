@@ -1,8 +1,9 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, Zap, Trash2, X, ListChecks, Wrench, Truck, Package, Settings, ShieldAlert, Building2, Pencil, Eye } from 'lucide-react';
+import { Plus, Zap, Trash2, X, ListChecks, Wrench, Truck, Package, Settings, ShieldAlert, Building2, Pencil, Eye, LayoutTemplate } from 'lucide-react';
 import AssetDiagram from '@/components/inspecciones/AssetDiagram';
+import DiagramaEditor from '@/components/inspecciones/DiagramaEditor';
 
 const CAT_ICON: Record<string, any> = { CAMION: Truck, AUTOELEVADOR: Package, MAQUINARIA: Settings, SEGURIDAD: ShieldAlert, INFRAESTRUCTURA: Building2, ELECTRICO: Zap, GENERAL: Wrench };
 const CAT_COLOR: Record<string, string> = { CAMION: 'bg-blue-100 text-blue-700', AUTOELEVADOR: 'bg-amber-100 text-amber-700', MAQUINARIA: 'bg-purple-100 text-purple-700', SEGURIDAD: 'bg-red-100 text-red-700', INFRAESTRUCTURA: 'bg-emerald-100 text-emerald-700', ELECTRICO: 'bg-orange-100 text-orange-700', GENERAL: 'bg-gray-100 text-gray-600' };
@@ -21,6 +22,7 @@ export default function InspeccionesPlantillas() {
   const [items, setItems] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [previewCat, setPreviewCat] = useState<string | null>(null);
+  const [diagramaPlantilla, setDiagramaPlantilla] = useState<any | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,6 +116,7 @@ export default function InspeccionesPlantillas() {
                     <div className="flex items-start justify-between mb-3">
                       <div className={`p-2 rounded-lg ${CAT_COLOR[p.categoria] || 'bg-gray-100 text-gray-600'}`}><Icon className="w-4 h-4" /></div>
                       <div className="flex items-center gap-1.5">
+                        <button onClick={() => setDiagramaPlantilla(p)} className="text-gray-300 hover:text-purple-500 transition-colors" title="Editar diagrama de fotos"><LayoutTemplate className="w-3.5 h-3.5" /></button>
                         <button onClick={() => openEdit(p)} className="text-gray-300 hover:text-blue-500 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
                         <button onClick={() => handleDelete(p.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
@@ -134,6 +137,17 @@ export default function InspeccionesPlantillas() {
               })}
             </div>
           )}
+
+      {/* Modal Editor Diagrama */}
+      {diagramaPlantilla && (
+        <DiagramaEditor
+          plantillaId={diagramaPlantilla.id}
+          plantillaNombre={diagramaPlantilla.nombre}
+          initialFotos={diagramaPlantilla.diagramaFotos || []}
+          onClose={() => setDiagramaPlantilla(null)}
+          onSaved={() => { setDiagramaPlantilla(null); load(); }}
+        />
+      )}
 
       {/* Modal Built-in */}
       {showBuiltIn && (

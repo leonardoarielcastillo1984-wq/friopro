@@ -174,6 +174,7 @@ export default function InspeccionarPage() {
                     logoUrl={data?.empresa?.logoUrl}
                     companyName={data?.empresa?.nombre}
                     primaryColor={primary}
+                    diagramaFotos={data?.plantilla?.diagramaFotos || null}
                   />
                 </div>
               )}
