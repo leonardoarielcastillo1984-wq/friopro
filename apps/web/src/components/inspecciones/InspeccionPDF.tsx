@@ -107,6 +107,14 @@ export default function InspeccionPDFButton({ inspeccion, empresa = 'SGI 360', l
       ? `<img src="${logoUrl}" style="height:48px;object-fit:contain;" alt="${empresa}" />`
       : `<div style="font-size:20px;font-weight:900;color:${primaryColor};">${empresa}</div>`;
 
+    // Extraer dominio/ruta de notas si vienen del checklist QR
+    const notasRaw: string = inspeccion.notas || '';
+    const parseDato = (key: string) => { const m = notasRaw.match(new RegExp(`${key}:\\s*([^|]+)`)); return m ? m[1].trim() : ''; };
+    const dominioTractor = parseDato('Dominio tractor');
+    const dominioSemi = parseDato('Dominio semi');
+    const ruta = parseDato('Ruta');
+    const notasLimpias = notasRaw.replace(/Dominio tractor:[^|]+\|?\s*/g,'').replace(/Dominio semi:[^|]+\|?\s*/g,'').replace(/Ruta:[^|]+\|?\s*/g,'').trim().replace(/^\||\|$/g,'').trim();
+
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Inspección — ${inspeccion.activoNombre}</title>
 <style>
@@ -145,10 +153,12 @@ export default function InspeccionPDFButton({ inspeccion, empresa = 'SGI 360', l
 <div class="meta-grid">
   <div class="meta-row"><span class="meta-label">ACTIVO / UNIDAD:</span><span class="meta-value">${inspeccion.activoNombre || '—'}</span></div>
   <div class="meta-row"><span class="meta-label">NOMBRE Y APELLIDO:</span><span class="meta-value">${inspeccion.inspectorNombre || '—'}</span></div>
-  <div class="meta-row"><span class="meta-label">SECTOR / LUGAR:</span><span class="meta-value">${inspeccion.sector || inspeccion.qr?.sector || '—'}</span></div>
+  <div class="meta-row"><span class="meta-label">DOMINIO TRACTOR:</span><span class="meta-value" style="font-weight:bold;">${dominioTractor || '—'}</span></div>
+  <div class="meta-row"><span class="meta-label">DOMINIO SEMI:</span><span class="meta-value" style="font-weight:bold;">${dominioSemi || '—'}</span></div>
+  <div class="meta-row"><span class="meta-label">RUTA:</span><span class="meta-value" style="font-weight:bold;">${ruta || '—'}</span></div>
   <div class="meta-row"><span class="meta-label">FECHA Y HORA:</span><span class="meta-value">${fecha.toLocaleDateString('es-AR')} ${fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span></div>
+  <div class="meta-row"><span class="meta-label">SECTOR / LUGAR:</span><span class="meta-value">${inspeccion.sector || inspeccion.qr?.sector || '—'}</span></div>
   <div class="meta-row"><span class="meta-label">CÓDIGO ACTIVO:</span><span class="meta-value">${inspeccion.activoCodigo || '—'}</span></div>
-  <div class="meta-row"><span class="meta-label">CONTROL REALIZADO POR:</span><span class="meta-value">${inspeccion.inspectorNombre || '—'}</span></div>
 </div>
 
 ${inspeccion.puntaje !== null ? `<div class="puntaje">
