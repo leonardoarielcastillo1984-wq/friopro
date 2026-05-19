@@ -215,20 +215,21 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
     const itemSchema = z.object({
-      label: z.string().min(1),
-      tipo: z.enum(['SI_NO', 'TEXTO', 'NUMERO', 'ESCALA', 'FECHA']).default('SI_NO'),
-      seccion: z.string().optional(),
+      label: z.string(),
+      tipo: z.string().default('SI_NO'),
+      seccion: z.string().optional().nullable(),
       isRequerido: z.boolean().default(true),
       triggerHallazgo: z.boolean().default(false),
       orden: z.number().default(0),
-    });
+      opciones: z.array(z.string()).optional().nullable(),
+    }).passthrough();
     const schema = z.object({
       nombre: z.string().optional(),
-      descripcion: z.string().optional(),
+      descripcion: z.string().optional().nullable(),
       categoria: z.string().optional(),
       isActive: z.boolean().optional(),
       items: z.array(itemSchema).optional(),
-    });
+    }).passthrough();
     const body = schema.safeParse(req.body ?? {});
     if (!body.success) {
       console.error('[PATCH /plantillas] Zod errors:', JSON.stringify(body.error.errors));
@@ -240,7 +241,16 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       await (app.prisma as any).inspeccionItem.deleteMany({ where: { plantillaId: id } });
       if (items.length > 0) {
         await (app.prisma as any).inspeccionItem.createMany({
-          data: items.map((it, i) => ({ ...it, plantillaId: id, orden: i })),
+          data: items.filter(it => it.label?.trim()).map((it, i) => ({
+            plantillaId: id,
+            label: it.label.trim(),
+            tipo: it.tipo || 'SI_NO',
+            seccion: it.seccion || null,
+            orden: i,
+            isRequerido: it.isRequerido !== false,
+            triggerHallazgo: !!it.triggerHallazgo,
+            opciones: it.opciones || undefined,
+          })),
         });
       }
     }
