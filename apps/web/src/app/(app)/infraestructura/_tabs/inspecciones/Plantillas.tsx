@@ -60,7 +60,7 @@ export default function InspeccionesPlantillas() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      const payload = { ...form, items: items.map((it, i) => ({ ...it, orden: i })) };
+      const payload = { ...form, items: items.map((it, i) => { const { _idx, ...clean } = it as any; return { ...clean, orden: i }; }) };
       if (editingId) {
         await apiFetch(`/inspecciones/plantillas/${editingId}`, { method: 'PATCH', json: payload });
       } else {
@@ -224,11 +224,11 @@ export default function InspeccionesPlantillas() {
                 <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
                   {(() => {
                     const secciones = [...new Set(items.map(x => x.seccion || 'General'))];
-                    return secciones.map(sec => {
+                    return secciones.map((sec, secIdx) => {
                       const secItems = items.map((x, i) => ({ ...x, _idx: i })).filter(x => (x.seccion || 'General') === sec);
                       const isCollapsed = collapsedSections[sec];
                       return (
-                        <div key={sec} className="border border-gray-200 rounded-xl overflow-hidden">
+                        <div key={secIdx} className="border border-gray-200 rounded-xl overflow-hidden">
                           {/* Cabecera de sección */}
                           <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 border-b border-gray-100">
                             <button type="button" onClick={() => setCollapsedSections(p => ({ ...p, [sec]: !p[sec] }))} className="text-gray-400 hover:text-gray-600 shrink-0">
