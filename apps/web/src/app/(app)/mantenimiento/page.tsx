@@ -1588,7 +1588,37 @@ export default function MantenimientoPage() {
               )}
 
               {!historialLoading && historialData && historialTab === 'inspecciones' && (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  {historialData.inspecciones?.length >= 2 && (() => {
+                    const pts = [...historialData.inspecciones].reverse().filter((i: any) => i.puntaje !== null);
+                    if (pts.length < 2) return null;
+                    const W = 340, H = 80, pad = 10;
+                    const xs = pts.map((_: any, i: number) => pad + (i / (pts.length - 1)) * (W - pad * 2));
+                    const ys = pts.map((i: any) => H - pad - ((i.puntaje / 100) * (H - pad * 2)));
+                    const polyline = xs.map((x: number, i: number) => `${x},${ys[i]}`).join(' ');
+                    const last = pts[pts.length - 1];
+                    const avg = Math.round(pts.reduce((s: number, i: any) => s + i.puntaje, 0) / pts.length);
+                    return (
+                      <div className="bg-gray-50 rounded-xl p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-gray-600">Tendencia de puntaje</span>
+                          <div className="flex gap-3 text-xs text-gray-500">
+                            <span>Promedio: <b className="text-gray-700">{avg}%</b></span>
+                            <span>Último: <b className={last.puntaje >= 80 ? 'text-green-600' : last.puntaje >= 60 ? 'text-amber-500' : 'text-red-600'}>{last.puntaje}%</b></span>
+                          </div>
+                        </div>
+                        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-16">
+                          <line x1={pad} y1={H - pad - ((80 / 100) * (H - pad * 2))} x2={W - pad} y2={H - pad - ((80 / 100) * (H - pad * 2))} stroke="#d1fae5" strokeWidth="1" strokeDasharray="4 2" />
+                          <line x1={pad} y1={H - pad - ((60 / 100) * (H - pad * 2))} x2={W - pad} y2={H - pad - ((60 / 100) * (H - pad * 2))} stroke="#fef3c7" strokeWidth="1" strokeDasharray="4 2" />
+                          <polyline points={polyline} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" />
+                          {xs.map((x: number, i: number) => (
+                            <circle key={i} cx={x} cy={ys[i]} r="3"
+                              fill={pts[i].puntaje >= 80 ? '#10b981' : pts[i].puntaje >= 60 ? '#f59e0b' : '#ef4444'} />
+                          ))}
+                        </svg>
+                      </div>
+                    );
+                  })()}
                   {historialData.inspecciones?.length === 0
                     ? <p className="text-sm text-gray-400 text-center py-8">Sin inspecciones registradas aún. Vinculá un QR operativo a este activo.</p>
                     : historialData.inspecciones.map((ins: any) => (

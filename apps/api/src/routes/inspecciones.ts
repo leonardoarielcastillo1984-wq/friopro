@@ -502,7 +502,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const inspeccion = await (app.prisma as any).inspeccion.findFirst({
       where: { id, tenantId },
       include: {
-        qr: { include: { plantilla: { include: { items: { orderBy: { orden: 'asc' } } } } } },
+        qr: { include: { plantilla: { include: { items: { orderBy: { orden: 'asc' } } } }, maintenanceAsset: { select: { id: true, name: true, code: true } } } },
         respuestas: { include: { item: true }, orderBy: { item: { orden: 'asc' } } },
         hallazgos: { orderBy: { createdAt: 'desc' } },
       },

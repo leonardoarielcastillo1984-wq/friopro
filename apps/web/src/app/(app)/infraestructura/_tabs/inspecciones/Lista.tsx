@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { ClipboardCheck, Eye, X, AlertCircle } from 'lucide-react';
+import { ClipboardCheck, Eye, X, AlertCircle, Wrench } from 'lucide-react';
 import InspeccionPDFButton from '@/components/inspecciones/InspeccionPDF';
 import { useAuth } from '@/lib/auth-context';
 
@@ -73,6 +73,16 @@ export default function InspeccionesLista() {
               <div>
                 <h3 className="font-semibold text-gray-900">{selected.activoNombre}</h3>
                 <p className="text-xs text-gray-500 mt-0.5">Inspector: {selected.inspectorNombre} · {new Date(selected.createdAt).toLocaleDateString('es-AR')}</p>
+                {selected.qr?.maintenanceAsset && (
+                  <a
+                    href="/mantenimiento"
+                    className="inline-flex items-center gap-1 mt-1.5 text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 rounded-full transition-colors"
+                    title="Ver activo en Mantenimiento"
+                  >
+                    <Wrench className="w-3 h-3" />
+                    {selected.qr.maintenanceAsset.name}{selected.qr.maintenanceAsset.code ? ` — ${selected.qr.maintenanceAsset.code}` : ''}
+                  </a>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${ESTADO_COLOR[selected.estado] || ''}`}>{selected.estado}</span>
