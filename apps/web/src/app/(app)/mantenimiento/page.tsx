@@ -699,12 +699,27 @@ export default function MantenimientoPage() {
   };
 
   const deleteVehiculo = async (id: string) => {
-    if (!confirm('¿Eliminar este vehículo? Se marcará como BAJA y no aparecerá en la lista.')) return;
+    if (!confirm('¿Dar de baja este vehículo? Pasará a estado BAJA y no aparecerá en la lista principal.')) return;
     try {
       await apiFetch(`/flota/vehiculos/${id}`, { method: 'DELETE' });
       loadFlotaData();
     } catch (e: any) {
-      alert(e?.message || 'No se pudo eliminar el vehículo.');
+      alert(e?.message || 'No se pudo dar de baja el vehículo.');
+    }
+  };
+
+  const deleteVehiculoPermanente = async (id: string) => {
+    const confirmacion = prompt('Para ELIMINAR PERMANENTEMENTE este vehículo, escriba ELIMINAR:');
+    if (confirmacion !== 'ELIMINAR') {
+      alert('Eliminación cancelada. Debe escribir "ELIMINAR" para confirmar.');
+      return;
+    }
+    try {
+      await apiFetch(`/flota/vehiculos/${id}?permanente=true`, { method: 'DELETE' });
+      loadFlotaData();
+      alert('Vehículo eliminado permanentemente.');
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo eliminar el vehículo. Verifique que no tenga neumáticos montados u otros datos vinculados.');
     }
   };
 
@@ -1972,7 +1987,10 @@ export default function MantenimientoPage() {
                             {v.status === 'BAJA' ? (
                               <button onClick={() => reactivarVehiculo(v.id)} className="p-1.5 text-gray-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50" title="Reactivar"><RefreshCw className="w-3.5 h-3.5" /></button>
                             ) : (
-                              <button onClick={() => deleteVehiculo(v.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Eliminar (marcar BAJA)"><Trash2 className="w-3.5 h-3.5" /></button>
+                              <>
+                                <button onClick={() => deleteVehiculo(v.id)} className="p-1.5 text-gray-400 hover:text-amber-600 rounded-lg hover:bg-amber-50" title="Dar de baja (BAJA)"><Trash2 className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => deleteVehiculoPermanente(v.id)} className="p-1.5 text-gray-400 hover:text-red-700 rounded-lg hover:bg-red-100" title="Eliminar definitivamente"><X className="w-3.5 h-3.5" /></button>
+                              </>
                             )}
                           </div>
                         </div>
