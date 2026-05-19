@@ -873,6 +873,114 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       }
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // CALENDARIO DE MANTENIMIENTO — Vista Gantt
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/calendar', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.db?.tenantId) {
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    }
+    const tenantId = request.db.tenantId;
+    const { desde, hasta, assetId } = request.query as any;
+
+    const fechaDesde = desde ? new Date(desde) : new Date();
+    fechaDesde.setDate(fechaDesde.getDate() - 7); // Una semana atrás por defecto
+    const fechaHasta = hasta ? new Date(hasta) : new Date();
+    fechaHasta.setDate(fechaHasta.getDate() + 30); // 30 días adelante por defecto
+
+    const whereBase: any = { tenantId };
+    if (assetId) whereBase.assetId = assetId;
+
+    // Obtener órdenes de trabajo en el período
+    const workOrders = await getPrisma(request).workOrder.findMany({
+      where: {
+        ...whereBase,
+        OR: [
+          { scheduledDate: { gte: fechaDesde, lte: fechaHasta } },
+          { completedDate: { gte: fechaDesde, lte: fechaHasta } },
+          { status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] } },
+        ],
+      },
+      include: { asset: { select: { name: true, code: true } }, technician: { select: { name: true } } },
+      orderBy: { scheduledDate: 'asc' },
+    });
+
+    // Obtener planes de mantenimiento con próxima ejecución
+    const planes = await getPrisma(request).maintenancePlan.findMany({
+      where: {
+        ...whereBase,
+        status: 'ACTIVE',
+        OR: [
+          { nextExecutionDate: { gte: fechaDesde, lte: fechaHasta } },
+          { nextExecutionDate: { lt: new Date() } }, // Vencidos
+        ],
+      },
+      include: { asset: { select: { name: true, code: true } } },
+    });
+
+    // Formatear para vista Gantt
+    const eventosOT = (workOrders as any[]).map(ot => ({
+      id: ot.id,
+      tipo: 'WORK_ORDER',
+      titulo: ot.title,
+      assetId: ot.assetId,
+      assetNombre: ot.asset?.name || ot.activoNombreLibre || 'Sin activo',
+      assetCode: ot.asset?.code || '',
+      tecnico: ot.technician?.name || 'Sin asignar',
+      inicio: ot.scheduledDate,
+      fin: ot.completedDate || ot.scheduledDate,
+      estado: ot.status,
+      prioridad: ot.priority,
+      tipoMantenimiento: ot.type,
+      costo: ot.totalCost,
+      color: ot.status === 'COMPLETED' ? '#22c55e' : ot.status === 'IN_PROGRESS' ? '#3b82f6' : ot.priority === 'CRITICAL' ? '#ef4444' : '#f59e0b',
+    }));
+
+    const eventosPlan = (planes as any[]).map(plan => ({
+      id: plan.id,
+      tipo: 'PLAN',
+      titulo: plan.title,
+      assetId: plan.assetId,
+      assetNombre: plan.asset?.name || 'Sin activo',
+      assetCode: plan.asset?.code || '',
+      inicio: plan.nextExecutionDate || new Date(),
+      fin: plan.nextExecutionDate ? new Date(new Date(plan.nextExecutionDate).getTime() + 24 * 60 * 60 * 1000) : new Date(),
+      estado: plan.nextExecutionDate && new Date(plan.nextExecutionDate) < new Date() ? 'VENCIDO' : 'PENDIENTE',
+      prioridad: 'MEDIUM',
+      tipoMantenimiento: plan.type,
+      frecuencia: `${plan.frequencyValue} ${plan.frequencyUnit}`,
+      color: plan.nextExecutionDate && new Date(plan.nextExecutionDate) < new Date() ? '#ef4444' : '#8b5cf6',
+    }));
+
+    // Agrupar por activo para vista Gantt
+    const activosMap = new Map();
+    [...eventosOT, ...eventosPlan].forEach(evt => {
+      if (!activosMap.has(evt.assetId)) {
+        activosMap.set(evt.assetId, {
+          assetId: evt.assetId,
+          assetNombre: evt.assetNombre,
+          assetCode: evt.assetCode,
+          eventos: [],
+        });
+      }
+      activosMap.get(evt.assetId).eventos.push(evt);
+    });
+
+    return reply.send({
+      periodo: { desde: fechaDesde, hasta: fechaHasta },
+      totalEventos: eventosOT.length + eventosPlan.length,
+      eventos: [...eventosOT, ...eventosPlan].sort((a: any, b: any) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime()),
+      porActivo: Array.from(activosMap.values()),
+      resumen: {
+        otsPendientes: eventosOT.filter((e: any) => e.estado === 'PENDING').length,
+        otsEnProgreso: eventosOT.filter((e: any) => e.estado === 'IN_PROGRESS').length,
+        otsCompletadas: eventosOT.filter((e: any) => e.estado === 'COMPLETED').length,
+        planesVencidos: eventosPlan.filter((e: any) => e.estado === 'VENCIDO').length,
+        planesPendientes: eventosPlan.filter((e: any) => e.estado === 'PENDIENTE').length,
+      },
+    });
+  });
 }
 
 // Función auxiliar para verificar planes por KM después de completar una OT
