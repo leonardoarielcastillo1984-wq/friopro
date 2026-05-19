@@ -3003,6 +3003,8 @@ model MaintenanceAsset {
   lastMaintenanceDate  DateTime?
   nextMaintenanceDate  DateTime?
 
+  currentOdometer      Float?    // km actuales del vehículo/activo
+
   workOrders    WorkOrder[]
   plans         MaintenancePlan[]
   costs         MaintenanceCost[]
@@ -3056,7 +3058,10 @@ model MaintenancePlan {
   asset   MaintenanceAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
 
   frequencyValue Int    @default(30)
-  frequencyUnit  String @default("DAYS") // DAYS, WEEKS, MONTHS, YEARS
+  frequencyUnit  String @default("DAYS") // DAYS, WEEKS, MONTHS, YEARS, KM
+
+  triggerKm              Float?   // si frequencyUnit=KM, ejecutar cada N km
+  lastOdometerExecution  Float?   // odómetro en la última ejecución
 
   nextExecutionDate DateTime?
   lastExecutionDate DateTime?
@@ -5622,6 +5627,7 @@ model Inspeccion {
   notas           String?
   lat             Float?
   lng             Float?
+  kmReported      Float?   // odómetro registrado al tomar el vehículo
 
   otId            String?
   ncrId           String?

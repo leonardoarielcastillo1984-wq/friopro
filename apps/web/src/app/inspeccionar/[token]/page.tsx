@@ -15,7 +15,7 @@ export default function InspeccionarPage() {
   const [error, setError] = useState('');
   const [data, setData] = useState<any>(null);
   const [paso, setPaso] = useState<'intro' | 'form' | 'enviando' | 'ok' | 'error'>('intro');
-  const [inspector, setInspector] = useState({ nombre: '', email: '', phone: '', dominioTractor: '', dominioSemi: '', ruta: '' });
+  const [inspector, setInspector] = useState({ nombre: '', email: '', phone: '', dominioTractor: '', dominioSemi: '', ruta: '', km: '' });
   const [respuestas, setRespuestas] = useState<Record<string, Respuesta>>({});
   const [notas, setNotas] = useState('');
   const [resultado, setResultado] = useState<any>(null);
@@ -63,10 +63,12 @@ export default function InspeccionarPage() {
           inspectorNombre: inspector.nombre,
           inspectorEmail: inspector.email || undefined,
           inspectorPhone: inspector.phone || undefined,
+          kmReported: inspector.km ? parseFloat(inspector.km) : undefined,
           notas: [
             inspector.dominioTractor ? `Dominio tractor: ${inspector.dominioTractor}` : '',
             inspector.dominioSemi ? `Dominio semi: ${inspector.dominioSemi}` : '',
             inspector.ruta ? `Ruta: ${inspector.ruta}` : '',
+            inspector.km ? `Km: ${parseInt(inspector.km).toLocaleString('es-AR')}` : '',
             notas,
           ].filter(Boolean).join(' | ') || undefined,
           respuestas: Object.values(respuestas).filter(r => r.valor !== null || r.esOk !== undefined),
@@ -189,6 +191,11 @@ export default function InspeccionarPage() {
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none uppercase" />
                 <input placeholder="Ruta" value={inspector.ruta} onChange={e => setInspector(p => ({ ...p, ruta: e.target.value }))}
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
+                <div className="relative">
+                  <input placeholder="Kilometraje actual del vehículo *" type="number" min="0" value={inspector.km} onChange={e => setInspector(p => ({ ...p, km: e.target.value }))}
+                    className="w-full text-sm border border-blue-300 bg-blue-50 rounded-xl px-3 py-2.5 outline-none font-semibold" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-blue-400 font-medium">km</span>
+                </div>
               </div>
               <button onClick={() => { if (!inspector.nombre.trim()) { alert('Ingresá tu nombre para continuar'); return; } setPaso('form'); }}
                 className="w-full text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 text-sm transition-all active:scale-95"
@@ -229,6 +236,11 @@ export default function InspeccionarPage() {
                   {inspector.ruta && (
                     <span className="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2.5 py-1 rounded-lg border border-emerald-100">
                       📍 Ruta: {inspector.ruta}
+                    </span>
+                  )}
+                  {inspector.km && (
+                    <span className="text-xs bg-blue-50 text-blue-700 font-semibold px-2.5 py-1 rounded-lg border border-blue-100">
+                      🔢 {parseInt(inspector.km).toLocaleString('es-AR')} km
                     </span>
                   )}
                 </div>

@@ -426,7 +426,9 @@ interface MaintenancePlan {
     code: string;
   };
   frequencyValue: number;
-  frequencyUnit: 'DAYS' | 'WEEKS' | 'MONTHS' | 'YEARS';
+  frequencyUnit: 'DAYS' | 'WEEKS' | 'MONTHS' | 'YEARS' | 'KM';
+  triggerKm?: number;
+  lastOdometerExecution?: number;
   nextExecutionDate?: string;
   lastExecutionDate?: string;
   totalExecutions: number;
@@ -483,6 +485,7 @@ interface Asset {
   totalMaintenanceCost?: number;
   lastMaintenanceDate?: string;
   nextMaintenanceDate?: string;
+  currentOdometer?: number;
   createdAt: string;
   updatedAt: string;
   _count?: { inspeccionQRs: number; workOrders: number };
@@ -1225,7 +1228,9 @@ export default function MantenimientoPage() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">Frecuencia:</span>
-                          <span className="font-medium">{plan.frequencyValue} {plan.frequencyUnit === 'DAYS' ? 'días' : plan.frequencyUnit === 'WEEKS' ? 'semanas' : plan.frequencyUnit === 'MONTHS' ? 'meses' : 'años'}</span>
+                          <span className="font-medium">
+                            {plan.frequencyUnit === 'KM' ? `cada ${(plan.triggerKm || plan.frequencyValue).toLocaleString('es-AR')} km` : `${plan.frequencyValue} ${plan.frequencyUnit === 'DAYS' ? 'días' : plan.frequencyUnit === 'WEEKS' ? 'semanas' : plan.frequencyUnit === 'MONTHS' ? 'meses' : 'años'}`}
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">Próxima ejecución:</span>
@@ -1477,6 +1482,9 @@ export default function MantenimientoPage() {
                         {(asset.totalMaintenanceCost || 0) > 0 && <p className="text-orange-600">Mantenimiento: ${(asset.totalMaintenanceCost || 0).toLocaleString()}</p>}
                         {asset.lastMaintenanceDate && (
                           <p>Último mantenimiento: {new Date(asset.lastMaintenanceDate).toLocaleDateString()}</p>
+                        )}
+                        {asset.currentOdometer != null && (
+                          <p className="text-blue-600 font-semibold">🔢 Odómetro: {asset.currentOdometer.toLocaleString('es-AR')} km</p>
                         )}
                       </div>
                       <div className="mt-2 flex gap-2 flex-wrap">
@@ -2125,8 +2133,14 @@ export default function MantenimientoPage() {
                     <option value="WEEKS">Semanas</option>
                     <option value="MONTHS">Meses</option>
                     <option value="YEARS">Años</option>
+                    <option value="KM">Kilómetros</option>
                   </select>
                 </div>
+              </div>
+              <div id="editPlanKmField">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Intervalo en km (solo si unidad = KM)</label>
+                <input type="number" id="editPlanTriggerKm" defaultValue={selectedPlan.triggerKm || selectedPlan.frequencyValue}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ej: 10000" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Próxima Ejecución</label>
@@ -2158,6 +2172,7 @@ export default function MantenimientoPage() {
                   const assetId = (document.getElementById('editPlanAssetId') as HTMLSelectElement)?.value;
                   const frequencyValue = parseInt((document.getElementById('editPlanFrequencyValue') as HTMLInputElement)?.value || '30');
                   const frequencyUnit = (document.getElementById('editPlanFrequencyUnit') as HTMLSelectElement)?.value;
+                  const triggerKm = frequencyUnit === 'KM' ? parseFloat((document.getElementById('editPlanTriggerKm') as HTMLInputElement)?.value || '0') || null : null;
                   const nextExecutionDate = (document.getElementById('editPlanNextExecution') as HTMLInputElement)?.value;
                   const status = (document.getElementById('editPlanStatus') as HTMLSelectElement)?.value;
                   
@@ -2167,7 +2182,8 @@ export default function MantenimientoPage() {
                       description, 
                       assetId, 
                       frequencyValue, 
-                      frequencyUnit, 
+                      frequencyUnit,
+                      ...(triggerKm ? { triggerKm } : {}),
                       nextExecutionDate,
                       status
                     });
@@ -2306,9 +2322,17 @@ export default function MantenimientoPage() {
                   <select id="planFrequencyUnit" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="DAYS">Días</option>
                     <option value="WEEKS">Semanas</option>
-                    <option value="MONTHS" selected>Meses</option>
+                    <option value="MONTHS">Meses</option>
                     <option value="YEARS">Años</option>
+                    <option value="KM">Kilómetros</option>
                   </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Intervalo km <span className="text-gray-400 font-normal">(solo si unidad = Kilómetros)</span></label>
+                <div className="relative">
+                  <input type="number" id="planTriggerKm" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ej: 10000" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">km</span>
                 </div>
               </div>
               <div>
@@ -2333,10 +2357,11 @@ export default function MantenimientoPage() {
                 const assetId = (document.getElementById('planAssetId') as HTMLSelectElement)?.value;
                 const frequencyValue = parseInt((document.getElementById('planFrequencyValue') as HTMLInputElement)?.value || '30');
                 const frequencyUnit = (document.getElementById('planFrequencyUnit') as HTMLSelectElement)?.value;
+                const triggerKmCreate = frequencyUnit === 'KM' ? parseFloat((document.getElementById('planTriggerKm') as HTMLInputElement)?.value || '0') || null : null;
                 const nextExecutionDate = (document.getElementById('planNextExecution') as HTMLInputElement)?.value;
                 const type = (document.getElementById('planType') as HTMLSelectElement)?.value;
                 if (code && title) {
-                  handleCreatePlan({ code, title, description, assetId, frequencyValue, frequencyUnit, nextExecutionDate, type, status: 'ACTIVE' });
+                  handleCreatePlan({ code, title, description, assetId, frequencyValue, frequencyUnit, ...(triggerKmCreate ? { triggerKm: triggerKmCreate } : {}), nextExecutionDate, type, status: 'ACTIVE' });
                 }
               }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Crear Plan</button>
             </div>

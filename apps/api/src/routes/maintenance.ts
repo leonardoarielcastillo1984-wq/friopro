@@ -62,7 +62,8 @@ const createPlanSchema = z.object({
   type: z.enum(['PREVENTIVE', 'CORRECTIVE', 'PREDICTIVE', 'EMERGENCY']).default('PREVENTIVE'),
   assetId: z.string().optional(),
   frequencyValue: z.number().default(30),
-  frequencyUnit: z.enum(['DAYS', 'WEEKS', 'MONTHS', 'YEARS']).default('DAYS'),
+  frequencyUnit: z.enum(['DAYS', 'WEEKS', 'MONTHS', 'YEARS', 'KM']).default('DAYS'),
+  triggerKm: z.number().optional(),
   nextExecutionDate: z.string().optional(), // Accept YYYY-MM-DD format
   status: z.enum(['ACTIVE', 'PAUSED', 'INACTIVE']).default('ACTIVE')
 });
@@ -419,6 +420,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
           assetId: validatedData.assetId,
           frequencyValue: validatedData.frequencyValue,
           frequencyUnit: validatedData.frequencyUnit,
+          triggerKm: validatedData.triggerKm ?? null,
           nextExecutionDate: validatedData.nextExecutionDate ? new Date(validatedData.nextExecutionDate) : null,
           tenantId: request.db.tenantId
         },

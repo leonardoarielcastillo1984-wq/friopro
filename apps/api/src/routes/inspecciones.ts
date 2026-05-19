@@ -384,6 +384,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       inspectorEmail: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
       inspectorPhone: z.string().max(50).optional().or(z.literal('')).transform(v => v || undefined),
       notas: z.string().optional(),
+      kmReported: z.number().positive().optional(),
       respuestas: z.array(z.object({
         itemId: z.string().uuid(),
         valor: z.any(),
@@ -420,6 +421,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         activoNombre: qr.activoNombre, activoCodigo: qr.activoCodigo, sector: qr.sector,
         estado, puntaje, hallazgosCount: hallazgos.length, itemsTotal: items.length, itemsOk,
         notas: body.data.notas,
+        kmReported: body.data.kmReported ?? null,
         respuestas: { create: respuestas.map(r => ({ itemId: r.itemId, valor: r.valor ?? null, esOk: r.esOk ?? null, observacion: r.observacion })) },
         hallazgos: hallazgos.length > 0 ? { create: hallazgos.map(h => ({ tenantId: qr.tenantId, ...h })) } : undefined,
       },
@@ -427,17 +429,52 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
 
     await (app.prisma as any).inspeccionQR.update({ where: { id: qr.id }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
 
-    // Auto-actualizar estado del activo si hay hallazgos críticos
+    // Auto-actualizar odómetro y estado del activo
     if (qr.maintenanceAssetId) {
       try {
         const hayCriticos = hallazgos.some((h: any) => h.severidad === 'CRITICO');
         const updateData: any = { lastMaintenanceDate: new Date() };
         if (hayCriticos) updateData.status = 'MAINTENANCE';
+        if (body.data.kmReported) updateData.currentOdometer = body.data.kmReported;
         await (app.prisma as any).maintenanceAsset.updateMany({
           where: { id: qr.maintenanceAssetId },
           data: updateData,
         });
-      } catch (e: any) { console.error('[inspecciones] asset status update error:', e); }
+
+        // Evaluar planes de mantenimiento por KM
+        if (body.data.kmReported) {
+          const kmActual = body.data.kmReported;
+          const planesKm = await (app.prisma as any).maintenancePlan.findMany({
+            where: { assetId: qr.maintenanceAssetId, frequencyUnit: 'KM', status: 'ACTIVE', triggerKm: { not: null } },
+          });
+          for (const plan of planesKm) {
+            const base = plan.lastOdometerExecution ?? 0;
+            const intervalo = plan.triggerKm;
+            if ((kmActual - base) >= intervalo) {
+              // Crear OT preventiva por km
+              const otCode = `OT-KM-${Date.now().toString().slice(-6)}`;
+              await (app.prisma as any).workOrder.create({
+                data: {
+                  code: otCode,
+                  title: `${plan.title} — ${kmActual.toLocaleString('es-AR')} km`,
+                  description: `Plan de mantenimiento por km disparado automáticamente.\nKm actuales: ${kmActual.toLocaleString('es-AR')} km.\nÚltima ejecución: ${base.toLocaleString('es-AR')} km.\nIntervalo: cada ${intervalo.toLocaleString('es-AR')} km.`,
+                  type: 'PREVENTIVE',
+                  priority: 'HIGH',
+                  status: 'PENDING',
+                  assetId: qr.maintenanceAssetId,
+                  origen: 'MANTENIMIENTO',
+                  tenantId: qr.tenantId,
+                },
+              });
+              // Actualizar odómetro de última ejecución del plan
+              await (app.prisma as any).maintenancePlan.update({
+                where: { id: plan.id },
+                data: { lastOdometerExecution: kmActual, lastExecutionDate: new Date(), totalExecutions: { increment: 1 } },
+              });
+            }
+          }
+        }
+      } catch (e: any) { console.error('[inspecciones] asset/km update error:', e); }
     }
 
     // Auto-crear OT por hallazgo si el QR está vinculado a un activo de mantenimiento
