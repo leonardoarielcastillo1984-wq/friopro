@@ -272,9 +272,11 @@ export default async function flotaRoutes(app: FastifyInstance) {
 
   // POST /vehiculos/:id/eliminar - Eliminación física permanente (REGISTRAR ANTES DEL DELETE)
   app.post('/vehiculos/:id/eliminar', async (req: FastifyRequest, reply: FastifyReply) => {
+    console.log('[POST /vehiculos/:id/eliminar] Request received:', req.url, req.params);
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
+    console.log('[POST /vehiculos/:id/eliminar] Processing id:', id);
 
     const vehiculo = await (app.prisma as any).vehiculo.findFirst({
       where: { id, tenantId },
@@ -1200,6 +1202,8 @@ export default async function flotaRoutes(app: FastifyInstance) {
 
     return reply.send({ vehiculo, historial, mantenimientoPorTipo });
   });
+
+  console.log('[FLOTA ROUTES] Routes registered including POST /vehiculos/:id/eliminar');
 }
 
 // Función auxiliar para verificar planes por KM (ejecutada en background)
