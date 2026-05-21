@@ -75,7 +75,7 @@ services:
     ports:
       - "3002:3002"
     volumes:
-      - api_uploads:/app/uploads
+      - /mnt/HC_Volume_105475376/uploads:/app/uploads
     depends_on:
       - postgres
       - redis
@@ -119,7 +119,6 @@ volumes:
   postgres_data:
   redis_data:
   ollama_data:
-  api_uploads:
 
 networks:
   sgi-network:
