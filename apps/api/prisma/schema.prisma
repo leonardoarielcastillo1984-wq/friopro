@@ -343,6 +343,8 @@ model Tenant {
   inspeccionQRs         InspeccionQR[]
   inspecciones          Inspeccion[]
   inspeccionHallazgos   InspeccionHallazgo[]
+  inspeccionFeedbacks   InspeccionFeedbackCliente[]
+  feedbackQRs           FeedbackQR[]
 
   // Flota360 Relations
   vehiculos             Vehiculo[]
@@ -3025,7 +3027,9 @@ model MaintenanceAsset {
   plans         MaintenancePlan[]
   costs         MaintenanceCost[]
   inspeccionQRs InspeccionQR[]
-  digitalTwin   AssetDigitalTwin?
+  feedbackQRs   FeedbackQR[]
+  digitalTwin   AssetDigitalTwin? @relation(name: "AssetToTwin")
+  predictions   AssetHealthPrediction[]
   telemetry     AssetTelemetry[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
@@ -5672,9 +5676,13 @@ model Inspeccion {
   itemsOk         Int     @default(0)
 
   notas           String?
+  dominioTractor  String?
+  dominioSemi     String?
   lat             Float?
   lng             Float?
   kmReported      Float?   // odómetro registrado al tomar el vehículo
+
+  feedbackToken    String?   @unique
 
   otId            String?
   ncrId           String?
@@ -5682,6 +5690,7 @@ model Inspeccion {
 
   respuestas      InspeccionRespuestaItem[]
   hallazgos       InspeccionHallazgo[]
+  feedback        InspeccionFeedbackCliente?
 
   createdAt       DateTime @default(now()) @db.Timestamptz
   updatedAt       DateTime @updatedAt @db.Timestamptz
@@ -5690,6 +5699,56 @@ model Inspeccion {
   @@index([tenantId, createdAt])
   @@index([qrId])
   @@map("inspecciones")
+}
+
+model InspeccionFeedbackCliente {
+  id               String     @id @default(uuid()) @db.Uuid
+  tenantId         String     @db.Uuid
+  tenant           Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inspeccionId     String     @unique @db.Uuid
+  inspeccion       Inspeccion @relation(fields: [inspeccionId], references: [id], onDelete: Cascade)
+
+  receptorNombre   String?
+  receptorEmpresa  String?
+
+  calificacion     Int
+  comentario       String?
+  fotos            String[]   @default([])
+
+  problemaDetectado     String?
+  discrepanciaDetectada Boolean @default(false)
+
+  ncrId            String?    @db.Uuid
+
+  createdAt        DateTime   @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([calificacion])
+  @@map("inspeccion_feedback_clientes")
+}
+
+model FeedbackQR {
+  id                 String            @id @default(uuid()) @db.Uuid
+  tenantId           String            @db.Uuid
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  token              String            @unique
+  isActive           Boolean           @default(true)
+
+  activoNombre       String
+  activoCodigo       String?
+  dominioTractor     String?
+
+  maintenanceAssetId String?           @db.Uuid
+  maintenanceAsset   MaintenanceAsset? @relation(fields: [maintenanceAssetId], references: [id], onDelete: SetNull)
+
+  useCount           Int               @default(0)
+  lastUsedAt         DateTime?
+  generatedAt        DateTime          @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([token])
+  @@map("feedback_qrs")
 }
 
 model InspeccionRespuestaItem {
@@ -5724,6 +5783,7 @@ model InspeccionHallazgo {
   // ABIERTO, EN_PROCESO, RESUELTO, CERRADO
 
   itemLabel    String?
+  equipoDestino String?  // TRACTOR o SEMI — determinado por sección del ítem
   fotoUrl      String?
   accion       String?
   responsable  String?
@@ -5988,8 +6048,8 @@ model AssetDigitalTwin {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  assetId String           @db.Uuid
-  asset   MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId String           @unique @db.Uuid
+  asset   MaintenanceAsset @relation(name: "AssetToTwin", fields: [assetId], references: [id], onDelete: Cascade)
 
   // Estado actual simulado
   healthScore       Float  @default(100) // 0-100 salud general
