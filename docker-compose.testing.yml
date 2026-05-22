@@ -98,6 +98,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_ONLYOFFICE_URL: https://test.logismart.ar
         BUILD_DATE: ${BUILD_DATE:-unknown}
         SOURCE_TIMESTAMP: ${SOURCE_TIMESTAMP:-unknown}
     container_name: sgi-web-testing

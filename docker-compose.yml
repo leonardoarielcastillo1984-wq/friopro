@@ -96,6 +96,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_ONLYOFFICE_URL: https://docs.logismart.ar
     container_name: sgi-web
     environment:
       NEXT_PUBLIC_API_URL: /api
