@@ -104,6 +104,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: /api
       NEXT_PUBLIC_APP_URL: http://46.62.253.81:4000
+      NEXT_PUBLIC_ONLYOFFICE_URL: https://test.logismart.ar
       API_URL: http://api:4002
     ports:
       - "127.0.0.1:4001:3000"

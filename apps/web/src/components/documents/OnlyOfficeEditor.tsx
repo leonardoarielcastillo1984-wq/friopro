@@ -13,8 +13,8 @@ export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOffi
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const ooBase = 'https://docs.logismart.ar';
-  const appBase = 'https://www.logismart.ar';
+  const ooBase = process.env.NEXT_PUBLIC_ONLYOFFICE_URL || 'https://docs.logismart.ar';
+  const appBase = process.env.NEXT_PUBLIC_APP_URL || 'https://www.logismart.ar';
 
   const extRaw = (documentTitle || '').split('.').pop()?.toLowerCase() || 'docx';
   const extMap: Record<string, string> = { doc:'docx', docx:'docx', xls:'xlsx', xlsx:'xlsx', ppt:'pptx', pptx:'pptx', pdf:'pdf' };
