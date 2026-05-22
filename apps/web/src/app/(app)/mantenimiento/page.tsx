@@ -546,6 +546,7 @@ export default function MantenimientoPage() {
   const [flotaStats, setFlotaStats] = useState<any>(null);
   const [flotaDashboard, setFlotaDashboard] = useState<any>(null);
   const [flotaLoaded, setFlotaLoaded] = useState(false);
+  const [filtroTipoVeh, setFiltroTipoVeh] = useState<'TODOS' | 'CAMION' | 'SEMI'>('TODOS');
   const [showVehModal, setShowVehModal] = useState(false);
   const [showConductorModal, setShowConductorModal] = useState(false);
   const [showNeumaticoModal, setShowNeumaticoModal] = useState(false);
@@ -1951,11 +1952,29 @@ export default function MantenimientoPage() {
           {/* ══ FLOTA: VEHÍCULOS ══ */}
           {activeTab === 'flota-vehiculos' && (
             <div className="p-4">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex justify-between items-center mb-3">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><Truck className="w-5 h-5 text-blue-600" />Vehículos ({flotaVehiculos.length})</h3>
                 <button onClick={() => { setEditingVeh(null); setShowVehModal(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><Plus className="w-4 h-4" />Nuevo vehículo</button>
               </div>
-              {flotaStats && (
+              {/* Filtros por tipo + Leyenda */}
+              {(() => {
+                const camiones = flotaVehiculos.filter((v: any) => v.tipo === 'CAMION');
+                const semis = flotaVehiculos.filter((v: any) => v.tipo === 'SEMI');
+                const vehiculosFiltrados = filtroTipoVeh === 'TODOS' ? flotaVehiculos : flotaVehiculos.filter((v: any) => v.tipo === filtroTipoVeh);
+                return (
+                  <>
+                    <div className="flex flex-wrap items-center gap-3 mb-3">
+                      <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                        <button onClick={() => setFiltroTipoVeh('TODOS')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${filtroTipoVeh === 'TODOS' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Todos ({flotaVehiculos.length})</button>
+                        <button onClick={() => setFiltroTipoVeh('CAMION')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${filtroTipoVeh === 'CAMION' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><span className="w-2 h-2 rounded-full bg-blue-500"></span>Camiones ({camiones.length})</button>
+                        <button onClick={() => setFiltroTipoVeh('SEMI')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${filtroTipoVeh === 'SEMI' ? 'bg-amber-100 text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><span className="w-2 h-2 rounded-full bg-amber-500"></span>Semis ({semis.length})</button>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-50 border border-blue-200"></span> Camión</span>
+                        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-50 border border-amber-200"></span> Semi</span>
+                      </div>
+                    </div>
+                    {flotaStats && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                   {[
                     { label: 'Activos', v: flotaStats.activos, color: 'emerald' },
@@ -1970,19 +1989,23 @@ export default function MantenimientoPage() {
                   ))}
                 </div>
               )}
-              {flotaVehiculos.length === 0 ? (
-                <div className="text-center py-16 bg-gray-50 rounded-xl"><Truck className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-500">Sin vehículos registrados</p></div>
+              {vehiculosFiltrados.length === 0 ? (
+                <div className="text-center py-16 bg-gray-50 rounded-xl"><Truck className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-500">Sin vehículos {filtroTipoVeh !== 'TODOS' ? 'de este tipo' : ''}</p></div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {flotaVehiculos.map((v: any) => {
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2">
+                  {vehiculosFiltrados.map((v: any) => {
+                    const isCamion = v.tipo === 'CAMION';
+                    const cardColors = isCamion ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200';
+                    const badgeColors = isCamion ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700';
                     const vtoAlert = (v.vencimientos || []).filter((vt: any) => !vt.renovado && diasHastaVto(vt.fechaVto) <= 30);
                     return (
-                      <div key={v.id} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg font-bold text-gray-900">{v.dominio}</span>
-                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${VEH_STATUS_COLOR[v.status] || 'bg-gray-100 text-gray-500'}`}>{v.status}</span>
+                      <div key={v.id} className={`rounded-lg border p-2 hover:shadow-sm transition-shadow ${cardColors}`}>
+                        <div className="flex items-start justify-between mb-1.5">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-base font-bold text-gray-900">{v.dominio}</span>
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${VEH_STATUS_COLOR[v.status] || 'bg-gray-100 text-gray-500'}`}>{v.status}</span>
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badgeColors}`}>{isCamion ? '🚛 Camión' : '🚜 Semi'}</span>
                             </div>
                             <p className="text-sm text-gray-500">{TIPO_LABELS[v.tipo] || v.tipo}{v.marca ? ` · ${v.marca}` : ''}{v.modelo ? ` ${v.modelo}` : ''}{v.anio ? ` (${v.anio})` : ''}</p>
                           </div>
@@ -2028,6 +2051,9 @@ export default function MantenimientoPage() {
                   })}
                 </div>
               )}
+                  </>
+                );
+              })()}
             </div>
           )}
 

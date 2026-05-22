@@ -1,18 +1,22 @@
 'use client';
 import { useState } from 'react';
-import { LayoutDashboard, ListChecks, ClipboardCheck, ScanLine, AlertTriangle, ArrowLeft, Bell } from 'lucide-react';
+import { LayoutDashboard, ListChecks, ClipboardCheck, ScanLine, AlertTriangle, ArrowLeft, Bell, Star, BarChart2 } from 'lucide-react';
 import InspeccionesDashboard from './inspecciones/Dashboard';
 import InspeccionesPlantillas from './inspecciones/Plantillas';
 import InspeccionesLista from './inspecciones/Lista';
 import InspeccionesQRs from './inspecciones/QRs';
 import InspeccionesHallazgos from './inspecciones/Hallazgos';
 import AlertasConfig from './inspecciones/AlertasConfig';
+import QRFeedback from './inspecciones/QRFeedback';
+import FeedbackStats from './inspecciones/FeedbackStats';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'plantillas', label: 'Plantillas', icon: ListChecks },
   { key: 'inspecciones', label: 'Inspecciones', icon: ClipboardCheck },
   { key: 'qrs', label: 'QR Operativos', icon: ScanLine },
+  { key: 'feedback-qrs', label: 'QR Feedback', icon: Star },
+  { key: 'satisfaccion', label: 'Satisfacción', icon: BarChart2 },
   { key: 'hallazgos', label: 'Hallazgos', icon: AlertTriangle },
   { key: 'alertas', label: 'Alertas', icon: Bell },
 ] as const;
@@ -48,6 +52,8 @@ export default function InspeccionesContent() {
       {tab === 'plantillas' && <InspeccionesPlantillas />}
       {tab === 'inspecciones' && <InspeccionesLista />}
       {tab === 'qrs' && <InspeccionesQRs />}
+      {tab === 'feedback-qrs' && <QRFeedback />}
+      {tab === 'satisfaccion' && <FeedbackStats />}
       {tab === 'hallazgos' && <InspeccionesHallazgos />}
       {tab === 'alertas' && <AlertasConfig />}
     </div>

@@ -48,14 +48,12 @@ export async function registerCompanySettingsRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     
     try {
-      const settings = await app.runWithDbContext(req, async (tx) => {
-        return tx.companySettings.findUnique({
-          where: { tenantId },
-        });
+      const settings = await app.prisma.companySettings.findUnique({
+        where: { tenantId },
       });
-      
       return reply.send({ settings });
-    } catch (error) {
+    } catch (error: any) {
+      app.log.error({ error: error?.message }, '[company-settings] GET error');
       return reply.code(500).send({ error: 'Failed to fetch company settings' });
     }
   });
@@ -69,24 +67,15 @@ export async function registerCompanySettingsRoutes(app: FastifyInstance) {
     if (!validation.success) return reply.code(400).send({ error: 'Validación fallida', details: validation.error.errors });
     
     try {
-      const settings = await app.runWithDbContext(req, async (tx) => {
-        return tx.companySettings.upsert({
-          where: { tenantId },
-          update: {
-            ...validation.data,
-            updatedById: req.auth!.userId,
-          },
-          create: {
-            tenantId,
-            companyName: validation.data.companyName || 'Mi Empresa',
-            ...validation.data,
-            updatedById: req.auth!.userId,
-          },
-        });
+      const userId = (req as any).auth?.userId ?? null;
+      const settings = await app.prisma.companySettings.upsert({
+        where: { tenantId },
+        update: { ...validation.data, updatedById: userId },
+        create: { tenantId, companyName: validation.data.companyName || 'Mi Empresa', ...validation.data, updatedById: userId },
       });
-      
       return reply.send({ settings });
-    } catch (error) {
+    } catch (error: any) {
+      app.log.error({ error: error?.message }, '[company-settings] PUT error');
       return reply.code(500).send({ error: 'Failed to update company settings' });
     }
   });
@@ -160,32 +149,17 @@ export async function registerCompanySettingsRoutes(app: FastifyInstance) {
     if (!imageBase64) return reply.code(400).send({ error: 'Image is required' });
     
     try {
-      // En producción: subir a S3 y obtener URL
-      // Simulación: guardar base64 como data URL
       const logoUrl = imageBase64.startsWith('data:') ? imageBase64 : `data:image/png;base64,${imageBase64}`;
-      
-      const settings = await app.runWithDbContext(req, async (tx) => {
-        return tx.companySettings.upsert({
-          where: { tenantId },
-          update: {
-            [type === 'dark' ? 'logoDarkUrl' : 'logoUrl']: logoUrl,
-            updatedById: req.auth!.userId,
-          },
-          create: {
-            tenantId,
-            companyName: 'Mi Empresa',
-            [type === 'dark' ? 'logoDarkUrl' : 'logoUrl']: logoUrl,
-            updatedById: req.auth!.userId,
-          },
-        });
+      const userId = (req as any).auth?.userId ?? null;
+      const field = type === 'dark' ? 'logoDarkUrl' : 'logoUrl';
+      const settings = await app.prisma.companySettings.upsert({
+        where: { tenantId },
+        update: { [field]: logoUrl, updatedById: userId },
+        create: { tenantId, companyName: 'Mi Empresa', [field]: logoUrl, updatedById: userId },
       });
-      
-      return reply.send({ 
-        success: true, 
-        logoUrl,
-        settings 
-      });
-    } catch (error) {
+      return reply.send({ success: true, logoUrl, settings });
+    } catch (error: any) {
+      app.log.error({ error: error?.message }, '[company-settings] LOGO error');
       return reply.code(500).send({ error: 'Failed to upload logo' });
     }
   });

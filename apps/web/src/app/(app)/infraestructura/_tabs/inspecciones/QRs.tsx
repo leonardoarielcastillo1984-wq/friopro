@@ -121,7 +121,7 @@ ${qr.sector ? `<p class="sector">📍 ${qr.sector}</p>` : ''}
                         <p className="text-xs text-gray-400 mt-1">{qr.plantilla?.nombre}</p>
                         {qr.maintenanceAssetId
                           ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium mt-0.5"><Link2 className="w-3 h-3" />Activo vinculado</span>
-                          : <span className="inline-flex items-center gap-1 text-xs text-gray-300 mt-0.5"><Link2Off className="w-3 h-3" />Sin vincular</span>}
+                          : <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium mt-0.5"><Link2Off className="w-3 h-3" />Fletero / Tercero</span>}
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-xs text-gray-400 mb-3">
@@ -234,7 +234,7 @@ ${qr.sector ? `<p class="sector">📍 ${qr.sector}</p>` : ''}
               {/* Vincular a activo de mantenimiento */}
               <div className="border border-emerald-100 bg-emerald-50 rounded-xl p-3">
                 <label className="block text-xs font-semibold text-emerald-700 mb-1.5">🔗 Vincular a Activo/Equipo de Mantenimiento</label>
-                <p className="text-xs text-emerald-600 mb-2">Si vinculás este QR a un activo, cada hallazgo generará una OT automáticamente y quedará en la hoja de vida del equipo.</p>
+                <p className="text-xs text-emerald-600 mb-2">Si vinculás este QR a un activo propio, cada hallazgo generará una OT automáticamente. Si no vinculás, el QR será para <strong>fleteros/terceros</strong> y al escanear se pedirá empresa, conductor y dominios manualmente.</p>
                 <select value={form.maintenanceAssetId} onChange={e => {
                   const sel = assets.find((a: any) => a.id === e.target.value);
                   setForm(p => ({
@@ -245,7 +245,7 @@ ${qr.sector ? `<p class="sector">📍 ${qr.sector}</p>` : ''}
                   }));
                 }}
                   className="w-full text-sm border border-emerald-200 rounded-xl px-3 py-2.5 outline-none bg-white">
-                  <option value="">Sin vincular (opcional)</option>
+                  <option value="">Fletero / Tercero (sin activo propio)</option>
                   {assets.map((a: any) => <option key={a.id} value={a.id}>{a.name} — {a.code}</option>)}
                 </select>
               </div>

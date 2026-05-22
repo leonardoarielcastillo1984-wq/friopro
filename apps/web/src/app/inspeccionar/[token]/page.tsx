@@ -15,7 +15,7 @@ export default function InspeccionarPage() {
   const [error, setError] = useState('');
   const [data, setData] = useState<any>(null);
   const [paso, setPaso] = useState<'intro' | 'form' | 'enviando' | 'ok' | 'error'>('intro');
-  const [inspector, setInspector] = useState({ nombre: '', email: '', phone: '', dominioTractor: '', dominioSemi: '', ruta: '', km: '' });
+  const [inspector, setInspector] = useState({ nombre: '', email: '', phone: '', dominioTractor: '', dominioSemi: '', ruta: '', km: '', empresaTransporte: '', conductor: '' });
   const [respuestas, setRespuestas] = useState<Record<string, Respuesta>>({});
   const [notas, setNotas] = useState('');
   const [resultado, setResultado] = useState<any>(null);
@@ -31,6 +31,24 @@ export default function InspeccionarPage() {
           init[item.id] = { itemId: item.id, valor: null, esOk: undefined, observacion: '' };
         }
         setRespuestas(init);
+        // Auto-fill desde prefill del servidor + localStorage
+        const pf = d.prefill || {};
+        const lsSemi = typeof window !== 'undefined' ? localStorage.getItem(`insp_semi_${token}`) : null;
+        const lsRuta = typeof window !== 'undefined' ? localStorage.getItem(`insp_ruta_${token}`) : null;
+        const lsNombre = typeof window !== 'undefined' ? localStorage.getItem(`insp_nombre_${token}`) : null;
+        const lsEmail = typeof window !== 'undefined' ? localStorage.getItem(`insp_email_${token}`) : null;
+        const lsPhone = typeof window !== 'undefined' ? localStorage.getItem(`insp_phone_${token}`) : null;
+        setInspector({
+          nombre: lsNombre || pf.inspectorNombre || '',
+          email: lsEmail || pf.inspectorEmail || '',
+          phone: lsPhone || pf.inspectorPhone || '',
+          dominioTractor: pf.dominioTractor || '',
+          dominioSemi: lsSemi || pf.dominioSemi || '',
+          ruta: lsRuta || pf.ruta || '',
+          km: '',
+          empresaTransporte: '',
+          conductor: '',
+        });
         setLoading(false);
       })
       .catch(() => { setError('No se pudo cargar la inspección.'); setLoading(false); });
@@ -54,6 +72,14 @@ export default function InspeccionarPage() {
     if (!inspector.nombre.trim()) { alert('Ingresá tu nombre para continuar'); return; }
     const requiredMissing = items.filter(i => i.isRequerido && respuestas[i.id]?.valor === null && respuestas[i.id]?.esOk === undefined);
     if (requiredMissing.length > 0) { alert(`Completá todos los campos obligatorios (${requiredMissing.length} pendientes)`); return; }
+    // Persistir datos del chofer para la próxima vez
+    if (typeof window !== 'undefined') {
+      if (inspector.nombre) localStorage.setItem(`insp_nombre_${token}`, inspector.nombre);
+      if (inspector.email) localStorage.setItem(`insp_email_${token}`, inspector.email);
+      if (inspector.phone) localStorage.setItem(`insp_phone_${token}`, inspector.phone);
+      if (inspector.dominioSemi) localStorage.setItem(`insp_semi_${token}`, inspector.dominioSemi);
+      if (inspector.ruta) localStorage.setItem(`insp_ruta_${token}`, inspector.ruta);
+    }
     setPaso('enviando');
     try {
       const res = await fetch(`${API_BASE}/inspecciones/public/${token}`, {
@@ -63,6 +89,10 @@ export default function InspeccionarPage() {
           inspectorNombre: inspector.nombre,
           inspectorEmail: inspector.email || undefined,
           inspectorPhone: inspector.phone || undefined,
+          dominioTractor: inspector.dominioTractor || undefined,
+          dominioSemi: inspector.dominioSemi || undefined,
+          empresaTransporte: inspector.empresaTransporte || undefined,
+          conductor: inspector.conductor || undefined,
           kmReported: inspector.km ? parseFloat(inspector.km) : undefined,
           notas: [
             inspector.dominioTractor ? `Dominio tractor: ${inspector.dominioTractor}` : '',
@@ -119,6 +149,7 @@ export default function InspeccionarPage() {
           </div>
         )}
         <p className="text-xs text-gray-400">Podés cerrar esta página</p>
+        <a href="https://www.logismart.ar" target="_blank" rel="noreferrer" className="text-xs text-blue-300 hover:underline mt-1 block">www.logismart.ar</a>
       </div>
     </div>
   );
@@ -184,25 +215,46 @@ export default function InspeccionarPage() {
               </div>
 
               <div className="bg-gray-50 rounded-xl p-4 text-left mb-6 space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datos del viaje</p>
-                <input placeholder="Dominio tractor" value={inspector.dominioTractor} onChange={e => setInspector(p => ({ ...p, dominioTractor: e.target.value }))}
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  {data?.qr?.esTercero ? 'Datos del transporte' : 'Datos del viaje'}
+                </p>
+                {data?.qr?.esTercero && (
+                  <>
+                    <input placeholder="Empresa de transporte *" value={inspector.empresaTransporte} onChange={e => setInspector(p => ({ ...p, empresaTransporte: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
+                    <input placeholder="Nombre del conductor *" value={inspector.conductor} onChange={e => setInspector(p => ({ ...p, conductor: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
+                  </>
+                )}
+                <input placeholder="Dominio tractor *" value={inspector.dominioTractor} onChange={e => setInspector(p => ({ ...p, dominioTractor: e.target.value }))}
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none uppercase" />
                 <input placeholder="Dominio semi (opcional)" value={inspector.dominioSemi} onChange={e => setInspector(p => ({ ...p, dominioSemi: e.target.value }))}
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none uppercase" />
-                <input placeholder="Ruta" value={inspector.ruta} onChange={e => setInspector(p => ({ ...p, ruta: e.target.value }))}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
-                <div className="relative">
-                  <input placeholder="Kilometraje actual del vehículo *" type="number" min="0" value={inspector.km} onChange={e => setInspector(p => ({ ...p, km: e.target.value }))}
-                    className="w-full text-sm border border-blue-300 bg-blue-50 rounded-xl px-3 py-2.5 outline-none font-semibold" />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-blue-400 font-medium">km</span>
-                </div>
+                {!data?.qr?.esTercero && (
+                  <>
+                    <input placeholder="Ruta" value={inspector.ruta} onChange={e => setInspector(p => ({ ...p, ruta: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
+                    <div className="relative">
+                      <input placeholder="Kilometraje actual del vehículo *" type="number" min="0" value={inspector.km} onChange={e => setInspector(p => ({ ...p, km: e.target.value }))}
+                        className="w-full text-sm border border-blue-300 bg-blue-50 rounded-xl px-3 py-2.5 outline-none font-semibold" />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-blue-400 font-medium">km</span>
+                    </div>
+                  </>
+                )}
+                {data?.qr?.esTercero && (
+                  <div className="relative">
+                    <input placeholder="Kilometraje (opcional)" type="number" min="0" value={inspector.km} onChange={e => setInspector(p => ({ ...p, km: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">km</span>
+                  </div>
+                )}
               </div>
-              <button onClick={() => { if (!inspector.nombre.trim()) { alert('Ingresá tu nombre para continuar'); return; } setPaso('form'); }}
+              <button onClick={() => { if (!inspector.nombre.trim()) { alert('Ingresá tu nombre para continuar'); return; } if (data?.qr?.esTercero && (!inspector.empresaTransporte.trim() || !inspector.conductor.trim() || !inspector.dominioTractor.trim())) { alert('Completá empresa, conductor y dominio del tractor'); return; } setPaso('form'); }}
                 className="w-full text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 text-sm transition-all active:scale-95"
                 style={{ backgroundColor: primary }}>
                 Comenzar inspección <ChevronRight className="w-4 h-4" />
               </button>
-              <p className="text-xs text-gray-400 mt-3">{items.length} items · {data?.empresa?.nombre}</p>
+              <p className="text-xs text-gray-400 mt-3">{items.length} ítems · {data?.empresa?.nombre}</p>
             </div>
           </div>
         )}
@@ -360,6 +412,7 @@ export default function InspeccionarPage() {
               style={{ backgroundColor: primary }}>
               <Send className="w-4 h-4" />Enviar inspección
             </button>
+            <p className="text-center text-[10px] text-gray-400 mt-1.5">www.logismart.ar</p>
           </div>
         </div>
       )}

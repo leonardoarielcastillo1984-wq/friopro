@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
-import { AlertTriangle, X, CheckCircle2, RefreshCw, ChevronDown, Wrench, ExternalLink } from 'lucide-react';
+import { AlertTriangle, X, CheckCircle2, RefreshCw, ChevronDown, Wrench, ExternalLink, Trash2 } from 'lucide-react';
 
 const SEV_COLOR: Record<string, string> = { LEVE: 'bg-yellow-100 text-yellow-700 border-yellow-200', MODERADO: 'bg-orange-100 text-orange-700 border-orange-200', CRITICO: 'bg-red-100 text-red-700 border-red-200' };
 const ESTADO_COLOR: Record<string, string> = { ABIERTO: 'bg-red-100 text-red-700', EN_PROCESO: 'bg-amber-100 text-amber-700', RESUELTO: 'bg-emerald-100 text-emerald-700', CERRADO: 'bg-gray-100 text-gray-500' };
@@ -128,6 +128,17 @@ export default function InspeccionesHallazgos() {
 
   const filteredAssets: any[] = [];
 
+  const deleteHallazgo = async (id: string) => {
+    if (!confirm('¿Eliminar este hallazgo definitivamente?')) return;
+    try {
+      await apiFetch(`/inspecciones/hallazgos/${id}`, { method: 'DELETE' });
+      setHallazgos(prev => prev.filter(h => h.id !== id));
+      if (modal?.id === id) setModal(null);
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo eliminar el hallazgo.');
+    }
+  };
+
   const handleUpdate = async () => {
     if (!modal) return;
     setUpdating(true);
@@ -191,13 +202,13 @@ export default function InspeccionesHallazgos() {
           : (
             <div className="space-y-2">
               {hallazgos.map((h: any) => (
-                <div key={h.id} className={`bg-white border rounded-xl p-4 hover:shadow-sm transition-shadow cursor-pointer ${SEV_COLOR[h.severidad] || 'border-gray-100'}`}
-                  onClick={() => openModal(h)}>
+                <div key={h.id} className={`bg-white border rounded-xl p-4 hover:shadow-sm transition-shadow ${SEV_COLOR[h.severidad] || 'border-gray-100'}`}>
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openModal(h)}>
                       <p className="text-sm font-medium text-gray-800 line-clamp-2">{h.descripcion}</p>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-gray-500">
                         {h.itemLabel && <span className="text-gray-400">📋 {h.itemLabel}</span>}
+                        {h.equipoDestino && <span className={`font-semibold px-1.5 py-0.5 rounded ${h.equipoDestino === 'SEMI' ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-700'}`}>{h.equipoDestino === 'SEMI' ? '🚜 Semi' : '🚛 Tractor'}</span>}
                         <span>Activo: {h.inspeccion?.activoNombre}</span>
                         <span>{new Date(h.createdAt).toLocaleDateString('es-AR')}</span>
                         {h.responsable && <span className="text-blue-600">👤 {h.responsable}</span>}
@@ -206,6 +217,7 @@ export default function InspeccionesHallazgos() {
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${SEV_COLOR[h.severidad]?.split(' ').slice(0, 2).join(' ') || ''}`}>{h.severidad}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTADO_COLOR[h.estado] || ''}`}>{h.estado}</span>
+                      <button onClick={() => deleteHallazgo(h.id)} className="p-1 text-gray-300 hover:text-red-500 mt-0.5" title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
                 </div>
@@ -219,7 +231,10 @@ export default function InspeccionesHallazgos() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <h3 className="font-semibold text-gray-900">Gestionar hallazgo</h3>
-              <button onClick={() => setModal(null)}><X className="w-4 h-4 text-gray-500" /></button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => deleteHallazgo(modal.id)} className="p-1 text-gray-400 hover:text-red-500" title="Eliminar hallazgo"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => setModal(null)}><X className="w-4 h-4 text-gray-500" /></button>
+              </div>
             </div>
             <div className="p-5 space-y-4">
               <div className="p-3 bg-gray-50 rounded-xl">

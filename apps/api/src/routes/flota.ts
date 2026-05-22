@@ -28,7 +28,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     }
 
     // Eliminar datos relacionados
-    await (app.prisma as any).neumaticoPosicion.updateMany({ where: { vehiculoId: id, tenantId }, data: { vehiculoId: null } });
+    await (app.prisma as any).neumaticoPosicion.deleteMany({ where: { vehiculoId: id, tenantId } });
     await (app.prisma as any).vencimientoDocumento.deleteMany({ where: { vehiculoId: id, tenantId } });
     await (app.prisma as any).vehiculoHistorialMantenimiento.deleteMany({ where: { vehiculoId: id, tenantId } });
     await (app.prisma as any).garantiaVehiculo.deleteMany({ where: { vehiculoId: id, tenantId } });
@@ -49,6 +49,142 @@ export default async function flotaRoutes(app: FastifyInstance) {
     await (app.prisma as any).vehiculo.deleteMany({ where: { id, tenantId } });
 
     return reply.send({ ok: true, mensaje: 'Vehículo eliminado permanentemente' });
+  });
+
+  // GET /vehiculos/:id/twin — Gemelo Digital predictivo (calculado en tiempo real)
+  app.get('/vehiculos/:id/twin', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+      where: { id, tenantId },
+      include: {
+        vencimientos: true,
+        registrosCombustible: { orderBy: { fecha: 'desc' }, take: 20 },
+        posicionesNeumatico: { where: { activo: true }, include: { neumatico: true } },
+      }
+    });
+    if (!vehiculo) return reply.code(404).send({ error: 'No encontrado' });
+
+    // Obtener órdenes de trabajo si tiene activo vinculado
+    let workOrders: any[] = [];
+    if (vehiculo.maintenanceAssetId) {
+      workOrders = await (app.prisma as any).workOrder.findMany({
+        where: { assetId: vehiculo.maintenanceAssetId, tenantId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }).catch(() => []);
+    }
+
+    const now = new Date();
+    const km = vehiculo.currentOdometer || 0;
+    const regs: any[] = vehiculo.registrosCombustible || [];
+    const vencimientos: any[] = vehiculo.vencimientos || [];
+    const neumaticos: any[] = vehiculo.posicionesNeumatico || [];
+
+    // ── MOTOR: basado en km desde último servicio (intervalo 10.000 km) ──
+    const lastService = workOrders.find((wo: any) =>
+      (wo.description || wo.title || '').toLowerCase().match(/aceite|service|preventivo|filtro/)
+    );
+    const kmSinceService = lastService
+      ? Math.max(0, km - (lastService.odometerReading || 0))
+      : km % 10000;
+    const intervaloService = 10000;
+    const motorSalud = Math.max(5, Math.round(100 - Math.min((kmSinceService / intervaloService) * 100, 95)));
+    const motorKmRestantes = Math.max(0, intervaloService - kmSinceService);
+
+    // ── FRENOS: intervalo 30.000 km ──
+    const kmSinceBrakes = km % 30000;
+    const frenosSalud = Math.max(5, Math.round(100 - Math.min((kmSinceBrakes / 30000) * 100, 95)));
+    const frenosKmRestantes = Math.max(0, 30000 - kmSinceBrakes);
+
+    // ── NEUMÁTICOS: basado en profundidad de banda (mínimo 1.6mm, nuevo ~8mm) ──
+    let neumSalud = 80;
+    if (neumaticos.length > 0) {
+      const bandas = neumaticos.map((p: any) => p.neumatico?.profBanda ?? 6).filter((b: number) => b > 0);
+      if (bandas.length > 0) {
+        const promBanda = bandas.reduce((a: number, b: number) => a + b, 0) / bandas.length;
+        neumSalud = Math.max(5, Math.min(100, Math.round(((promBanda - 1.6) / (8 - 1.6)) * 100)));
+      }
+    }
+
+    // ── DOCUMENTACIÓN ──
+    const docsActivos = vencimientos.filter((v: any) => !v.renovado);
+    const docsVencidos = docsActivos.filter((v: any) => new Date(v.fechaVto) < now);
+    const docsPorVencer = docsActivos.filter((v: any) => {
+      const dias = Math.ceil((new Date(v.fechaVto).getTime() - now.getTime()) / 86400000);
+      return dias >= 0 && dias <= 30;
+    });
+    const docSalud = Math.max(0, 100 - docsVencidos.length * 35 - docsPorVencer.length * 15);
+
+    // ── COMBUSTIBLE: eficiencia (L/100km) ──
+    let combSalud = 85;
+    let l100km: number | null = null;
+    if (regs.length >= 2) {
+      const withOdo = regs.filter((r: any) => r.odometro && r.litros);
+      if (withOdo.length >= 2) {
+        const totalLitros = withOdo.slice(0, 5).reduce((s: number, r: any) => s + r.litros, 0);
+        const kmRecorridos = withOdo[0].odometro - withOdo[Math.min(4, withOdo.length - 1)].odometro;
+        if (kmRecorridos > 0) {
+          l100km = Math.round((totalLitros / kmRecorridos) * 100 * 10) / 10;
+          // Camión: referencia 30L/100km. Más bajo = mejor.
+          combSalud = Math.max(10, Math.min(100, Math.round(100 - Math.max(0, l100km - 28) * 3)));
+        }
+      }
+    }
+
+    // ── SCORE GLOBAL ──
+    const healthScore = Math.round(motorSalud * 0.30 + frenosSalud * 0.20 + neumSalud * 0.20 + docSalud * 0.20 + combSalud * 0.10);
+    const riskScore = 100 - healthScore;
+    const estadoGeneral = healthScore >= 80 ? 'BUENO' : healthScore >= 60 ? 'REGULAR' : healthScore >= 40 ? 'MALO' : 'CRÍTICO';
+
+    // ── ALERTAS ──
+    const alertas: any[] = [];
+    if (motorSalud < 25) alertas.push({ tipo: 'CRÍTICO', componente: 'Motor', mensaje: `Cambio de aceite/service urgente (${(kmSinceService / 1000).toFixed(1)}k km desde último)` });
+    else if (motorSalud < 50) alertas.push({ tipo: 'ALERTA', componente: 'Motor', mensaje: `Próximo service en ${(motorKmRestantes / 1000).toFixed(1)}k km` });
+    if (frenosSalud < 25) alertas.push({ tipo: 'CRÍTICO', componente: 'Frenos', mensaje: 'Revisión de sistema de frenos urgente' });
+    else if (frenosSalud < 50) alertas.push({ tipo: 'ALERTA', componente: 'Frenos', mensaje: `Revisión de frenos en ${(frenosKmRestantes / 1000).toFixed(1)}k km` });
+    if (neumSalud < 30) alertas.push({ tipo: 'CRÍTICO', componente: 'Neumáticos', mensaje: 'Banda de rodamiento crítica — reemplazar' });
+    else if (neumSalud < 55) alertas.push({ tipo: 'ALERTA', componente: 'Neumáticos', mensaje: 'Banda de rodamiento baja' });
+    docsVencidos.forEach((v: any) => alertas.push({ tipo: 'CRÍTICO', componente: 'Documentación', mensaje: `${v.tipo} VENCIDO` }));
+    docsPorVencer.forEach((v: any) => {
+      const dias = Math.ceil((new Date(v.fechaVto).getTime() - now.getTime()) / 86400000);
+      alertas.push({ tipo: 'ALERTA', componente: 'Documentación', mensaje: `${v.tipo} vence en ${dias} días` });
+    });
+    if (combSalud < 50 && l100km) alertas.push({ tipo: 'ALERTA', componente: 'Combustible', mensaje: `Consumo elevado: ${l100km} L/100km` });
+
+    // ── PREDICCIÓN próximo servicio ──
+    let diasProxServicio: number | null = null;
+    if (regs.length >= 2 && km > 0) {
+      const kmDia = km / 365;
+      if (kmDia > 0) diasProxServicio = Math.round(motorKmRestantes / kmDia);
+    }
+
+    return reply.send({
+      twin: {
+        vehiculoId: id,
+        dominio: vehiculo.dominio,
+        healthScore,
+        riskScore,
+        estadoGeneral,
+        componentes: {
+          motor: { salud: motorSalud, riesgo: 100 - motorSalud, kmRestantes: motorKmRestantes, label: 'Motor / Aceite' },
+          frenos: { salud: frenosSalud, riesgo: 100 - frenosSalud, kmRestantes: frenosKmRestantes, label: 'Frenos' },
+          neumaticos: { salud: neumSalud, riesgo: 100 - neumSalud, montados: neumaticos.length, label: 'Neumáticos' },
+          documentacion: { salud: docSalud, riesgo: 100 - docSalud, vencidos: docsVencidos.length, porVencer: docsPorVencer.length, label: 'Documentación' },
+          combustible: { salud: combSalud, riesgo: 100 - combSalud, l100km, label: 'Eficiencia combustible' },
+        },
+        alertas,
+        prediccion: {
+          proximoServicioKm: motorKmRestantes,
+          proximoServicioDias: diasProxServicio,
+          kmActuales: km,
+        },
+        otAbiertas: workOrders.filter((wo: any) => !['COMPLETED','CANCELLED'].includes(wo.status)).length,
+        calculadoEn: now.toISOString(),
+      }
+    });
   });
 
   app.get('/vehiculos', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -114,7 +250,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
               take: 5,
             }
           }
-        });
+        }).catch(() => null);
 
         workOrders = await (app.prisma as any).workOrder.findMany({
           where: { assetId: maintenanceAsset.id, tenantId },
@@ -244,22 +380,24 @@ export default async function flotaRoutes(app: FastifyInstance) {
       });
 
       // Crear Digital Twin automáticamente para el activo
-      await (app.prisma as any).assetDigitalTwin.create({
-        data: {
-          tenantId,
-          assetId: maintenanceAsset.id,
-          healthScore: 100,
-          riskScore: 0,
-          componentes: JSON.stringify({
-            motor: { salud: 100, riesgo: 0, kmRestantes: 100000 },
-            frenos: { salud: 100, riesgo: 0, kmRestantes: 50000 },
-            caja: { salud: 100, riesgo: 0, kmRestantes: 80000 },
-            diferencial: { salud: 100, riesgo: 0, kmRestantes: 70000 },
-            neumaticos: { salud: 100, riesgo: 0, kmRestantes: 40000 },
-          }),
-          syncSource: 'AUTO',
-        }
-      });
+      try {
+        await (app.prisma as any).assetDigitalTwin.create({
+          data: {
+            tenantId,
+            assetId: maintenanceAsset.id,
+            healthScore: 100,
+            riskScore: 0,
+            componentes: JSON.stringify({
+              motor: { salud: 100, riesgo: 0, kmRestantes: 100000 },
+              frenos: { salud: 100, riesgo: 0, kmRestantes: 50000 },
+              caja: { salud: 100, riesgo: 0, kmRestantes: 80000 },
+              diferencial: { salud: 100, riesgo: 0, kmRestantes: 70000 },
+              neumaticos: { salud: 100, riesgo: 0, kmRestantes: 40000 },
+            }),
+            syncSource: 'AUTO',
+          }
+        });
+      } catch { /* tabla no existe en esta BD */ }
     }
 
     return reply.code(201).send({
@@ -309,7 +447,18 @@ export default async function flotaRoutes(app: FastifyInstance) {
       }
     }
 
-    await (app.prisma as any).vehiculo.updateMany({ where: { id, tenantId }, data: body.data });
+    const { conductorId, crearActivoMantenimiento, acquisitionCost, manufacturer, purchaseDate, maintenanceAssetId, ...vehiculoFields } = body.data as any;
+    const updateData: any = { ...vehiculoFields };
+    if (maintenanceAssetId !== undefined) updateData.maintenanceAssetId = maintenanceAssetId;
+    await (app.prisma as any).vehiculo.updateMany({ where: { id, tenantId }, data: updateData });
+    // conductorId no está en el cliente Prisma compilado en prod → raw SQL
+    if (conductorId !== undefined) {
+      if (conductorId === null) {
+        await (app.prisma as any).$executeRaw`UPDATE flota_vehiculos SET "conductorId" = NULL WHERE id = ${id}::uuid AND "tenantId" = ${tenantId}::uuid`;
+      } else {
+        await (app.prisma as any).$executeRawUnsafe(`UPDATE flota_vehiculos SET "conductorId" = '${conductorId}'::uuid WHERE id = '${id}'::uuid AND "tenantId" = '${tenantId}'::uuid`);
+      }
+    }
     return reply.send({ ok: true });
   });
 
@@ -385,7 +534,9 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    await (app.prisma as any).conductor.updateMany({ where: { id, tenantId }, data: { status: 'INACTIVO' } });
+    // Desasociar vehículos antes de eliminar para evitar FK violation
+    await (app.prisma as any).vehiculo.updateMany({ where: { conductorId: id, tenantId }, data: { conductorId: null } });
+    await (app.prisma as any).conductor.deleteMany({ where: { id, tenantId } });
     return reply.send({ ok: true });
   });
 
@@ -628,6 +779,14 @@ export default async function flotaRoutes(app: FastifyInstance) {
       orderBy: { fecha: 'desc' },
     });
     return reply.send({ registros });
+  });
+
+  app.delete('/vehiculos/:vehiculoId/combustible/:registroId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { registroId } = req.params as any;
+    await (app.prisma as any).registroCombustible.deleteMany({ where: { id: registroId, tenantId } });
+    return reply.send({ ok: true });
   });
 
   app.post('/vehiculos/:vehiculoId/combustible', async (req: FastifyRequest, reply: FastifyReply) => {

@@ -359,14 +359,41 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       },
     });
     if (!qr) return reply.code(404).send({ error: 'QR no encontrado o inactivo' });
-    const settings = await (app.prisma as any).companySettings.findUnique({
-      where: { tenantId: qr.tenantId }, select: { logoUrl: true, primaryColor: true },
-    }).catch(() => null);
+
+    const [settings, vehiculo, ultimaInspeccion] = await Promise.all([
+      (app.prisma as any).companySettings.findUnique({
+        where: { tenantId: qr.tenantId }, select: { logoUrl: true, primaryColor: true },
+      }).catch(() => null),
+      qr.maintenanceAssetId
+        ? (app.prisma as any).vehiculo.findFirst({
+            where: { maintenanceAssetId: qr.maintenanceAssetId, tenantId: qr.tenantId },
+            include: { conductor: { select: { nombre: true, email: true, telefono: true } } },
+          }).catch(() => null)
+        : null,
+      (app.prisma as any).inspeccion.findFirst({
+        where: { qrId: qr.id },
+        orderBy: { createdAt: 'desc' },
+        select: { dominioSemi: true, notas: true, inspectorNombre: true, inspectorEmail: true, inspectorPhone: true },
+      }).catch(() => null),
+    ]);
+
+    const rutaMatch = ultimaInspeccion?.notas?.match(/Ruta:\s*([^|]+)/);
+    const ultimaRuta = rutaMatch ? rutaMatch[1].trim() : null;
+
     return reply.send({
       qr: { id: qr.id, activoNombre: qr.activoNombre, activoCodigo: qr.activoCodigo, ubicacion: qr.ubicacion,
-        sector: qr.sector, titulo: qr.titulo, subtitulo: qr.subtitulo, instrucciones: qr.instrucciones, pie: qr.pie },
+        sector: qr.sector, titulo: qr.titulo, subtitulo: qr.subtitulo, instrucciones: qr.instrucciones, pie: qr.pie,
+        esTercero: !qr.maintenanceAssetId },
       plantilla: { id: qr.plantilla.id, nombre: qr.plantilla.nombre, categoria: qr.plantilla.categoria, items: qr.plantilla.items, diagramaFotos: qr.plantilla.diagramaFotos ?? null },
       empresa: { nombre: qr.tenant.name, logoUrl: settings?.logoUrl ?? null, primaryColor: settings?.primaryColor ?? '#2563eb' },
+      prefill: {
+        inspectorNombre: vehiculo?.conductor?.nombre ?? null,
+        inspectorEmail: vehiculo?.conductor?.email ?? null,
+        inspectorPhone: vehiculo?.conductor?.telefono ?? null,
+        dominioTractor: vehiculo?.dominio ?? null,
+        dominioSemi: ultimaInspeccion?.dominioSemi ?? null,
+        ruta: ultimaRuta,
+      },
     });
   });
 
@@ -384,6 +411,10 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       inspectorEmail: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
       inspectorPhone: z.string().max(50).optional().or(z.literal('')).transform(v => v || undefined),
       notas: z.string().optional(),
+      dominioTractor: z.string().max(20).optional().or(z.literal('')).transform(v => v || undefined),
+      dominioSemi: z.string().max(20).optional().or(z.literal('')).transform(v => v || undefined),
+      empresaTransporte: z.string().max(200).optional().or(z.literal('')).transform(v => v || undefined),
+      conductor: z.string().max(200).optional().or(z.literal('')).transform(v => v || undefined),
       kmReported: z.number().positive().optional(),
       respuestas: z.array(z.object({
         itemId: z.string().uuid(),
@@ -405,7 +436,10 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       if (!item) continue;
       if (resp.esOk === true) itemsOk++;
       if (resp.esOk === false && item.triggerHallazgo) {
-        hallazgos.push({ descripcion: resp.observacion || `${item.label}: No cumple`, tipo: 'OPERATIVO', severidad: 'MODERADO', itemLabel: item.label });
+        const secLower = (item.seccion || '').toLowerCase();
+        const labelLower = (item.label || '').toLowerCase();
+        const equipoDestino = (secLower.startsWith('semi') || labelLower.startsWith('semi')) ? 'SEMI' : 'TRACTOR';
+        hallazgos.push({ descripcion: resp.observacion || `${item.label}: No cumple`, tipo: 'OPERATIVO', severidad: 'MODERADO', itemLabel: item.label, equipoDestino });
       }
     }
 
@@ -419,9 +453,14 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         inspectorEmail: body.data.inspectorEmail || null,
         inspectorPhone: body.data.inspectorPhone || null,
         activoNombre: qr.activoNombre, activoCodigo: qr.activoCodigo, sector: qr.sector,
+        dominioTractor: body.data.dominioTractor || null,
+        dominioSemi: body.data.dominioSemi || null,
+        empresaTransporte: body.data.empresaTransporte || null,
+        conductor: body.data.conductor || null,
         estado, puntaje, hallazgosCount: hallazgos.length, itemsTotal: items.length, itemsOk,
         notas: body.data.notas,
         kmReported: body.data.kmReported ?? null,
+        feedbackToken: generateToken(),
         respuestas: { create: respuestas.map(r => ({ itemId: r.itemId, valor: r.valor ?? null, esOk: r.esOk ?? null, observacion: r.observacion })) },
         hallazgos: hallazgos.length > 0 ? { create: hallazgos.map(h => ({ tenantId: qr.tenantId, ...h })) } : undefined,
       },
@@ -482,22 +521,38 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       try {
         const hallazgosCreados = await (app.prisma as any).inspeccionHallazgo.findMany({
           where: { inspeccionId: inspeccion.id },
-          select: { id: true, descripcion: true, severidad: true },
+          select: { id: true, descripcion: true, severidad: true, equipoDestino: true },
         });
+
+        // Buscar maintenanceAssetId del semi si hay dominio informado
+        let semiAssetId: string | null = null;
+        if (body.data.dominioSemi) {
+          const semiVeh = await (app.prisma as any).vehiculo.findFirst({
+            where: { dominio: { equals: body.data.dominioSemi, mode: 'insensitive' }, tenantId: qr.tenantId },
+            select: { maintenanceAssetId: true },
+          }).catch(() => null);
+          semiAssetId = semiVeh?.maintenanceAssetId ?? null;
+        }
+
         for (const h of hallazgosCreados) {
           const prioridad = h.severidad === 'CRITICO' ? 'CRITICAL' : h.severidad === 'GRAVE' ? 'HIGH' : 'MEDIUM';
+          const esSemi = h.equipoDestino === 'SEMI';
+          const assetIdOT = esSemi && semiAssetId ? semiAssetId : qr.maintenanceAssetId;
+          const activoNombre = esSemi
+            ? `Semi ${body.data.dominioSemi?.toUpperCase() || ''}`.trim()
+            : qr.activoNombre;
           await (app.prisma as any).workOrder.create({
             data: {
               code: `OT-INSP-${Date.now().toString().slice(-6)}`,
-              title: `Hallazgo inspección: ${h.descripcion.slice(0, 80)}`,
-              description: `Generado automáticamente por inspección QR. Inspector: ${body.data.inspectorNombre}. Activo: ${qr.activoNombre}.`,
+              title: `Hallazgo inspección [${esSemi ? 'SEMI' : 'TRACTOR'}]: ${h.descripcion.slice(0, 70)}`,
+              description: `Generado automáticamente por inspección QR. Inspector: ${body.data.inspectorNombre}. Activo: ${activoNombre}.`,
               type: 'CORRECTIVE',
               priority: prioridad,
               status: 'PENDING',
-              assetId: qr.maintenanceAssetId,
+              assetId: assetIdOT,
               origen: 'INSPECCION',
               origenId: h.id,
-              activoNombreLibre: qr.activoNombre,
+              activoNombreLibre: activoNombre,
               tenantId: qr.tenantId,
             },
           });
@@ -517,10 +572,71 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
 
     return reply.code(201).send({
       ok: true, inspeccionId: inspeccion.id, estado, puntaje, hallazgosCount: hallazgos.length,
+      feedbackToken: inspeccion.feedbackToken,
       mensaje: hallazgos.length > 0
         ? `Inspección registrada con ${hallazgos.length} hallazgo(s).`
         : '✅ Inspección completada exitosamente. Sin hallazgos.',
     });
+  });
+
+  // ── FEEDBACK PÚBLICO ────────────────────────────────────────────────────────
+  app.get('/feedback/:token', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const inspeccion = await (app.prisma as any).inspeccion.findFirst({
+      where: { feedbackToken: token },
+      select: {
+        id: true, activoNombre: true, activoCodigo: true, dominioTractor: true, dominioSemi: true,
+        inspectorNombre: true, puntaje: true, estado: true, hallazgosCount: true, createdAt: true,
+        feedback: true,
+        qr: { select: { tenant: { select: { name: true, id: true } } } },
+      },
+    });
+    if (!inspeccion) return reply.code(404).send({ error: 'Link no encontrado o inválido' });
+    return reply.send({ inspeccion });
+  });
+
+  app.post('/feedback/:token', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const inspeccion = await (app.prisma as any).inspeccion.findFirst({
+      where: { feedbackToken: token },
+      select: { id: true, tenantId: true, hallazgosCount: true, feedback: { select: { id: true } } },
+    });
+    if (!inspeccion) return reply.code(404).send({ error: 'Link no encontrado' });
+    if (inspeccion.feedback) return reply.code(409).send({ error: 'Este feedback ya fue completado' });
+
+    const schema = z.object({
+      receptorNombre: z.string().max(200).optional(),
+      receptorEmpresa: z.string().max(200).optional(),
+      calificacion: z.number().int().min(1).max(5),
+      comentario: z.string().max(2000).optional(),
+      problemaDetectado: z.enum(['GOLPE_CAJA', 'PRECINTO_ROTO', 'FALTANTE', 'HUMEDAD', 'TEMPERATURA', 'OTRO']).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const discrepanciaDetectada =
+      body.data.calificacion <= 3 &&
+      !!body.data.problemaDetectado &&
+      inspeccion.hallazgosCount === 0;
+
+    const feedback = await (app.prisma as any).inspeccionFeedbackCliente.create({
+      data: {
+        tenantId: inspeccion.tenantId,
+        inspeccionId: inspeccion.id,
+        receptorNombre: body.data.receptorNombre || null,
+        receptorEmpresa: body.data.receptorEmpresa || null,
+        calificacion: body.data.calificacion,
+        comentario: body.data.comentario || null,
+        problemaDetectado: body.data.problemaDetectado || null,
+        discrepanciaDetectada,
+      },
+    });
+
+    if (discrepanciaDetectada) {
+      console.warn(`[feedback] DISCREPANCIA en inspección ${inspeccion.id} — cliente reporta problema, conductor no reportó hallazgos`);
+    }
+
+    return reply.code(201).send({ ok: true, feedbackId: feedback.id, discrepanciaDetectada });
   });
 
   // ── INSPECCIONES ───────────────────────────────────────────────────────────
@@ -535,7 +651,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const [inspecciones, total] = await Promise.all([
       (app.prisma as any).inspeccion.findMany({
         where,
-        include: { qr: { select: { plantilla: { select: { nombre: true, categoria: true } } } }, _count: { select: { hallazgos: true } } },
+        include: { qr: { select: { plantilla: { select: { nombre: true, categoria: true } } } }, _count: { select: { hallazgos: true } }, feedback: { select: { calificacion: true, discrepanciaDetectada: true, createdAt: true } } },
         orderBy: { createdAt: 'desc' },
         take: q.limit ? parseInt(q.limit) : 50,
         skip: q.offset ? parseInt(q.offset) : 0,
@@ -555,6 +671,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         qr: { include: { plantilla: { include: { items: { orderBy: { orden: 'asc' } } } }, maintenanceAsset: { select: { id: true, name: true, code: true } } } },
         respuestas: { include: { item: true }, orderBy: { item: { orden: 'asc' } } },
         hallazgos: { orderBy: { createdAt: 'desc' } },
+        feedback: true,
       },
     });
     if (!inspeccion) return reply.code(404).send({ error: 'No encontrada' });
@@ -570,6 +687,18 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const result = JSON.parse(JSON.stringify(inspeccion));
     if (result.qr?.plantilla) result.qr.plantilla.diagramaFotos = diagramaFotos;
     return reply.send({ inspeccion: result });
+  });
+
+  app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const inspeccion = await (app.prisma as any).inspeccion.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!inspeccion) return reply.code(404).send({ error: 'No encontrada' });
+    await (app.prisma as any).inspeccionHallazgo.deleteMany({ where: { inspeccionId: id } });
+    await (app.prisma as any).inspeccionRespuestaItem.deleteMany({ where: { inspeccionId: id } });
+    await (app.prisma as any).inspeccion.delete({ where: { id } });
+    return reply.send({ ok: true });
   });
 
   // ── HALLAZGOS ──────────────────────────────────────────────────────────────
@@ -610,6 +739,14 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     if (data.fechaLimite) data.fechaLimite = new Date(data.fechaLimite);
     if (data.estado === 'RESUELTO' || data.estado === 'CERRADO') data.resolvedAt = new Date();
     await (app.prisma as any).inspeccionHallazgo.updateMany({ where: { id, tenantId }, data });
+    return reply.send({ ok: true });
+  });
+
+  app.delete('/hallazgos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    await (app.prisma as any).inspeccionHallazgo.deleteMany({ where: { id, tenantId } });
     return reply.send({ ok: true });
   });
 
@@ -897,5 +1034,231 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       porSector: (porSector as any[]).map(s => ({ sector: s.sector, inspecciones: s._count.id, hallazgos: s._sum.hallazgosCount || 0 })),
       reincidencias: (reincidencias as any[]).map(r => ({ item: r.itemLabel, ocurrencias: r._count.id })),
     });
+  });
+
+  // ── FEEDBACK QRs ────────────────────────────────────────────────────────────
+  app.get('/feedback-qrs', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const qrs = await (app.prisma as any).feedbackQR.findMany({
+      where: { tenantId },
+      include: { maintenanceAsset: { select: { id: true, name: true, code: true } } },
+      orderBy: { generatedAt: 'desc' },
+    });
+    const base = process.env.WEB_URL || 'https://logismart.ar';
+    return reply.send({ qrs: qrs.map((q: any) => ({ ...q, publicUrl: `${base}/feedback-qr/${q.token}` })) });
+  });
+
+  app.post('/feedback-qrs', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      activoNombre: z.string().min(1).max(200),
+      activoCodigo: z.string().max(50).optional(),
+      dominioTractor: z.string().max(20).optional(),
+      maintenanceAssetId: z.string().uuid().optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const qr = await (app.prisma as any).feedbackQR.create({
+      data: { tenantId, token: generateToken(), ...body.data, maintenanceAssetId: body.data.maintenanceAssetId || null },
+    });
+    const base = process.env.WEB_URL || 'https://logismart.ar';
+    return reply.code(201).send({ qr: { ...qr, publicUrl: `${base}/feedback-qr/${qr.token}` } });
+  });
+
+  app.delete('/feedback-qrs/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    await (app.prisma as any).feedbackQR.deleteMany({ where: { id, tenantId } });
+    return reply.send({ ok: true });
+  });
+
+  // ── FEEDBACK QR PÚBLICO ──────────────────────────────────────────────────────
+  app.get('/feedback-qr/:token', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const qr = await (app.prisma as any).feedbackQR.findFirst({
+      where: { token, isActive: true },
+      include: { maintenanceAsset: { select: { id: true, name: true, code: true } }, tenant: { select: { name: true } } },
+    });
+    if (!qr) return reply.code(404).send({ error: 'QR no encontrado o inactivo' });
+
+    const inspSelect = {
+      id: true, activoNombre: true, activoCodigo: true, sector: true,
+      dominioTractor: true, dominioSemi: true, inspectorNombre: true,
+      puntaje: true, estado: true, hallazgosCount: true, itemsOk: true, itemsTotal: true,
+      notas: true, createdAt: true, feedbackToken: true,
+      feedback: { select: { id: true, calificacion: true } },
+      hallazgos: { select: { id: true, descripcion: true, severidad: true, itemLabel: true } },
+      respuestas: { include: { item: { select: { id: true, label: true, tipo: true, seccion: true, orden: true } } }, orderBy: { item: { orden: 'asc' as const } } },
+      qr: { select: { sector: true, plantilla: { select: { nombre: true, categoria: true, diagramaFotos: true } } } },
+    };
+
+    // Traer última inspección del activo
+    const ultimaInspeccion = qr.maintenanceAssetId
+      ? await (app.prisma as any).inspeccion.findFirst({
+          where: { qr: { maintenanceAssetId: qr.maintenanceAssetId } },
+          orderBy: { createdAt: 'desc' },
+          select: inspSelect,
+        })
+      : await (app.prisma as any).inspeccion.findFirst({
+          where: { tenantId: qr.tenantId, dominioTractor: { equals: qr.dominioTractor, mode: 'insensitive' } },
+          orderBy: { createdAt: 'desc' },
+          select: inspSelect,
+        });
+
+    await (app.prisma as any).feedbackQR.update({ where: { id: qr.id }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
+
+    return reply.send({ qr: { id: qr.id, activoNombre: qr.activoNombre, activoCodigo: qr.activoCodigo, dominioTractor: qr.dominioTractor, empresa: qr.tenant?.name }, ultimaInspeccion });
+  });
+
+  app.post('/feedback-qr/:token', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const qr = await (app.prisma as any).feedbackQR.findFirst({
+      where: { token, isActive: true },
+      select: { id: true, tenantId: true, maintenanceAssetId: true, dominioTractor: true },
+    });
+    if (!qr) return reply.code(404).send({ error: 'QR no encontrado' });
+
+    const schema = z.object({
+      inspeccionId: z.string().uuid(),
+      receptorNombre: z.string().max(200).optional(),
+      receptorEmpresa: z.string().max(200).optional(),
+      calificacion: z.number().int().min(1).max(5),
+      comentario: z.string().max(2000).optional(),
+      problemaDetectado: z.enum(['GOLPE_CAJA', 'PRECINTO_ROTO', 'FALTANTE', 'HUMEDAD', 'TEMPERATURA', 'OTRO']).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const inspeccion = await (app.prisma as any).inspeccion.findFirst({
+      where: { id: body.data.inspeccionId, tenantId: qr.tenantId },
+      select: { id: true, hallazgosCount: true, feedback: { select: { id: true } } },
+    });
+    if (!inspeccion) return reply.code(404).send({ error: 'Inspección no encontrada' });
+    if (inspeccion.feedback) return reply.code(409).send({ error: 'Esta inspección ya tiene feedback' });
+
+    const discrepanciaDetectada = body.data.calificacion <= 3 && !!body.data.problemaDetectado && inspeccion.hallazgosCount === 0;
+
+    const feedback = await (app.prisma as any).inspeccionFeedbackCliente.create({
+      data: {
+        tenantId: qr.tenantId,
+        inspeccionId: inspeccion.id,
+        receptorNombre: body.data.receptorNombre || null,
+        receptorEmpresa: body.data.receptorEmpresa || null,
+        calificacion: body.data.calificacion,
+        comentario: body.data.comentario || null,
+        problemaDetectado: body.data.problemaDetectado || null,
+        discrepanciaDetectada,
+      },
+    });
+
+    return reply.code(201).send({ ok: true, feedbackId: feedback.id, discrepanciaDetectada });
+  });
+
+  // ── FEEDBACK STATS (satisfacción de cliente) ────────────────────────────────
+  app.get('/feedback-stats', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const desde = new Date(); desde.setDate(desde.getDate() - 90); // últimos 90 días
+    const feedbacks = await (app.prisma as any).inspeccionFeedbackCliente.findMany({
+      where: { tenantId, createdAt: { gte: desde } },
+      select: {
+        id: true, calificacion: true, discrepanciaDetectada: true, problemaDetectado: true,
+        createdAt: true,
+        inspeccion: { select: { activoNombre: true, dominioTractor: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const total = feedbacks.length;
+    if (total === 0) return reply.send({ total: 0, promedio: 0, nivelServicio: 0, nps: 0, tasaDiscrepancia: 0, rankingActivos: [], tendenciaSemanal: [], problemasFrecuentes: [] });
+
+    const promedio = Math.round(feedbacks.reduce((s: number, f: any) => s + f.calificacion, 0) / total * 10) / 10;
+    const nivelServicio = Math.round(feedbacks.filter((f: any) => f.calificacion >= 4).length / total * 100);
+    const promotores = feedbacks.filter((f: any) => f.calificacion >= 4).length;
+    const detractores = feedbacks.filter((f: any) => f.calificacion <= 2).length;
+    const nps = Math.round((promotores - detractores) / total * 100);
+    const tasaDiscrepancia = Math.round(feedbacks.filter((f: any) => f.discrepanciaDetectada).length / total * 100);
+
+    // Ranking por activo
+    const porActivo: Record<string, { nombre: string; dominio: string; sum: number; count: number; reclamos: number }> = {};
+    for (const f of feedbacks) {
+      const key = f.inspeccion?.dominioTractor || f.inspeccion?.activoNombre || 'Sin dominio';
+      if (!porActivo[key]) porActivo[key] = { nombre: f.inspeccion?.activoNombre || key, dominio: key, sum: 0, count: 0, reclamos: 0 };
+      porActivo[key].sum += f.calificacion;
+      porActivo[key].count++;
+    }
+    const rankingActivos = Object.values(porActivo)
+      .map((a) => ({ ...a, promedio: Math.round(a.sum / a.count * 10) / 10 }))
+      .sort((a, b) => b.promedio - a.promedio);
+
+    // Tendencia semanal (últimas 8 semanas)
+    const semanas: Record<string, { semana: string; sum: number; count: number }> = {};
+    for (const f of feedbacks) {
+      const d = new Date(f.createdAt);
+      const mon = new Date(d); mon.setDate(d.getDate() - d.getDay() + 1);
+      const key = mon.toISOString().slice(0, 10);
+      if (!semanas[key]) semanas[key] = { semana: key, sum: 0, count: 0 };
+      semanas[key].sum += f.calificacion;
+      semanas[key].count++;
+    }
+    const tendenciaSemanal = Object.values(semanas)
+      .sort((a, b) => a.semana.localeCompare(b.semana))
+      .slice(-8)
+      .map((s) => ({ semana: s.semana, promedio: Math.round(s.sum / s.count * 10) / 10, total: s.count }));
+
+    // Problemas más frecuentes
+    const problemas: Record<string, number> = {};
+    for (const f of feedbacks) if (f.problemaDetectado) problemas[f.problemaDetectado] = (problemas[f.problemaDetectado] || 0) + 1;
+    const problemasFrecuentes = Object.entries(problemas).map(([tipo, count]) => ({ tipo, count })).sort((a, b) => b.count - a.count);
+
+    return reply.send({ total, promedio, nivelServicio, nps, tasaDiscrepancia, rankingActivos, tendenciaSemanal, problemasFrecuentes });
+  });
+
+  // ── CREAR NCR DESDE FEEDBACK ─────────────────────────────────────────────────
+  app.post('/feedback/:feedbackId/ncr', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { feedbackId } = req.params as any;
+
+    const feedback = await (app.prisma as any).inspeccionFeedbackCliente.findFirst({
+      where: { id: feedbackId, tenantId },
+      include: { inspeccion: { select: { activoNombre: true, dominioTractor: true, inspectorNombre: true, createdAt: true } } },
+    });
+    if (!feedback) return reply.code(404).send({ error: 'Feedback no encontrado' });
+    if (feedback.ncrId) return reply.code(409).send({ error: 'Ya existe un reclamo para este feedback', ncrId: feedback.ncrId });
+
+    const severity = feedback.calificacion <= 2 ? 'MAJOR' : feedback.calificacion === 3 ? 'MINOR' : 'OBSERVATION';
+    const activo = feedback.inspeccion?.dominioTractor || feedback.inspeccion?.activoNombre || 'Sin identificar';
+    const title = `Reclamo de cliente — ${activo}`;
+    let description = `Calificación recibida: ${feedback.calificacion}/5 estrellas.\n`;
+    if (feedback.receptorNombre) description += `Receptor: ${feedback.receptorNombre}${feedback.receptorEmpresa ? ` (${feedback.receptorEmpresa})` : ''}.\n`;
+    if (feedback.problemaDetectado) description += `Problema declarado: ${feedback.problemaDetectado.replace(/_/g, ' ')}.\n`;
+    if (feedback.comentario) description += `Comentario: "${feedback.comentario}".\n`;
+    if (feedback.discrepanciaDetectada) description += `⚠ DISCREPANCIA: el cliente reportó un problema que no fue detectado en la inspección del conductor.`;
+
+    const count = await (app.prisma as any).nonConformity.count({ where: { tenantId } });
+    const year = new Date().getFullYear();
+    const code = `NCR-${year}-${String(count + 1).padStart(3, '0')}`;
+
+    const ncr = await (app.prisma as any).nonConformity.create({
+      data: {
+        tenantId, code, title, description,
+        severity, source: 'CUSTOMER_COMPLAINT', status: 'OPEN',
+        detectedAt: new Date(),
+        createdById: (req as any).auth?.userId ?? null,
+        updatedById: (req as any).auth?.userId ?? null,
+      },
+    });
+
+    await (app.prisma as any).inspeccionFeedbackCliente.update({
+      where: { id: feedbackId },
+      data: { ncrId: ncr.id },
+    });
+
+    return reply.code(201).send({ ok: true, ncr });
   });
 }

@@ -5678,6 +5678,8 @@ model Inspeccion {
   notas           String?
   dominioTractor  String?
   dominioSemi     String?
+  empresaTransporte String?
+  conductor       String?
   lat             Float?
   lng             Float?
   kmReported      Float?   // odómetro registrado al tomar el vehículo

@@ -240,7 +240,8 @@ export async function apiFetch<T>(
   const isOnLoginPage = typeof window !== 'undefined' &&
     (window.location.pathname === '/login' || window.location.pathname.startsWith('/login') ||
      window.location.pathname.startsWith('/canal/') || window.location.pathname.startsWith('/responder/') ||
-     window.location.pathname.startsWith('/inspeccionar/'));
+     window.location.pathname.startsWith('/inspeccionar/') || window.location.pathname.startsWith('/feedback-qr/') ||
+     window.location.pathname.startsWith('/feedback/'));
   if (res.status === 401 && !isPublicAuth && !isOnLoginPage) {
     const refreshed = await getRefreshPromise();
     if (refreshed) {

@@ -31,6 +31,8 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/hr')) return true;
   if (url.startsWith('/clima')) return true; // Clima y Cultura routes
   if (url.startsWith('/inspecciones/public')) return true; // Inspecciones QR públicas (sin auth)
+  if (url.startsWith('/inspecciones/feedback-qr/')) return true; // Feedback QR público (sin auth)
+  if (url.startsWith('/inspecciones/feedback/')) return true; // Feedback por token (sin auth)
   if (url.startsWith('/emergency')) return true; // Emergency routes para simulacros
   if (url.startsWith('/maintenance')) return true; // Maintenance routes
   if (url.startsWith('/project360')) return true; // Project360 routes

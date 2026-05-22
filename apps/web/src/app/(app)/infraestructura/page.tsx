@@ -1,16 +1,14 @@
 'use client';
 import { Suspense } from 'react';
-import { Settings, Ruler, Package, ScanLine } from 'lucide-react';
+import { Settings, Ruler, ScanLine } from 'lucide-react';
 import PageTabs from '@/components/PageTabs';
 import MantenimientoContent from './_tabs/MantenimientoContent';
 import CalibracionesContent from './_tabs/CalibracionesContent';
-import ActivosContent from './_tabs/ActivosContent';
 import InspeccionesContent from './_tabs/InspeccionesContent';
 
 const TABS = [
   { key: 'mantenimiento', label: 'Mantenimiento', icon: Settings },
   { key: 'calibraciones', label: 'Calibraciones', icon: Ruler },
-  { key: 'activos', label: 'Activos', icon: Package },
   { key: 'inspecciones', label: 'Inspecciones Inteligentes', icon: ScanLine },
 ];
 
@@ -27,7 +25,6 @@ export default function InfraestructuraPage() {
             <>
               {active === 'mantenimiento' && <MantenimientoContent />}
               {active === 'calibraciones' && <CalibracionesContent />}
-              {active === 'activos' && <ActivosContent />}
               {active === 'inspecciones' && <InspeccionesContent />}
             </>
           )}
