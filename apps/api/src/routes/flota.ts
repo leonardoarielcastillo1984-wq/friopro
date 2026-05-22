@@ -766,6 +766,222 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ historial });
   });
 
+  // GET diagrama de ejes de un vehículo: neumáticos montados por posición
+  app.get('/vehiculos/:id/diagrama', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({ where: { id, tenantId } });
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+    const posiciones = await (app.prisma as any).neumaticoPosicion.findMany({
+      where: { vehiculoId: id, tenantId, activo: true },
+      include: { neumatico: { select: { id: true, codigo: true, marca: true, medida: true, profBanda: true, kmAcumulados: true, status: true, presionRecomendada: true, funcion: true } } },
+      orderBy: [{ eje: 'asc' }, { lado: 'asc' }],
+    });
+    // Última presión por posición
+    const presionesUltimas = await (app.prisma as any).neumaticoPresion.findMany({
+      where: { vehiculoId: id, tenantId },
+      orderBy: { fecha: 'desc' },
+    });
+    const presMap: any = {};
+    for (const p of presionesUltimas) {
+      const key = `${p.eje}-${p.lado}-${p.posicion}`;
+      if (!presMap[key]) presMap[key] = p;
+    }
+    const posicionesEnriquecidas = posiciones.map((p: any) => ({
+      ...p,
+      ultimaPresion: presMap[`${p.eje}-${p.lado}-${p.posicion}`] || null,
+    }));
+    return reply.send({ vehiculo, posiciones: posicionesEnriquecidas });
+  });
+
+  // GET CPK (costo por kilómetro) de un neumático
+  app.get('/neumaticos/:id/cpk', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const n = await (app.prisma as any).neumatico.findFirst({
+      where: { id, tenantId },
+      include: { recaps: true },
+    });
+    if (!n) return reply.code(404).send({ error: 'No encontrado' });
+    const costoRecaps = (n.recaps || []).reduce((s: number, r: any) => s + (r.costo || 0), 0);
+    const costoTotal = (n.precioCompra || 0) + costoRecaps;
+    const cpk = n.kmAcumulados > 0 ? costoTotal / n.kmAcumulados : null;
+    return reply.send({ cpk, costoTotal, costoRecaps, kmAcumulados: n.kmAcumulados });
+  });
+
+  // POST rotación: mueve un neumático de posición en el mismo vehículo
+  app.post('/neumaticos/:neumaticoId/rotar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { neumaticoId } = req.params as any;
+    const schema = z.object({
+      ejeDestino: z.number().int().min(1),
+      ladoDestino: z.enum(['IZQ', 'DER']),
+      posDestino: z.enum(['SIMPLE', 'EXT', 'INT']).default('SIMPLE'),
+      kmAlRotar: z.number().optional(),
+      notas: z.string().optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const posActiva = await (app.prisma as any).neumaticoPosicion.findFirst({
+      where: { neumaticoId, activo: true, tenantId },
+    });
+    if (!posActiva) return reply.code(400).send({ error: 'Neumático no montado' });
+    // Registrar rotación
+    await (app.prisma as any).neumaticoRotacion.create({
+      data: {
+        tenantId, neumaticoId,
+        vehiculoId: posActiva.vehiculoId,
+        ejeOrigen: posActiva.eje, ladoOrigen: posActiva.lado, posOrigen: posActiva.posicion,
+        ejeDestino: body.data.ejeDestino, ladoDestino: body.data.ladoDestino, posDestino: body.data.posDestino,
+        kmAlRotar: body.data.kmAlRotar, notas: body.data.notas,
+      },
+    });
+    // Actualizar posición activa
+    await (app.prisma as any).neumaticoPosicion.updateMany({
+      where: { neumaticoId, activo: true, tenantId },
+      data: { eje: body.data.ejeDestino, lado: body.data.ladoDestino, posicion: body.data.posDestino },
+    });
+    return reply.send({ ok: true });
+  });
+
+  // GET rotaciones de un neumático
+  app.get('/neumaticos/:id/rotaciones', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const rotaciones = await (app.prisma as any).neumaticoRotacion.findMany({
+      where: { neumaticoId: id, tenantId },
+      orderBy: { fecha: 'desc' },
+    });
+    return reply.send({ rotaciones });
+  });
+
+  // POST presión
+  app.post('/neumaticos/:neumaticoId/presion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { neumaticoId } = req.params as any;
+    const schema = z.object({
+      vehiculoId: z.string().uuid(),
+      eje: z.number().int().min(1),
+      lado: z.enum(['IZQ', 'DER']),
+      posicion: z.enum(['SIMPLE', 'EXT', 'INT']).default('SIMPLE'),
+      presionMedida: z.number().positive(),
+      temperatura: z.number().optional(),
+      observador: z.string().optional(),
+      notas: z.string().optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const presion = await (app.prisma as any).neumaticoPresion.create({
+      data: { ...body.data, neumaticoId, tenantId },
+    });
+    return reply.code(201).send({ presion });
+  });
+
+  // GET historial de presiones de un neumático
+  app.get('/neumaticos/:id/presiones', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const presiones = await (app.prisma as any).neumaticoPresion.findMany({
+      where: { neumaticoId: id, tenantId },
+      orderBy: { fecha: 'desc' },
+      take: 50,
+    });
+    return reply.send({ presiones });
+  });
+
+  // POST daño en neumático
+  app.post('/neumaticos/:neumaticoId/danio', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { neumaticoId } = req.params as any;
+    const schema = z.object({
+      tipo: z.enum(['CORTE', 'BURBUJA', 'DESGASTE_IRREGULAR', 'SEPARACION', 'IMPACTO', 'OTRO']),
+      severidad: z.enum(['LEVE', 'GRAVE', 'INMEDIATO']).default('LEVE'),
+      descripcion: z.string().optional(),
+      notas: z.string().optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const danio = await (app.prisma as any).neumaticoDanio.create({
+      data: { ...body.data, neumaticoId, tenantId },
+    });
+    return reply.code(201).send({ danio });
+  });
+
+  // PATCH daño (actualizar estado)
+  app.patch('/neumaticos/danio/:danioId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { danioId } = req.params as any;
+    const { estado } = req.body as any;
+    await (app.prisma as any).neumaticoDanio.updateMany({ where: { id: danioId, tenantId }, data: { estado } });
+    return reply.send({ ok: true });
+  });
+
+  // GET daños de un neumático
+  app.get('/neumaticos/:id/danios', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const danios = await (app.prisma as any).neumaticoDanio.findMany({
+      where: { neumaticoId: id, tenantId },
+      orderBy: { fecha: 'desc' },
+    });
+    return reply.send({ danios });
+  });
+
+  // POST recap
+  app.post('/neumaticos/:neumaticoId/recap', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { neumaticoId } = req.params as any;
+    const schema = z.object({
+      proveedor: z.string().optional(),
+      fecha: z.string().optional(),
+      costo: z.number().optional(),
+      profBandaPost: z.number().optional(),
+      garantiaKm: z.number().optional(),
+      notas: z.string().optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const recap = await (app.prisma as any).neumaticoRecap.create({
+      data: {
+        ...body.data,
+        fecha: body.data.fecha ? new Date(body.data.fecha) : new Date(),
+        neumaticoId,
+        tenantId,
+      },
+    });
+    await (app.prisma as any).neumatico.updateMany({
+      where: { id: neumaticoId },
+      data: {
+        condicion: 'RECAPADA',
+        recapsCount: { increment: 1 },
+        ...(body.data.profBandaPost != null ? { profBanda: body.data.profBandaPost } : {}),
+      },
+    });
+    return reply.code(201).send({ recap });
+  });
+
+  // GET recaps de un neumático
+  app.get('/neumaticos/:id/recaps', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const recaps = await (app.prisma as any).neumaticoRecap.findMany({
+      where: { neumaticoId: id, tenantId },
+      orderBy: { fecha: 'desc' },
+    });
+    return reply.send({ recaps });
+  });
+
   // ═══════════════════════════════════════════════════════════════
   // COMBUSTIBLE
   // ═══════════════════════════════════════════════════════════════

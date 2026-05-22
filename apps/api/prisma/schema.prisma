@@ -5836,6 +5836,8 @@ model Vehiculo {
   // Identificación
   dominio      String  // patente
   tipo         String  @default("CAMION") // CAMION, TRACTOR, SEMI, UTILITARIO, OTRO
+  cantEjes     Int     @default(2)        // cantidad de ejes del vehículo
+  configEjes   String? // ej: "4x2", "6x4", "8x4", "SEMI_4EJE"
   marca        String?
   modelo       String?
   anio         Int?
@@ -5936,6 +5938,14 @@ model Neumatico {
   medida   String? // ej: 295/80R22.5
   dot       String? // fecha de fabricación DOT
   condicion String  @default("NUEVA") // NUEVA, USADA, RECAPADA
+  funcion   String? // DIRECCION, TRACCION, REMOLQUE (función predominante del eje)
+
+  // Proveedor / compra
+  proveedor      String?
+  fechaCompra    DateTime? @db.Timestamptz
+  precioCompra   Float?
+  garantiaKm     Float?    // km de garantía
+  garantiaMeses  Int?      // meses de garantía
 
   // Vínculo opcional con artículo de Repuestos (descuenta stock al montar)
   sparePartId String? @db.Uuid
@@ -5943,10 +5953,17 @@ model Neumatico {
   // Estado
   status       String @default("DISPONIBLE") // DISPONIBLE, EN_USO, EN_REPARACION, BAJA
   kmAcumulados Float  @default(0)
-  profBanda    Float? // mm de profundidad de banda (desgaste)
+  profBanda    Float? // mm de profundidad de banda actual (mm)
+  profBandaOriginal Float? // profundidad de banda nueva (para calcular desgaste %)
+  presionRecomendada Float? // PSI recomendada
+  recapsCount  Int    @default(0)
   notas        String?
 
   posiciones NeumaticoPosicion[]
+  rotaciones NeumaticoRotacion[]
+  presiones  NeumaticoPresion[]
+  danios     NeumaticoDanio[]
+  recaps     NeumaticoRecap[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -5954,6 +5971,108 @@ model Neumatico {
   @@index([tenantId])
   @@index([codigo])
   @@map("flota_neumaticos")
+}
+
+model NeumaticoRotacion {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  neumaticoId String    @db.Uuid
+  neumatico   Neumatico @relation(fields: [neumaticoId], references: [id], onDelete: Cascade)
+
+  vehiculoId String @db.Uuid
+
+  // Posición origen
+  ejeOrigen  Int
+  ladoOrigen String
+  posOrigen  String @default("SIMPLE")
+
+  // Posición destino
+  ejeDestino  Int
+  ladoDestino String
+  posDestino  String @default("SIMPLE")
+
+  kmAlRotar Float?
+  fecha     DateTime @default(now()) @db.Timestamptz
+  notas     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([neumaticoId])
+  @@map("flota_neumatico_rotaciones")
+}
+
+model NeumaticoPresion {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  neumaticoId String    @db.Uuid
+  neumatico   Neumatico @relation(fields: [neumaticoId], references: [id], onDelete: Cascade)
+
+  vehiculoId  String @db.Uuid
+  eje         Int
+  lado        String
+  posicion    String @default("SIMPLE")
+
+  presionMedida Float  // PSI medida
+  temperatura   Float? // °C al momento de la medición
+  observador    String?
+  fecha         DateTime @default(now()) @db.Timestamptz
+  notas         String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([neumaticoId])
+  @@map("flota_neumatico_presiones")
+}
+
+model NeumaticoDanio {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  neumaticoId String    @db.Uuid
+  neumatico   Neumatico @relation(fields: [neumaticoId], references: [id], onDelete: Cascade)
+
+  tipo       String  // CORTE, BURBUJA, DESGASTE_IRREGULAR, SEPARACION, IMPACTO, OTRO
+  severidad  String  @default("LEVE")   // LEVE, GRAVE, INMEDIATO
+  descripcion String?
+  fotoUrl    String?
+  estado     String  @default("ACTIVO") // ACTIVO, REPARADO, DESCARTADO
+  fecha      DateTime @default(now()) @db.Timestamptz
+  notas      String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([neumaticoId])
+  @@map("flota_neumatico_danios")
+}
+
+model NeumaticoRecap {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  neumaticoId String    @db.Uuid
+  neumatico   Neumatico @relation(fields: [neumaticoId], references: [id], onDelete: Cascade)
+
+  proveedor     String?
+  fecha         DateTime @default(now()) @db.Timestamptz
+  costo         Float?
+  profBandaPost Float?  // banda después del recap (mm)
+  garantiaKm    Float?  // km de garantía del recap
+  notas         String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([neumaticoId])
+  @@map("flota_neumatico_recaps")
 }
 
 model NeumaticoPosicion {

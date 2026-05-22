@@ -555,6 +555,14 @@ export default function MantenimientoPage() {
   const [showDesmontarModal, setShowDesmontarModal] = useState<string | null>(null);
   const [showHistorialNeumModal, setShowHistorialNeumModal] = useState<string | null>(null);
   const [historialNeum, setHistorialNeum] = useState<any[]>([]);
+  const [showDiagramaModal, setShowDiagramaModal] = useState<string | null>(null);
+  const [diagramaData, setDiagramaData] = useState<any>(null);
+  const [showRotarModal, setShowRotarModal] = useState<string | null>(null);
+  const [showPresionModal, setShowPresionModal] = useState<string | null>(null);
+  const [showDanioModal, setShowDanioModal] = useState<string | null>(null);
+  const [showRecapModal, setShowRecapModal] = useState<string | null>(null);
+  const [showDetalleNeumModal, setShowDetalleNeumModal] = useState<string | null>(null);
+  const [detalleNeumData, setDetalleNeumData] = useState<any>(null);
   const [flotaRepuestos, setFlotaRepuestos] = useState<any[]>([]);
   const [showCombustibleModal, setShowCombustibleModal] = useState<string | null>(null);
   const [editingVeh, setEditingVeh] = useState<any>(null);
@@ -642,6 +650,25 @@ export default function MantenimientoPage() {
       setFlotaDashboard(dash || null);
       setFlotaLoaded(true);
     } catch (e) { console.error('Flota load error:', e); }
+  };
+
+  const loadDiagrama = async (vehiculoId: string) => {
+    const data = await apiFetch(`/flota/vehiculos/${vehiculoId}/diagrama`) as any;
+    setDiagramaData(data);
+    setShowDiagramaModal(vehiculoId);
+  };
+
+  const loadDetalleNeum = async (neumaticoId: string) => {
+    const [histData, daniosData, recapsData, rotData, presData, cpkData] = await Promise.all([
+      apiFetch(`/flota/neumaticos/${neumaticoId}/historial`),
+      apiFetch(`/flota/neumaticos/${neumaticoId}/danios`),
+      apiFetch(`/flota/neumaticos/${neumaticoId}/recaps`),
+      apiFetch(`/flota/neumaticos/${neumaticoId}/rotaciones`),
+      apiFetch(`/flota/neumaticos/${neumaticoId}/presiones`),
+      apiFetch(`/flota/neumaticos/${neumaticoId}/cpk`),
+    ]) as any[];
+    setDetalleNeumData({ historial: histData.historial || [], danios: daniosData.danios || [], recaps: recapsData.recaps || [], rotaciones: rotData.rotaciones || [], presiones: presData.presiones || [], cpk: cpkData });
+    setShowDetalleNeumModal(neumaticoId);
   };
 
   const loadHistorialNeum = async (neumaticoId: string) => {
@@ -757,6 +784,26 @@ export default function MantenimientoPage() {
     if (!confirm('¿Desmontar neumático?')) return;
     await apiFetch(`/flota/neumaticos/${neumaticoId}/desmontar`, { method: 'POST', json: {} });
     loadFlotaData();
+  };
+
+  const rotarNeumatico = async (neumaticoId: string, data: any) => {
+    await apiFetch(`/flota/neumaticos/${neumaticoId}/rotar`, { method: 'POST', json: data });
+    setShowRotarModal(null); loadFlotaData();
+  };
+
+  const registrarPresion = async (neumaticoId: string, data: any) => {
+    await apiFetch(`/flota/neumaticos/${neumaticoId}/presion`, { method: 'POST', json: data });
+    setShowPresionModal(null); loadFlotaData();
+  };
+
+  const registrarDanio = async (neumaticoId: string, data: any) => {
+    await apiFetch(`/flota/neumaticos/${neumaticoId}/danio`, { method: 'POST', json: data });
+    setShowDanioModal(null); loadFlotaData();
+  };
+
+  const registrarRecap = async (neumaticoId: string, data: any) => {
+    await apiFetch(`/flota/neumaticos/${neumaticoId}/recap`, { method: 'POST', json: data });
+    setShowRecapModal(null); loadFlotaData();
   };
 
   const saveVencimiento = async (vehiculoId: string, data: any) => {
@@ -2045,6 +2092,7 @@ export default function MantenimientoPage() {
                         <div className="flex gap-2 mt-2">
                           <button onClick={() => setShowVtoModal(v.id)} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50 flex items-center justify-center gap-1"><Calendar className="w-3 h-3" />Vencimientos</button>
                           <button onClick={() => { setSelectedVehComb(v); setShowCombustibleModal(v.id); loadCombustible(v.id); }} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50 flex items-center justify-center gap-1"><Fuel className="w-3 h-3" />Combustible</button>
+                          <button onClick={() => loadDiagrama(v.id)} className="flex-1 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded-lg py-1.5 hover:bg-purple-100 flex items-center justify-center gap-1"><Circle className="w-3 h-3" />Diagrama</button>
                         </div>
                       </div>
                     );
@@ -2063,21 +2111,33 @@ export default function MantenimientoPage() {
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><Circle className="w-5 h-5 text-purple-600" />Neumáticos ({flotaNeumaticos.length})</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Cada neumático es una unidad física. Vinculala a un artículo de Repuestos para gestionar stock.</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Gestión completa: montaje · rotación · presión · daños · recapados · CPK</p>
                 </div>
                 <button onClick={() => { setEditingNeum(null); setShowNeumaticoModal(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><Plus className="w-4 h-4" />Nuevo neumático</button>
               </div>
-              {/* Resumen por estado */}
-              {flotaNeumaticos.length > 0 && (
-                <div className="grid grid-cols-4 gap-2 mb-4">
-                  {(['DISPONIBLE','EN_USO','EN_REPARACION','BAJA'] as const).map(s => {
-                    const cnt = flotaNeumaticos.filter((n: any) => n.status === s).length;
-                    const colors: any = { DISPONIBLE: 'bg-emerald-50 text-emerald-700 border-emerald-200', EN_USO: 'bg-blue-50 text-blue-700 border-blue-200', EN_REPARACION: 'bg-amber-50 text-amber-700 border-amber-200', BAJA: 'bg-red-50 text-red-700 border-red-200' };
-                    const labels: any = { DISPONIBLE: 'Disponibles', EN_USO: 'Montados', EN_REPARACION: 'En reparación', BAJA: 'De baja' };
-                    return <div key={s} className={`rounded-xl border p-2 text-center ${colors[s]}`}><p className="text-lg font-bold">{cnt}</p><p className="text-xs">{labels[s]}</p></div>;
-                  })}
-                </div>
-              )}
+              {/* Resumen por estado + alertas */}
+              {flotaNeumaticos.length > 0 && (() => {
+                const bandaCritica = flotaNeumaticos.filter((n: any) => n.profBanda != null && n.profBanda < 3).length;
+                const bandaAtenc = flotaNeumaticos.filter((n: any) => n.profBanda != null && n.profBanda >= 3 && n.profBanda < 5).length;
+                return (
+                  <div className="space-y-2 mb-4">
+                    <div className="grid grid-cols-4 gap-2">
+                      {(['DISPONIBLE','EN_USO','EN_REPARACION','BAJA'] as const).map(s => {
+                        const cnt = flotaNeumaticos.filter((n: any) => n.status === s).length;
+                        const colors: any = { DISPONIBLE: 'bg-emerald-50 text-emerald-700 border-emerald-200', EN_USO: 'bg-blue-50 text-blue-700 border-blue-200', EN_REPARACION: 'bg-amber-50 text-amber-700 border-amber-200', BAJA: 'bg-red-50 text-red-700 border-red-200' };
+                        const labels: any = { DISPONIBLE: 'Disponibles', EN_USO: 'Montados', EN_REPARACION: 'En reparación', BAJA: 'De baja' };
+                        return <div key={s} className={`rounded-xl border p-2 text-center ${colors[s]}`}><p className="text-lg font-bold">{cnt}</p><p className="text-xs">{labels[s]}</p></div>;
+                      })}
+                    </div>
+                    {(bandaCritica > 0 || bandaAtenc > 0) && (
+                      <div className="flex gap-2">
+                        {bandaCritica > 0 && <div className="flex-1 bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-700 font-semibold">🔴 {bandaCritica} neum. con banda &lt;3mm — REEMPLAZAR</div>}
+                        {bandaAtenc > 0 && <div className="flex-1 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 font-semibold">🟡 {bandaAtenc} neum. con banda &lt;5mm — atención</div>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {flotaNeumaticos.length === 0 ? (
                 <div className="text-center py-16 bg-gray-50 rounded-xl"><Circle className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-500">Sin neumáticos registrados</p></div>
               ) : (
@@ -2086,8 +2146,11 @@ export default function MantenimientoPage() {
                     const montadoEn = (n.posiciones || []).find((p: any) => p.activo);
                     const sColor: any = { DISPONIBLE: 'bg-emerald-100 text-emerald-700', EN_USO: 'bg-blue-100 text-blue-700', EN_REPARACION: 'bg-amber-100 text-amber-700', BAJA: 'bg-red-100 text-red-600' };
                     const bandaAlert = n.profBanda != null && n.profBanda < 3;
+                    const bandaAtenc = n.profBanda != null && n.profBanda >= 3 && n.profBanda < 5;
+                    const desgaste = (n.profBandaOriginal && n.profBanda != null) ? Math.round(((n.profBandaOriginal - n.profBanda) / n.profBandaOriginal) * 100) : null;
+                    const vidaUtil = (n.profBandaOriginal && n.profBanda != null && n.kmAcumulados > 0) ? Math.round(((n.profBanda - 1.6) / n.profBandaOriginal) * n.kmAcumulados / (n.kmAcumulados / 100) * 100) : null;
                     return (
-                      <div key={n.id} className={`bg-white rounded-xl border p-4 ${bandaAlert ? 'border-red-300' : 'border-gray-200'}`}>
+                      <div key={n.id} className={`bg-white rounded-xl border p-4 ${bandaAlert ? 'border-red-300 shadow-sm shadow-red-100' : bandaAtenc ? 'border-amber-300' : 'border-gray-200'}`}>
                         <div className="flex items-start justify-between mb-1">
                           <div>
                             <p className="font-bold text-gray-900">{n.codigo}</p>
@@ -2095,32 +2158,50 @@ export default function MantenimientoPage() {
                           </div>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${sColor[n.status] || 'bg-gray-100 text-gray-500'}`}>{n.status}</span>
                         </div>
-                        {/* Condición + articulo repuesto */}
+                        {/* Badges */}
                         <div className="flex flex-wrap gap-1 mb-2">
-                          {n.condicion && <span className={`text-xs px-1.5 py-0.5 rounded ${n.condicion === 'NUEVA' ? 'bg-emerald-50 text-emerald-700' : n.condicion === 'RECAPADA' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>{n.condicion}</span>}
-                          {n.sparePart && <span className="text-xs bg-purple-50 text-purple-700 border border-purple-100 px-1.5 py-0.5 rounded">📦 {n.sparePart.name} · stock: {n.sparePart.currentStock}</span>}
-                          {bandaAlert && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-semibold">⚠ banda baja</span>}
+                          {n.condicion && <span className={`text-xs px-1.5 py-0.5 rounded ${n.condicion === 'NUEVA' ? 'bg-emerald-50 text-emerald-700' : n.condicion === 'RECAPADA' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>{n.condicion}{n.recapsCount > 0 ? ` ×${n.recapsCount}` : ''}</span>}
+                          {n.funcion && <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{n.funcion}</span>}
+                          {n.sparePart && <span className="text-xs bg-purple-50 text-purple-700 border border-purple-100 px-1.5 py-0.5 rounded">📦 {n.sparePart.name}</span>}
+                          {bandaAlert && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-semibold animate-pulse">🔴 banda crítica</span>}
+                          {bandaAtenc && !bandaAlert && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-semibold">🟡 banda baja</span>}
                         </div>
                         {/* Métricas */}
-                        <div className="grid grid-cols-3 gap-1.5 text-xs text-center mb-2">
-                          <div className="bg-gray-50 rounded-lg p-1.5"><p className="font-bold text-gray-800">{(n.kmAcumulados || 0).toLocaleString('es-AR')}</p><p className="text-gray-400">km acum.</p></div>
-                          <div className={`rounded-lg p-1.5 ${bandaAlert ? 'bg-red-50' : 'bg-gray-50'}`}><p className={`font-bold ${bandaAlert ? 'text-red-600' : 'text-gray-800'}`}>{n.profBanda != null ? `${n.profBanda}mm` : '—'}</p><p className="text-gray-400">banda</p></div>
-                          <div className="bg-gray-50 rounded-lg p-1.5"><p className="font-bold text-gray-800">{n.dot || '—'}</p><p className="text-gray-400">DOT</p></div>
+                        <div className="grid grid-cols-4 gap-1 text-xs text-center mb-2">
+                          <div className="bg-gray-50 rounded-lg p-1.5"><p className="font-bold text-gray-800 text-[11px]">{(n.kmAcumulados || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p><p className="text-gray-400">km acum.</p></div>
+                          <div className={`rounded-lg p-1.5 ${bandaAlert ? 'bg-red-50' : bandaAtenc ? 'bg-amber-50' : 'bg-gray-50'}`}><p className={`font-bold text-[11px] ${bandaAlert ? 'text-red-600' : bandaAtenc ? 'text-amber-600' : 'text-gray-800'}`}>{n.profBanda != null ? `${n.profBanda}mm` : '—'}</p><p className="text-gray-400">banda</p></div>
+                          <div className="bg-gray-50 rounded-lg p-1.5"><p className="font-bold text-gray-800 text-[11px]">{desgaste != null ? `${desgaste}%` : '—'}</p><p className="text-gray-400">desgaste</p></div>
+                          <div className="bg-gray-50 rounded-lg p-1.5"><p className="font-bold text-gray-800 text-[11px]">{n.dot || '—'}</p><p className="text-gray-400">DOT</p></div>
                         </div>
+                        {/* Proveedor / compra */}
+                        {(n.proveedor || n.precioCompra) && (
+                          <div className="text-xs text-gray-400 mb-2">{n.proveedor && <span>{n.proveedor}</span>}{n.precioCompra && <span> · ${n.precioCompra.toLocaleString('es-AR')}</span>}{n.garantiaKm && <span> · gta. {n.garantiaKm.toLocaleString('es-AR')} km</span>}</div>
+                        )}
                         {/* Montado en */}
                         {montadoEn && (
                           <div className="bg-blue-50 rounded-lg px-3 py-1.5 mb-2 text-xs text-blue-700 flex justify-between items-center">
-                            <span className="font-semibold">🚛 {montadoEn.vehiculo?.dominio} · E{montadoEn.eje}-{montadoEn.lado}</span>
+                            <span className="font-semibold">🚛 {montadoEn.vehiculo?.dominio} · E{montadoEn.eje}-{montadoEn.lado}{montadoEn.posicion !== 'SIMPLE' ? `-${montadoEn.posicion}` : ''}</span>
                             {montadoEn.kmAlMontar != null && <span className="text-blue-500">desde {montadoEn.kmAlMontar.toLocaleString('es-AR')} km</span>}
                           </div>
                         )}
-                        {/* Acciones */}
+                        {/* Acciones principales */}
                         <div className="flex gap-1.5 mt-2">
                           {n.status === 'DISPONIBLE' && <button onClick={() => setShowMontarModal(n.id)} className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-1.5 hover:bg-blue-700 flex items-center justify-center gap-1"><Plus className="w-3 h-3" />Montar</button>}
-                          {n.status === 'EN_USO' && <button onClick={() => setShowDesmontarModal(n.id)} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50 flex items-center justify-center gap-1"><X className="w-3 h-3" />Desmontar</button>}
-                          <button onClick={() => loadHistorialNeum(n.id)} className="text-xs border border-gray-200 text-gray-500 rounded-lg py-1.5 px-2 hover:bg-gray-50">Historial</button>
-                          <button onClick={() => { setEditingNeum(n); setShowNeumaticoModal(true); }} className="text-xs border border-gray-200 text-gray-500 rounded-lg py-1.5 px-2 hover:bg-gray-50" title="Editar"><Edit className="w-3 h-3" /></button>
-                          {n.status === 'DISPONIBLE' && <button onClick={() => deleteNeumatico(n.id)} className="text-xs border border-red-200 text-red-500 rounded-lg py-1.5 px-2 hover:bg-red-50" title="Eliminar"><Trash2 className="w-3 h-3" /></button>}
+                          {n.status === 'EN_USO' && (
+                            <>
+                              <button onClick={() => setShowDesmontarModal(n.id)} className="flex-1 text-xs border border-gray-200 text-gray-600 rounded-lg py-1.5 hover:bg-gray-50">Desmontar</button>
+                              <button onClick={() => setShowRotarModal(n.id)} className="flex-1 text-xs bg-violet-50 text-violet-700 border border-violet-200 rounded-lg py-1.5 hover:bg-violet-100">🔄 Rotar</button>
+                            </>
+                          )}
+                        </div>
+                        {/* Acciones secundarias */}
+                        <div className="flex gap-1 mt-1.5">
+                          <button onClick={() => loadDetalleNeum(n.id)} className="flex-1 text-[11px] bg-gray-50 text-gray-600 border border-gray-200 rounded-lg py-1 hover:bg-gray-100">📋 Detalle</button>
+                          <button onClick={() => setShowPresionModal(n.id)} className="flex-1 text-[11px] bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-lg py-1 hover:bg-cyan-100" title="Registrar presión">💨 Presión</button>
+                          <button onClick={() => setShowDanioModal(n.id)} className="flex-1 text-[11px] bg-red-50 text-red-600 border border-red-200 rounded-lg py-1 hover:bg-red-100" title="Registrar daño">⚠ Daño</button>
+                          <button onClick={() => setShowRecapModal(n.id)} className="flex-1 text-[11px] bg-orange-50 text-orange-600 border border-orange-200 rounded-lg py-1 hover:bg-orange-100" title="Registrar recap">♻ Recap</button>
+                          <button onClick={() => { setEditingNeum(n); setShowNeumaticoModal(true); }} className="text-[11px] border border-gray-200 text-gray-500 rounded-lg py-1 px-2 hover:bg-gray-50"><Edit className="w-3 h-3" /></button>
+                          {n.status === 'DISPONIBLE' && <button onClick={() => deleteNeumatico(n.id)} className="text-[11px] border border-red-200 text-red-500 rounded-lg py-1 px-2 hover:bg-red-50"><Trash2 className="w-3 h-3" /></button>}
                         </div>
                       </div>
                     );
@@ -3509,6 +3590,87 @@ export default function MantenimientoPage() {
         </FlotaModal>
       )}
 
+      {/* ══ DIAGRAMA DE EJES ══ */}
+      {showDiagramaModal && diagramaData && (
+        <FlotaModal title="Diagrama de ejes" onClose={() => { setShowDiagramaModal(null); setDiagramaData(null); }}>
+          <DiagramaEjes
+            vehiculo={diagramaData.vehiculo}
+            posiciones={diagramaData.posiciones || []}
+            onClose={() => { setShowDiagramaModal(null); setDiagramaData(null); }}
+          />
+        </FlotaModal>
+      )}
+
+      {/* ══ ROTACIÓN ══ */}
+      {showRotarModal && (() => {
+        const n = flotaNeumaticos.find(x => x.id === showRotarModal);
+        return (
+          <FlotaModal title={`Rotar — ${n?.codigo || ''}`} onClose={() => setShowRotarModal(null)}>
+            <FlotaRotarForm
+              neumatico={n}
+              onSave={(data: any) => rotarNeumatico(showRotarModal, data)}
+              onClose={() => setShowRotarModal(null)}
+            />
+          </FlotaModal>
+        );
+      })()}
+
+      {/* ══ PRESIÓN ══ */}
+      {showPresionModal && (() => {
+        const n = flotaNeumaticos.find(x => x.id === showPresionModal);
+        return (
+          <FlotaModal title={`Presión — ${n?.codigo || ''}`} onClose={() => setShowPresionModal(null)}>
+            <FlotaPresionForm
+              neumatico={n}
+              onSave={(data: any) => registrarPresion(showPresionModal, data)}
+              onClose={() => setShowPresionModal(null)}
+            />
+          </FlotaModal>
+        );
+      })()}
+
+      {/* ══ DAÑO ══ */}
+      {showDanioModal && (() => {
+        const n = flotaNeumaticos.find(x => x.id === showDanioModal);
+        return (
+          <FlotaModal title={`Registrar daño — ${n?.codigo || ''}`} onClose={() => setShowDanioModal(null)}>
+            <FlotaDanioForm
+              neumatico={n}
+              onSave={(data: any) => registrarDanio(showDanioModal, data)}
+              onClose={() => setShowDanioModal(null)}
+            />
+          </FlotaModal>
+        );
+      })()}
+
+      {/* ══ RECAP ══ */}
+      {showRecapModal && (() => {
+        const n = flotaNeumaticos.find(x => x.id === showRecapModal);
+        return (
+          <FlotaModal title={`Recapado — ${n?.codigo || ''}`} onClose={() => setShowRecapModal(null)}>
+            <FlotaRecapForm
+              neumatico={n}
+              onSave={(data: any) => registrarRecap(showRecapModal, data)}
+              onClose={() => setShowRecapModal(null)}
+            />
+          </FlotaModal>
+        );
+      })()}
+
+      {/* ══ DETALLE NEUMÁTICO ══ */}
+      {showDetalleNeumModal && (() => {
+        const n = flotaNeumaticos.find(x => x.id === showDetalleNeumModal);
+        return (
+          <FlotaModal title={`Detalle — ${n?.codigo || ''}`} onClose={() => { setShowDetalleNeumModal(null); setDetalleNeumData(null); }}>
+            <FlotaDetalleNeum
+              neumatico={n}
+              data={detalleNeumData}
+              onClose={() => { setShowDetalleNeumModal(null); setDetalleNeumData(null); }}
+            />
+          </FlotaModal>
+        );
+      })()}
+
     </div>
   );
 }
@@ -3541,14 +3703,18 @@ function FlotaVehiculoForm({ vehiculo, conductores, tipoLabels, onSave, onClose 
     dominio: vehiculo?.dominio || '', tipo: vehiculo?.tipo || 'CAMION', marca: vehiculo?.marca || '',
     modelo: vehiculo?.modelo || '', anio: vehiculo?.anio?.toString() || '', color: vehiculo?.color || '',
     chasis: vehiculo?.chasis || '', motor: vehiculo?.motor || '', status: vehiculo?.status || 'ACTIVO',
-    conductorId: vehiculo?.conductorId || '', currentOdometer: vehiculo?.currentOdometer?.toString() || '', notas: vehiculo?.notas || '',
+    conductorId: vehiculo?.conductorId || '', currentOdometer: vehiculo?.currentOdometer?.toString() || '',
+    cantEjes: vehiculo?.cantEjes?.toString() || '2', configEjes: vehiculo?.configEjes || '', notas: vehiculo?.notas || '',
   });
   const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  const configOptions: Record<string, string[]> = { CAMION: ['4x2','6x2','6x4','8x2','8x4'], TRACTOR: ['4x2','6x4'], SEMI: ['SEMI_2EJE','SEMI_3EJE','SEMI_4EJE'], UTILITARIO: ['4x2'], OTRO: [] };
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2"><FI label="Dominio / Patente *"><input value={f.dominio} onChange={set('dominio')} className={inp + ' uppercase'} placeholder="ABC123" /></FI></div>
         <FI label="Tipo"><select value={f.tipo} onChange={set('tipo')} className={inp}>{Object.entries(tipoLabels).map(([k, v]: any) => <option key={k} value={k}>{v}</option>)}</select></FI>
+        <FI label="Configuración ejes"><select value={f.configEjes} onChange={set('configEjes')} className={inp}><option value="">—</option>{(configOptions[f.tipo] || []).map(c => <option key={c} value={c}>{c}</option>)}</select></FI>
+        <FI label="Cantidad de ejes"><input type="number" min="1" max="8" value={f.cantEjes} onChange={set('cantEjes')} className={inp} /></FI>
         <FI label="Estado"><select value={f.status} onChange={set('status')} className={inp}>{['ACTIVO','EN_TALLER','INACTIVO','BAJA'].map(s => <option key={s}>{s}</option>)}</select></FI>
         <FI label="Marca"><input value={f.marca} onChange={set('marca')} className={inp} placeholder="Volvo, Scania..." /></FI>
         <FI label="Modelo"><input value={f.modelo} onChange={set('modelo')} className={inp} /></FI>
@@ -3567,7 +3733,7 @@ function FlotaVehiculoForm({ vehiculo, conductores, tipoLabels, onSave, onClose 
       </div>
       <div className="flex gap-3 pt-2">
         <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
-        <button onClick={() => { if (!f.dominio.trim()) return alert('Dominio requerido'); onSave({ ...f, anio: f.anio ? parseInt(f.anio) : undefined, currentOdometer: f.currentOdometer ? parseFloat(f.currentOdometer) : undefined, conductorId: f.conductorId || null, crearActivoMantenimiento: !vehiculo }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Guardar</button>
+        <button onClick={() => { if (!f.dominio.trim()) return alert('Dominio requerido'); onSave({ ...f, anio: f.anio ? parseInt(f.anio) : undefined, cantEjes: parseInt(f.cantEjes) || 2, currentOdometer: f.currentOdometer ? parseFloat(f.currentOdometer) : undefined, conductorId: f.conductorId || null, configEjes: f.configEjes || null, crearActivoMantenimiento: !vehiculo }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">Guardar</button>
       </div>
     </div>
   );
@@ -3605,25 +3771,22 @@ function FlotaConductorForm({ conductor, onSave, onClose }: any) {
 
 function FlotaNeumaticoForm({ repuestos, neumatico, onSave, onClose }: any) {
   const isEditing = !!neumatico;
-  const [f, setF] = useState({ codigo: '', marca: '', modelo: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '', sparePartId: '', notas: '' });
-  
-  // Initialize form with neumatico data when editing
+  const [f, setF] = useState({ codigo: '', marca: '', modelo: '', medida: '', dot: '', condicion: 'NUEVA', funcion: '', profBanda: '', profBandaOriginal: '', presionRecomendada: '', proveedor: '', precioCompra: '', garantiaKm: '', garantiaMeses: '', sparePartId: '', notas: '' });
   useEffect(() => {
     if (neumatico) {
       setF({
-        codigo: neumatico.codigo || '',
-        marca: neumatico.marca || '',
-        modelo: neumatico.modelo || '',
-        medida: neumatico.medida || '',
-        dot: neumatico.dot || '',
-        condicion: neumatico.condicion || 'NUEVA',
-        profBanda: neumatico.profBanda != null ? String(neumatico.profBanda) : '',
-        sparePartId: neumatico.sparePartId || '',
-        notas: neumatico.notas || '',
+        codigo: neumatico.codigo || '', marca: neumatico.marca || '', modelo: neumatico.modelo || '',
+        medida: neumatico.medida || '', dot: neumatico.dot || '', condicion: neumatico.condicion || 'NUEVA',
+        funcion: neumatico.funcion || '', profBanda: neumatico.profBanda != null ? String(neumatico.profBanda) : '',
+        profBandaOriginal: neumatico.profBandaOriginal != null ? String(neumatico.profBandaOriginal) : '',
+        presionRecomendada: neumatico.presionRecomendada != null ? String(neumatico.presionRecomendada) : '',
+        proveedor: neumatico.proveedor || '', precioCompra: neumatico.precioCompra != null ? String(neumatico.precioCompra) : '',
+        garantiaKm: neumatico.garantiaKm != null ? String(neumatico.garantiaKm) : '',
+        garantiaMeses: neumatico.garantiaMeses != null ? String(neumatico.garantiaMeses) : '',
+        sparePartId: neumatico.sparePartId || '', notas: neumatico.notas || '',
       });
     }
   }, [neumatico]);
-  
   const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
   const selPart = repuestos.find((r: any) => r.id === f.sparePartId);
   return (
@@ -3636,21 +3799,27 @@ function FlotaNeumaticoForm({ repuestos, neumatico, onSave, onClose }: any) {
               {repuestos.map((r: any) => <option key={r.id} value={r.id}>{r.code} — {r.name} (stock: {r.currentStock})</option>)}
             </select>
           </FI>
-          {selPart && !isEditing && <p className="text-xs text-purple-600 mt-1">📦 Al montar esta rueda, se descontará 1 unidad del stock ({selPart.currentStock} disponibles)</p>}
+          {selPart && !isEditing && <p className="text-xs text-purple-600 mt-1">📦 Al montar, se descontará 1 unidad ({selPart.currentStock} disp.)</p>}
           {isEditing && selPart && <p className="text-xs text-gray-400 mt-1">📦 Vinculado a: {selPart.name}</p>}
         </div>
-        <div className="col-span-2"><FI label="Código / Nº serie *"><input value={f.codigo} onChange={set('codigo')} className={inp} placeholder={selPart ? selPart.code + '-001' : 'NM-001'} /></FI></div>
-        <FI label="Marca"><input value={f.marca} onChange={set('marca')} className={inp} placeholder={selPart?.name?.split(' ')[0] || 'Bridgestone...'} /></FI>
+        <div className="col-span-2"><FI label="Código / Nº serie *"><input value={f.codigo} onChange={set('codigo')} className={inp} placeholder="NM-001" /></FI></div>
+        <FI label="Marca"><input value={f.marca} onChange={set('marca')} className={inp} placeholder="Bridgestone, Michelin..." /></FI>
         <FI label="Modelo"><input value={f.modelo} onChange={set('modelo')} className={inp} /></FI>
         <FI label="Medida"><input value={f.medida} onChange={set('medida')} className={inp} placeholder="295/80R22.5" /></FI>
         <FI label="DOT"><input value={f.dot} onChange={set('dot')} className={inp} placeholder="2452" /></FI>
-        <FI label="Condición *"><select value={f.condicion} onChange={set('condicion')} className={inp}><option value="NUEVA">Nueva</option><option value="USADA">Usada</option><option value="RECAPADA">Recapada</option></select></FI>
-        <FI label="Prof. banda (mm)"><input type="number" step="0.1" value={f.profBanda} onChange={set('profBanda')} className={inp} placeholder="12" /></FI>
-        <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-12 resize-none'} /></FI></div>
+        <FI label="Condición"><select value={f.condicion} onChange={set('condicion')} className={inp}><option value="NUEVA">Nueva</option><option value="USADA">Usada</option><option value="RECAPADA">Recapada</option></select></FI>
+        <FI label="Función"><select value={f.funcion} onChange={set('funcion')} className={inp}><option value="">—</option><option value="DIRECCION">Dirección</option><option value="TRACCION">Tracción</option><option value="REMOLQUE">Remolque</option></select></FI>
+        <FI label="Banda actual (mm)"><input type="number" step="0.1" value={f.profBanda} onChange={set('profBanda')} className={inp} placeholder="12" /></FI>
+        <FI label="Banda original (mm)"><input type="number" step="0.1" value={f.profBandaOriginal} onChange={set('profBandaOriginal')} className={inp} placeholder="14" /></FI>
+        <FI label="Presión recom. (PSI)"><input type="number" step="0.5" value={f.presionRecomendada} onChange={set('presionRecomendada')} className={inp} placeholder="110" /></FI>
+        <FI label="Proveedor"><input value={f.proveedor} onChange={set('proveedor')} className={inp} /></FI>
+        <FI label="Precio compra ($)"><input type="number" value={f.precioCompra} onChange={set('precioCompra')} className={inp} /></FI>
+        <FI label="Garantía (km)"><input type="number" value={f.garantiaKm} onChange={set('garantiaKm')} className={inp} /></FI>
+        <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-10 resize-none'} /></FI></div>
       </div>
       <div className="flex gap-3 pt-2">
         <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
-        <button onClick={() => { if (!f.codigo.trim()) return alert('Código requerido'); onSave({ ...f, profBanda: f.profBanda ? parseFloat(f.profBanda) : undefined, sparePartId: f.sparePartId || null }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">{isEditing ? 'Guardar cambios' : 'Crear'}</button>
+        <button onClick={() => { if (!f.codigo.trim()) return alert('Código requerido'); onSave({ ...f, profBanda: f.profBanda ? parseFloat(f.profBanda) : undefined, profBandaOriginal: f.profBandaOriginal ? parseFloat(f.profBandaOriginal) : undefined, presionRecomendada: f.presionRecomendada ? parseFloat(f.presionRecomendada) : undefined, precioCompra: f.precioCompra ? parseFloat(f.precioCompra) : undefined, garantiaKm: f.garantiaKm ? parseFloat(f.garantiaKm) : undefined, garantiaMeses: f.garantiaMeses ? parseInt(f.garantiaMeses) : undefined, sparePartId: f.sparePartId || null, funcion: f.funcion || null, proveedor: f.proveedor || null }); }} className="flex-1 bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 text-sm">{isEditing ? 'Guardar cambios' : 'Crear'}</button>
       </div>
     </div>
   );
@@ -3770,6 +3939,331 @@ function FlotaVtoForm({ vehiculoId, vencimientos, diasHastaVto, onSave, onRenova
         </button>
       )}
       <button onClick={onClose} className="w-full mt-3 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cerrar</button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DIAGRAMA DE EJES — Componente visual
+// ═══════════════════════════════════════════════════════════════
+function DiagramaEjes({ vehiculo, posiciones, onMontarEnPosicion, onClose }: any) {
+  const cantEjes = vehiculo?.cantEjes || 2;
+  const configEjes = vehiculo?.configEjes || '';
+  const tipo = vehiculo?.tipo || 'CAMION';
+
+  // Determinar si cada eje tiene duales (ruedas dobles) en base a configuración
+  const esEjeDual = (ejeNum: number): boolean => {
+    if (tipo === 'SEMI') return ejeNum >= 2; // eje 1 simple, rest duales
+    if (configEjes === '6x4' || configEjes === '8x4') return ejeNum >= 2;
+    if (configEjes === '6x2') return ejeNum === 2;
+    if (configEjes === '8x2') return ejeNum === 2 || ejeNum === 3;
+    if (tipo === 'TRACTOR') return ejeNum >= 2;
+    return false;
+  };
+
+  const getPosicion = (eje: number, lado: string, pos: string) =>
+    posiciones.find((p: any) => p.eje === eje && p.lado === lado && p.posicion === pos);
+
+  const getTireColor = (pos: any) => {
+    if (!pos) return 'bg-gray-100 border-gray-300 text-gray-400';
+    const banda = pos.neumatico?.profBanda;
+    if (banda != null && banda < 3) return 'bg-red-100 border-red-400 text-red-700';
+    if (banda != null && banda < 5) return 'bg-amber-100 border-amber-400 text-amber-700';
+    return 'bg-emerald-100 border-emerald-400 text-emerald-700';
+  };
+
+  const TireSlot = ({ eje, lado, posName, label }: { eje: number; lado: string; posName: string; label: string }) => {
+    const pos = getPosicion(eje, lado, posName);
+    const color = getTireColor(pos);
+    return (
+      <div
+        className={`w-8 h-14 border-2 rounded-md flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-all ${color}`}
+        title={pos ? `${pos.neumatico?.codigo} · ${pos.neumatico?.marca || ''} · ${pos.neumatico?.profBanda != null ? pos.neumatico.profBanda + 'mm' : ''}` : `Vacío — E${eje} ${lado}`}
+        onClick={() => !pos && onMontarEnPosicion && onMontarEnPosicion({ eje, lado, posicion: posName })}
+      >
+        {pos ? (
+          <>
+            <span className="text-[8px] font-bold leading-tight text-center px-0.5">{pos.neumatico?.codigo?.slice(-4) || '?'}</span>
+            {pos.neumatico?.profBanda != null && <span className="text-[7px] leading-tight">{pos.neumatico.profBanda}mm</span>}
+          </>
+        ) : (
+          <span className="text-[9px] opacity-40">+</span>
+        )}
+      </div>
+    );
+  };
+
+  const EjeRow = ({ ejeNum }: { ejeNum: number }) => {
+    const dual = esEjeDual(ejeNum);
+    const ejeLabel = ejeNum === 1 ? (tipo === 'SEMI' ? 'Rey' : 'Dir') : `E${ejeNum}`;
+    return (
+      <div className="flex items-center gap-2">
+        {/* Lado IZQ */}
+        <div className="flex gap-1 justify-end w-20">
+          {dual ? (
+            <>
+              <TireSlot eje={ejeNum} lado="IZQ" posName="INT" label="II" />
+              <TireSlot eje={ejeNum} lado="IZQ" posName="EXT" label="IE" />
+            </>
+          ) : (
+            <TireSlot eje={ejeNum} lado="IZQ" posName="SIMPLE" label="I" />
+          )}
+        </div>
+        {/* Eje central */}
+        <div className="flex flex-col items-center w-16">
+          <div className="w-full h-2 bg-gray-400 rounded-full" />
+          <span className="text-[10px] text-gray-500 font-semibold mt-0.5">{ejeLabel}</span>
+        </div>
+        {/* Lado DER */}
+        <div className="flex gap-1 w-20">
+          {dual ? (
+            <>
+              <TireSlot eje={ejeNum} lado="DER" posName="EXT" label="DE" />
+              <TireSlot eje={ejeNum} lado="DER" posName="INT" label="DI" />
+            </>
+          ) : (
+            <TireSlot eje={ejeNum} lado="DER" posName="SIMPLE" label="D" />
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const ejes = Array.from({ length: cantEjes }, (_, i) => i + 1);
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="font-bold text-gray-900">{vehiculo?.dominio}</p>
+          <p className="text-xs text-gray-500">{tipo}{configEjes ? ` · ${configEjes}` : ''} · {cantEjes} ejes</p>
+        </div>
+        <div className="flex gap-2 text-xs">
+          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-emerald-100 border border-emerald-400 rounded-sm inline-block" />OK</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-amber-100 border border-amber-400 rounded-sm inline-block" />&lt;5mm</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-100 border border-red-400 rounded-sm inline-block" />&lt;3mm</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-gray-100 border border-gray-300 rounded-sm inline-block" />Vacío</span>
+        </div>
+      </div>
+      <div className="flex flex-col gap-4 py-3 bg-gray-50 rounded-xl px-4">
+        {/* Frente del vehículo */}
+        <div className="text-center text-xs text-gray-400 font-medium border-b border-dashed border-gray-300 pb-2">▲ FRENTE</div>
+        <div className="space-y-6">
+          {ejes.map(e => <EjeRow key={e} ejeNum={e} />)}
+        </div>
+        <div className="text-center text-xs text-gray-400 font-medium border-t border-dashed border-gray-300 pt-2">▼ COLA</div>
+      </div>
+      <p className="text-xs text-gray-400 mt-3 text-center">Clic en posición vacía para ver detalle · Verde=OK · Amarillo=atención · Rojo=crítico</p>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-center">
+        <div className="bg-white border border-gray-200 rounded-xl p-2">
+          <p className="font-bold text-gray-800">{posiciones.length}</p>
+          <p className="text-gray-400">montados</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-2">
+          <p className="font-bold text-gray-800">{(cantEjes * 2) + ejes.filter((e: number) => esEjeDual(e)).length * 2}</p>
+          <p className="text-gray-400">posiciones totales</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-2">
+          <p className={`font-bold ${posiciones.some((p: any) => p.neumatico?.profBanda != null && p.neumatico.profBanda < 3) ? 'text-red-600' : posiciones.some((p: any) => p.neumatico?.profBanda != null && p.neumatico.profBanda < 5) ? 'text-amber-600' : 'text-emerald-600'}`}>
+            {posiciones.filter((p: any) => p.neumatico?.profBanda != null && p.neumatico.profBanda < 3).length > 0 ? '⚠ Crítico' : posiciones.filter((p: any) => p.neumatico?.profBanda != null && p.neumatico.profBanda < 5).length > 0 ? '! Atención' : '✓ OK'}
+          </p>
+          <p className="text-gray-400">estado</p>
+        </div>
+      </div>
+      <button onClick={onClose} className="w-full mt-4 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cerrar</button>
+    </div>
+  );
+}
+
+function FlotaRotarForm({ neumatico, onSave, onClose }: any) {
+  const posActiva = (neumatico?.posiciones || []).find((p: any) => p.activo);
+  const [f, setF] = useState({ ejeDestino: '', ladoDestino: 'IZQ', posDestino: 'SIMPLE', kmAlRotar: '', notas: '' });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  return (
+    <div className="space-y-3">
+      {posActiva && (
+        <div className="bg-blue-50 rounded-xl px-3 py-2 text-sm text-blue-700">
+          Posición actual: <strong>E{posActiva.eje} – {posActiva.lado} – {posActiva.posicion}</strong>
+          {posActiva.vehiculo && <span className="ml-2 text-blue-500">· {posActiva.vehiculo.dominio}</span>}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <FI label="Eje destino *"><select value={f.ejeDestino} onChange={set('ejeDestino')} className={inp}><option value="">—</option>{[1,2,3,4,5,6].map(n => <option key={n} value={n}>Eje {n}</option>)}</select></FI>
+        <FI label="Lado destino *"><select value={f.ladoDestino} onChange={set('ladoDestino')} className={inp}><option value="IZQ">Izquierdo</option><option value="DER">Derecho</option></select></FI>
+        <FI label="Posición destino"><select value={f.posDestino} onChange={set('posDestino')} className={inp}><option value="SIMPLE">Simple</option><option value="EXT">Doble externo</option><option value="INT">Doble interno</option></select></FI>
+        <FI label="Km al rotar"><input type="number" value={f.kmAlRotar} onChange={set('kmAlRotar')} className={inp} /></FI>
+        <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-10 resize-none'} /></FI></div>
+      </div>
+      <div className="flex gap-3 pt-2">
+        <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
+        <button onClick={() => { if (!f.ejeDestino) return alert('Eje destino requerido'); onSave({ ejeDestino: parseInt(f.ejeDestino), ladoDestino: f.ladoDestino, posDestino: f.posDestino, kmAlRotar: f.kmAlRotar ? parseFloat(f.kmAlRotar) : undefined, notas: f.notas || undefined }); }} className="flex-1 bg-violet-600 text-white rounded-lg py-2 hover:bg-violet-700 text-sm">🔄 Confirmar rotación</button>
+      </div>
+    </div>
+  );
+}
+
+function FlotaPresionForm({ neumatico, onSave, onClose }: any) {
+  const posActiva = (neumatico?.posiciones || []).find((p: any) => p.activo);
+  const [f, setF] = useState({ presionMedida: '', temperatura: '', observador: '', notas: '' });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  if (!posActiva) return <div className="p-4 text-center text-gray-500 text-sm"><p>El neumático no está montado. Montalo primero para registrar presión.</p><button onClick={onClose} className="mt-3 border border-gray-200 rounded-lg px-4 py-2 text-sm">Cerrar</button></div>;
+  const presionRec = neumatico?.presionRecomendada;
+  return (
+    <div className="space-y-3">
+      <div className="bg-cyan-50 rounded-xl px-3 py-2 text-sm text-cyan-700">
+        {neumatico?.codigo} · E{posActiva.eje} – {posActiva.lado}{posActiva.posicion !== 'SIMPLE' ? ` – ${posActiva.posicion}` : ''}
+        {presionRec && <span className="ml-2 text-cyan-500">· Rec: {presionRec} PSI</span>}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <FI label="Presión medida (PSI) *"><input type="number" step="0.5" value={f.presionMedida} onChange={set('presionMedida')} className={inp} placeholder={presionRec ? String(presionRec) : '110'} autoFocus /></FI>
+          {f.presionMedida && presionRec && (() => {
+            const diff = parseFloat(f.presionMedida) - presionRec;
+            if (Math.abs(diff) > 10) return <p className={`text-xs mt-1 font-semibold ${diff < 0 ? 'text-red-600' : 'text-amber-600'}`}>{diff < 0 ? '⚠ Presión baja' : '⚠ Sobre-inflado'} ({diff > 0 ? '+' : ''}{diff.toFixed(0)} PSI vs recomendada)</p>;
+            return <p className="text-xs mt-1 text-emerald-600">✓ Dentro del rango recomendado</p>;
+          })()}
+        </div>
+        <FI label="Temperatura (°C)"><input type="number" value={f.temperatura} onChange={set('temperatura')} className={inp} /></FI>
+        <FI label="Observador"><input value={f.observador} onChange={set('observador')} className={inp} /></FI>
+        <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-10 resize-none'} /></FI></div>
+      </div>
+      <div className="flex gap-3 pt-2">
+        <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
+        <button onClick={() => { if (!f.presionMedida) return alert('Presión requerida'); onSave({ vehiculoId: posActiva.vehiculoId, eje: posActiva.eje, lado: posActiva.lado, posicion: posActiva.posicion, presionMedida: parseFloat(f.presionMedida), temperatura: f.temperatura ? parseFloat(f.temperatura) : undefined, observador: f.observador || undefined, notas: f.notas || undefined }); }} className="flex-1 bg-cyan-600 text-white rounded-lg py-2 hover:bg-cyan-700 text-sm">💨 Registrar presión</button>
+      </div>
+    </div>
+  );
+}
+
+function FlotaDanioForm({ neumatico, onSave, onClose }: any) {
+  const [f, setF] = useState({ tipo: 'CORTE', severidad: 'LEVE', descripcion: '', notas: '' });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  const severityColor: any = { LEVE: 'text-amber-600', GRAVE: 'text-orange-600', INMEDIATO: 'text-red-600' };
+  return (
+    <div className="space-y-3">
+      <div className="bg-red-50 rounded-xl px-3 py-2 text-sm text-red-700">{neumatico?.codigo} · {[neumatico?.marca, neumatico?.modelo, neumatico?.medida].filter(Boolean).join(' ')}</div>
+      <div className="grid grid-cols-2 gap-3">
+        <FI label="Tipo de daño *">
+          <select value={f.tipo} onChange={set('tipo')} className={inp}>
+            <option value="CORTE">Corte</option>
+            <option value="BURBUJA">Burbuja / hernia</option>
+            <option value="DESGASTE_IRREGULAR">Desgaste irregular</option>
+            <option value="SEPARACION">Separación de banda</option>
+            <option value="IMPACTO">Impacto / golpe</option>
+            <option value="OTRO">Otro</option>
+          </select>
+        </FI>
+        <FI label="Severidad *">
+          <select value={f.severidad} onChange={set('severidad')} className={inp + ' font-semibold ' + severityColor[f.severidad]}>
+            <option value="LEVE">Leve — monitorear</option>
+            <option value="GRAVE">Grave — reparar pronto</option>
+            <option value="INMEDIATO">Inmediato — NO usar</option>
+          </select>
+        </FI>
+        <div className="col-span-2"><FI label="Descripción"><input value={f.descripcion} onChange={set('descripcion')} className={inp} placeholder="Describí el daño..." /></FI></div>
+        <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-10 resize-none'} /></FI></div>
+      </div>
+      {f.severidad === 'INMEDIATO' && <div className="bg-red-100 border border-red-300 rounded-xl px-3 py-2 text-xs text-red-700 font-semibold">⛔ Severidad INMEDIATO: se recomienda desmontar y dar de baja este neumático</div>}
+      <div className="flex gap-3 pt-2">
+        <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
+        <button onClick={() => onSave({ tipo: f.tipo, severidad: f.severidad, descripcion: f.descripcion || undefined, notas: f.notas || undefined })} className="flex-1 bg-red-600 text-white rounded-lg py-2 hover:bg-red-700 text-sm">⚠ Registrar daño</button>
+      </div>
+    </div>
+  );
+}
+
+function FlotaRecapForm({ neumatico, onSave, onClose }: any) {
+  const [f, setF] = useState({ proveedor: '', fecha: new Date().toISOString().split('T')[0], costo: '', profBandaPost: '', garantiaKm: '', notas: '' });
+  const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
+  return (
+    <div className="space-y-3">
+      <div className="bg-orange-50 rounded-xl px-3 py-2 text-sm text-orange-700">{neumatico?.codigo} · Recaps previos: {neumatico?.recapsCount || 0}</div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2"><FI label="Proveedor / recapador"><input value={f.proveedor} onChange={set('proveedor')} className={inp} /></FI></div>
+        <FI label="Fecha"><input type="date" value={f.fecha} onChange={set('fecha')} className={inp} /></FI>
+        <FI label="Costo ($)"><input type="number" value={f.costo} onChange={set('costo')} className={inp} /></FI>
+        <FI label="Banda post-recap (mm)"><input type="number" step="0.1" value={f.profBandaPost} onChange={set('profBandaPost')} className={inp} placeholder="14" /></FI>
+        <FI label="Garantía (km)"><input type="number" value={f.garantiaKm} onChange={set('garantiaKm')} className={inp} /></FI>
+        <div className="col-span-2"><FI label="Notas"><textarea value={f.notas} onChange={set('notas')} className={inp + ' h-10 resize-none'} /></FI></div>
+      </div>
+      <div className="flex gap-3 pt-2">
+        <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cancelar</button>
+        <button onClick={() => onSave({ proveedor: f.proveedor || undefined, fecha: f.fecha, costo: f.costo ? parseFloat(f.costo) : undefined, profBandaPost: f.profBandaPost ? parseFloat(f.profBandaPost) : undefined, garantiaKm: f.garantiaKm ? parseFloat(f.garantiaKm) : undefined, notas: f.notas || undefined })} className="flex-1 bg-orange-600 text-white rounded-lg py-2 hover:bg-orange-700 text-sm">♻ Registrar recapado</button>
+      </div>
+    </div>
+  );
+}
+
+function FlotaDetalleNeum({ neumatico, data, onClose }: any) {
+  const [tab, setTab] = useState<'info' | 'historial' | 'presiones' | 'danios' | 'recaps' | 'rotaciones'>('info');
+  if (!data) return null;
+  const tabs: Array<{ key: typeof tab; label: string }> = [
+    { key: 'info', label: 'Info' }, { key: 'historial', label: 'Historial' },
+    { key: 'presiones', label: `Presiones (${data.presiones?.length || 0})` },
+    { key: 'danios', label: `Daños (${data.danios?.filter((d: any) => d.estado === 'ACTIVO').length || 0})` },
+    { key: 'recaps', label: `Recaps (${data.recaps?.length || 0})` },
+    { key: 'rotaciones', label: `Rotac. (${data.rotaciones?.length || 0})` },
+  ];
+  return (
+    <div>
+      <div className="mb-3 pb-3 border-b border-gray-100">
+        <p className="font-bold text-gray-900 text-lg">{neumatico?.codigo}</p>
+        <p className="text-xs text-gray-500">{[neumatico?.marca, neumatico?.modelo, neumatico?.medida].filter(Boolean).join(' · ')}</p>
+        {data.cpk?.cpk != null && (
+          <div className="mt-2 inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl px-3 py-1 text-xs font-semibold">
+            CPK: ${data.cpk.cpk.toFixed(4)}/km · Total $${data.cpk.costoTotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })} · {data.cpk.kmAcumulados?.toLocaleString('es-AR', { maximumFractionDigits: 0 })} km
+          </div>
+        )}
+      </div>
+      {/* Tabs */}
+      <div className="flex gap-1 mb-3 overflow-x-auto pb-1">
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} className={`text-xs px-2.5 py-1.5 rounded-lg shrink-0 ${tab === t.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{t.label}</button>
+        ))}
+      </div>
+      {/* Contenido tab */}
+      <div className="max-h-80 overflow-y-auto space-y-2">
+        {tab === 'info' && (
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {[['DOT', neumatico?.dot], ['Condición', neumatico?.condicion], ['Función', neumatico?.funcion], ['Proveedor', neumatico?.proveedor], ['Precio', neumatico?.precioCompra ? `$${neumatico.precioCompra.toLocaleString('es-AR')}` : null], ['Garantía', neumatico?.garantiaKm ? `${neumatico.garantiaKm.toLocaleString('es-AR')} km` : null], ['Presión rec.', neumatico?.presionRecomendada ? `${neumatico.presionRecomendada} PSI` : null], ['Km acumulados', neumatico?.kmAcumulados ? `${neumatico.kmAcumulados.toLocaleString('es-AR')} km` : null], ['Banda actual', neumatico?.profBanda != null ? `${neumatico.profBanda} mm` : null], ['Banda original', neumatico?.profBandaOriginal != null ? `${neumatico.profBandaOriginal} mm` : null]].filter(([, v]) => v).map(([k, v]) => (
+              <div key={k} className="bg-gray-50 rounded-xl p-2"><p className="text-gray-400">{k}</p><p className="font-semibold text-gray-800">{v}</p></div>
+            ))}
+          </div>
+        )}
+        {tab === 'historial' && (data.historial?.length === 0 ? <p className="text-sm text-gray-400 text-center py-6">Sin historial</p> : data.historial?.map((h: any) => (
+          <div key={h.id} className="bg-gray-50 rounded-xl px-3 py-2 text-xs">
+            <p className="font-semibold text-gray-800">🚛 {h.vehiculo?.dominio} · E{h.eje}-{h.lado}{h.posicion !== 'SIMPLE' ? `-${h.posicion}` : ''}</p>
+            <p className="text-gray-500">{new Date(h.montadoAt).toLocaleDateString('es-AR')}{h.desmontadoAt ? ` → ${new Date(h.desmontadoAt).toLocaleDateString('es-AR')}` : ' (activo)'}</p>
+            {(h.kmAlMontar != null || h.kmAlDesmontar != null) && <p className="text-gray-400">{h.kmAlMontar?.toLocaleString('es-AR') ?? '?'} → {h.kmAlDesmontar?.toLocaleString('es-AR') ?? '?'} km</p>}
+          </div>
+        )))}
+        {tab === 'presiones' && (data.presiones?.length === 0 ? <p className="text-sm text-gray-400 text-center py-6">Sin registros de presión</p> : data.presiones?.map((p: any) => (
+          <div key={p.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2 text-xs">
+            <div className="flex-1"><span className="font-bold text-cyan-700">{p.presionMedida} PSI</span>{p.temperatura && <span className="text-gray-400"> · {p.temperatura}°C</span>}{p.observador && <span className="text-gray-400"> · {p.observador}</span>}</div>
+            <span className="text-gray-400">{new Date(p.fecha).toLocaleDateString('es-AR')}</span>
+          </div>
+        )))}
+        {tab === 'danios' && (data.danios?.length === 0 ? <p className="text-sm text-gray-400 text-center py-6">Sin daños registrados</p> : data.danios?.map((d: any) => (
+          <div key={d.id} className={`rounded-xl px-3 py-2 text-xs border ${d.estado === 'ACTIVO' ? (d.severidad === 'INMEDIATO' ? 'bg-red-50 border-red-200' : d.severidad === 'GRAVE' ? 'bg-orange-50 border-orange-200' : 'bg-amber-50 border-amber-200') : 'bg-gray-50 border-gray-200 opacity-60'}`}>
+            <div className="flex justify-between"><span className="font-semibold">{d.tipo.replace('_', ' ')}</span><span className={`font-bold ${d.severidad === 'INMEDIATO' ? 'text-red-600' : d.severidad === 'GRAVE' ? 'text-orange-600' : 'text-amber-600'}`}>{d.severidad}</span></div>
+            {d.descripcion && <p className="text-gray-500 mt-0.5">{d.descripcion}</p>}
+            <p className="text-gray-400 mt-0.5">{new Date(d.fecha).toLocaleDateString('es-AR')} · {d.estado}</p>
+          </div>
+        )))}
+        {tab === 'recaps' && (data.recaps?.length === 0 ? <p className="text-sm text-gray-400 text-center py-6">Sin recapados</p> : data.recaps?.map((r: any) => (
+          <div key={r.id} className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 text-xs">
+            <div className="flex justify-between"><span className="font-semibold">{r.proveedor || 'Recapado'}</span>{r.costo && <span className="text-orange-700">${r.costo.toLocaleString('es-AR')}</span>}</div>
+            <p className="text-gray-500">{new Date(r.fecha).toLocaleDateString('es-AR')}{r.profBandaPost && ` · banda post: ${r.profBandaPost}mm`}{r.garantiaKm && ` · gta: ${r.garantiaKm.toLocaleString('es-AR')} km`}</p>
+          </div>
+        )))}
+        {tab === 'rotaciones' && (data.rotaciones?.length === 0 ? <p className="text-sm text-gray-400 text-center py-6">Sin rotaciones</p> : data.rotaciones?.map((r: any) => (
+          <div key={r.id} className="bg-violet-50 border border-violet-200 rounded-xl px-3 py-2 text-xs">
+            <p className="font-semibold text-violet-700">E{r.ejeOrigen}-{r.ladoOrigen} → E{r.ejeDestino}-{r.ladoDestino}</p>
+            <p className="text-gray-500">{new Date(r.fecha).toLocaleDateString('es-AR')}{r.kmAlRotar && ` · ${r.kmAlRotar.toLocaleString('es-AR')} km`}</p>
+          </div>
+        )))}
+      </div>
+      <button onClick={onClose} className="w-full mt-4 border border-gray-200 text-gray-600 rounded-lg py-2 hover:bg-gray-50 text-sm">Cerrar</button>
     </div>
   );
 }
