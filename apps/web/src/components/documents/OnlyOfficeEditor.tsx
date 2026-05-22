@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 
 interface OnlyOfficeEditorProps {
@@ -16,18 +16,21 @@ export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOffi
   const ooBase = process.env.NEXT_PUBLIC_ONLYOFFICE_URL || 'https://docs.logismart.ar';
   const appBase = process.env.NEXT_PUBLIC_APP_URL || 'https://www.logismart.ar';
 
-  const extRaw = (documentTitle || '').split('.').pop()?.toLowerCase() || 'docx';
-  const extMap: Record<string, string> = { doc:'docx', docx:'docx', xls:'xlsx', xlsx:'xlsx', ppt:'pptx', pptx:'pptx', pdf:'pdf' };
-  const fileExt = extMap[extRaw] || 'docx';
+  // URL estable - solo cambia cuando cambia documentId o documentTitle
+  const iframeSrc = useMemo(() => {
+    const extRaw = (documentTitle || '').split('.').pop()?.toLowerCase() || 'docx';
+    const extMap: Record<string, string> = { doc:'docx', docx:'docx', xls:'xlsx', xlsx:'xlsx', ppt:'pptx', pptx:'pptx', pdf:'pdf' };
+    const fileExt = extMap[extRaw] || 'docx';
 
-  const params = new URLSearchParams({
-    docId: documentId,
-    title: documentTitle || 'Documento',
-    ext: fileExt,
-    apiBase: appBase,
-  });
+    const params = new URLSearchParams({
+      docId: documentId,
+      title: documentTitle || 'Documento',
+      ext: fileExt,
+      apiBase: appBase,
+    });
 
-  const iframeSrc = `${ooBase}/editor?${params.toString()}`;
+    return `${ooBase}/editor?${params.toString()}`;
+  }, [documentId, documentTitle, ooBase, appBase]);
 
   return (
     <div className="absolute inset-0 bg-gray-900">
@@ -45,7 +48,6 @@ export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOffi
       )}
       {!error && (
         <iframe
-          key={documentId}
           src={iframeSrc}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
           onLoad={() => setLoading(false)}
