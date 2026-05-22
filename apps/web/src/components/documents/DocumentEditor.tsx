@@ -531,7 +531,6 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
                 </button>
               </div>
             </div>
-          </div>
         </div>
       </div>
 
