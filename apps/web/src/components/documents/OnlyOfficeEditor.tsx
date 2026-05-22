@@ -25,7 +25,6 @@ export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOffi
     title: documentTitle || 'Documento',
     ext: fileExt,
     apiBase: appBase,
-    t: Date.now().toString(),
   });
 
   const iframeSrc = `${ooBase}/editor?${params.toString()}`;
