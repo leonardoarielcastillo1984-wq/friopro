@@ -651,14 +651,15 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const [inspecciones, total] = await Promise.all([
       (app.prisma as any).inspeccion.findMany({
         where,
-        include: { qr: { select: { plantilla: { select: { nombre: true, categoria: true } } } }, _count: { select: { hallazgos: true } }, feedback: { select: { calificacion: true, discrepanciaDetectada: true, createdAt: true } } },
+        include: { qr: { select: { maintenanceAssetId: true, plantilla: { select: { nombre: true, categoria: true } } } }, _count: { select: { hallazgos: true } }, feedback: { select: { calificacion: true, discrepanciaDetectada: true, createdAt: true } } },
         orderBy: { createdAt: 'desc' },
         take: q.limit ? parseInt(q.limit) : 50,
         skip: q.offset ? parseInt(q.offset) : 0,
       }),
       (app.prisma as any).inspeccion.count({ where }),
     ]);
-    return reply.send({ inspecciones, total });
+    const inspeccionesConTercero = inspecciones.map((ins: any) => ({ ...ins, esTercero: !ins.qr?.maintenanceAssetId }));
+    return reply.send({ inspecciones: inspeccionesConTercero, total });
   });
 
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -713,13 +714,14 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const [hallazgos, total] = await Promise.all([
       (app.prisma as any).inspeccionHallazgo.findMany({
         where,
-        include: { inspeccion: { select: { activoNombre: true, activoCodigo: true, createdAt: true } } },
+        include: { inspeccion: { select: { activoNombre: true, activoCodigo: true, createdAt: true, qr: { select: { maintenanceAssetId: true } } } } },
         orderBy: [{ severidad: 'desc' }, { createdAt: 'desc' }],
         take: 100,
       }),
       (app.prisma as any).inspeccionHallazgo.count({ where }),
     ]);
-    return reply.send({ hallazgos, total });
+    const hallazgosConTercero = hallazgos.map((h: any) => ({ ...h, esTercero: !h.inspeccion?.qr?.maintenanceAssetId }));
+    return reply.send({ hallazgos: hallazgosConTercero, total });
   });
 
   app.patch('/hallazgos/:id', async (req: FastifyRequest, reply: FastifyReply) => {

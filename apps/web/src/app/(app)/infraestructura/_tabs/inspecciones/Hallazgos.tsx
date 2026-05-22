@@ -209,6 +209,7 @@ export default function InspeccionesHallazgos() {
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-gray-500">
                         {h.itemLabel && <span className="text-gray-400">📋 {h.itemLabel}</span>}
                         {h.equipoDestino && <span className={`font-semibold px-1.5 py-0.5 rounded ${h.equipoDestino === 'SEMI' ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-700'}`}>{h.equipoDestino === 'SEMI' ? '🚜 Semi' : '🚛 Tractor'}</span>}
+                        {h.esTercero && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">🚛 Fletero</span>}
                         <span>Activo: {h.inspeccion?.activoNombre}</span>
                         <span>{new Date(h.createdAt).toLocaleDateString('es-AR')}</span>
                         {h.responsable && <span className="text-blue-600">👤 {h.responsable}</span>}

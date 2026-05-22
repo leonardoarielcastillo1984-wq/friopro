@@ -215,6 +215,9 @@ export default function InspeccionesLista() {
                           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ESTADO_COLOR[ins.estado] || 'bg-gray-100 text-gray-500'}`}>
                             {ESTADO_LABEL[ins.estado] || ins.estado}
                           </span>
+                          {ins.esTercero && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">🚛 Fletero</span>
+                          )}
                           {ins.puntaje !== null && (
                             <span className={`text-xs font-bold ${ins.puntaje >= 80 ? 'text-emerald-600' : ins.puntaje >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
                               {ins.puntaje}%
