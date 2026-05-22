@@ -1147,6 +1147,17 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       .send(buffer);
   });
 
+  // ── GET /documents/:id/onlyoffice-key — Devuelve key estable por versión (sin auth) ──
+  app.get('/:id/onlyoffice-key', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const prisma = (app as any).prisma;
+    const doc = await prisma.document.findFirst({ where: { id, deletedAt: null }, select: { version: true, updatedAt: true } });
+    const base = id.replace(/-/g, '');
+    const ver = doc ? doc.version : 0;
+    reply.header('Access-Control-Allow-Origin', '*');
+    return reply.send({ key: `${base}_v${ver}` });
+  });
+
   // ── POST /documents/:id/onlyoffice-callback — Callback de OnlyOffice para guardar ──
   app.post('/:id/onlyoffice-callback', async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
