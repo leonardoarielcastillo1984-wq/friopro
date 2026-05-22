@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { Loader2 } from 'lucide-react';
 
 interface OnlyOfficeEditorProps {
@@ -9,7 +9,7 @@ interface OnlyOfficeEditorProps {
   documentTitle?: string;
 }
 
-export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOfficeEditorProps) {
+function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOfficeEditorProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -59,3 +59,5 @@ export default function OnlyOfficeEditor({ documentId, documentTitle }: OnlyOffi
     </div>
   );
 }
+
+export default memo(OnlyOfficeEditor);
