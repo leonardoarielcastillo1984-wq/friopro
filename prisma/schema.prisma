@@ -6082,6 +6082,9 @@ model AssetHealthPrediction {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  assetId String           @db.Uuid
+  asset   MaintenanceAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
   twinId String           @db.Uuid
   twin   AssetDigitalTwin @relation(fields: [twinId], references: [id], onDelete: Cascade)
 
@@ -6111,6 +6114,7 @@ model AssetHealthPrediction {
   createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([tenantId])
+  @@index([assetId])
   @@index([twinId])
   @@index([componente])
   @@index([probabilidad])
