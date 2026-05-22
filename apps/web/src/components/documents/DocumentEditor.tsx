@@ -452,8 +452,7 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
         </div>
 
         {/* ── Panel IA lateral ── */}
-        {showAiPanel && (
-          <div className="w-80 bg-white border-l border-gray-200 flex flex-col flex-shrink-0 overflow-hidden">
+        <div className={`${showAiPanel ? 'w-80' : 'w-0'} bg-white border-l border-gray-200 flex flex-col flex-shrink-0 overflow-hidden transition-all duration-300`}>
             <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-blue-50">
               <div className="flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-purple-600" />
@@ -533,7 +532,7 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
               </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* ── Modal de Versiones ── */}
