@@ -11,7 +11,7 @@ import {
   Target, AlertTriangle, CheckCircle, Clock, Users, Calendar,
   Filter, Search, Plus, Eye, Edit, Trash2, FileText, BarChart3,
   TrendingUp, TrendingDown, Activity, Zap, Shield, Settings,
-  Download, Upload, RefreshCw, Play, Pause, X, Flag
+  Download, Upload, RefreshCw, Play, Pause, X, Flag, LayoutTemplate, Copy, Save
 } from 'lucide-react';
 
 interface ActionProject {
@@ -119,6 +119,8 @@ export default function Project360Page() {
 
   // Pro states
   const [templates, setTemplates] = useState<any[]>([]);
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [showLicitacionModal, setShowLicitacionModal] = useState(false);
   const [licitacionForm, setLicitacionForm] = useState({ name: '', documentText: '', documentName: '', analysisType: 'LICITACION', responsibleId: '', targetDate: '' });
   const [analyzing, setAnalyzing] = useState(false);
@@ -189,6 +191,51 @@ export default function Project360Page() {
       console.error('Error loading projects:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Template management functions
+  const loadTemplates = async () => {
+    try {
+      const res = await apiFetch('/project360/templates') as any;
+      setTemplates(res.templates || []);
+    } catch (error) {
+      console.error('Error loading templates:', error);
+    }
+  };
+
+  const handleSaveTemplate = async (templateData: any) => {
+    try {
+      if (editingTemplate?.id) {
+        // Update existing
+        await apiFetch(`/project360/templates/${editingTemplate.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(templateData)
+        });
+        alert('Plantilla actualizada correctamente');
+      } else {
+        // Create new
+        await apiFetch('/project360/templates', {
+          method: 'POST',
+          body: JSON.stringify(templateData)
+        });
+        alert('Plantilla creada correctamente');
+      }
+      setEditingTemplate(null);
+      loadTemplates();
+    } catch (error: any) {
+      alert('Error: ' + (error.message || 'No se pudo guardar la plantilla'));
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta plantilla?')) return;
+    try {
+      await apiFetch(`/project360/templates/${templateId}`, { method: 'DELETE' });
+      alert('Plantilla eliminada');
+      loadTemplates();
+    } catch (error: any) {
+      alert('Error: ' + (error.message || 'No se pudo eliminar'));
     }
   };
 
@@ -337,6 +384,14 @@ export default function Project360Page() {
           >
             <Plus className="w-4 h-4" />
             Nuevo Proyecto
+          </button>
+          <button 
+            onClick={() => setShowTemplatesModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-300"
+            title="Gestionar plantillas de proyectos"
+          >
+            <LayoutTemplate className="w-4 h-4" />
+            Plantillas
           </button>
         </div>
       </div>
@@ -1046,6 +1101,223 @@ export default function Project360Page() {
                   </span>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Template Management Modal */}
+      {showTemplatesModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                  <LayoutTemplate className="w-5 h-5" />
+                  Gestión de Plantillas
+                </h2>
+                <button
+                  onClick={() => { setShowTemplatesModal(false); setEditingTemplate(null); }}
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {editingTemplate ? (
+                /* Edit/Create Template Form */
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                    <input
+                      type="text"
+                      value={editingTemplate.name || ''}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Ej: Proyecto ISO 9001"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                    <textarea
+                      value={editingTemplate.description || ''}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, description: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      rows={3}
+                      placeholder="Descripción de la plantilla..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                    <select
+                      value={editingTemplate.category || 'GENERAL'}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, category: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="GENERAL">General</option>
+                      <option value="ISO">ISO</option>
+                      <option value="LICITACION">Licitación</option>
+                      <option value="MANTENIMIENTO">Mantenimiento</option>
+                      <option value="AUDITORIA">Auditoría</option>
+                    </select>
+                  </div>
+
+                  {/* Default Tasks */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Tareas Predefinidas (JSON)</label>
+                    <textarea
+                      value={typeof editingTemplate.defaultTasks === 'string' ? editingTemplate.defaultTasks : JSON.stringify(editingTemplate.defaultTasks || [], null, 2)}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, defaultTasks: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                      rows={6}
+                      placeholder='[{ "title": "Tarea 1", "description": "...", "estimatedHours": 8 }]'
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Formato: array de objetos con title, description, estimatedHours
+                    </p>
+                  </div>
+
+                  {/* Default Budget Items */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Ítems de Presupuesto (JSON)</label>
+                    <textarea
+                      value={typeof editingTemplate.defaultBudgetItems === 'string' ? editingTemplate.defaultBudgetItems : JSON.stringify(editingTemplate.defaultBudgetItems || [], null, 2)}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, defaultBudgetItems: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                      rows={4}
+                      placeholder='[{ "name": "Material", "category": "MATERIAL", "estimated": 1000 }]'
+                    />
+                  </div>
+
+                  {/* Default Milestones */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Hitos (JSON)</label>
+                    <textarea
+                      value={typeof editingTemplate.defaultMilestones === 'string' ? editingTemplate.defaultMilestones : JSON.stringify(editingTemplate.defaultMilestones || [], null, 2)}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, defaultMilestones: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                      rows={4}
+                      placeholder='[{ "name": "Hito 1", "daysFromStart": 7 }]'
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editingTemplate.isActive !== false}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, isActive: e.target.checked })}
+                      className="rounded border-gray-300"
+                    />
+                    <label className="text-sm text-gray-700">Plantilla activa</label>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => setEditingTemplate(null)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => handleSaveTemplate({
+                        name: editingTemplate.name,
+                        description: editingTemplate.description,
+                        category: editingTemplate.category || 'GENERAL',
+                        defaultTasks: typeof editingTemplate.defaultTasks === 'string' ? JSON.parse(editingTemplate.defaultTasks || '[]') : (editingTemplate.defaultTasks || []),
+                        defaultBudgetItems: typeof editingTemplate.defaultBudgetItems === 'string' ? JSON.parse(editingTemplate.defaultBudgetItems || '[]') : (editingTemplate.defaultBudgetItems || []),
+                        defaultMilestones: typeof editingTemplate.defaultMilestones === 'string' ? JSON.parse(editingTemplate.defaultMilestones || '[]') : (editingTemplate.defaultMilestones || []),
+                        isActive: editingTemplate.isActive !== false
+                      })}
+                      disabled={!editingTemplate.name}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      <Save className="w-4 h-4" />
+                      {editingTemplate.id ? 'Guardar Cambios' : 'Crear Plantilla'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Template List */
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <p className="text-gray-600">{templates.length} plantilla(s) disponible(s)</p>
+                    <button
+                      onClick={() => setEditingTemplate({
+                        name: '',
+                        description: '',
+                        category: 'GENERAL',
+                        defaultTasks: '[]',
+                        defaultBudgetItems: '[]',
+                        defaultMilestones: '[]',
+                        isActive: true
+                      })}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Nueva Plantilla
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3">
+                    {templates.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <LayoutTemplate className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                        <p>No hay plantillas creadas</p>
+                        <p className="text-sm">Creá una para reutilizar en nuevos proyectos</p>
+                      </div>
+                    ) : (
+                      templates.map((template) => (
+                        <div key={template.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-medium text-gray-900">{template.name}</h3>
+                                <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">
+                                  {template.category}
+                                </span>
+                                {template.isActive === false && (
+                                  <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-600">
+                                    Inactiva
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-600 mb-2">{template.description || 'Sin descripción'}</p>
+                              <div className="flex items-center gap-4 text-xs text-gray-500">
+                                <span>{(template.defaultTasks?.length || 0)} tareas</span>
+                                <span>{(template.defaultBudgetItems?.length || 0)} ítems presupuesto</span>
+                                <span>{(template.defaultMilestones?.length || 0)} hitos</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setEditingTemplate({
+                                  ...template,
+                                  defaultTasks: JSON.stringify(template.defaultTasks || [], null, 2),
+                                  defaultBudgetItems: JSON.stringify(template.defaultBudgetItems || [], null, 2),
+                                  defaultMilestones: JSON.stringify(template.defaultMilestones || [], null, 2)
+                                })}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                title="Editar"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTemplate(template.id)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
