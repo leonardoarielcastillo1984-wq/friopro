@@ -807,6 +807,31 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
       // Registrar en historial
       await logHistory(prisma, id, tenantId, 'APROBACION_SOLICITADA', `Solicitud de aprobación para etapa: ${etapa}`, userId, null);
 
+      // 🔔 Crear notificación in-app para el aprobador
+      try {
+        // Obtener datos del proyecto para el mensaje
+        const proyecto = await prisma.project360.findUnique({ 
+          where: { id }, 
+          select: { name: true, code: true } 
+        });
+        
+        await prisma.notification.create({
+          data: {
+            tenantId,
+            userId: aprobadorId,
+            type: 'APROBACION_PROYECTO',
+            title: `Aprobación pendiente: ${proyecto?.name || 'Proyecto'}`,
+            message: `Te solicitan aprobar la etapa "${etapa}" del proyecto ${proyecto?.code || ''}. ${comentarios ? `Comentarios: ${comentarios}` : ''}`,
+            link: `/project360/${id}`,
+            entityType: 'project360',
+            entityId: id,
+          }
+        });
+      } catch (notifyErr) {
+        console.error('[POST /aprobaciones] Error creando notificación:', notifyErr);
+        // No fallar si la notificación falla
+      }
+
       return reply.code(201).send({ aprobacion, mensaje: `Solicitud de aprobación para ${etapa} enviada a ${aprobacion.aprobador?.firstName || ''} ${aprobacion.aprobador?.lastName || ''}` });
     } catch (err: any) {
       console.error('[POST /aprobaciones] Error:', err);
@@ -844,6 +869,26 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
       // Registrar en historial
       await logHistory(prisma, aprobacion.projectId, tenantId, 'ETAPA_APROBADA', `Etapa ${aprobacion.etapa} aprobada`, userId, null);
 
+      // 🔔 Notificar al solicitante que fue aprobado
+      if (aprobacion.solicitadoPorId) {
+        try {
+          await prisma.notification.create({
+            data: {
+              tenantId,
+              userId: aprobacion.solicitadoPorId,
+              type: 'APROBACION_PROYECTO',
+              title: `✅ Etapa aprobada: ${aprobacion.project?.name || 'Proyecto'}`,
+              message: `La etapa "${aprobacion.etapa}" fue aprobada. ${comentarios ? `Comentarios: ${comentarios}` : ''}`,
+              link: `/project360/${aprobacion.projectId}`,
+              entityType: 'project360',
+              entityId: aprobacion.projectId,
+            }
+          });
+        } catch (notifyErr) {
+          console.error('[POST /aprobar] Error notificando al solicitante:', notifyErr);
+        }
+      }
+
       return reply.send({ aprobacion: aprobacionActualizada, mensaje: `Etapa ${aprobacion.etapa} aprobada exitosamente` });
     } catch (err: any) {
       console.error('[POST /aprobar] Error:', err);
@@ -880,6 +925,26 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
 
       // Registrar en historial
       await logHistory(prisma, aprobacion.projectId, tenantId, 'ETAPA_RECHAZADA', `Etapa ${aprobacion.etapa} rechazada`, userId, null);
+
+      // 🔔 Notificar al solicitante que fue rechazado
+      if (aprobacion.solicitadoPorId) {
+        try {
+          await prisma.notification.create({
+            data: {
+              tenantId,
+              userId: aprobacion.solicitadoPorId,
+              type: 'APROBACION_PROYECTO',
+              title: `❌ Etapa rechazada: ${aprobacion.project?.name || 'Proyecto'}`,
+              message: `La etapa "${aprobacion.etapa}" fue rechazada. ${comentarios ? `Motivo: ${comentarios}` : ''}`,
+              link: `/project360/${aprobacion.projectId}`,
+              entityType: 'project360',
+              entityId: aprobacion.projectId,
+            }
+          });
+        } catch (notifyErr) {
+          console.error('[POST /rechazar] Error notificando al solicitante:', notifyErr);
+        }
+      }
 
       return reply.send({ aprobacion: aprobacionActualizada, mensaje: `Etapa ${aprobacion.etapa} rechazada` });
     } catch (err: any) {
