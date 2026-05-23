@@ -506,7 +506,14 @@ export default async function project360Routes(app: FastifyInstance) {
 
     // Obtener config LLM del tenant
     const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { llmProvider: true, llmApiKey: true, llmModel: true, llmBaseUrl: true } });
-    const llm = createLoggingLLMProvider(tenant, prisma, tenantId, req.db.userId || null, 'project360-ai-analysis');
+    const userId = (req as any).db?.userId || null;
+    let llm;
+    try {
+      llm = createLoggingLLMProvider(tenant, prisma, tenantId, userId, 'project360-ai-analysis');
+    } catch (err: any) {
+      console.error('[AI Analysis] Error creating LLM provider:', err);
+      return reply.code(500).send({ error: 'Error configurando proveedor IA: ' + err.message });
+    }
 
     const prompt = `Analizá el siguiente documento de tipo "${analysisType || 'LICITACION'}" y respondé ÚNICAMENTE en formato JSON con esta estructura exacta:
 {
