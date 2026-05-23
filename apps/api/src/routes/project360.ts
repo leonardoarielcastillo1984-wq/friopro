@@ -249,6 +249,35 @@ export default async function project360Routes(app: FastifyInstance) {
     return reply.send({ stats: { totalProjects: total, activeProjects: active, completedProjects: completed, overdueProjects: overdue, criticalProjects: critical, avgProgress } });
   });
 
+  // POST /project360/projects/:id/tasks — crear tarea individual
+  app.post('/projects/:id/tasks', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { title, description, priority, status, dueDate, responsibleId } = body;
+      if (!title) return reply.code(400).send({ error: 'Se requiere título' });
+
+      const count = await prisma.project360Task.count({ where: { projectId: id, tenantId } });
+      const task = await prisma.project360Task.create({
+        data: {
+          tenantId, projectId: id,
+          title, description: description || null,
+          priority: priority || 'MEDIUM',
+          status: status || 'PENDING',
+          order: count,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          responsibleId: responsibleId || null,
+        },
+      });
+      return reply.code(201).send({ task });
+    } catch (err: any) {
+      console.error('[POST /projects/:id/tasks] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
   // POST /project360/tasks/:taskId/comments
   app.post('/tasks/:taskId/comments', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);

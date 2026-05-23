@@ -388,6 +388,45 @@ export default function ProjectDetailPage() {
     } catch (err) { console.error(err); }
   };
 
+  const handleCreateTaskFromRequirement = async (req: any) => {
+    try {
+      const res = await apiFetch(`/project360/projects/${params.id}/tasks`, {
+        method: 'POST',
+        json: {
+          title: req.title,
+          description: req.description || '',
+          priority: req.priority === 'ALTA' ? 'HIGH' : req.priority === 'MEDIA' ? 'MEDIUM' : 'LOW',
+          status: 'PENDING',
+        }
+      }) as any;
+      setTasks(prev => [...prev, res.task]);
+      alert(`Tarea "${req.title}" creada exitosamente`);
+    } catch (err: any) {
+      alert('Error creando tarea: ' + err.message);
+    }
+  };
+
+  const handleImportAllRequirements = async (requirements: any[]) => {
+    if (!confirm(`¿Crear ${requirements.length} tareas desde los requerimientos del análisis?`)) return;
+    let created = 0;
+    for (const req of requirements) {
+      try {
+        const res = await apiFetch(`/project360/projects/${params.id}/tasks`, {
+          method: 'POST',
+          json: {
+            title: req.title,
+            description: req.description || '',
+            priority: req.priority === 'ALTA' ? 'HIGH' : req.priority === 'MEDIA' ? 'MEDIUM' : 'LOW',
+            status: 'PENDING',
+          }
+        }) as any;
+        setTasks(prev => [...prev, res.task]);
+        created++;
+      } catch { /* skip */ }
+    }
+    alert(`${created} tareas creadas correctamente`);
+  };
+
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       'PENDING': 'Pendiente',
@@ -983,11 +1022,19 @@ export default function ProjectDetailPage() {
                   {/* Requerimientos */}
                   {requirements.length > 0 && (
                     <div className="mb-4">
-                      <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Requerimientos ({requirements.length})</p>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-gray-600 uppercase">Requerimientos ({requirements.length})</p>
+                        <button
+                          onClick={() => handleImportAllRequirements(requirements)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                          <Plus className="w-3 h-3" /> Importar todos como tareas
+                        </button>
+                      </div>
                       <div className="space-y-2">
                         {requirements.map((r: any, i: number) => (
-                          <div key={i} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
-                            <span className={`mt-0.5 px-1.5 py-0.5 text-xs rounded font-medium ${
+                          <div key={i} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg group">
+                            <span className={`mt-0.5 px-1.5 py-0.5 text-xs rounded font-medium shrink-0 ${
                               r.priority === 'ALTA' ? 'bg-red-100 text-red-700' :
                               r.priority === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
                             }`}>{r.priority || 'N/A'}</span>
@@ -996,6 +1043,13 @@ export default function ProjectDetailPage() {
                               {r.description && <p className="text-xs text-gray-600">{r.description}</p>}
                               {r.estimatedCost > 0 && <p className="text-xs text-blue-600">Costo est.: ${r.estimatedCost.toLocaleString('es-AR')}</p>}
                             </div>
+                            <button
+                              onClick={() => handleCreateTaskFromRequirement(r)}
+                              title="Crear tarea"
+                              className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" /> Tarea
+                            </button>
                           </div>
                         ))}
                       </div>
