@@ -572,10 +572,10 @@ ${documentText.length > 12000 ? '\n[Documento truncado por longitud]' : ''}`;
           summary: parsed.summary || response.text.slice(0, 500),
           requirements: parsed.requirements || [],
           risks: parsed.risks || [],
-          timeline: JSON.stringify(parsed.timeline || []),
-          costs: JSON.stringify(parsed.costs || {}),
-          score: parsed.scores ? ((parsed.scores.clarity + parsed.scores.feasibility + parsed.scores.profitability + parsed.scores.riskLevel) / 4) : null,
-          rawAnalysis: response.text,
+          timeline: parsed.timeline || [],
+          costs: parsed.costs || {},
+          scores: parsed.scores || {},
+          rawResponse: response.text,
         },
       });
 
