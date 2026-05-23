@@ -2,6 +2,7 @@ import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { createLoggingLLMProvider } from '../services/llm/factory.js';
+import { sendEmail, notificationEmail } from '../services/email.js';
 
 const createProjectSchema = z.object({
   name: z.string().min(1),
@@ -827,6 +828,23 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
             entityId: id,
           }
         });
+
+        // 📧 Enviar email al aprobador
+        const aprobadorUser = await prisma.platformUser.findUnique({
+          where: { id: aprobadorId },
+          select: { email: true, firstName: true, lastName: true }
+        });
+
+        if (aprobadorUser?.email) {
+          const emailPayload = notificationEmail({
+            userEmail: aprobadorUser.email,
+            title: `⏳ Aprobación requerida: ${proyecto?.name || 'Proyecto'}`,
+            message: `Hola ${aprobadorUser.firstName || ''},<br><br>Te solicitan aprobar la etapa <strong>"${etapa}"</strong> del proyecto <strong>${proyecto?.code || ''}</strong>.<br><br>${comentarios ? `Comentarios del solicitante: <em>${comentarios}</em><br><br>` : ''}Hacé clic en el botón para revisar y aprobar:`,
+            actionUrl: `${process.env.APP_URL || 'https://logismart.ar'}/project360/${id}`,
+            type: 'warning'
+          });
+          await sendEmail(emailPayload);
+        }
       } catch (notifyErr) {
         console.error('[POST /aprobaciones] Error creando notificación:', notifyErr);
         // No fallar si la notificación falla
@@ -884,6 +902,23 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
               entityId: aprobacion.projectId,
             }
           });
+
+          // 📧 Enviar email al solicitante
+          const solicitante = await prisma.platformUser.findUnique({
+            where: { id: aprobacion.solicitadoPorId },
+            select: { email: true, firstName: true }
+          });
+
+          if (solicitante?.email) {
+            const emailPayload = notificationEmail({
+              userEmail: solicitante.email,
+              title: `✅ Etapa aprobada: ${aprobacion.project?.name || 'Proyecto'}`,
+              message: `Hola ${solicitante.firstName || ''},<br><br>La etapa <strong>"${aprobacion.etapa}"</strong> del proyecto <strong>${aprobacion.project?.name || ''}</strong> fue <strong style="color: #16a34a;">APROBADA</strong>.<br><br>${comentarios ? `Comentarios del aprobador: <em>${comentarios}</em><br><br>` : ''}Ya podés continuar con el proyecto.`,
+              actionUrl: `${process.env.APP_URL || 'https://logismart.ar'}/project360/${aprobacion.projectId}`,
+              type: 'success'
+            });
+            await sendEmail(emailPayload);
+          }
         } catch (notifyErr) {
           console.error('[POST /aprobar] Error notificando al solicitante:', notifyErr);
         }
@@ -941,6 +976,23 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
               entityId: aprobacion.projectId,
             }
           });
+
+          // 📧 Enviar email al solicitante
+          const solicitante = await prisma.platformUser.findUnique({
+            where: { id: aprobacion.solicitadoPorId },
+            select: { email: true, firstName: true }
+          });
+
+          if (solicitante?.email) {
+            const emailPayload = notificationEmail({
+              userEmail: solicitante.email,
+              title: `❌ Etapa rechazada: ${aprobacion.project?.name || 'Proyecto'}`,
+              message: `Hola ${solicitante.firstName || ''},<br><br>La etapa <strong>"${aprobacion.etapa}"</strong> del proyecto <strong>${aprobacion.project?.name || ''}</strong> fue <strong style="color: #dc2626;">RECHAZADA</strong>.<br><br>${comentarios ? `Motivo del rechazo: <em>${comentarios}</em><br><br>` : ''}Por favor revisá los comentarios y solicitá una nueva aprobación cuando esté listo.`,
+              actionUrl: `${process.env.APP_URL || 'https://logismart.ar'}/project360/${aprobacion.projectId}`,
+              type: 'error'
+            });
+            await sendEmail(emailPayload);
+          }
         } catch (notifyErr) {
           console.error('[POST /rechazar] Error notificando al solicitante:', notifyErr);
         }
