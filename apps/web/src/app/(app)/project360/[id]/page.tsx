@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, Target, Calendar, User, CheckCircle, Clock,
   AlertTriangle, Flag, FileText, Plus, Edit, Trash2, Check, Download, Users, Upload,
-  TrendingUp, TrendingDown, Zap, RefreshCw, X
+  TrendingUp, TrendingDown, Zap, RefreshCw, X, Shield, Send, ArrowRight
 } from 'lucide-react';
 
 interface Project {
@@ -18,6 +18,7 @@ interface Project {
   status: string;
   priority: string;
   progress: number;
+  etapaAprobacion?: string;
   targetDate: string;
   createdAt?: string;
   responsible: {
@@ -77,14 +78,36 @@ export default function ProjectDetailPage() {
   const [milestones, setMilestones] = useState<any[]>([]);
   const [budgetItems, setBudgetItems] = useState<any[]>([]);
   const [aiAnalyses, setAiAnalyses] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'tasks' | 'budget' | 'milestones' | 'analysis' | 'history'>('tasks');
+  const [activeTab, setActiveTab] = useState<'tasks' | 'budget' | 'milestones' | 'analysis' | 'history' | 'aprobaciones' | 'recursos'>('tasks');
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ name: '', description: '', targetDate: '' });
   const [showAddBudgetItem, setShowAddBudgetItem] = useState(false);
-  const [newBudgetItem, setNewBudgetItem] = useState({ name: '', category: 'MATERIAL', estimated: '', actual: '', isExpense: false });
+  const [newBudgetItem, setNewBudgetItem] = useState({ 
+    nombre: '', 
+    categoria: 'MATERIAL', 
+    cantidad: '', 
+    unidadMedida: 'unidades',
+    costoUnitario: '',
+    costoTotalEstimado: '',
+    moneda: 'ARS',
+    descripcion: '',
+    proveedorNombre: ''
+  });
   const [showCompareModal, setShowCompareModal] = useState(false);
   const [compareWithId, setCompareWithId] = useState('');
   const [comparisonResult, setComparisonResult] = useState<any>(null);
+
+  // Aprobaciones workflow
+  const [aprobaciones, setAprobaciones] = useState<any[]>([]);
+  const [showSolicitarAprobacion, setShowSolicitarAprobacion] = useState(false);
+  const [nuevaAprobacion, setNuevaAprobacion] = useState({ etapa: '', aprobadorId: '', comentarios: '' });
+  const [empleados, setEmpleados] = useState<any[]>([]);
+  const [showAvanzarEtapa, setShowAvanzarEtapa] = useState(false);
+  const [etapaDestino, setEtapaDestino] = useState('');
+
+  // Precio de venta y margen
+  const [precioVenta, setPrecioVenta] = useState<number | null>(null);
+  const [showPrecioVenta, setShowPrecioVenta] = useState(false);
 
   useEffect(() => {
     loadProject();
@@ -94,6 +117,8 @@ export default function ProjectDetailPage() {
     loadMilestones();
     loadBudgetItems();
     loadAiAnalyses();
+    loadAprobaciones();
+    loadEmpleados();
   }, [params.id]);
 
   useEffect(() => {
@@ -169,6 +194,91 @@ export default function ProjectDetailPage() {
       setAiAnalyses(response.aiAnalyses || []);
     } catch (err) {
       console.error('Error loading AI analyses:', err);
+    }
+  };
+
+  const loadAprobaciones = async () => {
+    try {
+      const response = await apiFetch(`/project360/projects/${params.id}/aprobaciones`) as any;
+      setAprobaciones(response.aprobaciones || []);
+    } catch (err) {
+      console.error('Error loading aprobaciones:', err);
+    }
+  };
+
+  const loadEmpleados = async () => {
+    try {
+      const response = await apiFetch('/hr/employees') as any;
+      setEmpleados(response.employees || []);
+    } catch (err) {
+      console.error('Error loading empleados:', err);
+    }
+  };
+
+  const handleSolicitarAprobacion = async () => {
+    if (!nuevaAprobacion.etapa || !nuevaAprobacion.aprobadorId) {
+      alert('Seleccioná etapa y aprobador');
+      return;
+    }
+    try {
+      const response = await apiFetch(`/project360/projects/${params.id}/aprobaciones`, {
+        method: 'POST',
+        json: nuevaAprobacion
+      }) as any;
+      alert(response.mensaje || 'Solicitud enviada');
+      setShowSolicitarAprobacion(false);
+      setNuevaAprobacion({ etapa: '', aprobadorId: '', comentarios: '' });
+      loadAprobaciones();
+    } catch (err: any) {
+      alert('Error: ' + (err.message || 'No se pudo enviar'));
+    }
+  };
+
+  const handleAprobarEtapa = async (aprobacionId: string) => {
+    try {
+      const response = await apiFetch(`/project360/aprobaciones/${aprobacionId}/aprobar`, {
+        method: 'POST',
+        json: {}
+      }) as any;
+      alert(response.mensaje || 'Etapa aprobada');
+      loadAprobaciones();
+    } catch (err: any) {
+      alert('Error: ' + (err.message || 'No se pudo aprobar'));
+    }
+  };
+
+  const handleRechazarEtapa = async (aprobacionId: string) => {
+    const comentarios = prompt('Motivo del rechazo:');
+    if (!comentarios) return;
+    try {
+      const response = await apiFetch(`/project360/aprobaciones/${aprobacionId}/rechazar`, {
+        method: 'POST',
+        json: { comentarios }
+      }) as any;
+      alert(response.mensaje || 'Etapa rechazada');
+      loadAprobaciones();
+    } catch (err: any) {
+      alert('Error: ' + (err.message || 'No se pudo rechazar'));
+    }
+  };
+
+  const handleAvanzarEtapa = async () => {
+    if (!etapaDestino) {
+      alert('Seleccioná la etapa destino');
+      return;
+    }
+    try {
+      const response = await apiFetch(`/project360/projects/${params.id}/avanzar-etapa`, {
+        method: 'POST',
+        json: { etapaDestino }
+      }) as any;
+      alert(response.mensaje || 'Etapa avanzada');
+      setShowAvanzarEtapa(false);
+      setEtapaDestino('');
+      loadProject();
+      loadAprobaciones();
+    } catch (err: any) {
+      alert('Error: ' + (err.message || err.error || 'No se pudo avanzar'));
     }
   };
 
@@ -356,14 +466,39 @@ export default function ProjectDetailPage() {
   };
 
   const handleAddBudgetItem = async () => {
-    if (!newBudgetItem.name || !newBudgetItem.estimated) return;
+    if (!newBudgetItem.nombre || !newBudgetItem.costoTotalEstimado) return;
     try {
+      const cantidad = parseFloat(newBudgetItem.cantidad || '1');
+      const costoUnitario = parseFloat(newBudgetItem.costoUnitario || '0');
+      const costoTotalEstimado = parseFloat(newBudgetItem.costoTotalEstimado || '0');
+      
       const res = await apiFetch(`/project360/projects/${params.id}/budget-items`, {
         method: 'POST',
-        json: { ...newBudgetItem, estimated: parseFloat(newBudgetItem.estimated), actual: parseFloat(newBudgetItem.actual || '0'), isExpense: !!newBudgetItem.isExpense }
+        json: {
+          nombre: newBudgetItem.nombre,
+          categoria: newBudgetItem.categoria,
+          cantidad,
+          unidadMedida: newBudgetItem.unidadMedida,
+          costoUnitario,
+          costoTotalEstimado,
+          moneda: newBudgetItem.moneda,
+          descripcion: newBudgetItem.descripcion,
+          proveedorNombre: newBudgetItem.proveedorNombre,
+          estado: 'PRESUPUESTADO'
+        }
       }) as any;
       setBudgetItems([...budgetItems, res.budgetItem]);
-      setNewBudgetItem({ name: '', category: 'MATERIAL', estimated: '', actual: '', isExpense: false });
+      setNewBudgetItem({ 
+        nombre: '', 
+        categoria: 'MATERIAL', 
+        cantidad: '', 
+        unidadMedida: 'unidades',
+        costoUnitario: '',
+        costoTotalEstimado: '',
+        moneda: 'ARS',
+        descripcion: '',
+        proveedorNombre: ''
+      });
       setShowAddBudgetItem(false);
     } catch (err) { console.error(err); }
   };
@@ -468,6 +603,60 @@ export default function ProjectDetailPage() {
     };
     return colors[priority] || 'bg-gray-100 text-gray-800';
   };
+
+  const getEtapaLabel = (etapa: string) => {
+    const labels: Record<string, string> = {
+      'LICITACION_BORRADOR': 'Licitación - Borrador',
+      'DIMENSIONADO': 'Dimensionado',
+      'COTIZADO': 'Cotizado',
+      'APROBADO_PARA_PRESENTAR': 'Aprobado para Presentar',
+      'ADJUDICADO': 'Adjudicado',
+      'EN_EJECUCION': 'En Ejecución',
+      'CERRADO': 'Cerrado'
+    };
+    return labels[etapa] || etapa;
+  };
+
+  const getEtapaColor = (etapa: string) => {
+    const colors: Record<string, string> = {
+      'LICITACION_BORRADOR': 'bg-gray-100 text-gray-800',
+      'DIMENSIONADO': 'bg-blue-100 text-blue-800',
+      'COTIZADO': 'bg-purple-100 text-purple-800',
+      'APROBADO_PARA_PRESENTAR': 'bg-indigo-100 text-indigo-800',
+      'ADJUDICADO': 'bg-green-100 text-green-800',
+      'EN_EJECUCION': 'bg-orange-100 text-orange-800',
+      'CERRADO': 'bg-gray-200 text-gray-900'
+    };
+    return colors[etapa] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getEstadoAprobacionLabel = (estado: string) => {
+    const labels: Record<string, string> = {
+      'PENDIENTE': 'Pendiente',
+      'APROBADO': 'Aprobado',
+      'RECHAZADO': 'Rechazado'
+    };
+    return labels[estado] || estado;
+  };
+
+  const getEstadoAprobacionColor = (estado: string) => {
+    const colors: Record<string, string> = {
+      'PENDIENTE': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      'APROBADO': 'bg-green-100 text-green-800 border-green-200',
+      'RECHAZADO': 'bg-red-100 text-red-800 border-red-200'
+    };
+    return colors[estado] || 'bg-gray-100 text-gray-800';
+  };
+
+  const ETAPAS_ORDEN = [
+    'LICITACION_BORRADOR',
+    'DIMENSIONADO',
+    'COTIZADO',
+    'APROBADO_PARA_PRESENTAR',
+    'ADJUDICADO',
+    'EN_EJECUCION',
+    'CERRADO'
+  ];
 
   if (loading) {
     return (
@@ -862,11 +1051,114 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      {/* ══ PRESUPUESTO ══ */}
+      {/* ══ WORKFLOW DE APROBACIONES (ETAPAS DEL NEGOCIO) ══ */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-indigo-600" /> Presupuesto</h3>
-          <button onClick={() => setShowAddBudgetItem(true)} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"><Plus className="w-4 h-4" /> Agregar</button>
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Shield className="w-5 h-5 text-amber-600" /> Workflow de Aprobaciones
+          </h3>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowSolicitarAprobacion(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-amber-600 text-white text-sm rounded-lg hover:bg-amber-700"
+            >
+              <Send className="w-4 h-4" /> Solicitar Aprobación
+            </button>
+            <button 
+              onClick={() => setShowAvanzarEtapa(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+            >
+              <ArrowRight className="w-4 h-4" /> Avanzar Etapa
+            </button>
+          </div>
+        </div>
+
+        {/* Etapa Actual */}
+        <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600 mb-1">Etapa Actual del Proyecto</p>
+              <p className={`text-2xl font-bold ${getEtapaColor(project.etapaAprobacion || 'LICITACION_BORRADOR')}`}>
+                {getEtapaLabel(project.etapaAprobacion || 'LICITACION_BORRADOR')}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-gray-600 mb-1">Progreso en Workflow</p>
+              <p className="text-xl font-bold text-gray-800">
+                {ETAPAS_ORDEN.indexOf(project.etapaAprobacion || 'LICITACION_BORRADOR') + 1} / {ETAPAS_ORDEN.length}
+              </p>
+            </div>
+          </div>
+          {/* Barra de progreso del workflow */}
+          <div className="mt-3">
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-amber-500 h-2 rounded-full transition-all" 
+                style={{ width: `${((ETAPAS_ORDEN.indexOf(project.etapaAprobacion || 'LICITACION_BORRADOR') + 1) / ETAPAS_ORDEN.length) * 100}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>Licitación</span>
+              <span>Cerrado</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Lista de Aprobaciones */}
+        <h4 className="font-medium text-gray-900 mb-3">Historial de Aprobaciones</h4>
+        {aprobaciones.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">Sin solicitudes de aprobación registradas</p>
+        ) : (
+          <div className="space-y-3">
+            {aprobaciones.map((aprob: any) => (
+              <div key={aprob.id} className={`p-4 rounded-xl border ${getEstadoAprobacionColor(aprob.estado)}`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold">{getEtapaLabel(aprob.etapa)}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-white/50">
+                        {getEstadoAprobacionLabel(aprob.estado)}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Solicitado por: {aprob.solicitadoPor?.firstName || 'Usuario'} → Aprobador: {aprob.aprobador?.firstName || 'Sin asignar'} {aprob.aprobador?.lastName || ''}
+                    </p>
+                    {aprob.comentarios && (
+                      <p className="text-sm text-gray-700 mt-2 italic">"{aprob.comentarios}"</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      {new Date(aprob.solicitadoEn).toLocaleDateString('es-AR')}
+                      {aprob.aprobadoEn && ` → ${new Date(aprob.aprobadoEn).toLocaleDateString('es-AR')}`}
+                    </p>
+                  </div>
+                  {aprob.estado === 'PENDIENTE' && (
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleAprobarEtapa(aprob.id)}
+                        className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+                      >
+                        Aprobar
+                      </button>
+                      <button 
+                        onClick={() => handleRechazarEtapa(aprob.id)}
+                        className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
+                      >
+                        Rechazar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ══ PRESUPUESTO / RECURSOS DIMENSIONADOS ══ */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-indigo-600" /> Recursos Dimensionados</h3>
+          <button onClick={() => setShowAddBudgetItem(true)} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"><Plus className="w-4 h-4" /> Agregar Recurso</button>
         </div>
         {project?.budget && (
           <div className="mb-4 bg-gray-50 p-4 rounded-lg">
@@ -897,18 +1189,25 @@ export default function ProjectDetailPage() {
         )}
         {showAddBudgetItem && (
           <div className="mt-4 p-4 bg-gray-50 rounded-lg space-y-3">
-            <h4 className="text-sm font-medium">Nuevo Ítem</h4>
-            <input type="text" value={newBudgetItem.name} onChange={e => setNewBudgetItem({ ...newBudgetItem, name: e.target.value })} placeholder="Nombre" className="w-full px-3 py-2 border rounded-lg text-sm" />
-            <div className="grid grid-cols-3 gap-2">
-              <select value={newBudgetItem.category} onChange={e => setNewBudgetItem({ ...newBudgetItem, category: e.target.value })} className="px-3 py-2 border rounded-lg text-sm">
-                <option value="MATERIAL">Material</option><option value="MANO_OBRA">Mano de obra</option><option value="SERVICIO">Servicio</option><option value="EQUIPO">Equipo</option><option value="ADMINISTRATIVO">Admin</option><option value="OTRO">Otro</option>
+            <h4 className="text-sm font-medium">Nuevo Recurso</h4>
+            <input type="text" value={newBudgetItem.nombre} onChange={e => setNewBudgetItem({ ...newBudgetItem, nombre: e.target.value })} placeholder="Nombre del recurso" className="w-full px-3 py-2 border rounded-lg text-sm" />
+            <div className="grid grid-cols-2 gap-2">
+              <select value={newBudgetItem.categoria} onChange={e => setNewBudgetItem({ ...newBudgetItem, categoria: e.target.value })} className="px-3 py-2 border rounded-lg text-sm">
+                <option value="MATERIAL">Material</option><option value="MANO_OBRA">Mano de obra</option><option value="SERVICIO">Servicio</option><option value="EQUIPO">Equipo</option><option value="SUBCONTRATO">Subcontrato</option><option value="TECNOLOGIA">Tecnología</option><option value="OTRO">Otro</option>
               </select>
-              <input type="number" value={newBudgetItem.estimated} onChange={e => setNewBudgetItem({ ...newBudgetItem, estimated: e.target.value })} placeholder="Estimado" className="px-3 py-2 border rounded-lg text-sm" />
-              <input type="number" value={newBudgetItem.actual} onChange={e => setNewBudgetItem({ ...newBudgetItem, actual: e.target.value })} placeholder="Actual" className="px-3 py-2 border rounded-lg text-sm" />
+              <select value={newBudgetItem.unidadMedida} onChange={e => setNewBudgetItem({ ...newBudgetItem, unidadMedida: e.target.value })} className="px-3 py-2 border rounded-lg text-sm">
+                <option value="unidades">Unidades</option><option value="horas">Horas</option><option value="dias">Días</option><option value="meses">Meses</option><option value="m2">m²</option><option value="kg">kg</option><option value="litros">Litros</option>
+              </select>
             </div>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={newBudgetItem.isExpense} onChange={e => setNewBudgetItem({ ...newBudgetItem, isExpense: e.target.checked })} className="rounded" /> Es gasto</label>
+            <div className="grid grid-cols-3 gap-2">
+              <input type="number" value={newBudgetItem.cantidad} onChange={e => setNewBudgetItem({ ...newBudgetItem, cantidad: e.target.value })} placeholder="Cantidad" className="px-3 py-2 border rounded-lg text-sm" />
+              <input type="number" value={newBudgetItem.costoUnitario} onChange={e => setNewBudgetItem({ ...newBudgetItem, costoUnitario: e.target.value })} placeholder="Costo unitario" className="px-3 py-2 border rounded-lg text-sm" />
+              <input type="number" value={newBudgetItem.costoTotalEstimado} onChange={e => setNewBudgetItem({ ...newBudgetItem, costoTotalEstimado: e.target.value })} placeholder="Costo total" className="px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <input type="text" value={newBudgetItem.proveedorNombre} onChange={e => setNewBudgetItem({ ...newBudgetItem, proveedorNombre: e.target.value })} placeholder="Proveedor / Responsable" className="w-full px-3 py-2 border rounded-lg text-sm" />
+            <input type="text" value={newBudgetItem.descripcion} onChange={e => setNewBudgetItem({ ...newBudgetItem, descripcion: e.target.value })} placeholder="Descripción (opcional)" className="w-full px-3 py-2 border rounded-lg text-sm" />
             <div className="flex gap-3">
-              <button onClick={handleAddBudgetItem} disabled={!newBudgetItem.name || !newBudgetItem.estimated} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50">Agregar</button>
+              <button onClick={handleAddBudgetItem} disabled={!newBudgetItem.nombre || !newBudgetItem.costoTotalEstimado} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50">Agregar</button>
               <button onClick={() => setShowAddBudgetItem(false)} className="flex-1 px-4 py-2 border rounded-lg text-sm">Cancelar</button>
             </div>
           </div>
@@ -1345,6 +1644,121 @@ export default function ProjectDetailPage() {
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Solicitar Aprobación */}
+      {showSolicitarAprobacion && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Solicitar Aprobación</h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Etapa a Aprobar</label>
+                <select
+                  value={nuevaAprobacion.etapa}
+                  onChange={(e) => setNuevaAprobacion({ ...nuevaAprobacion, etapa: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccionar etapa...</option>
+                  {ETAPAS_ORDEN.filter(e => e !== 'LICITACION_BORRADOR').map(etapa => (
+                    <option key={etapa} value={etapa}>{getEtapaLabel(etapa)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Aprobador</label>
+                <select
+                  value={nuevaAprobacion.aprobadorId}
+                  onChange={(e) => setNuevaAprobacion({ ...nuevaAprobacion, aprobadorId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccionar aprobador...</option>
+                  {empleados.map((emp: any) => (
+                    <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName} ({emp.email})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Comentarios</label>
+                <textarea
+                  value={nuevaAprobacion.comentarios}
+                  onChange={(e) => setNuevaAprobacion({ ...nuevaAprobacion, comentarios: e.target.value })}
+                  placeholder="Motivo de la solicitud..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => setShowSolicitarAprobacion(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSolicitarAprobacion}
+                disabled={!nuevaAprobacion.etapa || !nuevaAprobacion.aprobadorId}
+                className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+              >
+                Enviar Solicitud
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Avanzar Etapa */}
+      {showAvanzarEtapa && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Avanzar Etapa del Proyecto</h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                Etapa actual: <strong>{getEtapaLabel(project.etapaAprobacion || 'LICITACION_BORRADOR')}</strong>
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Etapa Destino</label>
+                <select
+                  value={etapaDestino}
+                  onChange={(e) => setEtapaDestino(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccionar etapa...</option>
+                  {ETAPAS_ORDEN.map((etapa, index) => {
+                    const currentIndex = ETAPAS_ORDEN.indexOf(project.etapaAprobacion || 'LICITACION_BORRADOR');
+                    if (index > currentIndex) {
+                      return <option key={etapa} value={etapa}>{getEtapaLabel(etapa)}</option>;
+                    }
+                    return null;
+                  })}
+                </select>
+              </div>
+              <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
+                <strong>Nota:</strong> Solo podrás avanzar si todas las etapas intermedias han sido aprobadas.
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => setShowAvanzarEtapa(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAvanzarEtapa}
+                disabled={!etapaDestino}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                Avanzar
               </button>
             </div>
           </div>
