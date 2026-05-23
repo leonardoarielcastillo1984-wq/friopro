@@ -158,12 +158,32 @@ export default async function project360Routes(app: FastifyInstance) {
     }
   });
 
+  // GET /project360/members — listar usuarios del tenant para seleccionar aprobadores
+  app.get('/members', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const users = await prisma.platformUser.findMany({
+        where: {
+          memberships: { some: { tenantId } },
+          deletedAt: null
+        },
+        select: { id: true, firstName: true, lastName: true, email: true }
+      });
+
+      return reply.send({ users });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
   // GET /project360/:id — alias sin /projects/ para compatibilidad
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
-    if (['projects', 'stats', 'notifications', 'tasks', 'attachments', 'reminders'].includes(id)) {
+    if (['projects', 'stats', 'notifications', 'tasks', 'attachments', 'reminders', 'members', 'aprobaciones'].includes(id)) {
       return reply.code(404).send({ error: 'Not found' });
     }
     const project = await prisma.project360.findFirst({

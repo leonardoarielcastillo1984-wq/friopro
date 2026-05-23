@@ -208,10 +208,10 @@ export default function ProjectDetailPage() {
 
   const loadEmpleados = async () => {
     try {
-      const response = await apiFetch('/hr/employees') as any;
-      setEmpleados(response.employees || []);
+      const response = await apiFetch('/project360/members') as any;
+      setEmpleados(response.users || []);
     } catch (err) {
-      console.error('Error loading empleados:', err);
+      console.error('Error loading members:', err);
     }
   };
 
