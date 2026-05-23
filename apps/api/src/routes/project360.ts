@@ -651,6 +651,36 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
     }
   });
 
+  // POST /project360/extract-text — extraer texto de PDF/DOCX para análisis de licitación
+  app.post('/extract-text', async (req: FastifyRequest, reply: FastifyReply) => {
+    const prisma = (app as any).prisma;
+    const tenantId = getEffectiveTenantId(req, prisma);
+    const parts = req.parts();
+    let fileBuffer: Buffer | null = null;
+    let filename = '';
+    let mimetype = '';
+
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        fileBuffer = await part.toBuffer();
+        filename = part.filename;
+        mimetype = part.mimetype;
+      }
+    }
+
+    if (!fileBuffer) {
+      return reply.code(400).send({ error: 'No se recibió archivo' });
+    }
+
+    try {
+      const { extractTextFromDocument } = await import('../services/textExtractor.js');
+      const text = await extractTextFromDocument(fileBuffer, mimetype, filename);
+      return reply.send({ text, filename, length: text.length });
+    } catch (err: any) {
+      return reply.code(400).send({ error: 'No se pudo extraer texto: ' + err.message });
+    }
+  });
+
   // GET /project360/notifications (stub — usa sistema global)
   app.get('/notifications', async (req: FastifyRequest, reply: FastifyReply) => {
     return reply.send({ notifications: [] });

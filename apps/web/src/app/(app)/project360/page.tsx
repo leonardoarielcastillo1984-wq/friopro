@@ -123,6 +123,8 @@ export default function Project360Page() {
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [showLicitacionModal, setShowLicitacionModal] = useState(false);
   const [licitacionForm, setLicitacionForm] = useState({ name: '', documentText: '', documentName: '', analysisType: 'LICITACION', responsibleId: '', targetDate: '' });
+  const [licitacionFile, setLicitacionFile] = useState<File | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
 
   // Form state for creating new project
@@ -1032,9 +1034,86 @@ export default function Project360Page() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del documento</label>
                 <input type="text" value={licitacionForm.documentName} onChange={e => setLicitacionForm({ ...licitacionForm, documentName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Ej: Pliego_Obra_Publica_2024.pdf" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Texto del documento * <span className="text-gray-400 font-normal">(copiá y pegá el contenido del PDF/Word)</span></label>
-                <textarea value={licitacionForm.documentText} onChange={e => setLicitacionForm({ ...licitacionForm, documentText: e.target.value })} rows={8} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-sm" placeholder="Pegá aquí el texto completo del documento. La IA extraerá requerimientos, plazos, costos y riesgos..." />
+
+              {/* Document Input: File Upload or Paste Text */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">Contenido del documento *</label>
+
+                {/* File Upload Option */}
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-purple-400 transition-colors">
+                  <div className="flex items-center justify-center gap-3">
+                    <input
+                      type="file"
+                      id="licitacionFile"
+                      accept=".pdf,.doc,.docx,.txt"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setLicitacionFile(file);
+                        setLicitacionForm(prev => ({ ...prev, documentName: file.name }));
+                        setUploadingFile(true);
+                        try {
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          const res = await fetch('/api/project360/extract-text', {
+                            method: 'POST',
+                            body: formData,
+                            credentials: 'include'
+                          });
+                          if (!res.ok) throw new Error('Error extrayendo texto');
+                          const data = await res.json();
+                          setLicitacionForm(prev => ({ ...prev, documentText: data.text }));
+                          alert(`Texto extraído de "${file.name}". Podés editarlo antes de analizar.`);
+                        } catch (err: any) {
+                          alert('Error al extraer texto del archivo: ' + err.message);
+                        } finally {
+                          setUploadingFile(false);
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="licitacionFile"
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 cursor-pointer transition-colors"
+                    >
+                      <Upload className="w-4 h-4" />
+                      {uploadingFile ? 'Extrayendo texto...' : 'Subir PDF/Word'}
+                    </label>
+                    {licitacionFile && (
+                      <span className="text-sm text-gray-600 flex items-center gap-1">
+                        <FileText className="w-4 h-4" />
+                        {licitacionFile.name}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 text-center mt-2">
+                    Formatos soportados: PDF, DOC, DOCX, TXT
+                  </p>
+                </div>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-gray-300" />
+                  <span className="text-xs text-gray-500">O</span>
+                  <div className="flex-1 h-px bg-gray-300" />
+                </div>
+
+                {/* Text Paste Option */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Pegá el texto directamente
+                  </label>
+                  <textarea
+                    value={licitacionForm.documentText}
+                    onChange={e => setLicitacionForm({ ...licitacionForm, documentText: e.target.value })}
+                    rows={6}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-sm"
+                    placeholder="Pegá aquí el texto completo del documento. La IA extraerá requerimientos, plazos, costos y riesgos..."
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {licitacionForm.documentText ? `${licitacionForm.documentText.length} caracteres` : 'Sin contenido'}
+                  </p>
+                </div>
               </div>
             </div>
             <div className="p-6 border-t border-gray-200 flex gap-3">
