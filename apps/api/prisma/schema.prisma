@@ -504,7 +504,7 @@ model PlatformUser {
   climaCanalQRs               ClimaCanalQR[] @relation("ClimaCanalQRGeneratedBy")
 
   // Project360 Aprobaciones
-  aprobacionesAsignadas Project360Aprobacion[] @relation("AprobacionAsignada")
+  aprobacionesPendientes Project360Aprobacion[] @relation("AprobacionAsignadaAprobador")
 }
 
 model TenantMembership {
@@ -4669,7 +4669,7 @@ model Project360Aprobacion {
   etapa         String    // LICITACION_BORRADOR, DIMENSIONADO, COTIZADO, APROBADO_PARA_PRESENTAR, ADJUDICADO, EN_EJECUCION, CERRADO
   estado        String    @default("PENDIENTE") // PENDIENTE, APROBADO, RECHAZADO
   aprobadorId   String?   @db.Uuid
-  aprobador     PlatformUser? @relation("AprobacionAsignada", fields: [aprobadorId], references: [id], onDelete: SetNull)
+  aprobador     PlatformUser? @relation("AprobacionAsignadaAprobador", fields: [aprobadorId], references: [id], onDelete: SetNull)
   comentarios   String?   @db.Text
   solicitadoPorId String? @db.Uuid
   solicitadoEn  DateTime  @default(now()) @db.Timestamptz
