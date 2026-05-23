@@ -96,7 +96,7 @@ export default async function project360Routes(app: FastifyInstance) {
         tenantId, code, ...data,
         responsibleId: data.responsibleId,
         targetDate: new Date(data.targetDate),
-        createdById: req.db.userId || null,
+        createdById: (req as any).db?.userId || null,
         tags: data.tags,
       },
       include: { tasks: true },
@@ -144,7 +144,9 @@ export default async function project360Routes(app: FastifyInstance) {
       }
     }
 
-    await logHistory(prisma, project.id, tenantId, 'CREATED', `Proyecto "${project.name}" creado`, req.db.userId, req.db.userName);
+    const userId = (req as any).db?.userId;
+    const userName = (req as any).db?.userName;
+    await logHistory(prisma, project.id, tenantId, 'CREATED', `Proyecto "${project.name}" creado`, userId, userName);
     return reply.code(201).send({ project });
   });
 
