@@ -502,6 +502,9 @@ model PlatformUser {
   climaActionPlansCreated     ClimaActionPlan[] @relation("ClimaActionPlanCreatedBy")
   climaActionPlansResponsible ClimaActionPlan[] @relation("ClimaActionPlanResponsible")
   climaCanalQRs               ClimaCanalQR[] @relation("ClimaCanalQRGeneratedBy")
+
+  // Project360 Aprobaciones
+  aprobacionesAsignadas Project360Aprobacion[] @relation("AprobacionAsignada")
 }
 
 model TenantMembership {
@@ -4636,6 +4639,9 @@ model Project360 {
   licitationMode  String?  // LICITACION, PLIEGO, OFERTA, OTRO
   aiAnalysisId    String?  @db.Uuid
 
+  // Gestión de Aprobaciones por Etapa del Negocio
+  etapaAprobacion String?  @default("LICITACION_BORRADOR") // LICITACION_BORRADOR, DIMENSIONADO, COTIZADO, APROBADO_PARA_PRESENTAR, ADJUDICADO, EN_EJECUCION, CERRADO
+
   // Template
   templateId      String?  @db.Uuid
   template        Project360Template? @relation(fields: [templateId], references: [id])
@@ -4648,8 +4654,35 @@ model Project360 {
   budgetItems Project360BudgetItem[]
   milestones  Project360Milestone[]
   aiAnalyses  Project360AIAnalysis[]
+  aprobaciones Project360Aprobacion[]
 
   @@map("project360")
+}
+
+model Project360Aprobacion {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  etapa         String    // LICITACION_BORRADOR, DIMENSIONADO, COTIZADO, APROBADO_PARA_PRESENTAR, ADJUDICADO, EN_EJECUCION, CERRADO
+  estado        String    @default("PENDIENTE") // PENDIENTE, APROBADO, RECHAZADO
+  aprobadorId   String?   @db.Uuid
+  aprobador     PlatformUser? @relation("AprobacionAsignada", fields: [aprobadorId], references: [id], onDelete: SetNull)
+  comentarios   String?   @db.Text
+  solicitadoPorId String? @db.Uuid
+  solicitadoEn  DateTime  @default(now()) @db.Timestamptz
+  aprobadoEn    DateTime? @db.Timestamptz
+
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@unique([projectId, etapa])
+  @@index([projectId])
+  @@index([aprobadorId])
+  @@index([estado])
+  @@map("project360_aprobaciones")
 }
 
 model Project360Attachment {
