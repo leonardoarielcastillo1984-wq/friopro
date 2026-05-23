@@ -334,6 +334,7 @@ model Tenant {
   project360BudgetItems    Project360BudgetItem[]
   project360Milestones     Project360Milestone[]
   project360AIAnalyses     Project360AIAnalysis[]
+  project360Aprobaciones   Project360Aprobacion[]
   auditSchedules           AuditSchedule[]
   auditTeams               AuditTeam[]
   customerImprovementPlans CustomerImprovementPlan[]
