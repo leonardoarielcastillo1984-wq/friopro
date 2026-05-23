@@ -6,7 +6,8 @@ import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import {
   ArrowLeft, Target, Calendar, User, CheckCircle, Clock,
-  AlertTriangle, Flag, FileText, Plus, Edit, Trash2, Check, Download, Users, Upload
+  AlertTriangle, Flag, FileText, Plus, Edit, Trash2, Check, Download, Users, Upload,
+  TrendingUp, TrendingDown, Zap, RefreshCw, X
 } from 'lucide-react';
 
 interface Project {
@@ -29,6 +30,14 @@ interface Project {
   _count?: {
     tasks: number;
   };
+  // Pro fields
+  budget?: number;
+  budgetCurrency?: string;
+  actualCost?: number;
+  licitationMode?: string;
+  budgetItems?: any[];
+  milestones?: any[];
+  aiAnalyses?: any[];
 }
 
 export default function ProjectDetailPage() {
@@ -64,11 +73,27 @@ export default function ProjectDetailPage() {
   const [showEditProjectModal, setShowEditProjectModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
+  // Pro states
+  const [milestones, setMilestones] = useState<any[]>([]);
+  const [budgetItems, setBudgetItems] = useState<any[]>([]);
+  const [aiAnalyses, setAiAnalyses] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'tasks' | 'budget' | 'milestones' | 'analysis' | 'history'>('tasks');
+  const [showAddMilestone, setShowAddMilestone] = useState(false);
+  const [newMilestone, setNewMilestone] = useState({ name: '', description: '', targetDate: '' });
+  const [showAddBudgetItem, setShowAddBudgetItem] = useState(false);
+  const [newBudgetItem, setNewBudgetItem] = useState({ name: '', category: 'MATERIAL', estimated: '', actual: '', isExpense: false });
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [compareWithId, setCompareWithId] = useState('');
+  const [comparisonResult, setComparisonResult] = useState<any>(null);
+
   useEffect(() => {
     loadProject();
     loadActivityHistory();
     loadAttachments();
     loadReminders();
+    loadMilestones();
+    loadBudgetItems();
+    loadAiAnalyses();
   }, [params.id]);
 
   useEffect(() => {
@@ -117,6 +142,33 @@ export default function ProjectDetailPage() {
       setReminders(response.reminders || []);
     } catch (err) {
       console.error('Error loading reminders:', err);
+    }
+  };
+
+  const loadMilestones = async () => {
+    try {
+      const response = await apiFetch(`/project360/projects/${params.id}/milestones`) as any;
+      setMilestones(response.milestones || []);
+    } catch (err) {
+      console.error('Error loading milestones:', err);
+    }
+  };
+
+  const loadBudgetItems = async () => {
+    try {
+      const response = await apiFetch(`/project360/projects/${params.id}/budget-items`) as any;
+      setBudgetItems(response.budgetItems || []);
+    } catch (err) {
+      console.error('Error loading budget items:', err);
+    }
+  };
+
+  const loadAiAnalyses = async () => {
+    try {
+      const response = await apiFetch(`/project360/projects/${params.id}/ai-analyses`) as any;
+      setAiAnalyses(response.aiAnalyses || []);
+    } catch (err) {
+      console.error('Error loading AI analyses:', err);
     }
   };
 
@@ -291,6 +343,49 @@ export default function ProjectDetailPage() {
     } catch (err) {
       console.error('Error saving tasks:', err);
     }
+  };
+
+  const handleAddMilestone = async () => {
+    if (!newMilestone.name || !newMilestone.targetDate) return;
+    try {
+      const res = await apiFetch(`/project360/projects/${params.id}/milestones`, { method: 'POST', json: newMilestone }) as any;
+      setMilestones([...milestones, res.milestone].sort((a: any, b: any) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime()));
+      setNewMilestone({ name: '', description: '', targetDate: '' });
+      setShowAddMilestone(false);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleAddBudgetItem = async () => {
+    if (!newBudgetItem.name || !newBudgetItem.estimated) return;
+    try {
+      const res = await apiFetch(`/project360/projects/${params.id}/budget-items`, {
+        method: 'POST',
+        json: { ...newBudgetItem, estimated: parseFloat(newBudgetItem.estimated), actual: parseFloat(newBudgetItem.actual || '0'), isExpense: !!newBudgetItem.isExpense }
+      }) as any;
+      setBudgetItems([...budgetItems, res.budgetItem]);
+      setNewBudgetItem({ name: '', category: 'MATERIAL', estimated: '', actual: '', isExpense: false });
+      setShowAddBudgetItem(false);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteBudgetItem = async (id: string) => {
+    if (!confirm('Eliminar ítem?')) return;
+    await apiFetch(`/project360/budget-items/${id}`, { method: 'DELETE' });
+    setBudgetItems(budgetItems.filter(b => b.id !== id));
+  };
+
+  const handleDeleteMilestone = async (id: string) => {
+    if (!confirm('Eliminar hito?')) return;
+    await apiFetch(`/project360/milestones/${id}`, { method: 'DELETE' });
+    setMilestones(milestones.filter(m => m.id !== id));
+  };
+
+  const handleCompareAnalysis = async () => {
+    if (!compareWithId || !aiAnalyses[0]) return;
+    try {
+      const res = await apiFetch(`/project360/ai-analyses/${aiAnalyses[0].id}/compare`, { method: 'POST', json: { compareWithId } }) as any;
+      setComparisonResult(res);
+    } catch (err) { console.error(err); }
   };
 
   const getStatusLabel = (status: string) => {
@@ -724,6 +819,164 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* ══ PRESUPUESTO ══ */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-indigo-600" /> Presupuesto</h3>
+          <button onClick={() => setShowAddBudgetItem(true)} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"><Plus className="w-4 h-4" /> Agregar</button>
+        </div>
+        {project?.budget && (
+          <div className="mb-4 bg-gray-50 p-4 rounded-lg">
+            <div className="flex justify-between text-sm mb-2">
+              <span>Total: <strong>{project.budget?.toLocaleString('es-AR', { style: 'currency', currency: project.budgetCurrency || 'ARS' })}</strong></span>
+              <span>Gasto: <strong>{(project.actualCost || 0).toLocaleString('es-AR', { style: 'currency', currency: project.budgetCurrency || 'ARS' })}</strong></span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3"><div className="bg-indigo-600 h-3 rounded-full" style={{ width: `${Math.min(100, ((project.actualCost || 0) / (project.budget || 1)) * 100)}%` }} /></div>
+            <p className="text-xs text-gray-500 mt-1">{Math.round(((project.actualCost || 0) / (project.budget || 1)) * 100)}% consumido</p>
+          </div>
+        )}
+        {budgetItems.length === 0 ? <p className="text-gray-500 text-center py-4">Sin ítems</p> : (
+          <div className="space-y-2">
+            {budgetItems.map(item => (
+              <div key={item.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{item.name} <span className="text-xs text-gray-500">({item.category})</span></p>
+                  <div className="flex gap-3 text-xs text-gray-600 mt-1">
+                    <span>Est: {item.estimated?.toLocaleString('es-AR', { style: 'currency', currency: item.currency || 'ARS' })}</span>
+                    <span>Act: {item.actual?.toLocaleString('es-AR', { style: 'currency', currency: item.currency || 'ARS' })}</span>
+                    {item.isExpense && <span className="text-red-600 font-medium">GASTO</span>}
+                  </div>
+                </div>
+                <button onClick={() => handleDeleteBudgetItem(item.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        {showAddBudgetItem && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg space-y-3">
+            <h4 className="text-sm font-medium">Nuevo Ítem</h4>
+            <input type="text" value={newBudgetItem.name} onChange={e => setNewBudgetItem({ ...newBudgetItem, name: e.target.value })} placeholder="Nombre" className="w-full px-3 py-2 border rounded-lg text-sm" />
+            <div className="grid grid-cols-3 gap-2">
+              <select value={newBudgetItem.category} onChange={e => setNewBudgetItem({ ...newBudgetItem, category: e.target.value })} className="px-3 py-2 border rounded-lg text-sm">
+                <option value="MATERIAL">Material</option><option value="MANO_OBRA">Mano de obra</option><option value="SERVICIO">Servicio</option><option value="EQUIPO">Equipo</option><option value="ADMINISTRATIVO">Admin</option><option value="OTRO">Otro</option>
+              </select>
+              <input type="number" value={newBudgetItem.estimated} onChange={e => setNewBudgetItem({ ...newBudgetItem, estimated: e.target.value })} placeholder="Estimado" className="px-3 py-2 border rounded-lg text-sm" />
+              <input type="number" value={newBudgetItem.actual} onChange={e => setNewBudgetItem({ ...newBudgetItem, actual: e.target.value })} placeholder="Actual" className="px-3 py-2 border rounded-lg text-sm" />
+            </div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={newBudgetItem.isExpense} onChange={e => setNewBudgetItem({ ...newBudgetItem, isExpense: e.target.checked })} className="rounded" /> Es gasto</label>
+            <div className="flex gap-3">
+              <button onClick={handleAddBudgetItem} disabled={!newBudgetItem.name || !newBudgetItem.estimated} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50">Agregar</button>
+              <button onClick={() => setShowAddBudgetItem(false)} className="flex-1 px-4 py-2 border rounded-lg text-sm">Cancelar</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ══ HITOS / TIMELINE ══ */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Clock className="w-5 h-5 text-blue-600" /> Hitos / Timeline</h3>
+          <button onClick={() => setShowAddMilestone(true)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"><Plus className="w-4 h-4" /> Agregar</button>
+        </div>
+        {milestones.length === 0 ? <p className="text-gray-500 text-center py-4">Sin hitos definidos</p> : (
+          <div className="relative border-l-2 border-blue-200 ml-3 space-y-6">
+            {milestones.sort((a: any, b: any) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime()).map((m: any, i: number) => (
+              <div key={m.id} className="ml-6 relative">
+                <div className={`absolute -left-[31px] w-4 h-4 rounded-full border-2 ${m.status === 'COMPLETED' ? 'bg-green-500 border-green-500' : 'bg-white border-blue-400'}`} />
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-900">{m.name}</p>
+                    <button onClick={() => handleDeleteMilestone(m.id)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-3 h-3" /></button>
+                  </div>
+                  {m.description && <p className="text-xs text-gray-500 mt-1">{m.description}</p>}
+                  <p className="text-xs text-gray-500 mt-1">{new Date(m.targetDate).toLocaleDateString()} • {m.status === 'COMPLETED' ? '✓ Completado' : 'Pendiente'}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {showAddMilestone && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg space-y-3">
+            <h4 className="text-sm font-medium">Nuevo Hito</h4>
+            <input type="text" value={newMilestone.name} onChange={e => setNewMilestone({ ...newMilestone, name: e.target.value })} placeholder="Nombre del hito" className="w-full px-3 py-2 border rounded-lg text-sm" />
+            <input type="text" value={newMilestone.description} onChange={e => setNewMilestone({ ...newMilestone, description: e.target.value })} placeholder="Descripción" className="w-full px-3 py-2 border rounded-lg text-sm" />
+            <input type="date" value={newMilestone.targetDate} onChange={e => setNewMilestone({ ...newMilestone, targetDate: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+            <div className="flex gap-3">
+              <button onClick={handleAddMilestone} disabled={!newMilestone.name || !newMilestone.targetDate} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">Agregar</button>
+              <button onClick={() => setShowAddMilestone(false)} className="flex-1 px-4 py-2 border rounded-lg text-sm">Cancelar</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ══ ANÁLISIS IA ══ */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Zap className="w-5 h-5 text-purple-600" /> Análisis IA del Documento</h3>
+          {aiAnalyses.length > 0 && (
+            <div className="flex items-center gap-2">
+              <select value={compareWithId} onChange={e => setCompareWithId(e.target.value)} className="px-2 py-1 border rounded-lg text-sm">
+                <option value="">Comparar con...</option>
+                {aiAnalyses.slice(1).map(a => <option key={a.id} value={a.id}>{a.documentName}</option>)}
+              </select>
+              <button onClick={handleCompareAnalysis} disabled={!compareWithId} className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50">Comparar</button>
+            </div>
+          )}
+        </div>
+        {aiAnalyses.length === 0 ? <p className="text-gray-500 text-center py-4">Sin análisis IA. Creá el proyecto desde "Crear desde licitación" para generar uno.</p> : (
+          <div className="space-y-4">
+            {aiAnalyses.map((a: any) => (
+              <div key={a.id} className="border border-purple-100 rounded-lg p-4 bg-purple-50/30">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-purple-900">{a.documentName} <span className="text-xs text-purple-500">({a.analysisType})</span></p>
+                  <span className="text-xs text-gray-500">{new Date(a.createdAt).toLocaleDateString()}</span>
+                </div>
+                {(() => {
+                  let brief: any = {};
+                  try { brief = JSON.parse(a.extractedBrief || '{}'); } catch { brief = { rawSummary: a.extractedBrief }; }
+                  return (
+                    <div className="space-y-2 text-sm">
+                      {brief.rawSummary && <p className="text-gray-700 bg-white p-2 rounded border">{brief.rawSummary}</p>}
+                      {brief.requirements && brief.requirements.length > 0 && (
+                        <div><p className="font-medium text-gray-900 text-xs uppercase">Requerimientos</p><ul className="list-disc list-inside text-gray-700">{brief.requirements.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul></div>
+                      )}
+                      {brief.timeline && (
+                        <div><p className="font-medium text-gray-900 text-xs uppercase">Cronograma</p><p className="text-gray-700">{brief.timeline}</p></div>
+                      )}
+                      {brief.costs && (
+                        <div><p className="font-medium text-gray-900 text-xs uppercase">Costos Estimados</p><p className="text-gray-700">{brief.costs}</p></div>
+                      )}
+                      {brief.risks && brief.risks.length > 0 && (
+                        <div><p className="font-medium text-gray-900 text-xs uppercase">Riesgos</p><ul className="list-disc list-inside text-red-700">{brief.risks.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul></div>
+                      )}
+                      {brief.compliance && brief.compliance.length > 0 && (
+                        <div><p className="font-medium text-gray-900 text-xs uppercase">Cumplimiento Normativo</p><ul className="list-disc list-inside text-gray-700">{brief.compliance.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul></div>
+                      )}
+                      {brief.score !== undefined && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs font-medium">Puntaje de alineación:</span>
+                          <div className="w-24 bg-gray-200 rounded-full h-2"><div className="bg-purple-600 h-2 rounded-full" style={{ width: `${(brief.score / 10) * 100}%` }} /></div>
+                          <span className="text-xs font-bold text-purple-700">{brief.score}/10</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+        )}
+        {comparisonResult && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-medium text-gray-900">Comparación</h4>
+              <button onClick={() => setComparisonResult(null)} className="p-1 text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+            </div>
+            <pre className="text-xs text-gray-700 whitespace-pre-wrap">{JSON.stringify(comparisonResult.comparison, null, 2)}</pre>
           </div>
         )}
       </div>

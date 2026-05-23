@@ -329,6 +329,11 @@ model Tenant {
   maintenanceCosts         MaintenanceCost[]
   actionItems              ActionItem[]
   actionProjects           ActionProject[]
+  project360s              Project360[]
+  project360Templates      Project360Template[]
+  project360BudgetItems    Project360BudgetItem[]
+  project360Milestones     Project360Milestone[]
+  project360AIAnalyses     Project360AIAnalysis[]
   auditSchedules           AuditSchedule[]
   auditTeams               AuditTeam[]
   customerImprovementPlans CustomerImprovementPlan[]
@@ -4601,6 +4606,7 @@ model ProcessRisk {
 model Project360 {
   id             String    @id @default(uuid()) @db.Uuid
   tenantId       String    @db.Uuid
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   code           String
   name           String
   description    String?
@@ -4621,11 +4627,27 @@ model Project360 {
   updatedAt      DateTime  @updatedAt @db.Timestamptz
   deletedAt      DateTime? @db.Timestamptz
 
+  // Presupuesto
+  budget          Float?
+  budgetCurrency  String   @default("ARS")
+  actualCost      Float    @default(0)
+
+  // IA Licitación/Pliego
+  licitationMode  String?  // LICITACION, PLIEGO, OFERTA, OTRO
+  aiAnalysisId    String?  @db.Uuid
+
+  // Template
+  templateId      String?  @db.Uuid
+  template        Project360Template? @relation(fields: [templateId], references: [id])
+
   tasks       Project360Task[]
   attachments Project360Attachment[]
   reminders   Project360Reminder[]
   history     Project360History[]
   minutas     Minuta[]
+  budgetItems Project360BudgetItem[]
+  milestones  Project360Milestone[]
+  aiAnalyses  Project360AIAnalysis[]
 
   @@map("project360")
 }
@@ -4705,14 +4727,119 @@ model Project360Task {
   dueDate       DateTime? @db.Timestamptz
   completedAt   DateTime? @db.Timestamptz
   order         Int       @default(0)
+  estimatedHours Float?   // Horas estimadas
+  actualHours    Float?    // Horas reales
+  parentId       String?   @db.Uuid // Tarea padre (subtareas)
+  dependencies   Json      @default("[]") // IDs de tareas previas
   createdAt     DateTime  @default(now()) @db.Timestamptz
   updatedAt     DateTime  @updatedAt @db.Timestamptz
   deletedAt     DateTime? @db.Timestamptz
 
   project  Project360          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   comments Project360Comment[]
+  subtasks Project360Task[]  @relation("TaskSubtasks")
+  parent   Project360Task?   @relation("TaskSubtasks", fields: [parentId], references: [id])
 
+  @@index([projectId])
+  @@index([parentId])
   @@map("project360_task")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PROJECT360 PRO — Templates, Budget, Milestones, AI Analysis
+// ═══════════════════════════════════════════════════════════════
+
+model Project360Template {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @db.Uuid
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  category    String  @default("GENERAL") // GENERAL, ISO, LICITACION, MANTENIMIENTO, AUDITORIA
+  defaultTasks Json   @default("[]") // Array de tareas predefinidas
+  defaultBudgetItems Json @default("[]")
+  defaultMilestones Json @default("[]")
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  projects Project360[]
+
+  @@index([tenantId])
+  @@index([category])
+  @@map("project360_templates")
+}
+
+model Project360BudgetItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @db.Uuid
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectId   String  @db.Uuid
+  project     Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name        String
+  category    String  @default("MATERIAL") // MATERIAL, MANO_OBRA, SERVICIO, HERRAMIENTA, VIAJE, OTRO
+  estimated   Float   @default(0)
+  actual      Float   @default(0)
+  currency    String  @default("ARS")
+  isExpense   Boolean @default(false) // false = presupuestado, true = gasto real
+  notes       String?
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@map("project360_budget_items")
+}
+
+model Project360Milestone {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @db.Uuid
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectId   String  @db.Uuid
+  project     Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  targetDate  DateTime @db.Timestamptz
+  completedAt DateTime? @db.Timestamptz
+  status      String   @default("PENDING") // PENDING, COMPLETED
+  order       Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@map("project360_milestones")
+}
+
+model Project360AIAnalysis {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @db.Uuid
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectId   String  @db.Uuid
+  project     Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  documentName String
+  documentUrl  String
+  analysisType String  @default("LICITACION") // LICITACION, PLIEGO, OFERTA, COMPARACION
+
+  // Resultados del análisis IA
+  summary      String?   @db.Text
+  requirements Json?      // Array de requerimientos extraídos
+  risks        Json?      // Riesgos detectados
+  timeline     Json?      // Plazos detectados
+  costs        Json?      // Costos estimados detectados
+  scores       Json?      // Puntajes por categoría
+  rawResponse  String?   @db.Text
+
+  // Para comparador
+  comparedWith String?   @db.Uuid // ID de otro AIAnalysis comparado
+
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@map("project360_ai_analyses")
 }
 
 model ProjectComment {

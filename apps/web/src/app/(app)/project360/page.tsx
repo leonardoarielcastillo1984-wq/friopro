@@ -49,6 +49,15 @@ interface ActionProject {
   createdAt: string;
   updatedAt: string;
   tasks?: any[];
+  // Pro fields
+  budget?: number;
+  budgetCurrency?: string;
+  actualCost?: number;
+  licitationMode?: string;
+  templateId?: string;
+  budgetItems?: any[];
+  milestones?: any[];
+  aiAnalyses?: any[];
 }
 
 interface ActionTask {
@@ -108,6 +117,12 @@ export default function Project360Page() {
   const [showTasksModal, setShowTasksModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ActionProject | null>(null);
 
+  // Pro states
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [showLicitacionModal, setShowLicitacionModal] = useState(false);
+  const [licitacionForm, setLicitacionForm] = useState({ name: '', documentText: '', documentName: '', analysisType: 'LICITACION', responsibleId: '', targetDate: '' });
+  const [analyzing, setAnalyzing] = useState(false);
+
   // Form state for creating new project
   const [newProject, setNewProject] = useState({
     name: '',
@@ -117,17 +132,25 @@ export default function Project360Page() {
     priority: 'MEDIUM' as ActionProject['priority'],
     targetDate: '',
     responsibleId: '',
+    templateId: '',
+    budget: '',
+    budgetCurrency: 'ARS',
+    licitationMode: '',
   });
 
   useEffect(() => {
     loadProjects();
-    // Cargar empleados de RRHH como responsables (tienen firstName/lastName obligatorios)
+    // Cargar empleados de RRHH como responsables
     apiFetch<{ employees: any[] }>('/hr/employees')
       .then(res => setMembers((res?.employees || []).map((e: any) => ({
         id: e.id,
         name: `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.email,
         email: e.email,
       })).sort((a: any, b: any) => a.name.localeCompare(b.name))))
+      .catch(() => {});
+    // Cargar templates
+    apiFetch('/project360/templates')
+      .then((res: any) => setTemplates(res.templates || []))
       .catch(() => {});
   }, []);
 
@@ -302,6 +325,13 @@ export default function Project360Page() {
             Exportar Excel
           </button>
           <button 
+            onClick={() => setShowLicitacionModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          >
+            <Upload className="w-4 h-4" />
+            Crear desde licitación
+          </button>
+          <button 
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
@@ -312,7 +342,7 @@ export default function Project360Page() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
@@ -326,7 +356,7 @@ export default function Project360Page() {
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Proyectos Vencidos</p>
+              <p className="text-sm text-gray-600">Vencidos</p>
               <p className="text-2xl font-bold text-red-900">{stats.overdueProjects}</p>
             </div>
             <AlertTriangle className="w-8 h-8 text-red-600" />
@@ -336,7 +366,7 @@ export default function Project360Page() {
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Proyectos Críticos</p>
+              <p className="text-sm text-gray-600">Críticos</p>
               <p className="text-2xl font-bold text-orange-900">{stats.criticalProjects}</p>
             </div>
             <Flag className="w-8 h-8 text-orange-600" />
@@ -346,10 +376,34 @@ export default function Project360Page() {
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Avance Promedio</p>
+              <p className="text-sm text-gray-600">Avance</p>
               <p className="text-2xl font-bold text-green-900">{stats.avgProgress.toFixed(1)}%</p>
             </div>
             <BarChart3 className="w-8 h-8 text-green-600" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Presupuesto Total</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {projects.reduce((s, p) => s + (p.budget || 0), 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })}
+              </p>
+            </div>
+            <TrendingUp className="w-8 h-8 text-indigo-600" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Gasto Actual</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {projects.reduce((s, p) => s + (p.actualCost || 0), 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })}
+              </p>
+            </div>
+            <TrendingDown className="w-8 h-8 text-pink-600" />
           </div>
         </div>
       </div>
@@ -774,6 +828,40 @@ export default function Project360Page() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Plantilla</label>
+                  <select
+                    value={newProject.templateId}
+                    onChange={(e) => setNewProject({ ...newProject, templateId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Sin plantilla</option>
+                    {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Presupuesto</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={newProject.budget}
+                      onChange={(e) => setNewProject({ ...newProject, budget: e.target.value })}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0"
+                    />
+                    <select
+                      value={newProject.budgetCurrency}
+                      onChange={(e) => setNewProject({ ...newProject, budgetCurrency: e.target.value })}
+                      className="px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                    >
+                      <option value="ARS">ARS</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
             </div>
             
             <div className="p-6 border-t border-gray-200 flex gap-3">
@@ -789,6 +877,7 @@ export default function Project360Page() {
                     const payload = {
                       ...newProject,
                       targetDate: newProject.targetDate ? `${newProject.targetDate}T00:00:00Z` : '',
+                      budget: newProject.budget ? parseFloat(newProject.budget) : undefined,
                     };
                     await apiFetch('/project360/projects', {
                       method: 'POST',
@@ -803,6 +892,10 @@ export default function Project360Page() {
                       priority: 'MEDIUM',
                       targetDate: '',
                       responsibleId: '',
+                      templateId: '',
+                      budget: '',
+                      budgetCurrency: 'ARS',
+                      licitationMode: '',
                     });
                     loadProjects();
                   } catch (error: any) {
@@ -841,6 +934,121 @@ export default function Project360Page() {
             setProjects(projects.map(p => p.id === updatedProject.id ? updatedProject : p));
           }}
         />
+      )}
+
+      {/* ══ MODAL LICITACIÓN / PLIEGO ══ */}
+      {showLicitacionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Crear desde Licitación / Pliego</h2>
+                <p className="text-sm text-gray-500">La IA analizará el documento y generará un brief de proyecto</p>
+              </div>
+              <button onClick={() => { setShowLicitacionModal(false); setAnalyzing(false); }} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del proyecto *</label>
+                <input type="text" value={licitacionForm.name} onChange={e => setLicitacionForm({ ...licitacionForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Ej: Licitación Municipal 2024" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de documento</label>
+                  <select value={licitacionForm.analysisType} onChange={e => setLicitacionForm({ ...licitacionForm, analysisType: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <option value="LICITACION">Licitación</option>
+                    <option value="PLIEGO">Pliego</option>
+                    <option value="OFERTA">Oferta / Propuesta</option>
+                    <option value="CONTRATO">Contrato</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha objetivo *</label>
+                  <input type="date" value={licitacionForm.targetDate} onChange={e => setLicitacionForm({ ...licitacionForm, targetDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Responsable *</label>
+                <EmployeeCombobox value={licitacionForm.responsibleId} onChange={id => setLicitacionForm({ ...licitacionForm, responsibleId: id })} placeholder="Buscar responsable..." />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del documento</label>
+                <input type="text" value={licitacionForm.documentName} onChange={e => setLicitacionForm({ ...licitacionForm, documentName: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Ej: Pliego_Obra_Publica_2024.pdf" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Texto del documento * <span className="text-gray-400 font-normal">(copiá y pegá el contenido del PDF/Word)</span></label>
+                <textarea value={licitacionForm.documentText} onChange={e => setLicitacionForm({ ...licitacionForm, documentText: e.target.value })} rows={8} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-sm" placeholder="Pegá aquí el texto completo del documento. La IA extraerá requerimientos, plazos, costos y riesgos..." />
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex gap-3">
+              <button onClick={() => { setShowLicitacionModal(false); setAnalyzing(false); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  if (!licitacionForm.name || !licitacionForm.targetDate || !licitacionForm.responsibleId || !licitacionForm.documentText) {
+                    alert('Completá todos los campos obligatorios');
+                    return;
+                  }
+                  setAnalyzing(true);
+                  try {
+                    // 1. Crear proyecto base
+                    const projectRes = await apiFetch('/project360/projects', {
+                      method: 'POST',
+                      json: {
+                        name: licitacionForm.name,
+                        description: `Proyecto generado desde ${licitacionForm.analysisType}: ${licitacionForm.documentName}`,
+                        origin: 'MANUAL',
+                        originModule: 'PROJECT360',
+                        responsibleId: licitacionForm.responsibleId,
+                        targetDate: `${licitacionForm.targetDate}T00:00:00Z`,
+                        priority: 'HIGH',
+                        licitationMode: licitacionForm.analysisType,
+                      }
+                    }) as any;
+                    const projectId = projectRes.project?.id;
+                    if (!projectId) throw new Error('No se pudo crear el proyecto');
+
+                    // 2. Analizar con IA
+                    await apiFetch(`/project360/projects/${projectId}/ai-analyses`, {
+                      method: 'POST',
+                      json: {
+                        documentText: licitacionForm.documentText,
+                        documentName: licitacionForm.documentName || 'Documento',
+                        analysisType: licitacionForm.analysisType,
+                      }
+                    });
+
+                    setShowLicitacionModal(false);
+                    setLicitacionForm({ name: '', documentText: '', documentName: '', analysisType: 'LICITACION', responsibleId: '', targetDate: '' });
+                    loadProjects();
+                    alert('Proyecto creado y analizado con éxito. Revisá el detalle para ver el brief completo.');
+                  } catch (err: any) {
+                    alert('Error: ' + (err.message || 'No se pudo procesar'));
+                  } finally {
+                    setAnalyzing(false);
+                  }
+                }}
+                disabled={analyzing}
+                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {analyzing ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Analizando con IA...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <Zap className="w-4 h-4" />
+                    Analizar y Crear Proyecto
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

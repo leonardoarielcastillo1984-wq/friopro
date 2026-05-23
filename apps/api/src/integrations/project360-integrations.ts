@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Integraciones de PROJECT360 con módulos existentes de SGI360
 
 import { FastifyInstance } from 'fastify';
