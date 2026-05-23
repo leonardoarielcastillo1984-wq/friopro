@@ -7,8 +7,14 @@ import Link from 'next/link';
 import {
   ArrowLeft, Target, Calendar, User, CheckCircle, Clock,
   AlertTriangle, Flag, FileText, Plus, Edit, Trash2, Check, Download, Users, Upload,
-  TrendingUp, TrendingDown, Zap, RefreshCw, X, Shield, Send, ArrowRight
+  TrendingUp, TrendingDown, Zap, RefreshCw, X, Shield, Send, ArrowRight,
+  BarChart3, Cpu, Briefcase, Wallet, FileSpreadsheet, Lightbulb, MessageSquare
 } from 'lucide-react';
+
+import BusinessCaseTab from '@/components/project360/BusinessCaseTab';
+import SimulationTab from '@/components/project360/SimulationTab';
+import OperationalSizingTab from '@/components/project360/OperationalSizingTab';
+import ProjectCopilot from '@/components/project360/ProjectCopilot';
 
 interface Project {
   id: string;
@@ -78,7 +84,7 @@ export default function ProjectDetailPage() {
   const [milestones, setMilestones] = useState<any[]>([]);
   const [budgetItems, setBudgetItems] = useState<any[]>([]);
   const [aiAnalyses, setAiAnalyses] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'tasks' | 'budget' | 'milestones' | 'analysis' | 'history' | 'aprobaciones' | 'recursos'>('tasks');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'business-case' | 'simulation' | 'sizing' | 'budget' | 'milestones' | 'analysis' | 'history' | 'aprobaciones' | 'copilot'>('overview');
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ name: '', description: '', targetDate: '' });
   const [showAddBudgetItem, setShowAddBudgetItem] = useState(false);
@@ -777,6 +783,40 @@ export default function ProjectDetailPage() {
         <h3 className="font-semibold text-gray-900 mb-3">Descripción</h3>
         <p className="text-gray-600">{project.description || 'Sin descripción'}</p>
       </div>
+
+      {/* ── ENTERPRISE TABS ── */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="flex overflow-x-auto border-b">
+          {[
+            { key: 'overview', label: 'General', icon: Target },
+            { key: 'business-case', label: 'Business Case', icon: BarChart3 },
+            { key: 'simulation', label: 'Simulación', icon: TrendingUp },
+            { key: 'sizing', label: 'Dimensionamiento', icon: Cpu },
+            { key: 'budget', label: 'Presupuesto', icon: Wallet },
+            { key: 'milestones', label: 'Hitos', icon: Calendar },
+            { key: 'analysis', label: 'Análisis IA', icon: Zap },
+            { key: 'aprobaciones', label: 'Aprobaciones', icon: Shield },
+            { key: 'history', label: 'Historial', icon: Clock },
+            { key: 'copilot', label: 'Copilot IA', icon: MessageSquare },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key as any)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                activeTab === t.key
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <t.icon className="w-4 h-4" />
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === 'overview' && (
+      <>
 
       {/* Tasks */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
@@ -1764,6 +1804,29 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       )}
+      </>
+      )}
+
+      {/* ── BUSINESS CASE ── */}
+      {activeTab === 'business-case' && (
+        <BusinessCaseTab projectId={params.id as string} />
+      )}
+
+      {/* ── SIMULACIÓN ── */}
+      {activeTab === 'simulation' && (
+        <SimulationTab projectId={params.id as string} />
+      )}
+
+      {/* ── DIMENSIONAMIENTO OPERATIVO ── */}
+      {activeTab === 'sizing' && (
+        <OperationalSizingTab projectId={params.id as string} />
+      )}
+
+      {/* ── COPILOT IA ── */}
+      {activeTab === 'copilot' && project && (
+        <ProjectCopilot projectId={params.id as string} projectName={project.name} />
+      )}
+
     </div>
   );
 }

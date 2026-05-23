@@ -336,6 +336,14 @@ model Tenant {
   project360Milestones     Project360Milestone[]
   project360AIAnalyses     Project360AIAnalysis[]
   project360Aprobaciones   Project360Aprobacion[]
+  project360BusinessCases  Project360BusinessCase[]
+  project360Simulations    Project360Simulation[]
+  project360Cashflows      Project360Cashflow[]
+  project360Pipelines      Project360Pipeline[]
+  project360Contracts      Project360Contract[]
+  project360LessonsLearned Project360LessonLearned[]
+  project360Proposals      Project360Proposal[]
+  project360OperationalSizings Project360OperationalSizing[]
   auditSchedules           AuditSchedule[]
   auditTeams               AuditTeam[]
   customerImprovementPlans CustomerImprovementPlan[]
@@ -4644,6 +4652,28 @@ model Project360 {
   // Gestión de Aprobaciones por Etapa del Negocio
   etapaAprobacion String?  @default("LICITACION_BORRADOR") // LICITACION_BORRADOR, DIMENSIONADO, COTIZADO, APROBADO_PARA_PRESENTAR, ADJUDICADO, EN_EJECUCION, CERRADO
 
+  // ═══════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — IA Predictiva (Fase 3)
+  // ═══════════════════════════════════════════════════════════════
+  probabilityOfWinning        Float?   // 0-100 probabilidad de adjudicación
+  probabilityOfDelay          Float?   // 0-100 probabilidad de atraso
+  probabilityOfCostDeviation  Float?   // 0-100 probabilidad de sobrecosto
+  probabilityOfOperationalFailure Float? // 0-100 probabilidad de fallo operativo
+  projectComplexityScore      Float?   // 0-100 complejidad del proyecto
+  clientRiskScore             Float?   // 0-100 riesgo del cliente
+  supplierRiskScore           Float?   // 0-100 riesgo de proveedores
+  timelineConfidenceScore     Float?   // 0-100 confianza en el cronograma
+  overallRiskScore            Float?   // 0-100 score global de riesgo
+  viabilityScore              Float?   // 0-100 score de viabilidad (Fase 15)
+  financialScore              Float?   // 0-100 score financiero
+  operationalScore            Float?   // 0-100 score operativo
+  strategicScore              Float?   // 0-100 score estratégico
+  commercialScore             Float?   // 0-100 score comercial
+  contractualScore            Float?   // 0-100 score contractual
+  iaPredictiveSummary         String?  @db.Text // Resumen ejecutivo IA
+  iaRecommendations           Json?    // Recomendaciones generadas por IA
+  iaLastAnalyzedAt            DateTime? @db.Timestamptz
+
   // Template
   templateId      String?  @db.Uuid
   template        Project360Template? @relation(fields: [templateId], references: [id])
@@ -4657,6 +4687,17 @@ model Project360 {
   milestones  Project360Milestone[]
   aiAnalyses  Project360AIAnalysis[]
   aprobaciones Project360Aprobacion[]
+
+  // ═══════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — Relaciones nuevas
+  // ═══════════════════════════════════════════════════════════════
+  businessCase    Project360BusinessCase?
+  simulations     Project360Simulation[]
+  cashflows       Project360Cashflow[]
+  pipelineStages  Project360Pipeline[]
+  contracts       Project360Contract[]
+  lessonsLearned  Project360LessonLearned[]
+  proposals       Project360Proposal[]
 
   @@map("project360")
 }
@@ -4913,6 +4954,448 @@ model Project360AIAnalysis {
   @@index([tenantId])
   @@index([projectId])
   @@map("project360_ai_analyses")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROJECT360 ENTERPRISE — Nuevos Modelos (Fases 1-13)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+// FASE 1 — BUSINESS CASE
+// ═══════════════════════════════════════════════════════════════
+model Project360BusinessCase {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @unique @db.Uuid
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Financiero
+  estimatedRevenue     Float?   // Ingreso estimado
+  directCosts          Float?   // Costos directos
+  indirectCosts        Float?   // Costos indirectos
+  financialMargin      Float?   // Margen financiero (%)
+  grossMargin          Float?   // Margen bruto (%)
+  netMargin            Float?   // Margen neto (%)
+  roi                  Float?   // ROI (%)
+  paybackMonths        Float?   // Payback en meses
+  minimumAcceptedMargin Float?  // Margen mínimo aceptado
+  currency             String   @default("ARS")
+
+  // Cashflow estimado (array de meses)
+  estimatedCashflow    Json?    // [{month, ingresos, egresos, acumulado}]
+
+  // Riesgos (0-100)
+  financialRisk        Float?   // Riesgo financiero
+  operationalRisk      Float?   // Riesgo operativo
+  commercialRisk       Float?   // Riesgo comercial
+  strategicRisk        Float?   // Riesgo estratégico
+  successProbability   Float?   // Probabilidad de éxito (%)
+
+  // Dimensionamiento
+  estimatedHours       Float?   // Horas estimadas
+  estimatedKm          Float?   // KM estimados
+  estimatedFuel        Float?   // Combustible estimado
+  requiredVehicles     Int?     // Vehículos requeridos
+  requiredEmployees    Int?     // Empleados requeridos
+  requiredSupervisors  Int?     // Supervisores requeridos
+
+  // Estratégico
+  clientStrategicLevel String?  // ALTO, MEDIO, BAJO
+  businessScore        Float?   // Score de negocio 0-100
+  competitiveDifficulty Float?  // Dificultad competitiva 0-100
+  marketOpportunity    Float?   // Oportunidad de mercado 0-100
+
+  // Semáforo automático
+  viabilityStatus      String   @default("AMARILLO") // VERDE, AMARILLO, ROJO
+
+  // Resumen
+  executiveSummary     String?  @db.Text
+  recommendation       String?  @db.Text // RECOMENDABLE, REVISAR, ALTO_RIESGO, NO_RECOMENDABLE
+
+  // Scores desagregados (Fase 15)
+  financialScore       Float?
+  operationalScore   Float?
+  commercialScore      Float?
+  strategicScore       Float?
+  contractualScore     Float?
+  riskScore            Float?
+  capacityScore        Float?
+  overallScore         Float?
+
+  createdById String?  @db.Uuid
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([viabilityStatus])
+  @@map("project360_business_cases")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FASE 2 — MOTOR DE SIMULACIÓN FINANCIERA
+// ═══════════════════════════════════════════════════════════════
+model Project360Simulation {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name          String    // Nombre del escenario (ej: "Escenario Optimista")
+  scenarioType  String    @default("PROBABLE") // OPTIMISTA, PROBABLE, PESIMISTA, CUSTOM
+
+  // Variables de entrada
+  fuelPrice     Float?    // Precio combustible
+  exchangeRate  Float?    // Tipo de cambio
+  inflationRate Float?    // Inflación estimada (%)
+  salaryIncrease Float?   // Aumento salarial (%)
+  employeeCount Int?       // Cantidad de personal
+  vehicleCount  Int?       // Cantidad de vehículos
+  indirectCosts Float?    // Costos indirectos
+  financingRate Float?    // Tasa financiera (%)
+  tripCount     Int?       // Cantidad de viajes
+  operationalVolume Float? // Volumen operativo
+
+  // Resultados calculados
+  projectedMargin      Float?   // Margen proyectado
+  projectedRoi         Float?   // ROI proyectado
+  projectedCashflow    Json?    // Cashflow proyectado por mes
+  projectedProfit      Float?   // Utilidad proyectada
+  projectedRevenue     Float?   // Ingreso proyectado
+  projectedCost        Float?   // Costo proyectado
+  projectedPayback     Float?   // Payback proyectado (meses)
+  projectedBreakEven   Float?   // Break-even (meses)
+
+  // Comparación vs baseline
+  marginDeviation      Float?   // Desviación de margen vs baseline
+  roiDeviation         Float?   // Desviación de ROI vs baseline
+  riskLevel            String   @default("MEDIO") // BAJO, MEDIO, ALTO, CRITICO
+
+  isBaseline  Boolean   @default(false) // Es el escenario base
+  notes       String?   @db.Text
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([scenarioType])
+  @@map("project360_simulations")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FASE 6 — CASHFLOW Y CONTROL FINANCIERO
+// ═══════════════════════════════════════════════════════════════
+model Project360Cashflow {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  month         Int       // Mes (1-12)
+  year          Int       // Año
+  periodLabel   String    // Ej: "Ene 2025"
+
+  // Ingresos
+  projectedRevenue    Float?   // Ingreso proyectado
+  actualRevenue       Float?   // Ingreso real
+  billingMilestone    String?  // Hito de facturación
+  expectedCollectionDate DateTime? @db.Timestamptz // Fecha esperada de cobro
+  actualCollectionDate   DateTime? @db.Timestamptz // Fecha real de cobro
+
+  // Egresos
+  projectedExpenses   Float?   // Egreso proyectado
+  actualExpenses      Float?   // Egreso real
+  expectedPaymentDate DateTime? @db.Timestamptz // Fecha esperada de pago
+  actualPaymentDate   DateTime? @db.Timestamptz // Fecha real de pago
+
+  // Capital inmovilizado
+  tiedCapital         Float?   // Capital inmovilizado
+
+  // Acumulados
+  projectedCumulative Float?   // Acumulado proyectado
+  actualCumulative    Float?   // Acumulado real
+  projectedBurnRate   Float?   // Burn rate proyectado
+  actualBurnRate      Float?   // Burn rate real
+
+  // Desviaciones
+  revenueDeviation    Float?   // Desviación de ingreso
+  expenseDeviation    Float?   // Desviación de egreso
+
+  notes               String?  @db.Text
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([year, month])
+  @@map("project360_cashflows")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FASE 7 — PIPELINE COMERCIAL
+// ═══════════════════════════════════════════════════════════════
+model Project360Pipeline {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  stage         String    // LEAD, OPORTUNIDAD, ANALISIS, VISITA_TECNICA, PROPUESTA, NEGOCIACION, ADJUDICADO, PERDIDO
+  stageOrder    Int       @default(0) // Orden para el pipeline
+  probability   Float?    // Probabilidad de cierre (%)
+  expectedValue Float?    // Valor esperado
+  expectedCloseDate DateTime? @db.Timestamptz
+  actualCloseDate   DateTime? @db.Timestamptz
+
+  // Competencia
+  competitors   Json?     // [{name, strength, price}]
+  ourAdvantage String?   @db.Text
+  ourWeakness  String?   @db.Text
+
+  // Visitas y reuniones
+  visitsCount   Int       @default(0)
+  meetingsCount Int       @default(0)
+  lastContactDate DateTime? @db.Timestamptz
+
+  // Contactos relacionados
+  contactIds    Json?     // IDs de contactos del CRM
+  clientId      String?   @db.Uuid // ID del cliente
+
+  // Minutas y emails
+  relatedMinutaIds Json?  // IDs de minutas
+  relatedEmailIds  Json?  // IDs de emails
+
+  // Cotizaciones
+  relatedQuoteIds  Json?  // IDs de cotizaciones
+
+  // Decisión
+  decisionReason   String? @db.Text // Por qué se ganó/perdió
+  decisionDate     DateTime? @db.Timestamptz
+
+  // Pipeline value
+  pipelineValue    Float?   // Valor en pipeline
+  weightedValue    Float?   // Valor ponderado (probabilidad * valor)
+
+  notes            String?  @db.Text
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([stage])
+  @@index([clientId])
+  @@map("project360_pipeline")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FASE 9 — GENERADOR AUTOMÁTICO DE PROPUESTAS
+// ═══════════════════════════════════════════════════════════════
+model Project360Proposal {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Contenido generado
+  technicalProposal   String?  @db.Text // Propuesta técnica
+  operationalScope    String?  @db.Text // Alcance operativo
+  schedule            Json?    // Cronograma generado
+  resourceMatrix      Json?    // Matriz de recursos
+  exclusions          String?  @db.Text // Exclusiones
+  risks               String?  @db.Text // Riesgos
+  executiveSummary    String?  @db.Text // Resumen gerencial
+  managementSummary   String?  @db.Text // Presentación ejecutiva
+  ganttData           Json?    // Datos del Gantt
+  preliminaryBudget   Json?    // Presupuesto preliminar
+
+  // Documento base
+  pliegoText          String?  @db.Text // Texto del pliego analizado
+  requirementsText    String?  @db.Text // Requerimientos
+  scopeText           String?  @db.Text // Alcance
+  costsText           String?  @db.Text // Costos base
+
+  // Estado
+  status              String   @default("DRAFT") // DRAFT, REVIEW, APPROVED, SENT
+  version             Int      @default(1)
+
+  // Exportaciones
+  pdfUrl              String?
+  wordUrl             String?
+  excelUrl            String?
+  pptUrl              String?
+
+  // IA metadata
+  iaGeneratedAt       DateTime? @db.Timestamptz
+  iaModel             String?   // Modelo IA usado
+  iaTokensUsed        Int?      // Tokens consumidos
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([status])
+  @@map("project360_proposals")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FASE 12 — GESTIÓN CONTRACTUAL
+// ═══════════════════════════════════════════════════════════════
+model Project360Contract {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Datos del contrato
+  contractNumber    String?   // Número de contrato
+  contractType      String?   // TIPO_A, TIPO_B, FRAMEWORK, etc.
+  startDate         DateTime? @db.Timestamptz
+  endDate           DateTime? @db.Timestamptz
+  renewalDate       DateTime? @db.Timestamptz
+  durationMonths    Int?      // Duración en meses
+
+  // SLA y penalidades
+  slaDescription    String?   @db.Text
+  slaMetrics        Json?     // [{metric, target, penalty}]
+  penaltyClauses    String?   @db.Text // Cláusulas de penalidad
+  penaltyAmount     Float?    // Monto de penalidad
+
+  // Garantías y seguros
+  guarantees        Json?     // [{type, amount, expiration}]
+  insurances        Json?     // [{type, coverage, expiration}]
+
+  // Vencimientos y alertas
+  expirationAlertDays Int     @default(30) // Días antes para alertar
+  isActive          Boolean   @default(true)
+
+  // Cláusulas críticas detectadas por IA
+  criticalClauses   Json?     // [{clause, riskLevel, description}]
+  iaRiskAlert       String?   @db.Text // Alerta IA: "Cláusula contractual de alto riesgo detectada"
+
+  // Multas aplicadas
+  finesApplied      Json?     // [{date, amount, reason}]
+  totalFines        Float     @default(0)
+
+  // Documento
+  contractDocumentUrl String?
+  amendments        Json?     // [{number, date, description, documentUrl}]
+
+  notes             String?   @db.Text
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([contractNumber])
+  @@index([endDate])
+  @@map("project360_contracts")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FASE 13 — LESSONS LEARNED / KNOWLEDGE BASE
+// ═══════════════════════════════════════════════════════════════
+model Project360LessonLearned {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  category      String    // PROBLEMA, MEJORA, EXITO, RIESGO, RECOMENDACION
+  title         String
+  description   String    @db.Text
+  impact        String?   @db.Text // Impacto en costo, tiempo, calidad
+  solution      String?   @db.Text // Cómo se resolvió
+  recommendations String?   @db.Text // Recomendaciones para futuros
+
+  // Métricas reales vs plan
+  plannedCost   Float?
+  actualCost    Float?
+  plannedTime   Float?    // Horas/días planificados
+  actualTime    Float?    // Horas/días reales
+  costDeviation Float?    // Desviación de costo
+  timeDeviation Float?    // Desviación de tiempo
+
+  // IA tagging
+  tags          Json?     @default("[]") // Tags para búsqueda
+  similarProjects Json?   // IDs de proyectos similares
+  iaSummary     String?   @db.Text // Resumen IA
+
+  // Reutilización
+  reusable      Boolean   @default(false) // ¿Se puede reutilizar?
+  reuseCount    Int       @default(0)   // Veces reutilizado
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([category])
+  @@index([reusable])
+  @@map("project360_lessons_learned")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FASE 4 — DIMENSIONAMIENTO OPERATIVO (inputs del usuario)
+// ═══════════════════════════════════════════════════════════════
+model Project360OperationalSizing {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  tenantId      String    @db.Uuid
+
+  // Entradas
+  km              Float?
+  trips           Int?
+  pallets         Int?
+  tons            Float?
+  frequency       String?   // DIARIA, SEMANAL, QUINCENAL, MENSUAL
+  slaHours        Float?    // Horas de SLA
+  shifts          Int?      // Turnos
+  operatingHours  String?   // Horarios de operación
+  units           String?   // Unidades involucradas
+  operationType   String?   // TRANSPORTE, DISTRIBUCION, ALMACENAMIENTO, ETC.
+  minStaff        Int?      // Dotación mínima
+  geographicCoverage String? // Cobertura geográfica
+
+  // Resultados calculados
+  driversNeeded       Int?
+  trucksNeeded        Int?
+  supervisorsNeeded   Int?
+  administrativeNeeded Int?
+  fuelNeeded          Float?
+  manHoursNeeded      Float?
+  utilizationRate     Float?  // Tasa de utilización
+  availabilityRequired Float? // Disponibilidad requerida
+  operationalCapacity Float?   // Capacidad operativa
+
+  // Integración Flota360
+  fleetAvailability Json?   // [{vehicleId, available, maintenancePending, expirationDate}]
+  fleetAlert        String? @db.Text // "No hay suficientes recursos disponibles"
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@map("project360_operational_sizing")
 }
 
 model ProjectComment {

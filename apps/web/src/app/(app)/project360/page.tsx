@@ -366,6 +366,13 @@ export default function Project360Page() {
           <p className="text-gray-600">Gestión de Planes de Acción y Mejora Continua</p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/project360/pmo"
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+          >
+            <BarChart3 className="w-4 h-4" />
+            PMO Dashboard
+          </Link>
           <button 
             onClick={() => exportProjectsToExcel(projects)}
             className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"

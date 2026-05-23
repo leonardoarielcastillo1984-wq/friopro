@@ -1117,4 +1117,917 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
       return reply.code(500).send({ error: err.message });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — FASE 1: BUSINESS CASE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/projects/:id/business-case
+  app.get('/projects/:id/business-case', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+
+      const bc = await prisma.project360BusinessCase.findUnique({ where: { projectId: id } });
+      if (!bc) return reply.send({ businessCase: null });
+      if (bc.tenantId !== tenantId) return reply.code(403).send({ error: 'No autorizado' });
+      return reply.send({ businessCase: bc });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST/PUT /project360/projects/:id/business-case
+  app.post('/projects/:id/business-case', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const userId = (req as any).db?.userId;
+
+      const proyecto = await prisma.project360.findFirst({ where: { id, tenantId } });
+      if (!proyecto) return reply.code(404).send({ error: 'Proyecto no encontrado' });
+
+      // Extraer campos numéricos
+      const {
+        estimatedRevenue, directCosts, indirectCosts,
+        minimumAcceptedMargin, currency,
+        financialRisk, operationalRisk, commercialRisk, strategicRisk, successProbability,
+        estimatedHours, estimatedKm, estimatedFuel, requiredVehicles, requiredEmployees, requiredSupervisors,
+        clientStrategicLevel, businessScore, competitiveDifficulty, marketOpportunity,
+        executiveSummary, recommendation,
+        estimatedCashflow
+      } = body;
+
+      // Cálculos automáticos
+      const revenue = Number(estimatedRevenue) || 0;
+      const dCosts = Number(directCosts) || 0;
+      const iCosts = Number(indirectCosts) || 0;
+      const totalCosts = dCosts + iCosts;
+      const grossMarginVal = revenue > 0 ? ((revenue - totalCosts) / revenue) * 100 : 0;
+      const netMarginVal = revenue > 0 ? ((revenue - totalCosts - (iCosts * 0.3)) / revenue) * 100 : 0;
+      const financialMarginVal = revenue > 0 ? ((revenue - totalCosts) / revenue) * 100 : 0;
+      const roiVal = totalCosts > 0 ? ((revenue - totalCosts) / totalCosts) * 100 : 0;
+      const payback = roiVal > 0 ? (totalCosts / (revenue / 12)) : null;
+
+      // Scores individuales
+      const finScore = Math.max(0, Math.min(100, grossMarginVal + (roiVal / 2)));
+      const opScore = Math.max(0, Math.min(100, 100 - (Number(operationalRisk) || 0)));
+      const comScore = Math.max(0, Math.min(100, (Number(marketOpportunity) || 50) - (Number(commercialRisk) || 0) / 2));
+      const stratScore = Math.max(0, Math.min(100, (Number(clientStrategicLevel) === 3 ? 90 : Number(clientStrategicLevel) === 2 ? 60 : 30)));
+      const riskScore = Math.max(0, Math.min(100,
+        (Number(financialRisk) || 0) * 0.3 +
+        (Number(operationalRisk) || 0) * 0.3 +
+        (Number(commercialRisk) || 0) * 0.2 +
+        (Number(strategicRisk) || 0) * 0.2
+      ));
+      const capacityScore = Math.max(0, Math.min(100, (Number(requiredEmployees) || 0) > 0 ? 70 : 50));
+      const overallScore = (finScore + opScore + comScore + stratScore + (100 - riskScore) + capacityScore) / 6;
+
+      // Semáforo
+      const minMargin = Number(minimumAcceptedMargin) || 10;
+      let viabilityStatus = 'AMARILLO';
+      let recommendationAuto = 'REVISAR';
+      if (grossMarginVal >= minMargin && riskScore < 50 && overallScore >= 70) {
+        viabilityStatus = 'VERDE';
+        recommendationAuto = 'RECOMENDABLE';
+      } else if (grossMarginVal < minMargin || riskScore > 70 || overallScore < 40) {
+        viabilityStatus = 'ROJO';
+        recommendationAuto = 'NO_RECOMENDABLE';
+      }
+      if (riskScore > 60 && overallScore >= 50) {
+        recommendationAuto = 'ALTO_RIESGO';
+      }
+
+      const data = {
+        tenantId, projectId: id,
+        estimatedRevenue: revenue || null,
+        directCosts: dCosts || null,
+        indirectCosts: iCosts || null,
+        financialMargin: financialMarginVal || null,
+        grossMargin: grossMarginVal || null,
+        netMargin: netMarginVal || null,
+        roi: roiVal || null,
+        paybackMonths: payback || null,
+        minimumAcceptedMargin: minMargin || null,
+        currency: currency || 'ARS',
+        estimatedCashflow: estimatedCashflow || null,
+        financialRisk: financialRisk ? Number(financialRisk) : null,
+        operationalRisk: operationalRisk ? Number(operationalRisk) : null,
+        commercialRisk: commercialRisk ? Number(commercialRisk) : null,
+        strategicRisk: strategicRisk ? Number(strategicRisk) : null,
+        successProbability: successProbability ? Number(successProbability) : null,
+        estimatedHours: estimatedHours ? Number(estimatedHours) : null,
+        estimatedKm: estimatedKm ? Number(estimatedKm) : null,
+        estimatedFuel: estimatedFuel ? Number(estimatedFuel) : null,
+        requiredVehicles: requiredVehicles ? Number(requiredVehicles) : null,
+        requiredEmployees: requiredEmployees ? Number(requiredEmployees) : null,
+        requiredSupervisors: requiredSupervisors ? Number(requiredSupervisors) : null,
+        clientStrategicLevel: clientStrategicLevel || null,
+        businessScore: businessScore ? Number(businessScore) : null,
+        competitiveDifficulty: competitiveDifficulty ? Number(competitiveDifficulty) : null,
+        marketOpportunity: marketOpportunity ? Number(marketOpportunity) : null,
+        viabilityStatus,
+        executiveSummary: executiveSummary || null,
+        recommendation: recommendation || recommendationAuto,
+        financialScore: finScore,
+        operationalScore: opScore,
+        commercialScore: comScore,
+        strategicScore: stratScore,
+        contractualScore: null,
+        riskScore,
+        capacityScore,
+        overallScore,
+        createdById: userId || null,
+        updatedById: userId || null,
+      };
+
+      const bc = await prisma.project360BusinessCase.upsert({
+        where: { projectId: id },
+        create: data as any,
+        update: { ...data, updatedById: userId || null } as any,
+      });
+
+      await logHistory(prisma, id, tenantId, 'BUSINESS_CASE_UPDATED', `Business Case actualizado. Score: ${Math.round(overallScore)} | Viabilidad: ${viabilityStatus}`, userId, null);
+      return reply.send({ businessCase: bc });
+    } catch (err: any) {
+      console.error('[POST /business-case] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — FASE 2: SIMULACIÓN FINANCIERA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/projects/:id/simulations
+  app.get('/projects/:id/simulations', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const sims = await prisma.project360Simulation.findMany({
+        where: { projectId: id, tenantId },
+        orderBy: { createdAt: 'desc' }
+      });
+      return reply.send({ simulations: sims });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/simulations
+  app.post('/projects/:id/simulations', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const userId = (req as any).db?.userId;
+
+      // Buscar baseline
+      const baseline = await prisma.project360Simulation.findFirst({
+        where: { projectId: id, tenantId, isBaseline: true }
+      });
+
+      const {
+        name, scenarioType, fuelPrice, exchangeRate, inflationRate, salaryIncrease,
+        employeeCount, vehicleCount, indirectCosts: simIndirectCosts, financingRate,
+        tripCount, operationalVolume
+      } = body;
+
+      // Obtener business case como base
+      const bc = await prisma.project360BusinessCase.findUnique({ where: { projectId: id } });
+      const baseRevenue = bc?.estimatedRevenue || 0;
+      const baseDirectCosts = bc?.directCosts || 0;
+      const baseIndirectCosts = bc?.indirectCosts || 0;
+
+      // Cálculos de simulación
+      const fuelMultiplier = fuelPrice ? fuelPrice / 1000 : 1; // normalizar
+      const exchangeMultiplier = exchangeRate ? exchangeRate / 1000 : 1;
+      const inflationMultiplier = inflationRate ? 1 + (inflationRate / 100) : 1;
+      const salaryMultiplier = salaryIncrease ? 1 + (salaryIncrease / 100) : 1;
+
+      const projectedCost = (baseDirectCosts * fuelMultiplier * exchangeMultiplier * inflationMultiplier * salaryMultiplier)
+        + (baseIndirectCosts * (simIndirectCosts ? simIndirectCosts / baseIndirectCosts : 1))
+        + ((employeeCount || 0) * 50000 * 12)
+        + ((vehicleCount || 0) * 20000 * 12);
+
+      const projectedRevenue = baseRevenue * (tripCount ? tripCount / 100 : 1) * (operationalVolume || 1);
+      const projectedProfit = projectedRevenue - projectedCost;
+      const projectedMargin = projectedRevenue > 0 ? (projectedProfit / projectedRevenue) * 100 : 0;
+      const projectedRoi = projectedCost > 0 ? (projectedProfit / projectedCost) * 100 : 0;
+      const projectedPayback = projectedRoi > 0 ? projectedCost / (projectedProfit / 12) : null;
+
+      // Cashflow mensual simulado (12 meses)
+      const monthlyRevenue = projectedRevenue / 12;
+      const monthlyCost = projectedCost / 12;
+      const projectedCashflow = Array.from({ length: 12 }, (_, i) => ({
+        month: i + 1,
+        revenue: monthlyRevenue,
+        expenses: monthlyCost,
+        accumulated: (monthlyRevenue - monthlyCost) * (i + 1)
+      }));
+
+      // Desviación vs baseline
+      const baseMargin = baseline?.projectedMargin || bc?.grossMargin || 0;
+      const baseRoi = baseline?.projectedRoi || bc?.roi || 0;
+      const marginDeviation = projectedMargin - baseMargin;
+      const roiDeviation = projectedRoi - baseRoi;
+
+      // Nivel de riesgo
+      let riskLevel = 'MEDIO';
+      if (projectedMargin < 5 || projectedRoi < 0) riskLevel = 'CRITICO';
+      else if (projectedMargin < 10 || projectedRoi < 10) riskLevel = 'ALTO';
+      else if (projectedMargin > 20 && projectedRoi > 30) riskLevel = 'BAJO';
+
+      const sim = await prisma.project360Simulation.create({
+        data: {
+          tenantId, projectId: id,
+          name: name || `Simulación ${scenarioType || 'CUSTOM'}`,
+          scenarioType: scenarioType || 'CUSTOM',
+          fuelPrice: fuelPrice ? Number(fuelPrice) : null,
+          exchangeRate: exchangeRate ? Number(exchangeRate) : null,
+          inflationRate: inflationRate ? Number(inflationRate) : null,
+          salaryIncrease: salaryIncrease ? Number(salaryIncrease) : null,
+          employeeCount: employeeCount ? Number(employeeCount) : null,
+          vehicleCount: vehicleCount ? Number(vehicleCount) : null,
+          indirectCosts: simIndirectCosts ? Number(simIndirectCosts) : null,
+          financingRate: financingRate ? Number(financingRate) : null,
+          tripCount: tripCount ? Number(tripCount) : null,
+          operationalVolume: operationalVolume ? Number(operationalVolume) : null,
+          projectedMargin,
+          projectedRoi,
+          projectedCashflow,
+          projectedProfit,
+          projectedRevenue,
+          projectedCost,
+          projectedPayback,
+          projectedBreakEven: projectedRoi > 0 ? projectedCost / (projectedProfit / 12) : null,
+          marginDeviation,
+          roiDeviation,
+          riskLevel,
+          isBaseline: body.isBaseline || false,
+          notes: body.notes || null,
+          createdById: userId || null,
+        } as any
+      });
+
+      return reply.code(201).send({ simulation: sim });
+    } catch (err: any) {
+      console.error('[POST /simulations] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — FASE 6: CASHFLOW
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/projects/:id/cashflow
+  app.get('/projects/:id/cashflow', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const items = await prisma.project360Cashflow.findMany({
+        where: { projectId: id, tenantId },
+        orderBy: [{ year: 'asc' }, { month: 'asc' }]
+      });
+      return reply.send({ cashflows: items });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/cashflow
+  app.post('/projects/:id/cashflow', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+
+      const item = await prisma.project360Cashflow.create({
+        data: {
+          tenantId, projectId: id,
+          month: Number(body.month),
+          year: Number(body.year),
+          periodLabel: body.periodLabel || `${body.month}/${body.year}`,
+          projectedRevenue: body.projectedRevenue ? Number(body.projectedRevenue) : null,
+          actualRevenue: body.actualRevenue ? Number(body.actualRevenue) : null,
+          billingMilestone: body.billingMilestone || null,
+          projectedExpenses: body.projectedExpenses ? Number(body.projectedExpenses) : null,
+          actualExpenses: body.actualExpenses ? Number(body.actualExpenses) : null,
+          tiedCapital: body.tiedCapital ? Number(body.tiedCapital) : null,
+          notes: body.notes || null,
+        } as any
+      });
+      return reply.code(201).send({ cashflow: item });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // PUT /project360/cashflow/:cashflowId
+  app.put('/cashflow/:cashflowId', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { cashflowId } = req.params as { cashflowId: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+
+      const existing = await prisma.project360Cashflow.findFirst({ where: { id: cashflowId, tenantId } });
+      if (!existing) return reply.code(404).send({ error: 'No encontrado' });
+
+      const data: any = {};
+      if (body.actualRevenue !== undefined) data.actualRevenue = Number(body.actualRevenue);
+      if (body.actualExpenses !== undefined) data.actualExpenses = Number(body.actualExpenses);
+      if (body.actualCollectionDate) data.actualCollectionDate = new Date(body.actualCollectionDate);
+      if (body.actualPaymentDate) data.actualPaymentDate = new Date(body.actualPaymentDate);
+      if (body.tiedCapital !== undefined) data.tiedCapital = Number(body.tiedCapital);
+      if (body.notes) data.notes = body.notes;
+
+      // Recalcular acumulados y desviaciones
+      const projectedRevenue = data.actualRevenue !== undefined ? data.actualRevenue : existing.actualRevenue || existing.projectedRevenue || 0;
+      const projectedExpenses = data.actualExpenses !== undefined ? data.actualExpenses : existing.actualExpenses || existing.projectedExpenses || 0;
+      data.revenueDeviation = projectedRevenue - (existing.projectedRevenue || 0);
+      data.expenseDeviation = projectedExpenses - (existing.projectedExpenses || 0);
+
+      const updated = await prisma.project360Cashflow.update({
+        where: { id: cashflowId },
+        data
+      });
+      return reply.send({ cashflow: updated });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — FASE 7: PIPELINE COMERCIAL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/projects/:id/pipeline
+  app.get('/projects/:id/pipeline', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const stages = await prisma.project360Pipeline.findMany({
+        where: { projectId: id, tenantId },
+        orderBy: { stageOrder: 'asc' }
+      });
+      return reply.send({ pipeline: stages });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/pipeline
+  app.post('/projects/:id/pipeline', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const userId = (req as any).db?.userId;
+
+      const PIPELINE_STAGES = ['LEAD', 'OPORTUNIDAD', 'ANALISIS', 'VISITA_TECNICA', 'PROPUESTA', 'NEGOCIACION', 'ADJUDICADO', 'PERDIDO'];
+      const stageIndex = PIPELINE_STAGES.indexOf(body.stage);
+
+      const pipelineValue = body.pipelineValue ? Number(body.pipelineValue) : null;
+      const probability = body.probability ? Number(body.probability) : null;
+      const weightedValue = pipelineValue && probability ? pipelineValue * (probability / 100) : null;
+
+      const stage = await prisma.project360Pipeline.create({
+        data: {
+          tenantId, projectId: id,
+          stage: body.stage,
+          stageOrder: stageIndex >= 0 ? stageIndex : 0,
+          probability,
+          expectedValue: body.expectedValue ? Number(body.expectedValue) : null,
+          expectedCloseDate: body.expectedCloseDate ? new Date(body.expectedCloseDate) : null,
+          competitors: body.competitors || null,
+          ourAdvantage: body.ourAdvantage || null,
+          ourWeakness: body.ourWeakness || null,
+          visitsCount: body.visitsCount ? Number(body.visitsCount) : 0,
+          meetingsCount: body.meetingsCount ? Number(body.meetingsCount) : 0,
+          lastContactDate: body.lastContactDate ? new Date(body.lastContactDate) : null,
+          contactIds: body.contactIds || null,
+          clientId: body.clientId || null,
+          relatedMinutaIds: body.relatedMinutaIds || null,
+          relatedEmailIds: body.relatedEmailIds || null,
+          relatedQuoteIds: body.relatedQuoteIds || null,
+          decisionReason: body.decisionReason || null,
+          decisionDate: body.decisionDate ? new Date(body.decisionDate) : null,
+          pipelineValue,
+          weightedValue,
+          notes: body.notes || null,
+          createdById: userId || null,
+        } as any
+      });
+      return reply.code(201).send({ pipeline: stage });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — FASE 9: PROPUESTAS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/projects/:id/proposals
+  app.get('/projects/:id/proposals', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const proposals = await prisma.project360Proposal.findMany({
+        where: { projectId: id, tenantId },
+        orderBy: { createdAt: 'desc' }
+      });
+      return reply.send({ proposals });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/proposals
+  app.post('/projects/:id/proposals', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const userId = (req as any).db?.userId;
+
+      const proposal = await prisma.project360Proposal.create({
+        data: {
+          tenantId, projectId: id,
+          technicalProposal: body.technicalProposal || null,
+          operationalScope: body.operationalScope || null,
+          schedule: body.schedule || null,
+          resourceMatrix: body.resourceMatrix || null,
+          exclusions: body.exclusions || null,
+          risks: body.risks || null,
+          executiveSummary: body.executiveSummary || null,
+          managementSummary: body.managementSummary || null,
+          ganttData: body.ganttData || null,
+          preliminaryBudget: body.preliminaryBudget || null,
+          pliegoText: body.pliegoText || null,
+          requirementsText: body.requirementsText || null,
+          scopeText: body.scopeText || null,
+          costsText: body.costsText || null,
+          status: body.status || 'DRAFT',
+          version: body.version || 1,
+          createdById: userId || null,
+        } as any
+      });
+      return reply.code(201).send({ proposal });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — FASE 12: CONTRATOS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/projects/:id/contracts
+  app.get('/projects/:id/contracts', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const contracts = await prisma.project360Contract.findMany({
+        where: { projectId: id, tenantId },
+        orderBy: { createdAt: 'desc' }
+      });
+      return reply.send({ contracts });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/contracts
+  app.post('/projects/:id/contracts', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const userId = (req as any).db?.userId;
+
+      const contract = await prisma.project360Contract.create({
+        data: {
+          tenantId, projectId: id,
+          contractNumber: body.contractNumber || null,
+          contractType: body.contractType || null,
+          startDate: body.startDate ? new Date(body.startDate) : null,
+          endDate: body.endDate ? new Date(body.endDate) : null,
+          renewalDate: body.renewalDate ? new Date(body.renewalDate) : null,
+          durationMonths: body.durationMonths ? Number(body.durationMonths) : null,
+          slaDescription: body.slaDescription || null,
+          slaMetrics: body.slaMetrics || null,
+          penaltyClauses: body.penaltyClauses || null,
+          penaltyAmount: body.penaltyAmount ? Number(body.penaltyAmount) : null,
+          guarantees: body.guarantees || null,
+          insurances: body.insurances || null,
+          expirationAlertDays: body.expirationAlertDays ? Number(body.expirationAlertDays) : 30,
+          criticalClauses: body.criticalClauses || null,
+          iaRiskAlert: body.iaRiskAlert || null,
+          contractDocumentUrl: body.contractDocumentUrl || null,
+          amendments: body.amendments || null,
+          notes: body.notes || null,
+          createdById: userId || null,
+        } as any
+      });
+      return reply.code(201).send({ contract });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — FASE 13: LESSONS LEARNED
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/projects/:id/lessons-learned
+  app.get('/projects/:id/lessons-learned', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const lessons = await prisma.project360LessonLearned.findMany({
+        where: { projectId: id, tenantId },
+        orderBy: { createdAt: 'desc' }
+      });
+      return reply.send({ lessonsLearned: lessons });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/lessons-learned
+  app.post('/projects/:id/lessons-learned', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const userId = (req as any).db?.userId;
+
+      const lesson = await prisma.project360LessonLearned.create({
+        data: {
+          tenantId, projectId: id,
+          category: body.category || 'RECOMENDACION',
+          title: body.title,
+          description: body.description,
+          impact: body.impact || null,
+          solution: body.solution || null,
+          recommendations: body.recommendations || null,
+          plannedCost: body.plannedCost ? Number(body.plannedCost) : null,
+          actualCost: body.actualCost ? Number(body.actualCost) : null,
+          plannedTime: body.plannedTime ? Number(body.plannedTime) : null,
+          actualTime: body.actualTime ? Number(body.actualTime) : null,
+          costDeviation: body.actualCost && body.plannedCost ? Number(body.actualCost) - Number(body.plannedCost) : null,
+          timeDeviation: body.actualTime && body.plannedTime ? Number(body.actualTime) - Number(body.plannedTime) : null,
+          tags: body.tags || [],
+          similarProjects: body.similarProjects || null,
+          iaSummary: body.iaSummary || null,
+          reusable: body.reusable || false,
+          createdById: userId || null,
+        } as any
+      });
+      return reply.code(201).send({ lessonLearned: lesson });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — FASE 4: DIMENSIONAMIENTO OPERATIVO
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/projects/:id/operational-sizing
+  app.get('/projects/:id/operational-sizing', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const sizing = await prisma.project360OperationalSizing.findFirst({
+        where: { projectId: id, tenantId },
+        orderBy: { createdAt: 'desc' }
+      });
+      return reply.send({ operationalSizing: sizing });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/operational-sizing
+  app.post('/projects/:id/operational-sizing', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const userId = (req as any).db?.userId;
+
+      const {
+        km, trips, pallets, tons, frequency, slaHours, shifts,
+        operatingHours, units, operationType, minStaff, geographicCoverage
+      } = body;
+
+      // Cálculos automáticos de dimensionamiento
+      const kmVal = Number(km) || 0;
+      const tripsVal = Number(trips) || 0;
+      const tonsVal = Number(tons) || 0;
+      const shiftsVal = Number(shifts) || 1;
+      const slaVal = Number(slaHours) || 8;
+      const minStaffVal = Number(minStaff) || 0;
+
+      // Fórmulas de dimensionamiento
+      const driversNeeded = Math.ceil((tripsVal * shiftsVal) / (slaVal / 8));
+      const trucksNeeded = Math.ceil(tripsVal / (shiftsVal * 2)); // 2 viajes por camión por turno
+      const supervisorsNeeded = Math.ceil(driversNeeded / 10);
+      const administrativeNeeded = Math.ceil(driversNeeded / 15);
+      const fuelNeeded = kmVal * 0.35; // 0.35 litros por km (promedio)
+      const manHoursNeeded = tripsVal * slaVal;
+      const utilizationRate = trucksNeeded > 0 ? (tripsVal / (trucksNeeded * shiftsVal * 2)) * 100 : 0;
+      const availabilityRequired = 95; // estándar
+      const operationalCapacity = trucksNeeded * tonsVal * tripsVal;
+
+      // Consultar flota (simulado — en producción consultaría tabla de vehículos)
+      const fleetAlert = trucksNeeded > 5 ? 'Verificar disponibilidad de unidades en Flota360' : null;
+
+      const sizing = await prisma.project360OperationalSizing.create({
+        data: {
+          tenantId, projectId: id,
+          km: kmVal || null,
+          trips: tripsVal || null,
+          pallets: pallets ? Number(pallets) : null,
+          tons: tonsVal || null,
+          frequency: frequency || null,
+          slaHours: slaVal || null,
+          shifts: shiftsVal || null,
+          operatingHours: operatingHours || null,
+          units: units || null,
+          operationType: operationType || null,
+          minStaff: minStaffVal || null,
+          geographicCoverage: geographicCoverage || null,
+          driversNeeded: driversNeeded || null,
+          trucksNeeded: trucksNeeded || null,
+          supervisorsNeeded: supervisorsNeeded || null,
+          administrativeNeeded: administrativeNeeded || null,
+          fuelNeeded: fuelNeeded || null,
+          manHoursNeeded: manHoursNeeded || null,
+          utilizationRate: utilizationRate || null,
+          availabilityRequired: availabilityRequired || null,
+          operationalCapacity: operationalCapacity || null,
+          fleetAlert: fleetAlert || null,
+          createdById: userId || null,
+        } as any
+      });
+      return reply.code(201).send({ operationalSizing: sizing });
+    } catch (err: any) {
+      console.error('[POST /operational-sizing] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — PMO DASHBOARD (Fase 5)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/pmo-dashboard
+  app.get('/pmo-dashboard', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const projects = await prisma.project360.findMany({
+        where: { tenantId, deletedAt: null },
+        include: {
+          businessCase: true,
+          pipelineStages: { orderBy: { stageOrder: 'desc' }, take: 1 },
+          aprobaciones: { where: { estado: 'APROBADO' } },
+          budgetItems: true,
+        }
+      });
+
+      const totalProjects = projects.length;
+      const activeProjects = projects.filter(p => p.status === 'IN_PROGRESS').length;
+      const completedProjects = projects.filter(p => p.status === 'COMPLETED').length;
+      const criticalProjects = projects.filter(p => p.priority === 'CRITICAL').length;
+
+      // Revenue proyectado
+      const projectedRevenue = projects.reduce((sum, p) => sum + (p.businessCase?.estimatedRevenue || 0), 0);
+      const projectedCosts = projects.reduce((sum, p) => sum + (p.businessCase?.directCosts || 0) + (p.businessCase?.indirectCosts || 0), 0);
+
+      // Margen promedio
+      const margins = projects.map(p => p.businessCase?.grossMargin || 0).filter(m => m !== 0);
+      const avgMargin = margins.length > 0 ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
+
+      // ROI promedio
+      const rois = projects.map(p => p.businessCase?.roi || 0).filter(r => r !== 0);
+      const avgRoi = rois.length > 0 ? rois.reduce((a, b) => a + b, 0) / rois.length : 0;
+
+      // Pipeline value
+      const pipelineValue = projects.reduce((sum, p) => sum + (p.pipelineStages[0]?.pipelineValue || 0), 0);
+      const weightedPipeline = projects.reduce((sum, p) => sum + (p.pipelineStages[0]?.weightedValue || 0), 0);
+
+      // Adjudicaciones
+      const adjudicados = projects.filter(p => p.etapaAprobacion === 'ADJUDICADO').length;
+      const enEjecucion = projects.filter(p => p.etapaAprobacion === 'EN_EJECUCION').length;
+
+      // Proyectos en riesgo (score < 50 o viabilidad ROJO)
+      const enRiesgo = projects.filter(p =>
+        (p.businessCase?.viabilityStatus === 'ROJO') ||
+        (p.overallRiskScore && p.overallRiskScore > 70)
+      ).length;
+
+      // Ranking por rentabilidad
+      const ranking = projects
+        .filter(p => p.businessCase)
+        .sort((a, b) => (b.businessCase!.grossMargin || 0) - (a.businessCase!.grossMargin || 0))
+        .slice(0, 10)
+        .map(p => ({
+          id: p.id,
+          name: p.name,
+          code: p.code,
+          margin: p.businessCase?.grossMargin || 0,
+          roi: p.businessCase?.roi || 0,
+          viabilityStatus: p.businessCase?.viabilityStatus || 'AMARILLO',
+          etapa: p.etapaAprobacion || 'LICITACION_BORRADOR'
+        }));
+
+      return reply.send({
+        kpi: {
+          totalProjects,
+          activeProjects,
+          completedProjects,
+          criticalProjects,
+          projectedRevenue,
+          projectedCosts,
+          avgMargin: Math.round(avgMargin * 100) / 100,
+          avgRoi: Math.round(avgRoi * 100) / 100,
+          pipelineValue,
+          weightedPipeline,
+          adjudicados,
+          enEjecucion,
+          enRiesgo,
+        },
+        ranking,
+        projects: projects.map(p => ({
+          id: p.id,
+          name: p.name,
+          code: p.code,
+          status: p.status,
+          etapa: p.etapaAprobacion,
+          margin: p.businessCase?.grossMargin || 0,
+          roi: p.businessCase?.roi || 0,
+          viabilityStatus: p.businessCase?.viabilityStatus || 'AMARILLO',
+          riskScore: p.overallRiskScore || 0,
+          probabilityOfWinning: p.probabilityOfWinning || 0,
+        }))
+      });
+    } catch (err: any) {
+      console.error('[GET /pmo-dashboard] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — IA PREDICTIVA (Fase 3)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // POST /project360/projects/:id/ia-predictiva
+  app.post('/projects/:id/ia-predictiva', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const userId = (req as any).db?.userId;
+
+      const project = await prisma.project360.findFirst({
+        where: { id, tenantId },
+        include: {
+          businessCase: true,
+          budgetItems: true,
+          aiAnalyses: { orderBy: { createdAt: 'desc' }, take: 1 },
+          aprobaciones: true,
+        }
+      });
+      if (!project) return reply.code(404).send({ error: 'Proyecto no encontrado' });
+
+      // Obtener config LLM
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { llmProvider: true, llmApiKey: true, llmModel: true, llmBaseUrl: true }
+      });
+
+      let llm;
+      try {
+        llm = createLoggingLLMProvider(tenant, prisma, tenantId, userId || null, 'project360-predictive-ia');
+      } catch (err: any) {
+        return reply.code(500).send({ error: 'Error configurando proveedor IA: ' + err.message });
+      }
+
+      const budgetTotal = project.budgetItems.reduce((s: number, b: any) => s + (b.estimated || 0), 0);
+      const actualTotal = project.budgetItems.reduce((s: number, b: any) => s + (b.actual || 0), 0);
+
+      const prompt = `Analizá el siguiente proyecto de licitación/operación y respondé ÚNICAMENTE en formato JSON con esta estructura exacta:
+{
+  "probabilityOfWinning": 0-100,
+  "probabilityOfDelay": 0-100,
+  "probabilityOfCostDeviation": 0-100,
+  "probabilityOfOperationalFailure": 0-100,
+  "projectComplexityScore": 0-100,
+  "clientRiskScore": 0-100,
+  "supplierRiskScore": 0-100,
+  "timelineConfidenceScore": 0-100,
+  "overallRiskScore": 0-100,
+  "viabilityScore": 0-100,
+  "financialScore": 0-100,
+  "operationalScore": 0-100,
+  "strategicScore": 0-100,
+  "commercialScore": 0-100,
+  "contractualScore": 0-100,
+  "summary": "resumen ejecutivo de riesgos y oportunidades...",
+  "recommendations": ["recomendación 1", "recomendación 2", ...],
+  "alerts": ["alerta 1", "alerta 2", ...],
+  "riskAreas": ["área de riesgo 1", "área de riesgo 2", ...]
+}
+
+DATOS DEL PROYECTO:
+- Nombre: ${project.name}
+- Código: ${project.code}
+- Etapa: ${project.etapaAprobacion || 'LICITACION_BORRADOR'}
+- Presupuesto: ${project.budget || 0} ${project.budgetCurrency || 'ARS'}
+- Costo real acumulado: ${actualTotal}
+- Ítems presupuestados: ${project.budgetItems.length}
+- Business Case score: ${project.businessCase?.overallScore || 'N/A'}
+- Margen bruto: ${project.businessCase?.grossMargin || 'N/A'}%
+- ROI: ${project.businessCase?.roi || 'N/A'}%
+- Riesgo financiero: ${project.businessCase?.financialRisk || 'N/A'}
+- Riesgo operativo: ${project.businessCase?.operationalRisk || 'N/A'}
+- Riesgo comercial: ${project.businessCase?.commercialRisk || 'N/A'}
+- Riesgo estratégico: ${project.businessCase?.strategicRisk || 'N/A'}
+
+ANÁLISIS IA PREVIO:
+${project.aiAnalyses[0]?.summary || 'Sin análisis previo'}
+
+REQUERIMIENTOS PREVIOS:
+${JSON.stringify(project.aiAnalyses[0]?.requirements || []).slice(0, 2000)}
+
+RIESGOS PREVIOS:
+${JSON.stringify(project.aiAnalyses[0]?.risks || []).slice(0, 2000)}`;
+
+      const response = await llm.chat([{ role: 'user', content: prompt }], 3000);
+      const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+      let parsed: any = {};
+      if (jsonMatch) {
+        try { parsed = JSON.parse(jsonMatch[0]); } catch { /* noop */ }
+      }
+
+      // Guardar resultados en el proyecto
+      await prisma.project360.update({
+        where: { id },
+        data: {
+          probabilityOfWinning: parsed.probabilityOfWinning || null,
+          probabilityOfDelay: parsed.probabilityOfDelay || null,
+          probabilityOfCostDeviation: parsed.probabilityOfCostDeviation || null,
+          probabilityOfOperationalFailure: parsed.probabilityOfOperationalFailure || null,
+          projectComplexityScore: parsed.projectComplexityScore || null,
+          clientRiskScore: parsed.clientRiskScore || null,
+          supplierRiskScore: parsed.supplierRiskScore || null,
+          timelineConfidenceScore: parsed.timelineConfidenceScore || null,
+          overallRiskScore: parsed.overallRiskScore || null,
+          viabilityScore: parsed.viabilityScore || null,
+          financialScore: parsed.financialScore || null,
+          operationalScore: parsed.operationalScore || null,
+          strategicScore: parsed.strategicScore || null,
+          commercialScore: parsed.commercialScore || null,
+          contractualScore: parsed.contractualScore || null,
+          iaPredictiveSummary: parsed.summary || response.text.slice(0, 1000),
+          iaRecommendations: parsed.recommendations || parsed.alerts || [],
+          iaLastAnalyzedAt: new Date(),
+        }
+      });
+
+      return reply.send({
+        iaAnalysis: parsed,
+        summary: parsed.summary || response.text.slice(0, 500),
+        recommendations: parsed.recommendations || [],
+        alerts: parsed.alerts || []
+      });
+    } catch (err: any) {
+      console.error('[POST /ia-predictiva] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
 }
