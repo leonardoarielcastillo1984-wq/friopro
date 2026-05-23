@@ -164,27 +164,19 @@ export default async function project360Routes(app: FastifyInstance) {
       const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
-      // Traer empleados activos con su PlatformUser asociado por email
+      // Traer todos los empleados activos del tenant
       const employees = await prisma.employee.findMany({
         where: { tenantId, deletedAt: null, status: 'ACTIVE' },
-        select: { id: true, firstName: true, lastName: true, email: true }
+        select: { id: true, firstName: true, lastName: true, email: true },
+        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }]
       });
-
-      // Para cada empleado, buscar el PlatformUser por email para obtener el ID correcto
-      const emails = employees.map((e: any) => e.email).filter(Boolean);
-      const platformUsers = await prisma.platformUser.findMany({
-        where: { email: { in: emails }, deletedAt: null },
-        select: { id: true, email: true }
-      });
-      const platformUserByEmail = Object.fromEntries(platformUsers.map((u: any) => [u.email, u.id]));
 
       const users = employees.map((e: any) => ({
-        id: platformUserByEmail[e.email] || null,
+        id: e.id,
         firstName: e.firstName,
         lastName: e.lastName,
-        email: e.email,
-        employeeId: e.id
-      })).filter((u: any) => u.id !== null); // solo los que tienen acceso al sistema
+        email: e.email
+      }));
 
       return reply.send({ users });
     } catch (err: any) {
@@ -808,28 +800,49 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       const { id } = req.params as { id: string };
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
-      const { etapa, aprobadorId, comentarios } = body;
+      const { etapa, aprobadorId: employeeId, comentarios } = body;
 
       if (!etapa || !ETAPAS_NEGOCIO.includes(etapa)) {
         return reply.code(400).send({ error: 'Etapa inválida. Etapas válidas: ' + ETAPAS_NEGOCIO.join(', ') });
       }
-      if (!aprobadorId) {
+      if (!employeeId) {
         return reply.code(400).send({ error: 'Se requiere aprobadorId' });
       }
 
       const userId = (req as any).db?.userId;
 
+      // Buscar el empleado seleccionado
+      const empleado = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { firstName: true, lastName: true, email: true }
+      });
+      if (!empleado) return reply.code(400).send({ error: 'Empleado no encontrado' });
+
+      // Buscar PlatformUser por email (puede no existir)
+      const platformUser = empleado.email ? await prisma.platformUser.findFirst({
+        where: { email: empleado.email, deletedAt: null },
+        select: { id: true }
+      }) : null;
+
+      const aprobadorPlatformId = platformUser?.id || null;
+      const aprobadorNombre = `${empleado.firstName} ${empleado.lastName}`;
+
       // Crear o actualizar la solicitud de aprobación
       const aprobacion = await prisma.project360Aprobacion.upsert({
         where: { projectId_etapa: { projectId: id, etapa } },
         create: {
-          projectId: id, tenantId, etapa, aprobadorId,
+          projectId: id, tenantId, etapa,
+          aprobadorId: aprobadorPlatformId,
+          aprobadorEmail: empleado.email || null,
+          aprobadorNombre,
           comentarios: comentarios || null,
           solicitadoPorId: userId || null,
           estado: 'PENDIENTE'
         },
         update: {
-          aprobadorId,
+          aprobadorId: aprobadorPlatformId,
+          aprobadorEmail: empleado.email || null,
+          aprobadorNombre,
           comentarios: comentarios || null,
           solicitadoPorId: userId || null,
           estado: 'PENDIENTE',
@@ -850,30 +863,28 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
           select: { name: true, code: true } 
         });
         
-        await prisma.notification.create({
-          data: {
-            tenantId,
-            userId: aprobadorId,
-            type: 'APROBACION_PROYECTO',
-            title: `Aprobación pendiente: ${proyecto?.name || 'Proyecto'}`,
-            message: `Te solicitan aprobar la etapa "${etapa}" del proyecto ${proyecto?.code || ''}. ${comentarios ? `Comentarios: ${comentarios}` : ''}`,
-            link: `/project360/${id}`,
-            entityType: 'project360',
-            entityId: id,
-          }
-        });
+        // Notificación in-app solo si tiene PlatformUser
+        if (aprobadorPlatformId) {
+          await prisma.notification.create({
+            data: {
+              tenantId,
+              userId: aprobadorPlatformId,
+              type: 'APROBACION_PROYECTO',
+              title: `Aprobación pendiente: ${proyecto?.name || 'Proyecto'}`,
+              message: `Te solicitan aprobar la etapa "${etapa}" del proyecto ${proyecto?.code || ''}. ${comentarios ? `Comentarios: ${comentarios}` : ''}`,
+              link: `/project360/${id}`,
+              entityType: 'project360',
+              entityId: id,
+            }
+          });
+        }
 
-        // 📧 Enviar email al aprobador
-        const aprobadorUser = await prisma.platformUser.findUnique({
-          where: { id: aprobadorId },
-          select: { email: true, firstName: true, lastName: true }
-        });
-
-        if (aprobadorUser?.email) {
+        // 📧 Enviar email al aprobador si tiene email registrado
+        if (empleado.email) {
           const emailPayload = notificationEmail({
-            userEmail: aprobadorUser.email,
+            userEmail: empleado.email,
             title: `⏳ Aprobación requerida: ${proyecto?.name || 'Proyecto'}`,
-            message: `Hola ${aprobadorUser.firstName || ''},<br><br>Te solicitan aprobar la etapa <strong>"${etapa}"</strong> del proyecto <strong>${proyecto?.code || ''}</strong>.<br><br>${comentarios ? `Comentarios del solicitante: <em>${comentarios}</em><br><br>` : ''}Hacé clic en el botón para revisar y aprobar:`,
+            message: `Hola ${empleado.firstName || ''},<br><br>Te solicitan aprobar la etapa <strong>"${etapa}"</strong> del proyecto <strong>${proyecto?.code || ''}</strong>.<br><br>${comentarios ? `Comentarios del solicitante: <em>${comentarios}</em><br><br>` : ''}Hacé clic en el botón para revisar y aprobar:`,
             actionUrl: `${process.env.APP_URL || 'https://logismart.ar'}/project360/${id}`,
             type: 'warning'
           });

@@ -4671,6 +4671,8 @@ model Project360Aprobacion {
   estado        String    @default("PENDIENTE") // PENDIENTE, APROBADO, RECHAZADO
   aprobadorId   String?   @db.Uuid
   aprobador     PlatformUser? @relation("AprobacionAsignadaAprobador", fields: [aprobadorId], references: [id], onDelete: SetNull)
+  aprobadorEmail  String?   // Email del empleado aprobador (para notificaciones aunque no tenga PlatformUser)
+  aprobadorNombre String?   // Nombre completo del empleado aprobador
   comentarios   String?   @db.Text
   solicitadoPorId String? @db.Uuid
   solicitadoEn  DateTime  @default(now()) @db.Timestamptz
