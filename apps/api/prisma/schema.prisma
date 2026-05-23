@@ -4696,8 +4696,9 @@ model Project360 {
   cashflows       Project360Cashflow[]
   pipelineStages  Project360Pipeline[]
   contracts       Project360Contract[]
-  lessonsLearned  Project360LessonLearned[]
-  proposals       Project360Proposal[]
+  lessonsLearned    Project360LessonLearned[]
+  proposals         Project360Proposal[]
+  operationalSizings Project360OperationalSizing[]
 
   @@map("project360")
 }
@@ -5358,7 +5359,9 @@ model Project360LessonLearned {
 model Project360OperationalSizing {
   id            String    @id @default(uuid()) @db.Uuid
   projectId     String    @db.Uuid
+  project       Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Entradas
   km              Float?
