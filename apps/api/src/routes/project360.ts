@@ -855,16 +855,15 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
       // Registrar en historial
       await logHistory(prisma, id, tenantId, 'APROBACION_SOLICITADA', `Solicitud de aprobación para etapa: ${etapa}`, userId, null);
 
-      // 🔔 Crear notificación in-app para el aprobador
-      try {
-        // Obtener datos del proyecto para el mensaje
-        const proyecto = await prisma.project360.findUnique({ 
-          where: { id }, 
-          select: { name: true, code: true } 
-        });
-        
-        // Notificación in-app solo si tiene PlatformUser
-        if (aprobadorPlatformId) {
+      // Obtener datos del proyecto para notificaciones
+      const proyecto = await prisma.project360.findUnique({ 
+        where: { id }, 
+        select: { name: true, code: true } 
+      });
+
+      // 🔔 Notificación in-app solo si tiene PlatformUser
+      if (aprobadorPlatformId) {
+        try {
           await prisma.notification.create({
             data: {
               tenantId,
@@ -877,10 +876,14 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
               entityId: id,
             }
           });
+        } catch (notifyErr) {
+          console.error('[POST /aprobaciones] Error notificación in-app:', notifyErr);
         }
+      }
 
-        // 📧 Enviar email al aprobador si tiene email registrado
-        if (empleado.email) {
+      // 📧 Enviar email al aprobador si tiene email registrado
+      if (empleado.email) {
+        try {
           const emailPayload = notificationEmail({
             userEmail: empleado.email,
             title: `⏳ Aprobación requerida: ${proyecto?.name || 'Proyecto'}`,
@@ -889,10 +892,9 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
             type: 'warning'
           });
           await sendEmail(emailPayload);
+        } catch (emailErr) {
+          console.error('[POST /aprobaciones] Error enviando email:', emailErr);
         }
-      } catch (notifyErr) {
-        console.error('[POST /aprobaciones] Error creando notificación:', notifyErr);
-        // No fallar si la notificación falla
       }
 
       return reply.code(201).send({ aprobacion, mensaje: `Solicitud de aprobación para ${etapa} enviada a ${aprobacion.aprobador?.firstName || ''} ${aprobacion.aprobador?.lastName || ''}` });

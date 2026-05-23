@@ -221,6 +221,7 @@ enum NotificationType {
   TRAINING_REMINDER
   MEMBER_INVITED
   SYSTEM_ALERT
+  APROBACION_PROYECTO
 }
 
 enum WebhookProvider {
