@@ -4804,24 +4804,60 @@ model Project360Template {
 }
 
 model Project360BudgetItem {
-  id          String  @id @default(uuid()) @db.Uuid
-  tenantId    String  @db.Uuid
-  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  projectId   String  @db.Uuid
-  project     Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id                String  @id @default(uuid()) @db.Uuid
+  tenantId          String  @db.Uuid
+  tenant            Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectId         String  @db.Uuid
+  project           Project360 @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  name        String
-  category    String  @default("MATERIAL") // MATERIAL, MANO_OBRA, SERVICIO, HERRAMIENTA, VIAJE, OTRO
-  estimated   Float   @default(0)
-  actual      Float   @default(0)
-  currency    String  @default("ARS")
-  isExpense   Boolean @default(false) // false = presupuestado, true = gasto real
-  notes       String?
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  updatedAt   DateTime @updatedAt @db.Timestamptz
+  // Información básica del recurso
+  nombre            String
+  categoria         String  @default("MATERIAL") // MATERIAL, MANO_OBRA, SERVICIO, HERRAMIENTA, VIAJE, SUBCONTRATO, TECNOLOGIA, OTRO
+  
+  // Dimensionamiento
+  cantidad          Float?   // Cantidad de unidades (ej: 3 personas, 2 equipos)
+  unidadMedida      String?  // Unidad de medida (ej: "horas", "unidades", "meses", "m2")
+  
+  // Costos estimados (plan)
+  costoUnitario     Float?   // Costo por unidad
+  costoTotalEstimado Float?  // costoUnitario * cantidad
+  moneda            String  @default("ARS")
+  
+  // Costos reales (ejecución)
+  costoTotalReal    Float    @default(0)
+  cantidadReal      Float?   // Cantidad real utilizada
+  
+  // Proveedor y cotización
+  proveedorId       String?  @db.Uuid  // ID del proveedor o empleado asignado
+  proveedorNombre   String?  // Nombre del proveedor para rápida visualización
+  idCotizacion      String?  @db.Uuid  // Referencia a documento de cotización adjunto
+  
+  // Estado del recurso en el workflow
+  estado            String  @default("PRESUPUESTADO") // PRESUPUESTADO, APROBADO, EN_CURSO, COMPLETADO, CANCELADO
+  
+  // Notas y descripción
+  descripcion       String?
+  notas             String?
+  
+  // Origen (si viene de un requerimiento de IA)
+  origenRequerimientoId String? @db.Uuid
+  
+  // Legacy: compatibilidad con campos anteriores
+  estimated         Float   @default(0)
+  actual            Float   @default(0)
+  notes             String?
+  currency          String  @default("ARS")
+  isExpense         Boolean @default(false)
+  name              String  @default("N/A")
+  category          String  @default("MATERIAL")
+  
+  createdAt         DateTime @default(now()) @db.Timestamptz
+  updatedAt         DateTime @updatedAt @db.Timestamptz
 
   @@index([tenantId])
   @@index([projectId])
+  @@index([estado])
+  @@index([proveedorId])
   @@map("project360_budget_items")
 }
 
