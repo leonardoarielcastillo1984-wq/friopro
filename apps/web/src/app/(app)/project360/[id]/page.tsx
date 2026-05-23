@@ -929,45 +929,138 @@ export default function ProjectDetailPage() {
         </div>
         {aiAnalyses.length === 0 ? <p className="text-gray-500 text-center py-4">Sin análisis IA. Creá el proyecto desde "Crear desde licitación" para generar uno.</p> : (
           <div className="space-y-4">
-            {aiAnalyses.map((a: any) => (
-              <div key={a.id} className="border border-purple-100 rounded-lg p-4 bg-purple-50/30">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-purple-900">{a.documentName} <span className="text-xs text-purple-500">({a.analysisType})</span></p>
-                  <span className="text-xs text-gray-500">{new Date(a.createdAt).toLocaleDateString()}</span>
-                </div>
-                {(() => {
-                  let brief: any = {};
-                  try { brief = JSON.parse(a.extractedBrief || '{}'); } catch { brief = { rawSummary: a.extractedBrief }; }
-                  return (
-                    <div className="space-y-2 text-sm">
-                      {brief.rawSummary && <p className="text-gray-700 bg-white p-2 rounded border">{brief.rawSummary}</p>}
-                      {brief.requirements && brief.requirements.length > 0 && (
-                        <div><p className="font-medium text-gray-900 text-xs uppercase">Requerimientos</p><ul className="list-disc list-inside text-gray-700">{brief.requirements.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul></div>
-                      )}
-                      {brief.timeline && (
-                        <div><p className="font-medium text-gray-900 text-xs uppercase">Cronograma</p><p className="text-gray-700">{brief.timeline}</p></div>
-                      )}
-                      {brief.costs && (
-                        <div><p className="font-medium text-gray-900 text-xs uppercase">Costos Estimados</p><p className="text-gray-700">{brief.costs}</p></div>
-                      )}
-                      {brief.risks && brief.risks.length > 0 && (
-                        <div><p className="font-medium text-gray-900 text-xs uppercase">Riesgos</p><ul className="list-disc list-inside text-red-700">{brief.risks.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul></div>
-                      )}
-                      {brief.compliance && brief.compliance.length > 0 && (
-                        <div><p className="font-medium text-gray-900 text-xs uppercase">Cumplimiento Normativo</p><ul className="list-disc list-inside text-gray-700">{brief.compliance.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul></div>
-                      )}
-                      {brief.score !== undefined && (
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-xs font-medium">Puntaje de alineación:</span>
-                          <div className="w-24 bg-gray-200 rounded-full h-2"><div className="bg-purple-600 h-2 rounded-full" style={{ width: `${(brief.score / 10) * 100}%` }} /></div>
-                          <span className="text-xs font-bold text-purple-700">{brief.score}/10</span>
+            {aiAnalyses.map((a: any) => {
+              const requirements: any[] = Array.isArray(a.requirements) ? a.requirements : [];
+              const risks: any[] = Array.isArray(a.risks) ? a.risks : [];
+              const timeline: any[] = Array.isArray(a.timeline) ? a.timeline : [];
+              const costs: any = a.costs && typeof a.costs === 'object' ? a.costs : {};
+              const scores: any = a.scores && typeof a.scores === 'object' ? a.scores : {};
+              const avgScore = Object.values(scores).length > 0
+                ? (Object.values(scores) as number[]).reduce((s, v) => s + v, 0) / Object.values(scores).length
+                : null;
+              return (
+                <div key={a.id} className="border border-purple-200 rounded-xl p-5 bg-white">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="font-semibold text-purple-900">{a.documentName}</p>
+                      <p className="text-xs text-gray-500">{a.analysisType} · {new Date(a.createdAt).toLocaleDateString('es-AR')}</p>
+                    </div>
+                    {avgScore !== null && (
+                      <div className="flex flex-col items-center bg-purple-50 rounded-lg px-3 py-2">
+                        <span className="text-2xl font-bold text-purple-700">{avgScore.toFixed(1)}</span>
+                        <span className="text-xs text-purple-500">puntaje IA</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Resumen */}
+                  {a.summary && (
+                    <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                      <p className="text-xs font-semibold text-blue-700 uppercase mb-1">Resumen ejecutivo</p>
+                      <p className="text-sm text-gray-800">{a.summary}</p>
+                    </div>
+                  )}
+
+                  {/* Scores */}
+                  {Object.keys(scores).length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Puntajes</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(scores).map(([k, v]: [string, any]) => (
+                          <div key={k} className="flex items-center gap-2">
+                            <span className="text-xs text-gray-600 w-24 capitalize">{k}</span>
+                            <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                              <div className="bg-purple-500 h-1.5 rounded-full" style={{ width: `${Math.min((v / 10) * 100, 100)}%` }} />
+                            </div>
+                            <span className="text-xs font-bold text-purple-700 w-6">{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Requerimientos */}
+                  {requirements.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Requerimientos ({requirements.length})</p>
+                      <div className="space-y-2">
+                        {requirements.map((r: any, i: number) => (
+                          <div key={i} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
+                            <span className={`mt-0.5 px-1.5 py-0.5 text-xs rounded font-medium ${
+                              r.priority === 'ALTA' ? 'bg-red-100 text-red-700' :
+                              r.priority === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
+                            }`}>{r.priority || 'N/A'}</span>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-gray-900">{r.title}</p>
+                              {r.description && <p className="text-xs text-gray-600">{r.description}</p>}
+                              {r.estimatedCost > 0 && <p className="text-xs text-blue-600">Costo est.: ${r.estimatedCost.toLocaleString('es-AR')}</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Riesgos */}
+                  {risks.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Riesgos ({risks.length})</p>
+                      <div className="space-y-2">
+                        {risks.map((r: any, i: number) => (
+                          <div key={i} className="flex items-start gap-2 p-2 bg-red-50 rounded-lg">
+                            <span className={`mt-0.5 px-1.5 py-0.5 text-xs rounded font-medium ${
+                              r.severity === 'ALTO' ? 'bg-red-200 text-red-800' :
+                              r.severity === 'MEDIO' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'
+                            }`}>{r.severity || 'N/A'}</span>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-gray-900">{r.title}</p>
+                              {r.description && <p className="text-xs text-gray-600">{r.description}</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Timeline */}
+                  {timeline.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Cronograma</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {timeline.map((t: any, i: number) => (
+                          <div key={i} className="p-2 bg-blue-50 rounded-lg border border-blue-100 text-xs">
+                            <p className="font-medium text-blue-900">{t.phase}</p>
+                            <p className="text-blue-600">{t.days} días</p>
+                            {t.description && <p className="text-gray-600">{t.description}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Costos */}
+                  {costs.totalEstimated > 0 && (
+                    <div className="p-3 bg-green-50 rounded-lg border border-green-100">
+                      <p className="text-xs font-semibold text-green-700 uppercase mb-1">Costos estimados</p>
+                      <p className="text-lg font-bold text-green-800">
+                        {costs.totalEstimated.toLocaleString('es-AR', { style: 'currency', currency: costs.currency || 'ARS', maximumFractionDigits: 0 })}
+                      </p>
+                      {costs.breakdown && costs.breakdown.length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {costs.breakdown.map((b: any, i: number) => (
+                            <div key={i} className="flex justify-between text-xs text-gray-600">
+                              <span>{b.category}</span>
+                              <span>${b.amount.toLocaleString('es-AR')}</span>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
-                  );
-                })()}
-              </div>
-            ))}
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
         {comparisonResult && (
