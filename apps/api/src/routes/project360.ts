@@ -730,4 +730,227 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
   app.get('/notifications', async (req: FastifyRequest, reply: FastifyReply) => {
     return reply.send({ notifications: [] });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GESTIÓN DE APROBACIONES POR ETAPA DEL NEGOCIO (Workflow de Licitaciones)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ETAPAS válidas en orden de progresión
+  const ETAPAS_NEGOCIO = [
+    'LICITACION_BORRADOR',
+    'DIMENSIONADO',
+    'COTIZADO',
+    'APROBADO_PARA_PRESENTAR',
+    'ADJUDICADO',
+    'EN_EJECUCION',
+    'CERRADO'
+  ];
+
+  // GET /project360/projects/:id/aprobaciones — listar aprobaciones del proyecto
+  app.get('/projects/:id/aprobaciones', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+
+      const aprobaciones = await prisma.project360Aprobacion.findMany({
+        where: { projectId: id, tenantId },
+        include: { aprobador: { select: { id: true, firstName: true, lastName: true, email: true } } },
+        orderBy: { solicitadoEn: 'desc' }
+      });
+
+      return reply.send({ aprobaciones });
+    } catch (err: any) {
+      console.error('[GET /aprobaciones] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/aprobaciones — solicitar aprobación para avanzar etapa
+  app.post('/projects/:id/aprobaciones', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { etapa, aprobadorId, comentarios } = body;
+
+      if (!etapa || !ETAPAS_NEGOCIO.includes(etapa)) {
+        return reply.code(400).send({ error: 'Etapa inválida. Etapas válidas: ' + ETAPAS_NEGOCIO.join(', ') });
+      }
+      if (!aprobadorId) {
+        return reply.code(400).send({ error: 'Se requiere aprobadorId' });
+      }
+
+      const userId = (req as any).db?.userId;
+
+      // Crear o actualizar la solicitud de aprobación
+      const aprobacion = await prisma.project360Aprobacion.upsert({
+        where: { projectId_etapa: { projectId: id, etapa } },
+        create: {
+          projectId: id, tenantId, etapa, aprobadorId,
+          comentarios: comentarios || null,
+          solicitadoPorId: userId || null,
+          estado: 'PENDIENTE'
+        },
+        update: {
+          aprobadorId,
+          comentarios: comentarios || null,
+          solicitadoPorId: userId || null,
+          estado: 'PENDIENTE',
+          solicitadoEn: new Date(),
+          aprobadoEn: null
+        },
+        include: { aprobador: { select: { id: true, firstName: true, lastName: true, email: true } } }
+      });
+
+      // Registrar en historial
+      await logHistory(prisma, id, tenantId, 'APROBACION_SOLICITADA', `Solicitud de aprobación para etapa: ${etapa}`, userId, null);
+
+      return reply.code(201).send({ aprobacion, mensaje: `Solicitud de aprobación para ${etapa} enviada a ${aprobacion.aprobador?.firstName || ''} ${aprobacion.aprobador?.lastName || ''}` });
+    } catch (err: any) {
+      console.error('[POST /aprobaciones] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/aprobaciones/:id/aprobar — aprobar solicitud
+  app.post('/aprobaciones/:id/aprobar', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { comentarios } = body;
+
+      const aprobacion = await prisma.project360Aprobacion.findFirst({
+        where: { id, tenantId },
+        include: { project: true }
+      });
+      if (!aprobacion) return reply.code(404).send({ error: 'Solicitud de aprobación no encontrada' });
+      if (aprobacion.estado !== 'PENDIENTE') {
+        return reply.code(400).send({ error: `La solicitud ya fue ${aprobacion.estado.toLowerCase()}` });
+      }
+
+      const userId = (req as any).db?.userId;
+
+      // Actualizar aprobación
+      const aprobacionActualizada = await prisma.project360Aprobacion.update({
+        where: { id },
+        data: { estado: 'APROBADO', aprobadoEn: new Date(), comentarios: comentarios || aprobacion.comentarios },
+        include: { aprobador: { select: { id: true, firstName: true, lastName: true } } }
+      });
+
+      // Registrar en historial
+      await logHistory(prisma, aprobacion.projectId, tenantId, 'ETAPA_APROBADA', `Etapa ${aprobacion.etapa} aprobada`, userId, null);
+
+      return reply.send({ aprobacion: aprobacionActualizada, mensaje: `Etapa ${aprobacion.etapa} aprobada exitosamente` });
+    } catch (err: any) {
+      console.error('[POST /aprobar] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/aprobaciones/:id/rechazar — rechazar solicitud
+  app.post('/aprobaciones/:id/rechazar', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { comentarios } = body;
+
+      const aprobacion = await prisma.project360Aprobacion.findFirst({
+        where: { id, tenantId },
+        include: { project: true }
+      });
+      if (!aprobacion) return reply.code(404).send({ error: 'Solicitud de aprobación no encontrada' });
+      if (aprobacion.estado !== 'PENDIENTE') {
+        return reply.code(400).send({ error: `La solicitud ya fue ${aprobacion.estado.toLowerCase()}` });
+      }
+
+      const userId = (req as any).db?.userId;
+
+      // Actualizar aprobación
+      const aprobacionActualizada = await prisma.project360Aprobacion.update({
+        where: { id },
+        data: { estado: 'RECHAZADO', aprobadoEn: new Date(), comentarios: comentarios || aprobacion.comentarios },
+        include: { aprobador: { select: { id: true, firstName: true, lastName: true } } }
+      });
+
+      // Registrar en historial
+      await logHistory(prisma, aprobacion.projectId, tenantId, 'ETAPA_RECHAZADA', `Etapa ${aprobacion.etapa} rechazada`, userId, null);
+
+      return reply.send({ aprobacion: aprobacionActualizada, mensaje: `Etapa ${aprobacion.etapa} rechazada` });
+    } catch (err: any) {
+      console.error('[POST /rechazar] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/avanzar-etapa — avanzar a siguiente etapa (con validación)
+  app.post('/projects/:id/avanzar-etapa', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { etapaDestino } = body;
+
+      if (!etapaDestino || !ETAPAS_NEGOCIO.includes(etapaDestino)) {
+        return reply.code(400).send({ error: 'Etapa destino inválida. Etapas: ' + ETAPAS_NEGOCIO.join(', ') });
+      }
+
+      const proyecto = await prisma.project360.findFirst({ where: { id, tenantId } });
+      if (!proyecto) return reply.code(404).send({ error: 'Proyecto no encontrado' });
+
+      const etapaActual = proyecto.etapaAprobacion || 'LICITACION_BORRADOR';
+      const idxActual = ETAPAS_NEGOCIO.indexOf(etapaActual);
+      const idxDestino = ETAPAS_NEGOCIO.indexOf(etapaDestino);
+
+      if (idxDestino <= idxActual) {
+        return reply.code(400).send({ error: `No se puede retroceder o mantener la misma etapa. Etapa actual: ${etapaActual}` });
+      }
+
+      // Verificar que todas las etapas intermedias estén aprobadas
+      for (let i = idxActual; i < idxDestino; i++) {
+        const etapaAValidar = ETAPAS_NEGOCIO[i];
+        // La primera etapa (LICITACION_BORRADOR) no requiere aprobación previa
+        if (etapaAValidar === 'LICITACION_BORRADOR') continue;
+
+        const aprobacion = await prisma.project360Aprobacion.findFirst({
+          where: { projectId: id, tenantId, etapa: etapaAValidar }
+        });
+
+        if (!aprobacion || aprobacion.estado !== 'APROBADO') {
+          return reply.code(400).send({
+            error: `No se puede avanzar. La etapa ${etapaAValidar} requiere aprobación.`,
+            etapaBloqueante: etapaAValidar,
+            estadoActual: aprobacion?.estado || 'NO_SOLICITADA'
+          });
+        }
+      }
+
+      const userId = (req as any).db?.userId;
+
+      // Actualizar etapa del proyecto
+      const proyectoActualizado = await prisma.project360.update({
+        where: { id },
+        data: { etapaAprobacion: etapaDestino }
+      });
+
+      // Registrar en historial
+      await logHistory(prisma, id, tenantId, 'ETAPA_AVANZADA', `Proyecto avanzado de ${etapaActual} a ${etapaDestino}`, userId, null);
+
+      return reply.send({
+        proyecto: proyectoActualizado,
+        mensaje: `Proyecto avanzado exitosamente a etapa: ${etapaDestino}`,
+        etapaAnterior: etapaActual,
+        etapaNueva: etapaDestino
+      });
+    } catch (err: any) {
+      console.error('[POST /avanzar-etapa] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
 }
