@@ -528,10 +528,10 @@ export default async function project360Routes(app: FastifyInstance) {
     ]
   },
   "scores": {
-    "clarity": 0,
-    "feasibility": 0,
-    "profitability": 0,
-    "riskLevel": 0
+    "clarity": 1-10,
+    "feasibility": 1-10,
+    "profitability": 1-10,
+    "riskLevel": 1-10
   }
 }
 
@@ -556,10 +556,10 @@ ${documentText.length > 12000 ? '\n[Documento truncado por longitud]' : ''}`;
           summary: parsed.summary || response.text.slice(0, 500),
           requirements: parsed.requirements || [],
           risks: parsed.risks || [],
-          timeline: parsed.timeline || [],
-          costs: parsed.costs || null,
-          scores: parsed.scores || null,
-          rawResponse: response.text,
+          timeline: JSON.stringify(parsed.timeline || []),
+          costs: JSON.stringify(parsed.costs || {}),
+          score: parsed.scores ? ((parsed.scores.clarity + parsed.scores.feasibility + parsed.scores.profitability + parsed.scores.riskLevel) / 4) : null,
+          rawAnalysis: response.text,
         },
       });
 
