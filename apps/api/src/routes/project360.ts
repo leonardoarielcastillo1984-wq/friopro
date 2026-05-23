@@ -158,19 +158,33 @@ export default async function project360Routes(app: FastifyInstance) {
     }
   });
 
-  // GET /project360/members — listar usuarios del tenant para seleccionar aprobadores
+  // GET /project360/members — listar empleados activos del tenant para seleccionar aprobadores
   app.get('/members', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
-      const users = await prisma.platformUser.findMany({
-        where: {
-          memberships: { some: { tenantId } },
-          deletedAt: null
-        },
+      // Traer empleados activos con su PlatformUser asociado por email
+      const employees = await prisma.employee.findMany({
+        where: { tenantId, deletedAt: null, status: 'ACTIVE' },
         select: { id: true, firstName: true, lastName: true, email: true }
       });
+
+      // Para cada empleado, buscar el PlatformUser por email para obtener el ID correcto
+      const emails = employees.map((e: any) => e.email).filter(Boolean);
+      const platformUsers = await prisma.platformUser.findMany({
+        where: { email: { in: emails }, deletedAt: null },
+        select: { id: true, email: true }
+      });
+      const platformUserByEmail = Object.fromEntries(platformUsers.map((u: any) => [u.email, u.id]));
+
+      const users = employees.map((e: any) => ({
+        id: platformUserByEmail[e.email] || null,
+        firstName: e.firstName,
+        lastName: e.lastName,
+        email: e.email,
+        employeeId: e.id
+      })).filter((u: any) => u.id !== null); // solo los que tienen acceso al sistema
 
       return reply.send({ users });
     } catch (err: any) {
