@@ -81,73 +81,80 @@ export default async function project360Routes(app: FastifyInstance) {
 
   // POST /project360/projects
   app.post('/projects', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
-    const data = createProjectSchema.parse(body);
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      console.log('[POST /projects] Body:', JSON.stringify(body, null, 2));
 
-    const year = new Date().getFullYear();
-    const count = await prisma.project360.count({ where: { tenantId, createdAt: { gte: new Date(`${year}-01-01`) } } });
-    const code = `PROJ-${year}-${String(count + 1).padStart(3, '0')}`;
+      const data = createProjectSchema.parse(body);
 
-    const project = await prisma.project360.create({
-      data: {
-        tenantId, code, ...data,
-        responsibleId: data.responsibleId,
-        targetDate: new Date(data.targetDate),
-        createdById: (req as any).db?.userId || null,
-        tags: data.tags,
-      },
-      include: { tasks: true },
-    });
+      const year = new Date().getFullYear();
+      const count = await prisma.project360.count({ where: { tenantId, createdAt: { gte: new Date(`${year}-01-01`) } } });
+      const code = `PROJ-${year}-${String(count + 1).padStart(3, '0')}`;
 
-    // Si viene templateId, copiar tareas, budget items y milestones predefinidos
-    if (data.templateId) {
-      const template = await prisma.project360Template.findFirst({ where: { id: data.templateId, tenantId } });
-      if (template) {
-        const defaultTasks = (template.defaultTasks as any[]) || [];
-        const defaultBudgetItems = (template.defaultBudgetItems as any[]) || [];
-        const defaultMilestones = (template.defaultMilestones as any[]) || [];
+      const project = await prisma.project360.create({
+        data: {
+          tenantId, code, ...data,
+          responsibleId: data.responsibleId,
+          targetDate: new Date(data.targetDate),
+          createdById: (req as any).db?.userId || null,
+          tags: data.tags,
+        },
+        include: { tasks: true },
+      });
 
-        if (defaultTasks.length > 0) {
-          await prisma.project360Task.createMany({
-            data: defaultTasks.map((t: any, i: number) => ({
-              tenantId, projectId: project.id,
-              title: t.title, description: t.description || null,
-              responsibleId: t.responsibleId || null, status: 'PENDING',
-              priority: t.priority || 'MEDIUM', order: i,
-              dueDate: t.dueDate ? new Date(t.dueDate) : null,
-            })),
-          });
-        }
-        if (defaultBudgetItems.length > 0) {
-          await prisma.project360BudgetItem.createMany({
-            data: defaultBudgetItems.map((b: any) => ({
-              tenantId, projectId: project.id,
-              name: b.name, category: b.category || 'MATERIAL',
-              estimated: b.estimated || 0, actual: 0,
-              currency: b.currency || 'ARS', notes: b.notes || null,
-            })),
-          });
-        }
-        if (defaultMilestones.length > 0) {
-          await prisma.project360Milestone.createMany({
-            data: defaultMilestones.map((m: any, i: number) => ({
-              tenantId, projectId: project.id,
-              name: m.name, description: m.description || null,
-              targetDate: m.targetDate ? new Date(m.targetDate) : new Date(data.targetDate),
-              order: i, status: 'PENDING',
-            })),
-          });
+      // Si viene templateId, copiar tareas, budget items y milestones predefinidos
+      if (data.templateId) {
+        const template = await prisma.project360Template.findFirst({ where: { id: data.templateId, tenantId } });
+        if (template) {
+          const defaultTasks = (template.defaultTasks as any[]) || [];
+          const defaultBudgetItems = (template.defaultBudgetItems as any[]) || [];
+          const defaultMilestones = (template.defaultMilestones as any[]) || [];
+
+          if (defaultTasks.length > 0) {
+            await prisma.project360Task.createMany({
+              data: defaultTasks.map((t: any, i: number) => ({
+                tenantId, projectId: project.id,
+                title: t.title, description: t.description || null,
+                responsibleId: t.responsibleId || null, status: 'PENDING',
+                priority: t.priority || 'MEDIUM', order: i,
+                dueDate: t.dueDate ? new Date(t.dueDate) : null,
+              })),
+            });
+          }
+          if (defaultBudgetItems.length > 0) {
+            await prisma.project360BudgetItem.createMany({
+              data: defaultBudgetItems.map((b: any) => ({
+                tenantId, projectId: project.id,
+                name: b.name, category: b.category || 'MATERIAL',
+                estimated: b.estimated || 0, actual: 0,
+                currency: b.currency || 'ARS', notes: b.notes || null,
+              })),
+            });
+          }
+          if (defaultMilestones.length > 0) {
+            await prisma.project360Milestone.createMany({
+              data: defaultMilestones.map((m: any, i: number) => ({
+                tenantId, projectId: project.id,
+                name: m.name, description: m.description || null,
+                targetDate: m.targetDate ? new Date(m.targetDate) : new Date(data.targetDate),
+                order: i, status: 'PENDING',
+              })),
+            });
+          }
         }
       }
-    }
 
-    const userId = (req as any).db?.userId;
-    const userName = (req as any).db?.userName;
-    await logHistory(prisma, project.id, tenantId, 'CREATED', `Proyecto "${project.name}" creado`, userId, userName);
-    return reply.code(201).send({ project });
+      const userId = (req as any).db?.userId;
+      const userName = (req as any).db?.userName;
+      await logHistory(prisma, project.id, tenantId, 'CREATED', `Proyecto "${project.name}" creado`, userId, userName);
+      return reply.code(201).send({ project });
+    } catch (err: any) {
+      console.error('[POST /projects] Error:', err);
+      return reply.code(500).send({ error: 'Error creando proyecto: ' + (err.message || err) });
+    }
   });
 
   // GET /project360/:id — alias sin /projects/ para compatibilidad
