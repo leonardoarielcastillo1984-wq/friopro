@@ -536,11 +536,11 @@ export default function EnterpriseAIControlTower({
 
   const monitorThinkingProgress = (sessionId: string) => {
     // Simulate thinking progress updates
-    const thinkingSteps = [
-      { id: '1', title: 'Analizando intención', description: 'Interpretando el contexto y objetivo', progress: 0, completed: false },
-      { id: '2', title: 'Recopilando datos', description: 'Obteniendo información relevante del sistema', progress: 0, completed: false },
-      { id: '3', title: 'Procesando contexto', description: 'Analizando relaciones y patrones', progress: 0, completed: false },
-      { id: '4', title: 'Generando respuesta', description: 'Construyendo respuesta inteligente', progress: 0, completed: false }
+    const thinkingSteps: ThinkingStep[] = [
+      { id: '1', phase: 'analyzing', title: 'Analizando intención', description: 'Interpretando el contexto y objetivo', progress: 0, completed: false, timestamp: new Date() },
+      { id: '2', phase: 'processing', title: 'Recopilando datos', description: 'Obteniendo información relevante del sistema', progress: 0, completed: false, timestamp: new Date() },
+      { id: '3', phase: 'reasoning', title: 'Procesando contexto', description: 'Analizando relaciones y patrones', progress: 0, completed: false, timestamp: new Date() },
+      { id: '4', phase: 'generating', title: 'Generando respuesta', description: 'Construyendo respuesta inteligente', progress: 0, completed: false, timestamp: new Date() }
     ];
 
     setState(prev => ({
@@ -1770,28 +1770,29 @@ export default function EnterpriseAIControlTower({
         {/* Main Content */}
         <main className="flex-1 overflow-hidden">
           <div className="h-full flex flex-col max-w-7xl mx-auto px-6 py-6">
-            {/* Live Data Status */}
-            {renderLiveDataStatus()}
-            
-            {/* Deep Analysis Mode */}
-            {renderDeepAnalysisMode()}
-            
-            {/* Live Widgets */}
-            {renderLiveWidgets()}
 
-            {/* Contextual Visualizations */}
-            {renderContextualVisualizations()}
+            {/* Scrollable Content Area - everything except input */}
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
+              {/* Live Data Status */}
+              {renderLiveDataStatus()}
+              
+              {/* Deep Analysis Mode */}
+              {renderDeepAnalysisMode()}
+              
+              {/* Live Widgets */}
+              {renderLiveWidgets()}
 
-            {/* Thinking Visualization */}
-            {renderThinkingVisualization()}
-            
-            {/* Streaming Response */}
-            {renderStreamingResponse()}
+              {/* Contextual Visualizations */}
+              {renderContextualVisualizations()}
 
-            {/* Messages Container */}
-            <div className="flex-1 overflow-y-auto mb-6 space-y-4">
-              {/* Messages would go here */}
-              {!isStreaming && streamingResponse === '' && (
+              {/* Thinking Visualization */}
+              {renderThinkingVisualization()}
+              
+              {/* Streaming Response */}
+              {renderStreamingResponse()}
+
+              {/* Empty state */}
+              {!isStreaming && streamingResponse === '' && contextualVisualizations.length === 0 && !state.isThinking && (
                 <div className="text-center text-gray-500 py-8">
                   <Brain className="w-12 h-12 mx-auto mb-4 text-gray-600" />
                   <p className="text-lg font-medium">Enterprise AI Control Tower está listo para analizar tus consultas</p>
@@ -1808,7 +1809,7 @@ export default function EnterpriseAIControlTower({
               {renderCommandActions()}
             </div>
 
-            {/* Input Area */}
+            {/* Input Area - always pinned at bottom */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
