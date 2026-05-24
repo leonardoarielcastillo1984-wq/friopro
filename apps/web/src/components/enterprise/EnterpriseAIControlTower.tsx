@@ -125,20 +125,16 @@ export default function EnterpriseAIControlTower({
   // Initialize Enterprise CC
   useEffect(() => {
     initializeEnterpriseCC();
-    const interval = setInterval(updateLiveWidgets, 5000); // Update every 5 seconds
-    return () => clearInterval(interval);
   }, []);
 
-  // Update live data status
+  // Update live data status timestamp only
   useEffect(() => {
     const interval = setInterval(() => {
       setLiveDataStatus(prev => ({
         ...prev,
-        lastSync: new Date(),
-        dataPoints: prev.dataPoints + Math.floor(Math.random() * 10),
-        latency: Math.max(10, Math.min(100, prev.latency + (Math.random() - 0.5) * 10))
+        lastSync: new Date()
       }));
-    }, 3000);
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -462,34 +458,7 @@ export default function EnterpriseAIControlTower({
   };
 
   const updateLiveWidgets = async (): Promise<void> => {
-    // Simulate live widget updates
-    const liveWidgets: LiveWidget[] = [
-      {
-        id: 'kpi-1',
-        type: 'kpi',
-        title: 'Rendimiento Operativo',
-        value: Math.random() * 100,
-        trend: {
-          direction: Math.random() > 0.5 ? 'up' : 'down',
-          percentage: Math.random() * 20
-        },
-        animated: true,
-        realTime: true,
-        lastUpdate: new Date(),
-        dataSource: 'operations'
-      },
-      {
-        id: 'kpi-2',
-        type: 'metric',
-        title: 'Alertas Activas',
-        value: state.floatingAlerts.filter(a => !a.dismissed).length,
-        animated: true,
-        realTime: true,
-        lastUpdate: new Date(),
-        dataSource: 'alerts'
-      }
-    ];
-    setState(prev => ({ ...prev, activeWidgets: liveWidgets }));
+    // Widgets solo desde backend con datos reales — no se generan localmente
   };
 
   // ============================================================
