@@ -448,30 +448,39 @@ export default function EnterpriseAIControlTower({
         }
       }));
 
-      // Step 4: Monitor thinking progress and stream response
+      // Step 4: Monitor thinking progress (visual only)
       monitorThinkingProgress(sessionId);
-      startStreamingResponse(sessionId);
 
-      // Step 5: Update dashboard based on intent
-      if (intent.type !== 'general') {
-        const dashboardResponse = await apiFetch('/command-center/intent/analyze', {
-          method: 'POST',
-          body: JSON.stringify({
-            query,
-            userContext: {
-              tenantId,
-              userId,
-              userRole,
-              permissions
-            }
-          })
-        });
-        setState(prev => ({ 
-          ...prev, 
-          currentDashboard: dashboardResponse.data.dashboard,
-          dashboardLayout: dashboardResponse.data.dashboard.layout
-        }));
-      }
+      // Step 5: Call real backend /query endpoint
+      const queryResponse = await apiFetch('/command-center/query', {
+        method: 'POST',
+        body: JSON.stringify({
+          query,
+          conversationId: state.thinkingSession?.id || sessionId
+        })
+      }) as any;
+
+      const realAnswer = queryResponse?.data?.summary 
+        || queryResponse?.data?.response 
+        || queryResponse?.data?.answer
+        || 'No se pudo obtener una respuesta del servidor.';
+
+      // Step 6: Stream the real answer character by character
+      setIsStreaming(true);
+      let currentText = '';
+      let charIndex = 0;
+      const streamInterval = setInterval(() => {
+        if (charIndex < realAnswer.length) {
+          currentText += realAnswer[charIndex];
+          setStreamingResponse(currentText);
+          charIndex++;
+        } else {
+          clearInterval(streamInterval);
+          setIsStreaming(false);
+          setStreamingResponse('');
+          setState(prev => ({ ...prev, loading: false }));
+        }
+      }, 15);
 
     } catch (error) {
       console.error('Error processing message:', error);
