@@ -1256,36 +1256,6 @@ export async function commandCenterRoutes(app: FastifyInstance) {
     }
   });
 
-  // ------------------------------------------------------------
-  // COMMAND ACTIONS
-  // ------------------------------------------------------------
-  app.get('/actions', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = await getEffectiveTenantId(req, app.prisma);
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-      }
-
-      const userId = (req as any).db?.userId || 'anonymous';
-      const userRole = (req as any).db?.tenantRole || 'USER';
-      const userPermissions = (req as any).db?.permissions || [];
-
-      const actions = commandActions.getActionsForUser(userPermissions, userRole);
-
-      return reply.send({
-        success: true,
-        data: {
-          actions,
-          userRole,
-          timestamp: new Date().toISOString()
-        }
-      });
-
-    } catch (error: any) {
-      return reply.code(500).send({ error: error.message });
-    }
-  });
-
   app.post('/actions/:actionId/execute', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -1387,51 +1357,6 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         success: true,
         data: {
           message: 'Alert dismissed successfully',
-          timestamp: new Date().toISOString()
-        }
-      });
-
-    } catch (error: any) {
-      return reply.code(500).send({ error: error.message });
-    }
-  });
-
-  // ------------------------------------------------------------
-  // SMART SUGGESTIONS
-  // ------------------------------------------------------------
-  app.get('/suggestions', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = await getEffectiveTenantId(req, app.prisma);
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-      }
-
-      const userId = (req as any).db?.userId || 'anonymous';
-      const userContext = {
-        tenantId,
-        userId,
-        tenantRole: (req as any).db?.tenantRole || 'USER',
-        permissions: (req as any).db?.permissions || []
-      };
-
-      // Obtener intención actual (simulada)
-      const currentIntent = {
-        type: 'general',
-        confidence: 0.5,
-        entities: [],
-        context: {},
-        suggestedVisualizations: [],
-        suggestedActions: [],
-        operationalMode: 'operational'
-      };
-
-      const suggestions = await intentEngine.getSmartSuggestions(userContext, currentIntent);
-
-      return reply.send({
-        success: true,
-        data: {
-          suggestions,
-          context: userContext,
           timestamp: new Date().toISOString()
         }
       });
