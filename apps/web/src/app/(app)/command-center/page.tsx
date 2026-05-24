@@ -72,8 +72,8 @@ export default function CommandCenterPage() {
 
   const loadSubscription = async (): Promise<AISubscription | null> => {
     try {
-      const response = await apiFetch('/command-center/subscription');
-      return response.data;
+      const response = await apiFetch('/command-center/subscription') as any;
+      return response?.data || null;
     } catch (error) {
       console.error('Error loading subscription:', error);
       return null;
@@ -83,14 +83,17 @@ export default function CommandCenterPage() {
   const loadUserContext = async (): Promise<UserContext> => {
     try {
       // Get user info from session or API
-      const response = await apiFetch('/api/auth/me');
-      const user = response.data;
+      // /auth/me devuelve: { user: { id, email, ... }, activeTenant: { id, name }, tenantRole }
+      const response = await apiFetch('/auth/me') as any;
+      const user = response?.user;
+      const activeTenant = response?.activeTenant;
+      const tenantRole = response?.tenantRole;
 
       return {
-        tenantId: user.tenantId || 'default',
-        userId: user.id || 'anonymous',
-        userRole: user.tenantRole || 'USER',
-        permissions: user.permissions || []
+        tenantId: activeTenant?.id || user?.tenantId || '',
+        userId: user?.id || 'anonymous',
+        userRole: tenantRole || user?.globalRole || 'USER',
+        permissions: []
       };
     } catch (error) {
       console.error('Error loading user context:', error);
