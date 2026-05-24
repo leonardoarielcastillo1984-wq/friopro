@@ -588,6 +588,28 @@ export default function EnterpriseAIControlTower({
     }, 500); // Update every 500ms
   };
 
+  const generateMockResponse = (intentType: string): string => {
+    const responses = {
+      financial: `He analizado los indicadores financieros clave de su organización. Los ingresos muestran una tendencia positiva con un crecimiento del 15% en el último trimestre. Sin embargo, he identificado oportunidades de optimización en costos operativos que podrían mejorar el margen neto en aproximadamente 3-4%. Le recomiendo implementar un plan de eficiencia energética y renegociar contratos con proveedores estratégicos. El flujo de caja es saludable pero podría beneficiarse de una mejor gestión del capital de trabajo.`,
+      
+      operational: `La operación actual muestra una eficiencia del 87% con puntos de mejora específicos en la cadena de suministro. He detectado cuellos de botella en el proceso de logística que podrían reducirse con una redistribución de recursos. Los tiempos de entrega podrían mejorar un 12% con ajustes en la planificación de rutas. Además, recomiendo implementar un sistema de mantenimiento predictivo que podría reducir los tiempos de inactividad en un 25%.`,
+      
+      strategic: `Basado en el análisis del mercado y capacidades internas, identifico tres oportunidades estratégicas clave: 1) Expansión a mercados emergentes con bajo riesgo y alto potencial, 2) Diversificación de la cartera de productos hacia servicios de mayor valor agregado, 3) Alianzas estratégicas con líderes tecnológicos para acelerar la transformación digital. El plan de ejecución sugerido abarca 18 meses con hitos trimestrales claros y métricas de éxito definidas.`,
+      
+      risk: `He evaluado el panorama de riesgos actuales y identificado tres áreas críticas que requieren atención inmediata: 1) Riesgos cibernéticos asociados a la infraestructura heredada, 2) Exposición a volatilidad de precios de materias primas, 3) Dependencia de proveedores únicos en componentes críticos. Recomiendo implementar un programa de resiliencia operativa y diversificar la cadena de suministro dentro de los próximos 6 meses.`,
+      
+      hr: `El análisis del capital humano indica una rotación del 12% en áreas clave, principalmente por falta de desarrollo profesional. Recomiendo implementar programas de formación específicos y planes de carrera claros. La satisfacción general es buena (78%) pero podría mejorar con iniciativas de bienestar y flexibilidad laboral. He identificado alto potencial en 15 empleados que podrían formar parte del plan de sucesión.`,
+      
+      projects: `El portafolio actual de proyectos muestra un avance promedio del 68% con dos proyectos críticos en riesgo de retraso. Recomiendo reasignar recursos del proyecto X al proyecto Y para mitigar impactos. La tasa de éxito histórica es del 85% pero podría mejorar con mejor gestión de stakeholders y comunicación temprana de desvíos. Los próximos 3 meses son críticos para cumplir los objetivos anuales.`,
+      
+      compliance: `El estado de cumplimiento es generalmente bueno con un 92% de adherencia a normativas. Sin embargo, he identificado brechas en documentación de procesos de calidad y en actualización de políticas de privacidad. Recomiendo una auditoría interna completa dentro de 60 días y actualizar el marco de cumplimiento según nuevas regulaciones de protección de datos que entrarán en vigor próximamente.`,
+      
+      general: `He procesado su solicitud y estoy listo para ayudarle con el análisis y gestión de su organización. El Enterprise AI Control Tower está operando con todas las funcionalidades activas: monitoreo en tiempo real, análisis predictivo y generación de insights estratégicos. Puede solicitar análisis específicos por área financiera, operativa, estratégica, de riesgos, recursos humanos, proyectos o cumplimiento normativo.`
+    };
+
+    return responses[intentType as keyof typeof responses] || responses.general;
+  };
+
   const startStreamingResponse = (sessionId: string) => {
     // Simulate streaming response
     const fullResponse = generateMockResponse(state.currentIntent?.type || 'general');
