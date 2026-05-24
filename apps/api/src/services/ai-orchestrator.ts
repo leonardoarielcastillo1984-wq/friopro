@@ -789,27 +789,12 @@ export class AIOrchestrator {
       
       const cost = (tokensUsed / 1000) * config.costPer1KTokens;
       
-      // Parsear widgets y acciones del contenido si es OpenAI (formato JSON)
-      let widgets: AIWidget[] | undefined;
-      let actions: AIAction[] | undefined;
-      
-      if (provider === 'openai') {
-        try {
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            widgets = parsed.widgets;
-            actions = parsed.actions;
-          }
-        } catch {
-          // No es JSON, usar texto plano
-        }
-      }
+      // NO parsear widgets del contenido de la IA
+      // Los widgets deben venir exclusivamente de datos reales de la BD (getExecutiveKPIs)
+      // para evitar mostrar datos inventados
       
       return {
         summary: content,
-        widgets,
-        actions,
         provider,
         tokensUsed,
         cost
