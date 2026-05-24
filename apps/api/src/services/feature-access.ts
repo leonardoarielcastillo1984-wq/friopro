@@ -281,6 +281,14 @@ export class FeatureAccessService {
             route: '/encuestas',
             featureRequired: 'encuestas',
             description: 'Encuestas de satisfacción'
+          },
+          {
+            key: 'commandCenter',
+            name: 'Command Center',
+            icon: 'Brain',
+            route: '/command-center',
+            featureRequired: 'commandCenter',
+            description: 'IA Ejecutiva Premium'
           }
         ];
 
