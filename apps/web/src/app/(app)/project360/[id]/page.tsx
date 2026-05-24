@@ -23,6 +23,11 @@ import ContratosTab from '@/components/project360/ContratosTab';
 import LessonsLearnedTab from '@/components/project360/LessonsLearnedTab';
 import MotorRelacionalTab from '@/components/project360/MotorRelacionalTab';
 import GanttTab from '@/components/project360/GanttTab';
+import BudgetTab from '@/components/project360/BudgetTab';
+import MilestonesTab from '@/components/project360/MilestonesTab';
+import AnalysisTab from '@/components/project360/AnalysisTab';
+import AprobacionesTab from '@/components/project360/AprobacionesTab';
+import HistoryTab from '@/components/project360/HistoryTab';
 
 interface Project {
   id: string;
@@ -1903,6 +1908,31 @@ export default function ProjectDetailPage() {
       {/* ── GANTT ENTERPRISE ── */}
       {activeTab === 'gantt' && (
         <GanttTab projectId={params.id as string} />
+      )}
+
+      {/* ── PRESUPUESTO ── */}
+      {activeTab === 'budget' && (
+        <BudgetTab projectId={params.id as string} />
+      )}
+
+      {/* ── HITOS ── */}
+      {activeTab === 'milestones' && (
+        <MilestonesTab projectId={params.id as string} />
+      )}
+
+      {/* ── ANÁLISIS IA ── */}
+      {activeTab === 'analysis' && (
+        <AnalysisTab projectId={params.id as string} />
+      )}
+
+      {/* ── APROBACIONES ── */}
+      {activeTab === 'aprobaciones' && (
+        <AprobacionesTab projectId={params.id as string} />
+      )}
+
+      {/* ── HISTORIAL ── */}
+      {activeTab === 'history' && (
+        <HistoryTab projectId={params.id as string} />
       )}
 
     </div>

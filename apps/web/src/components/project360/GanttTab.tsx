@@ -5,7 +5,8 @@ import { apiFetch } from '@/lib/api';
 import {
   Calendar, Clock, AlertTriangle, CheckCircle, ArrowRight,
   Users, Zap, Target, GitBranch, Save, RefreshCw, Plus,
-  Trash2, ChevronDown, ChevronRight, Settings
+  Trash2, ChevronDown, ChevronRight, Settings, GripVertical,
+  LayoutGrid, BarChart3
 } from 'lucide-react';
 
 interface Task {
@@ -46,35 +47,52 @@ export default function GanttTab({ projectId }: Props) {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [calculating, setCalculating] = useState(false);
+  const [portfolioView, setPortfolioView] = useState(false);
+  const [portfolioProjects, setPortfolioProjects] = useState<any[]>([]);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await apiFetch(`/project360/projects/${projectId}/tasks?includeAll=true`) as any;
-      // Organize tasks hierarchically
       const taskMap = new Map<string, Task>();
       const rootTasks: Task[] = [];
-      
-      (res.tasks || []).forEach((t: Task) => {
-        taskMap.set(t.id, { ...t, subtasks: [] });
-      });
-      
+      (res.tasks || []).forEach((t: Task) => { taskMap.set(t.id, { ...t, subtasks: [] }); });
       (res.tasks || []).forEach((t: Task) => {
         const task = taskMap.get(t.id)!;
         if (t.parentId && taskMap.has(t.parentId)) {
           const parent = taskMap.get(t.parentId)!;
           parent.subtasks!.push(task);
-        } else {
-          rootTasks.push(task);
-        }
+        } else { rootTasks.push(task); }
       });
-      
       setTasks(rootTasks);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, [projectId]);
 
+  const loadPortfolio = async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch('/project360/projects?limit=50') as any;
+      const projects = res.projects || [];
+      const enriched = await Promise.all(projects.map(async (p: any) => {
+        try {
+          const tRes = await apiFetch(`/project360/projects/${p.id}/tasks?includeAll=true`) as any;
+          return { ...p, tasks: tRes.tasks || [] };
+        } catch { return { ...p, tasks: [] }; }
+      }));
+      setPortfolioProjects(enriched);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (portfolioView) loadPortfolio();
+    else load();
+  }, [portfolioView]);
 
   const calculateCriticalPath = useCallback(async () => {
     setCalculating(true);
@@ -122,14 +140,53 @@ export default function GanttTab({ projectId }: Props) {
     const totalDays = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     const daysFromStart = Math.max(0, (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     const progressWidth = Math.min(100, Math.max(0, (daysFromStart / totalDays) * 100));
-    
+
     let bgColor = 'bg-blue-400';
     if (task.isCriticalPath) bgColor = 'bg-red-400';
     else if (task.status === 'COMPLETED') bgColor = 'bg-emerald-400';
     else if (new Date(task.dueDate || Date.now()) < new Date() && task.status !== 'COMPLETED') bgColor = 'bg-amber-400';
-    
+
     return { bgColor, progressWidth };
   };
+
+  // Drag & Drop handlers
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    setDraggingTaskId(taskId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, taskId: string) => {
+    e.preventDefault();
+    if (draggingTaskId && draggingTaskId !== taskId) {
+      setDragOverTaskId(taskId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverTaskId(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetTaskId: string) => {
+    e.preventDefault();
+    if (!draggingTaskId || draggingTaskId === targetTaskId) { setDraggingTaskId(null); setDragOverTaskId(null); return; }
+    try {
+      await apiFetch(`/project360/tasks/${draggingTaskId}/reorder`, {
+        method: 'PUT',
+        json: { targetTaskId }
+      });
+      load();
+    } catch (err: any) { alert(err.message); }
+    setDraggingTaskId(null);
+    setDragOverTaskId(null);
+  };
+
+  // Portfolio color map
+  const projectColorMap = useMemo(() => {
+    const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-cyan-500', 'bg-amber-500', 'bg-indigo-500'];
+    const map: Record<string, string> = {};
+    portfolioProjects.forEach((p, i) => { map[p.id] = colors[i % colors.length]; });
+    return map;
+  }, [portfolioProjects]);
 
   if (loading) return <div className="p-8 text-center text-gray-500">Cargando Gantt...</div>;
 
@@ -139,7 +196,7 @@ export default function GanttTab({ projectId }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Gantt Enterprise</h2>
-          <p className="text-sm text-gray-500">Cronograma con dependencias, ruta crítica y baseline</p>
+          <p className="text-sm text-gray-500">{portfolioView ? 'Vista portfolio de múltiples proyectos' : 'Cronograma con dependencias, ruta crítica y baseline'}</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -149,6 +206,12 @@ export default function GanttTab({ projectId }: Props) {
           >
             <Zap className={`w-4 h-4 ${calculating ? 'animate-spin' : ''}`} />
             {calculating ? 'Calculando...' : 'Calcular Ruta Crítica'}
+          </button>
+          <button
+            onClick={() => setPortfolioView(!portfolioView)}
+            className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${portfolioView ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+          >
+            <LayoutGrid className="w-4 h-4" /> {portfolioView ? 'Proyecto' : 'Portfolio'}
           </button>
           <div className="flex bg-gray-100 rounded-lg p-1">
             {(['week', 'month', 'quarter'] as const).map(mode => (
@@ -220,7 +283,9 @@ export default function GanttTab({ projectId }: Props) {
       <div className="bg-white rounded-xl border overflow-hidden">
         {/* Header */}
         <div className="grid grid-cols-[300px_1fr] border-b bg-gray-50">
-          <div className="px-4 py-3 font-medium text-gray-700 text-sm">Tarea</div>
+          <div className="px-4 py-3 font-medium text-gray-700 text-sm">
+            {portfolioView ? 'Proyecto / Tarea' : 'Tarea'}
+          </div>
           <div className="grid grid-cols-12 gap-1 px-2 py-2">
             {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="text-center text-xs text-gray-500 border-l">
@@ -230,7 +295,53 @@ export default function GanttTab({ projectId }: Props) {
           </div>
         </div>
 
-        {/* Tasks */}
+        {/* Portfolio View */}
+        {portfolioView ? (
+          <div className="divide-y">
+            {portfolioProjects.length === 0 ? (
+              <div className="px-4 py-8 text-center text-gray-500">Sin proyectos para mostrar</div>
+            ) : portfolioProjects.map((proj: any) => (
+              <div key={proj.id}>
+                {/* Project Header Row */}
+                <div className="grid grid-cols-[300px_1fr] bg-gray-100 border-b">
+                  <div className="px-4 py-2 font-semibold text-sm text-gray-800 flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${projectColorMap[proj.id] || 'bg-gray-400'}`} />
+                    {proj.name}
+                    <span className="text-xs text-gray-500 font-normal">({(proj.tasks || []).length} tareas)</span>
+                  </div>
+                  <div className="relative h-8">
+                    <div
+                      className={`absolute h-4 rounded top-2 ${projectColorMap[proj.id] || 'bg-gray-400'} opacity-60`}
+                      style={{
+                        left: `${(new Date(proj.createdAt || Date.now()).getMonth() / 12) * 100}%`,
+                        width: `${Math.max(5, 15)}%`
+                      }}
+                    />
+                  </div>
+                </div>
+                {/* Project Tasks */}
+                {(proj.tasks || []).map((task: any) => {
+                  const start = new Date(task.plannedStart || task.dueDate || Date.now());
+                  const end = new Date(task.plannedEnd || task.dueDate || Date.now());
+                  const leftPct = (start.getMonth() / 12) * 100;
+                  const widthPct = Math.max(5, ((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30)) * 8);
+                  return (
+                    <div key={task.id} className="grid grid-cols-[300px_1fr]">
+                      <div className="px-8 py-1.5 border-r text-xs text-gray-600 truncate">{task.title}</div>
+                      <div className="relative h-7 bg-gray-50/30 grid grid-cols-12 gap-1 px-2">
+                        <div
+                          className={`absolute h-4 rounded top-1.5 ${projectColorMap[proj.id] || 'bg-gray-400'} opacity-80`}
+                          style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        ) : (
+        /* Single Project Tasks */
         <div className="divide-y">
           {allTasks.length === 0 ? (
             <div className="px-4 py-8 text-center text-gray-500">No hay tareas para mostrar</div>
@@ -239,23 +350,31 @@ export default function GanttTab({ projectId }: Props) {
             const isExpanded = expandedTasks.has(task.id);
             const isVisible = !task.parentId || expandedTasks.has(task.parentId || '');
             const { bgColor, progressWidth } = getBarStyle(task);
-            
+            const isDragging = draggingTaskId === task.id;
+            const isDragOver = dragOverTaskId === task.id;
+
             if (!isVisible) return null;
-            
+
             return (
-              <div 
-                key={task.id} 
-                className={`grid grid-cols-[300px_1fr] ${task.isCriticalPath && showCriticalPath ? 'bg-red-50/30' : ''}`}
+              <div
+                key={task.id}
+                draggable
+                onDragStart={e => handleDragStart(e, task.id)}
+                onDragOver={e => handleDragOver(e, task.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={e => handleDrop(e, task.id)}
+                className={`grid grid-cols-[300px_1fr] ${task.isCriticalPath && showCriticalPath ? 'bg-red-50/30' : ''} ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'bg-blue-50 border-blue-300 border-2' : ''} transition-colors cursor-move`}
               >
                 {/* Task Info */}
                 <div className="px-4 py-2 border-r flex items-center gap-2">
+                  <GripVertical className="w-3 h-3 text-gray-300" />
                   {hasSubtasks && (
                     <button onClick={() => toggleExpand(task.id)} className="text-gray-400 hover:text-gray-600">
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </button>
                   )}
                   <div className={`w-2 h-2 rounded-full ${
-                    task.status === 'COMPLETED' ? 'bg-emerald-400' : 
+                    task.status === 'COMPLETED' ? 'bg-emerald-400' :
                     task.status === 'IN_PROGRESS' ? 'bg-blue-400' : 'bg-gray-300'
                   }`} />
                   <span className={`text-sm truncate ${task.isCriticalPath ? 'font-semibold text-red-900' : 'text-gray-700'}`}>
@@ -267,12 +386,12 @@ export default function GanttTab({ projectId }: Props) {
                     </span>
                   )}
                 </div>
-                
+
                 {/* Timeline Bar */}
                 <div className="relative h-10 bg-gray-50/50 grid grid-cols-12 gap-1 px-2">
                   {/* Baseline (dashed) */}
                   {showBaseline && task.baselineStart && task.baselineEnd && (
-                    <div 
+                    <div
                       className="absolute h-2 border-2 border-gray-400 border-dashed rounded top-1"
                       style={{
                         left: `${(new Date(task.baselineStart).getMonth() / 12) * 100}%`,
@@ -280,9 +399,9 @@ export default function GanttTab({ projectId }: Props) {
                       }}
                     />
                   )}
-                  
+
                   {/* Actual bar */}
-                  <div 
+                  <div
                     className={`absolute h-6 rounded top-2 ${bgColor} cursor-pointer hover:opacity-80 transition-opacity`}
                     style={{
                       left: `${(new Date(task.plannedStart || task.dueDate || Date.now()).getMonth() / 12) * 100}%`,
@@ -290,12 +409,12 @@ export default function GanttTab({ projectId }: Props) {
                     }}
                     onClick={() => setSelectedTask(task)}
                   >
-                    <div 
+                    <div
                       className="h-full bg-white/30 rounded"
                       style={{ width: `${task.progress}%` }}
                     />
                   </div>
-                  
+
                   {/* Critical path indicator */}
                   {task.isCriticalPath && showCriticalPath && (
                     <div className="absolute -top-0.5 right-0 px-1 bg-red-500 text-white text-[8px] rounded">
@@ -307,6 +426,7 @@ export default function GanttTab({ projectId }: Props) {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Legend */}

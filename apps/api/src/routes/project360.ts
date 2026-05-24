@@ -335,6 +335,31 @@ export default async function project360Routes(app: FastifyInstance) {
     return reply.send({ comments });
   });
 
+  // PUT /project360/tasks/:taskId/reorder
+  // Reordenar tarea vía drag & drop
+  app.put('/tasks/:taskId/reorder', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { taskId } = req.params as { taskId: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { targetTaskId } = body;
+
+      const dragged = await prisma.project360Task.findFirst({ where: { id: taskId, tenantId } });
+      const target = await prisma.project360Task.findFirst({ where: { id: targetTaskId, tenantId } });
+      if (!dragged || !target) return reply.code(404).send({ error: 'Task not found' });
+
+      // Intercambiar orden entre las dos tareas
+      const tempOrder = dragged.order || 0;
+      await prisma.project360Task.update({ where: { id: taskId }, data: { order: target.order || 0 } });
+      await prisma.project360Task.update({ where: { id: targetTaskId }, data: { order: tempOrder } });
+
+      return reply.send({ success: true, message: 'Tareas reordenadas' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
   // POST /project360/projects/:id/attachments
   app.post('/projects/:id/attachments', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
