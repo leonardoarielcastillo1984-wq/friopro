@@ -550,6 +550,25 @@ export default function EnterpriseAIControlTower({
         setActiveConversationId(queryResponse.conversationId);
       }
 
+      // Activar Deep Analysis Mode si el backend usó OpenAI
+      const usedProvider = queryResponse?.provider || queryResponse?.data?.provider || 'groq';
+      if (usedProvider === 'openai') {
+        setDeepAnalysisMode(true);
+      }
+
+      // Mostrar widgets reales del backend si existen
+      if (queryResponse?.data?.widgets && queryResponse.data.widgets.length > 0) {
+        setState(prev => ({ ...prev, activeWidgets: queryResponse.data.widgets }));
+      }
+
+      // Mostrar alertas proactivas si el backend las devuelve
+      if (queryResponse?.data?.alerts && queryResponse.data.alerts.length > 0) {
+        setState(prev => ({ ...prev, floatingAlerts: queryResponse.data.alerts }));
+      }
+
+      // Si la tool ejecutó una acción (toolExecuted), mostrar resultado especial
+      const toolExecuted = queryResponse?.data?.metadata?.toolExecuted;
+
       const realAnswer = queryResponse?.data?.summary 
         || queryResponse?.data?.response 
         || queryResponse?.data?.answer
@@ -559,6 +578,7 @@ export default function EnterpriseAIControlTower({
       setIsStreaming(true);
       let currentText = '';
       let charIndex = 0;
+      const streamSpeed = toolExecuted ? 8 : 15; // Acciones más rápidas
       const streamInterval = setInterval(() => {
         if (charIndex < realAnswer.length) {
           currentText += realAnswer[charIndex];
@@ -569,10 +589,18 @@ export default function EnterpriseAIControlTower({
           setIsStreaming(false);
           setStreamingResponse('');
           // Save completed response to message history
-          setMessages(prev => [...prev, { role: 'assistant', content: realAnswer, timestamp: new Date() }]);
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: realAnswer, 
+            timestamp: new Date(),
+            provider: usedProvider,
+            toolExecuted: toolExecuted || undefined
+          } as any]);
           setState(prev => ({ ...prev, loading: false }));
+          // Desactivar deep analysis mode después de responder
+          if (usedProvider !== 'openai') setDeepAnalysisMode(false);
         }
-      }, 15);
+      }, streamSpeed);
 
     } catch (error) {
       console.error('Error processing message:', error);
@@ -1052,44 +1080,46 @@ export default function EnterpriseAIControlTower({
   const renderCommandActions = () => {
     if (!showCommandActions) return null;
 
-    const categories = {
-      analysis: { icon: BarChart3, label: 'Análisis', color: 'blue' },
-      generation: { icon: Sparkles, label: 'Generación', color: 'purple' },
-      simulation: { icon: Target, label: 'Simulación', color: 'green' },
-      detection: { icon: Radar, label: 'Detección', color: 'yellow' },
-      report: { icon: Briefcase, label: 'Reportes', color: 'indigo' },
-      planning: { icon: TargetIcon, label: 'Planificación', color: 'pink' }
-    };
+    // Acciones rápidas siempre disponibles (no dependen de backend)
+    const quickActions = [
+      { id: 'qa1', label: '📊 Analizar riesgos', query: 'Analizá los riesgos actuales de la empresa' },
+      { id: 'qa2', label: '💰 Situación financiera', query: 'Mostrame la situación financiera actual' },
+      { id: 'qa3', label: '📁 Estado proyectos', query: '¿Cómo están los proyectos activos?' },
+      { id: 'qa4', label: '👥 Resumen RRHH', query: 'Dame un resumen del estado de recursos humanos' },
+      { id: 'qa5', label: '🚛 Estado flota', query: '¿Cómo está la flota de vehículos?' },
+      { id: 'qa6', label: '🔍 NCRs abiertas', query: '¿Cuántas no conformidades hay abiertas?' },
+      { id: 'qa7', label: '✅ CAPAs pendientes', query: '¿Qué CAPAs están pendientes de cierre?' },
+      { id: 'qa8', label: '📈 KPIs ejecutivos', query: 'Mostrame los KPIs ejecutivos del tenant' },
+    ];
 
     return (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-full left-0 right-0 mb-2 bg-gray-900/95 backdrop-blur-lg rounded-lg border border-gray-700 p-4 z-40"
+        exit={{ opacity: 0, y: 10 }}
+        className="absolute bottom-full left-0 right-0 mb-2 bg-gray-900/95 backdrop-blur-lg rounded-xl border border-gray-700/60 p-4 z-40 shadow-2xl"
       >
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {Object.entries(categories).map(([category, config]) => {
-            const actions = state.availableActions.filter(a => a.category === category);
-            if (actions.length === 0) return null;
-
-            return (
-              <div key={category} className="space-y-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-gray-400">
-                  <config.icon className="w-3 h-3" />
-                  {config.label}
-                </div>
-                {actions.slice(0, 3).map(action => (
-                  <button
-                    key={action.id}
-                    onClick={() => handleActionClick(action)}
-                    className="w-full text-left px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs text-gray-300 hover:text-white transition-colors"
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            );
-          })}
+        <div className="flex items-center gap-2 mb-3">
+          <Zap className="w-4 h-4 text-purple-400" />
+          <span className="text-sm font-medium text-gray-300">Acciones rápidas</span>
+          <button onClick={() => setShowCommandActions(false)} className="ml-auto text-gray-500 hover:text-gray-300">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {quickActions.map(action => (
+            <button
+              key={action.id}
+              onClick={() => {
+                setInput(action.query);
+                setShowCommandActions(false);
+                setTimeout(() => inputRef.current?.focus(), 50);
+              }}
+              className="text-left px-3 py-2.5 bg-gray-800/80 hover:bg-gray-700/80 border border-gray-700/50 hover:border-purple-500/50 rounded-lg text-xs text-gray-300 hover:text-white transition-all duration-200"
+            >
+              {action.label}
+            </button>
+          ))}
         </div>
       </motion.div>
     );
@@ -1299,29 +1329,41 @@ export default function EnterpriseAIControlTower({
 
     return (
       <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: -10 }}
         className="bg-gradient-to-r from-yellow-900/30 to-orange-900/30 backdrop-blur-lg border border-yellow-500/30 rounded-lg px-4 py-3 mb-4"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <BrainCircuit className="w-5 h-5 text-yellow-400 animate-pulse" />
-            <span className="text-yellow-300 font-semibold">
-              GPT-4.1 Strategic Engine Activado
+            <span className="text-yellow-300 font-semibold text-sm">
+              GPT-4.1 Strategic Engine
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-yellow-400" />
-            <span className="text-yellow-200 text-sm">
-              Advanced Strategic Analysis
-            </span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
+            <span className="text-yellow-200 text-xs">Análisis estratégico profundo activo</span>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <div className="flex items-center gap-1 px-2 py-1 bg-yellow-500/20 rounded-full">
-              <Zap className="w-3 h-3 text-yellow-400" />
-              <span className="text-yellow-300 text-xs">Premium</span>
+              <Sparkles className="w-3 h-3 text-yellow-400" />
+              <span className="text-yellow-300 text-xs font-medium">Premium</span>
             </div>
+            <button
+              onClick={() => setDeepAnalysisMode(false)}
+              className="text-yellow-500/60 hover:text-yellow-400 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
+        </div>
+        <div className="mt-2 flex items-center gap-4 text-xs text-yellow-300/60">
+          <span>Razonamiento avanzado</span>
+          <span>·</span>
+          <span>Análisis financiero complejo</span>
+          <span>·</span>
+          <span>Simulaciones multi-escenario</span>
         </div>
       </motion.div>
     );
@@ -1833,21 +1875,41 @@ export default function EnterpriseAIControlTower({
               {renderContextualVisualizations()}
 
               {/* Message History */}
-              {messages.map((msg, idx) => (
+              {(messages as any[]).map((msg, idx) => (
                 <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.role === 'assistant' && (
-                    <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
-                      <Brain className="w-4 h-4 text-blue-400" />
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${
+                      msg.provider === 'openai' ? 'bg-yellow-500/20' : 'bg-blue-500/20'
+                    }`}>
+                      {msg.provider === 'openai'
+                        ? <BrainCircuit className="w-4 h-4 text-yellow-400" />
+                        : <Brain className="w-4 h-4 text-blue-400" />
+                      }
                     </div>
                   )}
                   <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
                     msg.role === 'user'
                       ? 'bg-purple-600/30 border border-purple-500/30 text-white'
-                      : 'bg-gray-800/60 border border-gray-700/50 text-gray-200'
+                      : msg.toolExecuted
+                        ? 'bg-green-900/30 border border-green-500/30 text-green-100'
+                        : 'bg-gray-800/60 border border-gray-700/50 text-gray-200'
                   }`}>
+                    {msg.toolExecuted && (
+                      <div className="flex items-center gap-1.5 mb-2 text-xs text-green-400 font-medium">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>Acción ejecutada</span>
+                      </div>
+                    )}
                     {msg.content}
-                    <div className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-purple-300' : 'text-gray-500'}`}>
-                      {msg.timestamp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                    <div className={`flex items-center justify-between text-[10px] mt-1.5 ${
+                      msg.role === 'user' ? 'text-purple-300' : 'text-gray-500'
+                    }`}>
+                      <span>{msg.timestamp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+                      {msg.provider && msg.role === 'assistant' && (
+                        <span className={msg.provider === 'openai' ? 'text-yellow-500' : 'text-blue-500'}>
+                          {msg.provider === 'openai' ? '⚡ GPT-4.1' : '⚡ Groq'}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {msg.role === 'user' && (
