@@ -283,7 +283,6 @@ await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
   await app.register(calendarRoutes, { prefix: '/calendar' });
   await app.register(gestionCambiosRoutes, { prefix: '/gestion-cambios' });
   await app.register(registerHelpRoutes, { prefix: '/help' });
-  await app.register(commandCenterRoutes, { prefix: '/command-center' });
   await app.register(demoRoutes);
 
   // Endpoint genérico de IA para módulos del frontend - respuestas rápidas
