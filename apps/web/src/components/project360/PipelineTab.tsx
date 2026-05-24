@@ -22,10 +22,20 @@ interface PipelineStage {
   notes: string | null;
   nextActions: string | null;
   decisionMakers: string | null;
-  competitors: string | null;
+  competitors: any | null;
   relatedQuoteIds: string[] | null;
   decisionReason: string | null;
   isCurrent: boolean;
+  // CRM fields
+  visitsCount: number;
+  meetingsCount: number;
+  lastContactDate: string | null;
+  contactIds: string[] | null;
+  clientId: string | null;
+  relatedMinutaIds: string[] | null;
+  relatedEmailIds: string[] | null;
+  ourAdvantage: string | null;
+  ourWeakness: string | null;
 }
 
 interface Props {
@@ -104,8 +114,13 @@ export default function PipelineTab({ projectId }: Props) {
           notes: editingStage.notes,
           nextActions: editingStage.nextActions,
           decisionMakers: editingStage.decisionMakers,
-          competitors: editingStage.competitors,
+          competitors: typeof editingStage.competitors === 'string' ? editingStage.competitors : JSON.stringify(editingStage.competitors || []),
           decisionReason: editingStage.decisionReason,
+          visitsCount: editingStage.visitsCount,
+          meetingsCount: editingStage.meetingsCount,
+          lastContactDate: editingStage.lastContactDate,
+          ourAdvantage: editingStage.ourAdvantage,
+          ourWeakness: editingStage.ourWeakness,
         }
       });
       setEditingStage(null);
@@ -225,7 +240,44 @@ export default function PipelineTab({ projectId }: Props) {
             </div>
           )}
 
-          <button 
+          {/* CRM Details */}
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-gray-50 rounded-lg p-3 text-center">
+              <div className="text-xs text-gray-500">Visitas</div>
+              <div className="text-lg font-semibold text-gray-900">{currentStage.visitsCount || 0}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3 text-center">
+              <div className="text-xs text-gray-500">Reuniones</div>
+              <div className="text-lg font-semibold text-gray-900">{currentStage.meetingsCount || 0}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3 text-center">
+              <div className="text-xs text-gray-500">Último Contacto</div>
+              <div className="text-sm font-semibold text-gray-900">{currentStage.lastContactDate ? new Date(currentStage.lastContactDate).toLocaleDateString() : '-'}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3 text-center">
+              <div className="text-xs text-gray-500">Competidores</div>
+              <div className="text-sm font-semibold text-gray-900">{currentStage.competitors ? (typeof currentStage.competitors === 'string' ? currentStage.competitors : JSON.parse(JSON.stringify(currentStage.competitors)).length) : 0}</div>
+            </div>
+          </div>
+
+          {(currentStage.ourAdvantage || currentStage.ourWeakness) && (
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {currentStage.ourAdvantage && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                  <div className="text-xs font-medium text-emerald-700 mb-1">Ventaja Competitiva</div>
+                  <p className="text-sm text-emerald-900">{currentStage.ourAdvantage}</p>
+                </div>
+              )}
+              {currentStage.ourWeakness && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="text-xs font-medium text-red-700 mb-1">Debilidad Competitiva</div>
+                  <p className="text-sm text-red-900">{currentStage.ourWeakness}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
             onClick={() => setEditingStage(currentStage)}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
           >
@@ -425,12 +477,61 @@ export default function PipelineTab({ projectId }: Props) {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Motivo de Decisión (si es ADJUDICADO/PERDIDO)</label>
-                <input 
-                  type="text" 
-                  value={editingStage.decisionReason || ''} 
+                <input
+                  type="text"
+                  value={editingStage.decisionReason || ''}
                   onChange={e => setEditingStage({...editingStage, decisionReason: e.target.value})}
                   className="w-full px-3 py-2 border rounded-lg text-sm"
                   placeholder="Ej: Mejor precio, calidad técnica superior"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Visitas Realizadas</label>
+                  <input
+                    type="number" min={0}
+                    value={editingStage.visitsCount || 0}
+                    onChange={e => setEditingStage({...editingStage, visitsCount: Number(e.target.value)})}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Reuniones Realizadas</label>
+                  <input
+                    type="number" min={0}
+                    value={editingStage.meetingsCount || 0}
+                    onChange={e => setEditingStage({...editingStage, meetingsCount: Number(e.target.value)})}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Último Contacto</label>
+                <input
+                  type="date"
+                  value={editingStage.lastContactDate?.split('T')[0] || ''}
+                  onChange={e => setEditingStage({...editingStage, lastContactDate: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Ventaja Competitiva</label>
+                <textarea
+                  value={editingStage.ourAdvantage || ''}
+                  onChange={e => setEditingStage({...editingStage, ourAdvantage: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  rows={2}
+                  placeholder="Ej: Mejor precio, experiencia comprobada..."
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Debilidad Competitiva</label>
+                <textarea
+                  value={editingStage.ourWeakness || ''}
+                  onChange={e => setEditingStage({...editingStage, ourWeakness: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  rows={2}
+                  placeholder="Ej: Menor presencia regional..."
                 />
               </div>
             </div>

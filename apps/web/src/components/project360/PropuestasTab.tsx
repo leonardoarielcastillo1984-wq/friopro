@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
+import { exportToPDF, exportToWord, exportToExcel } from '@/lib/exportUtils';
 import {
   FileText, Download, Plus, Sparkles, CheckCircle, Clock,
   FileSpreadsheet, Presentation, FileCode, Trash2, Eye,
@@ -78,15 +79,16 @@ export default function PropuestasTab({ projectId }: Props) {
     setGenerating(false);
   };
 
-  const handleExport = async (proposalId: string, format: 'pdf' | 'word' | 'excel' | 'ppt') => {
-    try {
-      const res = await apiFetch(`/project360/proposals/${proposalId}/export?format=${format}`) as any;
-      if (res.downloadUrl) {
-        window.open(res.downloadUrl, '_blank');
-      } else {
-        alert('Exportación en desarrollo. URL no disponible.');
-      }
-    } catch (e: any) { alert(e.message); }
+  const handleExport = (proposal: Proposal, format: 'pdf' | 'word' | 'excel' | 'ppt') => {
+    if (format === 'pdf') {
+      exportToPDF(proposal, 'proposal');
+    } else if (format === 'word') {
+      exportToWord(proposal, 'proposal');
+    } else if (format === 'excel') {
+      exportToExcel(proposal, 'proposal');
+    } else {
+      alert('Exportación PowerPoint en desarrollo. Usá PDF o Word.');
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -190,26 +192,26 @@ export default function PropuestasTab({ projectId }: Props) {
 
                 {/* Export Buttons */}
                 <div className="flex flex-wrap gap-2">
-                  <button 
-                    onClick={() => handleExport(proposal.id, 'pdf')}
+                  <button
+                    onClick={() => handleExport(proposal, 'pdf')}
                     className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 rounded text-xs font-medium hover:bg-red-100"
                   >
                     <FileText className="w-3 h-3" /> PDF
                   </button>
-                  <button 
-                    onClick={() => handleExport(proposal.id, 'word')}
+                  <button
+                    onClick={() => handleExport(proposal, 'word')}
                     className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded text-xs font-medium hover:bg-blue-100"
                   >
                     <FileCode className="w-3 h-3" /> Word
                   </button>
-                  <button 
-                    onClick={() => handleExport(proposal.id, 'excel')}
+                  <button
+                    onClick={() => handleExport(proposal, 'excel')}
                     className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded text-xs font-medium hover:bg-emerald-100"
                   >
                     <FileSpreadsheet className="w-3 h-3" /> Excel
                   </button>
-                  <button 
-                    onClick={() => handleExport(proposal.id, 'ppt')}
+                  <button
+                    onClick={() => handleExport(proposal, 'ppt')}
                     className="flex items-center gap-1 px-3 py-1.5 bg-orange-50 text-orange-700 rounded text-xs font-medium hover:bg-orange-100"
                   >
                     <Presentation className="w-3 h-3" /> PPT

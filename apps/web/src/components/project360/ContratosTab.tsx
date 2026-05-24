@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
+import { exportToPDF, exportToWord, exportToExcel } from '@/lib/exportUtils';
 import {
   FileSignature, Plus, AlertTriangle, CheckCircle, Calendar,
   DollarSign, Shield, Clock, Trash2, Eye, AlertCircle,
-  FileText, Bell
+  FileText, Bell, FileCode, FileSpreadsheet, Presentation,
+  AlertOctagon, ShieldAlert, Pencil, X
 } from 'lucide-react';
 
 interface Contract {
@@ -14,11 +16,27 @@ interface Contract {
   contractType: string | null;
   startDate: string | null;
   endDate: string | null;
+  renewalDate: string | null;
   durationMonths: number | null;
   totalValue: number | null;
   currency: string;
   paymentTerms: string | null;
   billingFrequency: string | null;
+  slaDescription: string | null;
+  slaMetrics: any | null;
+  penaltyClauses: string | null;
+  penaltyAmount: number | null;
+  guarantees: any | null;
+  insurances: any | null;
+  expirationAlertDays: number;
+  isActive: boolean;
+  criticalClauses: any | null;
+  iaRiskAlert: string | null;
+  finesApplied: any | null;
+  totalFines: number;
+  contractDocumentUrl: string | null;
+  amendments: any | null;
+  notes: string | null;
   slaResponseTime: number | null;
   slaResolutionTime: number | null;
   penaltyRate: number | null;
@@ -28,7 +46,6 @@ interface Contract {
   terminationClause: string | null;
   autoRenewal: boolean;
   renewalNoticeDays: number | null;
-  criticalClauses: any | null;
   iaRiskAlerts: string[] | null;
   complianceStatus: string;
   approvalStatus: string;
@@ -81,6 +98,14 @@ export default function ContratosTab({ projectId }: Props) {
     criticalClauses: '', terminationClause: '', renewalTerms: ''
   });
 
+  // Estados para alertas y edición avanzada
+  const [showAlertsModal, setShowAlertsModal] = useState(false);
+  const [alertContract, setAlertContract] = useState<Contract | null>(null);
+  const [contractAlerts, setContractAlerts] = useState<any[]>([]);
+  const [loadingAlerts, setLoadingAlerts] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editContract, setEditContract] = useState<any>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -127,6 +152,49 @@ export default function ContratosTab({ projectId }: Props) {
       alert('Análisis IA completado. Revisá las alertas generadas.');
     } catch (e: any) { alert(e.message); }
     setAnalyzing(false);
+  };
+
+  const loadAlerts = async (contract: Contract) => {
+    setLoadingAlerts(true);
+    setAlertContract(contract);
+    try {
+      const res = await apiFetch(`/project360/contracts/${contract.id}/alerts`) as any;
+      setContractAlerts(res.alerts || []);
+      setShowAlertsModal(true);
+    } catch (e: any) { alert(e.message); }
+    setLoadingAlerts(false);
+  };
+
+  const openEditAdvanced = (contract: Contract) => {
+    setEditContract({
+      id: contract.id,
+      slaDescription: contract.slaDescription || '',
+      penaltyClauses: contract.penaltyClauses || '',
+      guarantees: contract.guarantees ? JSON.stringify(contract.guarantees, null, 2) : '',
+      insurances: contract.insurances ? JSON.stringify(contract.insurances, null, 2) : '',
+      expirationAlertDays: contract.expirationAlertDays || 30,
+      notes: contract.notes || ''
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateAdvanced = async () => {
+    try {
+      await apiFetch(`/project360/contracts/${editContract.id}`, {
+        method: 'PUT',
+        json: {
+          slaDescription: editContract.slaDescription || null,
+          penaltyClauses: editContract.penaltyClauses || null,
+          guarantees: editContract.guarantees ? JSON.parse(editContract.guarantees) : null,
+          insurances: editContract.insurances ? JSON.parse(editContract.insurances) : null,
+          expirationAlertDays: Number(editContract.expirationAlertDays) || 30,
+          notes: editContract.notes || null
+        }
+      });
+      setShowEditModal(false);
+      setEditContract(null);
+      load();
+    } catch (e: any) { alert(e.message); }
   };
 
   const handleDelete = async (id: string) => {
@@ -208,15 +276,31 @@ export default function ContratosTab({ projectId }: Props) {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <button 
+                    <button
+                      onClick={() => loadAlerts(contract)}
+                      className="p-1.5 text-amber-600 hover:bg-amber-50 rounded"
+                      title="Ver alertas"
+                    >
+                      <ShieldAlert className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => openEditAdvanced(contract)}
+                      className="p-1.5 text-purple-600 hover:bg-purple-50 rounded"
+                      title="Editar avanzado"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => setSelectedContract(contract)}
                       className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                      title="Ver detalle"
                     >
                       <Eye className="w-4 h-4" />
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleDelete(contract.id)}
                       className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                      title="Eliminar"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -257,12 +341,33 @@ export default function ContratosTab({ projectId }: Props) {
                 </div>
 
                 <div className="flex gap-2">
-                  <button 
+                  <button
                     onClick={() => handleAnalyzeIA(contract.id)}
                     disabled={analyzing}
                     className="flex-1 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs font-medium flex items-center justify-center gap-1 disabled:opacity-50"
                   >
                     <Bell className="w-3 h-3" /> Análisis IA Riesgo
+                  </button>
+                </div>
+                {/* Export Buttons */}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <button
+                    onClick={() => exportToPDF(contract, 'contract')}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 rounded text-xs font-medium hover:bg-red-100"
+                  >
+                    <FileText className="w-3 h-3" /> PDF
+                  </button>
+                  <button
+                    onClick={() => exportToWord(contract, 'contract')}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded text-xs font-medium hover:bg-blue-100"
+                  >
+                    <FileCode className="w-3 h-3" /> Word
+                  </button>
+                  <button
+                    onClick={() => exportToExcel(contract, 'contract')}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded text-xs font-medium hover:bg-emerald-100"
+                  >
+                    <FileSpreadsheet className="w-3 h-3" /> Excel
                   </button>
                 </div>
               </div>
@@ -482,6 +587,148 @@ export default function ContratosTab({ projectId }: Props) {
                   <pre className="bg-gray-50 rounded p-3 text-sm text-gray-700 whitespace-pre-wrap">{JSON.stringify(selectedContract.criticalClauses, null, 2)}</pre>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Alertas Contractuales */}
+      {showAlertsModal && alertContract && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-amber-600" /> Alertas: {alertContract.contractNumber}
+              </h3>
+              <button onClick={() => setShowAlertsModal(false)} className="p-2 text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              {loadingAlerts ? (
+                <div className="text-center text-gray-500 py-8">Cargando alertas...</div>
+              ) : contractAlerts.length === 0 ? (
+                <div className="text-center text-gray-500 py-8 flex flex-col items-center gap-2">
+                  <CheckCircle className="w-8 h-8 text-emerald-500" />
+                  <p>Sin alertas activas. El contrato está en orden.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {contractAlerts.map((alert, i) => {
+                    const severityColors: Record<string, string> = {
+                      CRITICAL: 'bg-red-50 border-red-200 text-red-800',
+                      HIGH: 'bg-amber-50 border-amber-200 text-amber-800',
+                      MEDIUM: 'bg-blue-50 border-blue-200 text-blue-800',
+                      LOW: 'bg-gray-50 border-gray-200 text-gray-700'
+                    };
+                    const icon = alert.severity === 'CRITICAL' ? <AlertOctagon className="w-4 h-4" /> :
+                                 alert.severity === 'HIGH' ? <AlertTriangle className="w-4 h-4" /> :
+                                 <AlertCircle className="w-4 h-4" />;
+                    return (
+                      <div key={i} className={`border rounded-lg p-3 ${severityColors[alert.severity] || severityColors.LOW}`}>
+                        <div className="flex items-start gap-2">
+                          {icon}
+                          <div>
+                            <div className="font-semibold text-xs uppercase tracking-wide opacity-70">{alert.type}</div>
+                            <div className="text-sm">{alert.message}</div>
+                            {alert.daysUntil !== undefined && (
+                              <div className="text-xs mt-1 opacity-70">{alert.daysUntil >= 0 ? `En ${alert.daysUntil} días` : `Hace ${Math.abs(alert.daysUntil)} días`}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edición Avanzada */}
+      {showEditModal && editContract && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-purple-600" /> Configuración Avanzada
+              </h3>
+              <button onClick={() => setShowEditModal(false)} className="p-2 text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Descripción SLA</label>
+                <textarea
+                  value={editContract.slaDescription}
+                  onChange={e => setEditContract({...editContract, slaDescription: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  rows={3}
+                  placeholder="Ej: Tiempo de respuesta 4hs, resolución 24hs..."
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Cláusulas de Penalidad</label>
+                <textarea
+                  value={editContract.penaltyClauses}
+                  onChange={e => setEditContract({...editContract, penaltyClauses: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  rows={3}
+                  placeholder="Ej: 0.5% diario por retraso en entrega..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Garantías (JSON)</label>
+                  <textarea
+                    value={editContract.guarantees}
+                    onChange={e => setEditContract({...editContract, guarantees: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg text-sm font-mono text-xs"
+                    rows={4}
+                    placeholder='[{"type":"Banco","amount":100000,"expiration":"2025-12-31"}]'
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Seguros (JSON)</label>
+                  <textarea
+                    value={editContract.insurances}
+                    onChange={e => setEditContract({...editContract, insurances: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg text-sm font-mono text-xs"
+                    rows={4}
+                    placeholder='[{"type":"RC","coverage":500000,"expiration":"2025-06-30"}]'
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Días de alerta antes de vencimiento</label>
+                <input
+                  type="number"
+                  value={editContract.expirationAlertDays}
+                  onChange={e => setEditContract({...editContract, expirationAlertDays: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  min={1}
+                  max={365}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Notas Adicionales</label>
+                <textarea
+                  value={editContract.notes}
+                  onChange={e => setEditContract({...editContract, notes: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  rows={2}
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t flex gap-3">
+              <button onClick={handleUpdateAdvanced} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium">
+                Guardar Cambios
+              </button>
+              <button onClick={() => setShowEditModal(false)} className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">
+                Cancelar
+              </button>
             </div>
           </div>
         </div>

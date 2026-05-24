@@ -1535,6 +1535,56 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
     }
   });
 
+  // PUT /project360/pipeline/:id
+  // Actualizar etapa de pipeline con datos CRM
+  app.put('/pipeline/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+
+      const existing = await prisma.project360Pipeline.findFirst({ where: { id, tenantId } });
+      if (!existing) return reply.code(404).send({ error: 'No encontrado' });
+
+      const data: any = {};
+      if (body.stage !== undefined) {
+        data.stage = body.stage;
+        const PIPELINE_STAGES = ['LEAD', 'OPORTUNIDAD', 'ANALISIS', 'VISITA_TECNICA', 'PROPUESTA', 'NEGOCIACION', 'ADJUDICADO', 'PERDIDO'];
+        data.stageOrder = PIPELINE_STAGES.indexOf(body.stage);
+      }
+      if (body.probability !== undefined) data.probability = Number(body.probability);
+      if (body.expectedValue !== undefined) data.expectedValue = Number(body.expectedValue);
+      if (body.expectedCloseDate !== undefined) data.expectedCloseDate = body.expectedCloseDate ? new Date(body.expectedCloseDate) : null;
+      if (body.competitors !== undefined) data.competitors = body.competitors;
+      if (body.ourAdvantage !== undefined) data.ourAdvantage = body.ourAdvantage;
+      if (body.ourWeakness !== undefined) data.ourWeakness = body.ourWeakness;
+      if (body.visitsCount !== undefined) data.visitsCount = Number(body.visitsCount);
+      if (body.meetingsCount !== undefined) data.meetingsCount = Number(body.meetingsCount);
+      if (body.lastContactDate !== undefined) data.lastContactDate = body.lastContactDate ? new Date(body.lastContactDate) : null;
+      if (body.contactIds !== undefined) data.contactIds = body.contactIds;
+      if (body.clientId !== undefined) data.clientId = body.clientId;
+      if (body.relatedMinutaIds !== undefined) data.relatedMinutaIds = body.relatedMinutaIds;
+      if (body.relatedEmailIds !== undefined) data.relatedEmailIds = body.relatedEmailIds;
+      if (body.relatedQuoteIds !== undefined) data.relatedQuoteIds = body.relatedQuoteIds;
+      if (body.decisionReason !== undefined) data.decisionReason = body.decisionReason;
+      if (body.decisionDate !== undefined) data.decisionDate = body.decisionDate ? new Date(body.decisionDate) : null;
+      if (body.notes !== undefined) data.notes = body.notes;
+
+      if (data.expectedValue && data.probability) {
+        data.weightedValue = data.expectedValue * (data.probability / 100);
+      }
+
+      const updated = await prisma.project360Pipeline.update({
+        where: { id },
+        data
+      });
+      return reply.send({ pipeline: updated });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   // PROJECT360 ENTERPRISE — FASE 9: PROPUESTAS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1689,6 +1739,109 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
         } as any
       });
       return reply.code(201).send({ contract });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // GET /project360/contracts/:id/alerts
+  // Alertas dinámicas de vencimiento, SLA, garantías, seguros
+  app.get('/contracts/:id/alerts', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+
+      const contract = await prisma.project360Contract.findFirst({
+        where: { id, tenantId }
+      }) as any;
+      if (!contract) return reply.code(404).send({ error: 'No encontrado' });
+
+      const alerts: Array<{type: string; severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'; message: string; daysUntil?: number}> = [];
+      const now = new Date();
+
+      // 1. Alerta de vencimiento
+      if (contract.endDate) {
+        const end = new Date(contract.endDate);
+        const diffMs = end.getTime() - now.getTime();
+        const daysUntil = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        const alertDays = contract.expirationAlertDays || 30;
+
+        if (daysUntil < 0) {
+          alerts.push({ type: 'VENCIMIENTO', severity: 'CRITICAL', message: `Contrato vencido hace ${Math.abs(daysUntil)} días`, daysUntil });
+        } else if (daysUntil <= alertDays) {
+          alerts.push({ type: 'VENCIMIENTO', severity: daysUntil <= 7 ? 'CRITICAL' : 'HIGH', message: `Contrato vence en ${daysUntil} días`, daysUntil });
+        }
+      }
+
+      // 2. Alerta de renovación
+      if (contract.renewalDate) {
+        const renewal = new Date(contract.renewalDate);
+        const diffMs = renewal.getTime() - now.getTime();
+        const daysUntil = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        if (daysUntil <= 14 && daysUntil >= 0) {
+          alerts.push({ type: 'RENOVACION', severity: 'HIGH', message: `Renovación en ${daysUntil} días`, daysUntil });
+        }
+      }
+
+      // 3. Alertas de garantías próximas a vencer
+      if (contract.guarantees && Array.isArray(contract.guarantees)) {
+        contract.guarantees.forEach((g: any) => {
+          if (g.expiration) {
+            const exp = new Date(g.expiration);
+            const daysUntil = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysUntil <= 30 && daysUntil >= 0) {
+              alerts.push({ type: 'GARANTIA', severity: daysUntil <= 7 ? 'CRITICAL' : 'HIGH', message: `Garantía "${g.type || ''}" vence en ${daysUntil} días`, daysUntil });
+            } else if (daysUntil < 0) {
+              alerts.push({ type: 'GARANTIA', severity: 'CRITICAL', message: `Garantía "${g.type || ''}" vencida hace ${Math.abs(daysUntil)} días`, daysUntil });
+            }
+          }
+        });
+      }
+
+      // 4. Alertas de seguros próximos a vencer
+      if (contract.insurances && Array.isArray(contract.insurances)) {
+        contract.insurances.forEach((i: any) => {
+          if (i.expiration) {
+            const exp = new Date(i.expiration);
+            const daysUntil = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysUntil <= 30 && daysUntil >= 0) {
+              alerts.push({ type: 'SEGURO', severity: daysUntil <= 7 ? 'CRITICAL' : 'HIGH', message: `Seguro "${i.type || ''}" vence en ${daysUntil} días`, daysUntil });
+            } else if (daysUntil < 0) {
+              alerts.push({ type: 'SEGURO', severity: 'CRITICAL', message: `Seguro "${i.type || ''}" vencido hace ${Math.abs(daysUntil)} días`, daysUntil });
+            }
+          }
+        });
+      }
+
+      // 5. Alerta IA de cláusulas críticas
+      if (contract.iaRiskAlert) {
+        alerts.push({ type: 'IA_RIESGO', severity: 'HIGH', message: contract.iaRiskAlert });
+      }
+
+      // 6. Alerta de multas acumuladas
+      if (contract.totalFines && contract.totalFines > 0) {
+        alerts.push({ type: 'MULTA', severity: 'MEDIUM', message: `Multas acumuladas: $${contract.totalFines.toLocaleString('es-AR')}` });
+      }
+
+      // 7. Alerta SLA no definido
+      if (!contract.slaDescription && !contract.slaMetrics) {
+        alerts.push({ type: 'SLA', severity: 'MEDIUM', message: 'No se ha definido SLA para este contrato' });
+      }
+
+      // 8. Alerta de penalidades no definidas
+      if (!contract.penaltyClauses && !contract.penaltyAmount) {
+        alerts.push({ type: 'PENALIDAD', severity: 'LOW', message: 'No se han definido cláusulas de penalidad' });
+      }
+
+      return reply.send({
+        contractId: id,
+        alerts,
+        alertCount: alerts.length,
+        criticalCount: alerts.filter((a: any) => a.severity === 'CRITICAL').length,
+        highCount: alerts.filter((a: any) => a.severity === 'HIGH').length,
+        generatedAt: now.toISOString()
+      });
     } catch (err: any) {
       return reply.code(500).send({ error: err.message });
     }

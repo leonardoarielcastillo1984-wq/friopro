@@ -93,6 +93,7 @@ export default function ProjectDetailPage() {
   const [budgetItems, setBudgetItems] = useState<any[]>([]);
   const [aiAnalyses, setAiAnalyses] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'business-case' | 'simulation' | 'sizing' | 'cashflow' | 'pipeline' | 'propuestas' | 'contratos' | 'lessons' | 'motor-relacional' | 'gantt' | 'budget' | 'milestones' | 'analysis' | 'history' | 'aprobaciones' | 'copilot'>('overview');
+  const [lessonsCount, setLessonsCount] = useState(0);
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ name: '', description: '', targetDate: '' });
   const [showAddBudgetItem, setShowAddBudgetItem] = useState(false);
@@ -133,6 +134,7 @@ export default function ProjectDetailPage() {
     loadAiAnalyses();
     loadAprobaciones();
     loadEmpleados();
+    loadLessonsCheck();
   }, [params.id]);
 
   useEffect(() => {
@@ -226,6 +228,15 @@ export default function ProjectDetailPage() {
       setEmpleados(response.users || []);
     } catch (err) {
       console.error('Error loading members:', err);
+    }
+  };
+
+  const loadLessonsCheck = async () => {
+    try {
+      const response = await apiFetch(`/project360/projects/${params.id}/lessons-learned`) as any;
+      setLessonsCount((response.lessonsLearned || []).length);
+    } catch (err) {
+      console.error('Error loading lessons:', err);
     }
   };
 
@@ -771,6 +782,23 @@ export default function ProjectDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* Lessons Learned Enforcement Banner */}
+      {['CERRADO', 'PERDIDO', 'ADJUDICADO', 'EN_EJECUCION'].includes(project.status) && lessonsCount === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <div className="flex-1">
+            <div className="font-semibold text-amber-800 text-sm">Faltan Lessons Learned</div>
+            <div className="text-amber-700 text-xs">El proyecto está en estado final pero no se cargaron lecciones aprendidas. Es obligatorio para la knowledge base corporativa.</div>
+          </div>
+          <button
+            onClick={() => setActiveTab('lessons')}
+            className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700"
+          >
+            Cargar Ahora
+          </button>
+        </div>
+      )}
 
       {/* Progress */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
