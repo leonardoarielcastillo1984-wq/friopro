@@ -96,6 +96,7 @@ export default function EnterpriseAIControlTower({
 
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<string | undefined>(undefined);
   const [showCommandActions, setShowCommandActions] = useState(false);
   const [showModeSelector, setShowModeSelector] = useState(false);
   const [streamingResponse, setStreamingResponse] = useState('');
@@ -540,9 +541,14 @@ export default function EnterpriseAIControlTower({
         method: 'POST',
         body: JSON.stringify({
           query,
-          conversationId: state.thinkingSession?.id || sessionId
+          conversationId: activeConversationId
         })
       }) as any;
+
+      // Guardar conversationId real del backend para mantener hilo de memoria
+      if (queryResponse?.conversationId && queryResponse.conversationId !== activeConversationId) {
+        setActiveConversationId(queryResponse.conversationId);
+      }
 
       const realAnswer = queryResponse?.data?.summary 
         || queryResponse?.data?.response 

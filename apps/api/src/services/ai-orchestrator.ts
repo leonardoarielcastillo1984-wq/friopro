@@ -19,6 +19,7 @@ import { FastifyInstance, FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import Groq from 'groq-sdk';
 import OpenAI from 'openai';
+import { AIToolsEngine } from './ai-tools-engine.js';
 
 // ============================================================
 // TIPOS Y INTERFACES
@@ -33,6 +34,7 @@ export interface AIResponse {
   alerts?: AIAlert[];
   actions?: AIAction[];
   data?: any;
+  metadata?: any;
   provider: AIProvider;
   tokensUsed: number;
   cost: number;
@@ -209,13 +211,17 @@ NIVEL DE ANÁLISIS:
 
 export class AIOrchestrator {
   private prisma: PrismaClient;
+  private db: any;
   private app?: FastifyInstance;
   private groq: Groq;
   private openai: OpenAI;
+  private toolsEngine: AIToolsEngine;
 
   constructor(prisma: PrismaClient, app?: FastifyInstance) {
     this.prisma = prisma;
+    this.db = prisma as any;
     this.app = app;
+    this.toolsEngine = new AIToolsEngine(prisma, app);
     
     // Inicializar clientes IA
     this.groq = new Groq({
@@ -246,32 +252,59 @@ export class AIOrchestrator {
       // 1. Validar suscripción AI
       const subscription = await this.validateAISubscription(tenantId);
       
-      // 2. Analizar intención y complejidad
+      // 2. Detectar si la query activa una herramienta (crear proyecto, NCR, CAPA, etc.)
+      const toolIntent = this.toolsEngine.detectToolIntent(query);
+      if (toolIntent) {
+        const toolResult = await this.toolsEngine.executeTool(
+          toolIntent.tool,
+          toolIntent.params,
+          tenantId,
+          userId,
+          userRole
+        );
+        // Guardar mensaje en BD y devolver resultado de la herramienta
+        await this.saveConversationMessages(conversationId, query, toolResult.message, 'groq', 0, 0);
+        return {
+          summary: toolResult.message,
+          provider: 'groq',
+          tokensUsed: 0,
+          cost: 0,
+          metadata: { toolExecuted: toolIntent.tool, toolResult }
+        };
+      }
+
+      // 3. Recuperar historial de conversación desde BD
+      const conversationHistory = await this.getConversationHistory(conversationId, 10);
+      
+      // 4. Analizar intención y complejidad
       const context = await this.analyzeIntent(query, tenantId, userId, userRole);
       
-      // 3. Seleccionar proveedor de IA
+      // 5. Seleccionar proveedor de IA
       const provider = this.selectAIProvider(context, subscription);
       
-      // 4. Verificar límites de consultas premium
+      // 6. Verificar límites de consultas premium
       if (provider === 'openai' && !this.canUsePremiumQuery(subscription)) {
         return this.buildPaywallResponse(subscription);
       }
       
-      // 5. Construir contexto de datos
+      // 7. Construir contexto de datos
       const dataContext = await this.buildDataContext(context, tenantId);
       
-      // 6. Generar y ejecutar consulta a IA
-      const aiResult = await this.executeAIQuery(query, provider, dataContext, context);
+      // 8. Generar y ejecutar consulta a IA (con historial incluido)
+      const aiResult = await this.executeAIQuery(query, provider, dataContext, context, conversationHistory);
       
-      // 7. Registrar uso
+      // 9. Registrar uso
       await this.logAIUsage(tenantId, userId, provider, aiResult.tokensUsed, aiResult.cost, query, conversationId);
       
-      // 8. Actualizar contadores si es premium
+      // 10. Actualizar contadores si es premium
       if (provider === 'openai') {
         await this.incrementPremiumUsage(tenantId);
       }
       
-      // 9. Procesar acciones si las hay
+      // 11. Guardar mensajes en BD (no crítico)
+      await this.saveConversationMessages(conversationId, query, aiResult.summary, provider, aiResult.tokensUsed, aiResult.cost);
+
+      // 12. Procesar acciones si las hay
       const enrichedResult = await this.processActions(aiResult, context);
       
       return enrichedResult;
@@ -289,6 +322,54 @@ export class AIOrchestrator {
           message: error.message
         }]
       };
+    }
+  }
+
+  /**
+   * Recupera el historial de mensajes de una conversación desde BD
+   */
+  private async getConversationHistory(
+    conversationId: string | undefined,
+    limit: number = 10
+  ): Promise<Array<{ role: string; content: string }>> {
+    if (!conversationId) return [];
+    try {
+      const messages = await this.db.aIMessage?.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: { role: true, content: true }
+      }) || [];
+      return messages.map((m: any) => ({
+        role: m.role === 'USER' ? 'user' : 'assistant',
+        content: m.content
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Guarda mensajes de usuario y asistente en BD
+   */
+  private async saveConversationMessages(
+    conversationId: string | undefined,
+    userQuery: string,
+    assistantResponse: string,
+    provider: string,
+    tokensUsed: number,
+    cost: number
+  ): Promise<void> {
+    if (!conversationId) return;
+    try {
+      await this.db.aIMessage?.create({
+        data: { conversationId, role: 'USER', content: userQuery, tokensUsed: 0, cost: 0 }
+      });
+      await this.db.aIMessage?.create({
+        data: { conversationId, role: 'ASSISTANT', content: assistantResponse, provider: provider.toUpperCase(), tokensUsed, cost }
+      });
+    } catch {
+      // No crítico
     }
   }
 
@@ -747,7 +828,8 @@ export class AIOrchestrator {
     query: string,
     provider: AIProvider,
     dataContext: string,
-    context: QueryContext
+    context: QueryContext,
+    conversationHistory: Array<{ role: string; content: string }> = []
   ): Promise<AIResponse> {
     const config = AI_CONFIG[provider];
     const systemPrompt = SYSTEM_PROMPTS[provider];
@@ -755,15 +837,25 @@ export class AIOrchestrator {
     try {
       let content: string;
       let tokensUsed: number = 0;
+
+      // Construir mensajes con historial para memoria conversacional
+      const userMessage = dataContext
+        ? `Datos del sistema:\n${dataContext}\n\nConsulta: ${query}`
+        : query;
+
+      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: systemPrompt },
+        ...conversationHistory.map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content
+        })),
+        { role: 'user', content: userMessage }
+      ];
       
       if (provider === 'groq') {
-        // Usar cliente Groq real
         const completion = await this.groq.chat.completions.create({
           model: config.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Contexto:\n${dataContext}\n\nConsulta: ${query}` }
-          ],
+          messages,
           temperature: config.temperature,
           max_tokens: config.maxTokens
         });
@@ -772,13 +864,9 @@ export class AIOrchestrator {
         tokensUsed = completion.usage?.total_tokens || 0;
         
       } else {
-        // Usar cliente OpenAI real
         const completion = await this.openai.chat.completions.create({
           model: config.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Contexto:\n${dataContext}\n\nConsulta: ${query}` }
-          ],
+          messages,
           temperature: config.temperature,
           max_tokens: config.maxTokens
         });

@@ -11,7 +11,9 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { AIMemoryType } from './ai-orchestrator';
+
+type AIMemoryType = 'CONTEXT' | 'PREFERENCE' | 'HISTORY' | 'PATTERN' | 'INSIGHT' | 'ENTITY';
+// db uses (prisma as any) because AI models may not be in the compiled PrismaClient type
 
 interface MemoryContext {
   tenantId: string;
@@ -39,8 +41,11 @@ interface ConversationContext {
 export class AIMemoryEngine {
   private prisma: PrismaClient;
 
+  private db: any;
+
   constructor(prisma: PrismaClient) {
     this.prisma = prisma;
+    this.db = prisma as any;
   }
 
   /**
@@ -55,7 +60,7 @@ export class AIMemoryEngine {
     expiresAt?: Date
   ): Promise<void> {
     try {
-      await this.prisma.aIMemory.upsert({
+      await this.db.aIMemory.upsert({
         where: {
           tenantId_key: {
             tenantId: context.tenantId,
@@ -67,7 +72,7 @@ export class AIMemoryEngine {
           value,
           metadata,
           expiresAt,
-          lastUpdated: new Date()
+          updatedAt: new Date()
         },
         create: {
           tenantId: context.tenantId,
@@ -92,7 +97,7 @@ export class AIMemoryEngine {
     key: string
   ): Promise<any | null> {
     try {
-      const memory = await this.prisma.aIMemory.findUnique({
+      const memory = await this.db.aIMemory.findUnique({
         where: {
           tenantId_key: {
             tenantId: context.tenantId,
@@ -103,7 +108,7 @@ export class AIMemoryEngine {
 
       // Verificar si expiró
       if (memory && memory.expiresAt && memory.expiresAt < new Date()) {
-        await this.prisma.aIMemory.delete({
+        await this.db.aIMemory.delete({
           where: { id: memory.id }
         });
         return null;
@@ -133,7 +138,7 @@ export class AIMemoryEngine {
 
     try {
       // Obtener memorias de contexto
-      const memories = await this.prisma.aIMemory.findMany({
+      const memories = await this.db.aIMemory.findMany({
         where: {
           tenantId: context.tenantId,
           type: { in: ['CONTEXT', 'HISTORY', 'PREFERENCE', 'PATTERN'] }
@@ -404,7 +409,7 @@ export class AIMemoryEngine {
    */
   async getInsights(context: MemoryContext): Promise<any[]> {
     try {
-      const insights = await this.prisma.aIMemory.findMany({
+      const insights = await this.db.aIMemory.findMany({
         where: {
           tenantId: context.tenantId,
           type: 'INSIGHT'
@@ -457,7 +462,7 @@ export class AIMemoryEngine {
    */
   async cleanupExpiredMemories(): Promise<void> {
     try {
-      const result = await this.prisma.aIMemory.deleteMany({
+      const result = await this.db.aIMemory.deleteMany({
         where: {
           expiresAt: {
             lt: new Date()
@@ -489,7 +494,7 @@ export class AIMemoryEngine {
    */
   async getMemoryStats(tenantId: string): Promise<any> {
     try {
-      const stats = await this.prisma.aIMemory.groupBy({
+      const stats = await this.db.aIMemory.groupBy({
         by: ['type'],
         where: { tenantId },
         _count: true
@@ -516,7 +521,7 @@ export class AIMemoryEngine {
    */
   async exportMemory(tenantId: string): Promise<any> {
     try {
-      const memories = await this.prisma.aIMemory.findMany({
+      const memories = await this.db.aIMemory.findMany({
         where: { tenantId },
         orderBy: { createdAt: 'desc' }
       });
@@ -549,7 +554,7 @@ export class AIMemoryEngine {
       }
 
       for (const memoryData of data.memories) {
-        await this.prisma.aIMemory.create({
+        await this.db.aIMemory.create({
           data: {
             tenantId,
             type: memoryData.type,

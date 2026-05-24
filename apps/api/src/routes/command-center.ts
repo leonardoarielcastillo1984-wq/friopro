@@ -845,11 +845,39 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       const userId = (req as any).db?.userId || 'anonymous';
       const userRole = (req as any).db?.role || 'user';
 
+      // Resolver conversación: crear si no existe, recuperar si ya existe
+      let resolvedConversationId = conversationId;
+      try {
+        if (resolvedConversationId && userId !== 'anonymous') {
+          // Verificar que la conversación existe y pertenece a este tenant/user
+          const existing = await (app.prisma as any).aIConversation?.findFirst({
+            where: { id: resolvedConversationId, tenantId, userId }
+          });
+          if (!existing) {
+            resolvedConversationId = undefined;
+          }
+        }
+        if (!resolvedConversationId && userId !== 'anonymous') {
+          // Crear nueva conversación en BD
+          const newConv = await (app.prisma as any).aIConversation?.create({
+            data: {
+              tenantId,
+              userId,
+              title: query.substring(0, 80),
+              status: 'ACTIVE'
+            }
+          });
+          resolvedConversationId = newConv?.id;
+        }
+      } catch {
+        // No crítico — continúa sin persistencia de conversación
+      }
+
       // Obtener contexto de memoria
       const memoryContext = {
         tenantId,
         userId,
-        conversationId
+        conversationId: resolvedConversationId
       };
 
       const conversationContext = await memoryEngine.getConversationContext(memoryContext);
@@ -869,7 +897,7 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         tenantId,
         userId,
         userRole,
-        conversationId
+        resolvedConversationId
       );
       const latency = Date.now() - startTime;
 
@@ -881,7 +909,7 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       try { await loggingEngine.logAIQuery({
         tenantId,
         userId,
-        sessionId: conversationId,
+        sessionId: resolvedConversationId,
         provider: (result as any).provider || 'groq',
         model: (result as any).model || 'llama-3.1-8b-instant',
         tokensUsed: result.tokensUsed || 0,
@@ -893,59 +921,12 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         response: result.summary,
         success: true,
         metadata: {
-          conversationId,
+          conversationId: resolvedConversationId,
           userRole,
           widgets: result.widgets?.length || 0
         }
       }); } catch (logErr) { app.log.warn({ err: logErr }, '[Command Center] Logging error (non-critical)'); }
-
-      // Guardar conversación si es nueva (tablas opcionales)
-      if (conversationId) {
-        try {
-          await (app.prisma as any).aIMessage.create({
-            data: {
-              conversationId,
-              role: 'USER',
-              content: query,
-              provider: null,
-              tokensUsed: 0,
-              cost: 0
-            }
-          });
-
-          if (result.provider) {
-            await (app.prisma as any).aIMessage.create({
-              data: {
-                conversationId,
-                role: 'ASSISTANT',
-                content: result.summary,
-                provider: result.provider,
-                tokensUsed: result.tokensUsed || 0,
-                cost: result.cost || 0
-              }
-            });
-          }
-
-          // Guardar widgets si existen
-          if (result.widgets && result.widgets.length > 0) {
-            for (let i = 0; i < result.widgets.length; i++) {
-              await (app.prisma as any).aIWidget.create({
-                data: {
-                  conversationId,
-                  type: result.widgets[i].type,
-                  title: result.widgets[i].title,
-                  description: result.widgets[i].description,
-                  data: result.widgets[i].data,
-                  config: result.widgets[i].config,
-                  position: i
-                }
-              });
-            }
-          }
-        } catch (msgError) {
-          console.error('[Command Center] Error saving messages:', msgError);
-        }
-      }
+      // Nota: mensajes guardados en BD por AIOrchestrator.saveConversationMessages()
 
       // Actualizar contexto si hay widgets
       if (result.widgets && result.widgets.length > 0) {
@@ -956,7 +937,7 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       return reply.send({
         success: true,
         data: result,
-        conversationId,
+        conversationId: resolvedConversationId,
         provider: result.provider,
         timestamp: new Date().toISOString()
       });
