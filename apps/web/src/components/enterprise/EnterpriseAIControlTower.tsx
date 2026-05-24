@@ -1228,50 +1228,7 @@ export default function EnterpriseAIControlTower({
     );
   };
 
-  const renderDeepAnalysisMode = () => {
-    if (!deepAnalysisMode) return null;
-
-    return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: -10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: -10 }}
-        className="bg-gradient-to-r from-yellow-900/30 to-orange-900/30 backdrop-blur-lg border border-yellow-500/30 rounded-lg px-4 py-3 mb-4"
-      >
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <BrainCircuit className="w-5 h-5 text-yellow-400 animate-pulse" />
-            <span className="text-yellow-300 font-semibold text-sm">
-              GPT-4.1 Strategic Engine
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-            <span className="text-yellow-200 text-xs">Análisis estratégico profundo activo</span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <div className="flex items-center gap-1 px-2 py-1 bg-yellow-500/20 rounded-full">
-              <Sparkles className="w-3 h-3 text-yellow-400" />
-              <span className="text-yellow-300 text-xs font-medium">Premium</span>
-            </div>
-            <button
-              onClick={() => setDeepAnalysisMode(false)}
-              className="text-yellow-500/60 hover:text-yellow-400 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-        <div className="mt-2 flex items-center gap-4 text-xs text-yellow-300/60">
-          <span>Razonamiento avanzado</span>
-          <span>·</span>
-          <span>Análisis financiero complejo</span>
-          <span>·</span>
-          <span>Simulaciones multi-escenario</span>
-        </div>
-      </motion.div>
-    );
-  };
+  const renderDeepAnalysisMode = () => null;
 
   const renderContextualVisualizations = () => {
     if (contextualVisualizations.length === 0) return null;
