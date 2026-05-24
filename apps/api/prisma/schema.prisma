@@ -299,11 +299,11 @@ model Tenant {
 
   // AI Relations
   aiSubscription      TenantAISubscription?
-  aiConversations     AIConversation[]
-  aiMemories          AIMemory[]
-  aiActions           AIAction[]
-  aiEmbeddings        AIEmbedding[]
-  aiProactiveAlerts   AIProactiveAlert[]
+  aiConversations     AIConversation[] @relation("AIConversations")
+  aiMemories          AIMemory[] @relation("AIMemories")
+  aiActions           AIAction[] @relation("AIActions")
+  aiEmbeddings        AIEmbedding[] @relation("AIEmbeddings")
+  aiProactiveAlerts   AIProactiveAlert[] @relation("AIProactiveAlerts")
 
   // Emergency & Disaster Management
   drillScenarios     DrillScenario[]
@@ -444,8 +444,8 @@ model PlatformUser {
   departmentsUpdated       Department[]       @relation("DepartmentUpdatedBy")
 
   // AI Relations
-  aiConversations AIConversation[]
-  aiActions      AIAction[]
+  aiConversations AIConversation[] @relation("AIConversations")
+  aiActions      AIAction[] @relation("AIActions")
   departmentMemberships    DepartmentMember[] @relation("DepartmentMemberUser")
   departmentMembersCreated DepartmentMember[] @relation("DepartmentMemberCreatedBy")
 
