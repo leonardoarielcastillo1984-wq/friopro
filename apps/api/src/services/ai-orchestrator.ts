@@ -446,21 +446,29 @@ export class AIOrchestrator {
    * Obtiene el estado de suscripción AI del tenant
    */
   async getAISubscription(tenantId: string): Promise<AISubscription> {
-    const aiSubModel = (this.prisma as any).tenantAISubscription;
-    const sub = aiSubModel ? await aiSubModel.findUnique({ where: { tenantId } }) : null;
+    const defaultSubscription: AISubscription = {
+      plan: null,
+      status: 'inactive',
+      premiumQueriesLimit: 3,
+      premiumQueriesUsed: 0,
+      premiumQueriesRemaining: 3,
+      groqEnabled: true,
+      openaiEnabled: false,
+      resetDate: new Date()
+    };
+
+    let sub: any = null;
+    try {
+      const aiSubModel = (this.prisma as any).tenantAISubscription;
+      if (aiSubModel) {
+        sub = await aiSubModel.findUnique({ where: { tenantId } });
+      }
+    } catch {
+      return defaultSubscription;
+    }
 
     if (!sub) {
-      // Retornar tier gratuito por defecto
-      return {
-        plan: null,
-        status: 'inactive',
-        premiumQueriesLimit: 3,
-        premiumQueriesUsed: 0,
-        premiumQueriesRemaining: 3,
-        groqEnabled: true,
-        openaiEnabled: false,
-        resetDate: new Date()
-      };
+      return defaultSubscription;
     }
 
     // Verificar si necesita reset mensual

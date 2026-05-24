@@ -14,6 +14,7 @@ import { AILoggingEngine } from '../services/ai-logging-engine.js';
 import { AIStrategicSimulationEngine } from '../services/ai-strategic-simulation.js';
 import { AIReportGenerator } from '../services/ai-report-generator.js';
 import { EnterpriseIntentEngine, Intent, ContextualDashboard } from '../services/enterprise-intent-engine.js';
+import { createLLMProvider } from '../services/llm/factory.js';
 import { AIThinkingVisualizer, ThinkingStep, AIThinkingSession } from '../services/ai-thinking-visualizer.js';
 import { OperationalModesManager, OperationalMode } from '../services/operational-modes.js';
 import { CommandActionsManager, CommandAction, ActionExecution } from '../services/command-actions.js';
@@ -43,7 +44,7 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   const reportGenerator = new AIReportGenerator(app.prisma, orchestrator);
   
   // Enterprise AI Control Tower Services
-  const intentEngine = new EnterpriseIntentEngine(orchestrator);
+  const intentEngine = new EnterpriseIntentEngine(createLLMProvider());
   const thinkingVisualizer = new AIThinkingVisualizer();
   const operationalModes = new OperationalModesManager();
   const commandActions = new CommandActionsManager();
