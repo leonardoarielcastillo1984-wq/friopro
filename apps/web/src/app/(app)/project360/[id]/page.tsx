@@ -8,13 +8,19 @@ import {
   ArrowLeft, Target, Calendar, User, CheckCircle, Clock,
   AlertTriangle, Flag, FileText, Plus, Edit, Trash2, Check, Download, Users, Upload,
   TrendingUp, TrendingDown, Zap, RefreshCw, X, Shield, Send, ArrowRight,
-  BarChart3, Cpu, Briefcase, Wallet, FileSpreadsheet, Lightbulb, MessageSquare
+  BarChart3, Cpu, Briefcase, Wallet, FileSpreadsheet, Lightbulb, MessageSquare,
+  DollarSign
 } from 'lucide-react';
 
 import BusinessCaseTab from '@/components/project360/BusinessCaseTab';
 import SimulationTab from '@/components/project360/SimulationTab';
 import OperationalSizingTab from '@/components/project360/OperationalSizingTab';
 import ProjectCopilot from '@/components/project360/ProjectCopilot';
+import CashflowTab from '@/components/project360/CashflowTab';
+import PipelineTab from '@/components/project360/PipelineTab';
+import PropuestasTab from '@/components/project360/PropuestasTab';
+import ContratosTab from '@/components/project360/ContratosTab';
+import LessonsLearnedTab from '@/components/project360/LessonsLearnedTab';
 
 interface Project {
   id: string;
@@ -84,7 +90,7 @@ export default function ProjectDetailPage() {
   const [milestones, setMilestones] = useState<any[]>([]);
   const [budgetItems, setBudgetItems] = useState<any[]>([]);
   const [aiAnalyses, setAiAnalyses] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'business-case' | 'simulation' | 'sizing' | 'budget' | 'milestones' | 'analysis' | 'history' | 'aprobaciones' | 'copilot'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'business-case' | 'simulation' | 'sizing' | 'cashflow' | 'pipeline' | 'propuestas' | 'contratos' | 'lessons' | 'budget' | 'milestones' | 'analysis' | 'history' | 'aprobaciones' | 'copilot'>('overview');
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ name: '', description: '', targetDate: '' });
   const [showAddBudgetItem, setShowAddBudgetItem] = useState(false);
@@ -792,6 +798,11 @@ export default function ProjectDetailPage() {
             { key: 'business-case', label: 'Business Case', icon: BarChart3 },
             { key: 'simulation', label: 'Simulación', icon: TrendingUp },
             { key: 'sizing', label: 'Dimensionamiento', icon: Cpu },
+            { key: 'cashflow', label: 'Cashflow', icon: DollarSign },
+            { key: 'pipeline', label: 'Pipeline', icon: Briefcase },
+            { key: 'propuestas', label: 'Propuestas', icon: FileText },
+            { key: 'contratos', label: 'Contratos', icon: Shield },
+            { key: 'lessons', label: 'Lecciones', icon: Lightbulb },
             { key: 'budget', label: 'Presupuesto', icon: Wallet },
             { key: 'milestones', label: 'Hitos', icon: Calendar },
             { key: 'analysis', label: 'Análisis IA', icon: Zap },
@@ -1825,6 +1836,31 @@ export default function ProjectDetailPage() {
       {/* ── COPILOT IA ── */}
       {activeTab === 'copilot' && project && (
         <ProjectCopilot projectId={params.id as string} projectName={project.name} />
+      )}
+
+      {/* ── CASHFLOW ── */}
+      {activeTab === 'cashflow' && (
+        <CashflowTab projectId={params.id as string} />
+      )}
+
+      {/* ── PIPELINE ── */}
+      {activeTab === 'pipeline' && (
+        <PipelineTab projectId={params.id as string} />
+      )}
+
+      {/* ── PROPUESTAS ── */}
+      {activeTab === 'propuestas' && (
+        <PropuestasTab projectId={params.id as string} />
+      )}
+
+      {/* ── CONTRATOS ── */}
+      {activeTab === 'contratos' && (
+        <ContratosTab projectId={params.id as string} />
+      )}
+
+      {/* ── LESSONS LEARNED ── */}
+      {activeTab === 'lessons' && (
+        <LessonsLearnedTab projectId={params.id as string} />
       )}
 
     </div>
