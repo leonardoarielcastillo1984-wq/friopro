@@ -34,12 +34,12 @@ const PLAN_PRICES = {
 const PLAN_LIMITS = {
   BASIC: {
     maxUsers: 5,
-    modules: ['dashboard', 'documents', 'ncr', 'indicators', 'risks'],
+    modules: ['dashboard', 'documents', 'ncr', 'indicators', 'risks', 'commandCenter'],
     features: ['basic_reports', 'email_notifications']
   },
   PROFESSIONAL: {
     maxUsers: 15,
-    modules: ['dashboard', 'documents', 'ncr', 'indicators', 'risks', 'audits', 'trainings', 'maintenance', 'project360', 'simulacros'],
+    modules: ['dashboard', 'documents', 'ncr', 'indicators', 'risks', 'audits', 'trainings', 'maintenance', 'project360', 'simulacros', 'commandCenter'],
     features: ['basic_reports', 'email_notifications', 'advanced_analytics', 'api_access']
   },
   PREMIUM: {
