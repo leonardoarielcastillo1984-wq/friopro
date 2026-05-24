@@ -13,6 +13,11 @@ import { AIMercadoPagoService } from '../services/ai-mercadopago.js';
 import { AILoggingEngine } from '../services/ai-logging-engine.js';
 import { AIStrategicSimulationEngine } from '../services/ai-strategic-simulation.js';
 import { AIReportGenerator } from '../services/ai-report-generator.js';
+import { EnterpriseIntentEngine, Intent, ContextualDashboard } from '../services/enterprise-intent-engine.js';
+import { AIThinkingVisualizer, ThinkingStep, AIThinkingSession } from '../services/ai-thinking-visualizer.js';
+import { OperationalModesManager, OperationalMode } from '../services/operational-modes.js';
+import { CommandActionsManager, CommandAction, ActionExecution } from '../services/command-actions.js';
+import { AIFloatingAlertsManager, FloatingAlert, AlertRule } from '../services/ai-floating-alerts.js';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
@@ -36,6 +41,13 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   const loggingEngine = new AILoggingEngine(app.prisma);
   const simulationEngine = new AIStrategicSimulationEngine(app.prisma, orchestrator);
   const reportGenerator = new AIReportGenerator(app.prisma, orchestrator);
+  
+  // Enterprise AI Control Tower Services
+  const intentEngine = new EnterpriseIntentEngine(orchestrator);
+  const thinkingVisualizer = new AIThinkingVisualizer();
+  const operationalModes = new OperationalModesManager();
+  const commandActions = new CommandActionsManager();
+  const floatingAlerts = new AIFloatingAlertsManager();
 
   // ============================================================
   // HEALTH CHECK - Enhanced
@@ -1245,4 +1257,407 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       return reply.code(500).send({ error: error.message });
     }
   });
+
+  // ============================================================
+  // ENTERPRISE AI CONTROL TOWER - NEW ENDPOINTS
+  // ============================================================
+
+  // ------------------------------------------------------------
+  // INTENT ANALYSIS & CONTEXTUAL DASHBOARD
+  // ------------------------------------------------------------
+  app.post('/intent/analyze', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) {
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      }
+
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { query, userContext } = body;
+
+      if (!query) {
+        return reply.code(400).send({ error: 'Query es requerido' });
+      }
+
+      // Analizar intención
+      const intent = await intentEngine.analyzeIntent(query, userContext || {});
+      
+      // Generar dashboard contextual
+      const dashboard = await intentEngine.generateDashboard(intent);
+
+      return reply.send({
+        success: true,
+        data: {
+          intent,
+          dashboard,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  // ------------------------------------------------------------
+  // AI THINKING VISUALIZATION
+  // ------------------------------------------------------------
+  app.post('/thinking/start', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { query, intent, provider, model } = body;
+
+      if (!query || !intent) {
+        return reply.code(400).send({ error: 'Query e intent son requeridos' });
+      }
+
+      const sessionId = await thinkingVisualizer.startThinkingSession(
+        query, 
+        intent, 
+        provider || 'groq', 
+        model || 'llama-3.1-8b-instant'
+      );
+
+      // Iniciar simulación de progreso
+      thinkingVisualizer.simulateProgress(sessionId);
+
+      return reply.send({
+        success: true,
+        data: {
+          sessionId,
+          steps: thinkingVisualizer.getActiveSessionSteps(sessionId),
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  app.get('/thinking/:sessionId', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { sessionId } = req.params as any;
+      const session = thinkingVisualizer.getSession(sessionId);
+      
+      if (!session) {
+        return reply.code(404).send({ error: 'Session not found' });
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          session,
+          currentStep: thinkingVisualizer.getCurrentStep(sessionId),
+          progress: thinkingVisualizer.getSessionProgress(sessionId),
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  // ------------------------------------------------------------
+  // OPERATIONAL MODES
+  // ------------------------------------------------------------
+  app.get('/modes', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const modes = operationalModes.getAllModes();
+      
+      return reply.send({
+        success: true,
+        data: modes
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  app.post('/modes/:modeId/activate', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { modeId } = req.params as any;
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { query } = body;
+
+      const mode = operationalModes.getMode(modeId);
+      if (!mode) {
+        return reply.code(404).send({ error: 'Mode not found' });
+      }
+
+      // Adaptar query para el modo
+      const adaptedQuery = await operationalModes.adaptQueryForMode(query, mode);
+
+      // Obtener widgets y acciones específicas del modo
+      const widgets = await operationalModes.getModeSpecificWidgets(mode);
+      const actions = await operationalModes.getModeSpecificActions(mode);
+
+      return reply.send({
+        success: true,
+        data: {
+          mode,
+          adaptedQuery,
+          widgets,
+          actions,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  // ------------------------------------------------------------
+  // COMMAND ACTIONS
+  // ------------------------------------------------------------
+  app.get('/actions', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) {
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      }
+
+      const userId = (req as any).db?.userId || 'anonymous';
+      const userRole = (req as any).db?.tenantRole || 'USER';
+      const userPermissions = (req as any).db?.permissions || [];
+
+      const actions = commandActions.getActionsForUser(userPermissions, userRole);
+
+      return reply.send({
+        success: true,
+        data: {
+          actions,
+          userRole,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  app.post('/actions/:actionId/execute', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) {
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      }
+
+      const { actionId } = req.params as any;
+      const userId = (req as any).db?.userId || 'anonymous';
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { parameters } = body;
+
+      const executionId = await commandActions.executeAction(actionId, userId, tenantId, parameters);
+
+      return reply.send({
+        success: true,
+        data: {
+          executionId,
+          actionId,
+          status: 'started',
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  app.get('/actions/executions/:executionId', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { executionId } = req.params as any;
+      const execution = commandActions.getExecution(executionId);
+      
+      if (!execution) {
+        return reply.code(404).send({ error: 'Execution not found' });
+      }
+
+      return reply.send({
+        success: true,
+        data: execution
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  // ------------------------------------------------------------
+  // FLOATING ALERTS
+  // ------------------------------------------------------------
+  app.get('/alerts', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) {
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      }
+
+      const userId = (req as any).db?.userId;
+      const alerts = floatingAlerts.getActiveAlerts(tenantId, userId);
+
+      return reply.send({
+        success: true,
+        data: {
+          alerts,
+          count: alerts.length,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  app.post('/alerts', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) {
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      }
+
+      const userId = (req as any).db?.userId;
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { type, title, description, options } = body;
+
+      if (!type || !title || !description) {
+        return reply.code(400).send({ error: 'Type, title y description son requeridos' });
+      }
+
+      const alertId = await floatingAlerts.createManualAlert(
+        type,
+        title,
+        description,
+        tenantId,
+        userId,
+        options
+      );
+
+      return reply.send({
+        success: true,
+        data: {
+          alertId,
+          message: 'Alert created successfully',
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  app.post('/alerts/:alertId/dismiss', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { alertId } = req.params as any;
+      const userId = (req as any).db?.userId || 'anonymous';
+
+      const dismissed = floatingAlerts.dismissAlert(alertId, userId);
+
+      if (!dismissed) {
+        return reply.code(404).send({ error: 'Alert not found or already dismissed' });
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          message: 'Alert dismissed successfully',
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  // ------------------------------------------------------------
+  // SMART SUGGESTIONS
+  // ------------------------------------------------------------
+  app.get('/suggestions', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) {
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      }
+
+      const userId = (req as any).db?.userId || 'anonymous';
+      const userContext = {
+        tenantId,
+        userId,
+        tenantRole: (req as any).db?.tenantRole || 'USER',
+        permissions: (req as any).db?.permissions || []
+      };
+
+      // Obtener intención actual (simulada)
+      const currentIntent = {
+        type: 'general',
+        confidence: 0.5,
+        entities: [],
+        context: {},
+        suggestedVisualizations: [],
+        suggestedActions: [],
+        operationalMode: 'operational'
+      };
+
+      const suggestions = await intentEngine.getSmartSuggestions(userContext, currentIntent);
+
+      return reply.send({
+        success: true,
+        data: {
+          suggestions,
+          context: userContext,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  // ------------------------------------------------------------
+  // PROACTIVE ALERTS CHECK
+  // ------------------------------------------------------------
+  app.post('/alerts/check', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) {
+        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      }
+
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { systemData } = body;
+
+      // Simular datos del sistema si no se proporcionan
+      const mockSystemData = systemData || {
+        project: { budget_variance: 0.12, name: 'Project Alpha' },
+        financial: { cash_flow_ratio: 0.08 },
+        system: { uptime: 0.97, error_rate: 0.03 },
+        hr: { turnover_risk_score: 0.6 },
+        compliance: { overdue_items: 2 }
+      };
+
+      const triggeredAlerts = await floatingAlerts.checkRules(tenantId, mockSystemData);
+
+      return reply.send({
+        success: true,
+        data: {
+          triggeredAlerts,
+          systemData: mockSystemData,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
 }
