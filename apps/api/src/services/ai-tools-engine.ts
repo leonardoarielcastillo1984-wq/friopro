@@ -212,8 +212,7 @@ export class AIToolsEngine {
       data: {
         tenantId,
         name: params.name || 'Nuevo Proyecto',
-        client: params.client || null,
-        description: params.description || null,
+        description: params.description || params.client ? `Cliente: ${params.client}` : null,
         status: 'PLANNING',
         progress: 0,
         budget: params.budget ? parseFloat(params.budget) : null,
@@ -289,7 +288,7 @@ export class AIToolsEngine {
       where: { tenantId, deletedAt: null },
       orderBy: { updatedAt: 'desc' },
       take: 20,
-      select: { id: true, name: true, status: true, progress: true, client: true, budget: true, riskLevel: true }
+      select: { id: true, name: true, status: true, progress: true, description: true, budget: true, overallRiskScore: true, priority: true, targetDate: true }
     }) || [];
 
     if (projects.length === 0) {
@@ -297,7 +296,7 @@ export class AIToolsEngine {
     }
 
     const active = projects.filter((p: any) => p.status === 'ACTIVE').length;
-    const atRisk = projects.filter((p: any) => p.riskLevel === 'HIGH' || p.status === 'AT_RISK').length;
+    const atRisk = projects.filter((p: any) => (p.overallRiskScore != null && p.overallRiskScore >= 70) || p.status === 'AT_RISK').length;
     const planning = projects.filter((p: any) => p.status === 'PLANNING').length;
     const completed = projects.filter((p: any) => p.status === 'COMPLETED').length;
 
@@ -306,7 +305,7 @@ export class AIToolsEngine {
       (atRisk > 0 ? `- ⚠️ En riesgo: ${atRisk}\n` : '') +
       `\n**Proyectos recientes:**\n` +
       projects.slice(0, 5).map((p: any) =>
-        `- ${p.name} (${p.status}, ${p.progress}%${p.client ? ` — ${p.client}` : ''})`
+        `- ${p.name} (${p.status}, ${p.progress}%${p.priority ? ` — ${p.priority}` : ''}${p.targetDate ? `, vence ${new Date(p.targetDate).toLocaleDateString('es-AR')}` : ''})`
       ).join('\n');
 
     return { success: true, tool: 'get_projects_summary', message: summary, data: projects };
