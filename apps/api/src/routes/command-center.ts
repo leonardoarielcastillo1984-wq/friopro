@@ -1005,30 +1005,6 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   }
 
   // ============================================================
-  // KPIs EJECUTIVOS
-  // ============================================================
-  app.get('/kpis', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = await getEffectiveTenantId(req, app.prisma);
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-      }
-
-      const kpis = await orchestrator.getExecutiveKPIs(tenantId);
-
-      return reply.send({
-        success: true,
-        data: kpis,
-        timestamp: new Date().toISOString()
-      });
-
-    } catch (error: any) {
-      app.log.error('[Command Center] KPIs error:', error);
-      return reply.code(500).send({ error: error.message });
-    }
-  });
-
-  // ============================================================
   // ALERTAS PROACTIVAS
   // ============================================================
   app.get('/alerts', async (req: FastifyRequest, reply: FastifyReply) => {
