@@ -121,7 +121,7 @@ export default function SidebarWithFeatureFlags({ isOpen, onToggle }: SidebarPro
   }
 
   // Group modules by category
-  const coreModules = modules.filter(m => ['dashboard', 'audits', 'documents'].includes(m.key));
+  const coreModules = modules.filter(m => ['dashboard', 'commandCenter', 'audits', 'documents'].includes(m.key));
   const advancedModules = modules.filter(m => ['projects', 'maintenance', 'drills', 'risks', 'indicators'].includes(m.key));
   const enterpriseModules = modules.filter(m => ['bi', 'audit360', 'hse360'].includes(m.key));
 
