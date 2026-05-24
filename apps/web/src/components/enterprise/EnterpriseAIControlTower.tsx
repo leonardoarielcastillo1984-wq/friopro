@@ -10,7 +10,29 @@ import {
   Command as CommandIcon, Radar, Activity, Monitor,
   BarChart3, Shield, Target as TargetIcon, Settings,
   Maximize2, Minimize2, Wifi, WifiOff, Cpu,
-  ChevronUp, ChevronDown, Clock, CheckCircle, AlertCircle
+  ChevronUp, ChevronDown, Clock, CheckCircle, AlertCircle,
+  Volume2, Volume, Radio, Waves, Signal, Database,
+  TrendingDown, BarChart, PieChart, LineChart, Calendar,
+  Filter, Search, Eye, EyeOff, RefreshCw, PlayCircle,
+  PauseCircle, StopCircle, Download, Upload, Share2,
+  Copy, Trash2, Edit3, Save, FileText, Image,
+  Video, Music, Headphones, Speaker, Lighthouse,
+  ZapOff, Battery, BatteryLow, BatteryFull,
+  Thermometer, Gauge, Speed, Timer, Stopwatch,
+  Compass, Navigation, Map, Globe, Satellite,
+  Cloud, CloudRain, CloudSnow, Sun, Moon, Star,
+  Heart, Pulse, Activity as ActivityIcon, BrainCircuit,
+  Cpu as CpuIcon, HardDrive, MemoryStick, Server,
+  Network, Router, Wifi as WifiIcon, Ethernet,
+  Lock, Unlock, Key, Shield as ShieldIcon,
+  Sword, Hammer, Wrench, Tool, Settings2,
+  Layers, Grid, Columns, Rows, Layout, LayoutDashboard,
+  Monitor as MonitorIcon, Smartphone, Tablet, Laptop,
+  Tv, Radio as RadioIcon, Speaker as SpeakerIcon,
+  Headphones as HeadphonesIcon, Vinyl, Disc, CompactDisc,
+  Music as MusicIcon, Play, Pause, SkipBack, SkipForward,
+  Repeat, Shuffle, Volume1, Volume2 as Volume2Icon,
+  VolumeX, VolumeUp, VolumeDown, Mute, Unmute
 } from 'lucide-react';
 
 import {
@@ -67,6 +89,18 @@ export default function EnterpriseAIControlTower({
   const [isListening, setIsListening] = useState(false);
   const [showCommandActions, setShowCommandActions] = useState(false);
   const [showModeSelector, setShowModeSelector] = useState(false);
+  const [streamingResponse, setStreamingResponse] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [liveDataStatus, setLiveDataStatus] = useState({
+    connected: true,
+    lastSync: new Date(),
+    activeFeeds: 12,
+    dataPoints: 2847,
+    latency: 23
+  });
+  const [deepAnalysisMode, setDeepAnalysisMode] = useState(false);
+  const [contextualVisualizations, setContextualVisualizations] = useState<any[]>([]);
+  const [smartSuggestions, setSmartSuggestions] = useState<SmartSuggestion[]>([]);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -84,12 +118,32 @@ export default function EnterpriseAIControlTower({
     return () => clearInterval(interval);
   }, []);
 
-  // Update status bar
+  // Update live data status
   useEffect(() => {
-    updateStatusBar();
-    const interval = setInterval(updateStatusBar, 10000); // Update every 10 seconds
+    const interval = setInterval(() => {
+      setLiveDataStatus(prev => ({
+        ...prev,
+        lastSync: new Date(),
+        dataPoints: prev.dataPoints + Math.floor(Math.random() * 10),
+        latency: Math.max(10, Math.min(100, prev.latency + (Math.random() - 0.5) * 10))
+      }));
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  // Update smart suggestions based on context
+  useEffect(() => {
+    updateSmartSuggestions();
+  }, [state.currentIntent, state.currentMode, userRole]);
+
+  // Check for deep analysis mode
+  useEffect(() => {
+    if (state.currentMode?.aiSettings.useDeepAnalysis) {
+      setDeepAnalysisMode(true);
+    } else {
+      setDeepAnalysisMode(false);
+    }
+  }, [state.currentMode]);
 
   // ============================================================
   // INITIALIZE ENTERPRISE CC
@@ -201,17 +255,90 @@ export default function EnterpriseAIControlTower({
     });
   };
 
-  const updateStatusBar = async (): Promise<void> => {
-    const statusBar: AIStatusBar = {
-      provider: state.currentMode?.aiSettings.useDeepAnalysis ? 'openai' : 'groq',
-      mode: state.currentMode?.id || 'operational',
-      deepAnalysis: state.currentMode?.aiSettings.useDeepAnalysis || false,
-      queriesRemaining: subscription?.premiumQueriesRemaining || 0,
-      responseTime: Math.random() * 1000 + 200, // Simulated
-      systemStatus: 'optimal',
-      lastSync: new Date()
-    };
-    setState(prev => ({ ...prev, statusBar }));
+  const updateSmartSuggestions = async (): Promise<void> => {
+    try {
+      const baseSuggestions = [
+        'Analizar rendimiento financiero',
+        'Detectar riesgos operativos',
+        'Simular escenarios estratégicos',
+        'Generar informe ejecutivo',
+        'Optimizar procesos',
+        'Evaluar capacidad operativa'
+      ];
+
+      let contextualSuggestions = baseSuggestions;
+
+      // Contextual suggestions based on current intent
+      if (state.currentIntent) {
+        switch (state.currentIntent.type) {
+          case 'financial':
+            contextualSuggestions = [
+              'Analizar cash flow',
+              'Evaluar márgenes',
+              'Forecast financiero',
+              'Análisis de costos',
+              'ROI proyectos',
+              'Indicadores financieros'
+            ];
+            break;
+          case 'risk':
+            contextualSuggestions = [
+              'Identificar riesgos críticos',
+              'Análisis de vulnerabilidades',
+              'Mapa de riesgos',
+              'Plan de mitigación',
+              'Evaluación de impacto',
+              'Monitoreo de riesgos'
+            ];
+            break;
+          case 'operational':
+            contextualSuggestions = [
+              'Estado de operaciones',
+              'Eficiencia de procesos',
+              'Análisis de capacidad',
+              'Optimización de recursos',
+              'Métricas operativas',
+              'Dashboard operativo'
+            ];
+            break;
+          case 'strategic':
+            contextualSuggestions = [
+              'Simulación estratégica',
+              'Análisis de escenarios',
+              'Plan de expansión',
+              'Evaluación de mercado',
+              'Competitive analysis',
+              'Roadmap estratégico'
+            ];
+            break;
+        }
+      }
+
+      const suggestions: SmartSuggestion[] = contextualSuggestions.map((text, index) => ({
+        id: `suggestion-${index}`,
+        text,
+        category: state.currentIntent?.type || 'general',
+        priority: Math.floor(Math.random() * 10) + 1,
+        contextual: true,
+        icon: getSuggestionIcon(text)
+      }));
+
+      setSmartSuggestions(suggestions);
+    } catch (error) {
+      console.error('Error updating smart suggestions:', error);
+    }
+  };
+
+  const getSuggestionIcon = (suggestion: string): string => {
+    if (suggestion.toLowerCase().includes('financ')) return 'dollar-sign';
+    if (suggestion.toLowerCase().includes('riesg')) return 'shield';
+    if (suggestion.toLowerCase().includes('oper')) return 'settings';
+    if (suggestion.toLowerCase().includes('estrat')) return 'target';
+    if (suggestion.toLowerCase().includes('anal')) return 'bar-chart';
+    if (suggestion.toLowerCase().includes('simul')) return 'zap';
+    if (suggestion.toLowerCase().includes('informe')) return 'file-text';
+    if (suggestion.toLowerCase().includes('optim')) return 'trending-up';
+    return 'lightbulb';
   };
 
   const updateLiveWidgets = async (): Promise<void> => {
@@ -255,13 +382,18 @@ export default function EnterpriseAIControlTower({
     const query = input.trim();
     setInput('');
     setState(prev => ({ ...prev, loading: true, error: null }));
+    setStreamingResponse('');
+    setIsStreaming(true);
 
     try {
       // Step 1: Analyze intent
       const intent = await analyzeIntent(query);
       setState(prev => ({ ...prev, currentIntent: intent }));
 
-      // Step 2: Start thinking session
+      // Step 2: Generate contextual visualizations
+      await generateContextualVisualizations(intent);
+
+      // Step 3: Start thinking session
       const sessionId = await startThinkingSession(query, intent);
       setState(prev => ({ 
         ...prev, 
@@ -278,10 +410,11 @@ export default function EnterpriseAIControlTower({
         }
       }));
 
-      // Step 3: Monitor thinking progress
+      // Step 4: Monitor thinking progress and stream response
       monitorThinkingProgress(sessionId);
+      startStreamingResponse(sessionId);
 
-      // Step 4: Update dashboard based on intent
+      // Step 5: Update dashboard based on intent
       if (intent.type !== 'general') {
         const dashboardResponse = await apiFetch('/api/command-center/intent/analyze', {
           method: 'POST',
@@ -310,31 +443,218 @@ export default function EnterpriseAIControlTower({
         loading: false,
         isThinking: false
       }));
+      setIsStreaming(false);
     }
   };
 
-  const monitorThinkingProgress = (sessionId: string) => {
-    const interval = setInterval(async () => {
-      try {
-        const response = await apiFetch(`/api/command-center/thinking/${sessionId}`);
-        const session = response.data.session;
-        
-        setState(prev => ({ 
-          ...prev, 
-          thinkingSession: session,
-          isThinking: !session.endTime
-        }));
+  const generateContextualVisualizations = async (intent: Intent): Promise<void> => {
+    try {
+      let visualizations: any[] = [];
 
-        if (session.endTime) {
-          clearInterval(interval);
-          setState(prev => ({ ...prev, loading: false }));
-        }
-      } catch (error) {
-        clearInterval(interval);
-        setState(prev => ({ ...prev, isThinking: false, loading: false }));
+      switch (intent.type) {
+        case 'financial':
+          visualizations = [
+            { type: 'line-chart', title: 'Cash Flow', data: generateFinancialData() },
+            { type: 'pie-chart', title: 'Distribución de Costos', data: generateCostData() },
+            { type: 'bar-chart', title: 'Revenue Streams', data: generateRevenueData() },
+            { type: 'kpi-grid', title: 'Indicadores Financieros', data: generateKPIData() }
+          ];
+          break;
+        case 'risk':
+          visualizations = [
+            { type: 'heatmap', title: 'Mapa de Riesgos', data: generateRiskData() },
+            { type: 'radar-chart', title: 'Análisis de Vulnerabilidades', data: generateVulnerabilityData() },
+            { type: 'timeline', title: 'Evolución de Riesgos', data: generateRiskTimelineData() },
+            { type: 'alert-grid', title: 'Alertas Críticas', data: generateAlertData() }
+          ];
+          break;
+        case 'operational':
+          visualizations = [
+            { type: 'gantt-chart', title: 'Timeline Operativo', data: generateOperationalData() },
+            { type: 'progress-grid', title: 'Estado de Procesos', data: generateProcessData() },
+            { type: 'resource-chart', title: 'Utilización de Recursos', data: generateResourceData() },
+            { type: 'efficiency-meter', title: 'Eficiencia Operativa', data: generateEfficiencyData() }
+          ];
+          break;
+        case 'strategic':
+          visualizations = [
+            { type: 'scenario-matrix', title: 'Análisis de Escenarios', data: generateScenarioData() },
+            { type: 'growth-chart', title: 'Proyecciones de Crecimiento', data: generateGrowthData() },
+            { type: 'competitive-map', title: 'Mapa Competitivo', data: generateCompetitiveData() },
+            { type: 'roadmap-timeline', title: 'Roadmap Estratégico', data: generateRoadmapData() }
+          ];
+          break;
+        default:
+          visualizations = [
+            { type: 'overview-dashboard', title: 'Dashboard General', data: generateOverviewData() }
+          ];
       }
-    }, 1000);
+
+      setContextualVisualizations(visualizations);
+    } catch (error) {
+      console.error('Error generating contextual visualizations:', error);
+    }
   };
+
+  const startStreamingResponse = (sessionId: string) => {
+    // Simulate streaming response
+    const fullResponse = generateMockResponse(state.currentIntent?.type || 'general');
+    let currentText = '';
+    let charIndex = 0;
+
+    const streamInterval = setInterval(() => {
+      if (charIndex < fullResponse.length) {
+        currentText += fullResponse[charIndex];
+        setStreamingResponse(currentText);
+        charIndex++;
+      } else {
+        clearInterval(streamInterval);
+        setIsStreaming(false);
+      }
+    }, 20); // 50 characters per second
+  };
+
+  // Data generation functions for visualizations
+  const generateFinancialData = () => ({
+    labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'],
+    datasets: [
+      { label: 'Ingresos', data: [45000, 52000, 48000, 61000, 58000, 67000] },
+      { label: 'Gastos', data: [32000, 35000, 33000, 38000, 36000, 41000] }
+    ]
+  });
+
+  const generateCostData = () => ({
+    labels: ['Personal', 'Operaciones', 'Marketing', 'Tecnología', 'Otros'],
+    data: [35, 25, 15, 20, 5]
+  });
+
+  const generateRevenueData = () => ({
+    labels: ['Producto A', 'Producto B', 'Servicios', 'Licencias', 'Consultoría'],
+    data: [120000, 85000, 65000, 45000, 30000]
+  });
+
+  const generateKPIData = () => ({
+    'ROI': 23.5,
+    'Margen': 18.2,
+    'Crecimiento': 12.8,
+    'Eficiencia': 87.3
+  });
+
+  const generateRiskData = () => ({
+    categories: ['Operacional', 'Financiero', 'Tecnológico', 'Legal', 'Reputacional'],
+    matrix: [
+      [2, 3, 1, 4, 2],
+      [3, 4, 2, 3, 3],
+      [1, 2, 4, 2, 1],
+      [4, 3, 2, 4, 3],
+      [2, 3, 1, 3, 2]
+    ]
+  });
+
+  const generateVulnerabilityData = () => ({
+    labels: ['Seguridad', 'Disponibilidad', 'Confidencialidad', 'Integridad', 'Cumplimiento'],
+    data: [65, 78, 82, 71, 89]
+  });
+
+  const generateRiskTimelineData = () => ({
+    labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'],
+    datasets: [
+      { label: 'Riesgos Críticos', data: [5, 7, 6, 4, 3, 2] },
+      { label: 'Riesgos Moderados', data: [12, 14, 11, 9, 8, 7] },
+      { label: 'Riesgos Bajos', data: [8, 9, 7, 6, 5, 4] }
+    ]
+  });
+
+  const generateAlertData = () => ({
+    critical: 3,
+    warning: 7,
+    info: 12,
+    success: 18
+  });
+
+  const generateOperationalData = () => ({
+    tasks: [
+      { name: 'Producción', start: '2024-01-01', end: '2024-01-15', progress: 85 },
+      { name: 'Logística', start: '2024-01-10', end: '2024-01-25', progress: 72 },
+      { name: 'Control de Calidad', start: '2024-01-20', end: '2024-02-05', progress: 60 },
+      { name: 'Distribución', start: '2024-02-01', end: '2024-02-15', progress: 45 }
+    ]
+  });
+
+  const generateProcessData = () => ({
+    processes: [
+      { name: 'Manufactura', efficiency: 92, status: 'optimal' },
+      { name: 'Embalaje', efficiency: 78, status: 'warning' },
+      { name: 'Almacenaje', efficiency: 85, status: 'good' },
+      { name: 'Distribución', efficiency: 71, status: 'critical' }
+    ]
+  });
+
+  const generateResourceData = () => ({
+    resources: [
+      { type: 'Personal', utilized: 78, total: 100 },
+      { type: 'Equipos', utilized: 85, total: 100 },
+      { type: 'Instalaciones', utilized: 92, total: 100 },
+      { type: 'Transporte', utilized: 67, total: 100 }
+    ]
+  });
+
+  const generateEfficiencyData = () => ({
+    overall: 87.3,
+    breakdown: {
+      'Productividad': 91.2,
+      'Calidad': 88.7,
+      'Costos': 82.4,
+      'Tiempo': 85.9
+    }
+  });
+
+  const generateScenarioData = () => ({
+    scenarios: [
+      { name: 'Optimista', probability: 0.25, expected: 1500000 },
+      { name: 'Realista', probability: 0.55, expected: 1200000 },
+      { name: 'Pesimista', probability: 0.20, expected: 800000 }
+    ]
+  });
+
+  const generateGrowthData = () => ({
+    years: ['2024', '2025', '2026', '2027', '2028'],
+    revenue: [1200000, 1500000, 1900000, 2400000, 3000000],
+    profit: [180000, 280000, 420000, 680000, 950000]
+  });
+
+  const generateCompetitiveData = () => ({
+    companies: [
+      { name: 'Nosotros', market: 23, growth: 15, innovation: 85 },
+      { name: 'Competidor A', market: 31, growth: 8, innovation: 72 },
+      { name: 'Competidor B', market: 18, growth: 12, innovation: 68 },
+      { name: 'Competidor C', market: 15, growth: 6, innovation: 61 }
+    ]
+  });
+
+  const generateRoadmapData = () => ({
+    phases: [
+      { name: 'Expansión Local', start: '2024-Q1', end: '2024-Q3', status: 'completed' },
+      { name: 'Lanzamiento Internacional', start: '2024-Q2', end: '2025-Q1', status: 'in-progress' },
+      { name: 'Diversificación', start: '2024-Q4', end: '2025-Q3', status: 'planned' },
+      { name: 'Liderazgo Mercado', start: '2025-Q2', end: '2026-Q4', status: 'planned' }
+    ]
+  });
+
+  const generateOverviewData = () => ({
+    kpis: {
+      'Rendimiento General': 85.7,
+      'Satisfacción Cliente': 92.3,
+      'Eficiencia Operativa': 78.9,
+      'Rentabilidad': 23.4
+    },
+    trends: {
+      'Crecimiento': 12.5,
+      'Productividad': 8.3,
+      'Costos': -3.2,
+      'Innovación': 18.7
+    }
+  });
 
   const handleActionClick = async (action: CommandAction) => {
     try {
@@ -609,46 +929,93 @@ export default function EnterpriseAIControlTower({
     );
   };
 
-  const renderAIStatusBar = () => {
-    if (!state.statusBar) return null;
-
+  const renderPremiumMicrophone = () => {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-gray-900/80 backdrop-blur-lg border border-gray-700 rounded-lg px-4 py-2 flex items-center gap-6 text-xs"
+      <motion.button
+        onClick={() => setIsListening(!isListening)}
+        className={`relative p-4 rounded-2xl transition-all duration-300 ${
+          isListening 
+            ? 'bg-gradient-to-r from-red-500/20 to-red-600/20 border-2 border-red-500/50 shadow-lg shadow-red-500/25' 
+            : 'bg-gradient-to-r from-purple-500/10 to-blue-500/10 border-2 border-gray-600/50 hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-500/10'
+        }`}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
       >
-        <div className="flex items-center gap-2">
-          <Cpu className={`w-3 h-3 ${
-            state.statusBar.provider === 'openai' ? 'text-green-400' : 'text-blue-400'
-          }`} />
-          <span className="text-gray-300">
-            {state.statusBar.provider === 'openai' ? 'GPT-4' : 'Groq'}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Monitor className="w-3 h-3 text-purple-400" />
-          <span className="text-gray-300 capitalize">{state.statusBar.mode}</span>
-        </div>
-
-        {state.statusBar.deepAnalysis && (
-          <div className="flex items-center gap-1 px-2 py-1 bg-yellow-500/20 rounded-full">
-            <Sparkles className="w-3 h-3 text-yellow-400" />
-            <span className="text-yellow-300">Deep Analysis</span>
+        {/* Glow effect */}
+        {isListening && (
+          <motion.div
+            className="absolute inset-0 rounded-2xl bg-red-500/20"
+            animate={{
+              scale: [1, 1.2, 1.4],
+              opacity: [0.5, 0.3, 0.1]
+            }}
+            transition={{
+              duration: 1.5,
+              repeat: Infinity,
+              ease: "easeOut"
+            }}
+          />
+        )}
+        
+        {/* Sound waves */}
+        {isListening && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            {[...Array(3)].map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute w-8 h-8 border-2 border-red-400/30 rounded-full"
+                animate={{
+                  scale: [1, 2, 3],
+                  opacity: [0.6, 0.3, 0]
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  delay: i * 0.3,
+                  ease: "easeOut"
+                }}
+              />
+            ))}
           </div>
         )}
-
-        <div className="flex items-center gap-2">
-          <Wifi className="w-3 h-3 text-green-400" />
-          <span className="text-gray-300">{Math.round(state.statusBar.responseTime)}ms</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Zap className="w-3 h-3 text-blue-400" />
-          <span className="text-gray-300">{state.statusBar.queriesRemaining}</span>
-        </div>
-      </motion.div>
+        
+        {/* Microphone icon */}
+        <motion.div
+          animate={{
+            rotate: isListening ? [0, 5, -5, 0] : 0,
+            scale: isListening ? [1, 1.1, 1] : 1
+          }}
+          transition={{
+            duration: 0.5,
+            repeat: isListening ? Infinity : 0,
+            repeatType: "reverse"
+          }}
+        >
+          <Mic className={`w-6 h-6 ${
+            isListening ? 'text-red-400' : 'text-gray-400'
+          }`} />
+        </motion.div>
+        
+        {/* Voice level indicator */}
+        {isListening && (
+          <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 flex gap-1">
+            {[...Array(5)].map((_, i) => (
+              <motion.div
+                key={i}
+                className="w-1 bg-red-400 rounded-full"
+                animate={{
+                  height: [4, 8, 12, 8, 4]
+                }}
+                transition={{
+                  duration: 1,
+                  repeat: Infinity,
+                  delay: i * 0.1
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </motion.button>
     );
   };
 
@@ -662,33 +1029,57 @@ export default function EnterpriseAIControlTower({
             key={widget.id}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-gray-900/50 backdrop-blur-lg rounded-lg border border-gray-700 p-4"
+            whileHover={{ scale: 1.02 }}
+            className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 shadow-lg"
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-400">{widget.title}</span>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold text-gray-300 uppercase tracking-wide">{widget.title}</span>
               {widget.realTime && (
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                  <span className="text-xs text-green-400">LIVE</span>
+                </div>
               )}
             </div>
             
-            <div className="text-2xl font-bold text-white">
-              {widget.type === 'kpi' ? `${Math.round(widget.value)}%` : widget.value}
+            <div className="relative">
+              <div className="text-2xl font-bold text-white mb-2">
+                {widget.type === 'kpi' ? `${Math.round(widget.value)}%` : widget.value}
+              </div>
+              
+              {/* Animated sparkline */}
+              <div className="h-8 flex items-end gap-1">
+                {Array.from({ length: 20 }).map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="flex-1 bg-gradient-to-t from-blue-500/50 to-blue-400/50 rounded-t"
+                    initial={{ height: 0 }}
+                    animate={{ height: `${Math.random() * 100}%` }}
+                    transition={{ duration: 0.5, delay: i * 0.05 }}
+                  />
+                ))}
+              </div>
             </div>
             
             {widget.trend && (
-              <div className="flex items-center gap-1 mt-2">
-                {widget.trend.direction === 'up' ? (
-                  <ChevronUp className="w-3 h-3 text-green-400" />
-                ) : widget.trend.direction === 'down' ? (
-                  <ChevronDown className="w-3 h-3 text-red-400" />
-                ) : (
-                  <div className="w-3 h-3 bg-gray-400 rounded-full" />
-                )}
-                <span className={`text-xs ${
-                  widget.trend.direction === 'up' ? 'text-green-400' :
-                  widget.trend.direction === 'down' ? 'text-red-400' : 'text-gray-400'
-                }`}>
-                  {Math.round(widget.trend.percentage)}%
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-700/50">
+                <div className="flex items-center gap-1">
+                  {widget.trend.direction === 'up' ? (
+                    <ChevronUp className="w-4 h-4 text-green-400" />
+                  ) : widget.trend.direction === 'down' ? (
+                    <ChevronDown className="w-4 h-4 text-red-400" />
+                  ) : (
+                    <div className="w-4 h-4 bg-gray-400 rounded-full" />
+                  )}
+                  <span className={`text-sm font-medium ${
+                    widget.trend.direction === 'up' ? 'text-green-400' :
+                    widget.trend.direction === 'down' ? 'text-red-400' : 'text-gray-400'
+                  }`}>
+                    {Math.round(widget.trend.percentage)}%
+                  </span>
+                </div>
+                <span className="text-xs text-gray-500">
+                  {widget.dataSource}
                 </span>
               </div>
             )}
@@ -698,9 +1089,456 @@ export default function EnterpriseAIControlTower({
     );
   };
 
-  // ============================================================
-  // MAIN RENDER
-  // ============================================================
+  const renderLiveDataStatus = () => {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-r from-green-900/20 to-blue-900/20 backdrop-blur-lg border border-green-500/20 rounded-lg px-4 py-2 mb-4"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span className="text-green-300 text-sm font-medium">
+                Datos en tiempo real activos
+              </span>
+            </div>
+            <div className="text-gray-400 text-sm">
+              Última sincronización: {formatTimeAgo(liveDataStatus.lastSync)}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4 text-xs text-gray-400">
+            <div className="flex items-center gap-1">
+              <Database className="w-3 h-3" />
+              <span>{liveDataStatus.dataPoints.toLocaleString()} puntos</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Signal className="w-3 h-3" />
+              <span>{liveDataStatus.activeFeeds} feeds</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Gauge className="w-3 h-3" />
+              <span>{liveDataStatus.latency}ms</span>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
+  const renderDeepAnalysisMode = () => {
+    if (!deepAnalysisMode) return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-gradient-to-r from-yellow-900/30 to-orange-900/30 backdrop-blur-lg border border-yellow-500/30 rounded-lg px-4 py-3 mb-4"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <BrainCircuit className="w-5 h-5 text-yellow-400 animate-pulse" />
+            <span className="text-yellow-300 font-semibold">
+              GPT-4.1 Strategic Engine Activado
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-yellow-400" />
+            <span className="text-yellow-200 text-sm">
+              Advanced Strategic Analysis
+            </span>
+          </div>
+          <div className="ml-auto">
+            <div className="flex items-center gap-1 px-2 py-1 bg-yellow-500/20 rounded-full">
+              <Zap className="w-3 h-3 text-yellow-400" />
+              <span className="text-yellow-300 text-xs">Premium</span>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
+  const renderContextualVisualizations = () => {
+    if (contextualVisualizations.length === 0) return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6"
+      >
+        {contextualVisualizations.map((viz, index) => (
+          <motion.div
+            key={index}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: index * 0.1 }}
+            className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6"
+          >
+            <h3 className="text-lg font-semibold text-white mb-4">{viz.title}</h3>
+            
+            {/* Render different visualization types */}
+            {viz.type === 'line-chart' && <LineChartVisualization data={viz.data} />}
+            {viz.type === 'pie-chart' && <PieChartVisualization data={viz.data} />}
+            {viz.type === 'bar-chart' && <BarChartVisualization data={viz.data} />}
+            {viz.type === 'kpi-grid' && <KPIGridVisualization data={viz.data} />}
+            {viz.type === 'heatmap' && <HeatmapVisualization data={viz.data} />}
+            {viz.type === 'radar-chart' && <RadarChartVisualization data={viz.data} />}
+            {viz.type === 'timeline' && <TimelineVisualization data={viz.data} />}
+            {viz.type === 'alert-grid' && <AlertGridVisualization data={viz.data} />}
+            {viz.type === 'gantt-chart' && <GanttChartVisualization data={viz.data} />}
+            {viz.type === 'progress-grid' && <ProgressGridVisualization data={viz.data} />}
+            {viz.type === 'resource-chart' && <ResourceChartVisualization data={viz.data} />}
+            {viz.type === 'efficiency-meter' && <EfficiencyMeterVisualization data={viz.data} />}
+            {viz.type === 'scenario-matrix' && <ScenarioMatrixVisualization data={viz.data} />}
+            {viz.type === 'growth-chart' && <GrowthChartVisualization data={viz.data} />}
+            {viz.type === 'competitive-map' && <CompetitiveMapVisualization data={viz.data} />}
+            {viz.type === 'roadmap-timeline' && <RoadmapTimelineVisualization data={viz.data} />}
+            {viz.type === 'overview-dashboard' && <OverviewDashboardVisualization data={viz.data} />}
+          </motion.div>
+        ))}
+      </motion.div>
+    );
+  };
+
+  const renderSmartSuggestions = () => {
+    if (smartSuggestions.length === 0) return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gray-900/50 backdrop-blur-lg rounded-lg border border-gray-700 p-4 mb-4"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Lightbulb className="w-4 h-4 text-yellow-400" />
+          <span className="text-sm font-medium text-gray-300">Sugerencias inteligentes</span>
+        </div>
+        
+        <div className="flex flex-wrap gap-2">
+          {smartSuggestions.slice(0, 6).map((suggestion) => (
+            <motion.button
+              key={suggestion.id}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setInput(suggestion.text)}
+              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs text-gray-300 hover:text-white transition-colors border border-gray-600 hover:border-gray-500"
+            >
+              {suggestion.text}
+            </motion.button>
+          ))}
+        </div>
+      </motion.div>
+    );
+  };
+
+  const renderStreamingResponse = () => {
+    if (!isStreaming || !streamingResponse) return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-br from-blue-900/20 to-purple-900/20 backdrop-blur-lg rounded-xl border border-blue-500/20 p-6 mb-6"
+      >
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+            <Brain className="w-4 h-4 text-blue-400" />
+          </div>
+          
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-blue-300 font-medium">IA Response</span>
+              {isStreaming && (
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+                  <span className="text-xs text-blue-400">Typing...</span>
+                </div>
+              )}
+            </div>
+            
+            <div className="text-gray-200 leading-relaxed">
+              {streamingResponse}
+              {isStreaming && (
+                <motion.span
+                  animate={{ opacity: [1, 0] }}
+                  transition={{ duration: 0.5, repeat: Infinity }}
+                  className="inline-block w-2 h-4 bg-blue-400 ml-1"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
+  // Placeholder visualization components
+  const LineChartVisualization = ({ data }: any) => (
+    <div className="h-48 flex items-center justify-center border border-gray-700 rounded-lg">
+      <div className="text-center">
+        <LineChart className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+        <p className="text-xs text-gray-400">Gráfico de líneas</p>
+        <p className="text-xs text-gray-500 mt-1">{data.labels?.length || 0} puntos de datos</p>
+      </div>
+    </div>
+  );
+
+  const PieChartVisualization = ({ data }: any) => (
+    <div className="h-48 flex items-center justify-center border border-gray-700 rounded-lg">
+      <div className="text-center">
+        <PieChart className="w-8 h-8 text-purple-400 mx-auto mb-2" />
+        <p className="text-xs text-gray-400">Gráfico circular</p>
+        <p className="text-xs text-gray-500 mt-1">{data.labels?.length || 0} categorías</p>
+      </div>
+    </div>
+  );
+
+  const BarChartVisualization = ({ data }: any) => (
+    <div className="h-48 flex items-center justify-center border border-gray-700 rounded-lg">
+      <div className="text-center">
+        <BarChart3 className="w-8 h-8 text-green-400 mx-auto mb-2" />
+        <p className="text-xs text-gray-400">Gráfico de barras</p>
+        <p className="text-xs text-gray-500 mt-1">{data.labels?.length || 0} elementos</p>
+      </div>
+    </div>
+  );
+
+  const KPIGridVisualization = ({ data }: any) => (
+    <div className="grid grid-cols-2 gap-3">
+      {Object.entries(data).map(([key, value]: [string, any]) => (
+        <div key={key} className="bg-gray-800/50 rounded-lg p-3 text-center">
+          <div className="text-lg font-bold text-white">{typeof value === 'number' ? value.toFixed(1) : value}</div>
+          <div className="text-xs text-gray-400">{key}</div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const HeatmapVisualization = ({ data }: any) => (
+    <div className="h-48 flex items-center justify-center border border-gray-700 rounded-lg">
+      <div className="text-center">
+        <Activity className="w-8 h-8 text-red-400 mx-auto mb-2" />
+        <p className="text-xs text-gray-400">Mapa de calor</p>
+        <p className="text-xs text-gray-500 mt-1">{data.categories?.length || 0} categorías</p>
+      </div>
+    </div>
+  );
+
+  const RadarChartVisualization = ({ data }: any) => (
+    <div className="h-48 flex items-center justify-center border border-gray-700 rounded-lg">
+      <div className="text-center">
+        <Radar className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+        <p className="text-xs text-gray-400">Gráfico radar</p>
+        <p className="text-xs text-gray-500 mt-1">{data.labels?.length || 0} dimensiones</p>
+      </div>
+    </div>
+  );
+
+  const TimelineVisualization = ({ data }: any) => (
+    <div className="h-48 flex items-center justify-center border border-gray-700 rounded-lg">
+      <div className="text-center">
+        <Calendar className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
+        <p className="text-xs text-gray-400">Línea de tiempo</p>
+        <p className="text-xs text-gray-500 mt-1">{data.labels?.length || 0} períodos</p>
+      </div>
+    </div>
+  );
+
+  const AlertGridVisualization = ({ data }: any) => (
+    <div className="grid grid-cols-2 gap-3">
+      {Object.entries(data).map(([key, value]: [string, any]) => (
+        <div key={key} className={`rounded-lg p-3 text-center ${
+          key === 'critical' ? 'bg-red-900/30 border border-red-500/30' :
+          key === 'warning' ? 'bg-yellow-900/30 border border-yellow-500/30' :
+          key === 'info' ? 'bg-blue-900/30 border border-blue-500/30' :
+          'bg-green-900/30 border border-green-500/30'
+        }`}>
+          <div className="text-lg font-bold text-white">{value}</div>
+          <div className="text-xs text-gray-400 capitalize">{key}</div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const GanttChartVisualization = ({ data }: any) => (
+    <div className="h-48 flex items-center justify-center border border-gray-700 rounded-lg">
+      <div className="text-center">
+        <LayoutDashboard className="w-8 h-8 text-orange-400 mx-auto mb-2" />
+        <p className="text-xs text-gray-400">Diagrama Gantt</p>
+        <p className="text-xs text-gray-500 mt-1">{data.tasks?.length || 0} tareas</p>
+      </div>
+    </div>
+  );
+
+  const ProgressGridVisualization = ({ data }: any) => (
+    <div className="space-y-2">
+      {data.processes?.map((process: any, index: number) => (
+        <div key={index} className="bg-gray-800/50 rounded-lg p-3">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm text-gray-300">{process.name}</span>
+            <span className="text-xs text-gray-400">{process.efficiency}%</span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full ${
+                process.status === 'optimal' ? 'bg-green-500' :
+                process.status === 'warning' ? 'bg-yellow-500' :
+                process.status === 'critical' ? 'bg-red-500' : 'bg-blue-500'
+              }`}
+              style={{ width: `${process.efficiency}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const ResourceChartVisualization = ({ data }: any) => (
+    <div className="space-y-2">
+      {data.resources?.map((resource: any, index: number) => (
+        <div key={index} className="bg-gray-800/50 rounded-lg p-3">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm text-gray-300">{resource.type}</span>
+            <span className="text-xs text-gray-400">{resource.utilized}%</span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2">
+            <div 
+              className="bg-blue-500 h-2 rounded-full"
+              style={{ width: `${resource.utilized}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const EfficiencyMeterVisualization = ({ data }: any) => (
+    <div className="text-center">
+      <div className="relative w-32 h-32 mx-auto mb-4">
+        <div className="absolute inset-0 rounded-full border-8 border-gray-700"></div>
+        <div 
+          className="absolute inset-0 rounded-full border-8 border-green-500 border-t-transparent border-r-transparent transform rotate-45"
+          style={{ transform: `rotate(${45 + (data.overall * 2.7)}deg)` }}
+        ></div>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-2xl font-bold text-white">{data.overall}%</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        {Object.entries(data.breakdown).map(([key, value]: [string, any]) => (
+          <div key={key} className="text-gray-400">
+            {key}: {value}%
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const ScenarioMatrixVisualization = ({ data }: any) => (
+    <div className="space-y-3">
+      {data.scenarios?.map((scenario: any, index: number) => (
+        <div key={index} className="bg-gray-800/50 rounded-lg p-3">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-300">{scenario.name}</span>
+            <span className="text-xs text-gray-400">{scenario.probability * 100}% prob</span>
+          </div>
+          <div className="text-lg font-bold text-white mt-1">
+            ${(scenario.expected / 1000000).toFixed(1)}M
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const GrowthChartVisualization = ({ data }: any) => (
+    <div className="h-48 flex items-center justify-center border border-gray-700 rounded-lg">
+      <div className="text-center">
+        <TrendingUp className="w-8 h-8 text-green-400 mx-auto mb-2" />
+        <p className="text-xs text-gray-400">Proyecciones de crecimiento</p>
+        <p className="text-xs text-gray-500 mt-1">{data.years?.length || 0} años</p>
+      </div>
+    </div>
+  );
+
+  const CompetitiveMapVisualization = ({ data }: any) => (
+    <div className="space-y-2">
+      {data.companies?.map((company: any, index: number) => (
+        <div key={index} className={`rounded-lg p-3 ${
+          company.name === 'Nosotros' ? 'bg-blue-900/30 border border-blue-500/30' : 'bg-gray-800/50'
+        }`}>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-300">{company.name}</span>
+            <span className="text-xs text-gray-400">{company.market}% mercado</span>
+          </div>
+          <div className="flex gap-4 mt-2 text-xs text-gray-400">
+            <span>Crecimiento: {company.growth}%</span>
+            <span>Innovación: {company.innovation}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const RoadmapTimelineVisualization = ({ data }: any) => (
+    <div className="space-y-2">
+      {data.phases?.map((phase: any, index: number) => (
+        <div key={index} className="bg-gray-800/50 rounded-lg p-3">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-300">{phase.name}</span>
+            <span className={`text-xs px-2 py-1 rounded ${
+              phase.status === 'completed' ? 'bg-green-500/20 text-green-300' :
+              phase.status === 'in-progress' ? 'bg-blue-500/20 text-blue-300' :
+              'bg-gray-500/20 text-gray-300'
+            }`}>
+              {phase.status}
+            </span>
+          </div>
+          <div className="text-xs text-gray-400 mt-1">
+            {phase.start} - {phase.end}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const OverviewDashboardVisualization = ({ data }: any) => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        {Object.entries(data.kpis).map(([key, value]: [string, any]) => (
+          <div key={key} className="bg-gray-800/50 rounded-lg p-3 text-center">
+            <div className="text-lg font-bold text-white">{typeof value === 'number' ? value.toFixed(1) : value}</div>
+            <div className="text-xs text-gray-400">{key}</div>
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-gray-700 pt-3">
+        <p className="text-sm font-medium text-gray-300 mb-2">Tendencias</p>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {Object.entries(data.trends).map(([key, value]: [string, any]) => (
+            <div key={key} className="flex justify-between">
+              <span className="text-gray-400">{key}:</span>
+              <span className={value > 0 ? 'text-green-400' : 'text-red-400'}>
+                {value > 0 ? '+' : ''}{value}%
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const formatTimeAgo = (date: Date): string => {
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return 'hace unos segundos';
+    if (seconds < 3600) return `hace ${Math.floor(seconds / 60)} minutos`;
+    return `hace ${Math.floor(seconds / 3600)} horas`;
+  };
 
   return (
     <div className={`min-h-screen bg-gradient-to-br from-gray-900 via-blue-900/20 to-purple-900/20 ${
@@ -767,21 +1605,38 @@ export default function EnterpriseAIControlTower({
         {/* Main Content */}
         <main className="flex-1 overflow-hidden">
           <div className="h-full flex flex-col max-w-7xl mx-auto px-6 py-6">
+            {/* Live Data Status */}
+            {renderLiveDataStatus()}
+            
+            {/* Deep Analysis Mode */}
+            {renderDeepAnalysisMode()}
+            
             {/* Live Widgets */}
             {renderLiveWidgets()}
 
+            {/* Contextual Visualizations */}
+            {renderContextualVisualizations()}
+
             {/* Thinking Visualization */}
             {renderThinkingVisualization()}
+            
+            {/* Streaming Response */}
+            {renderStreamingResponse()}
 
             {/* Messages Container */}
             <div className="flex-1 overflow-y-auto mb-6 space-y-4">
               {/* Messages would go here */}
-              <div className="text-center text-gray-500 py-8">
-                <Brain className="w-12 h-12 mx-auto mb-4 text-gray-600" />
-                <p>Enterprise AI Control Tower está listo para analizar tus consultas</p>
-                <p className="text-sm mt-2">Intenta preguntar sobre análisis financiero, detección de riesgos o simulaciones estratégicas</p>
-              </div>
+              {!isStreaming && streamingResponse === '' && (
+                <div className="text-center text-gray-500 py-8">
+                  <Brain className="w-12 h-12 mx-auto mb-4 text-gray-600" />
+                  <p className="text-lg font-medium">Enterprise AI Control Tower está listo para analizar tus consultas</p>
+                  <p className="text-sm mt-2">Intenta preguntar sobre análisis financiero, detección de riesgos o simulaciones estratégicas</p>
+                </div>
+              )}
             </div>
+
+            {/* Smart Suggestions */}
+            {renderSmartSuggestions()}
 
             {/* Command Actions */}
             <div className="relative">
@@ -792,19 +1647,11 @@ export default function EnterpriseAIControlTower({
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-gray-900/80 backdrop-blur-lg rounded-lg border border-gray-700"
+              className="bg-gradient-to-r from-gray-900/80 to-gray-800/80 backdrop-blur-lg rounded-xl border border-gray-700/50 shadow-lg"
             >
               <div className="flex items-center gap-4 p-4">
-                <button
-                  onClick={() => setIsListening(!isListening)}
-                  className={`p-3 rounded-lg transition-colors ${
-                    isListening 
-                      ? 'bg-red-500/20 text-red-400 animate-pulse' 
-                      : 'bg-gray-800 text-gray-400 hover:text-white'
-                  }`}
-                >
-                  <Mic className="w-5 h-5" />
-                </button>
+                {/* Premium Microphone */}
+                {renderPremiumMicrophone()}
 
                 <input
                   ref={inputRef}
@@ -813,13 +1660,13 @@ export default function EnterpriseAIControlTower({
                   onChange={(e) => setInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                   placeholder="Analizar situación financiera, detectar riesgos, simular escenarios..."
-                  className="flex-1 bg-transparent text-white placeholder-gray-500 outline-none"
+                  className="flex-1 bg-transparent text-white placeholder-gray-500 outline-none text-sm"
                   disabled={state.loading}
                 />
 
                 <button
                   onClick={() => setShowCommandActions(!showCommandActions)}
-                  className="p-3 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors"
+                  className="p-3 bg-gray-800/50 text-gray-400 hover:text-white rounded-lg transition-colors border border-gray-600/50 hover:border-gray-500/50"
                 >
                   <CommandIcon className="w-5 h-5" />
                 </button>
@@ -827,7 +1674,7 @@ export default function EnterpriseAIControlTower({
                 <button
                   onClick={handleSendMessage}
                   disabled={!input.trim() || state.loading}
-                  className="p-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="p-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-purple-500/25"
                 >
                   {state.loading ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
