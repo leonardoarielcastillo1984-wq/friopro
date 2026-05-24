@@ -1408,4 +1408,112 @@ export async function commandCenterRoutes(app: FastifyInstance) {
     }
   });
 
+  // ============================================================
+  // WIDGETS CONFIGURABLES — CATÁLOGO Y DATOS REALES
+  // ============================================================
+
+  app.get('/widgets/catalog', async (req: FastifyRequest, reply: FastifyReply) => {
+    return reply.send({
+      success: true,
+      data: [
+        { key: 'employees_total',        label: 'Empleados totales',       module: 'RRHH',          icon: 'users',       color: 'blue' },
+        { key: 'employees_active',       label: 'Empleados activos',       module: 'RRHH',          icon: 'user-check',  color: 'green' },
+        { key: 'projects_total',         label: 'Proyectos totales',       module: 'Project360',    icon: 'folder',      color: 'purple' },
+        { key: 'projects_active',        label: 'Proyectos activos',       module: 'Project360',    icon: 'play-circle', color: 'indigo' },
+        { key: 'projects_at_risk',       label: 'Proyectos en riesgo',     module: 'Project360',    icon: 'alert-triangle', color: 'orange' },
+        { key: 'fleet_total',            label: 'Vehículos totales',       module: 'Flota360',      icon: 'truck',       color: 'cyan' },
+        { key: 'fleet_active',           label: 'Vehículos operativos',    module: 'Flota360',      icon: 'check-circle', color: 'green' },
+        { key: 'fleet_maintenance',      label: 'Vehículos en taller',     module: 'Flota360',      icon: 'tool',        color: 'yellow' },
+        { key: 'ncr_total',              label: 'NCRs totales',            module: 'Calidad',       icon: 'file-x',      color: 'red' },
+        { key: 'ncr_open',              label: 'NCRs abiertas',           module: 'Calidad',       icon: 'alert-circle', color: 'orange' },
+        { key: 'ncr_critical',           label: 'NCRs críticas',           module: 'Calidad',       icon: 'zap',         color: 'red' },
+        { key: 'risks_total',            label: 'Riesgos registrados',     module: 'Riesgos',       icon: 'shield',      color: 'yellow' },
+        { key: 'risks_high',             label: 'Riesgos altos',           module: 'Riesgos',       icon: 'shield-off',  color: 'red' },
+        { key: 'audits_total',           label: 'Auditorías totales',      module: 'Auditorías',    icon: 'clipboard',   color: 'teal' },
+        { key: 'audits_open',            label: 'Auditorías en curso',     module: 'Auditorías',    icon: 'clipboard-list', color: 'blue' },
+        { key: 'calibrations_due',       label: 'Calibraciones vencidas',  module: 'Calibraciones', icon: 'clock',       color: 'orange' },
+      ]
+    });
+  });
+
+  app.post('/widgets/data', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { keys }: { keys: string[] } = body;
+      if (!Array.isArray(keys) || keys.length === 0) return reply.code(400).send({ error: 'keys requerido' });
+
+      const db = app.prisma as any;
+      const results: Record<string, number | null> = {};
+
+      await Promise.all(keys.map(async (key) => {
+        try {
+          switch (key) {
+            case 'employees_total':
+              results[key] = await db.employee.count({ where: { tenantId } });
+              break;
+            case 'employees_active':
+              results[key] = await db.employee.count({ where: { tenantId, status: 'ACTIVE' } });
+              break;
+            case 'projects_total':
+              results[key] = await db.project360.count({ where: { tenantId, deletedAt: null } });
+              break;
+            case 'projects_active':
+              results[key] = await db.project360.count({ where: { tenantId, deletedAt: null, status: 'ACTIVE' } });
+              break;
+            case 'projects_at_risk':
+              results[key] = await db.project360.count({ where: { tenantId, deletedAt: null, status: 'AT_RISK' } });
+              break;
+            case 'fleet_total':
+              results[key] = await db.flotaVehiculo.count({ where: { tenantId } });
+              break;
+            case 'fleet_active':
+              results[key] = await db.flotaVehiculo.count({ where: { tenantId, status: 'ACTIVO' } });
+              break;
+            case 'fleet_maintenance':
+              results[key] = await db.flotaVehiculo.count({ where: { tenantId, status: 'EN_TALLER' } });
+              break;
+            case 'ncr_total':
+              results[key] = await db.nonConformity.count({ where: { tenantId } });
+              break;
+            case 'ncr_open':
+              results[key] = await db.nonConformity.count({ where: { tenantId, status: { not: 'CLOSED' }, deletedAt: null } });
+              break;
+            case 'ncr_critical':
+              results[key] = await db.nonConformity.count({ where: { tenantId, severity: { in: ['CRITICAL', 'HIGH'] }, status: { not: 'CLOSED' } } });
+              break;
+            case 'risks_total':
+              results[key] = await db.risk.count({ where: { tenantId } });
+              break;
+            case 'risks_high':
+              results[key] = await db.risk.count({ where: { tenantId, level: { in: ['HIGH', 'CRITICAL'] } } });
+              break;
+            case 'audits_total':
+              results[key] = await db.auditRun?.count({ where: { tenantId } }) ?? null;
+              break;
+            case 'audits_open':
+              results[key] = await db.auditRun?.count({ where: { tenantId, status: { in: ['PLANNED', 'IN_PROGRESS'] } } }) ?? null;
+              break;
+            case 'calibrations_due': {
+              const now = new Date();
+              results[key] = await db.calibration?.count({ where: { tenantId, nextDueDate: { lte: now } } }) ?? null;
+              break;
+            }
+            default:
+              results[key] = null;
+          }
+        } catch {
+          results[key] = null;
+        }
+      }));
+
+      return reply.send({ success: true, data: results });
+
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
 }

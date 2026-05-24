@@ -43,6 +43,7 @@ import {
   VolumeX,
   Lightbulb, User
 } from 'lucide-react';
+import DashboardWidgets from './DashboardWidgets';
 
 import {
   EnterpriseCCState,
@@ -1185,73 +1186,7 @@ export default function EnterpriseAIControlTower({
   };
 
   const renderLiveWidgets = () => {
-    if (state.activeWidgets.length === 0) return null;
-
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {state.activeWidgets.map((widget) => (
-          <motion.div
-            key={widget.id}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            whileHover={{ scale: 1.02 }}
-            className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 shadow-lg"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-gray-300 uppercase tracking-wide">{widget.title}</span>
-              {widget.realTime && (
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                  <span className="text-xs text-green-400">LIVE</span>
-                </div>
-              )}
-            </div>
-            
-            <div className="relative">
-              <div className="text-2xl font-bold text-white mb-2">
-                {widget.type === 'kpi' ? `${Math.round(widget.value)}%` : widget.value}
-              </div>
-              
-              {/* Animated sparkline */}
-              <div className="h-8 flex items-end gap-1">
-                {Array.from({ length: 20 }).map((_, i) => (
-                  <motion.div
-                    key={i}
-                    className="flex-1 bg-gradient-to-t from-blue-500/50 to-blue-400/50 rounded-t"
-                    initial={{ height: 0 }}
-                    animate={{ height: `${Math.random() * 100}%` }}
-                    transition={{ duration: 0.5, delay: i * 0.05 }}
-                  />
-                ))}
-              </div>
-            </div>
-            
-            {widget.trend && (
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-700/50">
-                <div className="flex items-center gap-1">
-                  {widget.trend.direction === 'up' ? (
-                    <ChevronUp className="w-4 h-4 text-green-400" />
-                  ) : widget.trend.direction === 'down' ? (
-                    <ChevronDown className="w-4 h-4 text-red-400" />
-                  ) : (
-                    <div className="w-4 h-4 bg-gray-400 rounded-full" />
-                  )}
-                  <span className={`text-sm font-medium ${
-                    widget.trend.direction === 'up' ? 'text-green-400' :
-                    widget.trend.direction === 'down' ? 'text-red-400' : 'text-gray-400'
-                  }`}>
-                    {Math.round(widget.trend.percentage)}%
-                  </span>
-                </div>
-                <span className="text-xs text-gray-500">
-                  {widget.dataSource}
-                </span>
-              </div>
-            )}
-          </motion.div>
-        ))}
-      </div>
-    );
+    return <DashboardWidgets />;
   };
 
   const renderLiveDataStatus = () => {
