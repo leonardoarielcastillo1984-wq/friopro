@@ -624,6 +624,8 @@ export default function EnterpriseAIControlTower({
       } else {
         clearInterval(streamInterval);
         setIsStreaming(false);
+        // Reiniciar el estado loading para volver a habilitar el input
+        setState(prev => ({ ...prev, loading: false }));
       }
     }, 20); // 50 characters per second
   };
