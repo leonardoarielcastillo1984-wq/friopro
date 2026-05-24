@@ -876,8 +876,8 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       await memoryEngine.addQueryToHistory(memoryContext, query, result);
       await memoryEngine.detectAndStorePatterns(memoryContext, query, result);
 
-      // Registrar uso de IA
-      await loggingEngine.logAIQuery({
+      // Registrar uso de IA (no crítico - no interrumpe si falla)
+      try { await loggingEngine.logAIQuery({
         tenantId,
         userId,
         sessionId: conversationId,
@@ -896,12 +896,12 @@ export async function commandCenterRoutes(app: FastifyInstance) {
           userRole,
           widgets: result.widgets?.length || 0
         }
-      });
+      }); } catch (logErr) { app.log.warn({ err: logErr }, '[Command Center] Logging error (non-critical)'); }
 
-      // Guardar conversación si es nueva
+      // Guardar conversación si es nueva (tablas opcionales)
       if (conversationId) {
         try {
-          await app.prisma.aIMessage.create({
+          await (app.prisma as any).aIMessage.create({
             data: {
               conversationId,
               role: 'USER',
@@ -913,7 +913,7 @@ export async function commandCenterRoutes(app: FastifyInstance) {
           });
 
           if (result.provider) {
-            await app.prisma.aIMessage.create({
+            await (app.prisma as any).aIMessage.create({
               data: {
                 conversationId,
                 role: 'ASSISTANT',
