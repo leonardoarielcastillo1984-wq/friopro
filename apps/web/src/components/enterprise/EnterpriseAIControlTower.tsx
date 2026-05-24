@@ -501,52 +501,10 @@ export default function EnterpriseAIControlTower({
   };
 
   const generateContextualVisualizations = async (intent: Intent): Promise<void> => {
-    try {
-      let visualizations: any[] = [];
-
-      switch (intent.type) {
-        case 'financial':
-          visualizations = [
-            { type: 'line-chart', title: 'Cash Flow', data: generateFinancialData() },
-            { type: 'pie-chart', title: 'Distribución de Costos', data: generateCostData() },
-            { type: 'bar-chart', title: 'Revenue Streams', data: generateRevenueData() },
-            { type: 'kpi-grid', title: 'Indicadores Financieros', data: generateKPIData() }
-          ];
-          break;
-        case 'risk':
-          visualizations = [
-            { type: 'heatmap', title: 'Mapa de Riesgos', data: generateRiskData() },
-            { type: 'radar-chart', title: 'Análisis de Vulnerabilidades', data: generateVulnerabilityData() },
-            { type: 'timeline', title: 'Evolución de Riesgos', data: generateRiskTimelineData() },
-            { type: 'alert-grid', title: 'Alertas Críticas', data: generateAlertData() }
-          ];
-          break;
-        case 'operational':
-          visualizations = [
-            { type: 'gantt-chart', title: 'Timeline Operativo', data: generateOperationalData() },
-            { type: 'progress-grid', title: 'Estado de Procesos', data: generateProcessData() },
-            { type: 'resource-chart', title: 'Utilización de Recursos', data: generateResourceData() },
-            { type: 'efficiency-meter', title: 'Eficiencia Operativa', data: generateEfficiencyData() }
-          ];
-          break;
-        case 'strategic':
-          visualizations = [
-            { type: 'scenario-matrix', title: 'Análisis de Escenarios', data: generateScenarioData() },
-            { type: 'growth-chart', title: 'Proyecciones de Crecimiento', data: generateGrowthData() },
-            { type: 'competitive-map', title: 'Mapa Competitivo', data: generateCompetitiveData() },
-            { type: 'roadmap-timeline', title: 'Roadmap Estratégico', data: generateRoadmapData() }
-          ];
-          break;
-        default:
-          // No generar visualizaciones mock por defecto
-          // Solo mostrar datos si vienen del backend
-          visualizations = [];
-      }
-
-      setContextualVisualizations(visualizations);
-    } catch (error) {
-      console.error('Error generating contextual visualizations:', error);
-    }
+    // NO generar visualizaciones mock locales
+    // Las visualizaciones deben venir exclusivamente del backend con datos reales
+    // Si el backend no devuelve widgets, no se muestra nada (array vacío)
+    setContextualVisualizations([]);
   };
 
   const monitorThinkingProgress = (sessionId: string) => {
