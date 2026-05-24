@@ -206,8 +206,18 @@ export default function EnterpriseAIControlTower({
   };
 
   const loadFloatingAlerts = async (): Promise<FloatingAlert[]> => {
-    const response = await apiFetch('/command-center/alerts');
-    return response.data.alerts;
+    try {
+      const response = await apiFetch('/command-center/alerts');
+      if (!response.data) {
+        return [];
+      }
+      // El backend puede devolver response.data.alerts o directamente response.data
+      const alerts = response.data.alerts || response.data;
+      return Array.isArray(alerts) ? alerts : [];
+    } catch (error) {
+      console.error('Error loading floating alerts:', error);
+      return [];
+    }
   };
 
   const loadSmartSuggestions = async (): Promise<SmartSuggestion[]> => {
@@ -860,6 +870,7 @@ export default function EnterpriseAIControlTower({
   };
 
   const renderFloatingAlerts = () => {
+    if (!state.floatingAlerts || !Array.isArray(state.floatingAlerts)) return null;
     const activeAlerts = state.floatingAlerts.filter(a => !a.dismissed);
     if (activeAlerts.length === 0) return null;
 
