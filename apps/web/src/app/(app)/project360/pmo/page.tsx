@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import {
   ArrowLeft, BarChart3, TrendingUp, TrendingDown, DollarSign, Target, AlertTriangle,
   CheckCircle2, XCircle, Users, Briefcase, Clock, ShieldAlert, Zap, ArrowUpRight,
-  Award, Activity, PieChart
+  Award, Activity, PieChart, Grid3X3, GitCompare, ArrowUpDown, Layers, Building2,
+  UserCircle, Filter, X, ChevronDown, ChevronUp, Eye
 } from 'lucide-react';
 
 interface Kpi {
@@ -52,6 +53,11 @@ export default function PmoDashboardPage() {
   const [data, setData] = useState<{ kpi: Kpi | null; ranking: RankingItem[]; projects: ProjectSummary[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'verde' | 'amarillo' | 'rojo' | 'riesgo'>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'compare'>('list');
+  const [groupBy, setGroupBy] = useState<'none' | 'cliente' | 'gerente' | 'unidad'>('none');
+  const [sortBy, setSortBy] = useState<'margin' | 'roi' | 'riesgo' | 'probabilidad'>('margin');
+  const [compareList, setCompareList] = useState<string[]>([]);
+  const [showComparison, setShowComparison] = useState(false);
 
   useEffect(() => {
     loadDashboard();
@@ -65,6 +71,29 @@ export default function PmoDashboardPage() {
     } catch (e) { console.error(e); }
     setLoading(false);
   };
+
+  const sortedProjects = useMemo(() => {
+    const list = [...(data?.projects || [])];
+    return list.sort((a, b) => {
+      switch (sortBy) {
+        case 'margin': return (b.margin || 0) - (a.margin || 0);
+        case 'roi': return (b.roi || 0) - (a.roi || 0);
+        case 'riesgo': return (b.riskScore || 0) - (a.riskScore || 0);
+        case 'probabilidad': return (b.probabilityOfWinning || 0) - (a.probabilityOfWinning || 0);
+        default: return 0;
+      }
+    });
+  }, [data?.projects, sortBy]);
+
+  const toggleCompare = (projectId: string) => {
+    setCompareList(prev => {
+      if (prev.includes(projectId)) return prev.filter(id => id !== projectId);
+      if (prev.length >= 3) return [...prev.slice(1), projectId];
+      return [...prev, projectId];
+    });
+  };
+
+  const selectedForComparison = data?.projects.filter(p => compareList.includes(p.id)) || [];
 
   if (loading) {
     return (
@@ -220,78 +249,305 @@ export default function PmoDashboardPage() {
         </div>
       </div>
 
-      {/* Portfolio con filtros */}
+      {/* Portfolio con controles avanzados */}
       <div className="bg-white rounded-xl border overflow-hidden">
-        <div className="px-6 py-4 border-b flex items-center justify-between flex-wrap gap-3">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-indigo-600" /> Portfolio de Proyectos
-          </h3>
-          <div className="flex gap-2">
-            {[
-              { key: 'all' as const, label: 'Todos' },
-              { key: 'verde' as const, label: 'Viables' },
-              { key: 'amarillo' as const, label: 'Revisar' },
-              { key: 'rojo' as const, label: 'Riesgo' },
-            ].map(f => (
+        <div className="px-6 py-4 border-b flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-indigo-600" /> Portfolio Management
+            </h3>
+            {compareList.length > 0 && (
               <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  filter === f.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                onClick={() => setShowComparison(true)}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium flex items-center gap-1"
               >
-                {f.label}
+                <GitCompare className="w-3 h-3" /> Comparar ({compareList.length})
               </button>
-            ))}
+            )}
+          </div>
+          
+          {/* Controls */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* View Mode */}
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              {([
+                { key: 'list', icon: BarChart3, label: 'Lista' },
+                { key: 'grid', icon: Grid3X3, label: 'Grid' },
+                { key: 'compare', icon: GitCompare, label: 'Comparar' },
+              ] as const).map(m => (
+                <button
+                  key={m.key}
+                  onClick={() => setViewMode(m.key)}
+                  className={`p-1.5 rounded flex items-center gap-1 text-xs font-medium ${
+                    viewMode === m.key ? 'bg-white text-gray-900 shadow' : 'text-gray-600'
+                  }`}
+                  title={m.label}
+                >
+                  <m.icon className="w-4 h-4" />
+                </button>
+              ))}
+            </div>
+            
+            {/* Group By */}
+            <select
+              value={groupBy}
+              onChange={e => setGroupBy(e.target.value as any)}
+              className="px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-medium border-0"
+            >
+              <option value="none">Sin agrupar</option>
+              <option value="cliente">Por Cliente</option>
+              <option value="gerente">Por Gerente</option>
+              <option value="unidad">Por Unidad</option>
+            </select>
+            
+            {/* Sort By */}
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as any)}
+              className="px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-medium border-0"
+            >
+              <option value="margin">Ordenar: Margen</option>
+              <option value="roi">Ordenar: ROI</option>
+              <option value="riesgo">Ordenar: Riesgo</option>
+              <option value="probabilidad">Ordenar: Prob. Adjud.</option>
+            </select>
+            
+            {/* Filter */}
+            <div className="flex gap-1">
+              {[
+                { key: 'all' as const, label: 'Todos' },
+                { key: 'verde' as const, label: 'Viables', color: 'bg-emerald-100 text-emerald-700' },
+                { key: 'amarillo' as const, label: 'Revisar', color: 'bg-amber-100 text-amber-700' },
+                { key: 'rojo' as const, label: 'Riesgo', color: 'bg-red-100 text-red-700' },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setFilter(f.key)}
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                    filter === f.key 
+                      ? f.color || 'bg-blue-600 text-white' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Proyecto</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Etapa</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Margen</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">ROI</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Viabilidad</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Riesgo</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Prob. Adjud.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProjects.map(p => (
-                <tr key={p.id} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <Link href={`/project360/${p.id}`} className="font-medium text-blue-600 hover:underline">
+        {/* Content based on viewMode */}
+        {viewMode === 'list' && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Proyecto</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Etapa</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600">Margen</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600">ROI</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Viabilidad</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Riesgo</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Prob. Adjud.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedProjects.map(p => (
+                  <tr key={p.id} className="border-t hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <Link href={`/project360/${p.id}`} className="font-medium text-blue-600 hover:underline">
+                        {p.name}
+                      </Link>
+                      <div className="text-xs text-gray-500">{p.code}</div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{p.etapa}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900">{p.margin?.toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{p.roi?.toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[p.viabilityStatus]?.bg || 'bg-gray-100'} ${STATUS_BADGE[p.viabilityStatus]?.text || 'text-gray-700'}`}>
+                        {STATUS_BADGE[p.viabilityStatus]?.label || p.viabilityStatus}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-xs font-semibold ${p.riskScore > 60 ? 'text-red-600' : p.riskScore > 40 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {p.riskScore}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-xs font-semibold text-blue-600">{p.probabilityOfWinning}%</span>
+                    </td>
+                  </tr>
+                ))}
+                {sortedProjects.length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">Sin proyectos en este filtro</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {viewMode === 'grid' && (
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {sortedProjects.map(p => (
+              <div key={p.id} className="bg-white rounded-xl border p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <Link href={`/project360/${p.id}`} className="font-medium text-blue-600 hover:underline text-sm">
                       {p.name}
                     </Link>
                     <div className="text-xs text-gray-500">{p.code}</div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{p.etapa}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{p.margin?.toFixed(1)}%</td>
-                  <td className="px-4 py-3 text-right text-gray-700">{p.roi?.toFixed(1)}%</td>
-                  <td className="px-4 py-3 text-center">
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[p.viabilityStatus]?.bg || 'bg-gray-100'} ${STATUS_BADGE[p.viabilityStatus]?.text || 'text-gray-700'}`}>
+                    {STATUS_BADGE[p.viabilityStatus]?.label || p.viabilityStatus}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                  <div className="bg-gray-50 rounded p-2">
+                    <div className="text-gray-500">Margen</div>
+                    <div className="font-semibold">{p.margin?.toFixed(1)}%</div>
+                  </div>
+                  <div className="bg-gray-50 rounded p-2">
+                    <div className="text-gray-500">ROI</div>
+                    <div className="font-semibold">{p.roi?.toFixed(1)}%</div>
+                  </div>
+                  <div className="bg-gray-50 rounded p-2">
+                    <div className="text-gray-500">Riesgo</div>
+                    <div className={`font-semibold ${p.riskScore > 60 ? 'text-red-600' : 'text-emerald-600'}`}>{p.riskScore}%</div>
+                  </div>
+                  <div className="bg-gray-50 rounded p-2">
+                    <div className="text-gray-500">Prob.</div>
+                    <div className="font-semibold text-blue-600">{p.probabilityOfWinning}%</div>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500">{p.etapa}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {viewMode === 'compare' && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Proyecto</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Comparar</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600">Margen</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600">ROI</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Viabilidad</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Riesgo</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600">Prob. Adjud.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedProjects.map(p => (
+                  <tr key={p.id} className={`border-t hover:bg-gray-50 ${compareList.includes(p.id) ? 'bg-blue-50/50' : ''}`}>
+                    <td className="px-4 py-3">
+                      <Link href={`/project360/${p.id}`} className="font-medium text-blue-600 hover:underline">
+                        {p.name}
+                      </Link>
+                      <div className="text-xs text-gray-500">{p.code}</div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => toggleCompare(p.id)}
+                        className={`w-6 h-6 rounded flex items-center justify-center ${
+                          compareList.includes(p.id) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                        }`}
+                      >
+                        {compareList.includes(p.id) ? <CheckCircle2 className="w-4 h-4" /> : <span className="text-xs">+</span>}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900">{p.margin?.toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{p.roi?.toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[p.viabilityStatus]?.bg || 'bg-gray-100'} ${STATUS_BADGE[p.viabilityStatus]?.text || 'text-gray-700'}`}>
+                        {STATUS_BADGE[p.viabilityStatus]?.label || p.viabilityStatus}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-xs font-semibold ${p.riskScore > 60 ? 'text-red-600' : p.riskScore > 40 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {p.riskScore}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-xs font-semibold text-blue-600">{p.probabilityOfWinning}%</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Comparison Modal */}
+      {showComparison && selectedForComparison.length > 0 && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <GitCompare className="w-5 h-5 text-blue-600" /> Comparación de Proyectos
+              </h3>
+              <button onClick={() => setShowComparison(false)} className="p-2 text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="grid" style={{ gridTemplateColumns: `repeat(${selectedForComparison.length + 1}, minmax(150px, 1fr))` }}>
+                {/* Headers */}
+                <div className="font-medium text-gray-700 p-3 bg-gray-50">Métrica</div>
+                {selectedForComparison.map(p => (
+                  <div key={p.id} className="font-semibold text-blue-700 p-3 bg-blue-50 text-center">
+                    <Link href={`/project360/${p.id}`} className="hover:underline">{p.name}</Link>
+                  </div>
+                ))}
+                
+                {/* Margen */}
+                <div className="p-3 border-t font-medium text-gray-600">Margen</div>
+                {selectedForComparison.map(p => (
+                  <div key={p.id} className="p-3 border-t text-center font-semibold">{p.margin?.toFixed(1)}%</div>
+                ))}
+                
+                {/* ROI */}
+                <div className="p-3 border-t font-medium text-gray-600">ROI</div>
+                {selectedForComparison.map(p => (
+                  <div key={p.id} className="p-3 border-t text-center">{p.roi?.toFixed(1)}%</div>
+                ))}
+                
+                {/* Riesgo */}
+                <div className="p-3 border-t font-medium text-gray-600">Riesgo</div>
+                {selectedForComparison.map(p => (
+                  <div key={p.id} className={`p-3 border-t text-center font-semibold ${p.riskScore > 60 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {p.riskScore}%
+                  </div>
+                ))}
+                
+                {/* Probabilidad */}
+                <div className="p-3 border-t font-medium text-gray-600">Prob. Adjudicación</div>
+                {selectedForComparison.map(p => (
+                  <div key={p.id} className="p-3 border-t text-center text-blue-600 font-semibold">{p.probabilityOfWinning}%</div>
+                ))}
+                
+                {/* Etapa */}
+                <div className="p-3 border-t font-medium text-gray-600">Etapa</div>
+                {selectedForComparison.map(p => (
+                  <div key={p.id} className="p-3 border-t text-center text-xs">{p.etapa}</div>
+                ))}
+                
+                {/* Viabilidad */}
+                <div className="p-3 border-t font-medium text-gray-600">Viabilidad</div>
+                {selectedForComparison.map(p => (
+                  <div key={p.id} className="p-3 border-t text-center">
                     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[p.viabilityStatus]?.bg || 'bg-gray-100'} ${STATUS_BADGE[p.viabilityStatus]?.text || 'text-gray-700'}`}>
                       {STATUS_BADGE[p.viabilityStatus]?.label || p.viabilityStatus}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`text-xs font-semibold ${p.riskScore > 60 ? 'text-red-600' : p.riskScore > 40 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                      {p.riskScore}%
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="text-xs font-semibold text-blue-600">{p.probabilityOfWinning}%</span>
-                  </td>
-                </tr>
-              ))}
-              {filteredProjects.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">Sin proyectos en este filtro</td></tr>
-              )}
-            </tbody>
-          </table>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

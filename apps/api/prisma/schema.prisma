@@ -4810,6 +4810,20 @@ model Project360Task {
   actualHours    Float?    // Horas reales
   parentId       String?   @db.Uuid // Tarea padre (subtareas)
   dependencies   Json      @default("[]") // IDs de tareas previas
+  
+  // Gantt Enterprise - FASE 10
+  baselineStart  DateTime? @db.Timestamptz
+  baselineEnd    DateTime? @db.Timestamptz
+  plannedStart   DateTime? @db.Timestamptz
+  plannedEnd     DateTime? @db.Timestamptz
+  actualStart    DateTime? @db.Timestamptz
+  actualEnd      DateTime? @db.Timestamptz
+  progress       Float    @default(0) // 0-100
+  isCriticalPath Boolean  @default(false)
+  slackDays      Int      @default(0)
+  resourceIds    Json     @default("[]") // IDs de recursos asignados
+  resourceLoad   Float?   // Carga del recurso (0-1)
+  
   createdAt     DateTime  @default(now()) @db.Timestamptz
   updatedAt     DateTime  @updatedAt @db.Timestamptz
   deletedAt     DateTime? @db.Timestamptz

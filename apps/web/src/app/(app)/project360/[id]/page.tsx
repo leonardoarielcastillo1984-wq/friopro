@@ -21,6 +21,8 @@ import PipelineTab from '@/components/project360/PipelineTab';
 import PropuestasTab from '@/components/project360/PropuestasTab';
 import ContratosTab from '@/components/project360/ContratosTab';
 import LessonsLearnedTab from '@/components/project360/LessonsLearnedTab';
+import MotorRelacionalTab from '@/components/project360/MotorRelacionalTab';
+import GanttTab from '@/components/project360/GanttTab';
 
 interface Project {
   id: string;
@@ -90,7 +92,7 @@ export default function ProjectDetailPage() {
   const [milestones, setMilestones] = useState<any[]>([]);
   const [budgetItems, setBudgetItems] = useState<any[]>([]);
   const [aiAnalyses, setAiAnalyses] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'business-case' | 'simulation' | 'sizing' | 'cashflow' | 'pipeline' | 'propuestas' | 'contratos' | 'lessons' | 'budget' | 'milestones' | 'analysis' | 'history' | 'aprobaciones' | 'copilot'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'business-case' | 'simulation' | 'sizing' | 'cashflow' | 'pipeline' | 'propuestas' | 'contratos' | 'lessons' | 'motor-relacional' | 'gantt' | 'budget' | 'milestones' | 'analysis' | 'history' | 'aprobaciones' | 'copilot'>('overview');
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ name: '', description: '', targetDate: '' });
   const [showAddBudgetItem, setShowAddBudgetItem] = useState(false);
@@ -803,6 +805,8 @@ export default function ProjectDetailPage() {
             { key: 'propuestas', label: 'Propuestas', icon: FileText },
             { key: 'contratos', label: 'Contratos', icon: Shield },
             { key: 'lessons', label: 'Lecciones', icon: Lightbulb },
+            { key: 'motor-relacional', label: 'Relacional', icon: Cpu },
+            { key: 'gantt', label: 'Gantt', icon: Calendar },
             { key: 'budget', label: 'Presupuesto', icon: Wallet },
             { key: 'milestones', label: 'Hitos', icon: Calendar },
             { key: 'analysis', label: 'Análisis IA', icon: Zap },
@@ -1861,6 +1865,16 @@ export default function ProjectDetailPage() {
       {/* ── LESSONS LEARNED ── */}
       {activeTab === 'lessons' && (
         <LessonsLearnedTab projectId={params.id as string} />
+      )}
+
+      {/* ── MOTOR RELACIONAL ── */}
+      {activeTab === 'motor-relacional' && (
+        <MotorRelacionalTab projectId={params.id as string} />
+      )}
+
+      {/* ── GANTT ENTERPRISE ── */}
+      {activeTab === 'gantt' && (
+        <GanttTab projectId={params.id as string} />
       )}
 
     </div>

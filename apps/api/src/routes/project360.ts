@@ -1612,6 +1612,49 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
     }
   });
 
+  // PUT /project360/contracts/:id
+  app.put('/contracts/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      
+      const existing = await prisma.project360Contract.findFirst({ where: { id, tenantId } });
+      if (!existing) return reply.code(404).send({ error: 'No encontrado' });
+      
+      const updated = await prisma.project360Contract.update({
+        where: { id },
+        data: {
+          contractNumber: body.contractNumber !== undefined ? body.contractNumber : undefined,
+          contractType: body.contractType !== undefined ? body.contractType : undefined,
+          startDate: body.startDate !== undefined ? (body.startDate ? new Date(body.startDate) : null) : undefined,
+          endDate: body.endDate !== undefined ? (body.endDate ? new Date(body.endDate) : null) : undefined,
+          totalValue: body.totalValue !== undefined ? Number(body.totalValue) : undefined,
+          probability: body.probability !== undefined ? Number(body.probability) : undefined,
+          status: body.status !== undefined ? body.status : undefined,
+          notes: body.notes !== undefined ? body.notes : undefined,
+        } as any
+      });
+      return reply.send({ contract: updated });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // DELETE /project360/contracts/:id
+  app.delete('/contracts/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      await prisma.project360Contract.deleteMany({ where: { id, tenantId } });
+      return reply.send({ deleted: true });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
   // POST /project360/projects/:id/contracts
   app.post('/projects/:id/contracts', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -2027,6 +2070,318 @@ ${JSON.stringify(project.aiAnalyses[0]?.risks || []).slice(0, 2000)}`;
       });
     } catch (err: any) {
       console.error('[POST /ia-predictiva] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — EXPORTACIONES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/proposals/:id/export?format=pdf|word|excel|ppt
+  app.get('/proposals/:id/export', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const format = (req.query as any)?.format || 'pdf';
+
+      const proposal = await prisma.project360Proposal.findFirst({
+        where: { id, tenantId },
+        include: { project: true }
+      }) as any;
+      
+      if (!proposal) return reply.code(404).send({ error: 'Propuesta no encontrada' });
+
+      const project = proposal.project;
+
+      // Generar contenido HTML para exportación
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${proposal.title || 'Propuesta Técnica'} - ${project?.name || 'Proyecto'}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 40px; }
+    .header { text-align: center; border-bottom: 3px solid #2563eb; padding-bottom: 20px; margin-bottom: 30px; }
+    .header h1 { color: #1e40af; margin: 0; font-size: 28px; }
+    .header .subtitle { color: #6b7280; font-size: 14px; margin-top: 8px; }
+    .section { margin-bottom: 25px; }
+    .section h2 { color: #1e40af; border-left: 4px solid #2563eb; padding-left: 12px; font-size: 18px; margin-bottom: 12px; }
+    .section p { margin: 0; color: #4b5563; text-align: justify; }
+    .meta { background: #f3f4f6; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    .meta-item { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .meta-item:last-child { margin-bottom: 0; }
+    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #9ca3af; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-green { background: #d1fae5; color: #065f46; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    th, td { border: 1px solid #e5e7eb; padding: 10px; text-align: left; }
+    th { background: #f9fafb; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${proposal.title || 'Propuesta Técnica'}</h1>
+    <div class="subtitle">Proyecto: ${project?.name || 'N/A'} | Código: ${project?.code || 'N/A'}</div>
+    <div class="subtitle">Generada: ${proposal.generatedAt ? new Date(proposal.generatedAt).toLocaleDateString('es-AR') : new Date().toLocaleDateString('es-AR')}</div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-item"><span>Estado:</span> <span class="badge badge-blue">${proposal.status || 'BORRADOR'}</span></div>
+    <div class="meta-item"><span>Versión:</span> <span>${proposal.version || 1}</span></div>
+    <div class="meta-item"><span>Costo Estimado:</span> <span>${proposal.costEstimate ? proposal.costEstimate.toLocaleString('es-AR') : 'N/A'} ARS</span></div>
+    <div class="meta-item"><span>Margen Estimado:</span> <span>${proposal.marginEstimate ? proposal.marginEstimate + '%' : 'N/A'}</span></div>
+  </div>
+
+  ${proposal.executiveSummary ? `
+  <div class="section">
+    <h2>Resumen Ejecutivo</h2>
+    <p>${proposal.executiveSummary}</p>
+  </div>` : ''}
+
+  ${proposal.technicalProposal ? `
+  <div class="section">
+    <h2>Propuesta Técnica</h2>
+    <p>${proposal.technicalProposal}</p>
+  </div>` : ''}
+
+  ${proposal.operationalScope ? `
+  <div class="section">
+    <h2>Alcance Operativo</h2>
+    <p>${proposal.operationalScope}</p>
+  </div>` : ''}
+
+  ${proposal.schedule ? `
+  <div class="section">
+    <h2>Cronograma</h2>
+    <p>${proposal.schedule}</p>
+  </div>` : ''}
+
+  ${proposal.risks ? `
+  <div class="section">
+    <h2>Análisis de Riesgos</h2>
+    <p>${proposal.risks}</p>
+  </div>` : ''}
+
+  ${proposal.exclusions ? `
+  <div class="section">
+    <h2>Exclusiones</h2>
+    <p>${proposal.exclusions}</p>
+  </div>` : ''}
+
+  <div class="footer">
+    <p>Generado por SGI360 - Project360 Enterprise</p>
+    <p>© ${new Date().getFullYear()} - Propuesta confidencial</p>
+  </div>
+</body>
+</html>`;
+
+      // Por ahora retornamos el HTML + una URL simulada de descarga
+      // En producción se usaría puppeteer para PDF o librerías específicas para cada formato
+      const filename = `propuesta-${proposal.id.slice(0, 8)}.${format === 'pdf' ? 'pdf' : format === 'word' ? 'docx' : format === 'excel' ? 'xlsx' : 'pptx'}`;
+      
+      return reply.send({
+        downloadUrl: `/api/project360/proposals/${id}/export-download?format=${format}`,
+        filename,
+        format,
+        htmlContent: format === 'pdf' || format === 'word' ? htmlContent : null,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      console.error('[GET /proposals/:id/export] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT360 ENTERPRISE — FASE 8: MOTOR RELACIONAL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /project360/projects/:id/relational-check
+  // Detecta automáticamente faltantes de recursos, incompatibilidades, riesgos
+  app.get('/projects/:id/relational-check', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+
+      // Cargar proyecto con todas sus relaciones
+      const project = await prisma.project360.findUnique({
+        where: { id },
+        include: {
+          operationalSizings: { orderBy: { createdAt: 'desc' }, take: 1 },
+          businessCase: true,
+          simulations: { orderBy: { createdAt: 'desc' }, take: 1 },
+          tasks: { include: { assignee: true } },
+          budgetItems: true,
+          contracts: true,
+        }
+      }) as any;
+
+      if (!project) return reply.code(404).send({ error: 'Proyecto no encontrado' });
+
+      const alerts: Array<{type: string; severity: 'HIGH' | 'MEDIUM' | 'LOW'; message: string; details: any; action: string}> = [];
+      const recommendations: string[] = [];
+      const missingResources: any[] = [];
+      const incompatibilities: any[] = [];
+      const capacityGaps: any[] = [];
+
+      // 1. Verificar dimensionamiento operativo vs recursos disponibles
+      const sizing = project.operationalSizings?.[0];
+      if (sizing) {
+        // Simular consulta a Flota360 (en producción sería una llamada real al módulo)
+        // Por ahora detectamos basado en el sizing
+        if (sizing.trucksNeeded && sizing.trucksNeeded > 5) {
+          alerts.push({
+            type: 'FLOTA',
+            severity: 'HIGH',
+            message: `Se requieren ${sizing.trucksNeeded} camiones - Verificar disponibilidad en Flota360`,
+            details: { required: sizing.trucksNeeded, available: null, gap: null },
+            action: 'Consultar disponibilidad de vehículos'
+          });
+        }
+        if (sizing.driversNeeded && sizing.driversNeeded > 3) {
+          alerts.push({
+            type: 'RRHH',
+            severity: 'MEDIUM',
+            message: `Se requieren ${sizing.driversNeeded} choferes habilitados`,
+            details: { required: sizing.driversNeeded, competencyRequired: 'Licencia de conducir clase F' },
+            action: 'Verificar disponibilidad de choferes en RRHH'
+          });
+        }
+        if (sizing.supervisorsNeeded && sizing.supervisorsNeeded > 0) {
+          alerts.push({
+            type: 'RRHH',
+            severity: 'LOW',
+            message: `Se requieren ${sizing.supervisorsNeeded} supervisores operativos`,
+            details: { required: sizing.supervisorsNeeded },
+            action: 'Asignar supervisores con experiencia en operaciones similares'
+          });
+        }
+      } else {
+        alerts.push({
+          type: 'DIMENSIONAMIENTO',
+          severity: 'HIGH',
+          message: 'No existe dimensionamiento operativo para este proyecto',
+          details: null,
+          action: 'Completar el dimensionamiento operativo'
+        });
+      }
+
+      // 2. Verificar Business Case
+      if (!project.businessCase) {
+        alerts.push({
+          type: 'VIABILIDAD',
+          severity: 'HIGH',
+          message: 'No existe Business Case - No se ha validado la viabilidad del proyecto',
+          details: null,
+          action: 'Completar el Business Case antes de avanzar'
+        });
+      } else {
+        const bc = project.businessCase;
+        if (bc.grossMargin !== null && bc.grossMargin < 10) {
+          alerts.push({
+            type: 'FINANCIERO',
+            severity: 'HIGH',
+            message: `Margen bruto muy bajo: ${bc.grossMargin}% - Mínimo recomendado: 15%`,
+            details: { current: bc.grossMargin, recommended: 15, gap: 15 - bc.grossMargin },
+            action: 'Revisar precios o reducir costos operativos'
+          });
+        }
+        if (bc.roi !== null && bc.roi < 20) {
+          alerts.push({
+            type: 'FINANCIERO',
+            severity: 'MEDIUM',
+            message: `ROI bajo: ${bc.roi}% - ROI objetivo mínimo: 25%`,
+            details: { current: bc.roi, target: 25 },
+            action: 'Considerar renegociación de términos o descartar proyecto'
+          });
+        }
+      }
+
+      // 3. Verificar presupuesto
+      const totalBudget = project.budget || 0;
+      const totalCost = project.budgetItems?.reduce((sum: number, item: any) => sum + (item.costoTotal || 0), 0) || 0;
+      if (totalCost > totalBudget * 0.9) {
+        alerts.push({
+          type: 'PRESUPUESTO',
+          severity: 'HIGH',
+          message: `Costos estimados (${totalCost.toLocaleString()}) consumen >90% del presupuesto (${totalBudget.toLocaleString()})`,
+          details: { budget: totalBudget, estimated: totalCost, variance: totalCost - totalBudget },
+          action: 'Revisar presupuesto o buscar reducción de costos'
+        });
+      }
+
+      // 4. Verificar contratos y riesgos legales
+      if (project.contracts?.length === 0 && project.etapaAprobacion === 'ADJUDICADO') {
+        alerts.push({
+          type: 'LEGAL',
+          severity: 'HIGH',
+          message: 'Proyecto adjudicado sin contrato firmado',
+          details: null,
+          action: 'Urgente: Formalizar contrato con cliente'
+        });
+      }
+
+      // 5. Verificar tareas asignadas
+      const unassignedTasks = project.tasks?.filter((t: any) => !t.assignee && t.status !== 'COMPLETED');
+      if (unassignedTasks?.length > 0) {
+        alerts.push({
+          type: 'ASIGNACION',
+          severity: 'MEDIUM',
+          message: `${unassignedTasks.length} tareas pendientes sin asignar`,
+          details: { count: unassignedTasks.length, tasks: unassignedTasks.map((t: any) => t.title) },
+          action: 'Asignar responsables a las tareas pendientes'
+        });
+      }
+
+      // 6. Verificar simulación financiera reciente
+      if (!project.simulations?.length) {
+        alerts.push({
+          type: 'SIMULACION',
+          severity: 'MEDIUM',
+          message: 'No se han realizado simulaciones financieras',
+          details: null,
+          action: 'Ejecutar simulación de escenarios (optimista/probable/pesimista)'
+        });
+      }
+
+      // Generar recomendaciones basadas en alertas
+      if (alerts.filter((a: any) => a.severity === 'HIGH').length > 0) {
+        recommendations.push('Resolver alertas de alta prioridad antes de avanzar la etapa del proyecto');
+      }
+      if (alerts.some((a: any) => a.type === 'RRHH')) {
+        recommendations.push('Coordinar con RRHH para reserva de personal con anticipación');
+      }
+      if (alerts.some((a: any) => a.type === 'FLOTA')) {
+        recommendations.push('Verificar disponibilidad de vehículos en Flota360 y programar mantenimientos preventivos');
+      }
+      if (!recommendations.length) {
+        recommendations.push('Proyecto listo para avanzar - No se detectaron bloqueos significativos');
+      }
+
+      return reply.send({
+        projectId: id,
+        checkedAt: new Date().toISOString(),
+        summary: {
+          totalAlerts: alerts.length,
+          highSeverity: alerts.filter((a: any) => a.severity === 'HIGH').length,
+          mediumSeverity: alerts.filter((a: any) => a.severity === 'MEDIUM').length,
+          lowSeverity: alerts.filter((a: any) => a.severity === 'LOW').length,
+          canProceed: !alerts.some((a: any) => a.severity === 'HIGH'),
+        },
+        alerts,
+        missingResources,
+        incompatibilities,
+        capacityGaps,
+        recommendations,
+        relatedModules: ['RRHH', 'Flota360', 'Presupuesto', 'Contratos', 'Compliance']
+      });
+    } catch (err: any) {
+      console.error('[GET /relational-check] Error:', err);
       return reply.code(500).send({ error: err.message });
     }
   });
