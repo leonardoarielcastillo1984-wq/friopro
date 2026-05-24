@@ -1005,31 +1005,6 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   }
 
   // ============================================================
-  // VOZ - Speech to Text (placeholder)
-  // ============================================================
-  app.post('/voice', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = await getEffectiveTenantId(req, app.prisma);
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-      }
-
-      // TODO: Implementar integración con Whisper/OpenAI STT
-      // Por ahora, retornar mensaje informativo
-
-      return reply.send({
-        success: true,
-        message: 'Voice processing endpoint ready',
-        note: 'Speech-to-text integration pending',
-        timestamp: new Date().toISOString()
-      });
-
-    } catch (error: any) {
-      return reply.code(500).send({ error: error.message });
-    }
-  });
-
-  // ============================================================
   // KPIs EJECUTIVOS
   // ============================================================
   app.get('/kpis', async (req: FastifyRequest, reply: FastifyReply) => {
