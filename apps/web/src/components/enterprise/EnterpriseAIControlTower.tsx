@@ -534,6 +534,60 @@ export default function EnterpriseAIControlTower({
     }
   };
 
+  const monitorThinkingProgress = (sessionId: string) => {
+    // Simulate thinking progress updates
+    const thinkingSteps = [
+      { id: '1', title: 'Analizando intención', description: 'Interpretando el contexto y objetivo', progress: 0, completed: false },
+      { id: '2', title: 'Recopilando datos', description: 'Obteniendo información relevante del sistema', progress: 0, completed: false },
+      { id: '3', title: 'Procesando contexto', description: 'Analizando relaciones y patrones', progress: 0, completed: false },
+      { id: '4', title: 'Generando respuesta', description: 'Construyendo respuesta inteligente', progress: 0, completed: false }
+    ];
+
+    setState(prev => ({
+      ...prev,
+      thinkingSession: {
+        ...prev.thinkingSession!,
+        steps: thinkingSteps
+      }
+    }));
+
+    let stepIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (stepIndex < thinkingSteps.length) {
+        // Update current step progress
+        setState(prev => {
+          const updatedSteps = [...prev.thinkingSession!.steps];
+          const currentStep = updatedSteps[stepIndex];
+          
+          if (currentStep.progress < 100) {
+            currentStep.progress = Math.min(currentStep.progress + 20, 100);
+          } else if (!currentStep.completed) {
+            currentStep.completed = true;
+            stepIndex++;
+          }
+          
+          return {
+            ...prev,
+            thinkingSession: {
+              ...prev.thinkingSession!,
+              steps: updatedSteps
+            }
+          };
+        });
+      } else {
+        clearInterval(progressInterval);
+        // All steps completed, thinking is done
+        setTimeout(() => {
+          setState(prev => ({
+            ...prev,
+            isThinking: false,
+            thinkingSession: null
+          }));
+        }, 1000);
+      }
+    }, 500); // Update every 500ms
+  };
+
   const startStreamingResponse = (sessionId: string) => {
     // Simulate streaming response
     const fullResponse = generateMockResponse(state.currentIntent?.type || 'general');
