@@ -713,7 +713,7 @@ export class AIOrchestrator {
     // Detectar módulos involucrados
     if (lowerQuery.includes('proyecto')) { modules.push('project360'); intent = { ...intent, target: 'projects' }; }
     if (lowerQuery.includes('riesgo')) { modules.push('risks'); intent = { ...intent, category: 'risk' }; }
-    if (lowerQuery.includes('flota') || lowerQuery.includes('vehículo')) { modules.push('flota360'); }
+    if (lowerQuery.includes('flota') || lowerQuery.includes('veh') || lowerQuery.includes('camion') || lowerQuery.includes('camión') || lowerQuery.includes('unidad')) { modules.push('flota360'); }
     if (lowerQuery.includes('auditoría')) { modules.push('audits'); }
     if (lowerQuery.includes('ncr') || lowerQuery.includes('no conformidad')) { modules.push('ncr'); }
     if (lowerQuery.includes('capa')) { modules.push('capa'); }
@@ -833,17 +833,20 @@ export class AIOrchestrator {
           }
 
           case 'fleet':
-          case 'flota': {
+          case 'flota':
+          case 'flota360': {
             const vehicles = await this.db.vehiculo?.findMany({
               where: { tenantId },
-              select: { id: true, estado: true, tipo: true, dominio: true },
-              take: 100
+              select: { id: true, status: true, tipo: true, marca: true, modelo: true, dominio: true },
+              take: 200
             }) || [];
             if (vehicles.length > 0) {
-              const operative = vehicles.filter((v: any) => v.estado === 'ACTIVO' || v.estado === 'OPERATIVO').length;
-              dataSections.push(`Flota — Vehículos totales: ${vehicles.length}, Operativos: ${operative}`);
+              const operative = vehicles.filter((v: any) => v.status === 'ACTIVO').length;
+              const maintenance = vehicles.filter((v: any) => v.status === 'EN_TALLER').length;
+              const inactive = vehicles.filter((v: any) => v.status === 'INACTIVO' || v.status === 'BAJA').length;
+              dataSections.push(`Flota360 — Vehículos totales: ${vehicles.length}. Operativos: ${operative}, En taller: ${maintenance}, Inactivos/Baja: ${inactive}.`);
             } else {
-              dataSections.push('Flota — Sin datos de vehículos cargados en el sistema.');
+              dataSections.push('Flota360 — Sin datos de vehículos en el sistema.');
             }
             break;
           }
