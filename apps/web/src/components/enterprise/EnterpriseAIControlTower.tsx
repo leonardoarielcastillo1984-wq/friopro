@@ -5,7 +5,7 @@ import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { apiFetch } from '@/lib/api';
 import {
   Brain, Mic, Send, Sparkles, Zap, LayoutGrid, TrendingUp,
-  AlertTriangle, Target, Briefcase, Users, DollarSign, 
+  AlertTriangle, Target, Briefcase, Users, DollarSign,
   ChevronRight, Crown, X, MoreHorizontal, Loader2,
   Command as CommandIcon, Radar, Activity, Monitor,
   BarChart3, Shield, Target as TargetIcon, Settings,
@@ -16,24 +16,24 @@ import {
   Filter, Search, Eye, EyeOff, RefreshCw, PlayCircle,
   PauseCircle, StopCircle, Download, Upload, Share2,
   Copy, Trash2, Edit3, Save, FileText, Image,
-  Video, Music, Headphones, Speaker, Lighthouse,
+  Video, Music, Headphones, Speaker,
   ZapOff, Battery, BatteryLow, BatteryFull,
-  Thermometer, Gauge, Speed, Timer, Stopwatch,
-  Compass, Navigation, Map, Globe, Satellite,
+  Thermometer, Gauge, Timer,
+  Compass, Navigation, Map, Globe,
   Cloud, CloudRain, CloudSnow, Sun, Moon, Star,
-  Heart, Pulse, Activity as ActivityIcon, BrainCircuit,
-  Cpu as CpuIcon, HardDrive, MemoryStick, Server,
-  Network, Router, Wifi as WifiIcon, Ethernet,
+  Heart, Activity as ActivityIcon, BrainCircuit,
+  Cpu as CpuIcon, HardDrive, Server,
+  Network, Router, Wifi as WifiIcon,
   Lock, Unlock, Key, Shield as ShieldIcon,
-  Sword, Hammer, Wrench, Tool, Settings2,
-  Layers, Grid, Columns, Rows, Layout, LayoutDashboard,
+  Hammer, Wrench, Settings2,
+  Layers, Grid, Columns, Layout, LayoutDashboard,
   Monitor as MonitorIcon, Smartphone, Tablet, Laptop,
   Tv, Radio as RadioIcon, Speaker as SpeakerIcon,
-  Headphones as HeadphonesIcon, Vinyl, Disc, CompactDisc,
+  Headphones as HeadphonesIcon, Disc,
   Music as MusicIcon, Play, Pause, SkipBack, SkipForward,
   Repeat, Shuffle, Volume1, Volume2 as Volume2Icon,
-  VolumeX, VolumeUp, VolumeDown, Mute, Unmute,
-  Lightbulb
+  VolumeX,
+  Lightbulb, User
 } from 'lucide-react';
 
 import {
@@ -92,6 +92,7 @@ export default function EnterpriseAIControlTower({
   const [showModeSelector, setShowModeSelector] = useState(false);
   const [streamingResponse, setStreamingResponse] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [messages, setMessages] = useState<Array<{role: 'user'|'assistant', content: string, timestamp: Date}>>([]);
   const [liveDataStatus, setLiveDataStatus] = useState({
     connected: true,
     lastSync: new Date(),
@@ -451,6 +452,9 @@ export default function EnterpriseAIControlTower({
       // Step 4: Monitor thinking progress (visual only)
       monitorThinkingProgress(sessionId);
 
+      // Add user message to history
+      setMessages(prev => [...prev, { role: 'user', content: query, timestamp: new Date() }]);
+
       // Step 5: Call real backend /query endpoint
       const queryResponse = await apiFetch('/command-center/query', {
         method: 'POST',
@@ -478,6 +482,8 @@ export default function EnterpriseAIControlTower({
           clearInterval(streamInterval);
           setIsStreaming(false);
           setStreamingResponse('');
+          // Save completed response to message history
+          setMessages(prev => [...prev, { role: 'assistant', content: realAnswer, timestamp: new Date() }]);
           setState(prev => ({ ...prev, loading: false }));
         }
       }, 15);
@@ -1794,14 +1800,43 @@ export default function EnterpriseAIControlTower({
               {/* Contextual Visualizations */}
               {renderContextualVisualizations()}
 
+              {/* Message History */}
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {msg.role === 'assistant' && (
+                    <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                      <Brain className="w-4 h-4 text-blue-400" />
+                    </div>
+                  )}
+                  <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                    msg.role === 'user'
+                      ? 'bg-purple-600/30 border border-purple-500/30 text-white'
+                      : 'bg-gray-800/60 border border-gray-700/50 text-gray-200'
+                  }`}>
+                    {msg.content}
+                    <div className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-purple-300' : 'text-gray-500'}`}>
+                      {msg.timestamp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  {msg.role === 'user' && (
+                    <div className="w-8 h-8 bg-purple-500/20 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                      <User className="w-4 h-4 text-purple-400" />
+                    </div>
+                  )}
+                </div>
+              ))}
+
               {/* Thinking Visualization */}
               {renderThinkingVisualization()}
               
-              {/* Streaming Response */}
+              {/* Streaming Response (while typing) */}
               {renderStreamingResponse()}
 
+              {/* Scroll anchor */}
+              <div ref={messagesEndRef} />
+
               {/* Empty state */}
-              {!isStreaming && streamingResponse === '' && contextualVisualizations.length === 0 && !state.isThinking && (
+              {!isStreaming && messages.length === 0 && contextualVisualizations.length === 0 && !state.isThinking && (
                 <div className="text-center text-gray-500 py-8">
                   <Brain className="w-12 h-12 mx-auto mb-4 text-gray-600" />
                   <p className="text-lg font-medium">Enterprise AI Control Tower está listo para analizar tus consultas</p>
