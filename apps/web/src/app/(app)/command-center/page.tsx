@@ -72,7 +72,7 @@ export default function CommandCenterPage() {
 
   const loadSubscription = async (): Promise<AISubscription | null> => {
     try {
-      const response = await apiFetch('/api/command-center/subscription');
+      const response = await apiFetch('/command-center/subscription');
       return response.data;
     } catch (error) {
       console.error('Error loading subscription:', error);

@@ -186,22 +186,22 @@ export default function EnterpriseAIControlTower({
   // ============================================================
 
   const loadOperationalModes = async (): Promise<OperationalMode[]> => {
-    const response = await apiFetch('/api/command-center/modes');
+    const response = await apiFetch('/command-center/modes');
     return response.data;
   };
 
   const loadCommandActions = async (): Promise<CommandAction[]> => {
-    const response = await apiFetch('/api/command-center/actions');
+    const response = await apiFetch('/command-center/actions');
     return response.data.actions;
   };
 
   const loadFloatingAlerts = async (): Promise<FloatingAlert[]> => {
-    const response = await apiFetch('/api/command-center/alerts');
+    const response = await apiFetch('/command-center/alerts');
     return response.data.alerts;
   };
 
   const loadSmartSuggestions = async (): Promise<SmartSuggestion[]> => {
-    const response = await apiFetch('/api/command-center/suggestions');
+    const response = await apiFetch('/command-center/suggestions');
     return response.data.suggestions.map((s: string, i: number) => ({
       id: `suggestion-${i}`,
       text: s,
@@ -213,7 +213,7 @@ export default function EnterpriseAIControlTower({
   };
 
   const analyzeIntent = async (query: string): Promise<Intent> => {
-    const response = await apiFetch('/api/command-center/intent/analyze', {
+    const response = await apiFetch('/command-center/intent/analyze', {
       method: 'POST',
       body: JSON.stringify({
         query,
@@ -229,7 +229,7 @@ export default function EnterpriseAIControlTower({
   };
 
   const startThinkingSession = async (query: string, intent: Intent): Promise<string> => {
-    const response = await apiFetch('/api/command-center/thinking/start', {
+    const response = await apiFetch('/command-center/thinking/start', {
       method: 'POST',
       body: JSON.stringify({
         query,
@@ -242,7 +242,7 @@ export default function EnterpriseAIControlTower({
   };
 
   const executeCommandAction = async (actionId: string, parameters?: any): Promise<string> => {
-    const response = await apiFetch(`/api/command-center/actions/${actionId}/execute`, {
+    const response = await apiFetch(`/command-center/actions/${actionId}/execute`, {
       method: 'POST',
       body: JSON.stringify({ parameters })
     });
@@ -250,7 +250,7 @@ export default function EnterpriseAIControlTower({
   };
 
   const dismissAlert = async (alertId: string): Promise<void> => {
-    await apiFetch(`/api/command-center/alerts/${alertId}/dismiss`, {
+    await apiFetch(`/command-center/alerts/${alertId}/dismiss`, {
       method: 'POST'
     });
   };
@@ -416,7 +416,7 @@ export default function EnterpriseAIControlTower({
 
       // Step 5: Update dashboard based on intent
       if (intent.type !== 'general') {
-        const dashboardResponse = await apiFetch('/api/command-center/intent/analyze', {
+        const dashboardResponse = await apiFetch('/command-center/intent/analyze', {
           method: 'POST',
           body: JSON.stringify({
             query,
@@ -688,7 +688,7 @@ export default function EnterpriseAIControlTower({
   const monitorExecutionProgress = (executionId: string) => {
     const interval = setInterval(async () => {
       try {
-        const response = await apiFetch(`/api/command-center/actions/executions/${executionId}`);
+        const response = await apiFetch(`/command-center/actions/executions/${executionId}`);
         const execution = response.data;
         
         setState(prev => ({
@@ -719,7 +719,7 @@ export default function EnterpriseAIControlTower({
     try {
       setState(prev => ({ ...prev, loading: true }));
       
-      const response = await apiFetch(`/api/command-center/modes/${mode.id}/activate`, {
+      const response = await apiFetch(`/command-center/modes/${mode.id}/activate`, {
         method: 'POST',
         body: JSON.stringify({ query: input || 'Modo cambiado' })
       });
