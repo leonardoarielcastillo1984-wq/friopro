@@ -68,7 +68,8 @@ const MODULE_CONFIG = {
   rrhh: { name: 'RRHH', minPlan: 'BASIC', icon: 'UserCircle' },
   reportes: { name: 'Reportes', minPlan: 'BASIC', icon: 'BarChart2' },
   seguridad360: { name: 'Seguridad 360', minPlan: 'PROFESSIONAL', icon: 'Shield', comingSoon: true },
-  audit360: { name: 'Audit360', minPlan: 'PROFESSIONAL', icon: 'ClipboardList', comingSoon: true }
+  audit360: { name: 'Audit360', minPlan: 'PROFESSIONAL', icon: 'ClipboardList', comingSoon: true },
+  commandCenter: { name: 'Command Center', minPlan: 'PROFESSIONAL', icon: 'Brain', description: 'IA Ejecutiva Premium', isAddOn: true }
 };
 
 // Schemas de validación
