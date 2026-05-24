@@ -13,78 +13,85 @@ const ComponentLoader = ({ message = 'Cargando...' }: { message?: string }) => (
   </div>
 );
 
-const ErrorBoundary = ({ error }: { error: Error }) => (
+const ErrorDisplay = ({ error }: { error: any }) => (
   <div className="flex items-center justify-center p-8 min-h-[200px]">
     <div className="flex flex-col items-center gap-3 text-red-600">
       <AlertTriangle className="w-8 h-8" />
       <div className="text-center">
         <p className="font-medium">Error al cargar el componente</p>
-        <p className="text-sm text-gray-600">{error.message}</p>
+        <p className="text-sm text-gray-600">{error?.message || 'Error desconocido'}</p>
       </div>
     </div>
   </div>
 );
 
+// Helper to create error fallback component
+const createErrorFallback = (error: any) => {
+  return function ErrorFallback() {
+    return <ErrorDisplay error={error} />;
+  };
+};
+
 // Lazy Loaded Components
 export const LazyTrendChart = lazy(() => 
-  import('./TrendChart').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./TrendChart').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyPeriodComparison = lazy(() => 
-  import('./PeriodComparison').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./PeriodComparison').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyDrillDownChart = lazy(() => 
-  import('./DrillDownChart').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./DrillDownChart').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazySmartAlerts = lazy(() => 
-  import('./SmartAlerts').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./SmartAlerts').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyWorkflowAutomation = lazy(() => 
-  import('./WorkflowAutomation').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./WorkflowAutomation').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyAutoEscalation = lazy(() => 
-  import('./AutoEscalation').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./AutoEscalation').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazySmartReminders = lazy(() => 
-  import('./SmartReminders').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./SmartReminders').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyIntegrationManager = lazy(() => 
-  import('./IntegrationManager').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./IntegrationManager').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyExternalAPI = lazy(() => 
-  import('./ExternalAPI').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./ExternalAPI').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyPerformanceMonitor = lazy(() => 
-  import('./PerformanceMonitor').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./PerformanceMonitor').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyMonitoringDashboard = lazy(() => 
-  import('./MonitoringDashboard').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./MonitoringDashboard').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazySystemAlerts = lazy(() => 
-  import('./SystemAlerts').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./SystemAlerts').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 // Heavy Components (Charts, Tables, etc.)
 export const LazyAdvancedFilters = lazy(() => 
-  import('./AdvancedFilters').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./AdvancedFilters').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyCustomizableTable = lazy(() => 
-  import('./CustomizableTable').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./CustomizableTable').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 export const LazyGlobalSearch = lazy(() => 
-  import('./GlobalSearch').catch(error => ({ default: () => <ErrorBoundary error={error} }))
+  import('./GlobalSearch').catch(error => ({ default: createErrorFallback(error) }))
 );
 
 // Wrapper Components with Suspense

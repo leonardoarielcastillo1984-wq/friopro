@@ -211,7 +211,7 @@ export const elasticsearchPlugin = fastifyPlugin(
       limit: number = 50
     ) {
       try {
-        const must = [
+        const must: any[] = [
           {
             multi_match: {
               query,
@@ -255,7 +255,7 @@ export const elasticsearchPlugin = fastifyPlugin(
           ...hit._source,
         }));
       } catch (error) {
-        fastify.log.error('Audit log search error:', error);
+        fastify.log.error('Audit log search error: ' + String(error));
         return [];
       }
     }
@@ -275,7 +275,7 @@ export const elasticsearchPlugin = fastifyPlugin(
           body: data,
         });
       } catch (error) {
-        fastify.log.error(`Error indexing ${index}:`, error);
+        fastify.log.error(`Error indexing ${index}: ${String(error)}`);
       }
     }
 
@@ -289,7 +289,7 @@ export const elasticsearchPlugin = fastifyPlugin(
           id,
         });
       } catch (error) {
-        fastify.log.error(`Error deleting from ${index}:`, error);
+        fastify.log.error(`Error deleting from ${index}: ${String(error)}`);
       }
     }
 
