@@ -624,8 +624,10 @@ export default function EnterpriseAIControlTower({
       } else {
         clearInterval(streamInterval);
         setIsStreaming(false);
+        setStreamingResponse(''); // Limpiar la respuesta para permitir nueva interacción
         // Reiniciar el estado loading para volver a habilitar el input
         setState(prev => ({ ...prev, loading: false }));
+        console.log('Streaming finished - loading set to false, input should be enabled');
       }
     }, 20); // 50 characters per second
   };
@@ -1820,8 +1822,12 @@ export default function EnterpriseAIControlTower({
                   ref={inputRef}
                   type="text"
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => {
+                    console.log('Input onChange, loading:', state.loading, 'value:', e.target.value);
+                    setInput(e.target.value);
+                  }}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  onFocus={() => console.log('Input focused, loading:', state.loading)}
                   placeholder="Analizar situación financiera, detectar riesgos, simular escenarios..."
                   className="flex-1 bg-transparent text-white placeholder-gray-500 outline-none text-sm"
                   disabled={state.loading}
