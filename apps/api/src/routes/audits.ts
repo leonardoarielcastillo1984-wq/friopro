@@ -3,7 +3,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getStorage } from '../services/storage.js';
 import { randomUUID } from 'node:crypto';
-import { createLoggingLLMProvider } from '../services/llm/factory.js';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
 const storage = getStorage();
 
@@ -1627,7 +1627,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
-        const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
+        const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
         const audit = await app.runWithDbContext(req, async (tx) => {
           return tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
         });
@@ -1691,7 +1691,7 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
-        const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-analyze-finding');
+        const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-analyze-finding');
         const finding = await app.runWithDbContext(req, async (tx) => {
           return tx.auditFinding.findFirst({
             where: { id: req.params.id, tenantId, deletedAt: null },
@@ -1755,7 +1755,7 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
-        const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-ai-analysis');
+        const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-ai-analysis');
         const auditData = await app.runWithDbContext(req, async (tx) => {
           const audit = await tx.audit.findUnique({
             where: { id: req.params.id, tenantId },
@@ -1846,7 +1846,7 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
       }
 
       try {
-        const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-chat');
+        const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-chat');
         const auditData = await app.runWithDbContext(req, async (tx) => {
           return tx.audit.findUnique({
             where: { id: req.params.id, tenantId },
@@ -1978,7 +1978,7 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
         }
 
         // Usar IA para filtrar cláusulas relevantes según el departamento/proceso
-        const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
+        const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
 
         // Preparar lista de cláusulas para que la IA las evalúe
         const allClauses = normativeStandards.flatMap((normative) => {

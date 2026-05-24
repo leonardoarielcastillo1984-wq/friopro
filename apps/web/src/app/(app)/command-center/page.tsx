@@ -98,6 +98,17 @@ export default function CommandCenterPage() {
         provider: 'groq'
       }
     ]);
+
+    // Event listener para consultas de capacidades
+    const handleCapabilityQuery = (event: CustomEvent) => {
+      sendMessage(event.detail);
+    };
+
+    window.addEventListener('sendCapabilityQuery', handleCapabilityQuery as EventListener);
+    
+    return () => {
+      window.removeEventListener('sendCapabilityQuery', handleCapabilityQuery as EventListener);
+    };
   }, []);
 
   const loadSubscription = async () => {
@@ -504,7 +515,10 @@ export default function CommandCenterPage() {
                 </div>
               )}
               
-              <button className="w-full mt-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-medium rounded-xl hover:opacity-90 transition-all">
+              <button 
+                onClick={() => setShowPaywall(true)}
+                className="w-full mt-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-medium rounded-xl hover:opacity-90 transition-all"
+              >
                 Upgrade Plan
               </button>
             </div>
@@ -560,10 +574,16 @@ export default function CommandCenterPage() {
               </p>
               
               <div className="space-y-3">
-                <button className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium rounded-xl hover:opacity-90 transition-all">
+                <button 
+                  onClick={() => window.location.href = '/settings/subscription'}
+                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium rounded-xl hover:opacity-90 transition-all"
+                >
                   Upgrade a Business AI
                 </button>
-                <button className="w-full py-3 border border-white/20 text-slate-300 rounded-xl hover:bg-white/5 transition-all">
+                <button 
+                  onClick={() => window.location.href = '/settings/subscription'}
+                  className="w-full py-3 border border-white/20 text-slate-300 rounded-xl hover:bg-white/5 transition-all"
+                >
                   Comprar Pack de Consultas
                 </button>
               </div>
@@ -665,12 +685,31 @@ function KPIRow({ icon, label, value, trend, color }: {
 }
 
 function CapabilityItem({ icon, label }: { icon: React.ReactNode; label: string }) {
+  const capabilityQueries: Record<string, string> = {
+    'Análisis de Proyectos': 'Analiza los proyectos actuales y muestra su estado, riesgos y KPIs principales',
+    'Detección de Riesgos': 'Identifica los riesgos críticos en el sistema y muestra alertas prioritarias',
+    'KPIs y Dashboards': 'Muestra los indicadores clave de rendimiento y métricas del negocio',
+    'Análisis Financiero': 'Analiza el desempeño financiero y proyecciones',
+    'Simulaciones': 'Ejecuta una simulación de escenarios para análisis estratégico'
+  };
+
+  const handleCapabilityClick = () => {
+    const query = capabilityQueries[label] || `Muéstrame más sobre ${label}`;
+    // Enviar la consulta al padre
+    const event = new CustomEvent('sendCapabilityQuery', { detail: query });
+    window.dispatchEvent(event);
+  };
+
   return (
-    <div className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg transition-all">
-      <div className="p-1.5 bg-violet-500/20 rounded-lg text-violet-400">
+    <button 
+      onClick={handleCapabilityClick}
+      className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg transition-all text-left group"
+    >
+      <div className="p-1.5 bg-violet-500/20 rounded-lg text-violet-400 group-hover:bg-violet-500/30">
         {icon}
       </div>
-      <span className="text-sm text-slate-300">{label}</span>
-    </div>
+      <span className="text-sm text-slate-300 group-hover:text-white">{label}</span>
+      <ChevronRight className="w-4 h-4 text-slate-500 ml-auto group-hover:text-violet-400" />
+    </button>
   );
 }

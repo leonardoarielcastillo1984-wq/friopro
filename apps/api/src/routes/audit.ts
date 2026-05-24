@@ -7,7 +7,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { getAuditQueue } from '../jobs/queue.js';
-import { createLLMProvider, createLoggingLLMProvider } from '../services/llm/factory.js';
+import { createLLMProvider, createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 import { AuditAnalysisService } from '../services/auditAnalysis.js';
 
 const FEATURE_KEY = 'audit_ia';
@@ -464,16 +464,18 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
         });
       }),
       app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
-        return tx.normativeStandard.findMany({
+        const results = await tx.normativeStandard.findMany({
           where: { tenantId, deletedAt: null },
           select: { name: true, code: true, totalClauses: true },
           take: 10,
         });
+        // Transformar totalClauses a clauseCount para buildChatContext
+        return results.map(n => ({ name: n.name, code: n.code, clauseCount: n.totalClauses }));
       }),
     ]);
 
     // Construir contexto
-    const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-chat');
+    const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-chat');
     const auditService = new AuditAnalysisService(llm);
     const contextStr = auditService.buildChatContext(documents, normatives);
 

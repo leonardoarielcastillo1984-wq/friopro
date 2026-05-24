@@ -1,7 +1,7 @@
 import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { createLoggingLLMProvider } from '../services/llm/factory.js';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 import { sendEmail, notificationEmail } from '../services/email.js';
 
 const createProjectSchema = z.object({
@@ -599,7 +599,7 @@ export default async function project360Routes(app: FastifyInstance) {
     const userId = (req as any).db?.userId || null;
     let llm;
     try {
-      llm = createLoggingLLMProvider(tenant, prisma, tenantId, userId, 'project360-ai-analysis');
+      llm = createGroqOnlyLLMProvider(tenant, prisma, tenantId, userId, 'project360-ai-analysis');
     } catch (err: any) {
       console.error('[AI Analysis] Error creating LLM provider:', err);
       return reply.code(500).send({ error: 'Error configurando proveedor IA: ' + err.message });
@@ -702,7 +702,7 @@ ${documentText.length > 12000 ? '\n[Documento truncado por longitud]' : ''}`;
     if (!a1 || !a2) return reply.code(404).send({ error: 'Uno o ambos análisis no fueron encontrados' });
 
     const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { llmProvider: true, llmApiKey: true, llmModel: true, llmBaseUrl: true } });
-    const llm = createLoggingLLMProvider(tenant, prisma, tenantId, req.db.userId || null, 'project360-ai-comparison');
+    const llm = createGroqOnlyLLMProvider(tenant, prisma, tenantId, req.db.userId || null, 'project360-ai-comparison');
 
     const prompt = `Compará dos licitaciones/pliegos y respondé ÚNICAMENTE en formato JSON con esta estructura:
 {
@@ -2153,7 +2153,7 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
 
       let llm;
       try {
-        llm = createLoggingLLMProvider(tenant, prisma, tenantId, userId || null, 'project360-predictive-ia');
+        llm = createGroqOnlyLLMProvider(tenant, prisma, tenantId, userId || null, 'project360-predictive-ia');
       } catch (err: any) {
         return reply.code(500).send({ error: 'Error configurando proveedor IA: ' + err.message });
       }

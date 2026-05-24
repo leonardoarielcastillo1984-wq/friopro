@@ -297,6 +297,14 @@ model Tenant {
   // Indicator↔Risk Links
   indicatorRiskLinks IndicatorRiskLink[]
 
+  // AI Relations
+  aiSubscription      TenantAISubscription?
+  aiConversations     AIConversation[]
+  aiMemories          AIMemory[]
+  aiActions           AIAction[]
+  aiEmbeddings        AIEmbedding[]
+  aiProactiveAlerts   AIProactiveAlert[]
+
   // Emergency & Disaster Management
   drillScenarios     DrillScenario[]
   contingencyPlans   ContingencyPlan[]
@@ -434,6 +442,10 @@ model PlatformUser {
 
   departmentsCreated       Department[]       @relation("DepartmentCreatedBy")
   departmentsUpdated       Department[]       @relation("DepartmentUpdatedBy")
+
+  // AI Relations
+  aiConversations AIConversation[]
+  aiActions      AIAction[]
   departmentMemberships    DepartmentMember[] @relation("DepartmentMemberUser")
   departmentMembersCreated DepartmentMember[] @relation("DepartmentMemberCreatedBy")
 
@@ -7012,4 +7024,348 @@ model GarantiaVehiculo {
   @@index([fechaFin])
   @@index([status])
   @@map("garantias_vehiculo")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COMMAND CENTER - AI SUBSCRIPTION & USAGE
+// ═══════════════════════════════════════════════════════════════
+
+model TenantAISubscription {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Plan IA
+  plan     AISubscriptionPlan?
+  status   AISubscriptionStatus @default(INACTIVE)
+
+  // Límites y consumo
+  premiumQueriesLimit   Int @default(3)
+  premiumQueriesUsed    Int @default(0)
+  premiumQueriesRemaining Int @default(3)
+  lastResetDate         DateTime @default(now()) @db.Timestamptz
+
+  // Providers habilitados
+  groqEnabled   Boolean @default(true)
+  openaiEnabled Boolean @default(false)
+
+  // Configuración avanzada
+  overageEnabled    Boolean @default(false)
+  customModelEnabled Boolean @default(false)
+
+  // Billing
+  mercadopagoPreferenceId String?
+  mercadopagoSubscriptionId String?
+  nextBillingDate         DateTime? @db.Timestamptz
+  monthlyAmount          Float?
+
+  // Metadata
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("tenant_ai_subscriptions")
+}
+
+// Conversaciones del Command Center
+model AIConversation {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation("AIConversations", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId   String @db.Uuid
+  user     PlatformUser @relation("AIConversations", fields: [userId], references: [id], onDelete: Cascade)
+
+  title    String? // Título auto-generado
+  status   AIConversationStatus @default(ACTIVE)
+
+  // Contexto de la conversación
+  context  Json? // Módulos, entidades, filtros usados
+  summary  String? // Resumen auto-generado
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  // Relaciones
+  messages AIMessage[]
+  widgets  AIWidget[]
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("ai_conversations")
+}
+
+// Mensajes individuales
+model AIMessage {
+  id            String @id @default(uuid()) @db.Uuid
+  conversationId String @db.Uuid
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role          AIMessageRole @default(USER)
+  content       String
+  metadata      Json? // Datos estructurados, widgets, acciones
+
+  provider      AIProvider? // groq | openai
+  tokensUsed    Int @default(0)
+  cost          Float @default(0)
+
+  processingTimeMs Int? // Tiempo de respuesta
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([conversationId])
+  @@index([role])
+  @@index([createdAt])
+  @@map("ai_messages")
+}
+
+// Widgets dinámicos generados por IA
+model AIWidget {
+  id            String @id @default(uuid()) @db.Uuid
+  conversationId String @db.Uuid
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  type          AIWidgetType
+  title         String
+  description   String?
+  data          Json // Datos del widget
+  config        Json? // Configuración visual
+
+  position      Int @default(0) // Orden en el dashboard
+  isActive      Boolean @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([conversationId])
+  @@index([type])
+  @@index([isActive])
+  @@map("ai_widgets")
+}
+
+// Memoria de IA por tenant
+model AIMemory {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation("AIMemories", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  type     AIMemoryType
+  key      String // Clave única por tenant
+  value    Json  // Datos almacenados
+
+  metadata Json? // Contexto adicional
+  expiresAt DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, key])
+  @@index([tenantId, type])
+  @@index([expiresAt])
+  @@map("ai_memories")
+}
+
+// Acciones ejecutadas por IA
+model AIAction {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation("AIActions", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId   String @db.Uuid
+  user     PlatformUser @relation("AIActions", fields: [userId], references: [id], onDelete: SetNull)
+
+  // Detalles de la acción
+  type          AIActionType
+  description   String
+  module        String // project360, ncr, capa, etc.
+  entityId      String? // ID de la entidad afectada
+  payload       Json? // Datos de la acción
+
+  // Estado
+  status        AIActionStatus @default(PENDING)
+  result        Json? // Resultado de la ejecución
+  errorMessage  String?
+
+  // Ejecución
+  executedAt    DateTime? @db.Timestamptz
+  completedAt   DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([status])
+  @@index([module])
+  @@index([createdAt])
+  @@map("ai_actions")
+}
+
+// Embeddings para búsqueda semántica
+model AIEmbedding {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation("AIEmbeddings", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Contenido embebido
+  entityType    String // project, risk, ncr, document, etc.
+  entityId      String @db.Uuid
+  content       String
+  contentType   String // title, description, full_text
+
+  // Vector embedding
+  embedding     Float[] // pgvector array
+
+  // Metadata
+  metadata      Json?
+  lastUpdated   DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([entityType, entityId])
+  @@index([contentType])
+  @@map("ai_embeddings")
+}
+
+// Alertas proactivas generadas por IA
+model AIProactiveAlert {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation("AIProactiveAlerts", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Detalles de la alerta
+  type          AIAlertType
+  severity      AIAlertSeverity
+  title         String
+  message       String
+
+  // Contexto
+  module        String
+  entityId      String?
+  entityData    Json? // Snapshot de datos que generaron la alerta
+
+  // Detección
+  detectedBy    String // Nombre del modelo/regla IA
+  confidence    Float @default(0.0) // 0.0 - 1.0
+  threshold     Float @default(0.7)
+
+  // Estado
+  status        AIAlertStatus @default(ACTIVE)
+  acknowledgedAt DateTime? @db.Timestamptz
+  acknowledgedBy String? @db.Uuid
+  resolvedAt      DateTime? @db.Timestamptz
+  resolvedBy      String? @db.Uuid
+
+  // Acciones recomendadas
+  recommendedActions Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([severity])
+  @@index([module])
+  @@index([createdAt])
+  @@map("ai_proactive_alerts")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ENUMS PARA IA
+// ═══════════════════════════════════════════════════════════════
+
+enum AISubscriptionPlan {
+  STARTER_AI
+  BUSINESS_AI
+  ENTERPRISE_AI
+}
+
+enum AISubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum AIProvider {
+  GROQ
+  OPENAI
+}
+
+enum AIMessageRole {
+  SYSTEM
+  USER
+  ASSISTANT
+}
+
+enum AIConversationStatus {
+  ACTIVE
+  ARCHIVED
+  PINNED
+}
+
+enum AIWidgetType {
+  KPI
+  CHART
+  TABLE
+  ALERT
+  INFO
+  PROGRESS
+  STATUS
+  HEATMAP
+  RADAR
+  TIMELINE
+}
+
+enum AIMemoryType {
+  CONTEXT
+  PREFERENCE
+  HISTORY
+  INSIGHT
+  PATTERN
+}
+
+enum AIActionType {
+  CREATE_PROJECT
+  CREATE_NCR
+  CREATE_CAPA
+  CREATE_TASK
+  GENERATE_REPORT
+  UPDATE_ENTITY
+  SEND_NOTIFICATION
+  SCHEDULE_EVENT
+  ANALYZE_DATA
+}
+
+enum AIActionStatus {
+  PENDING
+  EXECUTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AIAlertType {
+  RISK_DETECTED
+  DEVIATION_ALERT
+  OPPORTUNITY_DETECTED
+  THRESHOLD_EXCEEDED
+  PATTERN_ANOMALY
+  PREDICTION_ALERT
+}
+
+enum AIAlertSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum AIAlertStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
 }

@@ -44,6 +44,7 @@ import { integrationRoutes } from './routes/integrations.js';
 import { objectivesRoutes } from './routes/objectives.js';
 import { minutasRoutes } from './routes/minutas.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
+import { commandCenterRoutes } from './routes/command-center.js';
 import { registerCompanySettingsRoutes } from './routes/company-settings.js';
 import { registerLandingSettingsRoutes } from './routes/landing-settings.js';
 import project360Routes from './routes/project360.js';
@@ -83,7 +84,6 @@ import { aspectsRoutes } from './routes/aspects.js';
 import flotaRoutes from './routes/flota.js';
 import garantiasRoutes from './routes/garantias.js';
 import digitalTwinRoutes from './routes/digital-twin.js';
-import { commandCenterRoutes } from './routes/command-center.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -245,6 +245,7 @@ export async function buildApp() {
   await app.register(integrationRoutes, { prefix: '/integrations' });
   await app.register(settingsRoutes, { prefix: '/settings' });
   await app.register(intelligenceRoutes, { prefix: '/intelligence' });
+  await app.register(commandCenterRoutes, { prefix: '/command-center' });
   await app.register(registerCompanySettingsRoutes);
   await app.register(registerLandingSettingsRoutes);
   await app.register(emergencyRoutes, { prefix: '/emergency' });

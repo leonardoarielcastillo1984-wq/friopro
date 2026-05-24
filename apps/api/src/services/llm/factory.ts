@@ -128,3 +128,27 @@ export function createLoggingLLMProvider(
   const inner = createLLMProvider(tenant);
   return new LoggingLLMProvider(inner, prisma, tenantId, userId, module);
 }
+
+/**
+ * Creates an LLM provider wrapped with usage logging that ALWAYS uses Groq.
+ * This is used for all modules except Command Center to restrict OpenAI usage.
+ */
+export function createGroqOnlyLLMProvider(
+  tenant: TenantLLMConfig | null | undefined,
+  prisma: any,
+  tenantId: string | null,
+  userId: string | null,
+  module: string,
+): LLMProvider {
+  // Forzar siempre Groq sin importar la configuración del tenant
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new LLMConfigError(
+      'IA no configurada: falta GROQ_API_KEY. Configurá la variable de entorno para habilitar el asistente IA.'
+    );
+  }
+  
+  const model = 'llama-3.1-8b-instant';
+  const inner = new OpenAIProvider(apiKey, 'https://api.groq.com/openai/v1', model);
+  return new LoggingLLMProvider(inner, prisma, tenantId, userId, module);
+}

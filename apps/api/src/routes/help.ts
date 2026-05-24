@@ -1,7 +1,7 @@
 import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { createLoggingLLMProvider } from '../services/llm/factory.js';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 import { availableTools, executeTool } from '../services/assistant-tools.js';
 
 const AskSchema = z.object({
@@ -42,7 +42,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
       ];
 
       const tenantId = await getEffectiveTenantId(req, app.prisma);
-      const llm = createLoggingLLMProvider(req.tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'centro-ayuda');
+      const llm = createGroqOnlyLLMProvider(req.tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'centro-ayuda');
 
       // Verificar si soporta streaming
       if (!llm.chatStream) {
@@ -117,7 +117,7 @@ export async function registerHelpRoutes(app: FastifyInstance) {
       ];
 
       const tenantId = await getEffectiveTenantId(req, app.prisma);
-      const llm = createLoggingLLMProvider(req.tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'centro-ayuda');
+      const llm = createGroqOnlyLLMProvider(req.tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'centro-ayuda');
       const result = await llm.chat(messages, 1500);
 
       return reply.send({

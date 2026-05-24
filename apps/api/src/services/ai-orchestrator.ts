@@ -17,6 +17,8 @@
 
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
+import Groq from 'groq-sdk';
+import OpenAI from 'openai';
 
 // ============================================================
 // TIPOS Y INTERFACES
@@ -208,10 +210,21 @@ NIVEL DE ANÁLISIS:
 export class AIOrchestrator {
   private prisma: PrismaClient;
   private app?: FastifyInstance;
+  private groq: Groq;
+  private openai: OpenAI;
 
   constructor(prisma: PrismaClient, app?: FastifyInstance) {
     this.prisma = prisma;
     this.app = app;
+    
+    // Inicializar clientes IA
+    this.groq = new Groq({
+      apiKey: process.env.GROQ_API_KEY || '',
+    });
+
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY || '',
+    });
   }
 
   // ============================================================
@@ -288,10 +301,145 @@ export class AIOrchestrator {
     userId: string,
     userRole: string
   ): Promise<AIResponse> {
-    // TODO: Implementar integración con Whisper/OpenAI STT
-    // Por ahora, placeholder que simula conversión
-    const transcribedText = '[Transcripción de voz pendiente de implementación]';
-    return this.processQuery(transcribedText, tenantId, userId, userRole);
+    try {
+      // Usar Whisper de OpenAI para transcribir
+      const transcription = await this.openai.audio.transcriptions.create({
+        file: new File([audioData], 'audio.webm', { type: 'audio/webm' }),
+        model: 'whisper-1',
+        language: 'es'
+      });
+
+      const transcribedText = transcription.text;
+      return this.processQuery(transcribedText, tenantId, userId, userRole);
+      
+    } catch (error: any) {
+      console.error('[AI Orchestrator] Voice transcription error:', error);
+      return {
+        summary: 'No se pudo transcribir el audio. Por favor intenta escribir tu consulta.',
+        provider: 'groq',
+        tokensUsed: 0,
+        cost: 0
+      };
+    }
+  }
+
+  /**
+   * Streaming de respuestas IA en tiempo real
+   */
+  async *processQueryStream(
+    query: string,
+    tenantId: string,
+    userId: string,
+    userRole: string,
+    conversationId?: string
+  ): AsyncGenerator<AIResponse & { done?: boolean }> {
+    try {
+      // Validar suscripción
+      const subscription = await this.validateAISubscription(tenantId);
+      
+      // Analizar intención
+      const context = await this.analyzeIntent(query, tenantId, userId, userRole);
+      
+      // Seleccionar proveedor
+      const provider = this.selectAIProvider(context, subscription);
+      
+      // Verificar límites premium
+      if (provider === 'openai' && !this.canUsePremiumQuery(subscription)) {
+        yield { ...this.buildPaywallResponse(subscription), done: true };
+        return;
+      }
+      
+      // Construir contexto
+      const dataContext = await this.buildDataContext(context, tenantId);
+      const systemPrompt = SYSTEM_PROMPTS[provider];
+      
+      let fullContent = '';
+      let tokensUsed = 0;
+      
+      if (provider === 'openai') {
+        // Streaming con OpenAI
+        const stream = await this.openai.chat.completions.create({
+          model: AI_CONFIG.openai.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Contexto:\n${dataContext}\n\nConsulta: ${query}` }
+          ],
+          temperature: AI_CONFIG.openai.temperature,
+          max_tokens: AI_CONFIG.openai.maxTokens,
+          stream: true
+        });
+
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || '';
+          fullContent += content;
+          
+          yield {
+            summary: fullContent,
+            provider: 'openai',
+            tokensUsed: 0,
+            cost: 0,
+            done: false
+          };
+        }
+        
+        // Estimar tokens finales
+        tokensUsed = Math.ceil(fullContent.length / 4);
+        
+      } else {
+        // Para Groq, hacer consulta normal y simular streaming
+        const response = await this.executeAIQuery(query, provider, dataContext, context);
+        fullContent = response.summary;
+        tokensUsed = response.tokensUsed;
+        
+        // Simular streaming chunk by chunk
+        const words = fullContent.split(' ');
+        let currentContent = '';
+        
+        for (const word of words) {
+          currentContent += (currentContent ? ' ' : '') + word;
+          yield {
+            summary: currentContent,
+            provider: 'groq',
+            tokensUsed: 0,
+            cost: 0,
+            done: false
+          };
+        }
+      }
+      
+      // Mensaje final con costos
+      const cost = (tokensUsed / 1000) * AI_CONFIG[provider].costPer1KTokens;
+      
+      yield {
+        summary: fullContent,
+        provider,
+        tokensUsed,
+        cost,
+        done: true
+      };
+      
+      // Log final
+      await this.logAIUsage(tenantId, userId, provider, tokensUsed, cost, query, conversationId);
+      
+      if (provider === 'openai') {
+        await this.incrementPremiumUsage(tenantId);
+      }
+      
+    } catch (error: any) {
+      console.error('[AI Orchestrator] Streaming error:', error);
+      yield {
+        summary: 'Error en el procesamiento. Por favor intenta nuevamente.',
+        provider: 'groq',
+        tokensUsed: 0,
+        cost: 0,
+        done: true,
+        alerts: [{
+          severity: 'high',
+          title: 'Error de conexión',
+          message: error.message
+        }]
+      };
+    }
   }
 
   /**
@@ -596,24 +744,13 @@ export class AIOrchestrator {
     const config = AI_CONFIG[provider];
     const systemPrompt = SYSTEM_PROMPTS[provider];
     
-    const fullPrompt = `${systemPrompt}\n\nCONTEXTO DEL TENANT:\n${dataContext}\n\nCONSULTA DEL USUARIO:\n${query}`;
-    
     try {
-      const apiKey = provider === 'groq' 
-        ? process.env.GROQ_API_KEY 
-        : process.env.OPENAI_API_KEY;
+      let content: string;
+      let tokensUsed: number = 0;
       
-      if (!apiKey) {
-        throw new Error(`API key not configured for ${provider}`);
-      }
-      
-      const response = await fetch(config.apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
+      if (provider === 'groq') {
+        // Usar cliente Groq real
+        const completion = await this.groq.chat.completions.create({
           model: config.model,
           messages: [
             { role: 'system', content: systemPrompt },
@@ -621,16 +758,27 @@ export class AIOrchestrator {
           ],
           temperature: config.temperature,
           max_tokens: config.maxTokens
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`);
+        });
+        
+        content = completion.choices[0]?.message?.content || '';
+        tokensUsed = completion.usage?.total_tokens || 0;
+        
+      } else {
+        // Usar cliente OpenAI real
+        const completion = await this.openai.chat.completions.create({
+          model: config.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Contexto:\n${dataContext}\n\nConsulta: ${query}` }
+          ],
+          temperature: config.temperature,
+          max_tokens: config.maxTokens
+        });
+        
+        content = completion.choices[0]?.message?.content || '';
+        tokensUsed = completion.usage?.total_tokens || 0;
       }
       
-      const result = await response.json();
-      const content = result.choices?.[0]?.message?.content || '';
-      const tokensUsed = result.usage?.total_tokens || 0;
       const cost = (tokensUsed / 1000) * config.costPer1KTokens;
       
       // Parsear widgets y acciones del contenido si es OpenAI (formato JSON)

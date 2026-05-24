@@ -9,7 +9,7 @@ import { generateDocumentSummary } from '../services/aiService.js';
 import { notifyDocumentReview } from '../services/notifyService.js';
 import { requiresTenantContext, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { checkStorageQuota, incrementStorageUsed, decrementStorageUsed } from '../services/storage-usage.js';
-import { createLoggingLLMProvider } from '../services/llm/factory.js';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -1226,7 +1226,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       const tenantId = req.db?.tenantId ?? (req as any).auth?.tenantId ?? null;
-      const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'document-ai-action');
+      const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'document-ai-action');
       const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
       return reply.send({ text: response.text });
     } catch (err: any) {
@@ -1392,7 +1392,7 @@ Respondé en formato JSON sin markdown:
   "summary": "Resumen ejecutivo de 2-3 oraciones"
 }`;
 
-      const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'document-cross-validate');
+      const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'document-cross-validate');
       const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
 
       let parsed;
@@ -1467,7 +1467,7 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
 }`;
 
       const tenantId = req.db?.tenantId ?? (req as any).auth?.tenantId ?? null;
-      const llm = createLoggingLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'document-quality-analysis');
+      const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'document-quality-analysis');
       const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
 
       let parsed;
