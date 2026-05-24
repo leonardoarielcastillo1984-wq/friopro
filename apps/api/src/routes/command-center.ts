@@ -842,8 +842,9 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Query es requerido' });
       }
 
-      const userId = (req as any).db?.userId || 'anonymous';
-      const userRole = (req as any).db?.role || 'user';
+      const userId = (req as any).auth?.userId || (req as any).db?.userId || 'anonymous';
+      const rawRole = (req as any).auth?.tenantRole || (req as any).auth?.globalRole || (req as any).db?.role || 'USER';
+      const userRole = String(rawRole).toUpperCase();
 
       // Resolver conversación: crear si no existe, recuperar si ya existe
       let resolvedConversationId = conversationId;

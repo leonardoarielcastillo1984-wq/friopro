@@ -170,8 +170,12 @@ export class AIToolsEngine {
       return { success: false, tool: toolName, message: `Herramienta '${toolName}' no encontrada.` };
     }
 
-    // Validar permisos
-    if (!tool.requiredRole.includes(userRole) && userRole !== 'TENANT_ADMIN') {
+    // Validar permisos (case-insensitive)
+    const normalizedRole = String(userRole).toUpperCase();
+    const hasPermission = tool.requiredRole.some(r => r.toUpperCase() === normalizedRole)
+      || normalizedRole === 'TENANT_ADMIN'
+      || normalizedRole === 'SUPER_ADMIN';
+    if (!hasPermission) {
       return { success: false, tool: toolName, message: `Sin permisos para ejecutar '${toolName}'.` };
     }
 
