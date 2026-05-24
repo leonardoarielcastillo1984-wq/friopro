@@ -32,7 +32,8 @@ import {
   Headphones as HeadphonesIcon, Vinyl, Disc, CompactDisc,
   Music as MusicIcon, Play, Pause, SkipBack, SkipForward,
   Repeat, Shuffle, Volume1, Volume2 as Volume2Icon,
-  VolumeX, VolumeUp, VolumeDown, Mute, Unmute
+  VolumeX, VolumeUp, VolumeDown, Mute, Unmute,
+  Lightbulb
 } from 'lucide-react';
 
 import {
@@ -191,8 +192,17 @@ export default function EnterpriseAIControlTower({
   };
 
   const loadCommandActions = async (): Promise<CommandAction[]> => {
-    const response = await apiFetch('/command-center/actions');
-    return response.data.actions;
+    try {
+      const response = await apiFetch('/command-center/actions');
+      if (!response.data) {
+        return [];
+      }
+      // El backend devuelve directamente el array de acciones en response.data
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      console.error('Error loading command actions:', error);
+      return [];
+    }
   };
 
   const loadFloatingAlerts = async (): Promise<FloatingAlert[]> => {
@@ -201,15 +211,33 @@ export default function EnterpriseAIControlTower({
   };
 
   const loadSmartSuggestions = async (): Promise<SmartSuggestion[]> => {
-    const response = await apiFetch('/command-center/suggestions');
-    return response.data.suggestions.map((s: string, i: number) => ({
-      id: `suggestion-${i}`,
-      text: s,
-      category: 'general',
-      priority: 5,
-      contextual: true,
-      icon: 'lightbulb'
-    }));
+    try {
+      const response = await apiFetch('/command-center/suggestions');
+      if (!response.data || !Array.isArray(response.data)) {
+        return [];
+      }
+      
+      const suggestions: SmartSuggestion[] = [];
+      response.data.forEach((category: any) => {
+        if (category.queries && Array.isArray(category.queries)) {
+          category.queries.forEach((query: string, index: number) => {
+            suggestions.push({
+              id: `suggestion-${category.category}-${index}`,
+              text: query,
+              category: category.category.toLowerCase(),
+              priority: 5,
+              contextual: true,
+              icon: 'lightbulb'
+            });
+          });
+        }
+      });
+      
+      return suggestions;
+    } catch (error) {
+      console.error('Error loading smart suggestions:', error);
+      return [];
+    }
   };
 
   const analyzeIntent = async (query: string): Promise<Intent> => {
