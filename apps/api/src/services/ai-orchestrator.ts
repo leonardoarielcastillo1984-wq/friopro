@@ -745,7 +745,8 @@ export class AIOrchestrator {
       userRole,
       intent,
       complexity,
-      modules: modules.length > 0 ? modules : ['general'],
+      // Siempre carga TODOS los módulos para contexto completo del sistema
+      modules: ['project360', 'risks', 'hr', 'flota360', 'quality', 'inspections', 'audits'],
       entities: []
     };
   }
@@ -776,7 +777,9 @@ export class AIOrchestrator {
     const dataSections: string[] = [];
     
     try {
-      for (const module of context.modules) {
+      // Cargar todos los módulos en paralelo siempre
+      const allModules = ['project360', 'risks', 'hr', 'flota360', 'quality', 'inspections', 'audits'];
+      for (const module of allModules) {
         switch (module) {
           case 'project360':
             const projects = await this.prisma.project360?.findMany({
@@ -864,9 +867,53 @@ export class AIOrchestrator {
               const openNcrs = allNcrs.filter((n: any) => n.status !== 'CLOSED').length;
               const openCapas = allCapas.filter((c: any) => c.status !== 'CLOSED' && c.status !== 'COMPLETED').length;
               dataSections.push(`Calidad — NCRs totales: ${allNcrs.length}, abiertas: ${openNcrs}. CAPAs totales: ${allCapas.length}, pendientes: ${openCapas}`);
-            } else {
-              dataSections.push('Calidad — Sin datos de NCRs/CAPAs en el sistema.');
             }
+            break;
+          }
+
+          case 'inspections': {
+            // Hallazgos de inspecciones (tabla raw — no en Prisma schema principal)
+            try {
+              const hallazgos = await this.prisma.$queryRaw<any[]>`
+                SELECT h.descripcion, h.severidad, h.estado, h."itemLabel",
+                       i."activoNombre", i."activoCodigo", i.sector, i."inspectorNombre",
+                       i."createdAt"
+                FROM inspeccion_hallazgos h
+                JOIN inspecciones i ON i.id = h."inspeccionId"
+                WHERE i."tenantId" = ${tenantId}::uuid
+                  AND h.estado = 'ABIERTO'
+                ORDER BY i."createdAt" DESC
+                LIMIT 30
+              `;
+              if (hallazgos.length > 0) {
+                const bySeverity: Record<string, number> = {};
+                hallazgos.forEach((h: any) => { bySeverity[h.severidad] = (bySeverity[h.severidad] || 0) + 1; });
+                const sevStr = Object.entries(bySeverity).map(([s, c]) => `${s}: ${c}`).join(', ');
+                const detalle = hallazgos.slice(0, 10).map((h: any) =>
+                  `• [${h.severidad}] ${h.itemLabel || h.descripcion} — Activo: ${h.activoNombre || 'sin especificar'} (${h.estado})`
+                ).join('\n');
+                dataSections.push(`Inspecciones — Hallazgos abiertos: ${hallazgos.length} (${sevStr})\n${detalle}`);
+              }
+            } catch {}
+            break;
+          }
+
+          case 'audits': {
+            try {
+              const findings = await this.prisma.$queryRaw<any[]>`
+                SELECT f.title, f.severity, f.status, f.description
+                FROM audit_findings f
+                JOIN audits a ON a.id = f."auditId"
+                WHERE a."tenantId" = ${tenantId}::uuid
+                  AND f.status != 'CLOSED'
+                ORDER BY f."createdAt" DESC
+                LIMIT 20
+              `;
+              if (findings.length > 0) {
+                const openFindings = findings.filter((f: any) => f.status !== 'CLOSED').length;
+                dataSections.push(`Auditorías — Hallazgos abiertos: ${openFindings}. Ejemplos: ${findings.slice(0,5).map((f: any) => `${f.title} (${f.severity})`).join(', ')}`);
+              }
+            } catch {}
             break;
           }
         }
