@@ -1002,7 +1002,10 @@ export async function licenseRoutes(app: FastifyInstance) {
           { key: 'reportes', name: 'Reportes', icon: 'FileBarChart', route: '/reportes', description: 'Reportes y analytics', hasAccess: true, isBlocked: false, requiredPlan: 'SUPER_ADMIN', upgradeUrl: '#', tooltip: null },
           { key: 'encuestas', name: 'Encuestas', icon: 'MessageSquare', route: '/encuestas', description: 'Encuestas de satisfacción', hasAccess: true, isBlocked: false, requiredPlan: 'SUPER_ADMIN', upgradeUrl: '#', tooltip: null }
         ];
-        console.log('[/modules/access] Returning all modules for SuperAdmin');
+        if (!allModules.find(m => m.key === 'commandCenter')) {
+          allModules.push({ key: 'commandCenter', name: 'Command Center', icon: 'Brain', route: '/command-center', description: 'IA Ejecutiva Premium', hasAccess: true, isBlocked: false, requiredPlan: 'SUPER_ADMIN', upgradeUrl: '#', tooltip: null });
+        }
+        console.log('[/modules/access] Returning all modules for SuperAdmin, count:', allModules.length);
         return reply.send({ modules: allModules });
       }
 
