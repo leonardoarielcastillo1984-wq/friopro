@@ -1005,31 +1005,6 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   }
 
   // ============================================================
-  // ALERTAS PROACTIVAS
-  // ============================================================
-  app.get('/alerts', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = await getEffectiveTenantId(req, app.prisma);
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-      }
-
-      const alerts = await orchestrator.generateProactiveAlerts(tenantId);
-
-      return reply.send({
-        success: true,
-        data: alerts,
-        count: alerts.length,
-        timestamp: new Date().toISOString()
-      });
-
-    } catch (error: any) {
-      app.log.error('[Command Center] Alerts error:', error);
-      return reply.code(500).send({ error: error.message });
-    }
-  });
-
-  // ============================================================
   // ESTADO DE SUSCRIPCIÓN AI
   // ============================================================
   app.get('/subscription', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -1432,33 +1407,6 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       return reply.send({
         success: true,
         data: execution
-      });
-
-    } catch (error: any) {
-      return reply.code(500).send({ error: error.message });
-    }
-  });
-
-  // ------------------------------------------------------------
-  // FLOATING ALERTS
-  // ------------------------------------------------------------
-  app.get('/alerts', async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const tenantId = await getEffectiveTenantId(req, app.prisma);
-      if (!tenantId) {
-        return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-      }
-
-      const userId = (req as any).db?.userId;
-      const alerts = floatingAlerts.getActiveAlerts(tenantId, userId);
-
-      return reply.send({
-        success: true,
-        data: {
-          alerts,
-          count: alerts.length,
-          timestamp: new Date().toISOString()
-        }
       });
 
     } catch (error: any) {
