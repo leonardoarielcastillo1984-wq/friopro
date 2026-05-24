@@ -571,5 +571,4 @@ export class AIMemoryEngine {
   }
 }
 
-export { AIMemoryEngine };
 export default AIMemoryEngine;
