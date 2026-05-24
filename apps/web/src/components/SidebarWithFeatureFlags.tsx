@@ -185,7 +185,9 @@ export default function SidebarWithFeatureFlags({ isOpen, onToggle }: SidebarPro
                   <span>Dashboard</span>
                 </Link>
 
-                {coreModules.map((module) => (
+                {coreModules.map((module) => {
+                  const IconComponent = getIcon(module.icon);
+                  return (
                   <div key={module.key} className="relative group">
                     <Link
                       href={module.hasAccess ? module.route : '#'}
@@ -199,7 +201,7 @@ export default function SidebarWithFeatureFlags({ isOpen, onToggle }: SidebarPro
                         }
                       }}
                     >
-                      <module.icon className="w-4 h-4" />
+                      <IconComponent className="w-4 h-4" />
                       <span className="flex-1">{module.name}</span>
                       {module.isBlocked && <Lock className="w-3 h-3" />}
                     </Link>
@@ -220,7 +222,8 @@ export default function SidebarWithFeatureFlags({ isOpen, onToggle }: SidebarPro
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
