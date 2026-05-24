@@ -538,9 +538,9 @@ export default function EnterpriseAIControlTower({
           ];
           break;
         default:
-          visualizations = [
-            { type: 'overview-dashboard', title: 'Dashboard General', data: generateOverviewData() }
-          ];
+          // No generar visualizaciones mock por defecto
+          // Solo mostrar datos si vienen del backend
+          visualizations = [];
       }
 
       setContextualVisualizations(visualizations);
@@ -774,20 +774,8 @@ export default function EnterpriseAIControlTower({
     ]
   });
 
-  const generateOverviewData = () => ({
-    kpis: {
-      'Rendimiento General': 85.7,
-      'Satisfacción Cliente': 92.3,
-      'Eficiencia Operativa': 78.9,
-      'Rentabilidad': 23.4
-    },
-    trends: {
-      'Crecimiento': 12.5,
-      'Productividad': 8.3,
-      'Costos': -3.2,
-      'Innovación': 18.7
-    }
-  });
+  // Las visualizaciones se generan desde datos reales del backend
+  // No hay datos hardcodeados - si no hay datos, se muestra "Sin datos disponibles"
 
   const handleActionClick = async (action: CommandAction) => {
     try {
