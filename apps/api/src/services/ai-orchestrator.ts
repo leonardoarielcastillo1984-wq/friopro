@@ -151,17 +151,16 @@ const SYSTEM_PROMPTS = {
   groq: `Eres SGI360 AI, el asistente ejecutivo inteligente de SGI360.
 Tu rol es ayudar a directivos y gerentes a tomar decisiones empresariales informadas.
 
-CAPACIDADES:
-- Analizar datos operativos y financieros
-- Detectar riesgos y oportunidades
-- Generar insights ejecutivos
-- Responder consultas sobre proyectos, KPIs, riesgos, recursos
-- Navegar el sistema SGI360
+REGLA CRÍTICA — NUNCA INVENTAR DATOS:
+- SOLO puedes usar los datos que se te proveen en el campo "Datos del sistema" de cada consulta.
+- Si no hay datos para un módulo, responde: "No hay datos disponibles en el sistema para este módulo."
+- NUNCA inventes números, porcentajes, empleados, proyectos, vehículos ni ningún otro dato.
+- Si los datos están vacíos o ausentes, dilo claramente y sugiere dónde cargarlos en SGI360.
 
 FORMATO DE RESPUESTA:
 Responde SIEMPRE en español, de forma clara y ejecutiva.
-Si la consulta requiere datos específicos, indica qué información necesitas.
-Si detectas riesgos o alertas, destácalas claramente.
+Basa TODA tu respuesta exclusivamente en los datos provistos.
+Si detectas riesgos o alertas en los datos reales, destácalos.
 
 CONTEXTO SGI360:
 - Project360: gestión de proyectos completa
@@ -814,14 +813,68 @@ export class AIOrchestrator {
             }
             break;
             
-          // Agregar más módulos según necesidad
+          case 'hr':
+          case 'rrhh': {
+            const employees = await this.db.employee?.findMany({
+              where: { tenantId, deletedAt: null },
+              select: { id: true, status: true, department: true, position: true },
+              take: 200
+            }) || [];
+            if (employees.length > 0) {
+              const active = employees.filter((e: any) => e.status === 'ACTIVE' || e.status === 'ACTIVO').length;
+              const byDept: Record<string, number> = {};
+              employees.forEach((e: any) => { if (e.department) byDept[e.department] = (byDept[e.department] || 0) + 1; });
+              const deptStr = Object.entries(byDept).map(([d, c]) => `${d}: ${c}`).join(', ');
+              dataSections.push(`RRHH — Empleados totales: ${employees.length}, Activos: ${active}${deptStr ? `. Departamentos: ${deptStr}` : ''}`);
+            } else {
+              dataSections.push('RRHH — Sin datos de empleados cargados en el sistema.');
+            }
+            break;
+          }
+
+          case 'fleet':
+          case 'flota': {
+            const vehicles = await this.db.vehiculo?.findMany({
+              where: { tenantId },
+              select: { id: true, estado: true, tipo: true, dominio: true },
+              take: 100
+            }) || [];
+            if (vehicles.length > 0) {
+              const operative = vehicles.filter((v: any) => v.estado === 'ACTIVO' || v.estado === 'OPERATIVO').length;
+              dataSections.push(`Flota — Vehículos totales: ${vehicles.length}, Operativos: ${operative}`);
+            } else {
+              dataSections.push('Flota — Sin datos de vehículos cargados en el sistema.');
+            }
+            break;
+          }
+
+          case 'quality':
+          case 'calidad': {
+            const db = this.db;
+            const ncrModel = db.nonConformityReport || db.ncr || db.nonConformity;
+            const capaModel = db.capa || db.correctiveAction;
+            const [allNcrs, allCapas] = await Promise.all([
+              ncrModel ? ncrModel.findMany({ where: { tenantId }, select: { status: true, severity: true }, take: 200 }) : [],
+              capaModel ? capaModel.findMany({ where: { tenantId }, select: { status: true }, take: 200 }) : []
+            ]);
+            if (allNcrs.length > 0 || allCapas.length > 0) {
+              const openNcrs = allNcrs.filter((n: any) => n.status !== 'CLOSED').length;
+              const openCapas = allCapas.filter((c: any) => c.status !== 'CLOSED' && c.status !== 'COMPLETED').length;
+              dataSections.push(`Calidad — NCRs totales: ${allNcrs.length}, abiertas: ${openNcrs}. CAPAs totales: ${allCapas.length}, pendientes: ${openCapas}`);
+            } else {
+              dataSections.push('Calidad — Sin datos de NCRs/CAPAs en el sistema.');
+            }
+            break;
+          }
         }
       }
     } catch (error) {
       console.error('[AI Orchestrator] Error building data context:', error);
     }
     
-    return dataSections.join('\n');
+    return dataSections.length > 0
+      ? dataSections.join('\n')
+      : 'No hay datos disponibles en el sistema para esta consulta.';
   }
 
   private async executeAIQuery(
