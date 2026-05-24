@@ -1467,13 +1467,13 @@ export async function commandCenterRoutes(app: FastifyInstance) {
               results[key] = await db.project360.count({ where: { tenantId, deletedAt: null, status: 'AT_RISK' } });
               break;
             case 'fleet_total':
-              results[key] = await db.flotaVehiculo.count({ where: { tenantId } });
+              results[key] = await db.vehiculo.count({ where: { tenantId } });
               break;
             case 'fleet_active':
-              results[key] = await db.flotaVehiculo.count({ where: { tenantId, status: 'ACTIVO' } });
+              results[key] = await db.vehiculo.count({ where: { tenantId, status: 'ACTIVO' } });
               break;
             case 'fleet_maintenance':
-              results[key] = await db.flotaVehiculo.count({ where: { tenantId, status: 'EN_TALLER' } });
+              results[key] = await db.vehiculo.count({ where: { tenantId, status: 'EN_TALLER' } });
               break;
             case 'ncr_total':
               results[key] = await db.nonConformity.count({ where: { tenantId } });
