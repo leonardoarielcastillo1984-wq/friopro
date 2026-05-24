@@ -1,6 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+
+// Web Speech API types
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { apiFetch } from '@/lib/api';
 import {
@@ -146,6 +154,78 @@ export default function EnterpriseAIControlTower({
       setDeepAnalysisMode(false);
     }
   }, [state.currentMode]);
+
+  // ============================================================
+  // VOICE RECOGNITION - Web Speech API
+  // ============================================================
+  useEffect(() => {
+    if (!isListening) return;
+
+    // Check browser support
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.error('Speech recognition not supported in this browser');
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-AR';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      if (finalTranscript) {
+        setInput(prev => prev + ' ' + finalTranscript.trim());
+      }
+      if (interimTranscript) {
+        // Show interim result temporarily
+        setInput(prev => {
+          const base = prev.replace(/\.\.\.$/, '').trim();
+          return base + ' ' + interimTranscript + '...';
+        });
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        alert('Permiso de micrófono denegado. Por favor habilita el acceso al micrófono.');
+      }
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error('Failed to start speech recognition:', err);
+      setIsListening(false);
+    }
+
+    return () => {
+      try {
+        recognition.stop();
+      } catch {
+        // Ignore stop errors
+      }
+    };
+  }, [isListening]);
 
   // ============================================================
   // INITIALIZE ENTERPRISE CC
