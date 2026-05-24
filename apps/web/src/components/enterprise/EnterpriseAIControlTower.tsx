@@ -1598,7 +1598,53 @@ export default function EnterpriseAIControlTower({
 
           {/* AI Status Bar */}
           <div className="mt-4">
-            {renderAIStatusBar()}
+            {state.statusBar ? (
+              <div className="bg-black/20 backdrop-blur-sm rounded-lg p-3 border border-white/10">
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <Cpu className="w-4 h-4 text-blue-400" />
+                      <span className="text-gray-300">
+                        {state.statusBar.provider === 'openai' ? 'OpenAI' : 'Groq'}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Brain className="w-4 h-4 text-purple-400" />
+                      <span className="text-gray-300 capitalize">
+                        {state.statusBar.mode}
+                      </span>
+                    </div>
+                    {state.statusBar.deepAnalysis && (
+                      <div className="flex items-center space-x-2">
+                        <Sparkles className="w-4 h-4 text-yellow-400" />
+                        <span className="text-gray-300">Deep Analysis</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <Database className="w-4 h-4 text-green-400" />
+                      <span className="text-gray-300">
+                        {state.statusBar.queriesRemaining} left
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Activity className="w-4 h-4 text-orange-400" />
+                      <span className="text-gray-300">
+                        {state.statusBar.responseTime}ms
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-black/20 backdrop-blur-sm rounded-lg p-3 border border-white/10">
+                <div className="flex items-center justify-center text-sm text-gray-400">
+                  <Brain className="w-4 h-4 mr-2" />
+                  AI Status initializing...
+                </div>
+              </div>
+            )}
           </div>
         </motion.header>
 
