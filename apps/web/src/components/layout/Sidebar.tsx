@@ -43,6 +43,7 @@ import {
 const mainNav = [
   // 1. Visión general
   { label: 'Inicio', icon: LayoutDashboard, href: '/dashboard' },
+  { label: 'Command Center', icon: Brain, href: '/command-center' },
   { label: 'Documentos', icon: FileText, href: '/documents' },
 
   // 2. Personas y base de datos
@@ -76,7 +77,6 @@ const mainNav = [
   { label: 'Infraestructura', icon: Package, href: '/infraestructura' },
 
   // 9. Admin
-  { label: 'Command Center', icon: Brain, href: '/command-center' },
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
   { label: 'Centro de Ayuda', icon: HelpCircle, href: '/modo-de-uso' },
 ];
