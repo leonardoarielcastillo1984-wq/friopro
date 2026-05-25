@@ -1,7 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
-import { sendEmail, notificationEmail } from '../services/email.js';
+import { sendEmail, notificationEmail, welcomeTenantEmail } from '../services/email.js';
+import * as argon2 from 'argon2';
 
 // Cliente Prisma sin RLS para operaciones de CompanyRegistration
 const prismaSuperUser = new PrismaClient();
@@ -90,21 +91,138 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       const adminEmails = Array.from(new Set([...fixedRecipients, ...envRecipients]));
       const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';
 
+      // ── Auto-aprobación: crear tenant, usuario y enviar credenciales ──
+      app.log.info(`[REGISTER-COMPANY] Auto-aprobando registro ${registration.id}...`);
+
+      const baseSlug = validatedData.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const uniqueSlug = `${baseSlug}-${Date.now().toString(36).slice(-4)}`;
+
+      const demoStartedAt = new Date();
+      const demoExpiresAt = new Date(demoStartedAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+      const tenant = await (app.prisma as any).tenant.create({
+        data: {
+          name: validatedData.companyName,
+          slug: uniqueSlug,
+          isDemo: true,
+          demoStartedAt,
+          demoExpiresAt,
+        },
+      });
+      app.log.info(`[REGISTER-COMPANY] Tenant creado: ${tenant.id} (${tenant.slug})`);
+
+      const tempPassword = 'TempPassword123!';
+      const hashedPassword = await argon2.hash(tempPassword);
+
+      let user = await app.prisma.platformUser.findUnique({ where: { email: validatedData.email } });
+      if (!user) {
+        user = await app.prisma.platformUser.create({
+          data: { email: validatedData.email, passwordHash: hashedPassword, isActive: true },
+        });
+        await (app.prisma as any).passwordHistory.create({
+          data: {
+            userId: user.id,
+            passwordHash: hashedPassword,
+            changeType: 'INITIAL',
+            reason: 'Cuenta creada por auto-aprobación de registro',
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+          },
+        });
+      } else {
+        await app.prisma.platformUser.update({ where: { id: user.id }, data: { passwordHash: hashedPassword } });
+        await (app.prisma as any).passwordHistory.create({
+          data: {
+            userId: user.id,
+            passwordHash: hashedPassword,
+            changeType: 'ADMIN_RESET',
+            reason: 'Contraseña reseteada por auto-aprobación de registro',
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+          },
+        });
+      }
+
+      const existingMembership = await app.prisma.tenantMembership.findFirst({
+        where: { userId: user.id, tenantId: tenant.id },
+      });
+      if (!existingMembership) {
+        await app.prisma.tenantMembership.create({
+          data: { userId: user.id, tenantId: tenant.id, role: 'TENANT_ADMIN' },
+        });
+      }
+
+      const initialPlan = await app.prisma.plan.findFirst({
+        where: { isActive: true, tier: 'BASIC' },
+      }) ?? await app.prisma.plan.findFirst({
+        where: { isActive: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (initialPlan) {
+        await app.prisma.tenantSubscription.create({
+          data: { tenantId: tenant.id, planId: initialPlan.id, status: 'TRIAL', startedAt: new Date() },
+        });
+        app.log.info(`[REGISTER-COMPANY] Suscripción TRIAL creada con plan ${initialPlan.tier}`);
+      }
+
+      await (app.prisma as any).tenantSetup.upsert({
+        where: { tenantId: tenant.id },
+        update: { status: 'PAID', paidAt: new Date(), provider: 'auto-approval', updatedAt: new Date() },
+        create: {
+          tenantId: tenant.id,
+          amount: 0,
+          currency: 'USD',
+          status: 'PAID',
+          requestedAt: new Date(),
+          paidAt: new Date(),
+          provider: 'auto-approval',
+        },
+      });
+
+      await prismaSuperUser.companyRegistration.update({
+        where: { id: registration.id },
+        data: {
+          status: 'APPROVED',
+          tenantId: tenant.id,
+          approvedAt: new Date(),
+        },
+      });
+      app.log.info(`[REGISTER-COMPANY] Registro auto-aprobado: ${registration.id}`);
+
+      // Enviar email de bienvenida con credenciales al cliente
+      const loginUrl = `${appUrl}/login`;
+      try {
+        const welcomeResult = await sendEmail(welcomeTenantEmail({
+          to: validatedData.email,
+          companyName: validatedData.companyName,
+          password: tempPassword,
+          loginUrl,
+        }));
+        if (welcomeResult.success) {
+          app.log.info(`[REGISTER-COMPANY] Email de bienvenida enviado a ${validatedData.email}`);
+        } else {
+          app.log.error(`[REGISTER-COMPANY] Error enviando email de bienvenida: ${welcomeResult.error}`);
+        }
+      } catch (welcomeError) {
+        app.log.error(`[REGISTER-COMPANY] Error enviando email de bienvenida: ${welcomeError}`);
+      }
+
+      // Enviar notificación a admins (informativa, ya no requiere acción)
       try {
         for (const adminEmail of adminEmails) {
           const emailPayload = notificationEmail({
             userEmail: adminEmail,
-            title: 'Nueva solicitud de registro de empresa',
-            message: `Se ha recibido una nueva solicitud de registro:\n\n` +
+            title: 'Nuevo cliente registrado y aprobado automáticamente',
+            message: `Se registró y aprobó automáticamente un nuevo cliente:\n\n` +
               `<strong>Empresa:</strong> ${validatedData.companyName}\n` +
               `<strong>Email:</strong> ${validatedData.email}\n` +
               `<strong>RUT:</strong> ${validatedData.rut}\n` +
               `<strong>Teléfono:</strong> ${validatedData.phone}\n` +
               `<strong>Dirección:</strong> ${validatedData.address}\n\n` +
-              `Tenés una solicitud pendiente de aprobación.`,
-            actionLabel: 'Ver solicitudes pendientes',
+              `El cliente ya recibió sus credenciales y puede acceder al sistema.`,
+            actionLabel: 'Ver clientes registrados',
             actionUrl: `${appUrl}/admin/registros`,
-            type: 'warning',
+            type: 'info',
           });
 
           const emailResult = await sendEmail(emailPayload);
@@ -120,7 +238,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       
       return reply.code(201).send({
         success: true,
-        message: 'Solicitud de registro enviada correctamente',
+        message: 'Registro completado. Te enviamos un email con tus datos de acceso.',
         registrationId: registration.id,
       });
       
