@@ -1516,4 +1516,39 @@ export async function commandCenterRoutes(app: FastifyInstance) {
     }
   });
 
+  // ============================================================
+  // MERCADOPAGO — PLANES Y PAGOS
+  // ============================================================
+
+  app.get('/mercadopago/plans', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const mpService = new AIMercadoPagoService(app.prisma);
+      const plans = mpService.getAvailablePlans();
+      return reply.send({ success: true, data: plans });
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  app.post('/mercadopago/create-preference', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { planId } = body;
+      if (!planId) return reply.code(400).send({ error: 'planId requerido' });
+
+      const userId = (req as any).auth?.userId || (req as any).db?.userId || 'anonymous';
+      const userEmail = (req as any).auth?.email || (req as any).db?.email || 'cliente@sgi360.com';
+      const userName = (req as any).auth?.name || 'Cliente SGI360';
+
+      const mpService = new AIMercadoPagoService(app.prisma);
+      const preference = await mpService.createPaymentPreference(tenantId, planId, userEmail, userName);
+      return reply.send({ success: true, data: preference });
+    } catch (error: any) {
+      return reply.code(500).send({ error: error.message });
+    }
+  });
+
 }

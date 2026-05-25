@@ -85,134 +85,126 @@ export class AIMercadoPagoService {
   private readonly pricingPlans: AIPricingPlan[] = [
     {
       id: 'starter_ai_monthly',
-      name: 'Starter IA - Mensual',
+      name: 'Starter IA',
       description: 'Perfecto para equipos pequeños que comienzan con IA',
-      price: 29.99,
+      price: 15,
       currency: 'USD',
       billingCycle: 'monthly',
       features: [
-        '30 consultas premium/mes',
-        'Análisis básico con Groq',
+        '30 consultas premium/mes con GPT-4.1',
+        'Consultas ilimitadas con Groq',
+        'Contexto completo del sistema',
         'Memoria conversacional',
-        'Widgets dinámicos',
+        'Widgets de métricas configurables',
         'Soporte por email'
       ],
-      limits: {
-        premiumQueries: 30,
-        storage: 5,
-        users: 5
-      }
+      limits: { premiumQueries: 30, storage: 5, users: 5 }
     },
     {
       id: 'business_ai_monthly',
-      name: 'Business IA - Mensual',
+      name: 'Business IA',
       description: 'Ideal para empresas en crecimiento',
-      price: 79.99,
+      price: 49,
       currency: 'USD',
       billingCycle: 'monthly',
       features: [
-        '150 consultas premium/mes',
-        'Análisis avanzado con OpenAI',
-        'Streaming en tiempo real',
+        '150 consultas premium/mes con GPT-4.1',
+        'Consultas ilimitadas con Groq',
+        'Análisis avanzado y simulaciones',
         'Comandos de voz',
         'Alertas proactivas',
         'Búsqueda semántica',
         'Soporte prioritario'
       ],
-      limits: {
-        premiumQueries: 150,
-        storage: 20,
-        users: 20
-      }
+      limits: { premiumQueries: 150, storage: 20, users: 20 }
     },
     {
       id: 'enterprise_ai_monthly',
-      name: 'Enterprise IA - Mensual',
+      name: 'Enterprise IA',
       description: 'Solución completa para grandes organizaciones',
-      price: 199.99,
+      price: 99,
       currency: 'USD',
       billingCycle: 'monthly',
       features: [
-        'Consultas premium ilimitadas',
+        'Consultas premium ilimitadas con GPT-4.1',
         'Todos los modelos IA disponibles',
-        'API dedicada',
         'SLA 99.9%',
-        'Consultor dedicado',
+        'Onboarding dedicado',
         'Personalización avanzada',
-        'Integraciones custom'
+        'Integraciones custom',
+        'Soporte 24/7'
       ],
-      limits: {
-        premiumQueries: -1,
-        storage: 100,
-        users: -1
-      }
+      limits: { premiumQueries: -1, storage: 100, users: -1 }
     },
     {
       id: 'starter_ai_yearly',
       name: 'Starter IA - Anual',
-      description: 'Ahorra 20% con pago anual',
-      price: 287.90,
+      description: 'Ahorrá 20% con pago anual',
+      price: 144,
       currency: 'USD',
       billingCycle: 'yearly',
       features: [
-        '30 consultas premium/mes',
-        'Análisis básico con Groq',
+        '30 consultas premium/mes con GPT-4.1',
+        'Consultas ilimitadas con Groq',
+        'Contexto completo del sistema',
         'Memoria conversacional',
-        'Widgets dinámicos',
+        'Widgets de métricas configurables',
         'Soporte por email',
         '2 meses gratis'
       ],
-      limits: {
-        premiumQueries: 30,
-        storage: 5,
-        users: 5
-      }
+      limits: { premiumQueries: 30, storage: 5, users: 5 }
     },
     {
       id: 'business_ai_yearly',
       name: 'Business IA - Anual',
-      description: 'Ahorra 20% con pago anual',
-      price: 767.90,
+      description: 'Ahorrá 20% con pago anual',
+      price: 470,
       currency: 'USD',
       billingCycle: 'yearly',
       features: [
-        '150 consultas premium/mes',
-        'Análisis avanzado con OpenAI',
-        'Streaming en tiempo real',
+        '150 consultas premium/mes con GPT-4.1',
+        'Consultas ilimitadas con Groq',
+        'Análisis avanzado y simulaciones',
         'Comandos de voz',
         'Alertas proactivas',
         'Búsqueda semántica',
         'Soporte prioritario',
         '2 meses gratis'
       ],
-      limits: {
-        premiumQueries: 150,
-        storage: 20,
-        users: 20
-      }
+      limits: { premiumQueries: 150, storage: 20, users: 20 }
     },
     {
       id: 'enterprise_ai_yearly',
       name: 'Enterprise IA - Anual',
-      description: 'Solución completa con máximo ahorro',
-      price: 1919.90,
+      description: 'Ahorrá 20% con pago anual',
+      price: 950,
       currency: 'USD',
       billingCycle: 'yearly',
       features: [
-        'Consultas premium ilimitadas',
+        'Consultas premium ilimitadas con GPT-4.1',
         'Todos los modelos IA disponibles',
-        'API dedicada',
         'SLA 99.9%',
-        'Consultor dedicado',
+        'Onboarding dedicado',
         'Personalización avanzada',
         'Integraciones custom',
+        'Soporte 24/7',
         '2 meses gratis'
       ],
-      limits: {
-        premiumQueries: -1,
-        storage: 100,
-        users: -1
-      }
+      limits: { premiumQueries: -1, storage: 100, users: -1 }
+    },
+    {
+      id: 'pack_20_queries',
+      name: 'Pack 20 Consultas',
+      description: 'Consultas premium adicionales sin suscripción',
+      price: 10,
+      currency: 'USD',
+      billingCycle: 'monthly',
+      features: [
+        '20 consultas premium con GPT-4.1',
+        'Sin vencimiento',
+        'Se acumulan con tu plan'
+      ],
+      limits: { premiumQueries: 20, storage: 0, users: 0 }
     }
   ];
 
