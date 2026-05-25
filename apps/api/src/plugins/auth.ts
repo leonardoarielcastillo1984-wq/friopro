@@ -79,7 +79,9 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     const cookieToken = (req.cookies as any)?.access_token as string | undefined;
     const header = req.headers.authorization;
     const bearerToken = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : undefined;
-    const token = cookieToken ?? bearerToken;
+    // Bearer takes priority: during impersonation the cookie still holds the super admin token
+    // but localStorage (Bearer) holds the impersonated token
+    const token = bearerToken ?? cookieToken;
     
     // Log para depurar
     if (req.url.includes('/api/') || req.url.includes('/license/')) {
