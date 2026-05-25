@@ -591,8 +591,18 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     let activeTenant: { id: string; name: string; slug: string } | undefined;
     let tenantRole: string | null = null;
 
-    // Use the tenantId from JWT if provided, otherwise use first membership
-    if (req.auth.tenantId && memberships.length > 0) {
+    // Impersonation mode: fetch tenant directly from DB (super admin has no membership in client tenant)
+    if ((req.auth as any).isImpersonating && req.auth.tenantId) {
+      const impTenant = await app.prisma.tenant.findUnique({
+        where: { id: req.auth.tenantId, deletedAt: null },
+        select: { id: true, name: true, slug: true },
+      });
+      if (impTenant) {
+        activeTenant = { id: impTenant.id, name: impTenant.name, slug: impTenant.slug };
+        tenantRole = (req.auth as any).tenantRole || 'TENANT_ADMIN';
+      }
+    } else if (req.auth.tenantId && memberships.length > 0) {
+      // Use the tenantId from JWT if provided, otherwise use first membership
       const found = memberships.find((m) => m.tenantId === req.auth?.tenantId);
       if (found) {
         activeTenant = { id: found.tenant.id, name: found.tenant.name, slug: found.tenant.slug };
