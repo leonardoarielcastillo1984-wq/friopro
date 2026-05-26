@@ -2323,17 +2323,24 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       const { context } = req.query as any;
       const db = app.prisma as any;
 
+      // Debug: check available models
+      console.log('[ContextualKPIs] Available db models:', Object.keys(db).filter(k => !k.startsWith('_')).slice(0, 20));
+      
       // Gather data in parallel
       const [vehicles, ncrs, projects, employees, capas, recentActions] = await Promise.allSettled([
-        db.vehiculo?.findMany({ where: { tenantId }, select: { status: true } }) || [],
-        (db.nonConformityReport || db.ncr || db.nonConformity)?.findMany({ where: { tenantId }, select: { status: true, severity: true, createdAt: true }, take: 100, orderBy: { createdAt: 'desc' } }) || [],
-        db.project360?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true, progress: true } }) || [],
-        db.employee?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true } }) || [],
-        (db.capa || db.correctiveAction)?.findMany({ where: { tenantId }, select: { status: true, dueDate: true }, take: 50 }) || [],
-        db.notification?.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 10, select: { title: true, type: true, createdAt: true, metadata: true } }) || [],
+        db.vehiculo?.findMany({ where: { tenantId }, select: { status: true } }),
+        (db.nonConformityReport || db.ncr || db.nonConformity)?.findMany({ where: { tenantId }, select: { status: true, severity: true, createdAt: true }, take: 100, orderBy: { createdAt: 'desc' } }),
+        db.project360?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true, progress: true } }),
+        db.employee?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true } }),
+        (db.capa || db.correctiveAction)?.findMany({ where: { tenantId }, select: { status: true, dueDate: true }, take: 50 }),
+        db.notification?.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 10, select: { title: true, type: true, createdAt: true, metadata: true } }),
       ]);
 
-      const vList = vehicles.status === 'fulfilled' ? vehicles.value || [] : [];
+      console.log('[ContextualKPIs] vehicles result:', vehicles);
+      console.log('[ContextualKPIs] db.vehiculo exists:', !!db.vehiculo);
+
+      const vList = vehicles.status === 'fulfilled' ? (vehicles.value || []) : [];
+      console.log('[ContextualKPIs] vList length:', vList.length);
       const nList = ncrs.status === 'fulfilled' ? ncrs.value || [] : [];
       const pList = projects.status === 'fulfilled' ? projects.value || [] : [];
       const eList = employees.status === 'fulfilled' ? employees.value || [] : [];
@@ -2415,9 +2422,19 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         });
       }
 
+      console.log('[ContextualKPIs] Final gauges:', gauges.length, 'kpis:', kpis.length);
+
       return reply.send({
         success: true,
-        data: { gauges, kpis, activities }
+        data: { gauges, kpis, activities },
+        _debug: {
+          vehicleCount: vList.length,
+          vehicleStatusCounts: vList.reduce((acc: any, v: any) => {
+            acc[v.status] = (acc[v.status] || 0) + 1;
+            return acc;
+          }, {}),
+          tenantId,
+        }
       });
     } catch (error: any) {
       return reply.code(500).send({ success: false, error: error.message });
