@@ -200,15 +200,16 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
   }
 
   // Debug: force show for diagnosis
-  const debugInfo = (data as any)?._debug;
+  const debugInfo = (data as any)?.debug;
 
   return (
     <div className="h-full overflow-y-auto p-3 space-y-4">
       {/* Debug Info - ALWAYS VISIBLE FOR DIAGNOSIS */}
       <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-2 text-[10px]">
-        <p className="text-yellow-400 font-semibold mb-1">Debug Info (v2):</p>
+        <p className="text-yellow-400 font-semibold mb-1">Debug Info (v3):</p>
         <p className="text-gray-300">Vehículos: {debugInfo?.vehicleCount ?? 'N/A'}</p>
         <p className="text-gray-300">Status: {JSON.stringify(debugInfo?.vehicleStatusCounts) || 'N/A'}</p>
+        <p className="text-gray-300">Muestra: {JSON.stringify(debugInfo?.vListSample) || 'N/A'}</p>
         <p className="text-gray-300">Gauges: {data.gauges?.length ?? 0}</p>
         <p className="text-gray-300">KPIs: {data.kpis?.length ?? 0}</p>
       </div>

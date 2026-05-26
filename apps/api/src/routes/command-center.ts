@@ -2424,17 +2424,24 @@ export async function commandCenterRoutes(app: FastifyInstance) {
 
       console.log('[ContextualKPIs] Final gauges:', gauges.length, 'kpis:', kpis.length);
 
+      const vehicleStatusCounts = vList.reduce((acc: any, v: any) => {
+        acc[v.status] = (acc[v.status] || 0) + 1;
+        return acc;
+      }, {});
+
       return reply.send({
         success: true,
-        data: { gauges, kpis, activities },
-        _debug: {
-          vehicleCount: vList.length,
-          vehicleStatusCounts: vList.reduce((acc: any, v: any) => {
-            acc[v.status] = (acc[v.status] || 0) + 1;
-            return acc;
-          }, {}),
-          tenantId,
-        }
+        data: { 
+          gauges, 
+          kpis, 
+          activities,
+          debug: {  // <-- moved inside data (no underscore)
+            vehicleCount: vList.length,
+            vehicleStatusCounts,
+            tenantId,
+            vListSample: vList.slice(0, 3), // first 3 vehicles for inspection
+          }
+        },
       });
     } catch (error: any) {
       return reply.code(500).send({ success: false, error: error.message });
