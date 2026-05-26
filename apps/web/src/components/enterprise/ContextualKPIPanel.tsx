@@ -145,9 +145,21 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
     setLoading(true);
     try {
       const res = await apiFetch('/command-center/contextual-kpis' + (lastQuery ? `?context=${encodeURIComponent(lastQuery)}` : '')) as any;
-      if (res?.data) setData(res.data);
+      console.log('[ContextualKPIPanel] API response:', res);
+      
+      if (res?.success && res?.data) {
+        setData(res.data);
+        console.log('[ContextualKPIPanel] Data set:', res.data);
+      } else if (res?.data) {
+        // Fallback for different response structure
+        setData(res.data);
+      } else {
+        console.warn('[ContextualKPIPanel] No data in response');
+        setData(null);
+      }
     } catch (err) {
-      console.error('KPI Panel error:', err);
+      console.error('[ContextualKPIPanel] Error loading data:', err);
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -163,12 +175,22 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
     );
   }
 
-  if (!data) {
+  if (!data || (!data.gauges?.length && !data.kpis?.length && !data.activities?.length)) {
     return (
       <div className="h-full flex items-center justify-center text-center p-4">
         <div>
           <Activity className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-          <p className="text-xs text-gray-500">Hacé una consulta para ver indicadores contextuales</p>
+          <p className="text-xs text-gray-500">
+            {lastQuery ? 'Actualizando indicadores...' : 'Hacé una consulta para ver indicadores contextuales'}
+          </p>
+          {lastQuery && (
+            <button 
+              onClick={loadData}
+              className="mt-2 text-xs text-purple-400 hover:text-purple-300"
+            >
+              Recargar
+            </button>
+          )}
         </div>
       </div>
     );
@@ -177,7 +199,7 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
   return (
     <div className="h-full overflow-y-auto p-3 space-y-4">
       {/* Gauges Section */}
-      {data.gauges.length > 0 && (
+      {data.gauges?.length > 0 && (
         <div>
           <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Indicadores Clave</h4>
           <div className="flex items-center justify-around gap-2">
@@ -214,11 +236,11 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
       </div>
 
       {/* KPI Cards Grid */}
-      {data.kpis.length > 0 && (
+      {data.kpis?.length > 0 && (
         <div>
           <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Métricas</h4>
           <div className="grid grid-cols-2 gap-2">
-            {data.kpis.slice(0, 6).map((kpi, i) => (
+            {data.kpis?.slice(0, 6).map((kpi, i) => (
               <MiniKPICard
                 key={i}
                 title={kpi.title}
@@ -234,11 +256,11 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
       )}
 
       {/* Activity Feed */}
-      {data.activities.length > 0 && (
+      {data.activities?.length > 0 && (
         <div>
           <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Actividad Reciente</h4>
           <div className="bg-gray-800/30 border border-gray-700/30 rounded-lg p-2">
-            {data.activities.slice(0, 8).map((act, i) => (
+            {data.activities?.slice(0, 8).map((act, i) => (
               <ActivityItem key={i} {...act} />
             ))}
           </div>
