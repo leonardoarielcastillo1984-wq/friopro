@@ -25,6 +25,7 @@ import { AgentRouter, AGENTS } from '../services/ai-agents/index.js';
 import { EnterpriseEventEngine, eventEngine } from '../services/ai-event-engine.js';
 import { CorrelationEngine } from '../services/ai-correlation-engine.js';
 import { AnomalyDetector } from '../services/ai-anomaly-detector.js';
+import { ExecutiveReportGenerator } from '../services/ai-executive-reports.js';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
@@ -49,10 +50,11 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   const simulationEngine = new AIStrategicSimulationEngine(app.prisma, orchestrator);
   const reportGenerator = new AIReportGenerator(app.prisma, orchestrator);
   
-  // Phase 5: Multi-Agent + Correlation + Anomaly
+  // Phase 5: Multi-Agent + Correlation + Anomaly + Reports
   const agentRouter = new AgentRouter(app.prisma);
   const correlationEngine = new CorrelationEngine(app.prisma);
   const anomalyDetector = new AnomalyDetector(app.prisma);
+  const executiveReports = new ExecutiveReportGenerator(app.prisma);
 
   // Enterprise AI Control Tower Services
   const intentEngine = new EnterpriseIntentEngine(createLLMProvider());
@@ -2280,6 +2282,30 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       };
 
       return reply.send({ success: true, data: explanation });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 5: EXECUTIVE AI REPORTS
+  // ============================================================
+
+  app.get('/executive-report', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { period, format } = req.query as any;
+      const report = await executiveReports.generateReport(tenantId, { period });
+
+      if (format === 'download') {
+        reply.header('Content-Type', 'text/markdown; charset=utf-8');
+        reply.header('Content-Disposition', `attachment; filename="reporte-ejecutivo-${new Date().toISOString().slice(0, 10)}.md"`);
+        return reply.send(report.content);
+      }
+
+      return reply.send({ success: true, data: report });
     } catch (error: any) {
       return reply.code(500).send({ success: false, error: error.message });
     }
