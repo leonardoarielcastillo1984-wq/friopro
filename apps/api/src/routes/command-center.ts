@@ -2351,9 +2351,11 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       const gauges: any[] = [];
       const kpis: any[] = [];
 
-      // Fleet availability
+      // Fleet availability — status can be 'ACTIVO' or 'OPERATIVO'
       if (vList.length > 0) {
-        const operative = vList.filter((v: any) => v.status === 'OPERATIVO').length;
+        const operative = vList.filter((v: any) => 
+          v.status === 'ACTIVO' || v.status === 'OPERATIVO'
+        ).length;
         const availability = Math.round((operative / vList.length) * 100);
         gauges.push({ value: availability, max: 100, label: 'Disponibilidad Flota', color: availability < 75 ? 'risk' : 'good' });
         kpis.push({ title: 'Vehículos Operativos', value: `${operative}/${vList.length}`, trend: availability >= 85 ? 'up' : 'down', trendValue: `${availability}%`, icon: 'truck', color: '#f59e0b' });
@@ -2866,7 +2868,7 @@ async function getFleetStats(db: any, tenantId: string): Promise<any> {
     select: { status: true },
   }) || [];
   
-  const operative = vehicles.filter((v: any) => v.status === 'OPERATIVO').length;
+  const operative = vehicles.filter((v: any) => v.status === 'ACTIVO' || v.status === 'OPERATIVO').length;
   return {
     total: vehicles.length,
     operative,
