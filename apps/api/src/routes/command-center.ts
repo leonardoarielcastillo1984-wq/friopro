@@ -2615,5 +2615,311 @@ export async function commandCenterRoutes(app: FastifyInstance) {
     }
   });
 
+  // ============================================================
+  // PHASE 7: COGNITIVE ENTERPRISE
+  // ============================================================
+
+  app.get('/learning/analysis', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { period } = req.query as any;
+
+      const { organizationalLearningEngine } = await import('../services/organizational-learning.js');
+      const analysis = await organizationalLearningEngine?.analyze(tenantId, period || '30d');
+
+      return reply.send({
+        success: true,
+        data: analysis,
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/intelligence-graph', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { operationalIntelligenceGraph } = await import('../services/operational-intelligence-graph.js');
+      const graph = await operationalIntelligenceGraph?.buildGraph(tenantId);
+
+      return reply.send({
+        success: true,
+        data: graph,
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/intelligence-graph/entity/:entityId', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { entityId } = req.params as any;
+      const { operationalIntelligenceGraph } = await import('../services/operational-intelligence-graph.js');
+      const relations = await operationalIntelligenceGraph?.getEntityRelations(tenantId, entityId);
+
+      return reply.send({
+        success: true,
+        data: relations,
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/intelligence-graph/influential', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { limit } = req.query as any;
+
+      const { operationalIntelligenceGraph } = await import('../services/operational-intelligence-graph.js');
+      const entities = await operationalIntelligenceGraph?.findInfluentialEntities(tenantId, parseInt(limit || '10', 10));
+
+      return reply.send({
+        success: true,
+        data: { entities },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 8: AUTONOMOUS COMPLIANCE & AI-NATIVE ORGANIZATION
+  // ============================================================
+
+  app.get('/compliance/assess', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { standard } = req.query as any;
+
+      const { autonomousComplianceEngine } = await import('../services/autonomous-compliance.js');
+      const assessment = await autonomousComplianceEngine?.assessCompliance(tenantId, standard || 'ISO_9001');
+
+      return reply.send({
+        success: true,
+        data: assessment,
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/compliance/gaps', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { standard, severity, status } = req.query as any;
+
+      const { autonomousComplianceEngine } = await import('../services/autonomous-compliance.js');
+      const gaps = await autonomousComplianceEngine?.getGaps(tenantId, { standard, severity, status });
+
+      return reply.send({
+        success: true,
+        data: { gaps },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.post('/compliance/gaps/auto-fix', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { autonomousComplianceEngine } = await import('../services/autonomous-compliance.js');
+      const result = await autonomousComplianceEngine?.autoFixGaps(tenantId);
+
+      return reply.send({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/compliance/report', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { autonomousComplianceEngine } = await import('../services/autonomous-compliance.js');
+      const report = await autonomousComplianceEngine?.generateReport(tenantId);
+
+      return reply.send({
+        success: true,
+        data: report,
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 8: GLOBAL ENTERPRISE DASHBOARD
+  // ============================================================
+
+  app.get('/enterprise-dashboard', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const db = app.prisma as any;
+
+      // Gather all enterprise data in parallel
+      const [
+        fleetStats,
+        qualityStats,
+        projectStats,
+        riskStats,
+        auditStats,
+        workforceStats,
+        complianceScore,
+      ] = await Promise.allSettled([
+        getFleetStats(db, tenantId),
+        getQualityStats(db, tenantId),
+        getProjectStats(db, tenantId),
+        getRiskStats(db, tenantId),
+        getAuditStats(db, tenantId),
+        getWorkforceStats(db, tenantId),
+        (async () => {
+          const { autonomousComplianceEngine } = await import('../services/autonomous-compliance.js');
+          return await autonomousComplianceEngine?.assessCompliance(tenantId, 'ISO_9001');
+        })(),
+      ]);
+
+      const dashboard = {
+        generatedAt: new Date(),
+        organizationalHealth: {
+          status: calculateHealthStatus(fleetStats, qualityStats, riskStats),
+          score: calculateHealthScore(fleetStats, qualityStats, riskStats, complianceScore),
+        },
+        modules: {
+          fleet: fleetStats.status === 'fulfilled' ? fleetStats.value : null,
+          quality: qualityStats.status === 'fulfilled' ? qualityStats.value : null,
+          projects: projectStats.status === 'fulfilled' ? projectStats.value : null,
+          risks: riskStats.status === 'fulfilled' ? riskStats.value : null,
+          audits: auditStats.status === 'fulfilled' ? auditStats.value : null,
+          workforce: workforceStats.status === 'fulfilled' ? workforceStats.value : null,
+        },
+        compliance: complianceScore.status === 'fulfilled' ? complianceScore.value : null,
+        activeAgents: 7, // AI Workforce agents
+        pendingDecisions: (complianceScore.status === 'fulfilled' ? complianceScore.value?.gaps?.length || 0 : 0) +
+                         (riskStats.status === 'fulfilled' ? riskStats.value?.critical || 0 : 0),
+      };
+
+      return reply.send({
+        success: true,
+        data: dashboard,
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
 }
+
+// ============================================================
+// DASHBOARD HELPER METHODS
+// ============================================================
+
+async function getFleetStats(db: any, tenantId: string): Promise<any> {
+  const vehicles = await db.vehiculo?.findMany?.({
+    where: { tenantId },
+    select: { status: true },
+  }) || [];
+  
+  const operative = vehicles.filter((v: any) => v.status === 'OPERATIVO').length;
+  return {
+    total: vehicles.length,
+    operative,
+    availability: vehicles.length > 0 ? operative / vehicles.length : 1,
+  };
+}
+
+async function getQualityStats(db: any, tenantId: string): Promise<any> {
+  const [ncrs, capas] = await Promise.all([
+    (db.nonConformityReport || db.ncr)?.count?.({ where: { tenantId, status: { not: 'CLOSED' } } }) || 0,
+    (db.capa || db.correctiveAction)?.count?.({ where: { tenantId, status: { not: 'CLOSED' } } }) || 0,
+  ]);
+  return { ncrsOpen: ncrs, capasOpen: capas };
+}
+
+async function getProjectStats(db: any, tenantId: string): Promise<any> {
+  const projects = await db.project360?.findMany?.({
+    where: { tenantId, deletedAt: null },
+    select: { status: true },
+  }) || [];
+  return {
+    total: projects.length,
+    atRisk: projects.filter((p: any) => p.status === 'AT_RISK').length,
+    completed: projects.filter((p: any) => p.status === 'COMPLETED').length,
+  };
+}
+
+async function getRiskStats(db: any, tenantId: string): Promise<any> {
+  const risks = await db.risk?.findMany?.({
+    where: { tenantId, status: { not: 'CLOSED' } },
+    select: { level: true },
+  }) || [];
+  return {
+    total: risks.length,
+    critical: risks.filter((r: any) => r.level === 'CRITICAL').length,
+    high: risks.filter((r: any) => r.level === 'HIGH').length,
+  };
+}
+
+async function getAuditStats(db: any, tenantId: string): Promise<any> {
+  const [upcoming, overdue] = await Promise.all([
+    db.audit?.count?.({ where: { tenantId, plannedDate: { gte: new Date() } } }) || 0,
+    db.audit?.count?.({ where: { tenantId, plannedDate: { lt: new Date() }, status: { not: 'COMPLETED' } } }) || 0,
+  ]);
+  return { upcoming, overdue };
+}
+
+async function getWorkforceStats(db: any, tenantId: string): Promise<any> {
+  const employees = await db.employee?.count?.({ where: { tenantId, deletedAt: null, status: 'ACTIVO' } }) || 0;
+  return { activeEmployees: employees };
+}
+
+function calculateHealthStatus(fleet: any, quality: any, risk: any): string {
+  if (fleet.status === 'rejected' || risk.status === 'rejected') return 'AT_RISK';
+  if (fleet.status === 'fulfilled' && fleet.value?.availability < 0.7) return 'WARNING';
+  if (risk.status === 'fulfilled' && risk.value?.critical > 0) return 'WARNING';
+  return 'HEALTHY';
+}
+
+function calculateHealthScore(fleet: any, quality: any, risk: any, compliance: any): number {
+  let score = 100;
+  
+  if (fleet.status === 'fulfilled') {
+    score -= Math.max(0, (1 - fleet.value.availability) * 30);
+  }
+  if (quality.status === 'fulfilled') {
+    score -= Math.min(20, quality.value.ncrsOpen * 2);
+  }
+  if (risk.status === 'fulfilled') {
+    score -= risk.value.critical * 10;
+    score -= risk.value.high * 5;
+  }
+  if (compliance.status === 'fulfilled') {
+    score = (score + compliance.value.score) / 2;
+  }
+  
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 
