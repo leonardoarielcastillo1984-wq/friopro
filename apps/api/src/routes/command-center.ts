@@ -21,6 +21,10 @@ import { CommandActionsManager, CommandAction, ActionExecution } from '../servic
 import { AIFloatingAlertsManager, FloatingAlert, AlertRule } from '../services/ai-floating-alerts.js';
 import { AIInsightsEngine } from '../services/ai-insights-engine.js';
 import { AITimelineEngine } from '../services/ai-timeline-engine.js';
+import { AgentRouter, AGENTS } from '../services/ai-agents/index.js';
+import { EnterpriseEventEngine, eventEngine } from '../services/ai-event-engine.js';
+import { CorrelationEngine } from '../services/ai-correlation-engine.js';
+import { AnomalyDetector } from '../services/ai-anomaly-detector.js';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
@@ -45,6 +49,11 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   const simulationEngine = new AIStrategicSimulationEngine(app.prisma, orchestrator);
   const reportGenerator = new AIReportGenerator(app.prisma, orchestrator);
   
+  // Phase 5: Multi-Agent + Correlation + Anomaly
+  const agentRouter = new AgentRouter(app.prisma);
+  const correlationEngine = new CorrelationEngine(app.prisma);
+  const anomalyDetector = new AnomalyDetector(app.prisma);
+
   // Enterprise AI Control Tower Services
   const intentEngine = new EnterpriseIntentEngine(createLLMProvider());
   const thinkingVisualizer = new AIThinkingVisualizer();
@@ -984,7 +993,11 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         'X-Accel-Buffering': 'no',
       });
 
-      reply.raw.write(`data: ${JSON.stringify({ type: 'start' })}\n\n`);
+      // Route query to specialized agents
+      const queryRouting = agentRouter.routeQuery(query);
+      const queryBadges = agentRouter.getAgentBadges(queryRouting);
+
+      reply.raw.write(`data: ${JSON.stringify({ type: 'start', agents: queryBadges })}\n\n`);
 
       const stream = orchestrator.processQueryStream(query, tenantId, userId, userRole, conversationId);
       let lastContent = '';
@@ -1013,6 +1026,7 @@ export async function commandCenterRoutes(app: FastifyInstance) {
             tokensUsed: chunk.tokensUsed,
             cost: chunk.cost,
             charts: charts.length > 0 ? charts : undefined,
+            agents: queryBadges,
           })}\n\n`);
         }
       }
@@ -2016,6 +2030,256 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         success: true,
         data: { conversation: conv, messages, exportedAt: new Date().toISOString() },
       });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 5: MULTI-AGENT SYSTEM
+  // ============================================================
+
+  app.get('/agents', async (req: FastifyRequest, reply: FastifyReply) => {
+    return reply.send({
+      success: true,
+      data: Object.values(AGENTS).map(a => ({
+        id: a.id,
+        name: a.name,
+        icon: a.icon,
+        color: a.color,
+        specialization: a.specialization,
+        capabilities: a.capabilities,
+      }))
+    });
+  });
+
+  app.post('/agents/route', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { query } = req.body as any;
+      if (!query) return reply.code(400).send({ error: 'Se requiere query' });
+
+      const routing = agentRouter.routeQuery(query);
+      const badges = agentRouter.getAgentBadges(routing);
+
+      return reply.send({ success: true, data: { routing, badges } });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 5: CROSS-MODULE CORRELATIONS
+  // ============================================================
+
+  app.get('/correlations', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const insights = await correlationEngine.detectCorrelations(tenantId);
+      return reply.send({ success: true, data: insights });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 5: ANOMALY DETECTION
+  // ============================================================
+
+  app.get('/anomalies', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const anomalies = await anomalyDetector.detectAnomalies(tenantId);
+      return reply.send({ success: true, data: anomalies });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 5: ENTERPRISE EVENT ENGINE
+  // ============================================================
+
+  app.get('/events', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { limit, types, since } = req.query as any;
+      const events = await eventEngine.getRecentEvents(tenantId, {
+        limit: parseInt(limit) || 50,
+        types: types ? types.split(',') : undefined,
+        since: since ? new Date(since) : undefined,
+      });
+
+      return reply.send({ success: true, data: events });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/events/stats', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const stats = await eventEngine.getEventStats(tenantId);
+      return reply.send({ success: true, data: stats });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.post('/events', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const userId = (req as any).auth?.userId || (req as any).db?.userId || 'system';
+
+      const body = req.body as any;
+      const eventId = await eventEngine.publish({
+        type: body.type,
+        tenantId,
+        userId,
+        module: body.module || 'system',
+        severity: body.severity || 'info',
+        title: body.title,
+        description: body.description || '',
+        entityId: body.entityId,
+        entityType: body.entityType,
+        metadata: body.metadata,
+        timestamp: new Date()
+      });
+
+      return reply.send({ success: true, data: { eventId } });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 5: DIGITAL TWIN DATA
+  // ============================================================
+
+  app.get('/digital-twin', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const db = app.prisma as any;
+
+      // Gather data from all modules to build org graph
+      const [vehicles, employees, projects, ncrs, risks] = await Promise.allSettled([
+        db.vehiculo?.findMany({ where: { tenantId }, select: { id: true, status: true, tipo: true, marca: true, dominio: true } }) || [],
+        db.employee?.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, department: true, position: true, status: true } }) || [],
+        db.project360?.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true, status: true, progress: true } }) || [],
+        (db.nonConformityReport || db.ncr || db.nonConformity)?.findMany({ where: { tenantId }, select: { id: true, status: true, severity: true }, take: 50 }) || [],
+        db.risk?.findMany({ where: { tenantId }, select: { id: true, title: true, level: true }, take: 30 }) || [],
+      ]);
+
+      // Build nodes and edges for digital twin
+      const nodes: any[] = [];
+      const edges: any[] = [];
+
+      // Central node
+      nodes.push({ id: 'org', type: 'organization', label: 'Organización', status: 'active', x: 400, y: 300, data: {} });
+
+      // Module nodes
+      const moduleConfigs = [
+        { id: 'fleet', label: 'Flota', color: '#f59e0b', count: (vehicles as any).value?.length || 0 },
+        { id: 'hr', label: 'RRHH', color: '#ec4899', count: (employees as any).value?.length || 0 },
+        { id: 'projects', label: 'Proyectos', color: '#06b6d4', count: (projects as any).value?.length || 0 },
+        { id: 'quality', label: 'Calidad', color: '#84cc16', count: (ncrs as any).value?.length || 0 },
+        { id: 'risks', label: 'Riesgos', color: '#ef4444', count: (risks as any).value?.length || 0 },
+      ];
+
+      const angleStep = (2 * Math.PI) / moduleConfigs.length;
+      moduleConfigs.forEach((mod, i) => {
+        const x = 400 + Math.cos(i * angleStep) * 200;
+        const y = 300 + Math.sin(i * angleStep) * 200;
+        nodes.push({ id: mod.id, type: 'module', label: mod.label, color: mod.color, count: mod.count, x, y, data: {} });
+        edges.push({ source: 'org', target: mod.id, type: 'contains' });
+      });
+
+      // Add correlations as edges
+      const correlations = await correlationEngine.detectCorrelations(tenantId);
+      for (const insight of correlations) {
+        for (const corr of insight.correlations) {
+          const sourceModule = corr.source.module === 'maintenance' ? 'fleet' : corr.source.module === 'inspections' ? 'fleet' : corr.source.module;
+          const targetModule = corr.target.module === 'operations' ? 'projects' : corr.target.module;
+          if (nodes.find(n => n.id === sourceModule) && nodes.find(n => n.id === targetModule)) {
+            edges.push({
+              source: sourceModule,
+              target: targetModule,
+              type: corr.type,
+              strength: corr.strength,
+              label: insight.title,
+              severity: insight.severity,
+            });
+          }
+        }
+      }
+
+      // Department breakdown for HR
+      if ((employees as any).value?.length > 0) {
+        const depts: Record<string, number> = {};
+        ((employees as any).value || []).forEach((e: any) => { depts[e.department || 'General'] = (depts[e.department || 'General'] || 0) + 1; });
+        Object.entries(depts).slice(0, 8).forEach(([dept, count], i) => {
+          nodes.push({ id: `dept-${i}`, type: 'department', label: dept, count, color: '#ec4899', x: 0, y: 0, data: {} });
+          edges.push({ source: 'hr', target: `dept-${i}`, type: 'contains' });
+        });
+      }
+
+      return reply.send({
+        success: true,
+        data: { nodes, edges, correlations, anomalies: await anomalyDetector.detectAnomalies(tenantId) }
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 5: EXPLAINABILITY (XAI)
+  // ============================================================
+
+  app.post('/explain', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { query } = req.body as any;
+      if (!query) return reply.code(400).send({ error: 'Se requiere query' });
+
+      // Route to agents
+      const routing = agentRouter.routeQuery(query);
+      const badges = agentRouter.getAgentBadges(routing);
+
+      // Get correlations and anomalies
+      const [correlations, anomalies] = await Promise.all([
+        correlationEngine.detectCorrelations(tenantId),
+        anomalyDetector.detectAnomalies(tenantId),
+      ]);
+
+      // Build explanation
+      const explanation = {
+        agents: badges,
+        routing,
+        correlations: correlations.slice(0, 5),
+        anomalies: anomalies.slice(0, 5),
+        dataSources: routing.supportingAgents.map(a => AGENTS[a]?.specialization || a),
+        reasoning: [
+          `Agente principal: ${AGENTS[routing.primaryAgent]?.name} (confianza: ${(routing.confidence * 100).toFixed(0)}%)`,
+          routing.supportingAgents.length > 0 ? `Agentes de soporte: ${routing.supportingAgents.map(a => AGENTS[a]?.name).join(', ')}` : null,
+          correlations.length > 0 ? `Se detectaron ${correlations.length} correlaciones cross-module` : null,
+          anomalies.length > 0 ? `Se detectaron ${anomalies.length} anomalías operativas` : null,
+        ].filter(Boolean),
+      };
+
+      return reply.send({ success: true, data: explanation });
     } catch (error: any) {
       return reply.code(500).send({ success: false, error: error.message });
     }

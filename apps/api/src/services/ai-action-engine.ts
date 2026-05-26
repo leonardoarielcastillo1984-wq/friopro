@@ -100,6 +100,22 @@ export class AIActionEngine {
         case 'ANALYZE_DATA':
           result = await this.analyzeData(request);
           break;
+
+        case 'CREATE_AUDIT':
+          result = await this.createAudit(request);
+          break;
+
+        case 'CREATE_RISK':
+          result = await this.createRisk(request);
+          break;
+
+        case 'CREATE_MAINTENANCE_TICKET':
+          result = await this.createMaintenanceTicket(request);
+          break;
+
+        case 'SCHEDULE_TRAINING':
+          result = await this.scheduleTraining(request);
+          break;
         
         default:
           result = {
@@ -552,6 +568,132 @@ export class AIActionEngine {
         message: 'Error al analizar datos',
         error: error.message
       };
+    }
+  }
+
+  /**
+   * Crear una auditoría desde IA
+   */
+  private async createAudit(request: AIActionRequest): Promise<AIActionResult> {
+    try {
+      const db = this.prisma as any;
+      const auditModel = db.audit;
+      if (!auditModel) return { success: false, message: 'Módulo Auditorías no disponible' };
+
+      const payload = request.payload;
+      const audit = await auditModel.create({
+        data: {
+          tenantId: request.tenantId,
+          title: payload.title || 'Auditoría generada por IA',
+          description: payload.description || request.description,
+          type: payload.type || 'INTERNAL',
+          status: 'PLANNED',
+          scope: payload.scope || 'General',
+          plannedDate: payload.date ? new Date(payload.date) : new Date(Date.now() + 7 * 86400000),
+          createdById: request.userId,
+          metadata: { aiGenerated: true, aiRequest: request.description }
+        }
+      });
+
+      await this.sendSystemNotification(request.tenantId, request.userId, 'Auditoría Programada', `La IA ha programado la auditoría "${audit.title}".`, { entityId: audit.id, entityType: 'audit' });
+      return { success: true, entityId: audit.id, message: `Auditoría "${audit.title}" programada exitosamente`, data: audit };
+    } catch (error: any) {
+      return { success: false, message: 'Error al crear auditoría', error: error.message };
+    }
+  }
+
+  /**
+   * Crear un riesgo desde IA
+   */
+  private async createRisk(request: AIActionRequest): Promise<AIActionResult> {
+    try {
+      const db = this.prisma as any;
+      const riskModel = db.risk;
+      if (!riskModel) return { success: false, message: 'Módulo Riesgos no disponible' };
+
+      const payload = request.payload;
+      const risk = await riskModel.create({
+        data: {
+          tenantId: request.tenantId,
+          title: payload.title || 'Riesgo detectado por IA',
+          description: payload.description || request.description,
+          category: payload.category || 'OPERATIONAL',
+          level: payload.level || 'MEDIUM',
+          probability: payload.probability || 3,
+          impact: payload.impact || 3,
+          status: 'IDENTIFIED',
+          owner: request.userId,
+          mitigationPlan: payload.mitigation || '',
+          metadata: { aiGenerated: true, aiRequest: request.description }
+        }
+      });
+
+      await this.sendSystemNotification(request.tenantId, request.userId, 'Riesgo Identificado', `La IA ha identificado el riesgo "${risk.title}".`, { entityId: risk.id, entityType: 'risk' });
+      return { success: true, entityId: risk.id, message: `Riesgo "${risk.title}" registrado exitosamente`, data: risk };
+    } catch (error: any) {
+      return { success: false, message: 'Error al crear riesgo', error: error.message };
+    }
+  }
+
+  /**
+   * Crear ticket de mantenimiento desde IA
+   */
+  private async createMaintenanceTicket(request: AIActionRequest): Promise<AIActionResult> {
+    try {
+      const db = this.prisma as any;
+      const payload = request.payload;
+
+      // Try to create via maintenance model or as a task
+      const taskModel = db.task || db.maintenanceOrder;
+      if (!taskModel) return { success: false, message: 'Módulo Mantenimiento no disponible' };
+
+      const ticket = await taskModel.create({
+        data: {
+          tenantId: request.tenantId,
+          title: payload.title || 'Ticket de mantenimiento (IA)',
+          description: payload.description || request.description,
+          type: payload.type || 'CORRECTIVE',
+          priority: payload.priority || 'MEDIUM',
+          status: 'PENDING',
+          createdById: request.userId,
+          assignedTo: payload.assignedTo || null,
+          vehicleId: payload.vehicleId || null,
+          metadata: { aiGenerated: true, aiRequest: request.description }
+        }
+      });
+
+      return { success: true, entityId: ticket.id, message: `Ticket de mantenimiento "${ticket.title}" creado`, data: ticket };
+    } catch (error: any) {
+      return { success: false, message: 'Error al crear ticket de mantenimiento', error: error.message };
+    }
+  }
+
+  /**
+   * Programar capacitación desde IA
+   */
+  private async scheduleTraining(request: AIActionRequest): Promise<AIActionResult> {
+    try {
+      const db = this.prisma as any;
+      const trainingModel = db.training;
+      if (!trainingModel) return { success: false, message: 'Módulo Capacitaciones no disponible' };
+
+      const payload = request.payload;
+      const training = await trainingModel.create({
+        data: {
+          tenantId: request.tenantId,
+          title: payload.title || 'Capacitación sugerida por IA',
+          description: payload.description || request.description,
+          type: payload.type || 'INTERNAL',
+          status: 'PLANNED',
+          startDate: payload.date ? new Date(payload.date) : new Date(Date.now() + 14 * 86400000),
+          createdById: request.userId,
+          metadata: { aiGenerated: true, aiRequest: request.description }
+        }
+      });
+
+      return { success: true, entityId: training.id, message: `Capacitación "${training.title}" programada`, data: training };
+    } catch (error: any) {
+      return { success: false, message: 'Error al programar capacitación', error: error.message };
     }
   }
 

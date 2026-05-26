@@ -25,6 +25,7 @@ import DynamicCharts, { type ChartData } from './DynamicCharts';
 import ConversationSidebar from './ConversationSidebar';
 import InsightsPanel from './InsightsPanel';
 import OperationalTimeline from './OperationalTimeline';
+import CommandPalette from './CommandPalette';
 
 import { EnterpriseCCProps } from '@/types/enterprise-cc';
 
@@ -42,6 +43,7 @@ interface Message {
   isThinking?: boolean;
   isStreaming?: boolean;
   feedback?: 'up' | 'down' | null;
+  agents?: AgentBadge[];
 }
 
 interface AIActionButton {
@@ -51,6 +53,14 @@ interface AIActionButton {
   route?: string;
   payload?: any;
   requiresConfirmation?: boolean;
+}
+
+interface AgentBadge {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  role: 'primary' | 'supporting';
 }
 
 type RightPanel = 'insights' | 'timeline' | 'charts' | 'predictive' | null;
@@ -79,6 +89,7 @@ export default function EnterpriseAIControlTower({
   const [liveStatus, setLiveStatus] = useState({ connected: true, lastSync: new Date(), latency: 23 });
   const [useStreaming] = useState(true);
   const [notifCount, setNotifCount] = useState(0);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const isPremium = subscription?.plan !== 'STARTER_AI';
 
   // ── Refs ──────────────────────────────────────────────────
@@ -184,10 +195,10 @@ export default function EnterpriseAIControlTower({
   // ── Keyboard shortcuts ──────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Cmd+K or Ctrl+K → focus input
+      // Cmd+K or Ctrl+K → open command palette
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        inputRef.current?.focus();
+        setCommandPaletteOpen(true);
       }
       // Escape → exit fullscreen or close right panel
       if (e.key === 'Escape') {
@@ -295,6 +306,7 @@ export default function EnterpriseAIControlTower({
       // ── SSE Streaming path ──
       const streamingMsg: Message = { role: 'assistant', content: '', timestamp: new Date(), isStreaming: true };
       setMessages(prev => [...prev, streamingMsg]);
+      let streamAgents: AgentBadge[] = [];
 
       try {
         const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
@@ -325,7 +337,17 @@ export default function EnterpriseAIControlTower({
             if (!line.startsWith('data: ')) continue;
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.type === 'chunk') {
+              if (data.type === 'start' && data.agents) {
+                streamAgents = data.agents;
+                setMessages(prev => {
+                  const msgs = [...prev];
+                  const last = msgs[msgs.length - 1];
+                  if (last?.isStreaming) {
+                    msgs[msgs.length - 1] = { ...last, agents: data.agents };
+                  }
+                  return msgs;
+                });
+              } else if (data.type === 'chunk') {
                 setMessages(prev => {
                   const msgs = [...prev];
                   const last = msgs[msgs.length - 1];
@@ -349,6 +371,7 @@ export default function EnterpriseAIControlTower({
                       isStreaming: false,
                       charts: data.charts || undefined,
                       actions: data.actions || undefined,
+                      agents: data.agents || last.agents || streamAgents,
                     };
                   }
                   return msgs;
@@ -467,6 +490,13 @@ export default function EnterpriseAIControlTower({
   // ── Render ────────────────────────────────────────────────
   return (
     <div className={`flex h-[calc(100vh-64px)] bg-gray-950 text-white overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onNavigate={(path) => { window.location.href = path; }}
+        onAsk={(query) => { setCommandPaletteOpen(false); handleSendMessage(query); }}
+      />
       {/* ── Left Sidebar: Conversations ─────────────────── */}
       <ConversationSidebar
         activeConversationId={activeConversationId}
@@ -842,6 +872,28 @@ function MessageBubble({
 
       {/* Content */}
       <div className={`flex-1 min-w-0 ${isUser ? 'text-right' : ''}`}>
+        {/* Agent Badges */}
+        {!isUser && message.agents && message.agents.length > 0 && (
+          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+            {message.agents.map((agent) => (
+              <span
+                key={agent.id}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border"
+                style={{
+                  backgroundColor: agent.color + '15',
+                  borderColor: agent.color + '40',
+                  color: agent.color,
+                }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: agent.color }} />
+                {agent.name}
+                {agent.role === 'primary' && (
+                  <span className="text-[8px] opacity-70 ml-0.5">Principal</span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
         <div className={`inline-block text-left px-4 py-3 rounded-xl max-w-full ${
           isUser
             ? 'bg-blue-500/10 border border-blue-500/20'
