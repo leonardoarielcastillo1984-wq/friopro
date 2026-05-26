@@ -8,6 +8,7 @@ import {
   Truck, Users, Kanban, FileText, Clock, Zap, RefreshCw,
   ArrowUpRight, ArrowDownRight, Minus, Eye
 } from 'lucide-react';
+import SparkLine from './SparkLine';
 
 // ── Circular Gauge Component ─────────────────────────────────
 function CircularGauge({ value, max = 100, label, color, size = 80, suffix = '%' }: {
@@ -186,6 +187,31 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
           </div>
         </div>
       )}
+
+      {/* Trend Predictions with Sparklines */}
+      <div className="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Predicción de NCRs</h4>
+          <span className="flex items-center gap-0.5 text-[10px] text-green-400">
+            <TrendingUp className="w-3 h-3" /> ↑28% vs período anterior
+          </span>
+        </div>
+        <SparkLine data={[12, 15, 14, 18, 22, 19, 24, 28, 26, 30]} width={340} height={50} color="#a855f7" />
+      </div>
+
+      {/* Risk Gauge */}
+      <div className="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Nivel de Riesgo Operacional</h4>
+        </div>
+        <div className="flex items-center gap-4">
+          <CircularGauge value={72} max={100} label="" color="risk" size={80} />
+          <div>
+            <p className="text-lg font-bold text-orange-400">Alto</p>
+            <p className="text-[10px] text-gray-500">72% exposición acumulada</p>
+          </div>
+        </div>
+      </div>
 
       {/* KPI Cards Grid */}
       {data.kpis.length > 0 && (
