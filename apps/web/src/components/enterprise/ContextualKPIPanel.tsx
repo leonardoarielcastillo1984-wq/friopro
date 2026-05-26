@@ -199,21 +199,19 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
     );
   }
 
-  // Debug: check if gauges are empty but should have data
-  const hasDebugData = (data as any)?._debug?.vehicleCount > 0;
-  const gaugesEmpty = !data.gauges?.length || data.gauges.every((g: any) => g.value === 0);
+  // Debug: force show for diagnosis
+  const debugInfo = (data as any)?._debug;
 
   return (
     <div className="h-full overflow-y-auto p-3 space-y-4">
-      {/* Debug Info - visible when there's a mismatch */}
-      {(hasDebugData || gaugesEmpty) && (data as any)?._debug && (
-        <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-2 text-[10px]">
-          <p className="text-yellow-400 font-semibold mb-1">Debug Info:</p>
-          <p className="text-gray-300">Vehículos en BD: {(data as any)._debug.vehicleCount}</p>
-          <p className="text-gray-300">Por status: {JSON.stringify((data as any)._debug.vehicleStatusCounts)}</p>
-          <p className="text-gray-300">Tenant: {(data as any)._debug.tenantId?.slice(0, 8)}...</p>
-        </div>
-      )}
+      {/* Debug Info - ALWAYS VISIBLE FOR DIAGNOSIS */}
+      <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-2 text-[10px]">
+        <p className="text-yellow-400 font-semibold mb-1">Debug Info (v2):</p>
+        <p className="text-gray-300">Vehículos: {debugInfo?.vehicleCount ?? 'N/A'}</p>
+        <p className="text-gray-300">Status: {JSON.stringify(debugInfo?.vehicleStatusCounts) || 'N/A'}</p>
+        <p className="text-gray-300">Gauges: {data.gauges?.length ?? 0}</p>
+        <p className="text-gray-300">KPIs: {data.kpis?.length ?? 0}</p>
+      </div>
 
       {/* Gauges Section */}
       {data.gauges?.length > 0 && (
