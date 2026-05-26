@@ -1167,20 +1167,36 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const body = req.body as any;
 
-    // Status 2 = documento listo para guardar, 6 = error forzado de guardado
+    app.log.info(`[OnlyOffice Callback] Doc: ${id}, Status: ${body.status}, URL: ${body.url ? 'present' : 'missing'}`);
+
+    // Status 0 = no changes, 1 = document being edited, 2 = ready to save, 3 = saving error, 4 = document closed without changes, 6 = force saving error, 7 = error force saving
     if (body.status === 2 || body.status === 6) {
       try {
+        if (!body.url) {
+          app.log.error(`[OnlyOffice Callback] Missing URL for doc ${id}`);
+          return reply.send({ error: 1, message: 'Missing URL' });
+        }
+
         // Descargar el archivo editado desde OnlyOffice
         const fetch = (await import('node-fetch')).default;
-        const response = await fetch(body.url);
-        if (!response.ok) throw new Error('No se pudo descargar el archivo editado');
+        app.log.info(`[OnlyOffice Callback] Downloading from ${body.url}`);
+        const response = await fetch(body.url, { timeout: 30000 });
+        
+        if (!response.ok) {
+          app.log.error(`[OnlyOffice Callback] Download failed: ${response.status} ${response.statusText}`);
+          throw new Error(`No se pudo descargar el archivo editado: ${response.status}`);
+        }
+        
         const buffer = Buffer.from(await response.arrayBuffer());
+        app.log.info(`[OnlyOffice Callback] Downloaded ${buffer.length} bytes for doc ${id}`);
 
         // Usar prisma directo (sin runWithDbContext) porque OnlyOffice llama sin token
         const prisma = (app as any).prisma;
         const doc = await prisma.document.findFirst({ where: { id, deletedAt: null }, select: { filePath: true, version: true } });
 
         if (doc?.filePath) {
+          app.log.info(`[OnlyOffice Callback] Saving version ${doc.version} for doc ${id} to ${doc.filePath}`);
+          
           // Guardar snapshot de versión anterior
           await prisma.documentVersion.create({
             data: {
@@ -1195,6 +1211,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
           // Sobreescribir el archivo físico con la versión editada
           await fs.writeFile(doc.filePath, buffer);
+          app.log.info(`[OnlyOffice Callback] Saved doc ${id} successfully`);
 
           // Actualizar versión en BD
           await prisma.document.update({
@@ -1204,12 +1221,17 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
           // Limpiar caché PDF
           try { await fs.rm(`/tmp/sgi-preview-${id}`, { recursive: true, force: true }); } catch { /* ok */ }
+        } else {
+          app.log.warn(`[OnlyOffice Callback] Doc ${id} not found or no filePath`);
         }
-      } catch (err) {
-        app.log.error(err, 'Error en callback OnlyOffice');
-        return reply.send({ error: 1 });
+      } catch (err: any) {
+        app.log.error(err, `[OnlyOffice Callback] Error saving doc ${id}`);
+        return reply.send({ error: 1, message: err.message });
       }
+    } else {
+      app.log.info(`[OnlyOffice Callback] Doc ${id} - no action needed for status ${body.status}`);
     }
+    
     return reply.send({ error: 0 });
   });
 
