@@ -347,6 +347,8 @@ export default function EnterpriseAIControlTower({
                       provider: finalProvider,
                       tokensUsed: finalTokens,
                       isStreaming: false,
+                      charts: data.charts || undefined,
+                      actions: data.actions || undefined,
                     };
                   }
                   return msgs;

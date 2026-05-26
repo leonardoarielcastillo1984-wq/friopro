@@ -1158,6 +1158,200 @@ export class AIOrchestrator {
   }
 
   /**
+   * Detecta si la consulta merece gráficos visuales
+   */
+  shouldGenerateCharts(query: string): boolean {
+    const q = query.toLowerCase();
+    return /indicador|kpi|dashboard|gráfico|grafico|chart|estado.*flota|estado.*proyecto|estado.*general|resumen|reporte|informe|mostrar datos|visualizar|comparar|tendencia|distribución|distribucion/.test(q);
+  }
+
+  /**
+   * Genera configuraciones de gráficos Recharts a partir de datos reales de BD
+   */
+  async generateChartsFromData(query: string, tenantId: string): Promise<AIChart[]> {
+    const charts: AIChart[] = [];
+    const q = query.toLowerCase();
+
+    try {
+      // ── Fleet charts ──
+      if (/flota|veh|camion|camión|unidad/.test(q) || /estado.*general|dashboard|indicador|kpi/.test(q)) {
+        const vehicles = await this.db.vehiculo?.findMany({
+          where: { tenantId },
+          select: { id: true, status: true, tipo: true }
+        }) || [];
+
+        if (vehicles.length > 0) {
+          const statusMap: Record<string, number> = {};
+          vehicles.forEach((v: any) => {
+            const s = v.status === 'ACTIVO' ? 'Operativos' : v.status === 'EN_TALLER' ? 'En Taller' : v.status === 'INACTIVO' ? 'Inactivos' : v.status === 'BAJA' ? 'Baja' : v.status || 'Otro';
+            statusMap[s] = (statusMap[s] || 0) + 1;
+          });
+          charts.push({
+            type: 'pie',
+            title: `Estado de Flota (${vehicles.length} vehículos)`,
+            data: Object.entries(statusMap).map(([name, value]) => ({ name, value })),
+            xAxis: 'name',
+            series: ['value'],
+          });
+
+          // By type
+          const typeMap: Record<string, number> = {};
+          vehicles.forEach((v: any) => { const t = v.tipo || 'Sin tipo'; typeMap[t] = (typeMap[t] || 0) + 1; });
+          if (Object.keys(typeMap).length > 1) {
+            charts.push({
+              type: 'bar',
+              title: 'Vehículos por Tipo',
+              data: Object.entries(typeMap).map(([tipo, cantidad]) => ({ tipo, cantidad })),
+              xAxis: 'tipo',
+              series: ['cantidad'],
+            });
+          }
+        }
+      }
+
+      // ── Inspections/findings charts ──
+      if (/hallazgo|inspección|inspeccion|flota|estado.*general|dashboard|indicador/.test(q)) {
+        try {
+          const hallazgos = await this.prisma.$queryRaw<any[]>`
+            SELECT h.severidad, h.estado, h."itemLabel"
+            FROM inspeccion_hallazgos h
+            JOIN inspecciones i ON i.id = h."inspeccionId"
+            WHERE i."tenantId" = ${tenantId}::uuid
+            LIMIT 100
+          `;
+          if (hallazgos.length > 0) {
+            const bySeverity: Record<string, number> = {};
+            hallazgos.forEach((h: any) => { bySeverity[h.severidad || 'Sin clasificar'] = (bySeverity[h.severidad || 'Sin clasificar'] || 0) + 1; });
+            charts.push({
+              type: 'bar',
+              title: `Hallazgos por Severidad (${hallazgos.length} total)`,
+              data: Object.entries(bySeverity).map(([severidad, cantidad]) => ({ severidad, cantidad })),
+              xAxis: 'severidad',
+              series: ['cantidad'],
+            });
+
+            const byStatus: Record<string, number> = {};
+            hallazgos.forEach((h: any) => { byStatus[h.estado || 'Sin estado'] = (byStatus[h.estado || 'Sin estado'] || 0) + 1; });
+            charts.push({
+              type: 'pie',
+              title: 'Hallazgos por Estado',
+              data: Object.entries(byStatus).map(([name, value]) => ({ name, value })),
+              xAxis: 'name',
+              series: ['value'],
+            });
+          }
+        } catch {}
+      }
+
+      // ── Projects charts ──
+      if (/proyecto|project|avance|estado.*general|dashboard|indicador/.test(q)) {
+        const projects = await this.prisma.project360?.findMany({
+          where: { tenantId, deletedAt: null },
+          take: 20,
+          orderBy: { updatedAt: 'desc' }
+        }) || [];
+
+        if (projects.length > 0) {
+          // Status distribution
+          const statusMap: Record<string, number> = {};
+          projects.forEach((p: any) => {
+            const s = p.status === 'ACTIVE' ? 'Activo' : p.status === 'COMPLETED' ? 'Completado' : p.status === 'AT_RISK' ? 'En Riesgo' : p.status === 'PENDING' ? 'Pendiente' : p.status || 'Otro';
+            statusMap[s] = (statusMap[s] || 0) + 1;
+          });
+          charts.push({
+            type: 'pie',
+            title: `Proyectos por Estado (${projects.length})`,
+            data: Object.entries(statusMap).map(([name, value]) => ({ name, value })),
+            xAxis: 'name',
+            series: ['value'],
+          });
+
+          // Progress bar chart (top 10 by name)
+          const progressData = projects.slice(0, 10).map((p: any) => ({
+            nombre: (p.name || 'Sin nombre').substring(0, 20),
+            avance: p.progress || 0,
+          }));
+          if (progressData.some((d: any) => d.avance > 0)) {
+            charts.push({
+              type: 'bar',
+              title: 'Avance de Proyectos (%)',
+              data: progressData,
+              xAxis: 'nombre',
+              series: ['avance'],
+            });
+          }
+        }
+      }
+
+      // ── Quality (NCRs/CAPAs) ──
+      if (/ncr|capa|calidad|no conformidad|quality|estado.*general|dashboard|indicador/.test(q)) {
+        const db = this.db;
+        const ncrModel = db.nonConformityReport || db.ncr || db.nonConformity;
+        if (ncrModel) {
+          const ncrs = await ncrModel.findMany({ where: { tenantId }, select: { status: true, severity: true }, take: 200 });
+          if (ncrs.length > 0) {
+            const byStatus: Record<string, number> = {};
+            ncrs.forEach((n: any) => { byStatus[n.status || 'Sin estado'] = (byStatus[n.status || 'Sin estado'] || 0) + 1; });
+            charts.push({
+              type: 'pie',
+              title: `NCRs por Estado (${ncrs.length} total)`,
+              data: Object.entries(byStatus).map(([name, value]) => ({ name, value })),
+              xAxis: 'name',
+              series: ['value'],
+            });
+
+            const bySeverity: Record<string, number> = {};
+            ncrs.forEach((n: any) => { if (n.severity) bySeverity[n.severity] = (bySeverity[n.severity] || 0) + 1; });
+            if (Object.keys(bySeverity).length > 0) {
+              charts.push({
+                type: 'bar',
+                title: 'NCRs por Severidad',
+                data: Object.entries(bySeverity).map(([severidad, cantidad]) => ({ severidad, cantidad })),
+                xAxis: 'severidad',
+                series: ['cantidad'],
+              });
+            }
+          }
+        }
+      }
+
+      // ── HR ──
+      if (/rrhh|personal|empleado|recurso.*humano|dotación|dotacion|estado.*general|dashboard/.test(q)) {
+        const employees = await this.db.employee?.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { department: true, status: true },
+          take: 500
+        }) || [];
+
+        if (employees.length > 0) {
+          const byDept: Record<string, number> = {};
+          employees.forEach((e: any) => {
+            const d = e.department || 'Sin departamento';
+            byDept[d] = (byDept[d] || 0) + 1;
+          });
+          if (Object.keys(byDept).length > 1) {
+            charts.push({
+              type: 'bar',
+              title: `Empleados por Departamento (${employees.length} total)`,
+              data: Object.entries(byDept)
+                .sort(([,a], [,b]) => (b as number) - (a as number))
+                .slice(0, 15)
+                .map(([departamento, cantidad]) => ({ departamento, cantidad })),
+              xAxis: 'departamento',
+              series: ['cantidad'],
+            });
+          }
+        }
+      }
+
+    } catch (err) {
+      console.error('[AI Orchestrator] Error generating charts:', err);
+    }
+
+    return charts;
+  }
+
+  /**
    * Multi-agent: detecta qué agente especializado activar según los módulos detectados
    */
   private detectSpecializedAgent(context: QueryContext): string | null {

@@ -939,9 +939,18 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         await memoryEngine.updateConversationContext(memoryContext, conversationContext);
       }
 
+      // Generate charts from real DB data when query warrants visual indicators
+      let charts = result.charts || [];
+      try {
+        if (orchestrator.shouldGenerateCharts(query)) {
+          const autoCharts = await orchestrator.generateChartsFromData(query, tenantId);
+          if (autoCharts.length > 0) charts = [...charts, ...autoCharts];
+        }
+      } catch {}
+
       return reply.send({
         success: true,
-        data: result,
+        data: { ...result, charts: charts.length > 0 ? charts : undefined },
         conversationId: resolvedConversationId,
         provider: result.provider,
         timestamp: new Date().toISOString()
@@ -987,12 +996,23 @@ export async function commandCenterRoutes(app: FastifyInstance) {
           lastContent = chunk.summary;
         }
         if (chunk.done) {
+          // Generate charts from real DB data when query warrants it
+          let charts: any[] = [];
+          try {
+            if (orchestrator.shouldGenerateCharts(query)) {
+              charts = await orchestrator.generateChartsFromData(query, tenantId);
+            }
+          } catch (chartErr) {
+            console.error('[Command Center] Chart generation error:', chartErr);
+          }
+
           reply.raw.write(`data: ${JSON.stringify({
             type: 'complete',
             content: chunk.summary,
             provider: chunk.provider,
             tokensUsed: chunk.tokensUsed,
             cost: chunk.cost,
+            charts: charts.length > 0 ? charts : undefined,
           })}\n\n`);
         }
       }
