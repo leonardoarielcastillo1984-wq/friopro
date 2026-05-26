@@ -26,6 +26,7 @@ import ConversationSidebar from './ConversationSidebar';
 import InsightsPanel from './InsightsPanel';
 import OperationalTimeline from './OperationalTimeline';
 import CommandPalette from './CommandPalette';
+import ContextualKPIPanel from './ContextualKPIPanel';
 
 import { EnterpriseCCProps } from '@/types/enterprise-cc';
 
@@ -63,7 +64,7 @@ interface AgentBadge {
   role: 'primary' | 'supporting';
 }
 
-type RightPanel = 'insights' | 'timeline' | 'charts' | 'predictive' | null;
+type RightPanel = 'insights' | 'timeline' | 'charts' | 'predictive' | 'kpis' | null;
 
 // ============================================================
 // ENTERPRISE AI CONTROL TOWER - MAIN COMPONENT
@@ -83,7 +84,8 @@ export default function EnterpriseAIControlTower({
   const [isListening, setIsListening] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>(undefined);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [rightPanel, setRightPanel] = useState<RightPanel>(null);
+  const [rightPanel, setRightPanel] = useState<RightPanel>('kpis');
+  const [lastQuery, setLastQuery] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [smartSuggestions, setSmartSuggestions] = useState<Array<{ id: string; text: string; category: string }>>([]);
   const [liveStatus, setLiveStatus] = useState({ connected: true, lastSync: new Date(), latency: 23 });
@@ -301,6 +303,7 @@ export default function EnterpriseAIControlTower({
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
+    setLastQuery(query);
 
     if (useStreaming) {
       // ── SSE Streaming path ──
@@ -536,6 +539,15 @@ export default function EnterpriseAIControlTower({
 
             {/* Right panel toggles */}
             <button
+              onClick={() => setRightPanel(rightPanel === 'kpis' ? null : 'kpis')}
+              className={`p-1.5 rounded-lg transition-colors ${
+                rightPanel === 'kpis' ? 'bg-purple-500/20 text-purple-400' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+              title="KPIs contextuales"
+            >
+              <Monitor className="w-4 h-4" />
+            </button>
+            <button
               onClick={() => setRightPanel(rightPanel === 'insights' ? null : 'insights')}
               className={`p-1.5 rounded-lg transition-colors ${
                 rightPanel === 'insights' ? 'bg-yellow-500/20 text-yellow-400' : 'text-gray-400 hover:text-white hover:bg-gray-800'
@@ -706,11 +718,12 @@ export default function EnterpriseAIControlTower({
                 transition={{ duration: 0.2 }}
                 className="border-l border-gray-700/50 overflow-hidden flex-shrink-0"
               >
-                <div className="w-[380px] h-full overflow-y-auto p-3 space-y-3">
-                  {rightPanel === 'insights' && <InsightsPanel onAskAbout={handleAskAbout} />}
-                  {rightPanel === 'timeline' && <OperationalTimeline />}
-                  {rightPanel === 'charts' && <ChartsPanel />}
-                  {rightPanel === 'predictive' && <PredictivePanel />}
+                <div className="w-[380px] h-full overflow-hidden">
+                  {rightPanel === 'kpis' && <ContextualKPIPanel lastQuery={lastQuery} />}
+                  {rightPanel === 'insights' && <div className="h-full overflow-y-auto p-3 space-y-3"><InsightsPanel onAskAbout={handleAskAbout} /></div>}
+                  {rightPanel === 'timeline' && <div className="h-full overflow-y-auto p-3 space-y-3"><OperationalTimeline /></div>}
+                  {rightPanel === 'charts' && <div className="h-full overflow-y-auto p-3 space-y-3"><ChartsPanel /></div>}
+                  {rightPanel === 'predictive' && <div className="h-full overflow-y-auto p-3 space-y-3"><PredictivePanel /></div>}
                 </div>
               </motion.div>
             )}

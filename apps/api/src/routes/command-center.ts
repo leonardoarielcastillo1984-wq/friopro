@@ -2311,4 +2311,117 @@ export async function commandCenterRoutes(app: FastifyInstance) {
     }
   });
 
+  // ============================================================
+  // PHASE 5: CONTEXTUAL KPI PANEL
+  // ============================================================
+
+  app.get('/contextual-kpis', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { context } = req.query as any;
+      const db = app.prisma as any;
+
+      // Gather data in parallel
+      const [vehicles, ncrs, projects, employees, capas, recentActions] = await Promise.allSettled([
+        db.vehiculo?.findMany({ where: { tenantId }, select: { status: true } }) || [],
+        (db.nonConformityReport || db.ncr || db.nonConformity)?.findMany({ where: { tenantId }, select: { status: true, severity: true, createdAt: true }, take: 100, orderBy: { createdAt: 'desc' } }) || [],
+        db.project360?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true, progress: true } }) || [],
+        db.employee?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true } }) || [],
+        (db.capa || db.correctiveAction)?.findMany({ where: { tenantId }, select: { status: true, dueDate: true }, take: 50 }) || [],
+        db.notification?.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 10, select: { title: true, type: true, createdAt: true, metadata: true } }) || [],
+      ]);
+
+      const vList = vehicles.status === 'fulfilled' ? vehicles.value || [] : [];
+      const nList = ncrs.status === 'fulfilled' ? ncrs.value || [] : [];
+      const pList = projects.status === 'fulfilled' ? projects.value || [] : [];
+      const eList = employees.status === 'fulfilled' ? employees.value || [] : [];
+      const cList = capas.status === 'fulfilled' ? capas.value || [] : [];
+      const aList = recentActions.status === 'fulfilled' ? recentActions.value || [] : [];
+
+      // Calculate gauges
+      const gauges: any[] = [];
+      const kpis: any[] = [];
+
+      // Fleet availability
+      if (vList.length > 0) {
+        const operative = vList.filter((v: any) => v.status === 'OPERATIVO').length;
+        const availability = Math.round((operative / vList.length) * 100);
+        gauges.push({ value: availability, max: 100, label: 'Disponibilidad Flota', color: availability < 75 ? 'risk' : 'good' });
+        kpis.push({ title: 'Vehículos Operativos', value: `${operative}/${vList.length}`, trend: availability >= 85 ? 'up' : 'down', trendValue: `${availability}%`, icon: 'truck', color: '#f59e0b' });
+      }
+
+      // Quality NCR rate
+      if (nList.length > 0) {
+        const open = nList.filter((n: any) => n.status !== 'CLOSED').length;
+        const openRate = Math.round((open / Math.max(nList.length, 1)) * 100);
+        gauges.push({ value: openRate, max: 100, label: 'NCRs Abiertas', color: 'risk' });
+        kpis.push({ title: 'NCRs Abiertas', value: open, trend: open > 5 ? 'up' : 'stable', trendValue: open > 5 ? 'Alto' : 'Normal', icon: 'shield', color: '#ef4444' });
+      }
+
+      // Project progress
+      if (pList.length > 0) {
+        const active = pList.filter((p: any) => !['COMPLETED', 'CANCELLED'].includes(p.status));
+        const avgProg = active.length > 0 ? Math.round(active.reduce((s: number, p: any) => s + (p.progress || 0), 0) / active.length) : 0;
+        gauges.push({ value: avgProg, max: 100, label: 'Progreso Proyectos', color: 'good' });
+        kpis.push({ title: 'Proyectos Activos', value: active.length, trend: avgProg >= 50 ? 'up' : 'down', trendValue: `${avgProg}%`, icon: 'kanban', color: '#06b6d4' });
+      }
+
+      // CAPAs overdue
+      if (cList.length > 0) {
+        const overdue = cList.filter((c: any) => c.dueDate && new Date(c.dueDate) < new Date() && c.status !== 'CLOSED').length;
+        kpis.push({ title: 'CAPAs Vencidas', value: overdue, trend: overdue > 0 ? 'down' : 'stable', trendValue: overdue > 0 ? 'Atención' : 'OK', icon: 'zap', color: '#eab308' });
+      }
+
+      // HR headcount
+      if (eList.length > 0) {
+        const active = eList.filter((e: any) => e.status === 'ACTIVO').length;
+        kpis.push({ title: 'Dotación Activa', value: active, trend: 'stable', icon: 'users', color: '#ec4899' });
+      }
+
+      // Activity feed from notifications
+      const activities: any[] = aList.map((n: any) => {
+        const elapsed = Date.now() - new Date(n.createdAt).getTime();
+        const mins = Math.floor(elapsed / 60000);
+        let time = '';
+        if (mins < 60) time = `Hace ${mins} min`;
+        else if (mins < 1440) time = `Hace ${Math.floor(mins / 60)} h`;
+        else time = `Hace ${Math.floor(mins / 1440)} d`;
+
+        let type = 'activity';
+        const title = n.title || 'Actividad';
+        if (title.toLowerCase().includes('ncr')) type = 'ncr';
+        else if (title.toLowerCase().includes('audit')) type = 'audit';
+        else if (title.toLowerCase().includes('capa')) type = 'capa';
+        else if (title.toLowerCase().includes('flota') || title.toLowerCase().includes('vehículo')) type = 'fleet';
+        else if (title.toLowerCase().includes('proyecto')) type = 'project';
+        else if (title.toLowerCase().includes('alerta') || title.toLowerCase().includes('alert')) type = 'alert';
+
+        return { title, time, type, severity: n.metadata?.severity };
+      });
+
+      // If no notifications, generate activity from recent NCRs
+      if (activities.length === 0 && nList.length > 0) {
+        const recent = nList.slice(0, 5);
+        recent.forEach((n: any) => {
+          const elapsed = Date.now() - new Date(n.createdAt).getTime();
+          const mins = Math.floor(elapsed / 60000);
+          let time = '';
+          if (mins < 60) time = `Hace ${mins} min`;
+          else if (mins < 1440) time = `Hace ${Math.floor(mins / 60)} h`;
+          else time = `Hace ${Math.floor(mins / 1440)} d`;
+          activities.push({ title: `NCR ${n.status === 'CLOSED' ? 'cerrada' : 'abierta'}`, time, type: 'ncr', severity: n.severity?.toLowerCase() });
+        });
+      }
+
+      return reply.send({
+        success: true,
+        data: { gauges, kpis, activities }
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
 }
