@@ -2424,4 +2424,196 @@ export async function commandCenterRoutes(app: FastifyInstance) {
     }
   });
 
+  // ============================================================
+  // PHASE 6: AUTONOMOUS AI ORCHESTRATION
+  // ============================================================
+
+  app.get('/autonomous/status', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { autonomousOrchestrator } = await import('../services/autonomous-orchestrator.js');
+      const status = autonomousOrchestrator?.getStatus(tenantId);
+
+      return reply.send({
+        success: true,
+        data: {
+          orchestratorRunning: status?.running || false,
+          rulesActive: status?.rules || 0,
+          tenantId,
+        },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.post('/autonomous/trigger/:ruleId', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { ruleId } = req.params as any;
+      const { autonomousOrchestrator } = await import('../services/autonomous-orchestrator.js');
+      
+      const result = await autonomousOrchestrator?.manualEvaluate(ruleId, tenantId);
+
+      return reply.send({ success: true, data: result });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 6: AI PRIORITY ENGINE
+  // ============================================================
+
+  app.get('/priorities', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { aiPriorityEngine } = await import('../services/ai-priority-engine.js');
+      const priorities = await aiPriorityEngine?.calculateAllPriorities(tenantId);
+
+      return reply.send({
+        success: true,
+        data: {
+          priorities,
+          generatedAt: new Date(),
+        },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/priorities/top', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { query } = req.query as any;
+      const limit = parseInt(query?.limit || '10', 10);
+
+      const { aiPriorityEngine } = await import('../services/ai-priority-engine.js');
+      const priorities = await aiPriorityEngine?.getTopPriorities(tenantId, limit);
+
+      return reply.send({
+        success: true,
+        data: { priorities },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 6: AI WORKFORCE
+  // ============================================================
+
+  app.get('/workforce/agents', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { aiWorkforce } = await import('../services/ai-workforce/index.js');
+      const statuses = aiWorkforce?.getAllAgentStatuses() || [];
+
+      return reply.send({
+        success: true,
+        data: { agents: statuses },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/workforce/activity', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { query } = req.query as any;
+      const limit = parseInt(query?.limit || '50', 10);
+      const agentType = query?.agentType;
+
+      const { aiWorkforce } = await import('../services/ai-workforce/index.js');
+      const activity = aiWorkforce?.getActivityLog(limit, agentType) || [];
+
+      return reply.send({
+        success: true,
+        data: { activity },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/workforce/stats', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { aiWorkforce } = await import('../services/ai-workforce/index.js');
+      const stats = aiWorkforce?.getStatistics();
+
+      return reply.send({
+        success: true,
+        data: { stats },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  app.post('/workforce/trigger/:agentType', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { agentType } = req.params as any;
+      const { taskType, payload, priority } = req.body as any;
+
+      const { aiWorkforce } = await import('../services/ai-workforce/index.js');
+      const taskId = await aiWorkforce?.triggerAgent(
+        agentType,
+        taskType,
+        payload || {},
+        tenantId,
+        priority || 'medium'
+      );
+
+      return reply.send({
+        success: true,
+        data: { taskId },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PHASE 6: BUSINESS SIMULATION
+  // ============================================================
+
+  app.post('/simulate', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const { scenario, parameters } = req.body as any;
+
+      // Use simulation agent
+      const { aiWorkforce } = await import('../services/ai-workforce/index.js');
+      const result = await aiWorkforce?.triggerAgent(
+        'SIMULATION',
+        'SIMULATE_SCENARIO',
+        { scenario, parameters },
+        tenantId,
+        'medium'
+      );
+
+      return reply.send({
+        success: true,
+        data: { simulationId: result },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
 }
+
