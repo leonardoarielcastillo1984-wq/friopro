@@ -979,13 +979,13 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   // ============================================================
   // STREAMING SSE - Chat realtime con generator
   // ============================================================
-  app.post('/stream', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.get('/stream', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       const userId = (req as any).auth?.userId || (req as any).db?.userId || 'anonymous';
       const userRole = (req as any).auth?.role || (req as any).db?.tenantRole || 'USER';
-      const { query, conversationId } = req.body as any;
+      const { query, conversationId } = req.query as any;
       if (!query) return reply.code(400).send({ error: 'Se requiere query' });
 
       reply.raw.writeHead(200, {

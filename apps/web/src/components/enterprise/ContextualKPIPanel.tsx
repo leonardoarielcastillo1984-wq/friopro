@@ -146,10 +146,13 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
     try {
       const res = await apiFetch('/command-center/contextual-kpis' + (lastQuery ? `?context=${encodeURIComponent(lastQuery)}` : '')) as any;
       console.log('[ContextualKPIPanel] API response:', res);
+      console.log('[ContextualKPIPanel] Debug info:', res?._debug);
       
       if (res?.success && res?.data) {
         setData(res.data);
         console.log('[ContextualKPIPanel] Data set:', res.data);
+        console.log('[ContextualKPIPanel] Gauges:', res.data.gauges);
+        console.log('[ContextualKPIPanel] KPIs:', res.data.kpis);
       } else if (res?.data) {
         // Fallback for different response structure
         setData(res.data);

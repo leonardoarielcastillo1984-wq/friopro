@@ -313,11 +313,11 @@ export default function EnterpriseAIControlTower({
 
       try {
         const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-        const res = await fetch(`${apiBase}/api/command-center/stream`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const params = new URLSearchParams({ query, ...(activeConversationId && { conversationId: activeConversationId }) });
+        const res = await fetch(`${apiBase}/api/command-center/stream?${params.toString()}`, {
+          method: 'GET',
+          headers: { 'Accept': 'text/event-stream' },
           credentials: 'include',
-          body: JSON.stringify({ query, conversationId: activeConversationId }),
         });
 
         if (!res.ok || !res.body) throw new Error('SSE connection failed');
