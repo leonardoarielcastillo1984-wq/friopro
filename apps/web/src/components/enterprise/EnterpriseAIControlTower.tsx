@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 // Web Speech API types
 declare global {
@@ -16,7 +16,9 @@ import {
   Crown, Loader2,
   Activity, Monitor, BarChart3, Shield, Database,
   Clock, Lightbulb, User, BrainCircuit, MicOff,
-  Maximize2, Minimize2, Cpu
+  Maximize2, Minimize2, Cpu,
+  ThumbsUp, ThumbsDown, Download, Bell, AlertTriangle,
+  Play, FileText, ChevronRight, Copy, Check, ExternalLink
 } from 'lucide-react';
 import DashboardWidgets from './DashboardWidgets';
 import DynamicCharts, { type ChartData } from './DynamicCharts';
@@ -28,6 +30,7 @@ import { EnterpriseCCProps } from '@/types/enterprise-cc';
 
 // ── Types ─────────────────────────────────────────────────────
 interface Message {
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
@@ -35,12 +38,22 @@ interface Message {
   tokensUsed?: number;
   widgets?: any[];
   charts?: ChartData[];
-  actions?: any[];
+  actions?: AIActionButton[];
   isThinking?: boolean;
   isStreaming?: boolean;
+  feedback?: 'up' | 'down' | null;
 }
 
-type RightPanel = 'insights' | 'timeline' | 'charts' | null;
+interface AIActionButton {
+  type: string;
+  label: string;
+  icon?: string;
+  route?: string;
+  payload?: any;
+  requiresConfirmation?: boolean;
+}
+
+type RightPanel = 'insights' | 'timeline' | 'charts' | 'predictive' | null;
 
 // ============================================================
 // ENTERPRISE AI CONTROL TOWER - MAIN COMPONENT
@@ -65,6 +78,7 @@ export default function EnterpriseAIControlTower({
   const [smartSuggestions, setSmartSuggestions] = useState<Array<{ id: string; text: string; category: string }>>([]);
   const [liveStatus, setLiveStatus] = useState({ connected: true, lastSync: new Date(), latency: 23 });
   const [useStreaming] = useState(true);
+  const [notifCount, setNotifCount] = useState(0);
   const isPremium = subscription?.plan !== 'STARTER_AI';
 
   // ── Refs ──────────────────────────────────────────────────
@@ -149,6 +163,123 @@ export default function EnterpriseAIControlTower({
       }
     } catch { /* non-critical */ }
   };
+
+  // ── Fetch notification count ────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('/command-center/notifications') as any;
+        if (res?.unreadCount != null) setNotifCount(res.unreadCount);
+      } catch { /* non-critical */ }
+    })();
+    const iv = setInterval(async () => {
+      try {
+        const res = await apiFetch('/command-center/notifications') as any;
+        if (res?.unreadCount != null) setNotifCount(res.unreadCount);
+      } catch {}
+    }, 60000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // ── Keyboard shortcuts ──────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Cmd+K or Ctrl+K → focus input
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+      // Escape → exit fullscreen or close right panel
+      if (e.key === 'Escape') {
+        if (isFullscreen) setIsFullscreen(false);
+        else if (rightPanel) setRightPanel(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isFullscreen, rightPanel]);
+
+  // ── Feedback handler ────────────────────────────────────────
+  const handleFeedback = useCallback(async (msgIdx: number, rating: 'up' | 'down') => {
+    setMessages(prev => {
+      const msgs = [...prev];
+      msgs[msgIdx] = { ...msgs[msgIdx], feedback: rating };
+      return msgs;
+    });
+    const msg = messages[msgIdx];
+    if (msg?.id) {
+      try {
+        await apiFetch(`/command-center/messages/${msg.id}/feedback`, {
+          method: 'POST',
+          body: JSON.stringify({ rating }),
+        });
+      } catch { /* non-critical */ }
+    }
+  }, [messages]);
+
+  // ── Action execution from chat ──────────────────────────────
+  const handleExecuteAction = useCallback(async (action: AIActionButton) => {
+    if (action.route) {
+      window.location.href = action.route;
+      return;
+    }
+    if (action.requiresConfirmation && !confirm(`¿Ejecutar "${action.label}"?`)) return;
+    try {
+      setIsLoading(true);
+      const res = await apiFetch('/command-center/execute-action', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: action.type,
+          params: action.payload || {},
+          conversationId: activeConversationId,
+        }),
+      }) as any;
+      const resultMsg: Message = {
+        role: 'assistant',
+        content: res?.data?.message || `✅ Acción "${action.label}" ejecutada correctamente`,
+        timestamp: new Date(),
+        provider: 'SYSTEM',
+      };
+      setMessages(prev => [...prev, resultMsg]);
+    } catch (err: any) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `❌ Error ejecutando "${action.label}": ${err.message}`,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeConversationId]);
+
+  // ── Export conversation ──────────────────────────────────────
+  const handleExportConversation = useCallback(async () => {
+    if (!activeConversationId) return;
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      const url = `${apiBase}/api/command-center/conversations/${activeConversationId}/export?format=markdown`;
+      const res = await fetch(url, { credentials: 'include' });
+      const text = await res.text();
+      const blob = new Blob([text], { type: 'text/markdown' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `conversacion-${activeConversationId.slice(0, 8)}.md`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      console.error('Export error:', err);
+    }
+  }, [activeConversationId]);
+
+  // ── Copy message content ────────────────────────────────────
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const handleCopyMessage = useCallback(async (content: string, idx: number) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 2000);
+    } catch {}
+  }, []);
 
   // ── Send message (with SSE streaming support) ──────────────
   const handleSendMessage = async (queryOverride?: string) => {
@@ -399,6 +530,36 @@ export default function EnterpriseAIControlTower({
             >
               <BarChart3 className="w-4 h-4" />
             </button>
+            <button
+              onClick={() => setRightPanel(rightPanel === 'predictive' ? null : 'predictive')}
+              className={`p-1.5 rounded-lg transition-colors ${
+                rightPanel === 'predictive' ? 'bg-orange-500/20 text-orange-400' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+              title="Análisis predictivo"
+            >
+              <TrendingUp className="w-4 h-4" />
+            </button>
+
+            {/* Notifications bell */}
+            <button className="relative p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors" title="Notificaciones">
+              <Bell className="w-4 h-4" />
+              {notifCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 rounded-full text-[8px] text-white font-bold flex items-center justify-center">
+                  {notifCount > 9 ? '9+' : notifCount}
+                </span>
+              )}
+            </button>
+
+            {/* Export conversation */}
+            {activeConversationId && (
+              <button
+                onClick={handleExportConversation}
+                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                title="Exportar conversación"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Fullscreen toggle */}
             <button
@@ -426,7 +587,15 @@ export default function EnterpriseAIControlTower({
               ) : (
                 <>
                   {messages.map((msg, idx) => (
-                    <MessageBubble key={idx} message={msg} />
+                    <MessageBubble
+                      key={idx}
+                      message={msg}
+                      idx={idx}
+                      onFeedback={handleFeedback}
+                      onCopy={handleCopyMessage}
+                      copiedIdx={copiedIdx}
+                      onExecuteAction={handleExecuteAction}
+                    />
                   ))}
                 </>
               )}
@@ -458,7 +627,7 @@ export default function EnterpriseAIControlTower({
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={isListening ? 'Escuchando...' : 'Pregunta algo al asistente IA...'}
+                    placeholder={isListening ? 'Escuchando...' : 'Pregunta algo al asistente IA... (⌘K)'}
                     className="flex-1 bg-transparent text-sm text-gray-200 placeholder-gray-500 outline-none"
                     disabled={isLoading}
                   />
@@ -509,6 +678,7 @@ export default function EnterpriseAIControlTower({
                   {rightPanel === 'insights' && <InsightsPanel onAskAbout={handleAskAbout} />}
                   {rightPanel === 'timeline' && <OperationalTimeline />}
                   {rightPanel === 'charts' && <ChartsPanel />}
+                  {rightPanel === 'predictive' && <PredictivePanel />}
                 </div>
               </motion.div>
             )}
@@ -621,8 +791,17 @@ function WelcomeScreen({
   );
 }
 
-// ── Message Bubble ──────────────────────────────────────────
-function MessageBubble({ message }: { message: Message }) {
+// ── Message Bubble (Phase 3+4) ──────────────────────────────
+function MessageBubble({
+  message, idx, onFeedback, onCopy, copiedIdx, onExecuteAction
+}: {
+  message: Message;
+  idx: number;
+  onFeedback: (idx: number, rating: 'up' | 'down') => void;
+  onCopy: (content: string, idx: number) => void;
+  copiedIdx: number | null;
+  onExecuteAction: (action: AIActionButton) => void;
+}) {
   const isUser = message.role === 'user';
 
   if (message.isThinking) {
@@ -644,7 +823,7 @@ function MessageBubble({ message }: { message: Message }) {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex items-start gap-3 max-w-3xl mx-auto ${isUser ? 'flex-row-reverse' : ''}`}
+      className={`group flex items-start gap-3 max-w-3xl mx-auto ${isUser ? 'flex-row-reverse' : ''}`}
     >
       {/* Avatar */}
       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -666,16 +845,34 @@ function MessageBubble({ message }: { message: Message }) {
             ? 'bg-blue-500/10 border border-blue-500/20'
             : 'bg-gray-800/60 border border-gray-700/30'
         }`}>
-          {/* Content - render with line breaks + streaming cursor */}
-          <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
-            {formatContent(message.content)}
-            {message.isStreaming && (
-              <span className="inline-block w-2 h-4 bg-purple-400 ml-0.5 animate-pulse rounded-sm" />
-            )}
-          </div>
+          {/* Markdown-aware content */}
+          <div
+            className="text-sm text-gray-200 leading-relaxed break-words prose prose-invert prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-strong:text-white prose-code:text-purple-300 prose-code:bg-gray-700/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+          />
+          {message.isStreaming && (
+            <span className="inline-block w-2 h-4 bg-purple-400 ml-0.5 animate-pulse rounded-sm" />
+          )}
         </div>
 
-        {/* Metadata */}
+        {/* Action Buttons from AI */}
+        {!isUser && message.actions && message.actions.length > 0 && !message.isStreaming && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {message.actions.map((action, ai) => (
+              <button
+                key={ai}
+                onClick={() => onExecuteAction(action)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/10 border border-purple-500/30 rounded-lg text-xs text-purple-300 hover:bg-purple-500/20 hover:text-purple-200 transition-colors"
+              >
+                {action.route ? <ExternalLink className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                {action.label}
+                {action.requiresConfirmation && <AlertTriangle className="w-3 h-3 text-yellow-400" />}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Metadata + Actions row */}
         {!message.isStreaming && (
           <div className={`flex items-center gap-2 mt-1 ${isUser ? 'justify-end' : ''}`}>
             <Clock className="w-2.5 h-2.5 text-gray-600" />
@@ -690,6 +887,33 @@ function MessageBubble({ message }: { message: Message }) {
             )}
             {!isUser && message.tokensUsed && message.tokensUsed > 0 && (
               <span className="text-[10px] text-gray-600">{message.tokensUsed} tokens</span>
+            )}
+
+            {/* Copy + Feedback (only for assistant, visible on hover) */}
+            {!isUser && (
+              <div className="flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => onCopy(message.content, idx)}
+                  className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+                  title="Copiar"
+                >
+                  {copiedIdx === idx ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                </button>
+                <button
+                  onClick={() => onFeedback(idx, 'up')}
+                  className={`p-1 transition-colors ${message.feedback === 'up' ? 'text-green-400' : 'text-gray-500 hover:text-green-400'}`}
+                  title="Buena respuesta"
+                >
+                  <ThumbsUp className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => onFeedback(idx, 'down')}
+                  className={`p-1 transition-colors ${message.feedback === 'down' ? 'text-red-400' : 'text-gray-500 hover:text-red-400'}`}
+                  title="Mala respuesta"
+                >
+                  <ThumbsDown className="w-3 h-3" />
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -798,11 +1022,140 @@ function ChartsPanel() {
   );
 }
 
-// ── Format content helper ───────────────────────────────────
-function formatContent(content: string): string {
+// ── Lightweight Markdown → HTML ──────────────────────────────
+function renderMarkdown(content: string): string {
   if (!content) return '';
-  // Clean up excessive newlines
-  return content
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  let html = content
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Bold & italic
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Unordered lists
+    .replace(/^[-•] (.+)$/gm, '<li>$1</li>')
+    // Ordered lists
+    .replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>')
+    // Line breaks → paragraphs
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br/>');
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/(<li>.*?<\/li>(?:<br\/>)?)+/gs, (match) => {
+    return '<ul>' + match.replace(/<br\/>/g, '') + '</ul>';
+  });
+  return '<p>' + html + '</p>';
+}
+
+// ── Predictive Analytics Panel ───────────────────────────────
+function PredictivePanel() {
+  const [predictions, setPredictions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('/command-center/predictive') as any;
+        if (res?.data && Array.isArray(res.data)) setPredictions(res.data);
+      } catch (err) {
+        console.error('Predictive error:', err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-5 h-5 text-orange-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (predictions.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <TrendingUp className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+        <p className="text-sm text-gray-500">Sin predicciones disponibles</p>
+        <p className="text-xs text-gray-600 mt-1">Se necesitan datos históricos para generar predicciones</p>
+      </div>
+    );
+  }
+
+  const trendIcon = (trend: string) => {
+    if (trend === 'up') return <TrendingUp className="w-3.5 h-3.5 text-green-400" />;
+    if (trend === 'down') return <TrendingUp className="w-3.5 h-3.5 text-red-400 rotate-180" />;
+    return <Activity className="w-3.5 h-3.5 text-gray-400" />;
+  };
+
+  const riskColor = (level?: string) => {
+    if (level === 'high') return 'text-red-400 bg-red-500/10 border-red-500/30';
+    if (level === 'medium') return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
+    return 'text-green-400 bg-green-500/10 border-green-500/30';
+  };
+
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
+        <TrendingUp className="w-4 h-4 text-orange-400" />
+        Análisis Predictivo
+      </h3>
+      <div className="space-y-3">
+        {predictions.map((p, i) => (
+          <div key={i} className="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-300">{p.metric}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${riskColor(p.riskLevel)}`}>
+                {p.module}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="text-center">
+                <p className="text-lg font-bold text-white">{p.current}</p>
+                <p className="text-[9px] text-gray-500 uppercase">Actual</p>
+              </div>
+              <div className="flex items-center gap-1">
+                {trendIcon(p.trend)}
+                <span className={`text-xs font-medium ${p.trendPct > 0 ? 'text-green-400' : p.trendPct < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                  {p.trendPct > 0 ? '+' : ''}{p.trendPct}%
+                </span>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-purple-300">{p.predicted}</p>
+                <p className="text-[9px] text-gray-500 uppercase">Predicción</p>
+              </div>
+            </div>
+
+            {p.confidence && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-purple-500 rounded-full" style={{ width: `${p.confidence * 100}%` }} />
+                </div>
+                <span className="text-[9px] text-gray-500">{Math.round(p.confidence * 100)}% confianza</span>
+              </div>
+            )}
+
+            {p.estimatedCompletion && (
+              <p className="text-[10px] text-gray-400">
+                <Clock className="w-3 h-3 inline mr-1" />
+                Completado estimado: {p.estimatedCompletion}
+              </p>
+            )}
+
+            {p.alert && (
+              <div className="flex items-start gap-1.5 px-2 py-1.5 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                <AlertTriangle className="w-3 h-3 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <span className="text-[10px] text-yellow-300">{p.alert}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

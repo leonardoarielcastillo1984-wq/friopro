@@ -1720,4 +1720,285 @@ export async function commandCenterRoutes(app: FastifyInstance) {
     }
   });
 
+  // ============================================================
+  // FASE 3: PREDICTIVE ANALYTICS
+  // ============================================================
+  app.get('/predictive', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const db = app.prisma as any;
+      const predictions: any[] = [];
+
+      // --- NCR trend prediction ---
+      const ncrModel = db.nonConformityReport || db.ncr || db.nonConformity;
+      if (ncrModel) {
+        const ncrs = await ncrModel.findMany({
+          where: { tenantId },
+          select: { createdAt: true, status: true, severity: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (ncrs.length >= 3) {
+          const months: Record<string, number> = {};
+          ncrs.forEach((n: any) => {
+            const m = new Date(n.createdAt).toISOString().slice(0, 7);
+            months[m] = (months[m] || 0) + 1;
+          });
+          const entries = Object.entries(months).sort();
+          const recent = entries.slice(-6);
+          const avg = recent.reduce((s, [, v]) => s + v, 0) / (recent.length || 1);
+          const trend = recent.length >= 2
+            ? (recent[recent.length - 1][1] - recent[0][1]) / (recent.length - 1)
+            : 0;
+          const nextMonth = Math.max(0, Math.round(avg + trend));
+          predictions.push({
+            module: 'calidad',
+            metric: 'NCRs mensuales',
+            current: recent[recent.length - 1]?.[1] || 0,
+            predicted: nextMonth,
+            trend: trend > 0 ? 'up' : trend < 0 ? 'down' : 'stable',
+            trendPct: recent.length >= 2 && recent[0][1] > 0
+              ? Math.round(((recent[recent.length - 1][1] - recent[0][1]) / recent[0][1]) * 100)
+              : 0,
+            confidence: Math.min(0.95, 0.6 + ncrs.length * 0.005),
+            history: recent.map(([month, count]) => ({ month, count })),
+            alert: nextMonth > avg * 1.3 ? 'Tendencia alcista en NCRs detectada — revisar procesos' : null,
+          });
+        }
+      }
+
+      // --- Project delivery prediction ---
+      const projects = await db.project360?.findMany({
+        where: { tenantId, deletedAt: null, status: { in: ['ACTIVE', 'AT_RISK'] } },
+        select: { id: true, name: true, progress: true, status: true, startDate: true, targetDate: true, budget: true, actualCost: true },
+      }) || [];
+      for (const p of projects) {
+        if (p.startDate && p.targetDate && p.progress != null) {
+          const total = new Date(p.targetDate).getTime() - new Date(p.startDate).getTime();
+          const elapsed = Date.now() - new Date(p.startDate).getTime();
+          const timeProgress = Math.min(1, elapsed / (total || 1));
+          const deviation = timeProgress > 0 ? p.progress / 100 / timeProgress : 1;
+          const riskLevel = deviation < 0.7 ? 'high' : deviation < 0.9 ? 'medium' : 'low';
+          const estimatedCompletion = deviation > 0
+            ? new Date(new Date(p.startDate).getTime() + total / deviation)
+            : null;
+          const overBudget = p.budget && p.actualCost ? (p.actualCost - p.budget) / p.budget : 0;
+          predictions.push({
+            module: 'projects',
+            metric: `Proyecto: ${p.name}`,
+            current: p.progress,
+            predicted: Math.min(100, Math.round(p.progress + deviation * 10)),
+            trend: deviation >= 1 ? 'up' : 'down',
+            trendPct: Math.round((deviation - 1) * 100),
+            confidence: 0.75,
+            riskLevel,
+            estimatedCompletion: estimatedCompletion?.toISOString().slice(0, 10) || null,
+            overBudget: overBudget > 0 ? Math.round(overBudget * 100) : 0,
+            alert: riskLevel === 'high'
+              ? `⚠️ Proyecto "${p.name}" tiene riesgo alto de atraso`
+              : overBudget > 0.15
+                ? `💰 Sobrecosto del ${Math.round(overBudget * 100)}% detectado`
+                : null,
+          });
+        }
+      }
+
+      // --- Fleet maintenance prediction ---
+      const vehicles = await db.vehiculo?.findMany({
+        where: { tenantId },
+        select: { id: true, dominio: true, marca: true, modelo: true, status: true, kmActual: true },
+      }) || [];
+      const maintenanceCount = vehicles.filter((v: any) => v.status === 'EN_TALLER').length;
+      if (vehicles.length > 0) {
+        predictions.push({
+          module: 'flota',
+          metric: 'Disponibilidad de flota',
+          current: Math.round(((vehicles.length - maintenanceCount) / vehicles.length) * 100),
+          predicted: Math.round(((vehicles.length - Math.max(0, maintenanceCount - 1)) / vehicles.length) * 100),
+          trend: maintenanceCount > vehicles.length * 0.2 ? 'down' : 'stable',
+          confidence: 0.7,
+          alert: maintenanceCount > vehicles.length * 0.3
+            ? `🚛 ${maintenanceCount} de ${vehicles.length} vehículos en taller (${Math.round(maintenanceCount / vehicles.length * 100)}%)`
+            : null,
+        });
+      }
+
+      return reply.send({ success: true, data: predictions, timestamp: new Date().toISOString() });
+    } catch (error: any) {
+      console.error('[Command Center] Predictive error:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // FASE 3: EXECUTE ACTIONS FROM CHAT
+  // ============================================================
+  app.post('/execute-action', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const userId = (req as any).auth?.userId || (req as any).db?.userId || 'anonymous';
+      const userRole = (req as any).auth?.tenantRole || (req as any).db?.role || 'USER';
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { action, params, conversationId } = body;
+
+      if (!action) return reply.code(400).send({ error: 'action requerido' });
+
+      const toolsEngine = orchestrator.toolsEngine || new (await import('../services/ai-tools-engine.js')).AIToolsEngine(app.prisma, app);
+      const result = await toolsEngine.executeTool(action, params || {}, tenantId, userId, String(userRole).toUpperCase());
+
+      // Save action message in conversation
+      if (conversationId) {
+        try {
+          await (app.prisma as any).aIMessage?.create({
+            data: { conversationId, role: 'ASSISTANT', content: result.message, provider: 'SYSTEM', tokensUsed: 0, cost: 0 }
+          });
+        } catch { /* non-critical */ }
+      }
+
+      return reply.send({ success: true, data: result, timestamp: new Date().toISOString() });
+    } catch (error: any) {
+      console.error('[Command Center] Execute action error:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // FASE 3: SMART NOTIFICATIONS
+  // ============================================================
+  app.get('/notifications', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const db = app.prisma as any;
+      const notifications: any[] = [];
+
+      // Proactive alerts from DB
+      try {
+        const alerts = await db.aIProactiveAlert?.findMany({
+          where: { tenantId, status: 'ACTIVE' },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        }) || [];
+        alerts.forEach((a: any) => {
+          notifications.push({
+            id: a.id, type: 'alert', severity: a.severity?.toLowerCase() || 'medium',
+            title: a.title, description: a.description, module: a.module,
+            createdAt: a.createdAt, read: false,
+          });
+        });
+      } catch { /* table may not exist */ }
+
+      // Recent NCRs opened
+      const ncrModel = db.nonConformityReport || db.ncr || db.nonConformity;
+      if (ncrModel) {
+        const recentNCRs = await ncrModel.findMany({
+          where: { tenantId, createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+          select: { id: true, title: true, severity: true, createdAt: true },
+          orderBy: { createdAt: 'desc' }, take: 5,
+        });
+        recentNCRs.forEach((n: any) => {
+          notifications.push({
+            id: `ncr-${n.id}`, type: 'ncr', severity: n.severity?.toLowerCase() || 'medium',
+            title: `Nueva NCR: ${n.title}`, description: `Severidad: ${n.severity}`,
+            module: 'calidad', createdAt: n.createdAt, read: false,
+          });
+        });
+      }
+
+      // Sort by date
+      notifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      return reply.send({ success: true, data: notifications, unreadCount: notifications.filter(n => !n.read).length });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // FASE 4: MESSAGE FEEDBACK (thumbs up/down)
+  // ============================================================
+  app.post('/messages/:messageId/feedback', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { messageId } = req.params as any;
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const { rating, comment } = body; // rating: 'up' | 'down'
+
+      const db = app.prisma as any;
+      // Try to update message with feedback
+      try {
+        await db.aIMessage?.update({
+          where: { id: messageId },
+          data: {
+            metadata: {
+              feedback: rating,
+              feedbackComment: comment || null,
+              feedbackAt: new Date().toISOString(),
+            }
+          }
+        });
+      } catch {
+        // Message model might not have metadata field - store in audit
+        await db.auditEvent?.create({
+          data: {
+            action: 'AI_FEEDBACK',
+            entityType: 'AI_MESSAGE',
+            entityId: messageId,
+            metadata: { rating, comment },
+          }
+        });
+      }
+
+      return reply.send({ success: true, message: 'Feedback registrado' });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // FASE 4: EXPORT CONVERSATION
+  // ============================================================
+  app.get('/conversations/:conversationId/export', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const userId = (req as any).auth?.userId || (req as any).db?.userId || 'anonymous';
+      const { conversationId } = req.params as any;
+      const { format = 'markdown' } = req.query as any;
+
+      const db = app.prisma as any;
+      const conv = await db.aIConversation?.findFirst({ where: { id: conversationId, tenantId, userId } });
+      if (!conv) return reply.code(404).send({ error: 'Conversación no encontrada' });
+
+      const messages = await db.aIMessage?.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: 'asc' },
+      }) || [];
+
+      if (format === 'markdown') {
+        let md = `# ${conv.title || 'Conversación'}\n`;
+        md += `**Fecha:** ${new Date(conv.createdAt).toLocaleDateString('es-AR')}\n\n---\n\n`;
+        for (const m of messages) {
+          const role = m.role === 'USER' ? '👤 **Usuario**' : '🤖 **SGI360 AI**';
+          const time = new Date(m.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+          md += `### ${role} — ${time}\n\n${m.content}\n\n`;
+          if (m.provider) md += `_Provider: ${m.provider} | Tokens: ${m.tokensUsed || 0}_\n\n`;
+          md += '---\n\n';
+        }
+
+        reply.header('Content-Type', 'text/markdown; charset=utf-8');
+        reply.header('Content-Disposition', `attachment; filename="conversacion-${conversationId.slice(0, 8)}.md"`);
+        return reply.send(md);
+      }
+
+      // JSON format
+      return reply.send({
+        success: true,
+        data: { conversation: conv, messages, exportedAt: new Date().toISOString() },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
 }

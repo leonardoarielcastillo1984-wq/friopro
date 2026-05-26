@@ -248,7 +248,7 @@ export class AIOrchestrator {
   private app?: FastifyInstance;
   private groq: Groq;
   private openai: OpenAI;
-  private toolsEngine: AIToolsEngine;
+  public toolsEngine: AIToolsEngine;
 
   constructor(prisma: PrismaClient, app?: FastifyInstance) {
     this.prisma = prisma;
