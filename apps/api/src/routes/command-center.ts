@@ -19,6 +19,8 @@ import { AIThinkingVisualizer, ThinkingStep, AIThinkingSession } from '../servic
 import { OperationalModesManager, OperationalMode } from '../services/operational-modes.js';
 import { CommandActionsManager, CommandAction, ActionExecution } from '../services/command-actions.js';
 import { AIFloatingAlertsManager, FloatingAlert, AlertRule } from '../services/ai-floating-alerts.js';
+import { AIInsightsEngine } from '../services/ai-insights-engine.js';
+import { AITimelineEngine } from '../services/ai-timeline-engine.js';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
@@ -49,6 +51,8 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   const operationalModes = new OperationalModesManager();
   const commandActions = new CommandActionsManager();
   const floatingAlerts = new AIFloatingAlertsManager();
+  const insightsEngine = new AIInsightsEngine(app.prisma);
+  const timelineEngine = new AITimelineEngine(app.prisma);
 
   // ============================================================
   // HEALTH CHECK - Enhanced
@@ -1105,6 +1109,83 @@ export async function commandCenterRoutes(app: FastifyInstance) {
 
     } catch (error: any) {
       return reply.code(500).send({ error: error.message });
+    }
+  });
+
+  // ============================================================
+  // PROACTIVE INSIGHTS (datos reales)
+  // ============================================================
+  app.get('/insights', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const insights = await insightsEngine.generateInsights(tenantId);
+      return reply.send({ success: true, data: insights, timestamp: new Date().toISOString() });
+    } catch (error: any) {
+      console.error('[Command Center] Insights error:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // OPERATIONAL TIMELINE (datos reales)
+  // ============================================================
+  app.get('/timeline', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { limit = '50', offset = '0', modules, since } = req.query as any;
+      const result = await timelineEngine.getTimeline(tenantId, {
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        modules: modules ? String(modules).split(',') : undefined,
+        since: since ? new Date(since) : undefined
+      });
+      return reply.send({ success: true, data: result, timestamp: new Date().toISOString() });
+    } catch (error: any) {
+      console.error('[Command Center] Timeline error:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // CONVERSATION MESSAGES (historial)
+  // ============================================================
+  app.get('/conversations/:conversationId/messages', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const userId = (req as any).auth?.userId || (req as any).db?.userId || 'anonymous';
+      const { conversationId } = req.params as any;
+      const { limit = '100' } = req.query as any;
+      const conversation = await (app.prisma as any).aIConversation?.findFirst({
+        where: { id: conversationId, tenantId, userId }
+      });
+      if (!conversation) return reply.code(404).send({ error: 'Conversación no encontrada' });
+      const messages = await (app.prisma as any).aIMessage?.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: 'asc' },
+        take: parseInt(limit)
+      }) || [];
+      return reply.send({ success: true, data: { conversation, messages } });
+    } catch (error: any) {
+      console.error('[Command Center] Conversation messages error:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // MEMORY STATS
+  // ============================================================
+  app.get('/memory/stats', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const stats = await memoryEngine.getMemoryStats(tenantId);
+      return reply.send({ success: true, data: stats });
+    } catch (error: any) {
+      console.error('[Command Center] Memory stats error:', error);
+      return reply.code(500).send({ success: false, error: error.message });
     }
   });
 
