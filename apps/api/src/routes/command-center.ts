@@ -957,60 +957,60 @@ export async function commandCenterRoutes(app: FastifyInstance) {
   });
 
   // ============================================================
-  // STREAMING - Chat realtime
+  // STREAMING SSE - Chat realtime con generator
   // ============================================================
-  async function handleStreamingQuery(
-    req: FastifyRequest,
-    reply: FastifyReply,
-    orchestrator: any,
-    query: string,
-    tenantId: string,
-    userId: string,
-    userRole: string,
-    conversationId?: string
-  ) {
-    reply.raw.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive'
-    });
-
+  app.post('/stream', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      // Enviar evento de inicio
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const userId = (req as any).auth?.userId || (req as any).db?.userId || 'anonymous';
+      const userRole = (req as any).auth?.role || (req as any).db?.tenantRole || 'USER';
+      const { query, conversationId } = req.body as any;
+      if (!query) return reply.code(400).send({ error: 'Se requiere query' });
+
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+
       reply.raw.write(`data: ${JSON.stringify({ type: 'start' })}\n\n`);
 
-      // Procesar consulta
-      const result = await orchestrator.processQuery(
-        query,
-        tenantId,
-        userId,
-        userRole,
-        conversationId
-      );
+      const stream = orchestrator.processQueryStream(query, tenantId, userId, userRole, conversationId);
+      let lastContent = '';
 
-      // Stream de la respuesta por chunks
-      const chunks = result.summary.match(/.{1,50}/g) || [result.summary];
-      for (const chunk of chunks) {
-        reply.raw.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
-        await new Promise(r => setTimeout(r, 50)); // Simular typing
+      for await (const chunk of stream) {
+        const newContent = chunk.summary.slice(lastContent.length);
+        if (newContent) {
+          reply.raw.write(`data: ${JSON.stringify({ type: 'chunk', content: newContent })}\n\n`);
+          lastContent = chunk.summary;
+        }
+        if (chunk.done) {
+          reply.raw.write(`data: ${JSON.stringify({
+            type: 'complete',
+            content: chunk.summary,
+            provider: chunk.provider,
+            tokensUsed: chunk.tokensUsed,
+            cost: chunk.cost,
+          })}\n\n`);
+        }
       }
 
-      // Evento final con metadata
-      reply.raw.write(`data: ${JSON.stringify({ 
-        type: 'complete', 
-        widgets: result.widgets,
-        actions: result.actions,
-        provider: result.provider,
-        tokensUsed: result.tokensUsed
-      })}\n\n`);
+      // Update memory
+      const memoryContext = { tenantId, userId, conversationId };
+      await memoryEngine.addQueryToHistory(memoryContext, query, { summary: lastContent, tokensUsed: 0, cost: 0, provider: 'groq' } as any);
 
       reply.raw.end();
-
     } catch (error: any) {
-      reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
-      reply.raw.end();
+      try {
+        reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+        reply.raw.end();
+      } catch {
+        // Connection already closed
+      }
     }
-  }
+  });
 
   // ============================================================
   // SUGERENCIAS DE CONSULTAS
@@ -1185,6 +1185,94 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       return reply.send({ success: true, data: stats });
     } catch (error: any) {
       console.error('[Command Center] Memory stats error:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // ============================================================
+  // DYNAMIC CHARTS (datos reales para Recharts)
+  // ============================================================
+  app.get('/charts', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const db = app.prisma as any;
+      const charts: any[] = [];
+
+      // 1. NCR by status
+      const ncrModel = db.nonConformityReport || db.ncr || db.nonConformity;
+      if (ncrModel) {
+        const ncrs = await ncrModel.findMany({ where: { tenantId }, select: { status: true, severity: true } });
+        if (ncrs.length > 0) {
+          const byStatus: Record<string, number> = {};
+          ncrs.forEach((n: any) => { byStatus[n.status] = (byStatus[n.status] || 0) + 1; });
+          charts.push({
+            type: 'bar',
+            title: 'NCRs por Estado',
+            data: Object.entries(byStatus).map(([status, count]) => ({ estado: status, cantidad: count })),
+            xKey: 'estado',
+            series: [{ key: 'cantidad', color: '#ef4444', label: 'NCRs' }],
+          });
+          // NCR by severity pie
+          const bySev: Record<string, number> = {};
+          ncrs.forEach((n: any) => { if (n.severity) bySev[n.severity] = (bySev[n.severity] || 0) + 1; });
+          if (Object.keys(bySev).length > 0) {
+            charts.push({
+              type: 'pie',
+              title: 'NCRs por Severidad',
+              data: Object.entries(bySev).map(([sev, count]) => ({ severidad: sev, cantidad: count })),
+              xKey: 'severidad',
+              series: [{ key: 'cantidad' }],
+            });
+          }
+        }
+      }
+
+      // 2. Projects by status
+      const projects = await db.project360?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true, progress: true } }) || [];
+      if (projects.length > 0) {
+        const byStatus: Record<string, number> = {};
+        projects.forEach((p: any) => { byStatus[p.status] = (byStatus[p.status] || 0) + 1; });
+        charts.push({
+          type: 'pie',
+          title: 'Proyectos por Estado',
+          data: Object.entries(byStatus).map(([status, count]) => ({ estado: status, cantidad: count })),
+          xKey: 'estado',
+          series: [{ key: 'cantidad' }],
+        });
+      }
+
+      // 3. Fleet by status
+      const vehicles = await db.vehiculo?.findMany({ where: { tenantId }, select: { status: true } }) || [];
+      if (vehicles.length > 0) {
+        const byStatus: Record<string, number> = {};
+        vehicles.forEach((v: any) => { byStatus[v.status || 'SIN_ESTADO'] = (byStatus[v.status || 'SIN_ESTADO'] || 0) + 1; });
+        charts.push({
+          type: 'bar',
+          title: 'Flota por Estado',
+          data: Object.entries(byStatus).map(([status, count]) => ({ estado: status, cantidad: count })),
+          xKey: 'estado',
+          series: [{ key: 'cantidad', color: '#3b82f6', label: 'Vehículos' }],
+        });
+      }
+
+      // 4. Risks by level
+      const risks = await db.risk?.findMany({ where: { tenantId }, select: { level: true, status: true } }) || [];
+      if (risks.length > 0) {
+        const byLevel: Record<string, number> = {};
+        risks.forEach((r: any) => { byLevel[r.level || 'SIN_NIVEL'] = (byLevel[r.level || 'SIN_NIVEL'] || 0) + 1; });
+        charts.push({
+          type: 'bar',
+          title: 'Riesgos por Nivel',
+          data: Object.entries(byLevel).map(([level, count]) => ({ nivel: level, cantidad: count })),
+          xKey: 'nivel',
+          series: [{ key: 'cantidad', color: '#f59e0b', label: 'Riesgos' }],
+        });
+      }
+
+      return reply.send({ success: true, data: charts, timestamp: new Date().toISOString() });
+    } catch (error: any) {
+      console.error('[Command Center] Charts error:', error);
       return reply.code(500).send({ success: false, error: error.message });
     }
   });

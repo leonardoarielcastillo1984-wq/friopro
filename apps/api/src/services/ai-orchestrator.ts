@@ -147,6 +147,40 @@ const PLAN_LIMITS = {
 // PROMPTS DEL SISTEMA
 // ============================================================
 
+// ── Multi-agent specialized prompts ──────────────────────────
+const AGENT_SPECIALIZATIONS: Record<string, string> = {
+  quality: `Eres el AGENTE DE CALIDAD de SGI360. Especializado en:
+- No Conformidades (NCR): análisis de tendencias, severidades, tiempos de resolución
+- Acciones Correctivas (CAPA): efectividad, causa raíz, seguimiento
+- Auditorías: hallazgos, cumplimiento normativo ISO 9001/14001/45001
+- Documentos: control documental, vencimientos, revisiones pendientes
+Detecta patrones de calidad, recomienda acciones preventivas, identifica riesgos de incumplimiento.`,
+
+  projects: `Eres el AGENTE DE PROYECTOS de SGI360. Especializado en:
+- Gestión de proyectos: avance, cronograma, presupuesto, recursos
+- Análisis de riesgo de proyectos: sobrecosto, atrasos, dependencias
+- Hitos y entregables: cumplimiento, desvíos, impacto
+Analiza el portafolio completo, detecta proyectos críticos, sugiere re-priorización.`,
+
+  fleet: `Eres el AGENTE DE FLOTA de SGI360. Especializado en:
+- Gestión de vehículos: estado operativo, mantenimientos, costos
+- Mantenimiento preventivo: vencimientos, KM pendientes
+- Indicadores de flota: disponibilidad, costo por KM, eficiencia
+Detecta unidades con mantenimiento vencido, optimiza costos operativos.`,
+
+  hr: `Eres el AGENTE DE RRHH de SGI360. Especializado en:
+- Dotación de personal: departamentos, posiciones, estados
+- Capacitaciones: pendientes, vencidas, brechas de competencia
+- Matriz de polivalencia: gaps entre nivel actual y requerido
+Identifica necesidades de formación, detecta rotación, analiza distribución de personal.`,
+
+  risk: `Eres el AGENTE DE RIESGOS de SGI360. Especializado en:
+- Mapa de riesgos: niveles, probabilidades, impactos
+- Riesgos no mitigados: planes de acción pendientes
+- Análisis de tendencias: evolución de riesgos
+Prioriza riesgos por severidad, recomienda controles, identifica riesgos emergentes.`,
+};
+
 const SYSTEM_PROMPTS = {
   groq: `Eres SGI360 AI, el asistente ejecutivo inteligente de SGI360.
 Tu rol es ayudar a directivos y gerentes a tomar decisiones empresariales informadas.
@@ -431,19 +465,32 @@ export class AIOrchestrator {
       
       // Construir contexto
       const dataContext = await this.buildDataContext(context, tenantId);
-      const systemPrompt = SYSTEM_PROMPTS[provider];
       
+      // ── Multi-agent + summary injection for streaming ──
+      let systemPrompt = SYSTEM_PROMPTS[provider];
+      const agentKey = this.detectSpecializedAgent(context);
+      if (agentKey && AGENT_SPECIALIZATIONS[agentKey]) {
+        systemPrompt += `\n\nESPECIALIZACIÓN ACTIVA:\n${AGENT_SPECIALIZATIONS[agentKey]}`;
+      }
+
+      const convHistory = await this.getConversationHistory(conversationId, 10);
+      if (convHistory.length > 4) {
+        systemPrompt += `\n\nRESUMEN DE CONVERSACIÓN PREVIA:\n${this.buildConversationSummary(convHistory)}`;
+      }
+
+      const streamMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: systemPrompt },
+        ...convHistory.slice(-6).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        { role: 'user', content: dataContext ? `Datos del sistema:\n${dataContext}\n\nConsulta: ${query}` : query },
+      ];
+
       let fullContent = '';
       let tokensUsed = 0;
       
       if (provider === 'openai') {
-        // Streaming con OpenAI
         const stream = await this.openai.chat.completions.create({
           model: AI_CONFIG.openai.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Contexto:\n${dataContext}\n\nConsulta: ${query}` }
-          ],
+          messages: streamMessages,
           temperature: AI_CONFIG.openai.temperature,
           max_tokens: AI_CONFIG.openai.maxTokens,
           stream: true
@@ -452,38 +499,36 @@ export class AIOrchestrator {
         for await (const chunk of stream) {
           const content = chunk.choices[0]?.delta?.content || '';
           fullContent += content;
-          
-          yield {
-            summary: fullContent,
-            provider: 'openai',
-            tokensUsed: 0,
-            cost: 0,
-            done: false
-          };
+          yield { summary: fullContent, provider: 'openai', tokensUsed: 0, cost: 0, done: false };
         }
-        
-        // Estimar tokens finales
         tokensUsed = Math.ceil(fullContent.length / 4);
         
       } else {
-        // Para Groq, hacer consulta normal y simular streaming
-        const response = await this.executeAIQuery(query, provider, dataContext, context);
-        fullContent = response.summary;
-        tokensUsed = response.tokensUsed;
-        
-        // Simular streaming chunk by chunk
-        const words = fullContent.split(' ');
-        let currentContent = '';
-        
-        for (const word of words) {
-          currentContent += (currentContent ? ' ' : '') + word;
-          yield {
-            summary: currentContent,
-            provider: 'groq',
-            tokensUsed: 0,
-            cost: 0,
-            done: false
-          };
+        // Real Groq streaming
+        try {
+          const stream = await this.groq.chat.completions.create({
+            model: AI_CONFIG.groq.model,
+            messages: streamMessages,
+            temperature: AI_CONFIG.groq.temperature,
+            max_tokens: AI_CONFIG.groq.maxTokens,
+            stream: true
+          });
+
+          for await (const chunk of stream) {
+            const content = (chunk as any).choices?.[0]?.delta?.content || '';
+            fullContent += content;
+            if (content) {
+              yield { summary: fullContent, provider: 'groq', tokensUsed: 0, cost: 0, done: false };
+            }
+          }
+          tokensUsed = Math.ceil(fullContent.length / 4);
+        } catch (groqErr) {
+          // Fallback: non-streaming
+          console.warn('[AI Orchestrator] Groq streaming fallback:', groqErr);
+          const response = await this.executeAIQuery(query, provider, dataContext, context);
+          fullContent = response.summary;
+          tokensUsed = response.tokensUsed;
+          yield { summary: fullContent, provider: 'groq', tokensUsed: 0, cost: 0, done: false };
         }
       }
       
@@ -935,7 +980,19 @@ export class AIOrchestrator {
     conversationHistory: Array<{ role: string; content: string }> = []
   ): Promise<AIResponse> {
     const config = AI_CONFIG[provider];
-    const systemPrompt = SYSTEM_PROMPTS[provider];
+    let systemPrompt = SYSTEM_PROMPTS[provider];
+
+    // ── Multi-agent: inject specialized prompt based on detected modules ──
+    const agentKey = this.detectSpecializedAgent(context);
+    if (agentKey && AGENT_SPECIALIZATIONS[agentKey]) {
+      systemPrompt += `\n\nESPECIALIZACIÓN ACTIVA:\n${AGENT_SPECIALIZATIONS[agentKey]}`;
+    }
+
+    // ── Conversation summary injection ──
+    if (conversationHistory.length > 4) {
+      const summary = this.buildConversationSummary(conversationHistory);
+      systemPrompt += `\n\nRESUMEN DE CONVERSACIÓN PREVIA:\n${summary}`;
+    }
     
     try {
       let content: string;
@@ -946,9 +1003,12 @@ export class AIOrchestrator {
         ? `Datos del sistema:\n${dataContext}\n\nConsulta: ${query}`
         : query;
 
+      // Limit conversation history to last 6 messages to save tokens
+      const recentHistory = conversationHistory.slice(-6);
+
       const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
         { role: 'system', content: systemPrompt },
-        ...conversationHistory.map(m => ({
+        ...recentHistory.map(m => ({
           role: m.role as 'user' | 'assistant',
           content: m.content
         })),
@@ -1094,9 +1154,53 @@ export class AIOrchestrator {
   }
 
   private async processActions(result: AIResponse, context: QueryContext): Promise<AIResponse> {
-    // Aquí se procesarían acciones ejecutables por la IA
-    // Como crear proyectos, generar CAPAs, etc.
     return result;
+  }
+
+  /**
+   * Multi-agent: detecta qué agente especializado activar según los módulos detectados
+   */
+  private detectSpecializedAgent(context: QueryContext): string | null {
+    const modules = context.modules || [];
+    const intent = context.intent;
+
+    // Prioridad por intent
+    if (intent?.category === 'risk') return 'risk';
+    if (intent?.target === 'projects' || modules.includes('project360')) return 'projects';
+
+    // Prioridad por módulos detectados
+    if (modules.includes('ncr') || modules.includes('capa') || modules.includes('quality')) return 'quality';
+    if (modules.includes('flota360') || modules.includes('fleet')) return 'fleet';
+    if (modules.includes('hr') || modules.includes('rrhh')) return 'hr';
+    if (modules.includes('risks')) return 'risk';
+    if (modules.includes('audits')) return 'quality';
+
+    return null; // General agent
+  }
+
+  /**
+   * Genera un resumen compacto de la conversación previa para inyectar como contexto
+   */
+  private buildConversationSummary(history: Array<{ role: string; content: string }>): string {
+    if (history.length === 0) return '';
+
+    // Tomar las preguntas del usuario como resumen de temas
+    const userQueries = history
+      .filter(m => m.role === 'user')
+      .map(m => m.content.substring(0, 100))
+      .slice(-5);
+
+    // Tomar la última respuesta del asistente como contexto reciente
+    const lastAssistant = history
+      .filter(m => m.role === 'assistant')
+      .pop();
+
+    const lastResponse = lastAssistant
+      ? lastAssistant.content.substring(0, 300)
+      : '';
+
+    return `Temas consultados previamente: ${userQueries.join(' | ')}` +
+      (lastResponse ? `\nÚltima respuesta: ${lastResponse}...` : '');
   }
 }
 

@@ -73,6 +73,7 @@ import { registerHelpRoutes } from './routes/help.js';
 import { demoRoutes } from './routes/demo.js';
 import { startNormativeWorker, startAuditWorker } from './jobs/queue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
+import { startInsightsWorker, scheduleInsightsCron } from './jobs/insightsJob.js';
 import {
   actionsRoutes, stakeholdersRoutes, stakeholderActionRoutes,
   incidentsRoutes,
@@ -154,6 +155,8 @@ export async function buildApp() {
 
   await app.register(prismaPlugin);
   startStorageReconcileJob((app as any).prisma);
+  startInsightsWorker((app as any).prisma);
+  scheduleInsightsCron().catch(err => console.warn('[insights-cron] Schedule failed:', err));
   await app.register(authPlugin);
   await app.register(csrfPlugin);
   await app.register(licenseBlockPlugin);

@@ -19,6 +19,7 @@ import {
   Maximize2, Minimize2, Cpu
 } from 'lucide-react';
 import DashboardWidgets from './DashboardWidgets';
+import DynamicCharts, { type ChartData } from './DynamicCharts';
 import ConversationSidebar from './ConversationSidebar';
 import InsightsPanel from './InsightsPanel';
 import OperationalTimeline from './OperationalTimeline';
@@ -33,11 +34,13 @@ interface Message {
   provider?: string;
   tokensUsed?: number;
   widgets?: any[];
+  charts?: ChartData[];
   actions?: any[];
   isThinking?: boolean;
+  isStreaming?: boolean;
 }
 
-type RightPanel = 'insights' | 'timeline' | null;
+type RightPanel = 'insights' | 'timeline' | 'charts' | null;
 
 // ============================================================
 // ENTERPRISE AI CONTROL TOWER - MAIN COMPONENT
@@ -61,6 +64,7 @@ export default function EnterpriseAIControlTower({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [smartSuggestions, setSmartSuggestions] = useState<Array<{ id: string; text: string; category: string }>>([]);
   const [liveStatus, setLiveStatus] = useState({ connected: true, lastSync: new Date(), latency: 23 });
+  const [useStreaming] = useState(true);
   const isPremium = subscription?.plan !== 'STARTER_AI';
 
   // ── Refs ──────────────────────────────────────────────────
@@ -146,21 +150,107 @@ export default function EnterpriseAIControlTower({
     } catch { /* non-critical */ }
   };
 
-  // ── Send message ──────────────────────────────────────────
+  // ── Send message (with SSE streaming support) ──────────────
   const handleSendMessage = async (queryOverride?: string) => {
     const query = (queryOverride || input).trim();
     if (!query || isLoading) return;
 
-    // Add user message
     const userMsg: Message = { role: 'user', content: query, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
 
-    // Add thinking placeholder
-    const thinkingMsg: Message = { role: 'assistant', content: '', timestamp: new Date(), isThinking: true };
-    setMessages(prev => [...prev, thinkingMsg]);
+    if (useStreaming) {
+      // ── SSE Streaming path ──
+      const streamingMsg: Message = { role: 'assistant', content: '', timestamp: new Date(), isStreaming: true };
+      setMessages(prev => [...prev, streamingMsg]);
 
+      try {
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+        const res = await fetch(`${apiBase}/api/command-center/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ query, conversationId: activeConversationId }),
+        });
+
+        if (!res.ok || !res.body) throw new Error('SSE connection failed');
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalProvider = '';
+        let finalTokens = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'chunk') {
+                setMessages(prev => {
+                  const msgs = [...prev];
+                  const last = msgs[msgs.length - 1];
+                  if (last?.isStreaming) {
+                    msgs[msgs.length - 1] = { ...last, content: last.content + data.content };
+                  }
+                  return msgs;
+                });
+              } else if (data.type === 'complete') {
+                finalProvider = data.provider || '';
+                finalTokens = data.tokensUsed || 0;
+                setMessages(prev => {
+                  const msgs = [...prev];
+                  const last = msgs[msgs.length - 1];
+                  if (last?.isStreaming) {
+                    msgs[msgs.length - 1] = {
+                      ...last,
+                      content: data.content || last.content,
+                      provider: finalProvider,
+                      tokensUsed: finalTokens,
+                      isStreaming: false,
+                    };
+                  }
+                  return msgs;
+                });
+              }
+            } catch { /* skip invalid JSON */ }
+          }
+        }
+
+        // Finalize if stream ended without complete event
+        setMessages(prev => {
+          const msgs = [...prev];
+          const last = msgs[msgs.length - 1];
+          if (last?.isStreaming) {
+            msgs[msgs.length - 1] = { ...last, isStreaming: false, provider: finalProvider };
+          }
+          return msgs;
+        });
+
+      } catch (err: any) {
+        console.warn('[CC] SSE failed, falling back to normal:', err.message);
+        // Fallback to non-streaming
+        await sendNonStreaming(query);
+      }
+    } else {
+      // ── Non-streaming path ──
+      const thinkingMsg: Message = { role: 'assistant', content: '', timestamp: new Date(), isThinking: true };
+      setMessages(prev => [...prev, thinkingMsg]);
+      await sendNonStreaming(query);
+    }
+
+    setIsLoading(false);
+  };
+
+  const sendNonStreaming = async (query: string) => {
     try {
       const res = await apiFetch('/command-center/query', {
         method: 'POST',
@@ -175,32 +265,26 @@ export default function EnterpriseAIControlTower({
         provider: data?.provider || res?.provider,
         tokensUsed: data?.tokensUsed,
         widgets: data?.widgets,
+        charts: data?.charts,
         actions: data?.actions,
       };
 
-      // Replace thinking placeholder with real message
       setMessages(prev => {
-        const filtered = prev.filter(m => !m.isThinking);
+        const filtered = prev.filter(m => !m.isThinking && !m.isStreaming);
         return [...filtered, assistantMsg];
       });
 
-      // Update conversation ID
-      if (res?.conversationId) {
-        setActiveConversationId(res.conversationId);
-      }
-
+      if (res?.conversationId) setActiveConversationId(res.conversationId);
     } catch (err: any) {
       console.error('[CC] Query error:', err);
       setMessages(prev => {
-        const filtered = prev.filter(m => !m.isThinking);
+        const filtered = prev.filter(m => !m.isThinking && !m.isStreaming);
         return [...filtered, {
           role: 'assistant',
           content: `Error: ${err.message || 'No se pudo procesar la consulta'}`,
           timestamp: new Date(),
         }];
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -305,6 +389,15 @@ export default function EnterpriseAIControlTower({
               title="Timeline operativo"
             >
               <Activity className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setRightPanel(rightPanel === 'charts' ? null : 'charts')}
+              className={`p-1.5 rounded-lg transition-colors ${
+                rightPanel === 'charts' ? 'bg-green-500/20 text-green-400' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+              title="Gráficos operativos"
+            >
+              <BarChart3 className="w-4 h-4" />
             </button>
 
             {/* Fullscreen toggle */}
@@ -415,6 +508,7 @@ export default function EnterpriseAIControlTower({
                 <div className="w-[380px] h-full overflow-y-auto p-3 space-y-3">
                   {rightPanel === 'insights' && <InsightsPanel onAskAbout={handleAskAbout} />}
                   {rightPanel === 'timeline' && <OperationalTimeline />}
+                  {rightPanel === 'charts' && <ChartsPanel />}
                 </div>
               </motion.div>
             )}
@@ -572,28 +666,38 @@ function MessageBubble({ message }: { message: Message }) {
             ? 'bg-blue-500/10 border border-blue-500/20'
             : 'bg-gray-800/60 border border-gray-700/30'
         }`}>
-          {/* Content - render with line breaks */}
+          {/* Content - render with line breaks + streaming cursor */}
           <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
             {formatContent(message.content)}
+            {message.isStreaming && (
+              <span className="inline-block w-2 h-4 bg-purple-400 ml-0.5 animate-pulse rounded-sm" />
+            )}
           </div>
         </div>
 
         {/* Metadata */}
-        <div className={`flex items-center gap-2 mt-1 ${isUser ? 'justify-end' : ''}`}>
-          <Clock className="w-2.5 h-2.5 text-gray-600" />
-          <span className="text-[10px] text-gray-600">
-            {message.timestamp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          {!isUser && message.provider && (
-            <span className="text-[10px] text-purple-500/60 flex items-center gap-0.5">
-              <Cpu className="w-2.5 h-2.5" />
-              {message.provider}
+        {!message.isStreaming && (
+          <div className={`flex items-center gap-2 mt-1 ${isUser ? 'justify-end' : ''}`}>
+            <Clock className="w-2.5 h-2.5 text-gray-600" />
+            <span className="text-[10px] text-gray-600">
+              {message.timestamp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
             </span>
-          )}
-          {!isUser && message.tokensUsed && message.tokensUsed > 0 && (
-            <span className="text-[10px] text-gray-600">{message.tokensUsed} tokens</span>
-          )}
-        </div>
+            {!isUser && message.provider && (
+              <span className="text-[10px] text-purple-500/60 flex items-center gap-0.5">
+                <Cpu className="w-2.5 h-2.5" />
+                {message.provider}
+              </span>
+            )}
+            {!isUser && message.tokensUsed && message.tokensUsed > 0 && (
+              <span className="text-[10px] text-gray-600">{message.tokensUsed} tokens</span>
+            )}
+          </div>
+        )}
+
+        {/* Dynamic Charts */}
+        {!isUser && message.charts && message.charts.length > 0 && (
+          <DynamicCharts charts={message.charts} />
+        )}
 
         {/* Widgets if present */}
         {!isUser && message.widgets && message.widgets.length > 0 && (
@@ -641,6 +745,55 @@ function ThinkingAnimation() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Charts Panel ─────────────────────────────────────────────
+function ChartsPanel() {
+  const [charts, setCharts] = useState<ChartData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('/command-center/charts') as any;
+        if (res?.data && Array.isArray(res.data)) {
+          setCharts(res.data);
+        }
+      } catch (err) {
+        console.error('Error loading charts:', err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-5 h-5 text-green-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (charts.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <BarChart3 className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+        <p className="text-sm text-gray-500">Sin datos para gráficos</p>
+        <p className="text-xs text-gray-600 mt-1">Los gráficos se generan con datos reales del sistema</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
+        <BarChart3 className="w-4 h-4 text-green-400" />
+        Gráficos Operativos
+      </h3>
+      <DynamicCharts charts={charts} />
     </div>
   );
 }
