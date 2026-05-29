@@ -195,10 +195,11 @@ export async function notifyInspeccionHallazgo(
   }
 ) {
   try {
-    const admins = await prisma.platformUser.findMany({
-      where: { tenantId, role: { in: ['TENANT_ADMIN', 'SUPER_ADMIN'] } },
-      select: { id: true, email: true },
+    const memberships = await (prisma as any).tenantMembership.findMany({
+      where: { tenantId, role: { in: ['TENANT_ADMIN', 'SUPER_ADMIN'] }, deletedAt: null, status: 'ACTIVE' },
+      select: { user: { select: { id: true, email: true } } },
     });
+    const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
 
     const link = `${APP_URL}/infraestructura?tab=inspecciones`;
     const color = haysCriticos ? '#DC2626' : '#D97706';
@@ -249,10 +250,11 @@ export async function notifyInspeccionOT(
   }
 ) {
   try {
-    const admins = await prisma.platformUser.findMany({
-      where: { tenantId, role: { in: ['TENANT_ADMIN', 'SUPER_ADMIN'] } },
-      select: { id: true, email: true },
+    const memberships = await (prisma as any).tenantMembership.findMany({
+      where: { tenantId, role: { in: ['TENANT_ADMIN', 'SUPER_ADMIN'] }, deletedAt: null, status: 'ACTIVE' },
+      select: { user: { select: { id: true, email: true } } },
     });
+    const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
     if (!admins.length) return;
 
     const link = `${APP_URL}/infraestructura?tab=inspecciones&sub=ots`;
