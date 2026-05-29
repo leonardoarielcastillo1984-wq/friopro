@@ -270,7 +270,12 @@ export default function InspeccionesPlantillas() {
                                     className="flex-1 min-w-[120px] text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-300" />
                                   <select value={item.tipo} onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, tipo: e.target.value } : x))}
                                     className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white">
-                                    {['SI_NO', 'TEXTO', 'NUMERO', 'ESCALA', 'FECHA'].map(t => <option key={t} value={t}>{t}</option>)}
+                                    <option value="SI_NO">SI / NO</option>
+                                    <option value="SI_NO_NA">SI / NO / N/A</option>
+                                    <option value="TEXTO">TEXTO</option>
+                                    <option value="NUMERO">NUMERO</option>
+                                    <option value="ESCALA">ESCALA</option>
+                                    <option value="FECHA">FECHA</option>
                                   </select>
                                   <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap">
                                     <input type="checkbox" checked={item.triggerHallazgo} onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, triggerHallazgo: e.target.checked } : x))} />

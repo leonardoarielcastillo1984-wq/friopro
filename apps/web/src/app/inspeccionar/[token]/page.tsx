@@ -62,15 +62,19 @@ export default function InspeccionarPage() {
   };
 
   const puntaje = () => {
-    const total = items.filter(i => i.tipo === 'SI_NO' || i.tipo === 'CHECKBOX').length;
-    if (total === 0) return 100;
-    const ok = Object.values(respuestas).filter(r => r.esOk === true).length;
-    return Math.round((ok / total) * 100);
+    const binaryItems = items.filter(i => i.tipo === 'SI_NO' || i.tipo === 'CHECKBOX' || i.tipo === 'SI_NO_NA');
+    const countable = binaryItems.filter(i => {
+      const r = respuestas[i.id];
+      return i.tipo !== 'SI_NO_NA' || r?.valor !== 'NA';
+    });
+    if (countable.length === 0) return 100;
+    const ok = countable.filter(i => respuestas[i.id]?.esOk === true).length;
+    return Math.round((ok / countable.length) * 100);
   };
 
   const handleSubmit = async () => {
     if (!inspector.nombre.trim()) { alert('Ingresá tu nombre para continuar'); return; }
-    const requiredMissing = items.filter(i => i.isRequerido && respuestas[i.id]?.valor === null && respuestas[i.id]?.esOk === undefined);
+    const requiredMissing = items.filter(i => i.isRequerido && respuestas[i.id]?.valor === null && respuestas[i.id]?.esOk === undefined && respuestas[i.id]?.valor !== 'NA');
     if (requiredMissing.length > 0) { alert(`Completá todos los campos obligatorios (${requiredMissing.length} pendientes)`); return; }
     // Persistir datos del chofer para la próxima vez
     if (typeof window !== 'undefined') {
@@ -342,6 +346,23 @@ export default function InspeccionarPage() {
                               <button onClick={() => setResp(item.id, { esOk: false, valor: false })}
                                 className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${resp.esOk === false ? 'bg-red-500 text-white border-red-500' : 'border-gray-200 text-gray-600 hover:bg-red-50'}`}>
                                 ✗ No cumple
+                              </button>
+                            </div>
+                          )}
+
+                          {item.tipo === 'SI_NO_NA' && (
+                            <div className="flex gap-2">
+                              <button onClick={() => setResp(item.id, { esOk: true, valor: true })}
+                                className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${resp.esOk === true && resp.valor !== 'NA' ? 'bg-emerald-500 text-white border-emerald-500' : 'border-gray-200 text-gray-600 hover:bg-emerald-50'}`}>
+                                ✓ Sí
+                              </button>
+                              <button onClick={() => setResp(item.id, { esOk: false, valor: false })}
+                                className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${resp.esOk === false && resp.valor !== 'NA' ? 'bg-red-500 text-white border-red-500' : 'border-gray-200 text-gray-600 hover:bg-red-50'}`}>
+                                ✗ No
+                              </button>
+                              <button onClick={() => setResp(item.id, { esOk: undefined, valor: 'NA' })}
+                                className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${resp.valor === 'NA' ? 'bg-gray-400 text-white border-gray-400' : 'border-gray-200 text-gray-600 hover:bg-gray-100'}`}>
+                                — N/A
                               </button>
                             </div>
                           )}
