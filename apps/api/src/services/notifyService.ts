@@ -196,7 +196,7 @@ export async function notifyInspeccionHallazgo(
 ) {
   try {
     const memberships = await (prisma as any).tenantMembership.findMany({
-      where: { tenantId, role: { in: ['TENANT_ADMIN', 'SUPER_ADMIN'] }, deletedAt: null, status: 'ACTIVE' },
+      where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null, status: 'ACTIVE' },
       select: { user: { select: { id: true, email: true } } },
     });
     const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
@@ -251,7 +251,7 @@ export async function notifyInspeccionOT(
 ) {
   try {
     const memberships = await (prisma as any).tenantMembership.findMany({
-      where: { tenantId, role: { in: ['TENANT_ADMIN', 'SUPER_ADMIN'] }, deletedAt: null, status: 'ACTIVE' },
+      where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null, status: 'ACTIVE' },
       select: { user: { select: { id: true, email: true } } },
     });
     const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
