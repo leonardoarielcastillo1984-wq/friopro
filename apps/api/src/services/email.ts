@@ -24,6 +24,7 @@ export interface EmailPayload {
   subject: string;
   html: string;
   text?: string;
+  from?: string;
 }
 
 export interface EmailResult {
@@ -40,6 +41,7 @@ async function sendViaConsole(payload: EmailPayload): Promise<EmailResult> {
   console.log(`\n╔${border}╗`);
   console.log(`║  📧 EMAIL (dev mode — not actually sent)`);
   console.log(`╠${border}╣`);
+  console.log(`║  From:    ${payload.from || DEFAULT_FROM}`);
   console.log(`║  To:      ${payload.to}`);
   console.log(`║  Subject: ${payload.subject}`);
   console.log(`╠${border}╣`);
@@ -65,7 +67,7 @@ async function sendViaResend(payload: EmailPayload): Promise<EmailResult> {
   try {
     const resend = getResend();
     const { data, error } = await resend.emails.send({
-      from: DEFAULT_FROM,
+      from: payload.from || DEFAULT_FROM,
       to: payload.to,
       subject: payload.subject,
       html: payload.html,
@@ -109,7 +111,7 @@ async function sendViaSmtp(payload: EmailPayload): Promise<EmailResult> {
   try {
     const transporter = getSmtpTransporter();
     const info = await transporter.sendMail({
-      from: DEFAULT_FROM,
+      from: payload.from || DEFAULT_FROM,
       to: payload.to,
       subject: payload.subject,
       html: payload.html,

@@ -214,9 +214,11 @@ export async function notifyInspeccionHallazgo(
         title, message: message.replace(/<[^>]+>/g, ''), link, entityType: 'inspeccion', entityId: inspeccionId,
       });
       if (admin.email) {
+        const fromName = branding.companyName || 'SGI 360';
         await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
           to: admin.email,
-          subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+          subject: `${fromName} — ${title}`,
           html: buildEmailHtml(title, message, 'Ver hallazgos', link, color, branding),
           text: `${title}\n\nActivo: ${activoNombre}\nHallazgos: ${hallazgosCount}\n\n${link}`,
         }).catch(e => console.error('[notifyService] Email error hallazgo:', e));
@@ -226,11 +228,13 @@ export async function notifyInspeccionHallazgo(
     // Emails adicionales configurados por el tenant
     const extraEmails = await getInspeccionAlertEmails(prisma, tenantId, 'alertaHallazgo');
     const adminEmails = new Set(admins.map((a: any) => a.email).filter(Boolean));
+    const fromName = branding.companyName || 'SGI 360';
     for (const email of extraEmails) {
       if (!adminEmails.has(email)) {
         await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
           to: email,
-          subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+          subject: `${fromName} — ${title}`,
           html: buildEmailHtml(title, message, 'Ver hallazgos', link, color, branding),
           text: `${title}\n\nActivo: ${activoNombre}\nHallazgos: ${hallazgosCount}\n\n${link}`,
         }).catch(e => console.error('[notifyService] Email extra hallazgo:', e));
@@ -268,9 +272,11 @@ export async function notifyInspeccionOT(
         title, message: message.replace(/<[^>]+>/g, ''), link, entityType: 'work_order', entityId: otId,
       });
       if (admin.email) {
+        const fromName = branding.companyName || 'SGI 360';
         await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
           to: admin.email,
-          subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+          subject: `${fromName} — ${title}`,
           html: buildEmailHtml(title, message, 'Ver OT', link, '#2563EB', branding),
           text: `${title}\n\nOT: ${otCode}\nActivo: ${activoNombre}\n\n${link}`,
         }).catch(e => console.error('[notifyService] Email error OT:', e));
@@ -279,11 +285,13 @@ export async function notifyInspeccionOT(
 
     const extraEmails = await getInspeccionAlertEmails(prisma, tenantId, 'alertaOT');
     const adminEmails = new Set(admins.map((a: any) => a.email).filter(Boolean));
+    const fromName = branding.companyName || 'SGI 360';
     for (const email of extraEmails) {
       if (!adminEmails.has(email)) {
         await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
           to: email,
-          subject: `${branding.companyName || 'SGI 360'} — ${title}`,
+          subject: `${fromName} — ${title}`,
           html: buildEmailHtml(title, message, 'Ver OT', link, '#2563EB', branding),
           text: `${title}\n\nOT: ${otCode}\nActivo: ${activoNombre}\n\n${link}`,
         }).catch(e => console.error('[notifyService] Email extra OT:', e));
