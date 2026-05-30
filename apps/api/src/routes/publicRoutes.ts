@@ -7,11 +7,11 @@ import { sendEmail, notificationEmail } from '../services/email.js';
 const registerCompanySchema = z.object({
   companyName: z.string().min(1),
   socialReason: z.string().optional(),
-  rut: z.string().min(1),
+  rut: z.string().optional(),
   email: z.string().email(),
-  phone: z.string().min(1),
+  phone: z.string().optional().default(''),
   website: z.string().optional(),
-  address: z.string().min(1),
+  address: z.string().optional(),
   primaryColor: z.string().default('#3B82F6'),
 });
 
@@ -19,11 +19,10 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
   // ── POST /register-company — Registrar nueva empresa ──
   app.post('/register-company', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const data = req.body as any;
+      const data = (req.body as any) || {};
 
-      // Validar datos
-      const validated = registerCompanySchema.parse({
-        companyName: data.companyName,
+      const parsed = registerCompanySchema.safeParse({
+        companyName: data.companyName || data.company || data.empresa,
         socialReason: data.socialReason,
         rut: data.rut,
         email: data.email,
@@ -33,16 +32,24 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         primaryColor: data.primaryColor,
       });
 
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'Datos inválidos', issues: parsed.error.issues });
+      }
+
+      const validated = parsed.data;
+      const autoRut = validated.rut || `PENDIENTE-${Date.now()}`;
+      const autoAddress = validated.address || 'N/A';
+
       // Guardar en base de datos
       const newRegistration = await app.prisma.companyRegistration.create({
         data: {
           companyName: validated.companyName,
           socialReason: validated.socialReason,
-          rut: validated.rut,
+          rut: autoRut,
           email: validated.email,
           phone: validated.phone,
           website: validated.website,
-          address: validated.address,
+          address: autoAddress,
           primaryColor: validated.primaryColor,
           status: 'PENDING',
         },
@@ -90,15 +97,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         registrationId: newRegistration.id,
       });
     } catch (error: any) {
-      app.log.error('Error registering company:', error);
-
-      if (error.issues) {
-        return reply.code(400).send({
-          error: 'Datos inválidos',
-          issues: error.issues,
-        });
-      }
-
+      app.log.error({ err: error?.message || String(error) }, 'Error registering company');
       return reply.code(500).send({ error: 'Error al procesar la solicitud' });
     }
   });
