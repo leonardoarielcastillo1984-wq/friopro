@@ -94,14 +94,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
       {/* Sidebar */}
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Demo Banner */}
-      {!isSuperAdmin && <DemoBanner status={demoStatus} />}
-
-      {/* License Banner - positioned at top */}
-      <LicenseBanner position="top" />
-
       {/* Main content area */}
       <div className="lg:ml-[260px]">
+        {/* Demo Banner */}
+        {!isSuperAdmin && <DemoBanner status={demoStatus} />}
+
+        {/* License Banner - positioned at top */}
+        <LicenseBanner position="top" />
+
         {/* Topbar */}
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
 

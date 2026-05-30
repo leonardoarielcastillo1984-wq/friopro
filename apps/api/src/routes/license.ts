@@ -1689,14 +1689,18 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
   app.post('/webhook/mercadopago', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = req.body as any;
-      app.log.info({ body }, '[MP WEBHOOK] Notificación recibida');
+      const query = req.query as any;
+      app.log.info({ body, query }, '[MP WEBHOOK] Notificación recibida');
 
       // Responder inmediatamente a MercadoPago (200 OK)
       reply.send({ received: true });
 
-      // Procesar asíncronamente si es notificación de pago
-      if (body.type === 'payment' && body.data?.id) {
-        const paymentId = body.data.id;
+      // Soporte IPN (query string: ?id=...&topic=payment) Y nuevo formato (body.data.id)
+      const isIPN = query?.topic === 'payment' && query?.id;
+      const isNewFormat = body?.type === 'payment' && body?.data?.id;
+
+      if (isIPN || isNewFormat) {
+        const paymentId = isIPN ? query.id : body.data.id;
         const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
 
         if (!accessToken) {
