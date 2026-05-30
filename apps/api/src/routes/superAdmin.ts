@@ -458,16 +458,20 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       // Crear o actualizar suscripción
       let subscription;
       const isNoPlan = planTier === 'NO_PLAN';
+      const resolvedStatus = isNoPlan ? 'CANCELED' : (status || 'ACTIVE');
+      const isTrial = resolvedStatus === 'TRIAL';
+      const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
       if (existing) {
         // Actualizar suscripción existente
         subscription = await app.prisma.tenantSubscription.update({
           where: { id: existing.id },
           data: {
             planId: isNoPlan ? existing.planId : plan?.id || '',
-            status: isNoPlan ? 'CANCELED' : 'ACTIVE',
+            status: resolvedStatus as any,
             providerRef: isNoPlan ? 'NO_PLAN' : null,
             startedAt: isNoPlan ? existing.startedAt : startDate,
-            endsAt: isNoPlan ? new Date() : endDate
+            endsAt: isNoPlan ? new Date() : (isTrial ? trialEnd : endDate)
           }
         });
       } else {
@@ -479,22 +483,32 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
             data: {
               tenantId,
               planId: plan?.id || '',
-              status: 'ACTIVE',
+              status: resolvedStatus as any,
               providerRef: null,
               startedAt: startDate,
-              endsAt: endDate
+              endsAt: isTrial ? trialEnd : endDate
             }
           });
         }
       }
 
-      // Si se activa un plan real, limpiar modo demo automáticamente
-      if (!isNoPlan && status !== 'CANCELED') {
-        await (app.prisma as any).tenant.update({
-          where: { id: tenantId },
-          data: { isDemo: false, demoExpiresAt: null },
-        });
-        console.log(`[API] Modo demo desactivado para tenant ${tenantId}`);
+      // Sincronizar isDemo y licenseEndAt según el status elegido
+      if (!isNoPlan) {
+        const tenantUpdateData: any = {};
+        if (isTrial) {
+          tenantUpdateData.isDemo = true;
+          tenantUpdateData.demoExpiresAt = trialEnd;
+          tenantUpdateData.licenseEndAt = null;
+        } else if (resolvedStatus === 'ACTIVE') {
+          tenantUpdateData.isDemo = false;
+          tenantUpdateData.demoExpiresAt = null;
+          tenantUpdateData.licenseEndAt = endDate;
+          tenantUpdateData.licenseStatus = 'ACTIVE';
+        } else if (resolvedStatus === 'CANCELED' || resolvedStatus === 'PAST_DUE') {
+          tenantUpdateData.isDemo = false;
+        }
+        await (app.prisma as any).tenant.update({ where: { id: tenantId }, data: tenantUpdateData });
+        console.log(`[API] Tenant ${tenantId} actualizado a status=${resolvedStatus}`);
       }
 
       console.log(`[API] Suscripción actualizada:`, subscription?.id || 'none');
@@ -1225,7 +1239,7 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
       const uniqueSlug = `${baseSlug}-${Date.now().toString(36).slice(-4)}`;
       
       const demoStartedAt = new Date();
-      const demoExpiresAt = new Date(demoStartedAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+      const demoExpiresAt = new Date(demoStartedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
 
       const tenant = await (app.prisma as any).tenant.create({
         data: {
