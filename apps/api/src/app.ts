@@ -47,6 +47,7 @@ import { intelligenceRoutes } from './routes/intelligence.js';
 import { commandCenterRoutes } from './routes/command-center.js';
 import { registerCompanySettingsRoutes } from './routes/company-settings.js';
 import { registerLandingSettingsRoutes } from './routes/landing-settings.js';
+import { registerSehClientPortalRoutes } from './routes/seh360-client-portal.js';
 import project360Routes from './routes/project360.js';
 import maintenanceRoutes from './routes/maintenance.js';
 import { emergencyRoutes } from './routes/emergency.js';
@@ -286,6 +287,7 @@ await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
   await app.register(calendarRoutes, { prefix: '/calendar' });
   await app.register(gestionCambiosRoutes, { prefix: '/gestion-cambios' });
   await app.register(registerHelpRoutes, { prefix: '/help' });
+  await app.register(registerSehClientPortalRoutes);
   await app.register(demoRoutes);
 
   // Endpoint genérico de IA para módulos del frontend - respuestas rápidas
