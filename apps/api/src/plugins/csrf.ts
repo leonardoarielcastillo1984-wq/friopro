@@ -40,6 +40,7 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/company-registrations')) return true; // Public route: get registrations
   if (url.startsWith('/mercadopago-config')) return true; // Public route: MercadoPago config
   if (url.startsWith('/license/activate')) return true; // Testing activation
+  if (url.startsWith('/seh360/')) return true; // SEH360 client portal routes
   if (url.includes('/seed-features-no-auth')) return true; // Seed features without auth
   if (url.match(/\/documents\/[^\/]+\/versions/)) return true;
   if (url.match(/\/documents\/[^\/]+\/clause-mappings/)) return true;
