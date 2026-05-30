@@ -98,7 +98,7 @@ export async function registerCompanyRoutes(app: FastifyInstance) {
       const uniqueSlug = `${baseSlug}-${Date.now().toString(36).slice(-4)}`;
 
       const demoStartedAt = new Date();
-      const demoExpiresAt = new Date(demoStartedAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+      const demoExpiresAt = new Date(demoStartedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
 
       const tenant = await (app.prisma as any).tenant.create({
         data: {

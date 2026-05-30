@@ -74,7 +74,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         const uniqueSlug = `${baseSlug}-${Date.now().toString(36).slice(-4)}`;
 
         const demoStartedAt = new Date();
-        const demoExpiresAt = new Date(demoStartedAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+        const demoExpiresAt = new Date(demoStartedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
 
         const tenant = await (app.prisma as any).tenant.create({
           data: { name: validated.companyName, slug: uniqueSlug, isDemo: true, demoStartedAt, demoExpiresAt },
@@ -131,7 +131,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
           userName,
           password: tempPassword,
           loginUrl: `${appUrl}/sgi360-landing/`,
-          trialDays: 3,
+          trialDays: 7,
         })).catch(e => app.log.error(`[REGISTER-COMPANY] Error email bienvenida: ${e.message}`));
 
         app.log.info(`[REGISTER-COMPANY] Auto-aprobado: tenant=${tenant.id}, user=${user.id}`);

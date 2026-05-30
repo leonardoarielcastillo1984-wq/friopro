@@ -1,17 +1,17 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 
-// Límites para tenants en modo demo
+// Límites para tenants en modo demo (sin restricciones durante el trial)
 export const DEMO_LIMITS = {
-  documents:       3,
-  indicators:      2,
-  nonConformities: 2,
-  audits:          1,
-  users:           1,
-  storageMb:       100,
+  documents:       9999,
+  indicators:      9999,
+  nonConformities: 9999,
+  audits:          9999,
+  users:           9999,
+  storageMb:       9999,
 };
 
 // Duración del demo en días
-const DEMO_DURATION_DAYS = 3;
+const DEMO_DURATION_DAYS = 7;
 
 export async function demoRoutes(app: FastifyInstance) {
 

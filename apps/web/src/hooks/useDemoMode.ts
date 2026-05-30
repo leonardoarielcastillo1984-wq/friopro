@@ -22,7 +22,7 @@ export interface DemoStatus {
 const INITIAL: DemoStatus = {
   isDemo: false,
   isExpired: false,
-  daysLeft: 3,
+  daysLeft: 7,
   demoStartedAt: null,
   demoExpiresAt: null,
   limits: { documents: 3, indicators: 2, nonConformities: 2, audits: 1, users: 1, storageMb: 100 },
