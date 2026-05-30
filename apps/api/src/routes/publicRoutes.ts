@@ -130,7 +130,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
           companyName: validated.companyName,
           userName,
           password: tempPassword,
-          loginUrl: `${appUrl}/login`,
+          loginUrl: `${appUrl}/sgi360-landing/`,
           trialDays: 3,
         })).catch(e => app.log.error(`[REGISTER-COMPANY] Error email bienvenida: ${e.message}`));
 
