@@ -48,7 +48,7 @@ import { commandCenterRoutes } from './routes/command-center.js';
 import { registerCompanySettingsRoutes } from './routes/company-settings.js';
 import { registerLandingSettingsRoutes } from './routes/landing-settings.js';
 import { registerSehClientPortalRoutes } from './routes/seh360-client-portal.js';
-import { registerSeh360AuthRoutes } from './routes/seh360-auth.js';
+import { registerSeh360AuthRoutes, registerSeh360PasswordResetRoutes, registerSeh360PasswordChangeRoute } from './routes/seh360-auth.js';
 import { registerSeh360Routes } from './routes/seh360.js';
 import { seh360AuthPlugin } from './plugins/seh360Auth.js';
 import project360Routes from './routes/project360.js';
@@ -293,6 +293,8 @@ await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
   await app.register(seh360AuthPlugin);
   await app.register(registerSehClientPortalRoutes);
   await registerSeh360AuthRoutes(app);
+  await registerSeh360PasswordResetRoutes(app);
+  await registerSeh360PasswordChangeRoute(app);
   await registerSeh360Routes(app);
   await app.register(demoRoutes);
 
