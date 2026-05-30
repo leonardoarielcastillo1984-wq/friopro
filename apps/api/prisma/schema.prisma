@@ -7369,3 +7369,711 @@ enum AIAlertStatus {
   RESOLVED
   DISMISSED
 }
+model SehActionPlan {
+  id            String      @id @db.Uuid
+  tenantId      String      @db.Uuid
+  clientId      String      @db.Uuid
+  title         String
+  description   String?
+  sourceType    String
+  sourceId      String?     @db.Uuid
+  containment   String?
+  corrective    String?
+  preventive    String?
+  responsible   String?
+  dueDate       DateTime?   @db.Timestamptz(6)
+  completedDate DateTime?   @db.Timestamptz(6)
+  priority      String      @default("MEDIUM")
+  status        String      @default("PENDING")
+  kanbanColumn  String      @default("TODO")
+  kanbanOrder   Int         @default(0)
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime    @db.Timestamptz(6)
+  createdById   String?     @db.Uuid
+  updatedById   String?     @db.Uuid
+  deletedAt     DateTime?   @db.Timestamptz(6)
+  SehClient   SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([kanbanColumn])
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_action_plans")
+}
+
+model SehAlert {
+  id           String    @id @db.Uuid
+  tenantId     String    @db.Uuid
+  clientId     String?   @db.Uuid
+  title        String
+  message      String
+  type         String
+  severity     String    @default("MEDIUM")
+  entityType   String?
+  entityId     String?   @db.Uuid
+  isRead       Boolean   @default(false)
+  readAt       DateTime? @db.Timestamptz(6)
+  emailSent    Boolean   @default(false)
+  whatsappSent Boolean   @default(false)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime  @db.Timestamptz(6)
+
+  @@index([clientId])
+  @@index([isRead])
+  @@index([severity])
+  @@index([tenantId])
+  @@map("seh_alerts")
+}
+
+model SehApplicabilityRule {
+  id                         String   @id @db.Uuid
+  province                   String?
+  activity                   String?
+  riskTypes                  String[]
+  companySize                String?
+  operations                 String[]
+  suggestedLegalRequirements Json?
+  isActive                   Boolean  @default(true)
+  createdAt                  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt                  DateTime @db.Timestamptz(6)
+  @@map("seh_applicability_rules")
+}
+
+model SehAuditTrail {
+  id         String   @id @db.Uuid
+  tenantId   String   @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  action     String
+  userId     String?  @db.Uuid
+  userName   String?
+  oldValues  Json?
+  newValues  Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([tenantId])
+  @@map("seh_audit_trails")
+}
+
+model SehAudit {
+  id            String      @id @db.Uuid
+  tenantId      String      @db.Uuid
+  clientId      String      @db.Uuid
+  code          String
+  title         String
+  description   String?
+  type          String      @default("INTERNA")
+  status        String      @default("PLANNED")
+  auditor       String?
+  plannedDate   DateTime?   @db.Timestamptz(6)
+  completedDate DateTime?   @db.Timestamptz(6)
+  findings      Json?
+  score         Int?
+  reportUrl     String?
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime    @db.Timestamptz(6)
+  createdById   String?     @db.Uuid
+  updatedById   String?     @db.Uuid
+  deletedAt     DateTime?   @db.Timestamptz(6)
+  SehClient   SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([clientId])
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_audits")
+}
+
+model SehClientUser {
+  id          String      @id @db.Uuid
+  tenantId    String      @db.Uuid
+  clientId    String      @db.Uuid
+  userId      String      @db.Uuid
+  role        String      @default("VIEWER")
+  isPrimary   Boolean     @default(false)
+  createdAt   DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime    @db.Timestamptz(6)
+  SehClient SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  SehUser   SehUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, userId])
+  @@index([clientId])
+  @@index([tenantId])
+  @@map("seh_client_users")
+}
+
+model SehClient {
+  id                     String                   @id @db.Uuid
+  tenantId               String                   @db.Uuid
+  name                   String
+  logoUrl                String?
+  cuit                   String?
+  art                    String?
+  activity               String?
+  province               String?
+  address                String?
+  phone                  String?
+  email                  String?
+  responsible            String?
+  status                 String                   @default("ACTIVE")
+  complianceScore        Int?                     @default(0)
+  alertCount             Int                      @default(0)
+  country                String?                  @default("AR")
+  createdAt              DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime                 @db.Timestamptz(6)
+  createdById            String?                  @db.Uuid
+  updatedById            String?                  @db.Uuid
+  deletedAt              DateTime?                @db.Timestamptz(6)
+  SehActionPlan       SehActionPlan[]
+  SehAudit             SehAudit[]
+  SehClientUser       SehClientUser[]
+  SehDocument          SehDocument[]
+  SehDrill             SehDrill[]
+  SehEmployee          SehEmployee[]
+  SehEpp               SehEpp[]
+  SehIncident          SehIncident[]
+  SehIndicator         SehIndicator[]
+  SehInspection        SehInspection[]
+  SehLegalRequirement SehLegalRequirement[]
+  SehRisk              SehRisk[]
+  SehSite              SehSite[]
+  SehTraining          SehTraining[]
+  SehVisit             SehVisit[]
+  SehWorkPermit       SehWorkPermit[]
+
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_clients")
+}
+
+model SehDigitalSignature {
+  id            String   @id @db.Uuid
+  tenantId      String   @db.Uuid
+  entityType    String
+  entityId      String   @db.Uuid
+  signerName    String
+  signerRole    String?
+  signatureData String?
+  signedAt      DateTime @default(now()) @db.Timestamptz(6)
+  ipAddress     String?
+
+  @@index([entityType, entityId])
+  @@index([tenantId])
+  @@map("seh_digital_signatures")
+}
+
+model SehDocument {
+  id          String       @id @db.Uuid
+  tenantId    String       @db.Uuid
+  clientId    String?      @db.Uuid
+  title       String
+  type        String
+  fileUrl     String?
+  filePath    String?
+  version     Int          @default(1)
+  status      String       @default("ACTIVE")
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime     @db.Timestamptz(6)
+  createdById String?      @db.Uuid
+  updatedById String?      @db.Uuid
+  deletedAt   DateTime?    @db.Timestamptz(6)
+  SehClient SehClient? @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@index([type])
+  @@map("seh_documents")
+}
+
+model SehDrill {
+  id            String      @id @db.Uuid
+  tenantId      String      @db.Uuid
+  clientId      String      @db.Uuid
+  name          String
+  description   String?
+  type          String
+  status        String      @default("PLANNED")
+  severity      String      @default("MEDIUM")
+  objectives    String[]
+  areas         String[]
+  participants  Int         @default(0)
+  plannedDate   DateTime?   @db.Timestamptz(6)
+  completedDate DateTime?   @db.Timestamptz(6)
+  duration      Int?
+  coordinator   String?
+  evaluator     String?
+  findings      Json?
+  score         Int?
+  evidenceUrl   String?
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime    @db.Timestamptz(6)
+  createdById   String?     @db.Uuid
+  updatedById   String?     @db.Uuid
+  deletedAt     DateTime?   @db.Timestamptz(6)
+  SehClient   SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([plannedDate])
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_drills")
+}
+
+model SehEmployee {
+  id                String      @id @db.Uuid
+  tenantId          String      @db.Uuid
+  clientId          String      @db.Uuid
+  firstName         String
+  lastName          String
+  dni               String
+  cuil              String?
+  email             String?
+  phone             String?
+  position          String?
+  hireDate          DateTime?   @db.Timestamptz(6)
+  medicalExamDate   DateTime?   @db.Timestamptz(6)
+  medicalExamExpiry DateTime?   @db.Timestamptz(6)
+  medicalExamStatus String?     @default("VALID")
+  status            String      @default("ACTIVE")
+  createdAt         DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime    @db.Timestamptz(6)
+  createdById       String?     @db.Uuid
+  updatedById       String?     @db.Uuid
+  deletedAt         DateTime?   @db.Timestamptz(6)
+  SehClient       SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  SehEpp          SehEpp[]
+
+  @@unique([tenantId, dni])
+  @@index([clientId])
+  @@index([tenantId])
+  @@map("seh_employees")
+}
+
+model SehEpp {
+  id            String         @id @db.Uuid
+  tenantId      String         @db.Uuid
+  clientId      String         @db.Uuid
+  employeeId    String?        @db.Uuid
+  name          String
+  type          String
+  brand         String?
+  size          String?
+  deliveryDate  DateTime       @default(now()) @db.Timestamptz(6)
+  expiryDate    DateTime?      @db.Timestamptz(6)
+  status        String         @default("ACTIVE")
+  signatureUrl  String?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime       @db.Timestamptz(6)
+  deletedAt     DateTime?      @db.Timestamptz(6)
+  SehClient   SehClient    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  SehEmployee SehEmployee? @relation(fields: [employeeId], references: [id])
+
+  @@index([clientId])
+  @@index([employeeId])
+  @@index([tenantId])
+  @@map("seh_epps")
+}
+
+model SehIncident {
+  id                  String      @id @db.Uuid
+  tenantId            String      @db.Uuid
+  clientId            String      @db.Uuid
+  code                String
+  title               String
+  description         String?
+  severity            String
+  status              String      @default("REPORTED")
+  siteId              String?     @db.Uuid
+  area                String?
+  date                DateTime    @default(now()) @db.Timestamptz(6)
+  injuredCount        Int         @default(0)
+  daysLost            Int         @default(0)
+  rootCause           String?
+  immediateCause      String?
+  basicCause          String?
+  investigationReport String?
+  photos              String[]
+  artDenounced        Boolean     @default(false)
+  artNumber           String?
+  artDenounceDate     DateTime?   @db.Timestamptz(6)
+  daysLostTotal       Int         @default(0)
+  daysLostCurrent     Int         @default(0)
+  workerReturnDate    DateTime?   @db.Timestamptz(6)
+  medicalDiagnosis    String?
+  affectedBodyPart    String?
+  iltPercentage       Int?
+  insuranceCompany    String?
+  createdAt           DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime    @db.Timestamptz(6)
+  createdById         String?     @db.Uuid
+  updatedById         String?     @db.Uuid
+  deletedAt           DateTime?   @db.Timestamptz(6)
+  SehClient         SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([clientId])
+  @@index([severity])
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_incidents")
+}
+
+model SehIndicatorMeasurement {
+  id             String         @id @db.Uuid
+  indicatorId    String         @db.Uuid
+  value          Float
+  period         String
+  notes          String?
+  measuredAt     DateTime       @default(now()) @db.Timestamptz(6)
+  SehIndicator SehIndicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+
+  @@unique([indicatorId, period])
+  @@index([indicatorId])
+  @@map("seh_indicator_measurements")
+}
+
+model SehIndicator {
+  id                         String                       @id @db.Uuid
+  tenantId                   String                       @db.Uuid
+  clientId                   String?                      @db.Uuid
+  code                       String
+  name                       String
+  description                String?
+  category                   String
+  unit                       String
+  frequency                  String                       @default("MONTHLY")
+  currentValue               Float?
+  targetValue                Float?
+  minValue                   Float?
+  maxValue                   Float?
+  status                     String                       @default("NO_DATA")
+  trend                      String                       @default("STABLE")
+  createdAt                  DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt                  DateTime                     @db.Timestamptz(6)
+  createdById                String?                      @db.Uuid
+  updatedById                String?                      @db.Uuid
+  deletedAt                  DateTime?                    @db.Timestamptz(6)
+  SehIndicatorMeasurement SehIndicatorMeasurement[]
+  SehClient                SehClient?                 @relation(fields: [clientId], references: [id])
+
+  @@unique([tenantId, code])
+  @@index([clientId])
+  @@index([tenantId])
+  @@map("seh_indicators")
+}
+
+model SehInspectionTemplate {
+  id          String    @id @db.Uuid
+  tenantId    String    @db.Uuid
+  name        String
+  description String?
+  category    String
+  rubro       String?
+  normative   String?
+  riskType    String?
+  items       Json?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @db.Timestamptz(6)
+  createdById String?   @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz(6)
+
+  @@index([category])
+  @@index([tenantId])
+  @@map("seh_inspection_templates")
+}
+
+model SehInspection {
+  id            String      @id @db.Uuid
+  tenantId      String      @db.Uuid
+  clientId      String      @db.Uuid
+  code          String
+  title         String
+  type          String      @default("GENERAL")
+  status        String      @default("PLANNED")
+  siteId        String?     @db.Uuid
+  inspector     String?
+  plannedDate   DateTime?   @db.Timestamptz(6)
+  completedDate DateTime?   @db.Timestamptz(6)
+  checklist     Json?
+  observations  String?
+  signatureUrl  String?
+  geolocation   Json?
+  score         Int?
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime    @db.Timestamptz(6)
+  createdById   String?     @db.Uuid
+  updatedById   String?     @db.Uuid
+  deletedAt     DateTime?   @db.Timestamptz(6)
+  SehClient   SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([clientId])
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_inspections")
+}
+
+model SehLegalRequirement {
+  id                 String       @id @db.Uuid
+  tenantId           String       @db.Uuid
+  clientId           String?      @db.Uuid
+  jurisdiction       String?
+  normative          String
+  article            String?
+  description        String
+  activity           String?
+  riskType           String?
+  frequency          String?
+  criticality        String       @default("MEDIA")
+  evidenceRequired   String?
+  status             String       @default("NOT_APPLICABLE")
+  complianceScore    Int?         @default(0)
+  lastReview         DateTime?    @db.Timestamptz(6)
+  nextReview         DateTime?    @db.Timestamptz(6)
+  evidenceUrl        String?
+  version            Int          @default(1)
+  parentId           String?      @db.Uuid
+  isLibrary          Boolean      @default(false)
+  provinceTag        String?
+  activityTag        String?
+  librarySource      String?
+  organism           String?
+  appliesRequired    String?
+  enforcingAuthority String?
+  notes              String?
+  responsible        String?
+  verificationNotes  String?
+  createdAt          DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime     @db.Timestamptz(6)
+  createdById        String?      @db.Uuid
+  updatedById        String?      @db.Uuid
+  deletedAt          DateTime?    @db.Timestamptz(6)
+  SehClient        SehClient? @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_legal_requirements")
+}
+
+model SehPayment {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @db.Uuid
+  amount          Decimal   @default(0) @db.Decimal(12, 2)
+  currency        String?   @default("ARS") @db.VarChar(10)
+  paymentDate     DateTime  @default(now()) @db.Timestamptz(6)
+  planTier        String?   @default("BASIC") @db.VarChar(50)
+  description     String?   @db.VarChar(255)
+  providerRef     String?   @db.VarChar(255)
+  providerId      String?   @db.VarChar(255)
+  status          String?   @default("APPROVED") @db.VarChar(50)
+  invoiceBase64   String?
+  invoiceFilename String?   @db.VarChar(255)
+  invoiceMime     String?   @db.VarChar(100)
+  createdAt       DateTime? @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime? @default(now()) @db.Timestamptz(6)
+  @@map("seh_payments")
+}
+
+model SehReport {
+  id          String    @id @db.Uuid
+  tenantId    String    @db.Uuid
+  clientId    String?   @db.Uuid
+  title       String
+  type        String
+  periodStart DateTime? @db.Timestamptz(6)
+  periodEnd   DateTime? @db.Timestamptz(6)
+  summary     String?
+  content     Json?
+  pdfUrl      String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @db.Timestamptz(6)
+  createdById String?   @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz(6)
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@index([type])
+  @@map("seh_reports")
+}
+
+model SehRisk {
+  id             String      @id @db.Uuid
+  tenantId       String      @db.Uuid
+  clientId       String      @db.Uuid
+  code           String
+  title          String
+  description    String?
+  activity       String?
+  task           String?
+  probability    Int
+  consequence    Int
+  riskLevel      Int
+  controlMeasure String?
+  controlType    String?
+  residualProb   Int?
+  residualCons   Int?
+  residualLevel  Int?
+  status         String      @default("IDENTIFIED")
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime    @db.Timestamptz(6)
+  createdById    String?     @db.Uuid
+  updatedById    String?     @db.Uuid
+  deletedAt      DateTime?   @db.Timestamptz(6)
+  SehClient    SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([clientId])
+  @@index([riskLevel])
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_risks")
+}
+
+model SehSite {
+  id          String      @id @db.Uuid
+  tenantId    String      @db.Uuid
+  clientId    String      @db.Uuid
+  name        String
+  address     String?
+  city        String?
+  province    String?
+  status      String      @default("ACTIVE")
+  createdAt   DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime    @db.Timestamptz(6)
+  deletedAt   DateTime?   @db.Timestamptz(6)
+  SehClient SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@map("seh_sites")
+}
+
+model SehTenantPlan {
+  id             String    @id @db.Uuid
+  tenantId       String    @unique @db.Uuid
+  planTier       String    @default("STARTER")
+  status         String    @default("TRIAL")
+  trialEndsAt    DateTime? @db.Timestamptz(6)
+  planEndsAt     DateTime? @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @db.Timestamptz(6)
+  maxClients     Int       @default(3)
+  mercadoPagoId  String?   @db.VarChar(255)
+  mercadoPagoRef String?   @db.VarChar(255)
+
+  @@index([tenantId])
+  @@map("seh_tenant_plans")
+}
+
+model SehTraining {
+  id            String      @id @db.Uuid
+  tenantId      String      @db.Uuid
+  clientId      String      @db.Uuid
+  code          String
+  title         String
+  description   String?
+  category      String
+  modality      String      @default("PRESENCIAL")
+  instructor    String?
+  durationHours Float
+  scheduledDate DateTime?   @db.Timestamptz(6)
+  completedDate DateTime?   @db.Timestamptz(6)
+  status        String      @default("SCHEDULED")
+  attendees     Json?
+  materialUrl   String?
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime    @db.Timestamptz(6)
+  createdById   String?     @db.Uuid
+  updatedById   String?     @db.Uuid
+  deletedAt     DateTime?   @db.Timestamptz(6)
+  SehClient   SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([clientId])
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_trainings")
+}
+
+model SehUser {
+  id               String             @id @db.Uuid
+  tenantId         String             @db.Uuid
+  email            String
+  passwordHash     String
+  firstName        String
+  lastName         String
+  dni              String?
+  phone            String?
+  position         String?
+  role             String             @default("VIEWER")
+  isActive         Boolean            @default(true)
+  platformUserId   String?            @unique @db.Uuid
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime           @db.Timestamptz(6)
+  deletedAt        DateTime?          @db.Timestamptz(6)
+  SehClientUser SehClientUser[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("seh_users")
+}
+
+model SehVisit {
+  id             String      @id @db.Uuid
+  tenantId       String      @db.Uuid
+  clientId       String      @db.Uuid
+  technicianName String?
+  visitDate      DateTime    @default(now()) @db.Timestamptz(6)
+  purpose        String
+  notes          String?
+  geolocation    Json?
+  photoUrls      String[]
+  signatureUrl   String?
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime    @db.Timestamptz(6)
+  createdById    String?     @db.Uuid
+  deletedAt      DateTime?   @db.Timestamptz(6)
+  SehClient    SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@index([visitDate])
+  @@map("seh_visits")
+}
+
+model SehWorkPermit {
+  id             String      @id @db.Uuid
+  tenantId       String      @db.Uuid
+  clientId       String      @db.Uuid
+  code           String
+  title          String
+  description    String?
+  type           String
+  status         String      @default("DRAFT")
+  requester      String?
+  approver       String?
+  startDate      DateTime?   @db.Timestamptz(6)
+  endDate        DateTime?   @db.Timestamptz(6)
+  workers        Json?
+  hazards        Json?
+  ppeRequired    String[]
+  tools          String[]
+  isolationSteps Json?
+  emergencyPlan  String?
+  signatures     Json?
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime    @db.Timestamptz(6)
+  createdById    String?     @db.Uuid
+  deletedAt      DateTime?   @db.Timestamptz(6)
+  SehClient    SehClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([clientId])
+  @@index([status])
+  @@index([tenantId])
+  @@map("seh_work_permits")
+}
