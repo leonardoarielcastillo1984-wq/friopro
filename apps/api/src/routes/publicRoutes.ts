@@ -2,7 +2,11 @@ import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
-import { sendEmail, notificationEmail } from '../services/email.js';
+import * as argon2 from 'argon2';
+import { PrismaClient } from '@prisma/client';
+import { sendEmail, notificationEmail, welcomeTenantEmail } from '../services/email.js';
+
+const prismaDirect = new PrismaClient();
 
 const registerCompanySchema = z.object({
   companyName: z.string().min(1),
@@ -39,9 +43,16 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
       const validated = parsed.data;
       const autoRut = validated.rut || `PENDIENTE-${Date.now()}`;
       const autoAddress = validated.address || 'N/A';
+      const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';
 
-      // Guardar en base de datos
-      const newRegistration = await app.prisma.companyRegistration.create({
+      // Verificar email duplicado
+      const existingReg = await prismaDirect.companyRegistration.findFirst({ where: { email: validated.email } });
+      if (existingReg) {
+        return reply.code(400).send({ error: 'Este email ya tiene una cuenta registrada. Revisá tu bandeja de entrada o contactanos.' });
+      }
+
+      // ── Crear registro PENDING ──
+      const newRegistration = await prismaDirect.companyRegistration.create({
         data: {
           companyName: validated.companyName,
           socialReason: validated.socialReason,
@@ -50,50 +61,101 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
           phone: validated.phone,
           website: validated.website,
           address: autoAddress,
-          primaryColor: validated.primaryColor,
+          primaryColor: validated.primaryColor || '#E8541A',
           status: 'PENDING',
         },
       });
 
-      app.log.info(`Nueva solicitud de registro: ${validated.companyName}`);
+      app.log.info(`[REGISTER-COMPANY] Registro creado: ${newRegistration.id}`);
 
-      // Notificar por email a todos los destinatarios configurados
-      const appUrl = process.env.CORS_ORIGIN || 'https://logismart.ar';
-      const fixedRecipients = ['soporte@logismart.ar', 'leonardoarielcastillo@hotmail.com'];
-      const envRecipients = (process.env.ADMIN_NOTIFICATION_EMAIL || '')
-        .split(',').map((e: string) => e.trim()).filter(Boolean);
-      const allRecipients = Array.from(new Set([...fixedRecipients, ...envRecipients]));
+      // ── Auto-aprobación: crear tenant + usuario + credenciales ──
+      try {
+        const baseSlug = validated.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const uniqueSlug = `${baseSlug}-${Date.now().toString(36).slice(-4)}`;
 
-      for (const adminEmail of allRecipients) {
-        try {
-          const emailPayload = notificationEmail({
-            userEmail: adminEmail,
-            title: 'Nueva solicitud de registro de empresa',
-            message: `Se ha recibido una nueva solicitud de registro:\n\n` +
-              `<strong>Empresa:</strong> ${validated.companyName}\n` +
-              `<strong>Email:</strong> ${validated.email}\n` +
-              `<strong>RUT:</strong> ${validated.rut}\n` +
-              `<strong>Teléfono:</strong> ${validated.phone}\n` +
-              `<strong>Dirección:</strong> ${validated.address}\n\n` +
-              `Tenés una solicitud pendiente de aprobación.`,
-            actionLabel: 'Ver solicitudes pendientes',
-            actionUrl: `${appUrl}/admin`,
-            type: 'warning',
+        const demoStartedAt = new Date();
+        const demoExpiresAt = new Date(demoStartedAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+        const tenant = await (app.prisma as any).tenant.create({
+          data: { name: validated.companyName, slug: uniqueSlug, isDemo: true, demoStartedAt, demoExpiresAt },
+        });
+
+        // Generar contraseña temporal aleatoria
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+        const tempPassword = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        const hashedPassword = await argon2.hash(tempPassword);
+
+        let user = await app.prisma.platformUser.findUnique({ where: { email: validated.email } });
+        if (!user) {
+          user = await app.prisma.platformUser.create({
+            data: { email: validated.email, passwordHash: hashedPassword, isActive: true },
           });
-          const emailResult = await sendEmail(emailPayload);
-          if (emailResult.success) {
-            app.log.info(`[REGISTER-COMPANY] Email enviado a ${adminEmail}`);
-          } else {
-            app.log.error(`[REGISTER-COMPANY] Error enviando a ${adminEmail}: ${emailResult.error}`);
-          }
-        } catch (emailErr) {
-          app.log.error(`[REGISTER-COMPANY] Error en notificación a ${adminEmail}: ${emailErr}`);
+          await (app.prisma as any).passwordHistory.create({
+            data: { userId: user.id, passwordHash: hashedPassword, changeType: 'INITIAL', reason: 'Registro desde landing', ipAddress: req.ip, userAgent: req.headers['user-agent'] },
+          });
+        } else {
+          await app.prisma.platformUser.update({ where: { id: user.id }, data: { passwordHash: hashedPassword } });
         }
+
+        const existingMembership = await app.prisma.tenantMembership.findFirst({ where: { userId: user.id, tenantId: tenant.id } });
+        if (!existingMembership) {
+          await app.prisma.tenantMembership.create({
+            data: { userId: user.id, tenantId: tenant.id, role: 'TENANT_ADMIN' },
+          });
+        }
+
+        const initialPlan = await app.prisma.plan.findFirst({ where: { isActive: true, tier: 'BASIC' } })
+          ?? await app.prisma.plan.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'asc' } });
+        if (initialPlan) {
+          await app.prisma.tenantSubscription.create({
+            data: { tenantId: tenant.id, planId: initialPlan.id, status: 'TRIAL', startedAt: new Date() },
+          });
+        }
+
+        await (app.prisma as any).tenantSetup.upsert({
+          where: { tenantId: tenant.id },
+          update: { status: 'PAID', paidAt: new Date(), provider: 'landing-registration', updatedAt: new Date() },
+          create: { tenantId: tenant.id, amount: 0, currency: 'USD', status: 'PAID', requestedAt: new Date(), paidAt: new Date(), provider: 'landing-registration' },
+        });
+
+        await prismaDirect.companyRegistration.update({
+          where: { id: newRegistration.id },
+          data: { status: 'APPROVED', tenantId: tenant.id, approvedAt: new Date() },
+        });
+
+        // Enviar email de bienvenida con credenciales
+        const userName = validated.companyName;
+        await sendEmail(welcomeTenantEmail({
+          to: validated.email,
+          companyName: validated.companyName,
+          userName,
+          password: tempPassword,
+          loginUrl: `${appUrl}/login`,
+          trialDays: 3,
+        })).catch(e => app.log.error(`[REGISTER-COMPANY] Error email bienvenida: ${e.message}`));
+
+        app.log.info(`[REGISTER-COMPANY] Auto-aprobado: tenant=${tenant.id}, user=${user.id}`);
+
+        // Notificar admins
+        const fixedRecipients = ['soporte@logismart.ar', 'leonardoarielcastillo@hotmail.com'];
+        for (const adminEmail of fixedRecipients) {
+          sendEmail(notificationEmail({
+            userEmail: adminEmail,
+            title: '🆕 Nuevo cliente registrado — SGI 360',
+            message: `<strong>Empresa:</strong> ${validated.companyName}<br><strong>Email:</strong> ${validated.email}<br><strong>Teléfono:</strong> ${validated.phone || 'N/A'}<br><br>El cliente ya recibió sus credenciales y puede acceder al sistema.`,
+            actionLabel: 'Ver clientes',
+            actionUrl: `${appUrl}/super-admin`,
+            type: 'success',
+          })).catch(() => {});
+        }
+
+      } catch (autoErr: any) {
+        app.log.error({ err: autoErr?.message }, '[REGISTER-COMPANY] Error en auto-aprobación');
       }
 
       return reply.code(200).send({
         success: true,
-        message: 'Solicitud recibida correctamente',
+        message: 'Cuenta creada. Te enviamos un email con tus datos de acceso.',
         registrationId: newRegistration.id,
       });
     } catch (error: any) {

@@ -200,60 +200,68 @@ export function welcomeTenantEmail(options: {
   companyName: string;
   password: string;
   loginUrl: string;
+  userName?: string;
+  trialDays?: number;
 }): EmailPayload {
-  const { to, companyName, password, loginUrl } = options;
+  const { to, companyName, password, loginUrl, userName, trialDays } = options;
+  const greeting = userName ? userName : companyName;
+  const trial = trialDays ?? 3;
   return {
     to,
-    subject: '🎉 ¡Bienvenido a SGI 360! Tus datos de acceso',
+    subject: `🎉 ¡Bienvenido a SGI 360! Tus datos de acceso`,
     text: [
-      `¡Hola!`,
+      `¡Hola, ${greeting}!`,
       ``,
-      `Tu cuenta en SGI 360 para la empresa "${companyName}" fue aprobada y está lista para usar.`,
+      `Tu cuenta en SGI 360 para "${companyName}" fue creada con éxito.`,
       ``,
       `Datos de acceso:`,
-      `  Email:      ${to}`,
-      `  Contraseña: ${password}`,
-      `  URL:        ${loginUrl}`,
+      `  Usuario / Email: ${to}`,
+      `  Contraseña temporal: ${password}`,
+      `  URL: ${loginUrl}`,
       ``,
-      `Por seguridad, te recomendamos cambiar la contraseña después de tu primer ingreso.`,
+      `Período de prueba gratuita: ${trial} días de acceso completo.`,
+      ``,
+      `Por seguridad, cambiá tu contraseña en el primer ingreso.`,
       ``,
       `— Equipo SGI 360`,
     ].join('\n'),
     html: EMAIL_TEMPLATE_BASE(`
-      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 32px;">
-        <div style="text-align: center; margin-bottom: 24px;">
-          <div style="display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; background: #E8541A; border-radius: 12px; margin-bottom: 12px;">
-            <span style="font-size: 26px;">🎉</span>
-          </div>
-          <h2 style="color: #111827; font-size: 20px; margin: 0;">¡Bienvenido a SGI 360!</h2>
-          <p style="color: #6B7280; font-size: 14px; margin: 6px 0 0;">Tu cuenta para <strong>${companyName}</strong> está lista.</p>
+      <div style="background:#1a1a2e;border-radius:16px;padding:40px 32px;color:#ffffff;">
+        <div style="text-align:center;margin-bottom:32px;">
+          <h1 style="color:#ffffff;font-size:22px;font-weight:800;margin:0 0 6px;">SGI 360</h1>
+          <p style="color:#9CA3AF;font-size:13px;margin:0;">Sistema de Gestión Integrado 360°</p>
         </div>
 
-        <p style="color: #4B5563; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">
-          A continuación encontrás tus credenciales de acceso. Guardá este correo en un lugar seguro.
+        <h2 style="color:#ffffff;font-size:20px;font-weight:700;margin:0 0 8px;">¡Hola, ${greeting}! 👋</h2>
+        <p style="color:#D1D5DB;font-size:14px;line-height:1.6;margin:0 0 24px;">
+          Tu cuenta en <strong style="color:#ffffff;">SGI 360</strong> para <strong style="color:#ffffff;">${companyName}</strong> fue creada con éxito. Ya podés comenzar tu período de prueba gratuita.
         </p>
 
-        <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-          <div style="margin-bottom: 12px;">
-            <span style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Email de acceso</span>
-            <span style="font-size: 15px; color: #111827; font-weight: 500;">${to}</span>
-          </div>
-          <div>
-            <span style="display: block; font-size: 11px; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Contraseña temporal</span>
-            <span style="display: inline-block; font-size: 15px; color: #111827; font-weight: 700; background: #F3F4F6; padding: 6px 14px; border-radius: 6px; letter-spacing: 0.04em; font-family: monospace;">${password}</span>
-          </div>
+        <div style="background:#0f3460;border:1px solid #1e4a8a;border-radius:10px;padding:20px;margin-bottom:20px;">
+          <p style="color:#93C5FD;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 14px;">🔐 Tus datos de acceso:</p>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="color:#9CA3AF;font-size:13px;padding:4px 0;width:160px;">Usuario / Email:</td>
+              <td style="color:#60A5FA;font-size:13px;font-weight:600;padding:4px 0;">${to}</td>
+            </tr>
+            <tr>
+              <td style="color:#9CA3AF;font-size:13px;padding:4px 0;">Contraseña temporal:</td>
+              <td style="padding:4px 0;"><span style="font-family:monospace;font-size:15px;font-weight:700;color:#34D399;letter-spacing:0.06em;">${password}</span></td>
+            </tr>
+          </table>
+          <p style="color:#FCD34D;font-size:12px;margin:12px 0 0;">⚠️ Por seguridad, cambiá tu contraseña en el primer ingreso.</p>
         </div>
 
-        <div style="text-align: center; margin-bottom: 24px;">
-          <a href="${loginUrl}" style="display: inline-block; background: #E8541A; color: #FFFFFF; font-weight: 700; font-size: 14px; padding: 13px 36px; border-radius: 8px; text-decoration: none;">
-            Ingresar a SGI 360 →
-          </a>
-        </div>
-
-        <div style="background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 8px; padding: 14px;">
-          <p style="color: #92400E; font-size: 12px; margin: 0; line-height: 1.5;">
-            ⚠️ <strong>Importante:</strong> Por seguridad, te recomendamos cambiar esta contraseña temporal la primera vez que inicies sesión.
+        <div style="background:#1a3a1a;border:1px solid #2d5a2d;border-radius:10px;padding:16px;margin-bottom:28px;">
+          <p style="color:#86EFAC;font-size:13px;margin:0;line-height:1.5;">
+            🕐 <strong>Período de prueba gratuita: ${trial} días</strong> de acceso completo a todas las funcionalidades. Luego podés activar tu plan mensual o anual.
           </p>
+        </div>
+
+        <div style="text-align:center;">
+          <a href="${loginUrl}" style="display:inline-block;background:#E8541A;color:#ffffff;font-weight:700;font-size:15px;padding:14px 40px;border-radius:10px;text-decoration:none;letter-spacing:0.02em;">
+            Ingresar a SGI360 →
+          </a>
         </div>
       </div>
     `).trim(),
