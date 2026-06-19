@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { apiFetch } from '@/lib/api';
-import { ClipboardCheck, Eye, X, AlertCircle, Wrench, Search, Trash2, ChevronRight, Calendar, User, TrendingUp, Star, ExternalLink, FilePlus } from 'lucide-react';
+import { ClipboardCheck, Eye, X, AlertCircle, Wrench, Search, Trash2, ChevronRight, Calendar, User, TrendingUp, Star, ExternalLink, FilePlus, Pencil } from 'lucide-react';
 import InspeccionPDFButton from '@/components/inspecciones/InspeccionPDF';
 import { useAuth } from '@/lib/auth-context';
 
@@ -17,6 +17,9 @@ export default function InspeccionesLista() {
   const [selectedAssetKey, setSelectedAssetKey] = useState<string | null>(null);
   const [filterSearch, setFilterSearch] = useState('');
   const [ncrCreating, setNcrCreating] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   useEffect(() => {
     (apiFetch('/inspecciones/') as any)
@@ -57,6 +60,32 @@ export default function InspeccionesLista() {
   const loadDetail = async (id: string) => {
     const r: any = await apiFetch(`/inspecciones/${id}`);
     setSelected(r.inspeccion);
+  };
+
+  const toLocalInput = (iso: string) => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const openEdit = (ins: any) => {
+    setEditing(ins);
+    setEditValue(toLocalInput(ins.createdAt));
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !editValue) return;
+    setEditSaving(true);
+    try {
+      const newIso = new Date(editValue).toISOString();
+      await apiFetch(`/inspecciones/${editing.id}`, { method: 'PATCH', body: JSON.stringify({ createdAt: newIso }) });
+      setData(prev => prev.map(i => i.id === editing.id ? { ...i, createdAt: newIso } : i));
+      if (selected?.id === editing.id) setSelected((prev: any) => ({ ...prev, createdAt: newIso }));
+      setEditing(null);
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo actualizar la fecha.');
+    }
+    setEditSaving(false);
   };
 
   const deleteInspeccion = async (id: string) => {
@@ -248,12 +277,43 @@ export default function InspeccionesLista() {
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <button onClick={() => loadDetail(ins.id)} className="p-1 text-gray-300 hover:text-blue-500 rounded" title="Ver detalle"><Eye className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => openEdit(ins)} className="p-1 text-gray-300 hover:text-amber-500 rounded" title="Editar fecha y hora"><Pencil className="w-3.5 h-3.5" /></button>
                         <button onClick={() => deleteInspeccion(ins.id)} className="p-1 text-gray-300 hover:text-red-500 rounded" title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editar fecha y hora */}
+      {editing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !editSaving && setEditing(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div>
+                <h3 className="font-semibold text-gray-900">Editar fecha y hora</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{editing.activoNombre}{editing.activoCodigo ? ` · ${editing.activoCodigo}` : ''}</p>
+              </div>
+              <button onClick={() => !editSaving && setEditing(null)}><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Fecha y hora del control</label>
+                <input type="datetime-local" value={editValue} onChange={e => setEditValue(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20" />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button onClick={() => setEditing(null)} disabled={editSaving}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-50">Cancelar</button>
+                <button onClick={saveEdit} disabled={editSaving || !editValue}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors disabled:opacity-50">
+                  {editSaving ? 'Guardando…' : 'Guardar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

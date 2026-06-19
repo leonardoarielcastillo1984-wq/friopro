@@ -690,6 +690,24 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     return reply.send({ inspeccion: result });
   });
 
+  app.patch('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const body = req.body as any;
+    const inspeccion = await (app.prisma as any).inspeccion.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!inspeccion) return reply.code(404).send({ error: 'No encontrada' });
+    const data: any = {};
+    if (body?.createdAt !== undefined) {
+      const fecha = new Date(body.createdAt);
+      if (isNaN(fecha.getTime())) return reply.code(400).send({ error: 'Fecha inválida' });
+      data.createdAt = fecha;
+    }
+    if (Object.keys(data).length === 0) return reply.code(400).send({ error: 'Nada para actualizar' });
+    const updated = await (app.prisma as any).inspeccion.update({ where: { id }, data, select: { id: true, createdAt: true } });
+    return reply.send({ ok: true, inspeccion: updated });
+  });
+
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
