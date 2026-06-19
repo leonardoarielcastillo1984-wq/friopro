@@ -78,7 +78,7 @@ export default function InspeccionesLista() {
     setEditSaving(true);
     try {
       const newIso = new Date(editValue).toISOString();
-      await apiFetch(`/inspecciones/${editing.id}`, { method: 'PATCH', body: JSON.stringify({ createdAt: newIso }) });
+      await apiFetch(`/inspecciones/${editing.id}`, { method: 'PATCH', json: { createdAt: newIso } });
       setData(prev => prev.map(i => i.id === editing.id ? { ...i, createdAt: newIso } : i));
       if (selected?.id === editing.id) setSelected((prev: any) => ({ ...prev, createdAt: newIso }));
       setEditing(null);
