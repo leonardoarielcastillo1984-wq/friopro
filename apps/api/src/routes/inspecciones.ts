@@ -430,10 +430,15 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const respuestas = body.data.respuestas;
     const hallazgos: any[] = [];
     let itemsOk = 0;
+    let itemsEvaluados = 0;
 
     for (const resp of respuestas) {
       const item = items.find((i: any) => i.id === resp.itemId);
       if (!item) continue;
+      // Los ítems marcados como N/A (no aplica) no computan en el puntaje de cumplimiento
+      if (resp.valor === 'NA') continue;
+      // Solo los ítems efectivamente respondidos (Cumple / No cumple, o valores cargados) cuentan
+      if (resp.esOk === true || resp.esOk === false) itemsEvaluados++;
       if (resp.esOk === true) itemsOk++;
       if (resp.esOk === false && item.triggerHallazgo) {
         const secLower = (item.seccion || '').toLowerCase();
@@ -443,7 +448,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       }
     }
 
-    const puntaje = items.length > 0 ? Math.round((itemsOk / items.length) * 100) : 100;
+    const puntaje = itemsEvaluados > 0 ? Math.round((itemsOk / itemsEvaluados) * 100) : 100;
     const estado = hallazgos.length === 0 ? 'COMPLETA' : puntaje < 60 ? 'CRITICA' : 'CON_HALLAZGOS';
 
     const inspeccion = await (app.prisma as any).inspeccion.create({
@@ -457,7 +462,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         dominioSemi: body.data.dominioSemi || null,
         empresaTransporte: body.data.empresaTransporte || null,
         conductor: body.data.conductor || null,
-        estado, puntaje, hallazgosCount: hallazgos.length, itemsTotal: items.length, itemsOk,
+        estado, puntaje, hallazgosCount: hallazgos.length, itemsTotal: itemsEvaluados, itemsOk,
         notas: body.data.notas,
         kmReported: body.data.kmReported ?? null,
         feedbackToken: generateToken(),
