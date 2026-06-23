@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useState, Suspense } from 'react';
 import { apiFetch } from '@/lib/api';
@@ -235,7 +236,7 @@ function ConfiguracionPageInner() {
   return (
     <div className="p-6 space-y-6 max-w-[1200px] mx-auto">
       <div>
-        <h1 className="text-2xl font-bold text-neutral-900">Configuración</h1>
+        <h1 className="text-2xl font-bold text-neutral-900">Configuración <PageTitleHelp moduleHref="/configuracion" /></h1>
         <p className="text-neutral-500 mt-1">Gestiona usuarios, plan y datos de tu organización</p>
       </div>
 

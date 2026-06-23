@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useState, useMemo } from 'react';
 import {
@@ -986,7 +987,7 @@ export default function CentroDeAyudaPage() {
                 <BookOpen className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Centro de Ayuda</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Centro de Ayuda <PageTitleHelp moduleHref="/modo-de-uso" /></h1>
                 <p className="text-sm text-gray-500">Guías paso a paso, funcionalidades y buenas prácticas de cada módulo.</p>
               </div>
             </div>

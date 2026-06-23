@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -125,7 +126,7 @@ export default function ClimaPage() {
             <Wind className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Clima y Cultura</h1>
+            <h1 className="text-xl font-bold text-gray-900">Clima y Cultura <PageTitleHelp moduleHref="/clima" /></h1>
             <p className="text-xs text-gray-400">Escuchamos a las personas, mejoramos juntos.</p>
           </div>
         </div>

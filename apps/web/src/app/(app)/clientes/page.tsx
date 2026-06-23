@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -233,7 +234,7 @@ export default function ClientesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Gestión de Clientes</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Gestión de Clientes <PageTitleHelp moduleHref="/clientes" /></h1>
           <p className="text-gray-600 mt-1">Clientes y encuestas de satisfacción</p>
         </div>
         <div className="flex gap-3">

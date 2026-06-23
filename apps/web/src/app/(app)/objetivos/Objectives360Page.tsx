@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
@@ -838,7 +839,7 @@ export default function Objectives360Page() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Target className="w-6 h-6" />
-            Objetivos SGI 360
+            Objetivos SGI 360 <PageTitleHelp moduleHref="/objetivos" />
           </h1>
           <p className="text-sm text-muted-foreground">
             Gestión integral de objetivos estratégicos — ISO 9001/14001/45001 §6.2

@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
@@ -165,7 +166,7 @@ export default function InformeDireccionPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Informe para la Dirección</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Informe para la Dirección <PageTitleHelp moduleHref="/revision-direccion" /></h1>
           <p className="text-gray-600 mt-1">
             Gestiona los informes de revisión por la dirección según normas ISO
           </p>
