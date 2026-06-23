@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CalendarDays, RefreshCw } from 'lucide-react';
@@ -60,7 +61,7 @@ export default function CalendarioPage() {
               <CalendarDays className="h-5 w-5 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Calendario integrado</h1>
+              <h1 className="text-xl font-bold text-gray-900">Calendario integrado <PageTitleHelp moduleHref="/calendario" /></h1>
               <p className="text-sm text-gray-500">
                 Acciones, no conformidades, calibraciones y evaluaciones de proveedores con vencimientos próximos
               </p>

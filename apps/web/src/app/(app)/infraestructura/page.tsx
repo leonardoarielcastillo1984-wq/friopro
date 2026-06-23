@@ -2,6 +2,7 @@
 import { Suspense } from 'react';
 import { Settings, Ruler, ScanLine } from 'lucide-react';
 import PageTabs from '@/components/PageTabs';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 import MantenimientoContent from './_tabs/MantenimientoContent';
 import CalibracionesContent from './_tabs/CalibracionesContent';
 import InspeccionesContent from './_tabs/InspeccionesContent';
@@ -17,7 +18,7 @@ export default function InfraestructuraPage() {
     <Suspense>
       <div className="space-y-2">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Infraestructura</h1>
+          <h1 className="text-2xl font-semibold text-neutral-900">Infraestructura <PageTitleHelp moduleHref="/infraestructura" /></h1>
           <p className="mt-1 text-sm text-neutral-500">Mantenimiento de equipos, calibraciones, activos e inspecciones inteligentes — ISO §7.1</p>
         </div>
         <PageTabs tabs={TABS}>

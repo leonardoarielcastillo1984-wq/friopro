@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -173,7 +174,7 @@ export default function CapacitacionesPage() {
       {/* Header with Tabs */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Capacitaciones ISO</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Capacitaciones ISO <PageTitleHelp moduleHref="/capacitaciones" /></h1>
           <p className="text-slate-500 mt-1">Gestión de formación conforme ISO 9001:2015 - 7.2 Competencia</p>
         </div>
         <div className="flex items-center gap-2">

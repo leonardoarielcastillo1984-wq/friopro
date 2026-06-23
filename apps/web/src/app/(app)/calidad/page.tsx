@@ -2,6 +2,7 @@
 import { Suspense } from 'react';
 import { AlertTriangle, Siren, CheckSquare, RefreshCw } from 'lucide-react';
 import PageTabs from '@/components/PageTabs';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 import NcContent from './_tabs/NcContent';
 import IncidentesContent from './_tabs/IncidentesContent';
 import AccionesContent from './_tabs/AccionesContent';
@@ -19,7 +20,7 @@ export default function CalidadPage() {
     <Suspense>
       <div className="space-y-2">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Calidad / Mejora Continua</h1>
+          <h1 className="text-2xl font-semibold text-neutral-900">Calidad / Mejora Continua <PageTitleHelp moduleHref="/calidad" /></h1>
           <p className="mt-1 text-sm text-neutral-500">No conformidades, incidentes, acciones CAPA y gestión de cambios — ISO §8, §10</p>
         </div>
         <PageTabs tabs={TABS}>

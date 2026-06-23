@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
@@ -59,7 +60,7 @@ export default function ReportesPage() {
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Reportes</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Reportes <PageTitleHelp moduleHref="/reportes" /></h1>
         <p className="text-slate-500 mt-1">Genera reportes en tiempo real a partir de los datos de tu sistema</p>
       </div>
 

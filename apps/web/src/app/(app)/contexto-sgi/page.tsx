@@ -2,6 +2,7 @@
 import { Suspense } from 'react';
 import { Compass, UsersRound, Layers } from 'lucide-react';
 import PageTabs from '@/components/PageTabs';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 import ContextoContent from './_tabs/ContextoContent';
 import PartesContent from './_tabs/PartesContent';
 import MapaProcesosContent from './_tabs/MapaProcesosContent';
@@ -17,7 +18,7 @@ export default function ContextoSgiPage() {
     <Suspense>
       <div className="space-y-2">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Contexto del SGI</h1>
+          <h1 className="text-2xl font-semibold text-neutral-900">Contexto del SGI <PageTitleHelp moduleHref="/contexto-sgi" /></h1>
           <p className="mt-1 text-sm text-neutral-500">Análisis estratégico, partes interesadas y objetivos — ISO §4.1, §4.2, §6.2</p>
         </div>
         <PageTabs tabs={TABS}>

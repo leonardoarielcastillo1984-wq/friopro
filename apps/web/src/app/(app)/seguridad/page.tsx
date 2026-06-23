@@ -2,6 +2,7 @@
 import { Suspense } from 'react';
 import { Shield, HardHat, Leaf, ClipboardCheck } from 'lucide-react';
 import PageTabs from '@/components/PageTabs';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 const TABS = [
   { key: 'riesgos', label: 'Riesgos', icon: Shield },
@@ -20,7 +21,7 @@ export default function SeguridadPage() {
     <Suspense>
       <div className="space-y-2">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Seguridad &amp; Ambiente</h1>
+          <h1 className="text-2xl font-semibold text-neutral-900">Seguridad &amp; Ambiente <PageTitleHelp moduleHref="/seguridad" /></h1>
           <p className="mt-1 text-sm text-neutral-500">Riesgos, peligros SST, aspectos ambientales y simulacros — ISO 14001 / 45001</p>
         </div>
         <PageTabs tabs={TABS}>

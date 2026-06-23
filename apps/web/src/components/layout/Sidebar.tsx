@@ -5,6 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useCompany } from '@/lib/company-context';
 import { useLicense, type PlanTier } from '@/hooks/useLicense';
+import Tooltip from '@/components/ui/Tooltip';
+import { getModuleInfo } from '@/lib/moduleDescriptions';
 import {
   LayoutDashboard,
   BarChart3,
@@ -92,6 +94,7 @@ const bottomNav = [
 const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/dashboard': 'BASIC',
   '/panel': 'BASIC',
+  '/command-center': 'BASIC',
   '/documents': 'BASIC',
   '/contexto-sgi': 'BASIC',
   '/objetivos': 'BASIC',
@@ -320,6 +323,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                 return (
                   <button
                     key={item.href}
+                    onMouseEnter={() => router.prefetch(item.href)}
                     onMouseDown={() => navigate(item.href)}
                     className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-sidebar-text hover:bg-sidebar-hover hover:text-white transition-colors"
                   >
@@ -348,10 +352,25 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             const userAllowed = isAdmin || hasModulePermission(moduleKey);
             const isLocked = !planAllows || !userAllowed;
             const requiredPlan = getModuleRequiredPlan(item.href);
-            
+            const moduleInfo = getModuleInfo(item.href);
+            const tooltipContent = isLocked ? (
+              <div>
+                <div className="mb-0.5 font-semibold">{item.label}</div>
+                <div className="text-amber-300">Disponible en plan {requiredPlan}</div>
+              </div>
+            ) : (
+              <div>
+                <div className="mb-0.5 font-semibold">{moduleInfo?.title || item.label}</div>
+                {moduleInfo?.description && (
+                  <div className="text-slate-200">{moduleInfo.description}</div>
+                )}
+              </div>
+            );
+
             return (
+              <Tooltip key={item.href} content={tooltipContent} side="right">
               <button
-                key={item.href}
+                onMouseEnter={() => { if (!isLocked) router.prefetch(item.href); }}
                 onClick={() => {
                   if (isLocked) return;
                   navigate(item.href);
@@ -363,7 +382,6 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                       ? 'text-slate-500 hover:bg-slate-800/50 cursor-not-allowed'
                       : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white'
                 }`}
-                title={isLocked ? `Disponible en plan ${requiredPlan}` : item.label}
               >
                 <Icon className={`h-[18px] w-[18px] flex-shrink-0 ${isLocked ? 'opacity-50' : ''}`} />
                 <span className={isLocked ? 'opacity-70' : ''}>{item.label}</span>
@@ -391,6 +409,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                   })()
                 )}
               </button>
+              </Tooltip>
             );
           })}
         </div>
@@ -401,9 +420,19 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           {bottomNav.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
+            const moduleInfo = getModuleInfo(item.href);
+            const tooltipContent = (
+              <div>
+                <div className="mb-0.5 font-semibold">{moduleInfo?.title || item.label}</div>
+                {moduleInfo?.description && (
+                  <div className="text-slate-200">{moduleInfo.description}</div>
+                )}
+              </div>
+            );
             return (
+              <Tooltip key={item.href} content={tooltipContent} side="right">
               <button
-                key={item.href}
+                onMouseEnter={() => router.prefetch(item.href)}
                 onClick={() => navigate(item.href)}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   active
@@ -414,10 +443,13 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                 <Icon className="h-[18px] w-[18px] flex-shrink-0" />
                 {item.label}
               </button>
+              </Tooltip>
             );
           })}
           {user?.globalRole === 'SUPER_ADMIN' && (
+            <Tooltip content={<div><div className="mb-0.5 font-semibold">Super Admin</div><div className="text-slate-200">Panel de administración global de la plataforma.</div></div>} side="right">
             <button
+              onMouseEnter={() => router.prefetch('/admin')}
               onClick={() => navigate('/admin')}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive('/admin')
@@ -428,6 +460,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               <Shield className="h-[18px] w-[18px] flex-shrink-0" />
               Super Admin
             </button>
+            </Tooltip>
           )}
         </div>
       </nav>

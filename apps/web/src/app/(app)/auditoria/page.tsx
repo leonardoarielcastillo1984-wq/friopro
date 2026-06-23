@@ -2,6 +2,7 @@
 import { Suspense } from 'react';
 import { BrainCircuit, ClipboardCheck } from 'lucide-react';
 import PageTabs from '@/components/PageTabs';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 import AuditIaContent from './_tabs/AuditIaContent';
 import AuditIsoContent from './_tabs/AuditIsoContent';
 
@@ -15,7 +16,7 @@ export default function AuditoriaPage() {
     <Suspense>
       <div className="space-y-2">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Auditorías</h1>
+          <h1 className="text-2xl font-semibold text-neutral-900">Auditorías <PageTitleHelp moduleHref="/auditoria" /></h1>
           <p className="mt-1 text-sm text-neutral-500">Análisis de cumplimiento con IA y auditorías internas ISO</p>
         </div>
         <PageTabs tabs={TABS}>

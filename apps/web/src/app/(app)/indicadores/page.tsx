@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -281,7 +282,7 @@ export default function IndicadoresPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Indicadores</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Indicadores <PageTitleHelp moduleHref="/indicadores" /></h1>
           <p className="text-sm text-slate-500">Monitoreo de métricas clave de negocio</p>
         </div>
         <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">

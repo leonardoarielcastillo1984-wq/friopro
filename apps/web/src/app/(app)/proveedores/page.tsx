@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
@@ -136,7 +137,7 @@ export default function ProveedoresPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Truck className="w-6 h-6 text-blue-600" /> Proveedores</h1>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Truck className="w-6 h-6 text-blue-600" /> Proveedores <PageTitleHelp moduleHref="/proveedores" /></h1>
           <p className="text-gray-600 mt-1">Gestión y evaluación de proveedores (ISO 9001 §8.4)</p>
         </div>
         <div className="flex gap-3">

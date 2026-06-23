@@ -1,4 +1,5 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -168,7 +169,7 @@ export default function DashboardPage() {
               <Activity className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">{greeting} — SGI 360</h1>
+              <h1 className="text-xl font-bold text-gray-900">{greeting} — SGI 360 <PageTitleHelp moduleHref="/dashboard" /></h1>
               <p className="text-sm text-gray-500">Panel ejecutivo · {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
             </div>
           </div>
