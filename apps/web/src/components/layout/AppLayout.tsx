@@ -52,14 +52,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
       window.localStorage.removeItem('user');
       window.localStorage.removeItem('userPermissions');
       fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => null);
-      window.location.href = '/login?reason=session_expired';
+      window.location.href = '/sgi360-landing?reason=session_expired';
     },
     disabled: !user || loading,
   });
 
   useEffect(() => {
     if (!loading && !user) {
-      router.replace('/login');
+      router.replace('/sgi360-landing');
     }
   }, [loading, user, router]);
 

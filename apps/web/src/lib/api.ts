@@ -239,6 +239,8 @@ export async function apiFetch<T>(
     path.startsWith('/auth/forgot-password') || path.startsWith('/auth/reset-password');
   const isOnLoginPage = typeof window !== 'undefined' &&
     (window.location.pathname === '/login' || window.location.pathname.startsWith('/login') ||
+     window.location.pathname.startsWith('/sgi360-landing') ||
+     window.location.pathname.startsWith('/reset-password') || window.location.pathname.startsWith('/forgot-password') ||
      window.location.pathname.startsWith('/canal/') || window.location.pathname.startsWith('/responder/') ||
      window.location.pathname.startsWith('/inspeccionar/') || window.location.pathname.startsWith('/feedback-qr/') ||
      window.location.pathname.startsWith('/feedback/'));
@@ -247,14 +249,14 @@ export async function apiFetch<T>(
     if (refreshed) {
       res = await rawFetch<T>(path, init);
     } else {
-      // Refresh falló (token expirado o sesión inválida) → redirigir al login
+      // Refresh falló (token expirado o sesión inválida) → redirigir a la landing de SGI360
       if (typeof window !== 'undefined' && !isOnLoginPage) {
         window.localStorage.removeItem('accessToken');
         window.localStorage.removeItem('csrfToken');
         window.localStorage.removeItem('tenantId');
         window.localStorage.removeItem('user');
         window.localStorage.removeItem('userPermissions');
-        window.location.href = '/login?reason=session_expired';
+        window.location.href = '/sgi360-landing?reason=session_expired';
       }
       return {} as T;
     }

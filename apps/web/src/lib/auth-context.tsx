@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setCsrfToken(null);
       setTenantId(null);
       setState({ user: null, tenant: null, tenantRole: null, loading: false, error: null });
-      window.location.href = '/login';
+      window.location.href = '/sgi360-landing';
     }
   }, []);
 
