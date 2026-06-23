@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import { Queue, Worker, type Job } from 'bullmq';
+import { PrismaClient } from '@prisma/client';
 import { processNormativeJob, type ProcessNormativePayload } from './processNormativeJob.js';
 import {
   processDocumentVsNormaJob,
@@ -69,6 +70,39 @@ export function startNormativeWorker(): Worker<ProcessNormativePayload> {
 
   console.log('[normative-worker] Worker started');
   return _worker;
+}
+
+// ── Recuperación de normativos atascados ──
+// Si Redis estuvo caído / en modo réplica read-only cuando se subió una norma,
+// el job nunca se encoló y el registro queda en UPLOADING/PROCESSING para siempre.
+// Al arrancar el worker re-encolamos esos registros para que se procesen.
+let _recoveryPrisma: PrismaClient | null = null;
+
+export async function recoverStuckNormatives(): Promise<void> {
+  try {
+    const prisma = _recoveryPrisma ?? (_recoveryPrisma = new PrismaClient());
+    const stuck = await prisma.normativeStandard.findMany({
+      where: {
+        status: { in: ['UPLOADING', 'PROCESSING'] },
+        filePath: { not: '' },
+        deletedAt: null,
+      },
+      select: { id: true, tenantId: true, filePath: true },
+    });
+    if (stuck.length === 0) return;
+
+    const queue = getNormativeQueue();
+    for (const n of stuck) {
+      await queue.add(
+        'process-normative',
+        { normativeId: n.id, tenantId: n.tenantId, filePath: n.filePath },
+        { jobId: `recover-${n.id}` },
+      );
+    }
+    console.log(`[normative-worker] Re-encolados ${stuck.length} normativos atascados para procesamiento`);
+  } catch (err: any) {
+    console.error('[normative-worker] recoverStuckNormatives falló:', err?.message ?? err);
+  }
 }
 
 // ── Audit Analysis Queue ──
