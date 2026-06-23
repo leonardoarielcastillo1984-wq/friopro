@@ -525,13 +525,23 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    // Encolar job de procesamiento
-    const queue = getNormativeQueue();
-    const job = await queue.add('process-normative', {
-      normativeId: normativo.id,
-      tenantId: effectiveTenantId,
-      filePath: storageKey,
-    });
+    // Encolar job de procesamiento. Protegido: si Redis está caído / read-only
+    // el registro queda en UPLOADING y será re-encolado por recoverStuckNormatives().
+    let jobId: string | undefined;
+    try {
+      const queue = getNormativeQueue();
+      const job = await queue.add('process-normative', {
+        normativeId: normativo.id,
+        tenantId: effectiveTenantId,
+        filePath: storageKey,
+      });
+      jobId = job.id;
+    } catch (queueErr: any) {
+      app.log.error(
+        { err: queueErr, normativeId: normativo.id },
+        '[REVISION] No se pudo encolar el job de procesamiento (Redis no disponible). El normativo se recuperará al reiniciar.',
+      );
+    }
 
     return reply.code(202).send({
       normativo: {
@@ -546,7 +556,7 @@ export const normativoRoutes: FastifyPluginAsync = async (app) => {
         version: existing.version,
         status: 'ARCHIVED',
       },
-      jobId: job.id,
+      jobId,
     });
   });
 

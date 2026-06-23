@@ -68,7 +68,6 @@ export function getEmailQueue(): Queue<EmailJobPayload> {
  * Queue an email for sending
  */
 export async function queueEmail(payload: EmailPayload, priority?: number): Promise<void> {
-  const queue = getEmailQueue();
   const jobPayload: EmailJobPayload = {
     to: payload.to,
     subject: payload.subject,
@@ -77,9 +76,14 @@ export async function queueEmail(payload: EmailPayload, priority?: number): Prom
     timestamp: new Date().toISOString(),
   };
 
-  await queue.add(QUEUE_NAME, jobPayload, {
-    priority,
-  });
+  // Protegido: si Redis está caído / read-only no rompemos el flujo que dispara
+  // el email (ej. activar/desactivar 2FA). Solo registramos el fallo.
+  try {
+    const queue = getEmailQueue();
+    await queue.add(QUEUE_NAME, jobPayload, { priority });
+  } catch (err: any) {
+    console.error(`[emailQueue] No se pudo encolar el email a ${payload.to}:`, err?.message ?? err);
+  }
 }
 
 /**

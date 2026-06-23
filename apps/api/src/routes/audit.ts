@@ -102,22 +102,38 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    // Encolar job
-    const queue = getAuditQueue();
-    const job = await queue.add('analyze-document-vs-norma', {
-      auditRunId: auditRun.id,
-      tenantId,
-      documentId: body.documentId,
-      normativeId: body.normativeId,
-    });
+    // Encolar job. Si Redis está caído / read-only, no dejamos el run colgado en
+    // QUEUED: lo marcamos FAILED para que el usuario pueda reintentar (no auto-
+    // reprocesamos porque el análisis no es idempotente y duplicaría hallazgos).
+    let jobId: string | undefined;
+    let runStatus = auditRun.status;
+    try {
+      const queue = getAuditQueue();
+      const job = await queue.add('analyze-document-vs-norma', {
+        auditRunId: auditRun.id,
+        tenantId,
+        documentId: body.documentId,
+        normativeId: body.normativeId,
+      });
+      jobId = job.id;
+    } catch (queueErr: any) {
+      app.log.error({ err: queueErr, auditRunId: auditRun.id }, '[AUDIT] No se pudo encolar el análisis (Redis no disponible)');
+      runStatus = 'FAILED';
+      await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+        await tx.auditRun.update({
+          where: { id: auditRun.id },
+          data: { status: 'FAILED', error: 'No se pudo encolar el análisis: servicio de procesamiento no disponible. Reintentá en unos minutos.' },
+        });
+      }).catch(() => null);
+    }
 
     return reply.code(202).send({
       auditRun: {
         id: auditRun.id,
         type: auditRun.type,
-        status: auditRun.status,
+        status: runStatus,
       },
-      jobId: job.id,
+      jobId,
     });
   });
 
@@ -145,20 +161,34 @@ export const auditRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
-    // Encolar job
-    const queue = getAuditQueue();
-    const job = await queue.add('tenant-full-audit', {
-      auditRunId: auditRun.id,
-      tenantId,
-    });
+    // Encolar job (protegido contra Redis caído / read-only; ver /analyze).
+    let jobId: string | undefined;
+    let runStatus = auditRun.status;
+    try {
+      const queue = getAuditQueue();
+      const job = await queue.add('tenant-full-audit', {
+        auditRunId: auditRun.id,
+        tenantId,
+      });
+      jobId = job.id;
+    } catch (queueErr: any) {
+      app.log.error({ err: queueErr, auditRunId: auditRun.id }, '[AUDIT] No se pudo encolar la auditoría de tenant (Redis no disponible)');
+      runStatus = 'FAILED';
+      await app.runWithDbContext(req, async (tx: Prisma.TransactionClient) => {
+        await tx.auditRun.update({
+          where: { id: auditRun.id },
+          data: { status: 'FAILED', error: 'No se pudo encolar la auditoría: servicio de procesamiento no disponible. Reintentá en unos minutos.' },
+        });
+      }).catch(() => null);
+    }
 
     return reply.code(202).send({
       auditRun: {
         id: auditRun.id,
         type: auditRun.type,
-        status: auditRun.status,
+        status: runStatus,
       },
-      jobId: job.id,
+      jobId,
     });
   });
 
