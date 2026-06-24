@@ -30,7 +30,7 @@ const createEmployeeSchema = z.object({
   reportsToPositionId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   orgLevel: z.preprocess(
     (v) => (v === '' || v === null || v === undefined ? null : Number(v)),
-    z.number().int().min(1).max(99).nullable(),
+    z.number().min(1).max(99).nullable(),
   ),
   notes: z.string().optional(),
   employeeCompetencies: z.any().optional(),

@@ -1378,11 +1378,12 @@ export default function EmployeesPage() {
                       name="orgLevel"
                       min={1}
                       max={99}
+                      step="any"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Opcional · ej. 1, 2, 3..."
+                      placeholder="Opcional · ej. 1, 2, 2.5, 3..."
                     />
                     <p className="mt-1 text-xs text-gray-500">
-                      Nivel/fila manual en el modo <strong>Línea manual</strong> del organigrama. Vacío = automático.
+                      Nivel/fila manual en el modo <strong>Línea manual</strong> del organigrama. Permite intermedios (ej. <strong>2.5</strong> queda entre la 2 y la 3). Vacío = automático.
                     </p>
                   </div>
                   {/* TODO: Location field disabled - backend expects UUID but frontend sends text
@@ -2098,12 +2099,13 @@ export default function EmployeesPage() {
                       name="orgLevel"
                       min={1}
                       max={99}
+                      step="any"
                       defaultValue={selectedEmployee.orgLevel ?? ''}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Opcional · ej. 1, 2, 3..."
+                      placeholder="Opcional · ej. 1, 2, 2.5, 3..."
                     />
                     <p className="mt-1 text-xs text-gray-500">
-                      Nivel/fila manual en el modo <strong>Línea manual</strong> del organigrama. Vacío = automático.
+                      Nivel/fila manual en el modo <strong>Línea manual</strong> del organigrama. Permite intermedios (ej. <strong>2.5</strong> queda entre la 2 y la 3). Vacío = automático.
                     </p>
                   </div>
                 </div>

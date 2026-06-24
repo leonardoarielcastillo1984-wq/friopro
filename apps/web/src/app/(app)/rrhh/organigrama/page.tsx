@@ -261,11 +261,11 @@ function OrgNode({
         </>
       )}
 
-      {/* Manual org line number badge */}
+      {/* Manual org line number badge (supports decimals e.g. 2.5) */}
       {emp.orgLevel != null && (
         <g>
-          <circle cx={16} cy={13} r={10} fill="#111827" stroke="white" strokeWidth={1.5} />
-          <text x={16} y={13} textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight="700" fill="white">
+          <circle cx={16} cy={13} r={11} fill="#111827" stroke="white" strokeWidth={1.5} />
+          <text x={16} y={13} textAnchor="middle" dominantBaseline="central" fontSize={String(emp.orgLevel).length >= 3 ? 7.5 : 9} fontWeight="700" fill="white">
             {emp.orgLevel}
           </text>
         </g>
@@ -660,7 +660,7 @@ export default function OrgChartPage() {
             <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Línea manual:</span>
             <div className="flex items-center gap-1.5 text-xs text-gray-600">
               <span className="flex items-center justify-center w-4 h-4 rounded-full bg-gray-900 text-white text-[9px] font-bold">N</span>
-              La fila la define el número asignado a cada persona en <strong className="mx-1">RRHH → Empleados</strong>. Sin número = nivel automático.
+              La fila la define el número asignado a cada persona en <strong className="mx-1">RRHH → Empleados</strong>. Admite intermedios (2.5 = entre la 2 y la 3). Sin número = nivel automático.
             </div>
           </>
         )}
