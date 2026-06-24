@@ -4586,10 +4586,12 @@ function FlotaDetalleNeum({ neumatico, data, onClose }: any) {
 
 function FlotaCombustibleForm({ vehiculo, registros, onSave, onClose }: any) {
   const [adding, setAdding] = useState(false);
-  const [f, setF] = useState({ litros: '', precioPorLitro: '', odometro: '', estacion: '', tipoCombustible: 'DIESEL', fecha: new Date().toISOString().split('T')[0], notas: '' });
+  const [f, setF] = useState({ litros: '', precioPorLitro: '', odometro: '', estacion: '', tipoCombustible: 'DIESEL', litrosUrea: '', precioPorLitroUrea: '', fecha: new Date().toISOString().split('T')[0], notas: '' });
   const set = (k: string) => (e: any) => setF(p => ({ ...p, [k]: e.target.value }));
   const totalLitros = registros.reduce((s: number, r: any) => s + r.litros, 0);
   const totalCosto = registros.reduce((s: number, r: any) => s + (r.costoTotal || 0), 0);
+  const totalUrea = registros.reduce((s: number, r: any) => s + (r.litrosUrea || 0), 0);
+  const totalCostoUrea = registros.reduce((s: number, r: any) => s + (r.costoUrea || 0), 0);
   const rends = registros.filter((r: any) => r.rendimiento);
   const rendProm = rends.length ? rends.reduce((s: number, r: any) => s + r.rendimiento, 0) / rends.length : 0;
   return (
@@ -4601,11 +4603,17 @@ function FlotaCombustibleForm({ vehiculo, registros, onSave, onClose }: any) {
           <div className="bg-purple-50 rounded-xl p-3 text-center"><p className="text-lg font-bold text-purple-700">{rendProm > 0 ? `${rendProm.toFixed(1)} km/L` : '—'}</p><p className="text-xs text-purple-500">Rendimiento</p></div>
         </div>
       )}
+      {totalUrea > 0 && (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-cyan-50 rounded-xl p-3 text-center"><p className="text-lg font-bold text-cyan-700">{totalUrea.toLocaleString('es-AR', { maximumFractionDigits: 0 })} L</p><p className="text-xs text-cyan-500">UREA / AdBlue total</p></div>
+          <div className="bg-teal-50 rounded-xl p-3 text-center"><p className="text-lg font-bold text-teal-700">${totalCostoUrea.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p><p className="text-xs text-teal-500">Costo UREA</p></div>
+        </div>
+      )}
       <div className="space-y-2 max-h-48 overflow-y-auto mb-4">
         {registros.slice(0, 10).map((r: any) => (
           <div key={r.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2 text-sm">
             <Fuel className="w-4 h-4 text-gray-400 shrink-0" />
-            <div className="flex-1"><span className="font-medium">{r.litros} L</span>{r.precioPorLitro && <span className="text-gray-500"> · ${r.precioPorLitro}/L</span>}{r.rendimiento && <span className="text-emerald-600 font-medium"> · {r.rendimiento} km/L</span>}</div>
+            <div className="flex-1"><span className="font-medium">{r.litros} L</span>{r.precioPorLitro && <span className="text-gray-500"> · ${r.precioPorLitro}/L</span>}{r.rendimiento && <span className="text-emerald-600 font-medium"> · {r.rendimiento} km/L</span>}{r.litrosUrea > 0 && <span className="text-cyan-600 font-medium"> · UREA {r.litrosUrea} L</span>}</div>
             <div className="text-xs text-gray-400 text-right"><p>{new Date(r.fecha).toLocaleDateString('es-AR')}</p>{r.odometro && <p>{r.odometro.toLocaleString('es-AR')} km</p>}</div>
           </div>
         ))}
@@ -4620,10 +4628,12 @@ function FlotaCombustibleForm({ vehiculo, registros, onSave, onClose }: any) {
             <FI label="Tipo"><select value={f.tipoCombustible} onChange={set('tipoCombustible')} className={inp}>{['DIESEL','NAFTA','GNC','ELECTRICO'].map(t => <option key={t}>{t}</option>)}</select></FI>
             <FI label="Estación"><input value={f.estacion} onChange={set('estacion')} className={inp} /></FI>
             <FI label="Fecha"><input type="date" value={f.fecha} onChange={set('fecha')} className={inp} /></FI>
+            <FI label="UREA / AdBlue (litros)"><input type="number" step="0.01" value={f.litrosUrea} onChange={set('litrosUrea')} className={inp} placeholder="0" /></FI>
+            <FI label="Precio/litro UREA"><input type="number" step="0.01" value={f.precioPorLitroUrea} onChange={set('precioPorLitroUrea')} className={inp} placeholder="0" /></FI>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setAdding(false)} className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-1.5 text-sm">Cancelar</button>
-            <button onClick={() => { if (!f.litros) return alert('Litros requerido'); onSave(vehiculo.id, { ...f, litros: parseFloat(f.litros), precioPorLitro: f.precioPorLitro ? parseFloat(f.precioPorLitro) : undefined, odometro: f.odometro ? parseFloat(f.odometro) : undefined }); setAdding(false); }} className="flex-1 bg-blue-600 text-white rounded-lg py-1.5 text-sm">Registrar carga</button>
+            <button onClick={() => { if (!f.litros) return alert('Litros requerido'); onSave(vehiculo.id, { ...f, litros: parseFloat(f.litros), precioPorLitro: f.precioPorLitro ? parseFloat(f.precioPorLitro) : undefined, odometro: f.odometro ? parseFloat(f.odometro) : undefined, litrosUrea: f.litrosUrea ? parseFloat(f.litrosUrea) : undefined, precioPorLitroUrea: f.precioPorLitroUrea ? parseFloat(f.precioPorLitroUrea) : undefined }); setAdding(false); }} className="flex-1 bg-blue-600 text-white rounded-lg py-1.5 text-sm">Registrar carga</button>
           </div>
         </div>
       ) : (

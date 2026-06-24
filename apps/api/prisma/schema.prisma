@@ -6846,6 +6846,11 @@ model RegistroCombustible {
   estacion   String?
   tipoCombustible String @default("DIESEL") // DIESEL, NAFTA, GNC, ELECTRICO
 
+  // UREA / AdBlue (aditivo SCR para diésel)
+  litrosUrea         Float? // litros de UREA cargados en la misma operación
+  precioPorLitroUrea Float?
+  costoUrea          Float? // litrosUrea * precioPorLitroUrea
+
   notas String?
 
   createdAt DateTime @default(now()) @db.Timestamptz

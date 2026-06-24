@@ -1015,6 +1015,8 @@ export default async function flotaRoutes(app: FastifyInstance) {
       odometro: z.number().optional(),
       estacion: z.string().optional(),
       tipoCombustible: z.string().default('DIESEL'),
+      litrosUrea: z.number().nonnegative().optional(),
+      precioPorLitroUrea: z.number().nonnegative().optional(),
       conductorId: z.string().uuid().optional().nullable(),
       fecha: z.string().optional(),
       notas: z.string().optional(),
@@ -1040,13 +1042,18 @@ export default async function flotaRoutes(app: FastifyInstance) {
       verificarPlanesPorKm(app.prisma, tenantId, vehiculoId, body.data.odometro).catch(() => {});
     }
 
-    const costoTotal = body.data.precioPorLitro ? body.data.litros * body.data.precioPorLitro : null;
+    const costoCombustible = body.data.precioPorLitro ? body.data.litros * body.data.precioPorLitro : 0;
+    const costoUrea = body.data.litrosUrea && body.data.precioPorLitroUrea
+      ? body.data.litrosUrea * body.data.precioPorLitroUrea
+      : null;
+    const costoTotal = (costoCombustible || costoUrea) ? (costoCombustible + (costoUrea || 0)) : null;
     const registro = await (app.prisma as any).registroCombustible.create({
       data: {
         ...body.data,
         vehiculoId,
         tenantId,
         costoTotal,
+        costoUrea,
         rendimiento,
         fecha: body.data.fecha ? new Date(body.data.fecha) : new Date(),
       },
