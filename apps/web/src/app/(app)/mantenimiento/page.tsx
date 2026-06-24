@@ -588,6 +588,16 @@ export default function MantenimientoPage() {
   const [showMaintenanceCostsModal, setShowMaintenanceCostsModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [showGemeloModal, setShowGemeloModal] = useState(false);
+  const [gemeloAsset, setGemeloAsset] = useState<Asset | null>(null);
+  const [gemeloData, setGemeloData] = useState<any>(null);
+  const [gemeloLoading, setGemeloLoading] = useState(false);
+  const [gemeloAnalyzing, setGemeloAnalyzing] = useState(false);
+  const [gemeloConvertingId, setGemeloConvertingId] = useState<string | null>(null);
+  const [simulData, setSimulData] = useState<any>(null);
+  const [simulLoading, setSimulLoading] = useState(false);
+  const [simulKmCustom, setSimulKmCustom] = useState('');
+  const [simulEscenarios, setSimulEscenarios] = useState<number[]>([10000, 20000, 30000]);
   const [maintenanceHistory, setMaintenanceHistory] = useState<any[]>([]);
   const [showHistorialModal, setShowHistorialModal] = useState(false);
   const [historialAsset, setHistorialAsset] = useState<Asset | null>(null);
@@ -1027,6 +1037,50 @@ export default function MantenimientoPage() {
     }
   };
 
+  const simularEscenario = async () => {
+    if (!gemeloAsset) return;
+    setSimulLoading(true); setSimulData(null);
+    try {
+      const r = await apiFetch('/digital-twin/simulate', {
+        method: 'POST',
+        json: { assetId: gemeloAsset.id, escenarios: simulEscenarios },
+      }) as any;
+      setSimulData(r);
+    } catch { setSimulData(null); }
+    setSimulLoading(false);
+  };
+
+  const openGemelo = async (asset: Asset) => {
+    setGemeloAsset(asset); setShowGemeloModal(true); setGemeloLoading(true); setGemeloData(null);
+    setSimulData(null); setSimulEscenarios([10000, 20000, 30000]); setSimulKmCustom('');
+    try {
+      const r = await apiFetch(`/digital-twin/assets/${asset.id}`) as any;
+      setGemeloData(r.twin || null);
+    } catch { setGemeloData(null); }
+    setGemeloLoading(false);
+  };
+
+  const analizarGemelo = async () => {
+    if (!gemeloAsset) return;
+    setGemeloAnalyzing(true);
+    try {
+      await apiFetch('/digital-twin/analyze', { method: 'POST', json: { assetId: gemeloAsset.id, forzar: true } });
+      const r = await apiFetch(`/digital-twin/assets/${gemeloAsset.id}`) as any;
+      setGemeloData(r.twin || null);
+    } catch {}
+    setGemeloAnalyzing(false);
+  };
+
+  const convertirPrediccionOT = async (predId: string) => {
+    setGemeloConvertingId(predId);
+    try {
+      await apiFetch(`/digital-twin/predictions/${predId}/convert-to-ot`, { method: 'POST', json: {} });
+      if (gemeloAsset) { const r = await apiFetch(`/digital-twin/assets/${gemeloAsset.id}`) as any; setGemeloData(r.twin || null); }
+      await loadMaintenanceData();
+    } catch {}
+    setGemeloConvertingId(null);
+  };
+
   const openHistorial = async (asset: Asset) => {
     setHistorialAsset(asset); setShowHistorialModal(true); setHistorialLoading(true); setHistorialData(null); setHistorialTab('ots');
     try {
@@ -1111,8 +1165,14 @@ export default function MantenimientoPage() {
     }
   };
 
+  const isValidDate = (d: any) => {
+    if (!d) return false;
+    const t = new Date(d).getTime();
+    return !isNaN(t) && t > 0;
+  };
+
   const isOverdue = (order: WorkOrder) => {
-    return new Date(order.scheduledDate) < new Date() && order.status !== 'COMPLETED';
+    return isValidDate(order.scheduledDate) && new Date(order.scheduledDate) < new Date() && order.status !== 'COMPLETED';
   };
 
   const filteredWorkOrders = workOrders.filter(order => {
@@ -1356,7 +1416,7 @@ export default function MantenimientoPage() {
                           </div>
                           <div className="flex items-center gap-1">
                             <Calendar className="w-4 h-4" />
-                            <span>{new Date(order.scheduledDate).toLocaleDateString()}</span>
+                            <span>{isValidDate(order.scheduledDate) ? new Date(order.scheduledDate).toLocaleDateString('es-AR') : 'Sin programar'}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
@@ -1685,6 +1745,13 @@ export default function MantenimientoPage() {
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
+                          </button>
+                          <button
+                            onClick={() => openGemelo(asset)}
+                            className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
+                            title="Gemelo Digital"
+                          >
+                            <Zap className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteAsset(asset.id)}
@@ -3656,6 +3723,255 @@ export default function MantenimientoPage() {
           </FlotaModal>
         );
       })()}
+
+      {/* ══ GEMELO DIGITAL ══ */}
+      {showGemeloModal && gemeloAsset && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-indigo-600 to-purple-600 rounded-t-2xl">
+              <div className="flex items-center gap-3">
+                <Zap className="h-5 w-5 text-white" />
+                <div>
+                  <h2 className="font-bold text-white text-lg">Gemelo Digital</h2>
+                  <p className="text-indigo-200 text-xs">{gemeloAsset.name} · {gemeloAsset.code}</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowGemeloModal(false); setGemeloData(null); setGemeloAsset(null); }} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {gemeloLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                  <p className="text-sm text-gray-400">Cargando gemelo digital...</p>
+                </div>
+              ) : !gemeloData ? (
+                <div className="text-center py-10">
+                  <Zap className="w-12 h-12 text-indigo-300 mx-auto mb-3" />
+                  <p className="text-gray-600 font-medium mb-1">Sin análisis disponible aún</p>
+                  <p className="text-sm text-gray-400 mb-4">Generá el primer análisis predictivo para este activo</p>
+                  <button onClick={analizarGemelo} disabled={gemeloAnalyzing} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60">
+                    {gemeloAnalyzing ? 'Analizando...' : '⚡ Generar análisis IA'}
+                  </button>
+                </div>
+              ) : (() => {
+                const score = gemeloData.healthScore ?? 100;
+                const scoreColor = score >= 75 ? 'text-emerald-600' : score >= 50 ? 'text-amber-500' : 'text-red-600';
+                const scoreBg = score >= 75 ? 'bg-emerald-50 border-emerald-200' : score >= 50 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
+                const sevColor: Record<string, string> = { CRITICA: 'bg-red-100 text-red-700 border-red-200', ALTA: 'bg-orange-100 text-orange-700 border-orange-200', MEDIA: 'bg-amber-100 text-amber-700 border-amber-200', BAJA: 'bg-blue-100 text-blue-700 border-blue-200' };
+                const preds: any[] = gemeloData.predictions || [];
+                return (
+                  <>
+                    {/* Health Score + Métricas */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className={`col-span-1 flex flex-col items-center justify-center rounded-xl border p-4 ${scoreBg}`}>
+                        <p className={`text-4xl font-black ${scoreColor}`}>{score}%</p>
+                        <p className="text-xs font-semibold text-gray-500 mt-1">Índice de Salud</p>
+                      </div>
+                      <div className="col-span-2 grid grid-cols-2 gap-2">
+                        {[
+                          { label: 'Último mant.', val: gemeloData.ultimoMantenimiento ? new Date(gemeloData.ultimoMantenimiento).toLocaleDateString('es-AR') : '—' },
+                          { label: 'Próximo pred.', val: gemeloData.proximoMantenimientoPred ? new Date(gemeloData.proximoMantenimientoPred).toLocaleDateString('es-AR') : '—' },
+                          { label: 'OTs totales', val: gemeloData.totalOTs ?? '—' },
+                          { label: 'Costo total', val: gemeloData.costoTotalMantenimiento != null ? `$${(gemeloData.costoTotalMantenimiento).toLocaleString('es-AR')}` : '—' },
+                        ].map(m => (
+                          <div key={m.label} className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                            <p className="text-xs text-gray-400">{m.label}</p>
+                            <p className="text-sm font-semibold text-gray-800 mt-0.5">{m.val}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Resumen IA */}
+                    {gemeloData.resumenIA && (
+                      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                        <p className="text-xs font-bold text-indigo-600 uppercase tracking-wide mb-1.5">Análisis IA</p>
+                        <p className="text-sm text-gray-700 leading-relaxed">{gemeloData.resumenIA}</p>
+                      </div>
+                    )}
+
+                    {/* Predicciones */}
+                    {preds.length > 0 && (
+                      <div>
+                        <p className="text-sm font-bold text-gray-700 mb-2">Predicciones de falla ({preds.length})</p>
+                        <div className="space-y-2">
+                          {preds.map((p: any) => (
+                            <div key={p.id} className="border border-gray-100 rounded-xl p-3 bg-white">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${sevColor[p.severidad] || sevColor.BAJA}`}>{p.severidad}</span>
+                                    <span className="text-sm font-medium text-gray-800">{p.tipoFalla}</span>
+                                    <span className="text-xs text-gray-400">{Math.round((p.probabilidad || 0) * 100)}% prob.</span>
+                                  </div>
+                                  {p.descripcion && <p className="text-xs text-gray-500 mt-1">{p.descripcion}</p>}
+                                  {p.accionRecomendada && <p className="text-xs text-indigo-600 mt-1">→ {p.accionRecomendada}</p>}
+                                  {p.fechaEstimada && <p className="text-xs text-gray-400 mt-0.5">Estimado: {new Date(p.fechaEstimada).toLocaleDateString('es-AR')}</p>}
+                                </div>
+                                {!p.workOrderId && (
+                                  <button
+                                    onClick={() => convertirPrediccionOT(p.id)}
+                                    disabled={gemeloConvertingId === p.id}
+                                    className="shrink-0 text-xs px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60 whitespace-nowrap"
+                                  >
+                                    {gemeloConvertingId === p.id ? '...' : '+ Crear OT'}
+                                  </button>
+                                )}
+                                {p.workOrderId && (
+                                  <span className="shrink-0 text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-200">✓ OT creada</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {preds.length === 0 && (
+                      <div className="text-center py-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                        <p className="text-emerald-700 font-semibold text-sm">✓ Sin predicciones de falla activas</p>
+                        <p className="text-xs text-emerald-500 mt-1">El activo se encuentra en buen estado según el análisis</p>
+                      </div>
+                    )}
+
+                    {/* Simulación de escenarios */}
+                    <div className="border border-indigo-100 rounded-xl p-4 bg-indigo-50/40">
+                      <p className="text-sm font-bold text-indigo-700 mb-3">🔭 Simulación de escenarios</p>
+                      <p className="text-xs text-gray-500 mb-3">¿Qué pasaría si este activo recorre X km más? Seleccioná los escenarios a proyectar:</p>
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {[5000, 10000, 20000, 30000, 50000].map(km => (
+                          <button
+                            key={km}
+                            onClick={() => setSimulEscenarios(prev =>
+                              prev.includes(km) ? prev.filter(x => x !== km) : [...prev, km].sort((a,b) => a-b)
+                            )}
+                            className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+                              simulEscenarios.includes(km)
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'
+                            }`}
+                          >
+                            +{(km/1000).toFixed(0)}k km
+                          </button>
+                        ))}
+                        <div className="flex gap-1">
+                          <input
+                            type="number"
+                            placeholder="Otro km"
+                            value={simulKmCustom}
+                            onChange={e => setSimulKmCustom(e.target.value)}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1 w-24 focus:outline-none focus:border-indigo-400"
+                          />
+                          <button
+                            onClick={() => {
+                              const v = parseInt(simulKmCustom);
+                              if (v > 0 && !simulEscenarios.includes(v)) {
+                                setSimulEscenarios(prev => [...prev, v].sort((a,b) => a-b));
+                                setSimulKmCustom('');
+                              }
+                            }}
+                            className="text-xs px-2 py-1 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200"
+                          >+</button>
+                        </div>
+                      </div>
+                      <button
+                        onClick={simularEscenario}
+                        disabled={simulLoading || simulEscenarios.length === 0}
+                        className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 mb-3"
+                      >
+                        {simulLoading ? 'Proyectando con IA...' : '🔭 Proyectar escenarios'}
+                      </button>
+                      {simulLoading && (
+                        <div className="flex items-center justify-center gap-2 py-4">
+                          <div className="w-5 h-5 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+                          <span className="text-sm text-indigo-600">Analizando con IA...</span>
+                        </div>
+                      )}
+                      {simulData && (
+                        <div className="space-y-3 mt-1">
+                          {simulData.resumenGeneral && (
+                            <p className="text-xs text-gray-600 italic border-l-2 border-indigo-300 pl-3">{simulData.resumenGeneral}</p>
+                          )}
+                          {(simulData.escenarios || []).map((e: any) => {
+                            const riskColors: Record<string,string> = {
+                              BAJO: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+                              MEDIO: 'bg-amber-50 border-amber-200 text-amber-700',
+                              ALTO: 'bg-orange-50 border-orange-200 text-orange-700',
+                              CRÍTICO: 'bg-red-50 border-red-200 text-red-700',
+                            };
+                            const rc = riskColors[e.nivelRiesgo] || riskColors.MEDIO;
+                            return (
+                              <div key={e.kmAdicionales} className={`rounded-xl border p-3 ${rc}`}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-bold text-sm">+{(e.kmAdicionales/1000).toFixed(0)}k km → {(e.odometroTotal||0).toLocaleString('es-AR')} km totales</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${rc}`}>{e.nivelRiesgo}</span>
+                                </div>
+                                {e.accionPrioritaria && <p className="text-xs font-medium mb-2">⚡ {e.accionPrioritaria}</p>}
+                                {(e.riesgos||[]).length > 0 && (
+                                  <div className="mb-1.5">
+                                    <p className="text-xs font-semibold mb-1">Riesgos:</p>
+                                    <ul className="space-y-0.5">{(e.riesgos||[]).map((r: string, i: number) => <li key={i} className="text-xs">• {r}</li>)}</ul>
+                                  </div>
+                                )}
+                                {(e.mantenimientos||[]).length > 0 && (
+                                  <div className="mb-1.5">
+                                    <p className="text-xs font-semibold mb-1">Mantenimientos recomendados:</p>
+                                    <ul className="space-y-0.5">{(e.mantenimientos||[]).map((m: string, i: number) => <li key={i} className="text-xs">✓ {m}</li>)}</ul>
+                                  </div>
+                                )}
+                                {(e.componentes||[]).length > 0 && (
+                                  <div className="mt-2">
+                                    <p className="text-xs font-semibold mb-1.5">Estado por componente:</p>
+                                    <div className="grid grid-cols-2 gap-1">
+                                      {(e.componentes||[]).map((c: any, ci: number) => {
+                                        const estColor: Record<string,string> = {
+                                          'OK': 'bg-emerald-50 border-emerald-200 text-emerald-700',
+                                          'ATENCIÓN': 'bg-amber-50 border-amber-200 text-amber-700',
+                                          'CAMBIO PRÓXIMO': 'bg-orange-50 border-orange-200 text-orange-700',
+                                          'CAMBIO URGENTE': 'bg-red-50 border-red-200 text-red-700',
+                                        };
+                                        const cc = estColor[c.estado] || estColor['ATENCIÓN'];
+                                        return (
+                                          <div key={ci} className={`rounded-lg border px-2 py-1.5 ${cc}`} title={c.detalle}>
+                                            <div className="flex items-center gap-1">
+                                              <span>{c.icono}</span>
+                                              <span className="text-xs font-medium truncate">{c.nombre}</span>
+                                            </div>
+                                            <p className="text-xs opacity-80 mt-0.5">{c.estado}</p>
+                                            {c.detalle && <p className="text-xs opacity-70 mt-0.5 line-clamp-2">{c.detalle}</p>}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {e.costoEstimado > 0 && (
+                                  <p className="text-xs font-bold mt-2">💰 Costo estimado: ${(e.costoEstimado).toLocaleString('es-AR')}</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Acciones */}
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={analizarGemelo} disabled={gemeloAnalyzing} className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60">
+                        {gemeloAnalyzing ? 'Analizando...' : '⚡ Actualizar análisis IA'}
+                      </button>
+                      <button onClick={() => { setShowGemeloModal(false); setGemeloData(null); setGemeloAsset(null); }} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">
+                        Cerrar
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ DETALLE NEUMÁTICO ══ */}
       {showDetalleNeumModal && (() => {
