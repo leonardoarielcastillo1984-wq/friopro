@@ -118,7 +118,11 @@ export default function EmployeesPage() {
   const loadSupervisors = async () => {
     try {
       const res = await apiFetch<{ employees: any[] }>('/hr/employees');
-      setSupervisors(res?.employees?.filter((e: any) => e.status === 'ACTIVE' && !e.deletedAt) ?? []);
+      const active = (res?.employees?.filter((e: any) => e.status === 'ACTIVE' && !e.deletedAt) ?? []);
+      active.sort((a: any, b: any) =>
+        `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim().localeCompare(`${b.firstName ?? ''} ${b.lastName ?? ''}`.trim(), 'es', { sensitivity: 'base' })
+      );
+      setSupervisors(active);
     } catch {
       setSupervisors([]);
     }
