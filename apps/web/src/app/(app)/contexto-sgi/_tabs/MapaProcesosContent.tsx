@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
+import MapaGeneralModal from './MapaGeneralModal';
 import {
   Plus, Trash2, Pencil, X, ArrowRight, ArrowDown, CheckCircle, Building2,
   Layers, Cog, Users, Target, Loader2, BarChart3, FileText, Shield,
@@ -100,6 +101,9 @@ export default function MapaProcesosContent() {
 
   // Diagram view modal
   const [showDiagram, setShowDiagram] = useState(false);
+
+  // General (company-wide) macro process map
+  const [showGeneral, setShowGeneral] = useState(false);
 
   // Employees lookup for showing names instead of IDs
   const [employees, setEmployees] = useState<{ id: string; firstName: string; lastName: string; email: string }[]>([]);
@@ -301,6 +305,9 @@ export default function MapaProcesosContent() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button onClick={() => setShowGeneral(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100">
+                  <Layers className="h-3.5 w-3.5" /> Mapa General
+                </button>
                 <button onClick={() => setShowDiagram(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50">
                   <Eye className="h-3.5 w-3.5" /> Ver como diagrama
                 </button>
@@ -974,6 +981,11 @@ export default function MapaProcesosContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal: Mapa General (toda la empresa) */}
+      {showGeneral && (
+        <MapaGeneralModal maps={maps} onClose={() => setShowGeneral(false)} />
       )}
     </div>
   );
