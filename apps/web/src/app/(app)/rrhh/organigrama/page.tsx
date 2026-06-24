@@ -312,7 +312,7 @@ export default function OrgChartPage() {
   const [selectedDepartment, setSelectedDepartment] = useState('ALL');
   const [zoom, setZoom] = useState(1);
   const [highlighted, setHighlighted] = useState<string | null>(null);
-  const [colorMode, setColorMode] = useState<ChartMode>('dept');
+  const [colorMode, setColorMode] = useState<ChartMode>('manual');
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadOrgChart(); }, []);
@@ -589,7 +589,8 @@ export default function OrgChartPage() {
               </button>
 
               {/* View mode selector */}
-              <div className="flex items-center rounded-lg border border-gray-300 overflow-hidden text-xs font-medium">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide ml-1">Vista:</span>
+              <div className="flex items-center rounded-lg border-2 border-blue-300 ring-2 ring-blue-100 overflow-hidden text-xs font-medium shadow-sm">
                 <button
                   onClick={() => setColorMode('dept')}
                   className={`flex items-center gap-1.5 px-2.5 py-1.5 transition-all ${colorMode === 'dept' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
