@@ -28,6 +28,10 @@ const createEmployeeSchema = z.object({
   positionId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   supervisorId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   reportsToPositionId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  orgLevel: z.preprocess(
+    (v) => (v === '' || v === null || v === undefined ? null : Number(v)),
+    z.number().int().min(1).max(99).nullable(),
+  ),
   notes: z.string().optional(),
   employeeCompetencies: z.any().optional(),
   supervisorType: z.any().optional(),
@@ -1175,6 +1179,7 @@ export default async function hrRoutes(fastify: FastifyInstance) {
           position: { select: { name: true } },
           department: { select: { name: true } },
           supervisorId: true,
+          orgLevel: true,
           subordinates: {
             select: { id: true }
           }

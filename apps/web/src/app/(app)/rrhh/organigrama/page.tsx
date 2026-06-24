@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useCompany } from '@/lib/company-context';
-import { ArrowLeft, Users, Search, Download, ZoomIn, ZoomOut, Maximize2, Building2, Layers, Tags } from 'lucide-react';
+import { ArrowLeft, Users, Search, Download, ZoomIn, ZoomOut, Maximize2, Building2, Layers, Tags, Hash } from 'lucide-react';
 import Link from 'next/link';
 
 interface OrgChartEmployee {
@@ -18,8 +18,11 @@ interface OrgChartEmployee {
   phone?: string;
   hireDate?: string;
   status?: 'ACTIVE' | 'INACTIVE' | 'VACANT';
+  orgLevel?: number | null;
   children?: OrgChartEmployee[];
 }
+
+type ChartMode = 'dept' | 'hierarchy' | 'manual';
 
 // ── Hierarchy colors (by tree depth) ──────────────────────────────────────
 const HIERARCHY_PALETTE = [
@@ -123,14 +126,23 @@ interface LayoutNode {
   depth: number;
 }
 
+function computeRow(node: OrgChartEmployee, depth: number, mode: ChartMode): number {
+  if (mode === 'hierarchy') return getHierarchyLevelFromPosition(node.position?.name);
+  if (mode === 'manual') {
+    // Manual line number is 1-based; fall back to auto-hierarchy level when not set.
+    return node.orgLevel != null ? Math.max(0, node.orgLevel - 1) : getHierarchyLevelFromPosition(node.position?.name);
+  }
+  return depth;
+}
+
 function layoutTree(
   node: OrgChartEmployee,
   depth: number,
   expanded: Set<string>,
-  useHierarchyRows = false
+  mode: ChartMode = 'dept'
 ): { nodes: LayoutNode[]; width: number } {
-  const posLevel = useHierarchyRows ? getHierarchyLevelFromPosition(node.position?.name) : depth;
-  const rowH = useHierarchyRows ? (CARD_H + V_GAP_H) : (CARD_H + V_GAP);
+  const posLevel = computeRow(node, depth, mode);
+  const rowH = mode === 'dept' ? (CARD_H + V_GAP) : (CARD_H + V_GAP_H);
   const hasChildren = node.children && node.children.length > 0 && expanded.has(node.id);
 
   if (!hasChildren) {
@@ -140,7 +152,7 @@ function layoutTree(
     };
   }
 
-  const childLayouts = node.children!.map(child => layoutTree(child, depth + 1, expanded, useHierarchyRows));
+  const childLayouts = node.children!.map(child => layoutTree(child, depth + 1, expanded, mode));
   const totalChildrenWidth = childLayouts.reduce((sum, l) => sum + l.width, 0) + H_GAP * (childLayouts.length - 1);
   const myWidth = Math.max(CARD_W, totalChildrenWidth);
 
@@ -169,7 +181,7 @@ function OrgNode({
   onToggle: (id: string) => void;
   expanded: Set<string>;
   highlighted: string | null;
-  colorMode: 'dept' | 'hierarchy';
+  colorMode: ChartMode;
 }) {
   const [tooltip, setTooltip] = useState(false);
   const emp = node.emp;
@@ -249,6 +261,16 @@ function OrgNode({
         </>
       )}
 
+      {/* Manual org line number badge */}
+      {emp.orgLevel != null && (
+        <g>
+          <circle cx={16} cy={13} r={10} fill="#111827" stroke="white" strokeWidth={1.5} />
+          <text x={16} y={13} textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight="700" fill="white">
+            {emp.orgLevel}
+          </text>
+        </g>
+      )}
+
       {/* Expand/collapse button */}
       {hasChildren && (
         <g
@@ -290,7 +312,7 @@ export default function OrgChartPage() {
   const [selectedDepartment, setSelectedDepartment] = useState('ALL');
   const [zoom, setZoom] = useState(1);
   const [highlighted, setHighlighted] = useState<string | null>(null);
-  const [colorMode, setColorMode] = useState<'dept' | 'hierarchy'>('dept');
+  const [colorMode, setColorMode] = useState<ChartMode>('dept');
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadOrgChart(); }, []);
@@ -363,8 +385,8 @@ export default function OrgChartPage() {
   const { allNodes, svgWidth, svgHeight, connections, bandLabels } = useMemo(() => {
     const connections: { x1: number; y1: number; x2: number; y2: number; midY: number }[] = [];
     const bandLabels: { label: string; y: number; color: string }[] = [];
-    const isHierarchy = colorMode === 'hierarchy';
-    const rowH = isHierarchy ? (CARD_H + V_GAP_H) : (CARD_H + V_GAP);
+    const rowsByLevel = colorMode !== 'dept';
+    const rowH = rowsByLevel ? (CARD_H + V_GAP_H) : (CARD_H + V_GAP);
 
     // ── Build tree layout ─────────────────────────────────────────────────────
     const allNodes: LayoutNode[] = [];
@@ -372,7 +394,7 @@ export default function OrgChartPage() {
     const TREE_GAP = 60;
 
     filteredRoots.forEach(root => {
-      const layout = layoutTree(root, 0, expanded, isHierarchy);
+      const layout = layoutTree(root, 0, expanded, colorMode);
       layout.nodes.forEach(n => allNodes.push({ ...n, x: n.x + xOffset }));
       xOffset += layout.width + TREE_GAP;
     });
@@ -393,7 +415,7 @@ export default function OrgChartPage() {
     });
 
     // ── Row labels for hierarchy mode ─────────────────────────────────────────
-    if (isHierarchy) {
+    if (colorMode === 'hierarchy') {
       HIERARCHY_PALETTE.forEach((p, i) => {
         const rowY = i * rowH;
         // Only add label if there's at least one node on this row
@@ -401,6 +423,14 @@ export default function OrgChartPage() {
           bandLabels.push({ label: p.label, y: rowY, color: p.avatar });
         }
       });
+    } else if (colorMode === 'manual') {
+      // ── Numeric line labels for manual mode (1-based) ──
+      const maxDepth = allNodes.reduce((m, n) => Math.max(m, n.depth), 0);
+      for (let i = 0; i <= maxDepth; i++) {
+        if (allNodes.some(n => n.depth === i)) {
+          bandLabels.push({ label: `Línea ${i + 1}`, y: i * rowH, color: '#111827' });
+        }
+      }
     }
 
     const maxX = allNodes.reduce((m, n) => Math.max(m, n.x + CARD_W), 0);
@@ -558,19 +588,30 @@ export default function OrgChartPage() {
                 <Maximize2 className="h-4 w-4 text-gray-600" />
               </button>
 
-              {/* Color mode toggle */}
-              <button
-                onClick={() => setColorMode(m => m === 'dept' ? 'hierarchy' : 'dept')}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all ${
-                  colorMode === 'hierarchy'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                }`}
-                title={colorMode === 'dept' ? 'Cambiar a colores por jerarquía' : 'Cambiar a colores por departamento'}
-              >
-                {colorMode === 'hierarchy' ? <Layers className="h-3.5 w-3.5" /> : <Tags className="h-3.5 w-3.5" />}
-                {colorMode === 'hierarchy' ? 'Jerarquía' : 'Departamento'}
-              </button>
+              {/* View mode selector */}
+              <div className="flex items-center rounded-lg border border-gray-300 overflow-hidden text-xs font-medium">
+                <button
+                  onClick={() => setColorMode('dept')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 transition-all ${colorMode === 'dept' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  title="Agrupar por departamento"
+                >
+                  <Tags className="h-3.5 w-3.5" /> Departamento
+                </button>
+                <button
+                  onClick={() => setColorMode('hierarchy')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 border-l border-gray-300 transition-all ${colorMode === 'hierarchy' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  title="Ordenar por jerarquía automática (según el puesto)"
+                >
+                  <Layers className="h-3.5 w-3.5" /> Jerarquía
+                </button>
+                <button
+                  onClick={() => setColorMode('manual')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 border-l border-gray-300 transition-all ${colorMode === 'manual' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  title="Ordenar por la línea manual asignada a cada persona"
+                >
+                  <Hash className="h-3.5 w-3.5" /> Línea manual
+                </button>
+              </div>
 
               <button onClick={exportToPDF} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Imprimir / Exportar PDF">
                 <Download className="h-4 w-4 text-gray-600" />
@@ -604,7 +645,7 @@ export default function OrgChartPage() {
               );
             })}
           </>
-        ) : (
+        ) : colorMode === 'hierarchy' ? (
           <>
             <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Niveles:</span>
             {HIERARCHY_PALETTE.map((h, i) => (
@@ -613,6 +654,14 @@ export default function OrgChartPage() {
                 {h.label}
               </div>
             ))}
+          </>
+        ) : (
+          <>
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Línea manual:</span>
+            <div className="flex items-center gap-1.5 text-xs text-gray-600">
+              <span className="flex items-center justify-center w-4 h-4 rounded-full bg-gray-900 text-white text-[9px] font-bold">N</span>
+              La fila la define el número asignado a cada persona en <strong className="mx-1">RRHH → Empleados</strong>. Sin número = nivel automático.
+            </div>
           </>
         )}
       </div>

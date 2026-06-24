@@ -17,6 +17,7 @@ interface Employee {
   status: string;
   hireDate: string;
   contractType: string;
+  orgLevel?: number | null;
   department?: {
     id: string;
     name: string;
@@ -308,12 +309,19 @@ export default function EmployeesPage() {
         notes: (formData.get('notes') as string | null)?.trim() || undefined,
       };
 
+      // Org chart manual line/level (optional). Empty string clears it (null).
+      const orgLevelRaw = (formData.get('orgLevel') as string | null)?.trim();
+      const orgLevelValue = orgLevelRaw ? Number(orgLevelRaw) : null;
+
       // Remove undefined/null fields to avoid sending them to Prisma
       Object.keys(employeeData).forEach(key => {
         if (employeeData[key] === undefined || employeeData[key] === null || employeeData[key] === '') {
           delete employeeData[key];
         }
       });
+
+      // orgLevel is sent explicitly (incl. null to clear) so it is not stripped above
+      employeeData.orgLevel = orgLevelValue;
 
       // Use PATCH if editing an existing employee, POST for new employee
       if (selectedEmployee?.id) {
@@ -595,6 +603,7 @@ export default function EmployeesPage() {
 
   const modules = [
     { key: 'dashboard', label: 'Inicio', icon: '🏠' },
+    { key: 'command-center', label: 'Command Center', icon: '🧠' },
     { key: 'calendario', label: 'Calendario', icon: '📅' },
     { key: 'project360', label: 'Proyectos', icon: '📊' },
     { key: 'contexto-sgi', label: 'Contexto del SGI', icon: '🧭' },
@@ -1360,6 +1369,22 @@ export default function EmployeesPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Línea en organigrama
+                    </label>
+                    <input
+                      type="number"
+                      name="orgLevel"
+                      min={1}
+                      max={99}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Opcional · ej. 1, 2, 3..."
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Nivel/fila manual en el modo <strong>Línea manual</strong> del organigrama. Vacío = automático.
+                    </p>
+                  </div>
                   {/* TODO: Location field disabled - backend expects UUID but frontend sends text
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2063,6 +2088,23 @@ export default function EmployeesPage() {
                       required
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Línea en organigrama
+                    </label>
+                    <input
+                      type="number"
+                      name="orgLevel"
+                      min={1}
+                      max={99}
+                      defaultValue={selectedEmployee.orgLevel ?? ''}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Opcional · ej. 1, 2, 3..."
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Nivel/fila manual en el modo <strong>Línea manual</strong> del organigrama. Vacío = automático.
+                    </p>
                   </div>
                 </div>
               </div>
