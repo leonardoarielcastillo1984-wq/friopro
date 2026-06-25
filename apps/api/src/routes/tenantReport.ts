@@ -107,13 +107,14 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       app.log.info(`[REPORT] Step 4 done`);
       // 5. Logins recientes (últimos 50)
       const logins = await app.prisma.auditEvent.findMany({
-        where: { tenantId: id, action: { in: ['LOGIN', 'LOGIN_ATTEMPT', 'LOGOUT'] } },
+        where: { tenantId: id, action: { in: ['LOGIN', 'LOGIN_ATTEMPT', 'LOGOUT', 'FAILED_LOGIN'] } },
         orderBy: { createdAt: 'desc' },
-        take: 50,
+        take: 100,
         select: {
           action: true,
           actorUserId: true,
           createdAt: true,
+          metadata: true,
         },
       });
 
@@ -515,6 +516,35 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
       const storageUsage = await getStorageUsage(app.prisma, id);
       app.log.info('[REPORT] Step 15 done');
 
+      // 16. SALUD / ENGAGEMENT DEL CLIENTE
+      app.log.info('[REPORT] Step 16: health');
+      const [lastActivityEvent, lastLoginEvent] = await Promise.all([
+        app.prisma.auditEvent.findFirst({
+          where: { tenantId: id },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true, action: true },
+        }),
+        app.prisma.auditEvent.findFirst({
+          where: { tenantId: id, action: 'LOGIN' },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        }),
+      ]);
+      const now = Date.now();
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const daysSince = (d: Date | null | undefined) =>
+        d ? Math.floor((now - new Date(d).getTime()) / DAY_MS) : null;
+      const daysSinceLastActivity = daysSince(lastActivityEvent?.createdAt);
+      const daysSinceLastLogin = daysSince(lastLoginEvent?.createdAt);
+      const accountAgeDays = daysSince(tenant.createdAt) ?? 0;
+      // Riesgo de abandono basado en días desde el último login real
+      let churnRisk: string;
+      if (daysSinceLastLogin === null) churnRisk = 'SIN LOGINS';
+      else if (daysSinceLastLogin <= 7) churnRisk = 'BAJO';
+      else if (daysSinceLastLogin <= 30) churnRisk = 'MEDIO';
+      else churnRisk = 'ALTO';
+      app.log.info('[REPORT] Step 16 done');
+
       // Generar resumen de actividad
       const totalEntities = usersCount + employeesCount + documentsCount + ncrCount + risksCount +
         indicatorsCount + auditsCount + trainingsCount + incidentsCount + drillsCount +
@@ -573,11 +603,16 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
           date: p.createdAt,
           paidAt: p.paidAt,
         })),
-        recentLogins: logins.map(l => ({
-          action: l.action,
-          userId: l.actorUserId,
-          date: l.createdAt,
-        })),
+        recentLogins: logins.map(l => {
+          let email: string | null = null;
+          let ip: string | null = null;
+          try {
+            const meta = l.metadata ? JSON.parse(l.metadata as string) : {};
+            email = meta.email || null;
+            ip = meta.ip || null;
+          } catch {}
+          return { action: l.action, userId: l.actorUserId, email, ip, date: l.createdAt };
+        }),
         securityEvents: securityEvents.map(s => ({
           action: s.action,
           userId: s.actorUserId,
@@ -643,6 +678,18 @@ export default async function tenantReportRoutes(app: FastifyInstance) {
         recordDeletions: {
           deletionsByEntity: deletionsByEntity.filter(d => d.entityType !== null).map(d => ({ entityType: d.entityType, count: d._count._all })),
           recentDeletions: recentDeletions.map(e => ({ entityType: e.entityType, entityId: e.entityId, actorUserId: e.actorUserId, date: e.createdAt, metadata: e.metadata })),
+        },
+        health: {
+          lastActivityAt: lastActivityEvent?.createdAt || null,
+          lastActivityAction: lastActivityEvent?.action || null,
+          lastLoginAt: lastLoginEvent?.createdAt || null,
+          daysSinceLastActivity,
+          daysSinceLastLogin,
+          accountAgeDays,
+          totalUsers: usersCount,
+          activeUsersLast30d,
+          inactiveUsers: usersCount - activeUsersLast30d,
+          churnRisk,
         },
       };
 

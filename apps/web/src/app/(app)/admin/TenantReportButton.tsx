@@ -92,6 +92,8 @@ function formatReportAsTxt(report: any, tenantName: string): string {
   Límite:        ${report.storageUsage ? `${report.storageUsage.limitGB} GB` : 'N/A'}
   Ocupación:     ${report.storageUsage ? `${report.storageUsage.percentage}%` : 'N/A'}
 
+  ── Salud / Engagement ──────────────────────────────────────────────────────
+${formatHealthBlock(report.health)}
 
 ═══════════════════════════════════════════════════════════════════════════════
   2. ESTADÍSTICAS DE ENTIDADES
@@ -173,19 +175,25 @@ function formatReportAsTxt(report: any, tenantName: string): string {
   txt += `
 
 ═══════════════════════════════════════════════════════════════════════════════
-  6. LOGINS RECIENTES
+  6. SESIONES DE USUARIOS (logins / logouts)
 ═══════════════════════════════════════════════════════════════════════════════
 
 `;
 
   if (report.recentLogins && report.recentLogins.length > 0) {
-    txt += '  Acción              │ Usuario              │ Fecha                │ IP\n';
-    txt += '  ─────────────────────────────────────────────────────────────────────\n';
-    report.recentLogins.slice(0, 30).forEach((l: any) => {
-      txt += `  ${l.action.padEnd(19)} │ ${(l.userId || 'N/A').slice(0, 20).padEnd(20)} │ ${new Date(l.date).toLocaleString('es-AR').padEnd(20)} │ ${l.ip || 'N/A'}\n`;
+    const loginCount  = report.recentLogins.filter((l: any) => l.action === 'LOGIN').length;
+    const logoutCount = report.recentLogins.filter((l: any) => l.action === 'LOGOUT').length;
+    const failedCount = report.recentLogins.filter((l: any) => l.action === 'FAILED_LOGIN').length;
+    txt += `  Resumen: ${loginCount} inicio(s) de sesión  |  ${logoutCount} cierre(s) de sesión  |  ${failedCount} intento(s) fallido(s)\n\n`;
+    txt += '  Acción              │ Email                          │ Fecha                │ IP\n';
+    txt += '  ──────────────────────────────────────────────────────────────────────────\n';
+    report.recentLogins.slice(0, 50).forEach((l: any) => {
+      const accion = l.action === 'LOGIN' ? '✅ LOGIN' : l.action === 'LOGOUT' ? '🚪 LOGOUT' : l.action === 'FAILED_LOGIN' ? '❌ FAILED' : l.action;
+      const emailStr = (l.email || l.userId || 'N/A').slice(0, 30);
+      txt += `  ${accion.padEnd(19)} │ ${emailStr.padEnd(30)} │ ${new Date(l.date).toLocaleString('es-AR').padEnd(20)} │ ${l.ip || 'N/A'}\n`;
     });
   } else {
-    txt += '  Sin logins registrados\n';
+    txt += '  Sin sesiones registradas (se registran desde ahora en adelante)\n';
   }
 
   txt += `
@@ -509,4 +517,30 @@ Generado por SGI 360 - SuperAdmin Dashboard
   `;
 
   return txt;
+}
+
+function formatHealthBlock(health: any): string {
+  if (!health) return '  Sin datos de actividad\n';
+
+  const fmtDate = (d: any) =>
+    d ? new Date(d).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca';
+  const fmtDays = (n: number | null) =>
+    n === null || n === undefined ? 'Sin registro' : n === 0 ? 'Hoy' : `Hace ${n} día(s)`;
+
+  const riskIcon =
+    health.churnRisk === 'BAJO' ? '🟢' :
+    health.churnRisk === 'MEDIO' ? '🟡' :
+    health.churnRisk === 'ALTO' ? '🔴' : '⚪';
+
+  const lines = [
+    `  Último login:          ${fmtDate(health.lastLoginAt)}  (${fmtDays(health.daysSinceLastLogin)})`,
+    `  Última actividad:      ${fmtDate(health.lastActivityAt)}  (${fmtDays(health.daysSinceLastActivity)})`,
+    `  Antigüedad de cuenta:  ${health.accountAgeDays ?? 0} día(s)`,
+    `  Usuarios totales:      ${health.totalUsers ?? 0}`,
+    `  Activos (30 días):     ${health.activeUsersLast30d ?? 0}`,
+    `  Inactivos:             ${health.inactiveUsers ?? 0}`,
+    `  Riesgo de abandono:    ${riskIcon} ${health.churnRisk ?? 'N/A'}`,
+  ];
+
+  return lines.join('\n') + '\n';
 }
