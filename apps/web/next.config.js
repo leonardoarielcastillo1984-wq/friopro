@@ -14,7 +14,6 @@ const nextConfig = {
   distDir: '.next',
   // Force all pages to be server-side rendered
   generateBuildId: () => 'build-' + Date.now(),
-  output: 'standalone',
   swcMinify: true,
   trailingSlash: true,
   webpack: (config, { isServer }) => {
