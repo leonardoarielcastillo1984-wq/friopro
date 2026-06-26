@@ -6,6 +6,10 @@ import { Inter } from 'next/font/google';
 import Providers from './providers';
 import Script from 'next/script';
 
+// La app es 100% autenticada/dinámica: evitamos el prerender estático en build
+// (que falla con useSearchParams sin Suspense y APIs client-only).
+export const dynamic = 'force-dynamic';
+
 const inter = Inter({
   subsets: ['latin'],
   display: 'swap',
