@@ -124,27 +124,15 @@ export async function processDocumentVsNormaJob(job: Job<ProcessDocumentVsNormaP
     ]);
     await job.updateProgress(20);
 
-    // Si el documento tiene cláusulas vinculadas explícitamente, usarlas.
-    // Si no, hacer fallback a TODAS las cláusulas activas de la norma (igual que la
-    // auditoría completa del tenant). El servicio de análisis filtra automáticamente
-    // las cláusulas relevantes según el tipo de documento.
-    let clausesToAnalyze = linkedClauses;
-    if (clausesToAnalyze.length === 0) {
-      clausesToAnalyze = await prisma.normativeClause.findMany({
-        where: { normativeId, status: 'ACTIVE', deletedAt: null },
-        orderBy: { extractionOrder: 'asc' },
-      });
-      console.log(`[AuditWorker] Sin cláusulas vinculadas; usando ${clausesToAnalyze.length} cláusulas activas de la norma`);
-    } else {
-      console.log(`[AuditWorker] Usando ${clausesToAnalyze.length} cláusulas vinculadas`);
-    }
-
-    if (clausesToAnalyze.length === 0) {
+    if (linkedClauses.length === 0) {
       throw new Error(
-        `La norma "${normative.code}" no tiene cláusulas activas para analizar. ` +
-        `Cargá las cláusulas de la norma antes de ejecutar el análisis.`
+        `El documento "${document.title}" no tiene cláusulas vinculadas para la norma ${normative.code}. ` +
+        `Vincule cláusulas desde el menú Documentos antes de ejecutar el análisis.`
       );
     }
+
+    const clausesToAnalyze = linkedClauses;
+    console.log(`[AuditWorker] Usando ${clausesToAnalyze.length} cláusulas vinculadas`);
 
 
     // 3. Extraer contenido del documento
