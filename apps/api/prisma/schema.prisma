@@ -116,6 +116,7 @@ enum SubscriptionStatus {
 
 enum DocumentStatus {
   DRAFT
+  REVIEW
   EFFECTIVE
   OBSOLETE
 }
@@ -388,6 +389,10 @@ model Tenant {
   assetDigitalTwins     AssetDigitalTwin[]
   assetHealthPredictions AssetHealthPrediction[]
   assetTelemetry        AssetTelemetry[]
+
+  // Document Codification Relations
+  documentTypeConfigs  DocumentTypeConfig[]
+  documentCodeConfig   DocumentCodeConfig?
 }
 
 model PlatformUser {
@@ -422,10 +427,11 @@ model PlatformUser {
   membershipsCreated TenantMembership[] @relation("MembershipCreatedBy")
   membershipsUpdated TenantMembership[] @relation("MembershipUpdatedBy")
 
-  documentsCreated Document[]       @relation("DocumentCreatedBy")
-  documentsUpdated Document[]       @relation("DocumentUpdatedBy")
-  documentsOwned   Document[]       @relation("DocumentOwner")
-  documentReviews  DocumentReview[] @relation("DocumentReviewBy")
+  documentsCreated   Document[]       @relation("DocumentCreatedBy")
+  documentsUpdated   Document[]       @relation("DocumentUpdatedBy")
+  documentsOwned     Document[]       @relation("DocumentOwner")
+  documentsApproved  Document[]       @relation("DocumentApprovedBy")
+  documentReviews    DocumentReview[] @relation("DocumentReviewBy")
 
   ncrsAssigned NonConformity[] @relation("NcrAssignedTo")
   ncrsCreated  NonConformity[] @relation("NcrCreatedBy")
@@ -1084,17 +1090,29 @@ model Document {
 
   deletedAt DateTime? @db.Timestamptz
 
+  documentCode      String?
+  typeConfigId      String?   @db.Uuid
+  typeConfig        DocumentTypeConfig? @relation(fields: [typeConfigId], references: [id], onDelete: SetNull)
+  approvedAt        DateTime? @db.Timestamptz
+  approvedById      String?   @db.Uuid
+  approvedBy        PlatformUser? @relation("DocumentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  relatedDocumentId String?   @db.Uuid
+  relatedDocument   Document? @relation("DocumentRelations", fields: [relatedDocumentId], references: [id], onDelete: SetNull)
+  relatedDocuments  Document[] @relation("DocumentRelations")
+
   clauseMappings DocumentClauseMapping[]
   aiFindings     AiFinding[]
   auditRuns      AuditRun[]
   versions       DocumentVersion[]
   reviews        DocumentReview[]
 
+  @@unique([tenantId, documentCode])
   @@index([tenantId])
   @@index([departmentId])
   @@index([normativeId])
   @@index([customerId])
   @@index([status])
+  @@index([typeConfigId])
 }
 
 model DocumentVersion {
@@ -1564,6 +1582,9 @@ model Employee {
   contractType ContractType
   location     String?
   status       EmployeeStatus @default(ACTIVE)
+
+  // Organigrama: línea/nivel manual (opcional). Permite intermedios (ej. 2.5). Fija la fila visual.
+  orgLevel Float?
 
   // Profile
   profilePhoto String?
@@ -4534,6 +4555,11 @@ model Process {
   processMapId String     @db.Uuid
   processMap   ProcessMap @relation(fields: [processMapId], references: [id], onDelete: Cascade)
 
+  // Jerarquía de 2 niveles: parentId null = Macroproceso; con valor = Subproceso del macroproceso.
+  parentId String?   @db.Uuid
+  parent   Process?  @relation("ProcessHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children Process[] @relation("ProcessHierarchy")
+
   layer        String // STRATEGIC | OPERATIONAL | SUPPORT
   name         String
   code         String? // OP-01, PE-02, etc.
@@ -4552,6 +4578,15 @@ model Process {
 
   order Int @default(0)
 
+  // Enfoque por procesos (Jul 2026): flujo secuencial del subproceso y su contexto.
+  objective         String?
+  observations      String?
+  clientsInternal   String[] @default([]) // IDs de procesos considerados clientes internos
+  suppliersInternal String[] @default([]) // IDs de procesos considerados proveedores internos
+  receivesFrom      String[] @default([]) // IDs de subprocesos de los que recibe información
+  deliversTo        String[] @default([]) // IDs de subprocesos a los que entrega información
+  activities        Json?    // [{ name, description, responsible }]
+
   // Relaciones con entidades reales
   processIndicators ProcessIndicator[]
   processDocuments  ProcessDocument[]
@@ -4565,6 +4600,7 @@ model Process {
   @@unique([tenantId, code])
   @@index([processMapId])
   @@index([tenantId])
+  @@index([parentId])
   @@map("processes")
 }
 
@@ -4626,6 +4662,48 @@ model ProcessRisk {
   @@index([processId])
   @@index([riskId])
   @@map("process_risks")
+}
+
+// Catálogo de plantillas de procesos por norma/industria.
+// Aditivo y desacoplado: no altera tablas ni migraciones existentes.
+// tenantId null = plantilla global (catálogo del sistema); con valor = plantilla custom del tenant.
+// Los campos complejos se almacenan como JSON para escalar a nuevas normas sin cambiar el schema.
+model ProcessTemplate {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+
+  norm     String // ISO9001 | IATF16949 | ISO14001 | ISO45001 | ISO27001 | INTEGRATED
+  industry String @default("GENERIC") // MANUFACTURING | AUTOMOTIVE | SERVICES | TRANSPORT | LOGISTICS | CONSTRUCTION | TECHNOLOGY | HEALTH | CUSTOM | GENERIC
+
+  name        String
+  layer       String // STRATEGIC | OPERATIONAL | SUPPORT
+  description String?
+  objective   String?
+  scope       String?
+
+  inputs        Json? // string[]
+  outputs       Json? // string[]
+  clients       Json? // string[] (clientes internos)
+  suppliers     Json? // string[] (proveedores internos)
+  risks         Json? // string[]
+  opportunities Json? // string[]
+  indicators    Json? // { name, unit?, frequency? }[]
+  documents     Json? // string[]
+  resources     Json? // string[]
+  clauses       Json? // string[] (cláusulas de la norma)
+  interactions  Json? // string[] (nombres de otros procesos con los que interactúa)
+
+  order  Int     @default(0)
+  color  String?
+  icon   String?
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([norm, industry])
+  @@index([tenantId])
+  @@map("process_templates")
 }
 
 model Project360 {
@@ -5709,10 +5787,69 @@ model Stakeholder {
   updatedAt          DateTime  @updatedAt @db.Timestamptz
 
   ncrs NonConformity[] @relation("NcrStakeholder")
+  evaluations StakeholderEvaluation[]
 
   @@index([tenantId])
   @@index([complianceStatus])
   @@map("stakeholders")
+}
+
+// Ciclo / período de evaluación del SGI (ej: "SGI 2026")
+model EvaluationCycle {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  name      String
+  year      Int
+  status    String    @default("ACTIVE") // DRAFT, ACTIVE, CLOSED
+  startDate DateTime? @db.Timestamptz
+  endDate   DateTime? @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+
+  evaluations StakeholderEvaluation[]
+
+  @@unique([tenantId, year])
+  @@index([tenantId])
+  @@map("evaluation_cycles")
+}
+
+// Evaluación de una parte interesada dentro de un ciclo (histórico por período)
+model StakeholderEvaluation {
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenantId            String    @db.Uuid
+  stakeholderId       String    @db.Uuid
+  cycleId             String    @db.Uuid
+  // Evaluación de cumplimiento
+  complianceStatus    String?   // COMPLIES, PARTIAL, NON_COMPLIANT
+  complianceLevel     Int?      // 0-100
+  evaluationDate      DateTime? @db.Timestamptz
+  complianceEvidence  String?
+  indicatorNote       String?
+  indicatorId         String?   @db.Uuid
+  requiresAction      Boolean   @default(false)
+  actionItemId        String?   @db.Uuid
+  influence           Int?
+  interest            Int?
+  observations        String?
+  // Snapshot descriptivo por ciclo (puede evolucionar año a año)
+  needs               String?
+  expectations        String?
+  requirements        String?
+  // Seguimiento / próxima evaluación
+  reviewFrequency     String?   // MONTHLY, QUARTERLY, SEMIANNUAL, ANNUAL
+  nextEvaluationDate  DateTime? @db.Timestamptz
+  followUpResponsible String?
+  createdAt           DateTime  @default(now()) @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @db.Timestamptz
+
+  stakeholder Stakeholder     @relation(fields: [stakeholderId], references: [id], onDelete: Cascade)
+  cycle       EvaluationCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  @@unique([stakeholderId, cycleId])
+  @@index([tenantId])
+  @@index([cycleId])
+  @@index([stakeholderId])
+  @@map("stakeholder_evaluations")
 }
 
 model Subscription {
@@ -8081,4 +8218,35 @@ model SehWorkPermit {
   @@index([status])
   @@index([tenantId])
   @@map("seh_work_permits")
+}
+
+// ── Maestro de Documentos — Configuración de tipos y codificación ──
+
+model DocumentTypeConfig {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  name         String
+  abbreviation String
+  description  String?
+  color        String?   @default("#3B82F6")
+  nextSequence Int       @default(1)
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @db.Timestamptz
+  deletedAt    DateTime? @db.Timestamptz
+  documents    Document[]
+
+  @@unique([tenantId, abbreviation])
+  @@index([tenantId])
+}
+
+model DocumentCodeConfig {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @unique @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  prefix     String   @default("SGI")
+  digitCount Int      @default(3)
+  separator  String   @default("-")
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @updatedAt @db.Timestamptz
 }

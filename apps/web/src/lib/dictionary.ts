@@ -14,9 +14,21 @@ export const DICT: Record<string, Record<string, string>> = {
     OTHER: 'Otro',
   },
   complianceStatus: {
+    PENDING: 'Pendiente',
     COMPLIES: 'Cumple',
     PARTIAL: 'Parcial',
     NON_COMPLIANT: 'No cumple',
+  },
+  reviewFrequency: {
+    MONTHLY: 'Mensual',
+    QUARTERLY: 'Trimestral',
+    SEMIANNUAL: 'Semestral',
+    ANNUAL: 'Anual',
+  },
+  cycleStatus: {
+    DRAFT: 'Borrador',
+    ACTIVE: 'Activo',
+    CLOSED: 'Cerrado',
   },
   ncrSeverity: {
     CRITICAL: 'Crítica',
