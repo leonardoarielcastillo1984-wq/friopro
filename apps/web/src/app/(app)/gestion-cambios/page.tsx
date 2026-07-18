@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
 import {
   RefreshCw, Plus, X, CheckCircle, Clock, AlertTriangle,
   ChevronDown, FileText, User, Calendar, Filter, Search,
   ThumbsUp, ThumbsDown, Play, Check, Eye, Trash2, Edit,
-  ArrowRight, Shield, Leaf, Activity, Sparkles, Loader2
+  ArrowRight, Shield, Leaf, Activity, Sparkles, Loader2, ExternalLink
 } from 'lucide-react';
+import ExportButton from '@/components/ExportButton';
+import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
 
 interface Cambio {
   id: string;
@@ -20,6 +23,11 @@ interface Cambio {
   impactoCalidad: string;
   impactoSST: string;
   impactoAmbiental: string;
+  impactoOperativo?: string;
+  impactoTecnologico?: string;
+  impactoLegal?: string;
+  impactoContinuidad?: string;
+  nivelGlobal?: string;
   status: string;
   responsableId?: string;
   aprobadorId?: string;
@@ -42,6 +50,7 @@ interface Stats {
   enRevision: number;
   aprobados: number;
   implementados: number;
+  enVerificacion: number;
   rechazados: number;
   cerrados: number;
 }
@@ -60,7 +69,8 @@ const ORIGEN_LABELS: Record<string, string> = {
 };
 const STATUS_LABELS: Record<string, string> = {
   SOLICITADO: 'Solicitado', EN_REVISION: 'En Revisión', APROBADO: 'Aprobado',
-  RECHAZADO: 'Rechazado', IMPLEMENTADO: 'Implementado', VERIFICADO: 'Verificado', CERRADO: 'Cerrado',
+  RECHAZADO: 'Rechazado', IMPLEMENTADO: 'Implementado',
+  EN_VERIFICACION: 'En Verificación', VERIFICADO: 'Verificado', CERRADO: 'Cerrado',
 };
 const STATUS_COLORS: Record<string, string> = {
   SOLICITADO: 'bg-blue-100 text-blue-700',
@@ -68,11 +78,18 @@ const STATUS_COLORS: Record<string, string> = {
   APROBADO: 'bg-green-100 text-green-700',
   RECHAZADO: 'bg-red-100 text-red-700',
   IMPLEMENTADO: 'bg-purple-100 text-purple-700',
+  EN_VERIFICACION: 'bg-orange-100 text-orange-700',
   VERIFICADO: 'bg-teal-100 text-teal-700',
   CERRADO: 'bg-gray-100 text-gray-600',
 };
 const IMPACTO_COLORS: Record<string, string> = {
   BAJO: 'text-green-600', MEDIO: 'text-yellow-600', ALTO: 'text-red-600',
+};
+const NIVEL_GLOBAL_COLORS: Record<string, string> = {
+  BAJO: 'bg-green-100 text-green-700',
+  MEDIO: 'bg-yellow-100 text-yellow-700',
+  ALTO: 'bg-orange-100 text-orange-700',
+  CRITICO: 'bg-red-100 text-red-700',
 };
 
 const emptyForm = {
@@ -84,8 +101,9 @@ const emptyForm = {
 };
 
 export default function GestionCambiosPage() {
+  const router = useRouter();
   const [cambios, setCambios] = useState<Cambio[]>([]);
-  const [stats, setStats] = useState<Stats>({ total: 0, solicitados: 0, enRevision: 0, aprobados: 0, implementados: 0, rechazados: 0, cerrados: 0 });
+  const [stats, setStats] = useState<Stats>({ total: 0, solicitados: 0, enRevision: 0, aprobados: 0, implementados: 0, enVerificacion: 0, rechazados: 0, cerrados: 0 });
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
   // members se mantiene para getMemberName en el detalle
@@ -195,10 +213,12 @@ export default function GestionCambiosPage() {
   const nextStatus = (current: string) => {
     const flow: Record<string, string> = {
       SOLICITADO: 'EN_REVISION', EN_REVISION: 'APROBADO', APROBADO: 'IMPLEMENTADO',
-      IMPLEMENTADO: 'VERIFICADO', VERIFICADO: 'CERRADO',
+      IMPLEMENTADO: 'EN_VERIFICACION', EN_VERIFICACION: 'CERRADO', VERIFICADO: 'CERRADO',
     };
     return flow[current];
   };
+
+  const openFicha = (id: string) => router.push(`/gestion-cambios/${id}`);
 
   const getMemberName = (id?: string) => members.find(m => m.id === id)?.name || id || '—';
 
@@ -211,6 +231,29 @@ export default function GestionCambiosPage() {
           <p className="text-sm text-gray-500 mt-1">ISO 9001:2015 — Cláusula 6.3 · Planificación y control de cambios</p>
         </div>
         <div className="flex gap-2">
+          <ExportButton
+            outputKey="calidad.gestion-cambios.list"
+            title="Registro de Gestión de Cambios"
+            moduleName="calidad"
+            recordCount={filtered.length}
+            bodyHtml={buildFullDocument([
+              { title: 'Cambios', html: buildTableHtml([
+                { key: 'code', label: 'Código', width: '80px' },
+                { key: 'titulo', label: 'Título' },
+                { key: 'tipo', label: 'Tipo', width: '80px' },
+                { key: 'origen', label: 'Origen', width: '80px' },
+                { key: 'status', label: 'Estado', width: '80px' },
+                { key: 'fechaPrevista', label: 'Fecha', width: '80px' },
+              ], filtered.map(c => ({
+                code: c.code,
+                titulo: c.titulo,
+                tipo: c.tipo,
+                origen: c.origen,
+                status: c.status,
+                fechaPrevista: c.fechaPrevista ? new Date(c.fechaPrevista).toLocaleDateString('es-AR') : '—',
+              }))) },
+            ])}
+          />
           <button onClick={load} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50">
             <RefreshCw className="w-4 h-4 text-gray-500" />
           </button>
@@ -221,13 +264,14 @@ export default function GestionCambiosPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         {[
           { label: 'Total', value: stats.total, color: 'bg-gray-50 border-gray-200', text: 'text-gray-700' },
           { label: 'Solicitados', value: stats.solicitados, color: 'bg-blue-50 border-blue-200', text: 'text-blue-700' },
           { label: 'En Revisión', value: stats.enRevision, color: 'bg-yellow-50 border-yellow-200', text: 'text-yellow-700' },
           { label: 'Aprobados', value: stats.aprobados, color: 'bg-green-50 border-green-200', text: 'text-green-700' },
           { label: 'Implementados', value: stats.implementados, color: 'bg-purple-50 border-purple-200', text: 'text-purple-700' },
+          { label: 'En Verificación', value: stats.enVerificacion, color: 'bg-orange-50 border-orange-200', text: 'text-orange-700' },
           { label: 'Rechazados', value: stats.rechazados, color: 'bg-red-50 border-red-200', text: 'text-red-700' },
           { label: 'Cerrados', value: stats.cerrados, color: 'bg-gray-50 border-gray-200', text: 'text-gray-500' },
         ].map(s => (
@@ -275,6 +319,7 @@ export default function GestionCambiosPage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Título</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Impacto</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Nivel</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Estado</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha Prevista</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600">Acciones</th>
@@ -283,7 +328,9 @@ export default function GestionCambiosPage() {
             <tbody className="divide-y divide-gray-100">
               {filtered.map(c => (
                 <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-xs font-medium text-blue-600">{c.code}</td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => openFicha(c.id)} className="font-mono text-xs font-medium text-blue-600 hover:underline" title="Abrir ficha completa">{c.code}</button>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900 max-w-xs truncate">{c.titulo}</div>
                     <div className="text-xs text-gray-400">{ORIGEN_LABELS[c.origen]}</div>
@@ -303,6 +350,11 @@ export default function GestionCambiosPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
+                    {c.nivelGlobal ? (
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${NIVEL_GLOBAL_COLORS[c.nivelGlobal] || 'bg-gray-100 text-gray-600'}`}>{c.nivelGlobal}</span>
+                    ) : <span className="text-xs text-gray-400">—</span>}
+                  </td>
+                  <td className="px-4 py-3">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[c.status]}`}>
                       {STATUS_LABELS[c.status]}
                     </span>
@@ -312,8 +364,11 @@ export default function GestionCambiosPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
-                      <button onClick={() => setShowDetail(c)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Ver detalle">
+                      <button onClick={() => setShowDetail(c)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Vista rápida">
                         <Eye className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => openFicha(c.id)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Abrir ficha completa">
+                        <ExternalLink className="w-4 h-4" />
                       </button>
                       {nextStatus(c.status) && (
                         <button onClick={() => setShowStatusModal({ cambio: c, newStatus: nextStatus(c.status) })}

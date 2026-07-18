@@ -393,6 +393,20 @@ model Tenant {
   // Document Codification Relations
   documentTypeConfigs  DocumentTypeConfig[]
   documentCodeConfig   DocumentCodeConfig?
+
+  // Global Document Export System Relations
+  documentOutputDefinitions DocumentOutputDefinition[]
+  documentTemplates         DocumentTemplate[]
+  documentRevisions         DocumentRevision[]
+  documentApprovals         DocumentApproval[]
+  documentExports           DocumentExport[]
+  documentValidationTokens  DocumentValidationToken[]
+  documentSignatures        DocumentSignature[]
+  documentRetentionRules    DocumentRetentionRule[]
+  documentCodeRules         DocumentCodeRule[]
+  documentOutputCategories  DocumentOutputCategory[]
+  documentBulkExports       DocumentBulkExport[]
+  documentExportNotifications DocumentExportNotification[]
 }
 
 model PlatformUser {
@@ -725,6 +739,8 @@ model Indicator {
 
   deletedAt      DateTime?       @db.Timestamptz
   actionProjects ActionProject[]
+
+  objectivesPrimary SgiObjective[] @relation("ObjectivePrimaryIndicator")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -1105,6 +1121,7 @@ model Document {
   auditRuns      AuditRun[]
   versions       DocumentVersion[]
   reviews        DocumentReview[]
+  outputDefinitions DocumentOutputDefinition[]
 
   @@unique([tenantId, documentCode])
   @@index([tenantId])
@@ -1715,6 +1732,7 @@ model Position {
   employees            Employee[]
   reportsToEmployees   Employee[]           @relation("EmployeeReportsToPosition")
   positionCompetencies PositionCompetency[]
+  objectivesResponsible SgiObjective[]      @relation("ObjectiveResponsiblePosition")
 
   // Audit
   createdAt DateTime @default(now()) @db.Timestamptz
@@ -3987,7 +4005,14 @@ model GestionCambio {
   impactoCalidad        String // BAJO | MEDIO | ALTO
   impactoSST            String // BAJO | MEDIO | ALTO
   impactoAmbiental      String // BAJO | MEDIO | ALTO
-  status                String    @default("SOLICITADO") // SOLICITADO | EN_REVISION | APROBADO | RECHAZADO | IMPLEMENTADO | VERIFICADO | CERRADO
+  // Evaluación multidimensional extendida (aditivo) — niveles resumen por dimensión
+  impactoOperativo      String? // BAJO | MEDIO | ALTO
+  impactoTecnologico    String? // BAJO | MEDIO | ALTO
+  impactoLegal          String? // BAJO | MEDIO | ALTO
+  impactoContinuidad    String? // BAJO | MEDIO | ALTO
+  // Clasificación global calculada automáticamente (lógica centralizada)
+  nivelGlobal           String? // BAJO | MEDIO | ALTO | CRITICO
+  status                String    @default("SOLICITADO") // SOLICITADO | EN_REVISION | APROBADO | RECHAZADO | IMPLEMENTADO | EN_VERIFICACION | VERIFICADO | CERRADO
   responsableId         String?   @db.Uuid
   aprobadorId           String?   @db.Uuid
   fechaSolicitud        DateTime  @default(now()) @db.Timestamptz
@@ -3997,15 +4022,39 @@ model GestionCambio {
   motivoRechazo         String?
   recursosNecesarios    String?
   capacitacionRequerida Boolean   @default(false)
+  requiereComunicacion  Boolean   @default(false)
   documentosAfectados   String?
   riesgosIdentificados  String?
   verificacion          String?
   creadoPor             String?
+  // Planificación del cambio (aditivo)
+  objetivoCambio        String?
+  alcance               String?
+  fechaInicioPrevista   DateTime? @db.Timestamptz
+  responsableGeneralId  String?   @db.Uuid
+  planComunicacion      String?
+  planCapacitacion      String?
+  planContingencia      String?
+  criteriosAceptacion   String?
+  condicionesPrevias    String?
+  // Proyecto de implementación vinculado (Project360) — FK escalar, sin relación forzada
+  requiereProyecto      Boolean   @default(false)
+  projectId             String?   @db.Uuid
+  // Cierre controlado
+  cierreComentario      String?
+  cerradoPor            String?   @db.Uuid
   deletedAt             DateTime? @db.Timestamptz
   createdAt             DateTime  @default(now()) @db.Timestamptz
   updatedAt             DateTime  @updatedAt @db.Timestamptz
 
-  historial GestionCambioHistorial[]
+  historial     GestionCambioHistorial[]
+  evaluaciones  GestionCambioEvaluacion[]
+  procesos      GestionCambioProceso[]
+  partes        GestionCambioParte[]
+  riesgos       GestionCambioRiesgo[]
+  documentos    GestionCambioDocumento[]
+  evidencias    GestionCambioEvidencia[]
+  verificaciones GestionCambioVerificacion[]
 
   @@map("gestion_cambio")
 }
@@ -4023,6 +4072,137 @@ model GestionCambioHistorial {
   cambio GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
 
   @@map("gestion_cambio_historial")
+}
+
+// Evaluación multidimensional detallada del cambio (una fila por dimensión)
+model GestionCambioEvaluacion {
+  id              String    @id @default(uuid()) @db.Uuid
+  cambioId        String    @db.Uuid
+  tenantId        String    @db.Uuid
+  dimension       String // CALIDAD | SST | AMBIENTAL | OPERATIVO | TECNOLOGICO | LEGAL | CONTINUIDAD
+  nivel           String // BAJO | MEDIO | ALTO
+  justificacion   String?
+  responsableId   String?   @db.Uuid
+  fechaEvaluacion DateTime? @db.Timestamptz
+  evidencia       String?
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @db.Timestamptz
+
+  cambio GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
+
+  @@unique([cambioId, dimension])
+  @@index([tenantId])
+  @@map("gestion_cambio_evaluacion")
+}
+
+// Procesos/áreas afectadas (FK escalar a Process del Mapa de Procesos)
+model GestionCambioProceso {
+  id           String   @id @default(uuid()) @db.Uuid
+  cambioId     String   @db.Uuid
+  tenantId     String   @db.Uuid
+  processId    String?  @db.Uuid
+  processName  String
+  createdAt    DateTime @default(now()) @db.Timestamptz
+
+  cambio GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([cambioId])
+  @@map("gestion_cambio_proceso")
+}
+
+// Partes interesadas afectadas (FK escalar a Stakeholder)
+model GestionCambioParte {
+  id             String   @id @default(uuid()) @db.Uuid
+  cambioId       String   @db.Uuid
+  tenantId       String   @db.Uuid
+  stakeholderId  String?  @db.Uuid
+  stakeholderName String
+  createdAt      DateTime @default(now()) @db.Timestamptz
+
+  cambio GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([cambioId])
+  @@map("gestion_cambio_parte")
+}
+
+// Riesgos vinculados (FK escalar al módulo oficial de riesgos: Risk o Hazard)
+model GestionCambioRiesgo {
+  id         String   @id @default(uuid()) @db.Uuid
+  cambioId   String   @db.Uuid
+  tenantId   String   @db.Uuid
+  riskId     String?  @db.Uuid
+  riskType   String   @default("RISK") // RISK | HAZARD
+  createdAt  DateTime @default(now()) @db.Timestamptz
+
+  cambio GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([cambioId])
+  @@map("gestion_cambio_riesgo")
+}
+
+// Documentos vinculados (FK escalar a Document) + estado frente al cambio
+model GestionCambioDocumento {
+  id             String   @id @default(uuid()) @db.Uuid
+  cambioId       String   @db.Uuid
+  tenantId       String   @db.Uuid
+  documentId     String?  @db.Uuid
+  estadoFrente   String   @default("PENDIENTE") // NO_REQUIERE | PENDIENTE | EN_ACTUALIZACION | ACTUALIZADO | VERIFICADO
+  createdAt      DateTime @default(now()) @db.Timestamptz
+  updatedAt      DateTime @updatedAt @db.Timestamptz
+
+  cambio GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([cambioId])
+  @@map("gestion_cambio_documento")
+}
+
+// Evidencias del cambio (usa infraestructura de uploads existente vía fileUrl)
+model GestionCambioEvidencia {
+  id           String   @id @default(uuid()) @db.Uuid
+  cambioId     String   @db.Uuid
+  tenantId     String   @db.Uuid
+  titulo       String
+  descripcion  String?
+  tipo         String   @default("OTRO") // FOTOGRAFIA | DOCUMENTO | ACTA | INFORME | PRUEBA | VALIDACION | OTRO
+  fecha        DateTime @default(now()) @db.Timestamptz
+  fileUrl      String?
+  fileName     String?
+  areaProceso  String?
+  registradoPor String? @db.Uuid
+  registradoPorName String?
+  createdAt    DateTime @default(now()) @db.Timestamptz
+
+  cambio GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([cambioId])
+  @@map("gestion_cambio_evidencia")
+}
+
+// Verificación de eficacia del cambio
+model GestionCambioVerificacion {
+  id                String    @id @default(uuid()) @db.Uuid
+  cambioId          String    @db.Uuid
+  tenantId          String    @db.Uuid
+  fechaPrevista     DateTime? @db.Timestamptz
+  fechaReal         DateTime? @db.Timestamptz
+  responsableId     String?   @db.Uuid
+  metodo            String?
+  criteriosEficacia String?
+  resultado         String? // EFICAZ | PARCIALMENTE_EFICAZ | NO_EFICAZ
+  observaciones     String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz
+  updatedAt         DateTime  @updatedAt @db.Timestamptz
+
+  cambio GestionCambio @relation(fields: [cambioId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([cambioId])
+  @@map("gestion_cambio_verificacion")
 }
 
 model Hazard {
@@ -4388,6 +4568,7 @@ model OrganizationContext {
   dafoFa        String?
   dafoDo        String?
   dafoDa        String?
+  fodaPriorities Json?   // Prioridad estratégica (1-5) por ítem FODA, keyed por texto. Aditivo.
   createdAt     DateTime @default(now()) @db.Timestamptz
   updatedAt     DateTime @updatedAt @db.Timestamptz
 
@@ -5742,11 +5923,61 @@ model SgiObjective {
   capas      ObjectiveCAPA[]
   risks      ObjectiveRisk[]
 
+  // Trazabilidad estratégica (aditivo Jul 2026)
+  originType        String?
+  originId          String?
+  strategicPriority String?
+  strategicWeight   Float?
+  contextYear       Int?
+
+  // Gestión, medición y trazabilidad avanzada (aditivo Jul 2026)
+  // KPI vinculado (fuente de verdad = Indicator existente)
+  primaryIndicatorId String?    @db.Uuid
+  primaryIndicator   Indicator? @relation("ObjectivePrimaryIndicator", fields: [primaryIndicatorId], references: [id], onDelete: SetNull)
+  baselineValue      Float? // Línea base del objetivo al momento de definición
+  // Método de cálculo de progreso: MANUAL | KPI | ACTIONS
+  progressMethod     String?    @default("MANUAL")
+  lastProgressNote   String? // Última justificación de avance manual
+  // Responsable funcional (puesto/rol) — no depende de persona física
+  responsiblePositionId String?   @db.Uuid
+  responsiblePosition   Position? @relation("ObjectiveResponsiblePosition", fields: [responsiblePositionId], references: [id], onDelete: SetNull)
+  // Procesos involucrados (múltiples IDs del Mapa de Procesos). processId sigue siendo el proceso responsable.
+  involvedProcessIds String[] @default([])
+  // Políticas múltiples (aditivo; policyId singular se conserva por retrocompat)
+  policyIds          String[] @default([])
+
+  progressLogs ObjectiveProgressLog[]
+
   @@index([tenantId])
   @@index([year])
   @@index([policyId])
   @@index([processId])
+  @@index([primaryIndicatorId])
+  @@index([responsiblePositionId])
   @@map("sgi_objectives")
+}
+
+model ObjectiveProgressLog {
+  id               String       @id @default(uuid()) @db.Uuid
+  tenantId         String       @db.Uuid
+  objectiveId      String       @db.Uuid
+  objective        SgiObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  userId           String?      @db.Uuid
+  userName         String?
+  previousProgress Int?
+  newProgress      Int?
+  previousStatus   String?
+  newStatus        String?
+  kpiValue         Float?
+  justification    String?
+  source           String       @default("MANUAL") // KPI | ACTIONS | MANUAL | SYSTEM
+  evidenceUrl      String?
+  evidenceName     String?
+  createdAt        DateTime     @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([objectiveId])
+  @@map("objective_progress_logs")
 }
 
 model Signature {
@@ -5798,13 +6029,14 @@ model Stakeholder {
 model EvaluationCycle {
   id        String    @id @default(uuid()) @db.Uuid
   tenantId  String    @db.Uuid
-  name      String
-  year      Int
-  status    String    @default("ACTIVE") // DRAFT, ACTIVE, CLOSED
-  startDate DateTime? @db.Timestamptz
-  endDate   DateTime? @db.Timestamptz
-  createdAt DateTime  @default(now()) @db.Timestamptz
-  updatedAt DateTime  @updatedAt @db.Timestamptz
+  name        String
+  year        Int
+  status      String    @default("ACTIVE") // DRAFT, ACTIVE, CLOSED
+  startDate   DateTime? @db.Timestamptz
+  endDate     DateTime? @db.Timestamptz
+  responsible String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
 
   evaluations StakeholderEvaluation[]
 
@@ -5830,6 +6062,7 @@ model StakeholderEvaluation {
   actionItemId        String?   @db.Uuid
   influence           Int?
   interest            Int?
+  criticality         Int?      // 1-5 (Muy Baja..Muy Alta) — usado para análisis IA
   observations        String?
   // Snapshot descriptivo por ciclo (puede evolucionar año a año)
   needs               String?
@@ -8249,4 +8482,1190 @@ model DocumentCodeConfig {
   separator  String   @default("-")
   createdAt  DateTime @default(now()) @db.Timestamptz
   updatedAt  DateTime @updatedAt @db.Timestamptz
+}
+
+// ===================== AUSENCIAS Y DISPONIBILIDAD (aditivo Jul 2026) =====================
+// Submódulo premium de RRHH. Reutiliza Employee/Position/Process/Competency vía scalar FKs.
+// Patrón: tenantId scalar (sin relación a Tenant), relaciones solo entre modelos nuevos.
+
+model AbsenceType {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  code        String
+  name        String
+  description String?
+  color       String? @default("#3B82F6")
+  active      Boolean @default(true)
+
+  // Configuración de comportamiento (por tenant)
+  requiresBalance       Boolean @default(false)
+  deductsBalance        Boolean @default(false)
+  requiresDocumentation Boolean @default(false)
+  requiresApproval      Boolean @default(true)
+  allowsSelfService     Boolean @default(true)
+  countingMode          String  @default("BUSINESS") // BUSINESS (hábiles) | CALENDAR (corridos)
+  allowsHalfDay         Boolean @default(false)
+  allowsRetroactive     Boolean @default(false)
+  requiresSubstitute    Boolean @default(false)
+  requiresCoverage      Boolean @default(false)
+  sensitiveData         Boolean @default(false)
+  approvalRule          String? // JEFE | JEFE_RRHH | JEFE_RRHH_COBERTURA | RRHH | DIRECCION | custom
+  minAdvanceDays        Int?
+  maxDurationDays       Int?
+  config                Json?
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  createdById String?   @db.Uuid
+  updatedById String?   @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz
+
+  balances AbsenceBalance[]
+  requests AbsenceRequest[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, active])
+  @@map("absence_types")
+}
+
+model AbsencePolicy {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @db.Uuid
+
+  // Días laborables por defecto (0=Dom ... 6=Sáb). Default L-V.
+  workingWeekdays          Int[]    @default([1, 2, 3, 4, 5])
+  allowNegativeBalance     Boolean  @default(false)
+  allowExceptions          Boolean  @default(true)
+  defaultMinAdvanceDays    Int      @default(0)
+  defaultMaxDurationDays   Int?
+  carryoverEnabled         Boolean  @default(true)
+  carryoverMaxDays         Int?
+  carryoverExpiryMonths    Int?
+  pendingRequestSlaHours   Int      @default(48)
+  sensitiveVisibilityRoles String[] @default([])
+  config                   Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("absence_policies")
+}
+
+model AbsenceHoliday {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  date      DateTime @db.Date
+  name      String
+  scope     String? // GLOBAL | sede | jurisdicción
+  location  String? // sede/jurisdicción opcional
+  recurring Boolean  @default(false)
+  active    Boolean  @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, date])
+  @@map("absence_holidays")
+}
+
+model AbsenceBalance {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  employeeId    String      @db.Uuid
+  absenceTypeId String      @db.Uuid
+  absenceType   AbsenceType @relation(fields: [absenceTypeId], references: [id], onDelete: Cascade)
+
+  period String // ej. "2026" o "2026-Q1"
+
+  assignedDays       Float @default(0)
+  carriedDays        Float @default(0)
+  accruedDays        Float @default(0)
+  usedDays           Float @default(0)
+  reservedDays       Float @default(0)
+  pendingDays        Float @default(0)
+  adjustmentPositive Float @default(0)
+  adjustmentNegative Float @default(0)
+
+  expiresAt DateTime? @db.Timestamptz
+  status    String    @default("ACTIVE") // ACTIVE | EXPIRED | CLOSED
+  notes     String?
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdById String?  @db.Uuid
+  updatedById String?  @db.Uuid
+
+  movements AbsenceBalanceMovement[]
+
+  @@unique([tenantId, employeeId, absenceTypeId, period])
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@map("absence_balances")
+}
+
+model AbsenceBalanceMovement {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  balanceId String         @db.Uuid
+  balance   AbsenceBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+
+  movementType  String // ASSIGN | ACCRUE | RESERVE | RELEASE | USE | ADJUST_POS | ADJUST_NEG | CARRYOVER | EXPIRE | CORRECTION
+  source        String // MANUAL | IMPORT | ACCRUAL | REQUEST_APPROVED | REQUEST_CANCELLED | REQUEST_REJECTED | ABSENCE_USED | HR_CORRECTION | MIGRATION | SYSTEM
+  field         String?
+  previousValue Float?
+  newValue      Float?
+  delta         Float?
+  reason        String?
+  referenceType String?
+  referenceId   String? @db.Uuid
+
+  userId   String? @db.Uuid
+  userName String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([balanceId])
+  @@map("absence_balance_movements")
+}
+
+model AbsenceRequest {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @db.Uuid
+  code     String?
+
+  employeeId    String      @db.Uuid
+  absenceTypeId String      @db.Uuid
+  absenceType   AbsenceType @relation(fields: [absenceTypeId], references: [id])
+
+  startDate    DateTime @db.Date
+  endDate      DateTime @db.Date
+  halfDay      Boolean  @default(false)
+  startTime    String?
+  endTime      String?
+  countingMode String   @default("BUSINESS")
+  computedDays Float    @default(0)
+
+  reason String?
+  notes  String?
+
+  substituteEmployeeId String?  @db.Uuid
+  affectedProcessIds   String[] @default([])
+  affectedFunctions    String?
+
+  status String @default("DRAFT") // DRAFT | SUBMITTED | PENDING_APPROVAL | PENDING_DOCS | PENDING_COVERAGE | APPROVED | REJECTED | CANCELLED | IN_PROGRESS | FINISHED
+
+  createdByHr     Boolean @default(false)
+  origin          String  @default("EMPLOYEE") // EMPLOYEE | HR | SYSTEM
+  balanceReserved Boolean @default(false)
+  balanceUsed     Boolean @default(false)
+
+  createdById String?   @db.Uuid
+  updatedById String?   @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  deletedAt   DateTime? @db.Timestamptz
+
+  approvals   AbsenceApproval[]
+  attachments AbsenceAttachment[]
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, status])
+  @@index([tenantId, startDate, endDate])
+  @@map("absence_requests")
+}
+
+model AbsenceApproval {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  requestId String         @db.Uuid
+  request   AbsenceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  stepOrder          Int     @default(1)
+  approverRole       String? // JEFE | RRHH | DIRECCION
+  approverUserId     String? @db.Uuid
+  approverEmployeeId String? @db.Uuid
+  approverName       String?
+
+  decision       String    @default("PENDING") // PENDING | APPROVED | REJECTED | CHANGES_REQUESTED
+  comment        String?
+  previousStatus String?
+  newStatus      String?
+  decidedAt      DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([requestId])
+  @@map("absence_approvals")
+}
+
+model AbsenceAttachment {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  requestId String         @db.Uuid
+  request   AbsenceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  fileName  String
+  fileUrl   String
+  fileType  String?
+  category  String? // CERTIFICATE | FORM | AUTHORIZATION | EVIDENCE | NOTE
+  sensitive Boolean @default(false)
+
+  uploadedById   String? @db.Uuid
+  uploadedByName String?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([requestId])
+  @@map("absence_attachments")
+}
+
+// Fase 3: reglas de cobertura y criticidad (por área/proceso/puesto/sede/turno)
+model CoverageRule {
+  id                 String  @id @default(uuid()) @db.Uuid
+  tenantId           String  @db.Uuid
+  scopeType          String // DEPARTMENT | PROCESS | POSITION | SITE | SHIFT
+  scopeId            String? @db.Uuid // id de department/process/position
+  scopeKey           String? // clave textual para SITE/SHIFT
+  scopeName          String? // snapshot para mostrar
+  minCoveragePercent Float   @default(60)
+  critical           Boolean @default(false)
+  onBreach           String  @default("WARN") // WARN | REQUIRE_APPROVAL | BLOCK | ALLOW_EXCEPTION
+  active             Boolean @default(true)
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdById String?  @db.Uuid
+
+  @@index([tenantId])
+  @@index([tenantId, scopeType])
+  @@map("absence_coverage_rules")
+}
+
+// Fase 3: matriz de delegación temporal de funciones
+model TemporaryDelegation {
+  id                         String  @id @default(uuid()) @db.Uuid
+  tenantId                   String  @db.Uuid
+  functionName               String
+  usualResponsibleEmployeeId String? @db.Uuid
+  substituteEmployeeId       String? @db.Uuid
+  delegationKind             String  @default("FUNCTIONAL") // FUNCTIONAL | OPERATIONAL | PERMISSIONS
+  scope                      String?
+  startDate                  DateTime @db.Date
+  endDate                    DateTime @db.Date
+  status                     String   @default("SCHEDULED") // SCHEDULED | ACTIVE | EXPIRED | CANCELLED
+  approvedById               String?  @db.Uuid
+  approvedByName             String?
+  observations               String?
+  requestId                  String?  @db.Uuid
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdById String?  @db.Uuid
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("absence_delegations")
+}
+
+// Fase 4: motor de devengamiento configurable (por antigüedad/convenio/jornada/sede)
+model AccrualRule {
+  id            String @id @default(uuid()) @db.Uuid
+  tenantId      String @db.Uuid
+  name          String
+  absenceTypeId String @db.Uuid
+  method        String @default("ANNUAL") // ANNUAL | MONTHLY | MANUAL
+
+  // Criterios de aplicación (opcionales; funcionan como filtros)
+  contractType    String?
+  location        String? // sede
+  minTenureMonths Int? // antigüedad mínima (meses)
+  maxTenureMonths Int?
+
+  daysGranted      Float   @default(0)
+  carryoverMaxDays Int?
+  expiryMonths     Int?
+  requiresReview   Boolean @default(false)
+  active           Boolean @default(true)
+  priority         Int     @default(0) // mayor prioridad gana si varias reglas aplican
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdById String?  @db.Uuid
+
+  @@index([tenantId])
+  @@index([tenantId, absenceTypeId])
+  @@map("absence_accrual_rules")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Evaluación de Desempeño (submódulo premium de RRHH)
+// Reutiliza Employee/Position/Department/Competency/Objective/Training vía scalar FKs.
+// Patrón: tenantId scalar (sin relación a Tenant), relaciones solo entre modelos nuevos.
+// ──────────────────────────────────────────────────────────────
+
+model PerformanceScale {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  name        String
+  description String?
+  isDefault   Boolean @default(false)
+  active      Boolean @default(true)
+  config      Json?
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  createdById String?   @db.Uuid
+  updatedById String?   @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz
+
+  levels       PerformanceScaleLevel[]
+  templates    PerformanceTemplate[]
+  criteria     PerformanceCriterion[]
+  cycles       PerformanceCycle[]
+  evaluations  PerformanceEvaluation[]
+
+  @@index([tenantId])
+  @@index([tenantId, active])
+  @@map("performance_scales")
+}
+
+model PerformanceScaleLevel {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  scaleId String           @db.Uuid
+  scale   PerformanceScale @relation(fields: [scaleId], references: [id], onDelete: Cascade)
+
+  value          Int
+  name           String
+  description    String?
+  interpretation String?
+  isGap          Boolean @default(false) // regla: este nivel marca brecha
+  order          Int     @default(0)
+
+  @@unique([scaleId, value])
+  @@index([tenantId])
+  @@map("performance_scale_levels")
+}
+
+model PerformanceTemplate {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  name        String
+  description String?
+  type        String  @default("CUSTOM") // OPERATIVO | RESPONSABLE | CUSTOM
+  active      Boolean @default(true)
+
+  // Asignación (filtros; arrays vacíos = aplica a todos)
+  appliesToPositionIds     String[] @default([])
+  appliesToDepartmentIds   String[] @default([])
+  appliesToProcessIds      String[] @default([])
+  appliesToLevels          String[] @default([])
+  appliesToContractTypes   String[] @default([])
+  appliesToPositionFamily  String?
+
+  scaleId String?           @db.Uuid
+  scale   PerformanceScale? @relation(fields: [scaleId], references: [id])
+
+  config Json?
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  createdById String?   @db.Uuid
+  updatedById String?   @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz
+
+  criteria    PerformanceCriterion[]
+  cycles      PerformanceCycle[]
+  evaluations PerformanceEvaluation[]
+
+  @@index([tenantId])
+  @@index([tenantId, active])
+  @@map("performance_templates")
+}
+
+model PerformanceCriterion {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  templateId String              @db.Uuid
+  template   PerformanceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  category    String?
+  weight      Float   @default(0) // porcentaje
+  order       Int     @default(0)
+
+  requiresComment  Boolean @default(false)
+  requiresEvidence Boolean @default(false)
+
+  competencyId       String?  @db.Uuid // vínculo a Competency existente
+  linkedToObjectives Boolean  @default(false)
+  consumesSgiData    Boolean  @default(false)
+  sgiSource          String? // COMPETENCY | POLYVALENCE | OBJECTIVE | TRAINING | CAPA
+
+  scaleId String?           @db.Uuid
+  scale   PerformanceScale? @relation(fields: [scaleId], references: [id])
+
+  responses PerformanceResponse[]
+
+  @@index([tenantId])
+  @@index([templateId])
+  @@map("performance_criteria")
+}
+
+model PerformanceCycle {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  name        String
+  description String?
+  type        String @default("ANUAL") // ANUAL | SEMESTRAL | PERIODO_PRUEBA | EXTRAORDINARIA | CAMBIO_PUESTO | SEGUIMIENTO
+  status      String @default("BORRADOR") // BORRADOR | PROGRAMADO | ACTIVO | EN_CURSO | EN_REVISION | CERRADO | CANCELADO
+
+  startDate   DateTime? @db.Date
+  endDate     DateTime? @db.Date
+  periodLabel String?
+
+  ownerUserId     String? @db.Uuid
+  ownerEmployeeId String? @db.Uuid
+
+  scopeDepartmentIds String[] @default([])
+  scopeProcessIds    String[] @default([])
+  scopePositionIds   String[] @default([])
+  scopeEmployeeIds   String[] @default([])
+
+  templateId String?              @db.Uuid
+  template   PerformanceTemplate? @relation(fields: [templateId], references: [id])
+  scaleId    String?              @db.Uuid
+  scale      PerformanceScale?    @relation(fields: [scaleId], references: [id])
+
+  requiresSelfEvaluation    Boolean @default(true)
+  requiresManagerEvaluation Boolean @default(true)
+  requiresHrReview          Boolean @default(true)
+  requiresFeedbackInterview Boolean @default(false)
+  allow90                   Boolean @default(true)
+  allow180                  Boolean @default(false)
+  allow360                  Boolean @default(false)
+
+  reminderConfig Json?
+  dueRules       Json?
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  createdById String?   @db.Uuid
+  updatedById String?   @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz
+
+  evaluations PerformanceEvaluation[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("performance_cycles")
+}
+
+model PerformanceEvaluation {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  cycleId String           @db.Uuid
+  cycle   PerformanceCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  employeeId String @db.Uuid
+
+  templateId String?              @db.Uuid
+  template   PerformanceTemplate? @relation(fields: [templateId], references: [id])
+  scaleId    String?              @db.Uuid
+  scale      PerformanceScale?    @relation(fields: [scaleId], references: [id])
+
+  // Snapshots al iniciar (no rompen si cambia el legajo luego)
+  positionId   String? @db.Uuid
+  departmentId String? @db.Uuid
+
+  evaluatorUserId     String? @db.Uuid
+  evaluatorEmployeeId String? @db.Uuid
+
+  status String @default("BORRADOR") // BORRADOR | PENDIENTE | AUTOEVALUACION | EVALUACION_RESPONSABLE | REVISION_RRHH | DEVOLUCION | CERRADA | CANCELADA | REABIERTA
+
+  selfScore      Float?
+  managerScore   Float?
+  finalScore     Float?
+  classification String?
+  progressPct    Float   @default(0)
+  dueDate        DateTime? @db.Timestamptz
+
+  aiAnalysis Json?
+  config     Json?
+
+  reopenReason String?
+  reopenedById String?   @db.Uuid
+  reopenedAt   DateTime? @db.Timestamptz
+  closedById   String?   @db.Uuid
+  closedAt     DateTime? @db.Timestamptz
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  createdById String?   @db.Uuid
+  updatedById String?   @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz
+
+  evaluators  PerformanceEvaluator[]
+  responses   PerformanceResponse[]
+  gaps        PerformanceGap[]
+  histories   PerformanceHistory[]
+  feedbacks   PerformanceFeedback[]
+  plan        DevelopmentPlan?
+
+  @@unique([cycleId, employeeId])
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, status])
+  @@map("performance_evaluations")
+}
+
+model PerformanceEvaluator {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  evaluationId String                @db.Uuid
+  evaluation   PerformanceEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  evaluatorUserId     String? @db.Uuid
+  evaluatorEmployeeId String? @db.Uuid
+
+  role         String  @default("MANAGER") // SELF | MANAGER | PEER | SUBORDINATE | OTHER
+  weight       Float   @default(100)
+  confidential Boolean @default(false)
+  status       String  @default("PENDING") // PENDING | IN_PROGRESS | DONE
+  submittedAt  DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  responses PerformanceResponse[]
+
+  @@index([tenantId])
+  @@index([evaluationId])
+  @@map("performance_evaluators")
+}
+
+model PerformanceResponse {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  evaluationId String                @db.Uuid
+  evaluation   PerformanceEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  criterionId String               @db.Uuid
+  criterion   PerformanceCriterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  evaluatorId String?               @db.Uuid
+  evaluator   PerformanceEvaluator? @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
+
+  role     String  @default("MANAGER") // SELF | MANAGER | PEER | SUBORDINATE | OTHER
+  score    Float?
+  comment  String?
+  evidence String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([evaluationId])
+  @@index([criterionId])
+  @@map("performance_responses")
+}
+
+model PerformanceGap {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  evaluationId String                @db.Uuid
+  evaluation   PerformanceEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  criterionId   String? @db.Uuid
+  competencyId  String? @db.Uuid
+  source        String  @default("CRITERION") // COMPETENCY | POLYVALENCE | CRITERION
+  label         String?
+  expectedLevel Float?
+  obtainedLevel Float?
+  gapValue      Float?
+  severity      String? // LOW | MEDIUM | HIGH
+  description   String?
+  status        String  @default("OPEN") // OPEN | IN_PROGRESS | CLOSED
+
+  linkedTrainingNeedId     String? @db.Uuid
+  linkedDevelopmentActionId String? @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([evaluationId])
+  @@map("performance_gaps")
+}
+
+model DevelopmentPlan {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  evaluationId String                @unique @db.Uuid
+  evaluation   PerformanceEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  employeeId String @db.Uuid
+  title      String?
+  summary    String?
+  status     String @default("OPEN") // OPEN | IN_PROGRESS | CLOSED
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdById String?  @db.Uuid
+
+  actions DevelopmentAction[]
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@map("performance_development_plans")
+}
+
+model DevelopmentAction {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  planId String          @db.Uuid
+  plan   DevelopmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  type        String // CAPACITACION | ENTRENAMIENTO_EN_PUESTO | ENTRENAMIENTO_CRUZADO | MENTORIA | PARTICIPACION_EN_CAPA | PARTICIPACION_EN_PROYECTO | REEVALUACION_COMPETENCIA | REEVALUACION_POLIVALENCIA | OBJETIVO_INDIVIDUAL | OTRA
+  description String?
+
+  competencyId          String?   @db.Uuid
+  criterionId           String?   @db.Uuid
+  responsibleUserId     String?   @db.Uuid
+  responsibleEmployeeId String?   @db.Uuid
+  targetDate            DateTime? @db.Timestamptz
+  priority              String    @default("MEDIA") // BAJA | MEDIA | ALTA
+  status                String    @default("PENDIENTE") // PENDIENTE | EN_CURSO | COMPLETADA | CANCELADA
+  evidence              String?
+  closedAt              DateTime? @db.Timestamptz
+
+  // Integración con módulo real (trazabilidad)
+  linkedEntityType String? // TRAINING | TRAINING_NEED | COMPETENCY | OBJECTIVE | CAPA | PROJECT
+  linkedEntityId   String? @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([planId])
+  @@map("performance_development_actions")
+}
+
+model PerformanceFeedback {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  evaluationId String                @db.Uuid
+  evaluation   PerformanceEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  date               DateTime? @db.Timestamptz
+  responsibleUserId  String?   @db.Uuid
+  participants       String[]  @default([])
+  summary            String?
+  employeeComments   String?
+  agreements         String?
+  commitments        String?
+  nextFollowUp       DateTime? @db.Timestamptz
+
+  notified             Boolean   @default(false)
+  acknowledgedAt       DateTime? @db.Timestamptz
+  acknowledgementStatus String? // CONFORME | CON_OBSERVACIONES | SOLICITA_REVISION
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([evaluationId])
+  @@map("performance_feedbacks")
+}
+
+model PerformanceHistory {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  evaluationId String                @db.Uuid
+  evaluation   PerformanceEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  fromStatus String?
+  toStatus   String?
+  action     String
+  userId     String? @db.Uuid
+  userName   String?
+  comment    String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([evaluationId])
+  @@map("performance_history")
+}
+
+// ===================== SISTEMA GLOBAL DE EXPORTACIÓN DOCUMENTAL (Etapa 1, Jul 2026) =====================
+// Arquitectura transversal de Documentos Controlados Generados por SGI360.
+// Aditivo, retrocompatible. No modifica modelos existentes.
+
+// ── Catálogo de salidas documentales del sistema ──
+model DocumentOutputDefinition {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Identificación de la salida
+  module        String   // ej: 'rrhh', 'calidad', 'project360'
+  subModule     String?  // ej: 'capacitaciones', 'ncr'
+  screenName    String   // ej: 'Listado de Capacitaciones'
+  outputKey     String   // clave técnica única: ej: 'rrhh.capacitaciones.list'
+  outputType    String   // LIST | RECORD | DASHBOARD | MATRIX | MAP | REPORT | FORM
+  description   String?
+
+  // Vinculación con Maestro de Documentos
+  documentId    String?  @db.Uuid
+  document      Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  // Configuración documental
+  documentCode  String?  // código asignado
+  revision      Int      @default(0)
+  templateId    String?  @db.Uuid // DocumentTemplate
+
+  // Responsables
+  elaboratedById String? @db.Uuid
+  reviewedById   String? @db.Uuid
+  approvedById   String? @db.Uuid
+
+  // Estado y configuración
+  status        String   @default("PENDING") // PENDING | DRAFT | REVIEW | PENDING_APPROVAL | EFFECTIVE | OBSOLETE | SUSPENDED | ARCHIVED
+  active        Boolean  @default(true)
+  allowPrint    Boolean  @default(true)
+  allowExport   Boolean  @default(true)
+  includeQR     Boolean  @default(true)
+  includeSignatures Boolean @default(true)
+  includeWatermark  Boolean @default(false)
+  includeHistory    Boolean @default(false)
+
+  // Metadata
+  format        String   @default("A4") // A4 | A3 | LETTER
+  orientation   String   @default("portrait") // portrait | landscape
+  confidentialLevel String? // PUBLIC | INTERNAL | CONFIDENTIAL | RESTRICTED
+  observations  String?  @db.Text
+
+  // Estadísticas
+  lastExportAt  DateTime? @db.Timestamptz
+  exportCount   Int       @default(0)
+
+  createdBy     String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+  deletedAt     DateTime? @db.Timestamptz
+
+  template      DocumentTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  exports       DocumentExport[]
+  revisions     DocumentRevision[]
+  approvals     DocumentApproval[]
+
+  @@unique([tenantId, outputKey])
+  @@index([tenantId])
+  @@index([tenantId, module])
+  @@index([tenantId, status])
+  @@map("document_output_definitions")
+}
+
+// ── Plantillas de membrete institucional ──
+model DocumentTemplate {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  name          String
+  description   String?
+
+  // Configuración del encabezado
+  headerLogoUrl     String?
+  headerLogoSecondaryUrl String?
+  companyName       String?
+  commercialName    String?
+  companyAddress    String?
+  companyCuit       String?
+  companySite       String?
+
+  // Configuración del pie de página
+  footerText        String?
+  footerLegalText   String?
+  footerShowPageNum Boolean @default(true)
+  footerShowDate    Boolean @default(true)
+  footerShowUser    Boolean @default(true)
+  footerShowQR      Boolean @default(true)
+  footerShowStatus  Boolean @default(true)
+
+  // Diseño
+  pageSize          String  @default("A4")
+  orientation       String  @default("portrait")
+  marginTop         Int     @default(25)
+  marginBottom      Int     @default(25)
+  marginLeft        Int     @default(20)
+  marginRight       Int     @default(20)
+  primaryColor      String  @default("#1e40af")
+  secondaryColor    String  @default("#64748b")
+  fontFamily        String  @default("Arial, sans-serif")
+  fontSize          Int     @default(11)
+  showCoverPage     Boolean @default(false)
+  showTableOfContents Boolean @default(false)
+  watermarkText     String?
+  watermarkOpacity  Float   @default(0.1)
+
+  // Configuración de firmas
+  showSignatures    Boolean @default(true)
+  signatureStyle    String  @default("table") // table | names_only | qr_only | none
+
+  // Estado
+  active            Boolean @default(true)
+  isDefault         Boolean @default(false)
+
+  createdBy         String? @db.Uuid
+  createdAt         DateTime @default(now()) @db.Timestamptz
+  updatedAt         DateTime @updatedAt @db.Timestamptz
+  deletedAt         DateTime? @db.Timestamptz
+
+  outputs           DocumentOutputDefinition[]
+  versions          DocumentTemplateVersion[]
+
+  @@index([tenantId])
+  @@index([tenantId, active])
+  @@map("document_templates")
+}
+
+// ── Versiones de plantillas ──
+model DocumentTemplateVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  templateId    String   @db.Uuid
+  template      DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  version       Int
+  config        Json     // snapshot completo de la configuración
+  changeReason  String?
+  tenantId      String?  @db.Uuid
+
+  createdBy     String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz
+
+  @@index([templateId])
+  @@index([tenantId])
+  @@map("document_template_versions")
+}
+
+// ── Revisiones de documentos controlados ──
+model DocumentRevision {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  outputDefinitionId String @db.Uuid
+  outputDefinition   DocumentOutputDefinition @relation(fields: [outputDefinitionId], references: [id], onDelete: Cascade)
+
+  revision      Int
+  changeReason  String?  @db.Text
+  status        String   @default("DRAFT") // DRAFT | REVIEW | PENDING_APPROVAL | APPROVED | OBSOLETE
+
+  // Metadata snapshot al momento de la revisión
+  documentCode  String?
+  title         String
+  metadata      Json     // snapshot de configuración documental
+
+  createdBy     String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  approvedAt    DateTime? @db.Timestamptz
+  approvedById  String?  @db.Uuid
+  obsoleteAt    DateTime? @db.Timestamptz
+
+  approvals     DocumentApproval[]
+  exports       DocumentExport[]
+  signatures    DocumentSignature[]
+
+  @@index([tenantId])
+  @@index([outputDefinitionId])
+  @@index([tenantId, status])
+  @@map("document_revisions")
+}
+
+// ── Aprobaciones del flujo documental ──
+model DocumentApproval {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  outputDefinitionId String? @db.Uuid
+  outputDefinition   DocumentOutputDefinition? @relation(fields: [outputDefinitionId], references: [id], onDelete: Cascade)
+  revisionId         String?  @db.Uuid
+  revision           DocumentRevision? @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  action        String   // SEND_REVIEW | REQUEST_CORRECTION | APPROVE | REJECT | PUBLISH | REPLACE | DEACTIVATE | NEW_REVISION
+  decision      String   // PENDING | APPROVED | REJECTED | CORRECTION_REQUESTED
+  comment       String?  @db.Text
+
+  userId        String?  @db.Uuid
+  userName      String?
+  userRole      String?
+  digitalSignature String? // hash/firma digital
+
+  createdAt     DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([outputDefinitionId])
+  @@index([revisionId])
+  @@map("document_approvals")
+}
+
+// ── Historial inalterable de exportaciones ──
+model DocumentExport {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  outputDefinitionId String? @db.Uuid
+  outputDefinition   DocumentOutputDefinition? @relation(fields: [outputDefinitionId], references: [id], onDelete: SetNull)
+  revisionId         String?  @db.Uuid
+  revision           DocumentRevision? @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+
+  // Metadata del documento exportado
+  documentCode  String?
+  revisionNumber Int     @default(0)
+  documentTitle String?
+  exportType    String   // CONTROLLED | INFORMATIVE
+  templateName  String?
+
+  // Metadata de la exportación
+  fileName      String
+  fileSize      Int      @default(0)
+  pageCount     Int      @default(0)
+  fileHash      String?  // SHA-256
+  filters       Json?    // filtros aplicados
+  recordCount   Int      @default(0)
+
+  // Usuario y contexto
+  userId        String?  @db.Uuid
+  userName      String?
+  userIp        String?
+  userAgent     String?
+
+  // Token de validación QR
+  validationTokenId String? @db.Uuid @unique
+
+  createdAt     DateTime @default(now()) @db.Timestamptz
+
+  validationToken  DocumentValidationToken?
+
+  @@index([tenantId])
+  @@index([outputDefinitionId])
+  @@index([tenantId, createdAt])
+  @@index([userId])
+  @@map("document_exports")
+}
+
+// ── Token de validación QR ──
+model DocumentValidationToken {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  token         String   @unique
+  outputDefinitionId String? @db.Uuid
+  documentCode  String?
+  revision      Int      @default(0)
+  exportId      String?  @db.Uuid @unique
+  export        DocumentExport? @relation(fields: [exportId], references: [id], onDelete: SetNull)
+
+  // Estado del documento al generar el token
+  documentStatus String?
+  documentTitle  String?
+  status         String   @default("ACTIVE") // ACTIVE | EXPIRED | REVOKED
+
+  expiresAt     DateTime? @db.Timestamptz
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([token])
+  @@map("document_validation_tokens")
+}
+
+// ── Firmas digitales/electrónicas ──
+model DocumentSignature {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  revisionId    String?  @db.Uuid
+  revision      DocumentRevision? @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+
+  role          String   // ELABORATED | REVIEWED | APPROVED
+  userId        String?  @db.Uuid
+  userName      String?
+  userPosition  String?
+  signedAt      DateTime @default(now()) @db.Timestamptz
+  signatureHash String?
+
+  createdAt     DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([revisionId])
+  @@map("document_signatures")
+}
+
+// ── Reglas de retención documental ──
+model DocumentRetentionRule {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  name          String
+  description   String?
+  documentType  String?  // tipo documental al que aplica
+  module        String?  // módulo al que aplica
+  retentionYears Int     @default(5)
+  medium        String   @default("DIGITAL") // DIGITAL | PHYSICAL | HYBRID
+  observations  String?
+
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("document_retention_rules")
+}
+
+// ── Reglas avanzadas de codificación por módulo/proceso ──
+model DocumentCodeRule {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  module        String   // ej: 'rrhh', 'calidad', 'audits'
+  subModule     String?
+  processCode   String?  // código de proceso (ej: 'RRHH', 'CAL', 'DIR')
+  typeAbbr      String?  // abreviatura del tipo documental (ej: 'REG', 'INF', 'LST')
+
+  prefix        String?  // prefijo específico (sobrescribe el global)
+  digitCount    Int?     // dígitos de secuencia
+  separator     String?  // separador
+  nextSequence  Int      @default(1)
+  includeRevision Boolean @default(true) // incluir -RXX en el código
+  revisionFormat String  @default("R{NN}") // formato de revisión
+
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, module, subModule, typeAbbr])
+  @@index([tenantId])
+  @@map("document_code_rules")
+}
+
+// ── Categorías taxonómicas de salidas documentales ──
+model DocumentOutputCategory {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  name          String
+  code          String
+  description   String?
+  parentCategoryId String? @db.Uuid
+  parentCategory   DocumentOutputCategory? @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: SetNull)
+  childCategories  DocumentOutputCategory[] @relation("CategoryHierarchy")
+
+  color         String?  @default("#3B82F6")
+  icon          String?
+  sortOrder     Int      @default(0)
+  active        Boolean  @default(true)
+
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("document_output_categories")
+}
+
+// ── Paquetes de exportación masiva (Libro SGI, respaldo) ──
+model DocumentBulkExport {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  name          String
+  type          String   // SGI_BOOK | BACKUP | CUSTOM
+  description   String?
+
+  // Configuración del paquete
+  modules       String[] // módulos incluidos
+  statuses      String[] // estados incluidos
+  dateFrom      DateTime? @db.Timestamptz
+  dateTo        DateTime? @db.Timestamptz
+  includeAnnexes Boolean @default(false)
+  includeEvidence Boolean @default(false)
+  includeObsolete Boolean @default(false)
+  includeIndex    Boolean @default(true)
+  includeSeparators Boolean @default(false)
+
+  // Salida
+  outputMode    String   @default("SINGLE_PDF") // SINGLE_PDF | ZIP_PDFS | PDF_PER_MODULE | PDF_PER_PROCESS | PDF_PER_TYPE
+  fileName      String?
+  fileSize      Int      @default(0)
+  pageCount     Int      @default(0)
+  fileHash      String?
+  status        String   @default("PENDING") // PENDING | GENERATING | COMPLETED | FAILED
+
+  // Usuario
+  userId        String?  @db.Uuid
+  userName      String?
+
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  completedAt   DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@map("document_bulk_exports")
+}
+
+// ── Notificaciones del sistema de exportación (Etapa 7) ──
+model DocumentExportNotification {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  userId        String?  @db.Uuid
+  type          String   // EXPORT_COMPLETED | REVISION_PENDING | APPROVAL_REQUESTED | TOKEN_EXPIRED | BULK_EXPORT_READY
+  title         String
+  message       String?
+  data          Json?
+
+  readAt        DateTime? @db.Timestamptz
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, readAt])
+  @@index([userId])
+  @@map("document_export_notifications")
 }

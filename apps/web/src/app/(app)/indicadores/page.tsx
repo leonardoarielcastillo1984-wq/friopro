@@ -19,6 +19,8 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import ExportButton from '@/components/ExportButton';
+import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
 
 const CATEGORIES = [
   'Calidad', 'Seguridad', 'Ambiente', 'Seguridad Vial',
@@ -372,6 +374,31 @@ export default function IndicadoresPage() {
           <button onClick={exportPDF} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs font-medium hover:bg-red-100">
             <FileText className="h-3.5 w-3.5" /> PDF
           </button>
+          <ExportButton
+            outputKey="calidad.indicadores.list"
+            title="Tablero de Indicadores"
+            moduleName="calidad"
+            recordCount={filtered.length}
+            bodyHtml={buildFullDocument([
+              { title: 'Indicadores', html: buildTableHtml([
+                { key: 'code', label: 'Código', width: '80px' },
+                { key: 'name', label: 'Nombre' },
+                { key: 'category', label: 'Categoría', width: '100px' },
+                { key: 'value', label: 'Valor', width: '60px', align: 'right' },
+                { key: 'target', label: 'Meta', width: '60px', align: 'right' },
+                { key: 'unit', label: 'Unidad', width: '50px' },
+                { key: 'status', label: 'Estado', width: '80px' },
+              ], filtered.map(ind => ({
+                code: ind.code,
+                name: ind.name,
+                category: ind.category,
+                value: ind.currentValue?.toString() || '—',
+                target: ind.targetValue?.toString() || '—',
+                unit: ind.unit,
+                status: ind.status === 'ON_TARGET' ? 'En meta' : ind.status === 'WARNING' ? 'Alerta' : ind.status === 'OFF_TARGET' ? 'Bajo meta' : 'Sin datos',
+              }))) },
+            ])}
+          />
         </div>
       </div>
 

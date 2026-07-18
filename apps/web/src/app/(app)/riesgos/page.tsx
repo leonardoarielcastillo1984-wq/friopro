@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import ExportButton from '@/components/ExportButton';
+import { buildTableHtml, buildFullDocument, formatDate } from '@/lib/pdf-content';
 import { exportRisksToExcel } from '@/lib/exportToExcel';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -506,7 +508,32 @@ export default function RiesgosPage() {
               </button>
             </div>
           </div>
-          
+
+          <ExportButton
+            outputKey="calidad.riesgos.list"
+            title="Matriz de Riesgos y Oportunidades"
+            moduleName="calidad"
+            recordCount={filtered.length}
+            filters={{ status: filterStatus, category: filterCategory }}
+            bodyHtml={buildFullDocument([
+              { title: 'Listado de Riesgos', html: buildTableHtml([
+                { key: 'code', label: 'Código', width: '80px' },
+                { key: 'description', label: 'Descripción' },
+                { key: 'category', label: 'Categoría', width: '100px' },
+                { key: 'level', label: 'Nivel', width: '60px', align: 'center' },
+                { key: 'status', label: 'Estado', width: '80px' },
+                { key: 'ownerName', label: 'Responsable', width: '120px' },
+              ], filtered.map(r => ({
+                code: r.code || '—',
+                description: r.description || '—',
+                category: r.category || '—',
+                level: r.riskLevel?.toString() || '—',
+                status: r.status || '—',
+                ownerName: r.owner?.email || r.responsible || '—',
+              }))) },
+            ])}
+          />
+
           <button onClick={() => { setShowCreate(!showCreate); setError(null); setSuccess(null); }} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors">
             {showCreate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />} 
             {showCreate ? 'Cancelar' : 'Nuevo riesgo'}

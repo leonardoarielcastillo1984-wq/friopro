@@ -13,6 +13,8 @@ import {
   Star, Award, BarChart3, AlertTriangle, Download
 } from 'lucide-react';
 import { exportTrainingsToExcel } from '@/lib/exportToExcel';
+import ExportButton from '@/components/ExportButton';
+import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
 
 const CATEGORIES = [
   'Seguridad', 'Calidad', 'Ambiente', 'Seguridad Vial',
@@ -190,6 +192,29 @@ export default function CapacitacionesPage() {
           >
             <Download className="h-4 w-4" /> Exportar Excel
           </button>
+          <ExportButton
+            outputKey="rrhh.capacitaciones.list"
+            title="Plan de Capacitaciones"
+            moduleName="rrhh"
+            recordCount={trainings.length}
+            bodyHtml={buildFullDocument([
+              { title: 'Capacitaciones', html: buildTableHtml([
+                { key: 'title', label: 'Título' },
+                { key: 'category', label: 'Categoría', width: '100px' },
+                { key: 'modality', label: 'Modalidad', width: '80px' },
+                { key: 'instructor', label: 'Instructor', width: '120px' },
+                { key: 'durationHours', label: 'Horas', width: '50px', align: 'right' },
+                { key: 'status', label: 'Estado', width: '80px' },
+              ], trainings.map(t => ({
+                title: t.title,
+                category: t.category,
+                modality: t.modality,
+                instructor: t.instructor || '—',
+                durationHours: t.durationHours?.toString() || '—',
+                status: t.status,
+              }))) },
+            ])}
+          />
           <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
             <Plus className="h-4 w-4" /> Nueva
           </button>

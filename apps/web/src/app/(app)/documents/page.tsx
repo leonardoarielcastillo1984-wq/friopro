@@ -1,15 +1,29 @@
 'use client';
+import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import type { DocumentRow } from '@/lib/types';
 import ComboSelect from '@/components/ComboSelect';
+import MaestroDocumentos from './_tabs/MaestroDocumentos';
+import ConfiguracionDocumentos from './_tabs/ConfiguracionDocumentos';
+import PlantillasExport from './_tabs/PlantillasExport';
+import CatalogoSalidas from './_tabs/CatalogoSalidas';
+import HistorialExportaciones from './_tabs/HistorialExportaciones';
+import RevisionesAprobaciones from './_tabs/RevisionesAprobaciones';
+import ExportacionMasiva from './_tabs/ExportacionMasiva';
+import RetencionDocumental from './_tabs/RetencionDocumental';
+import DashboardExport from './_tabs/DashboardExport';
+import MarcaBlanca from './_tabs/MarcaBlanca';
+import AuditoriaExportaciones from './_tabs/AuditoriaExportaciones';
+import AyudaExport from './_tabs/AyudaExport';
 import {
   FileText, Upload, Trash2, Search, Filter, ChevronDown,
   FileSpreadsheet, FileType, File, Clock, CheckCircle2, AlertCircle,
   Plus, X, Download, Edit3, FileCheck, FileX, Files, AlertTriangle,
-  Calendar, User, Shield, ShieldCheck
+  Calendar, User, Shield, ShieldCheck, Hash, Settings, List,
+  GitBranch, Package, Archive, BarChart3, Palette, ScrollText, HelpCircle
 } from 'lucide-react';
 
 const DOC_TYPES = [
@@ -48,6 +62,17 @@ export default function DocumentsPage() {
   const [filterDepartment, setFilterDepartment] = useState('ALL');
   const [filterAutoStatus, setFilterAutoStatus] = useState('ALL');
   const [filterReviewStatus, setFilterReviewStatus] = useState('ALL');
+  const [filterProcess, setFilterProcess] = useState('ALL');
+
+  // Procesos reales del Mapa de Procesos (para columna + filtro + vinculación bidireccional).
+  // context = macroproceso/capa/mapa para distinguir procesos con el mismo nombre.
+  const [processOptions, setProcessOptions] = useState<{ id: string; name: string; context: string }[]>([]);
+  const [uploadProcessIds, setUploadProcessIds] = useState<string[]>([]);
+  // Modal para editar los procesos vinculados de un documento existente.
+  const [processModalDoc, setProcessModalDoc] = useState<DocumentRow | null>(null);
+  const [processModalSelected, setProcessModalSelected] = useState<string[]>([]);
+  const [savingProcesses, setSavingProcesses] = useState(false);
+  const [processSearch, setProcessSearch] = useState('');
 
   // Upload form
   const [showUpload, setShowUpload] = useState(false);
@@ -73,6 +98,15 @@ export default function DocumentsPage() {
     { value: 'PLAN', label: 'Plan' },
     { value: 'OTHER', label: 'Otro' }
   ]);
+
+  // Tabs
+  const [activeTab, setActiveTab] = useState<'lista' | 'maestro' | 'config' | 'plantillas' | 'salidas' | 'historial' | 'revisiones' | 'masiva' | 'retencion' | 'dashboard' | 'marca' | 'auditoria' | 'ayuda'>('lista');
+
+  // Maestro: tipos documentales para el formulario de carga
+  const [typeConfigs, setTypeConfigs] = useState<{id: string; name: string; abbreviation: string; color: string; nextSequence: number}[]>([]);
+  const [uploadTypeConfigId, setUploadTypeConfigId] = useState('');
+  const [uploadDocumentCode, setUploadDocumentCode] = useState('');
+  const [codePreviewLoading, setCodePreviewLoading] = useState(false);
 
   // Delete modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -100,8 +134,11 @@ export default function DocumentsPage() {
     if (filterReviewStatus !== 'ALL') {
       filtered = filtered.filter(d => d.reviewStatus === filterReviewStatus);
     }
+    if (filterProcess !== 'ALL') {
+      filtered = filtered.filter(d => (d.processes ?? []).some(p => p.id === filterProcess));
+    }
     return filtered;
-  }, [docs, searchTerm, filterType, filterNormative, filterDepartment, filterAutoStatus, filterReviewStatus]);
+  }, [docs, searchTerm, filterType, filterNormative, filterDepartment, filterAutoStatus, filterReviewStatus, filterProcess]);
 
   async function load() {
     setError(null);
@@ -144,7 +181,84 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     load();
+    apiFetch('/documents/types').then((d: any) => setTypeConfigs(d.types || [])).catch(() => {});
+    loadProcesses();
   }, []);
+
+  // Aplana los procesos de todos los mapas para la columna, el filtro y la vinculación.
+  // Agrega contexto (macroproceso / capa / mapa) para distinguir procesos con el mismo nombre.
+  async function loadProcesses() {
+    const LAYER_LABEL: Record<string, string> = { STRATEGIC: 'Estratégicos', OPERATIONAL: 'Operativos', SUPPORT: 'Soporte' };
+    try {
+      const raw = await apiFetch<any>('/process-maps');
+      const maps: any[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
+      const multiMap = maps.length > 1;
+      const opts: { id: string; name: string; context: string }[] = [];
+      const seen = new Set<string>();
+      for (const m of maps) {
+        const nameById: Record<string, string> = {};
+        for (const p of (m.processes ?? [])) nameById[p.id] = p.name;
+        for (const p of (m.processes ?? [])) {
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
+          const parts: string[] = [];
+          if (p.parentId && nameById[p.parentId]) parts.push(nameById[p.parentId]);
+          else if (LAYER_LABEL[p.layer]) parts.push(LAYER_LABEL[p.layer]);
+          if (multiMap && m.name) parts.push(m.name);
+          opts.push({ id: p.id, name: p.name, context: parts.join(' · ') });
+        }
+      }
+      opts.sort((a, b) => a.name.localeCompare(b.name) || a.context.localeCompare(b.context));
+      setProcessOptions(opts);
+    } catch { /* si falla, el filtro queda vacío */ }
+  }
+
+  // Los archivos listados desde el almacenamiento usan el nombre como id (no UUID) y no existen
+  // en la tabla Document, por lo que no se les puede vincular procesos.
+  function isRealDocument(id: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  }
+
+  function openProcessModal(doc: DocumentRow) {
+    if (!isRealDocument(doc.id)) {
+      alert('Este archivo todavía no está registrado como documento (fue cargado directamente en el almacenamiento). Subilo desde "Subir documento" para poder vincularlo a procesos.');
+      return;
+    }
+    setProcessModalDoc(doc);
+    setProcessModalSelected((doc.processes ?? []).map(p => p.id));
+    setProcessSearch('');
+  }
+
+  async function saveProcessLinks() {
+    if (!processModalDoc) return;
+    setSavingProcesses(true);
+    try {
+      await apiFetch(`/documents/${processModalDoc.id}/processes`, {
+        method: 'PUT',
+        body: JSON.stringify({ processIds: processModalSelected }),
+      });
+      const selectedObjs = processOptions.filter(o => processModalSelected.includes(o.id));
+      setDocs(prev => prev.map(d => d.id === processModalDoc.id ? { ...d, processes: selectedObjs } : d));
+      setProcessModalDoc(null);
+    } catch (err: any) {
+      alert('Error al guardar procesos: ' + (err?.message || 'Error desconocido'));
+    } finally {
+      setSavingProcesses(false);
+    }
+  }
+
+  async function previewCode(typeConfigId: string) {
+    if (!typeConfigId) { setUploadDocumentCode(''); return; }
+    setCodePreviewLoading(true);
+    try {
+      const data = await apiFetch('/documents/next-code', {
+        method: 'POST',
+        body: JSON.stringify({ typeConfigId, reserve: false }),
+      }) as any;
+      setUploadDocumentCode(data.code);
+    } catch {}
+    setCodePreviewLoading(false);
+  }
 
   const autoStatusCounts = useMemo(() => {
     const counts: Record<string, number> = { VIGENTE: 0, POR_VENCER: 0, VENCIDO: 0, SIN_FECHA: 0 };
@@ -187,12 +301,34 @@ export default function DocumentsPage() {
       if (uploadProcess) formData.append('process', uploadProcess);
       if (uploadOwnerId) formData.append('ownerId', uploadOwnerId);
       if (uploadNextReviewDate) formData.append('nextReviewDate', uploadNextReviewDate);
+      if (uploadTypeConfigId) formData.append('typeConfigId', uploadTypeConfigId);
 
-      const data = await apiFetch<{ document: { title: string }; extractedChars: number }>('/documents/upload', {
+      // Reservar el código si se seleccionó tipo documental
+      if (uploadTypeConfigId) {
+        try {
+          const codeData = await apiFetch('/documents/next-code', {
+            method: 'POST',
+            body: JSON.stringify({ typeConfigId: uploadTypeConfigId, reserve: true }),
+          }) as any;
+          formData.append('documentCode', codeData.code);
+        } catch {}
+      }
+
+      const data = await apiFetch<{ document: { id: string; title: string }; extractedChars: number }>('/documents/upload', {
         method: 'POST',
         headers: { Accept: 'application/json' },
         body: formData,
       });
+
+      // Vincular procesos reales del mapa (relación bidireccional vía ProcessDocument).
+      if (uploadProcessIds.length > 0 && data.document?.id) {
+        try {
+          await apiFetch(`/documents/${data.document.id}/processes`, {
+            method: 'PUT',
+            body: JSON.stringify({ processIds: uploadProcessIds }),
+          });
+        } catch { /* no bloquear la carga si falla la vinculación */ }
+      }
 
       setSuccess(`Documento "${data.document.title}" subido correctamente — ${data.extractedChars.toLocaleString()} caracteres extraídos`);
       setShowUpload(false);
@@ -201,9 +337,12 @@ export default function DocumentsPage() {
       setUploadDepartmentId('');
       setUploadNormativeIds([]);
       setUploadProcess('');
+      setUploadProcessIds([]);
       setUploadOwnerId('');
       setUploadNextReviewDate('');
       setSelectedFile(null);
+      setUploadTypeConfigId('');
+      setUploadDocumentCode('');
       if (fileRef.current) fileRef.current.value = '';
       await load();
     } catch (err: any) {
@@ -241,19 +380,68 @@ export default function DocumentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-2">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Documentos</h1>
+          <h1 className="text-2xl font-bold text-neutral-900">Documentos <PageTitleHelp moduleHref="/documents" /></h1>
           <p className="mt-1 text-sm text-neutral-500">Gestión documental del sistema integrado</p>
         </div>
-        <button
-          onClick={() => { setShowUpload(!showUpload); setError(null); setSuccess(null); }}
-          className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
-        >
-          {showUpload ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          {showUpload ? 'Cancelar' : 'Subir documento'}
-        </button>
+        {activeTab === 'lista' && (
+          <button
+            onClick={() => { setShowUpload(!showUpload); setError(null); setSuccess(null); }}
+            className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
+          >
+            {showUpload ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {showUpload ? 'Cancelar' : 'Subir documento'}
+          </button>
+        )}
       </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-neutral-100 rounded-xl p-1 w-fit">
+        {([
+          { key: 'lista', label: 'Lista', icon: List },
+          { key: 'maestro', label: 'Maestro', icon: Hash },
+          { key: 'config', label: 'Codificación', icon: Settings },
+          { key: 'plantillas', label: 'Plantillas', icon: FileText },
+          { key: 'salidas', label: 'Salidas', icon: FileSpreadsheet },
+          { key: 'revisiones', label: 'Revisiones', icon: GitBranch },
+          { key: 'historial', label: 'Historial', icon: Clock },
+          { key: 'masiva', label: 'Masiva', icon: Package },
+          { key: 'retencion', label: 'Retención', icon: Archive },
+          { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+          { key: 'marca', label: 'Marca', icon: Palette },
+          { key: 'auditoria', label: 'Auditoría', icon: ScrollText },
+          { key: 'ayuda', label: 'Ayuda', icon: HelpCircle },
+        ] as const).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === key
+                ? 'bg-white text-neutral-800 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-700'
+            }`}
+          >
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'maestro' && <MaestroDocumentos />}
+      {activeTab === 'config' && <ConfiguracionDocumentos />}
+      {activeTab === 'plantillas' && <PlantillasExport />}
+      {activeTab === 'salidas' && <CatalogoSalidas />}
+      {activeTab === 'revisiones' && <RevisionesAprobaciones />}
+      {activeTab === 'historial' && <HistorialExportaciones />}
+      {activeTab === 'masiva' && <ExportacionMasiva />}
+      {activeTab === 'retencion' && <RetencionDocumental />}
+      {activeTab === 'dashboard' && <DashboardExport />}
+      {activeTab === 'marca' && <MarcaBlanca />}
+      {activeTab === 'auditoria' && <AuditoriaExportaciones />}
+      {activeTab === 'ayuda' && <AyudaExport />}
+
+      {activeTab === 'lista' && (<>
+      
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -348,6 +536,30 @@ export default function DocumentsPage() {
                 allowCustom={true}
               />
             </div>
+            {typeConfigs.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Tipo documental (Maestro) — genera código automático
+                </label>
+                <select
+                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  value={uploadTypeConfigId}
+                  onChange={e => { setUploadTypeConfigId(e.target.value); previewCode(e.target.value); }}
+                >
+                  <option value="">— Sin codificación —</option>
+                  {typeConfigs.map(t => (
+                    <option key={t.id} value={t.id}>{t.abbreviation} · {t.name}</option>
+                  ))}
+                </select>
+                {uploadDocumentCode && (
+                  <div className="mt-1.5 flex items-center gap-2 text-xs text-blue-700 bg-blue-50 rounded-lg px-3 py-1.5">
+                    <Hash className="h-3.5 w-3.5" />
+                    Código a asignar: <code className="font-mono font-bold ml-1">{uploadDocumentCode}</code>
+                    {codePreviewLoading && <span className="text-neutral-400 ml-1">actualizando...</span>}
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Departamento</label>
               <select
@@ -390,14 +602,29 @@ export default function DocumentsPage() {
                 <p className="text-xs text-brand-600 mt-1">{uploadNormativeIds.length} normativa{uploadNormativeIds.length > 1 ? 's' : ''} seleccionada{uploadNormativeIds.length > 1 ? 's' : ''}</p>
               )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-1">Proceso</label>
-              <input
-                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-                placeholder="Ej: Gestión de Calidad"
-                value={uploadProcess}
-                onChange={(e) => setUploadProcess(e.target.value)}
-              />
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Procesos vinculados</label>
+              {processOptions.length === 0 ? (
+                <p className="text-xs text-neutral-400 italic px-1 py-2">No hay procesos en el Mapa de Procesos todavía.</p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-neutral-200 divide-y divide-neutral-100">
+                  {processOptions.map((p) => (
+                    <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-neutral-50">
+                      <input
+                        type="checkbox"
+                        checked={uploadProcessIds.includes(p.id)}
+                        onChange={() => setUploadProcessIds(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                        className="rounded border-neutral-300"
+                      />
+                      <span className="text-neutral-700">{p.name}</span>
+                      {p.context && <span className="text-xs text-neutral-400">· {p.context}</span>}
+                    </label>
+                  ))}
+                </div>
+              )}
+              {uploadProcessIds.length > 0 && (
+                <p className="text-xs text-brand-600 mt-1">{uploadProcessIds.length} proceso{uploadProcessIds.length > 1 ? 's' : ''} seleccionado{uploadProcessIds.length > 1 ? 's' : ''}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Responsable</label>
@@ -513,6 +740,16 @@ export default function DocumentsPage() {
           <option value="APPROVED">Aprobado</option>
           <option value="REQUIRES_UPDATE">Requiere actualización</option>
         </select>
+        <select
+          value={filterProcess}
+          onChange={(e) => setFilterProcess(e.target.value)}
+          className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm focus:border-brand-500 outline-none"
+        >
+          <option value="ALL">Todos los procesos</option>
+          {processOptions.map((p) => (
+            <option key={p.id} value={p.id}>{p.context ? `${p.name} — ${p.context}` : p.name}</option>
+          ))}
+        </select>
       </div>
 
       {/* Document List */}
@@ -547,6 +784,7 @@ export default function DocumentsPage() {
               <tr className="border-b border-neutral-100 bg-neutral-50/50">
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Documento</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Tipo</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Proceso</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Estado</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Vigencia</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Versión</th>
@@ -570,6 +808,27 @@ export default function DocumentsPage() {
                       </button>
                     </td>
                     <td className="px-4 py-3 text-sm text-neutral-600">{typeLabel}</td>
+                    <td className="px-4 py-3">
+                      {isRealDocument(d.id) ? (
+                        <button
+                          onClick={() => openProcessModal(d)}
+                          className="group flex flex-wrap items-center gap-1 text-left max-w-[220px]"
+                          title="Editar procesos vinculados"
+                        >
+                          {(d.processes ?? []).length > 0 ? (
+                            d.processes!.map(p => (
+                              <span key={p.id} className="inline-flex items-center rounded-full bg-brand-50 text-brand-700 border border-brand-100 px-2 py-0.5 text-xs font-medium">
+                                {p.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-neutral-400 italic group-hover:text-brand-600">+ Vincular</span>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-neutral-300">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${status.bg} ${status.color}`}>
                         {status.label}
@@ -669,6 +928,61 @@ export default function DocumentsPage() {
           </div>
         </div>
       )}
+      {/* Modal: editar procesos vinculados de un documento */}
+      {processModalDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">Procesos vinculados</h3>
+                <p className="text-xs text-neutral-500 truncate max-w-[300px]">{processModalDoc.title}</p>
+              </div>
+              <button onClick={() => setProcessModalDoc(null)}><X className="h-5 w-5 text-neutral-400" /></button>
+            </div>
+            <div className="px-5 py-3 border-b border-neutral-100">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                <input
+                  value={processSearch}
+                  onChange={(e) => setProcessSearch(e.target.value)}
+                  placeholder="Buscar proceso..."
+                  className="w-full rounded-lg border border-neutral-200 pl-9 pr-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-2">
+              {processOptions.length === 0 ? (
+                <p className="text-sm text-neutral-400 italic py-4 text-center">No hay procesos en el Mapa de Procesos.</p>
+              ) : (
+                processOptions
+                  .filter(p => `${p.name} ${p.context}`.toLowerCase().includes(processSearch.toLowerCase()))
+                  .map(p => (
+                    <label key={p.id} className="flex items-center gap-2 px-1 py-2 text-sm cursor-pointer hover:bg-neutral-50 rounded">
+                      <input
+                        type="checkbox"
+                        checked={processModalSelected.includes(p.id)}
+                        onChange={() => setProcessModalSelected(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                        className="rounded border-neutral-300"
+                      />
+                      <span className="text-neutral-700">{p.name}</span>
+                      {p.context && <span className="text-xs text-neutral-400">· {p.context}</span>}
+                    </label>
+                  ))
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-neutral-100">
+              <span className="text-xs text-neutral-500">{processModalSelected.length} seleccionado{processModalSelected.length !== 1 ? 's' : ''}</span>
+              <div className="flex gap-2">
+                <button onClick={() => setProcessModalDoc(null)} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50" disabled={savingProcesses}>Cancelar</button>
+                <button onClick={saveProcessLinks} disabled={savingProcesses} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+                  {savingProcesses ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Guardando...</> : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      </>)}
     </div>
   );
 }

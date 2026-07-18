@@ -7,6 +7,8 @@ import type { NonConformity, NCRStats, NCRSeverity, NCRSource } from '@/lib/type
 import {
   AlertTriangle, Plus, X, Search, AlertCircle, CheckCircle2, Clock, Target, BrainCircuit
 } from 'lucide-react';
+import ExportButton from '@/components/ExportButton';
+import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
 
 // Tipo para hallazgos de IA
 type AiFinding = {
@@ -137,6 +139,27 @@ export default function NoConformidadesPage() {
       <div className="flex items-center justify-between">
         <div><h1 className="text-2xl font-semibold text-neutral-900">No Conformidades</h1><p className="mt-1 text-sm text-neutral-500">Gestión de no conformidades y acciones correctivas</p></div>
         <div className="flex items-center gap-2">
+          <ExportButton
+            outputKey="calidad.no-conformidades.list"
+            title="Registro de No Conformidades"
+            moduleName="calidad"
+            recordCount={filtered.length}
+            bodyHtml={buildFullDocument([
+              { title: 'No Conformidades', html: buildTableHtml([
+                { key: 'code', label: 'Código', width: '80px' },
+                { key: 'title', label: 'Título' },
+                { key: 'severity', label: 'Severidad', width: '80px' },
+                { key: 'source', label: 'Origen', width: '100px' },
+                { key: 'status', label: 'Estado', width: '80px' },
+              ], filtered.map(n => ({
+                code: n.code,
+                title: n.title,
+                severity: n.severity,
+                source: n.source,
+                status: n.status,
+              }))) },
+            ])}
+          />
           <button 
             onClick={() => { setShowCreateFromFinding(true); loadFindings(); setError(null); setSuccess(null); }} 
             className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-purple-700 transition-colors"
