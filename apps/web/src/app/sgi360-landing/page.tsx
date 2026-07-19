@@ -64,7 +64,7 @@ export default function SGI360Landing() {
             colorTo="to-emerald-500"
             icon={Shield}
             loginEndpoint="/api/auth/login"
-            destination="/"
+            destination="/dashboard"
             forgotPasswordHref="/sgi360-landing/forgot-password"
           />
         </div>
@@ -102,7 +102,7 @@ export default function SGI360Landing() {
           <h2 className="text-4xl font-bold text-white">¿Listo para gestionar la calidad sin fricción?</h2>
           <p className="mt-4 text-green-100 text-lg">Implementá tu SGI digital en días. Cumplí ISO 9001, 14001 y 45001 con trazabilidad total.</p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/" className="px-8 py-4 bg-white text-green-700 rounded-2xl font-bold text-sm hover:shadow-xl transition-all">
+            <Link href="/dashboard" className="px-8 py-4 bg-white text-green-700 rounded-2xl font-bold text-sm hover:shadow-xl transition-all">
               Ingresar a SGI360
             </Link>
             <Link href="/" className="px-8 py-4 border-2 border-white/30 text-white rounded-2xl text-sm font-semibold hover:bg-white/10 transition-all flex items-center gap-2">
