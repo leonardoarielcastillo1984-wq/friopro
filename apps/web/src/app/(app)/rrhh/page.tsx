@@ -4,7 +4,7 @@ import PageTitleHelp from '@/components/ui/PageTitleHelp';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { Users, Building, Briefcase, GraduationCap, Brain, Settings, Wind } from 'lucide-react';
+import { Users, Building, Briefcase, GraduationCap, Brain, Settings, Wind, CalendarClock, Target } from 'lucide-react';
 
 interface HRStats {
   totalEmployees: number;
@@ -25,10 +25,32 @@ export default function RRHHPage() {
     competencies: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [absencesPending, setAbsencesPending] = useState<number | null>(null);
+  const [perfPending, setPerfPending] = useState<number | null>(null);
 
   useEffect(() => {
     loadStats();
+    loadAbsences();
+    loadPerformance();
   }, []);
+
+  const loadPerformance = async () => {
+    try {
+      const res = await apiFetch<{ pending?: number; inProgress?: number }>('/performance/dashboard');
+      setPerfPending((res?.pending ?? 0) + (res?.inProgress ?? 0));
+    } catch {
+      setPerfPending(null);
+    }
+  };
+
+  const loadAbsences = async () => {
+    try {
+      const res = await apiFetch<{ pending?: number }>('/absences/dashboard');
+      setAbsencesPending(res?.pending ?? 0);
+    } catch {
+      setAbsencesPending(null);
+    }
+  };
 
   const loadStats = async () => {
     try {
@@ -95,6 +117,24 @@ export default function RRHHPage() {
       color: 'bg-pink-500',
       count: stats.competencies,
       stats: 'Definidas'
+    },
+    {
+      title: 'Ausencias y Disponibilidad',
+      description: 'Gestión de vacaciones, licencias y continuidad operativa',
+      icon: CalendarClock,
+      href: '/rrhh/ausencias',
+      color: 'bg-indigo-500',
+      count: absencesPending,
+      stats: absencesPending != null ? `${absencesPending} pendientes` : 'Premium'
+    },
+    {
+      title: 'Evaluación de Desempeño',
+      description: 'Ciclos, evaluaciones, brechas y planes de desarrollo',
+      icon: Target,
+      href: '/rrhh/desempeno',
+      color: 'bg-rose-500',
+      count: perfPending,
+      stats: perfPending != null ? `${perfPending} en proceso` : 'Premium'
     },
     {
       title: 'Clima y Cultura',

@@ -25,8 +25,8 @@ export default function AprobacionesTab({ projectId }: Props) {
     setLoading(true);
     try {
       const [aRes, eRes] = await Promise.all([
-        apiFetch(`/project360/projects/${projectId}/aprobaciones`) as any,
-        apiFetch('/project360/members') as any,
+        apiFetch(`/project360-v1/projects/${projectId}/aprobaciones`) as any,
+        apiFetch('/project360-v1/employees') as any,
       ]);
       setAprobaciones(aRes.aprobaciones || []);
       setEmpleados(eRes.users || []);
@@ -39,7 +39,7 @@ export default function AprobacionesTab({ projectId }: Props) {
   const handleSolicitar = async () => {
     if (!nueva.etapa || !nueva.aprobadorId) { alert('Seleccioná etapa y aprobador'); return; }
     try {
-      await apiFetch(`/project360/projects/${projectId}/aprobaciones`, { method: 'POST', json: nueva }) as any;
+      await apiFetch(`/project360-v1/projects/${projectId}/aprobaciones`, { method: 'POST', json: nueva }) as any;
       setShowAdd(false);
       setNueva({ etapa: '', aprobadorId: '', comentarios: '' });
       load();
@@ -48,7 +48,7 @@ export default function AprobacionesTab({ projectId }: Props) {
 
   const handleAprobar = async (id: string) => {
     try {
-      await apiFetch(`/project360/aprobaciones/${id}/aprobar`, { method: 'POST', json: {} }) as any;
+      await apiFetch(`/project360-v1/aprobaciones/${id}/aprobar`, { method: 'POST', json: {} }) as any;
       load();
     } catch (e: any) { alert(e.message); }
   };
@@ -57,7 +57,7 @@ export default function AprobacionesTab({ projectId }: Props) {
     const comentarios = prompt('Motivo del rechazo:');
     if (!comentarios) return;
     try {
-      await apiFetch(`/project360/aprobaciones/${id}/rechazar`, { method: 'POST', json: { comentarios } }) as any;
+      await apiFetch(`/project360-v1/aprobaciones/${id}/rechazar`, { method: 'POST', json: { comentarios } }) as any;
       load();
     } catch (e: any) { alert(e.message); }
   };
@@ -65,7 +65,7 @@ export default function AprobacionesTab({ projectId }: Props) {
   const handleAvanzarEtapa = async () => {
     if (!etapaDestino) return;
     try {
-      await apiFetch(`/project360/projects/${projectId}/avanzar`, { method: 'POST', json: { nuevaEtapa: etapaDestino } }) as any;
+      await apiFetch(`/project360-v1/projects/${projectId}/avanzar-etapa`, { method: 'POST', json: { etapaDestino } }) as any;
       setShowAvanzar(false); setEtapaDestino(''); load();
     } catch (e: any) { alert(e.message); }
   };

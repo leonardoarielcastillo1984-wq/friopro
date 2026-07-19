@@ -67,7 +67,7 @@ export default function PipelineTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/pipeline`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/pipeline`) as any;
       setStages(res.pipeline || []);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -82,7 +82,7 @@ export default function PipelineTab({ projectId }: Props) {
 
   const handleAdd = async () => {
     try {
-      await apiFetch(`/project360/projects/${projectId}/pipeline`, {
+      await apiFetch(`/project360-v1/projects/${projectId}/pipeline`, {
         method: 'POST',
         json: {
           stage: newStage.stage,
@@ -104,7 +104,7 @@ export default function PipelineTab({ projectId }: Props) {
   const handleUpdate = async () => {
     if (!editingStage) return;
     try {
-      await apiFetch(`/project360/pipeline/${editingStage.id}`, {
+      await apiFetch(`/project360-v1/pipeline/${editingStage.id}`, {
         method: 'PUT',
         json: {
           probability: editingStage.probability,

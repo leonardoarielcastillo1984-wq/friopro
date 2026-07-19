@@ -85,7 +85,7 @@ export default function BusinessCaseTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/business-case`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/business-case`) as any;
       setBc(res.businessCase);
       if (res.businessCase) setForm(res.businessCase);
     } catch (e) {
@@ -100,7 +100,7 @@ export default function BusinessCaseTab({ projectId }: Props) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/business-case`, {
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/business-case`, {
         method: 'POST',
         json: form,
       }) as any;

@@ -23,8 +23,8 @@ export default function BudgetTab({ projectId }: Props) {
     setLoading(true);
     try {
       const [pRes, bRes] = await Promise.all([
-        apiFetch(`/project360/projects/${projectId}`) as any,
-        apiFetch(`/project360/projects/${projectId}/budget-items`) as any,
+        apiFetch(`/project360-v1/projects/${projectId}`) as any,
+        apiFetch(`/project360-v1/projects/${projectId}/budget-items`) as any,
       ]);
       setProject(pRes.project);
       setBudgetItems(bRes.budgetItems || []);
@@ -40,7 +40,7 @@ export default function BudgetTab({ projectId }: Props) {
       const cantidad = parseFloat(newItem.cantidad || '1');
       const costoUnitario = parseFloat(newItem.costoUnitario || '0');
       const costoTotalEstimado = parseFloat(newItem.costoTotalEstimado || '0');
-      const res = await apiFetch(`/project360/projects/${projectId}/budget-items`, {
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/budget-items`, {
         method: 'POST',
         json: { nombre: newItem.nombre, categoria: newItem.categoria, cantidad, unidadMedida: newItem.unidadMedida, costoUnitario, costoTotalEstimado, moneda: newItem.moneda, descripcion: newItem.descripcion, proveedorNombre: newItem.proveedorNombre, estado: 'PRESUPUESTADO' }
       }) as any;
@@ -52,7 +52,7 @@ export default function BudgetTab({ projectId }: Props) {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Eliminar ítem?')) return;
-    await apiFetch(`/project360/budget-items/${id}`, { method: 'DELETE' });
+    await apiFetch(`/project360-v1/budget-items/${id}`, { method: 'DELETE' });
     setBudgetItems(budgetItems.filter(b => b.id !== id));
   };
 

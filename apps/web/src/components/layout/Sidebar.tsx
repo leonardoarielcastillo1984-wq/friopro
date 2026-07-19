@@ -72,7 +72,7 @@ const mainNav = [
   { label: 'Indicadores', icon: TrendingUp, href: '/indicadores' },
 
   // 7. Proyectos y acciones
-  { label: 'Proyectos', icon: BarChart3, href: '/project360' },
+  { label: 'Proyectos', icon: BarChart3, href: '/proyectos' },
   { label: 'Calendario', icon: CalendarDays, href: '/calendario' },
 
   // 8. Infraestructura
@@ -103,7 +103,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/indicadores': 'BASIC',
   '/cumplimiento': 'PROFESSIONAL',
   '/infraestructura': 'PROFESSIONAL',
-  '/project360': 'PROFESSIONAL',
+  '/proyectos': 'PROFESSIONAL',
   '/capacitaciones': 'PROFESSIONAL',
   '/clientes': 'PROFESSIONAL',
   '/reportes': 'PROFESSIONAL',

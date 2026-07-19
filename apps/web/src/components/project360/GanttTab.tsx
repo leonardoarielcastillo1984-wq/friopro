@@ -55,7 +55,7 @@ export default function GanttTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/tasks?includeAll=true`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/tasks?includeAll=true`) as any;
       const taskMap = new Map<string, Task>();
       const rootTasks: Task[] = [];
       (res.tasks || []).forEach((t: Task) => { taskMap.set(t.id, { ...t, subtasks: [] }); });
@@ -74,11 +74,11 @@ export default function GanttTab({ projectId }: Props) {
   const loadPortfolio = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch('/project360/projects?limit=50') as any;
+      const res = await apiFetch('/project360-v1/projects?limit=50') as any;
       const projects = res.projects || [];
       const enriched = await Promise.all(projects.map(async (p: any) => {
         try {
-          const tRes = await apiFetch(`/project360/projects/${p.id}/tasks?includeAll=true`) as any;
+          const tRes = await apiFetch(`/project360-v1/projects/${p.id}/tasks?includeAll=true`) as any;
           return { ...p, tasks: tRes.tasks || [] };
         } catch { return { ...p, tasks: [] }; }
       }));
@@ -97,7 +97,7 @@ export default function GanttTab({ projectId }: Props) {
   const calculateCriticalPath = useCallback(async () => {
     setCalculating(true);
     try {
-      await apiFetch(`/project360/projects/${projectId}/calculate-critical-path`, { method: 'POST' });
+      await apiFetch(`/project360-v1/projects/${projectId}/calculate-critical-path`, { method: 'POST' });
       load();
     } catch (e: any) { alert(e.message); }
     setCalculating(false);
@@ -170,7 +170,7 @@ export default function GanttTab({ projectId }: Props) {
     e.preventDefault();
     if (!draggingTaskId || draggingTaskId === targetTaskId) { setDraggingTaskId(null); setDragOverTaskId(null); return; }
     try {
-      await apiFetch(`/project360/tasks/${draggingTaskId}/reorder`, {
+      await apiFetch(`/project360-v1/tasks/${draggingTaskId}/reorder`, {
         method: 'PUT',
         json: { targetTaskId }
       });

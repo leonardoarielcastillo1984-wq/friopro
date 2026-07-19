@@ -17,7 +17,7 @@ export default function AnalysisTab({ projectId }: Props) {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/ai-analyses`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/ai-analyses`) as any;
       setAiAnalyses(res.aiAnalyses || []);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -28,7 +28,7 @@ export default function AnalysisTab({ projectId }: Props) {
   const handleCompare = async () => {
     if (!compareWithId || !aiAnalyses[0]) return;
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/ai-analyses/compare`, {
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/ai-analyses/compare`, {
         method: 'POST',
         json: { baseAnalysisId: aiAnalyses[0].id, compareWithId }
       }) as any;

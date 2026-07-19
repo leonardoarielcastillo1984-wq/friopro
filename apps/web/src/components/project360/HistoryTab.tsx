@@ -15,7 +15,7 @@ export default function HistoryTab({ projectId }: Props) {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/history`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/history`) as any;
       setHistory(res.history || []);
     } catch (e) { console.error(e); }
     setLoading(false);

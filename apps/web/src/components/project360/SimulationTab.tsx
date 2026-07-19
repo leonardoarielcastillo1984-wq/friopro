@@ -57,7 +57,7 @@ export default function SimulationTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/simulations`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/simulations`) as any;
       setSims(res.simulations || []);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -68,7 +68,7 @@ export default function SimulationTab({ projectId }: Props) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await apiFetch(`/project360/projects/${projectId}/simulations`, {
+      await apiFetch(`/project360-v1/projects/${projectId}/simulations`, {
         method: 'POST',
         json: {
           ...form,

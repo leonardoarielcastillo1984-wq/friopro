@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle, AlertTriangle, Clock, Copy, History } from 'lucide-react';
+import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle, AlertTriangle, Clock, Copy, History, FileText, Sparkles, Download, TrendingUp, TrendingDown, Minus, Settings, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { t } from '@/lib/dictionary';
+import { generatePDF, exportCSV, exportExcel, criticalityStars } from './partesReport';
 
-type Cycle = { id: string; name: string; year: number; status: string; startDate?: string; endDate?: string };
+type Cycle = { id: string; name: string; year: number; status: string; startDate?: string; endDate?: string; responsible?: string | null };
 type Stakeholder = { id: string; name: string; type: string; category: string; contactName?: string; contactEmail?: string; notes?: string };
 type Evaluation = {
   id: string; stakeholderId: string; cycleId: string;
@@ -13,8 +14,18 @@ type Evaluation = {
   actionItemId?: string | null; influence?: number | null; interest?: number | null; observations?: string | null;
   needs?: string | null; expectations?: string | null; requirements?: string | null;
   reviewFrequency?: string | null; nextEvaluationDate?: string | null; followUpResponsible?: string | null;
+  criticality?: number | null; previousLevel?: number | null; previousCycleName?: string | null;
   stakeholder: Stakeholder;
 };
+
+const CRIT_OPTS = [{ v: 5, l: 'Muy Alta' }, { v: 4, l: 'Alta' }, { v: 3, l: 'Media' }, { v: 2, l: 'Baja' }, { v: 1, l: 'Muy Baja' }];
+// Semáforo por nivel promedio
+function semaphore(n: number) {
+  if (n >= 85) return { dot: 'bg-green-500', text: 'text-green-600', label: 'Óptimo' };
+  if (n >= 65) return { dot: 'bg-yellow-500', text: 'text-yellow-600', label: 'Aceptable' };
+  return { dot: 'bg-red-500', text: 'text-red-600', label: 'Crítico' };
+}
+const barColor = (n: number) => (n >= 85 ? 'bg-green-500' : n >= 65 ? 'bg-yellow-500' : 'bg-red-500');
 
 const dateStr = (d?: string | null) => (d ? new Date(d).toISOString().split('T')[0] : '');
 const daysUntil = (d?: string | null) => (d ? Math.ceil((new Date(d).getTime() - Date.now()) / 86400000) : null);
@@ -40,7 +51,20 @@ export default function PartesContent() {
   const [evals, setEvals] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('ALL');
+  const [quadFilter, setQuadFilter] = useState<string | null>(null);
+  const [stFilter, setStFilter] = useState<{ id: string; name: string } | null>(null);
   const [genAction, setGenAction] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+
+  // IA
+  const [showAI, setShowAI] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiText, setAiText] = useState('');
+
+  // Configuración del ciclo
+  const [showCfg, setShowCfg] = useState(false);
+  const [cfg, setCfg] = useState<any>(null);
+  const [cfgSaving, setCfgSaving] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [editSt, setEditSt] = useState<any>(null);       // campos maestros del stakeholder
@@ -96,15 +120,40 @@ export default function PartesContent() {
       const l = evals.map(e => e.complianceLevel).filter((n): n is number => typeof n === 'number');
       return l.length ? Math.round(l.reduce((a, b) => a + b, 0) / l.length) : 0;
     })(),
+    critical: evals.filter(e => (e.criticality ?? 0) >= 4).length,
+    capasOpen: evals.filter(e => e.actionItemId).length,
+    prevAvg: (() => {
+      const l = evals.map(e => e.previousLevel).filter((n): n is number => typeof n === 'number');
+      return l.length ? Math.round(l.reduce((a, b) => a + b, 0) / l.length) : null;
+    })(),
   };
+  const prevCycleName = evals.find(e => e.previousCycleName)?.previousCycleName || null;
+  const variation = summary.prevAvg !== null ? summary.avgLevel - summary.prevAvg : null;
+  const sem = semaphore(summary.avgLevel);
+  const lastReview = evals.map(e => e.evaluationDate).filter(Boolean).sort().slice(-1)[0] || null;
+  const nextReview = evals.map(e => e.nextEvaluationDate).filter(Boolean).sort()[0] || currentCycle?.endDate || null;
 
   // Matriz poder/interés
   const matrix = { MANAGE: [] as Evaluation[], SATISFY: [] as Evaluation[], INFORM: [] as Evaluation[], MONITOR: [] as Evaluation[] };
   evals.forEach(e => matrix[quadrant(e.influence, e.interest)].push(e));
 
-  const filtered = filter === 'ALL' ? evals
-    : filter === 'PENDING' ? evals.filter(e => !e.complianceStatus || e.complianceStatus === 'PENDING')
-    : evals.filter(e => e.complianceStatus === filter);
+  const matchKpi = (e: Evaluation) => {
+    switch (filter) {
+      case 'ALL': return true;
+      case 'PENDING': return !e.complianceStatus || e.complianceStatus === 'PENDING';
+      case 'OPEN_ACTIONS': return !!e.requiresAction && !e.actionItemId;
+      case 'OVERDUE': return !!e.nextEvaluationDate && new Date(e.nextEvaluationDate).getTime() < now;
+      case 'CRITICAL': return (e.criticality ?? 0) >= 4;
+      default: return e.complianceStatus === filter;
+    }
+  };
+  const filtered = evals.filter(e =>
+    matchKpi(e)
+    && (!quadFilter || quadrant(e.influence, e.interest) === quadFilter)
+    && (!stFilter || e.stakeholderId === stFilter.id)
+  );
+  const hasActiveFilter = filter !== 'ALL' || quadFilter || stFilter;
+  const clearFilters = () => { setFilter('ALL'); setQuadFilter(null); setStFilter(null); };
 
   const statusIcon = (s?: string | null) =>
     s === 'COMPLIES' ? <CheckCircle className="w-4 h-4 text-green-500" />
@@ -116,9 +165,17 @@ export default function PartesContent() {
     if (!d) return <span className="text-xs text-gray-400">—</span>;
     const days = daysUntil(d);
     if (days === null) return <span className="text-xs text-gray-400">—</span>;
-    if (days < 0) return <span className="px-2 py-0.5 text-xs rounded bg-red-100 text-red-700 font-medium">Vencida</span>;
-    if (days <= 30) return <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700 font-medium">En {days}d</span>;
-    return <span className="text-xs text-gray-500">{dateStr(d)}</span>;
+    if (days < 0) return <span className="px-2 py-0.5 text-xs rounded bg-red-100 text-red-700 font-medium">Vencida hace {Math.abs(days)}d</span>;
+    if (days <= 30) return <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700 font-medium">Vence en {days}d</span>;
+    return <span className="px-2 py-0.5 text-xs rounded bg-green-50 text-green-700">{dateStr(d)}</span>;
+  };
+
+  const trendBadge = (cur?: number | null, prev?: number | null) => {
+    if (typeof cur !== 'number' || typeof prev !== 'number') return <span className="text-xs text-gray-300">—</span>;
+    const diff = cur - prev;
+    if (diff > 0) return <span className="inline-flex items-center gap-0.5 text-xs text-green-600 font-medium"><TrendingUp className="w-3.5 h-3.5" />+{diff}%</span>;
+    if (diff < 0) return <span className="inline-flex items-center gap-0.5 text-xs text-red-600 font-medium"><TrendingDown className="w-3.5 h-3.5" />{diff}%</span>;
+    return <span className="inline-flex items-center gap-0.5 text-xs text-gray-500"><Minus className="w-3.5 h-3.5" />0%</span>;
   };
 
   // ── Abrir modal de edición ──
@@ -128,7 +185,7 @@ export default function PartesContent() {
       id: ev.id, complianceStatus: ev.complianceStatus || 'PENDING', complianceLevel: ev.complianceLevel ?? 0,
       evaluationDate: dateStr(ev.evaluationDate), complianceEvidence: ev.complianceEvidence || '',
       indicatorNote: ev.indicatorNote || '', requiresAction: ev.requiresAction || false,
-      influence: ev.influence ?? 3, interest: ev.interest ?? 3, observations: ev.observations || '',
+      influence: ev.influence ?? 3, interest: ev.interest ?? 3, criticality: ev.criticality ?? 3, observations: ev.observations || '',
       needs: ev.needs || '', expectations: ev.expectations || '', requirements: ev.requirements || '',
       reviewFrequency: ev.reviewFrequency || '', nextEvaluationDate: dateStr(ev.nextEvaluationDate),
       followUpResponsible: ev.followUpResponsible || '', actionItemId: ev.actionItemId || null,
@@ -158,7 +215,7 @@ export default function PartesContent() {
         complianceStatus: editEv.complianceStatus, complianceLevel: Number(editEv.complianceLevel),
         evaluationDate: editEv.evaluationDate || null, complianceEvidence: editEv.complianceEvidence || null,
         indicatorNote: editEv.indicatorNote || null, requiresAction: editEv.requiresAction,
-        influence: Number(editEv.influence), interest: Number(editEv.interest), observations: editEv.observations || null,
+        influence: Number(editEv.influence), interest: Number(editEv.interest), criticality: Number(editEv.criticality), observations: editEv.observations || null,
         needs: editEv.needs || null, expectations: editEv.expectations || null, requirements: editEv.requirements || null,
         reviewFrequency: editEv.reviewFrequency || null, nextEvaluationDate: editEv.nextEvaluationDate || null,
         followUpResponsible: editEv.followUpResponsible || null,
@@ -238,99 +295,213 @@ export default function PartesContent() {
     finally { setNcSaving(false); }
   };
 
+  // ── Análisis IA del ciclo ──
+  const runAI = async () => {
+    if (!cycleId) return;
+    setShowAI(true); setAiLoading(true); setAiText('');
+    try {
+      const res = await apiFetch(`/evaluation-cycles/${cycleId}/ai-analysis`, { method: 'POST', json: {} }) as any;
+      setAiText(res?.analysis || 'Sin respuesta del modelo.');
+    } catch (err: any) { setAiText('Error al generar el análisis: ' + (err.message || 'desconocido')); }
+    finally { setAiLoading(false); }
+  };
+
+  // ── Informe PDF ──
+  const doPDF = () => {
+    if (!currentCycle) return;
+    generatePDF({
+      cycle: { name: currentCycle.name, year: currentCycle.year, status: currentCycle.status, responsible: currentCycle.responsible },
+      evals, summary, matrix,
+    });
+  };
+
+  // ── Configuración del ciclo ──
+  const openCfg = () => {
+    if (!currentCycle) return;
+    setCfg({ name: currentCycle.name, status: currentCycle.status, responsible: currentCycle.responsible || '', endDate: dateStr(currentCycle.endDate) });
+    setShowCfg(true);
+  };
+  const saveCfg = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentCycle) return;
+    setCfgSaving(true);
+    try {
+      await apiFetch(`/evaluation-cycles/${currentCycle.id}`, { method: 'PATCH', json: {
+        name: cfg.name, status: cfg.status, responsible: cfg.responsible || null, endDate: cfg.endDate || null,
+      }});
+      setShowCfg(false); await loadCycles();
+    } catch (err: any) { alert('Error: ' + err.message); }
+    finally { setCfgSaving(false); }
+  };
+
+  // Render simple de markdown del informe IA
+  const renderAI = (txt: string) => txt.split('\n').map((line, i) => {
+    if (line.startsWith('## ')) return <h3 key={i} className="text-base font-bold text-blue-700 mt-4 mb-1">{line.slice(3)}</h3>;
+    if (line.startsWith('# ')) return <h2 key={i} className="text-lg font-bold mt-4 mb-1">{line.slice(2)}</h2>;
+    if (/^\s*[-*]\s+/.test(line)) return <li key={i} className="ml-5 list-disc text-sm text-gray-700">{line.replace(/^\s*[-*]\s+/, '').replace(/\*\*/g, '')}</li>;
+    if (!line.trim()) return <div key={i} className="h-2" />;
+    return <p key={i} className="text-sm text-gray-700">{line.replace(/\*\*/g, '')}</p>;
+  });
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {/* FILA 1 — Toolbar */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Partes Interesadas</h1>
           <p className="text-sm text-gray-600">Stakeholders con evaluación de cumplimiento por período</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">Período:</span>
-            <select value={cycleId} onChange={e => setCycleId(e.target.value)} className="px-3 py-2 border rounded-lg text-sm font-medium">
+          {/* Selector con semáforo */}
+          <div className="flex items-center gap-2 bg-white border rounded-lg pl-3 pr-1 py-1">
+            <span className={`inline-block w-2.5 h-2.5 rounded-full ${sem.dot}`} title={sem.label} />
+            <select value={cycleId} onChange={e => setCycleId(e.target.value)} className="text-sm font-medium bg-transparent outline-none py-1">
               {cycles.length === 0 && <option value="">Sin ciclos</option>}
               {cycles.map(c => <option key={c.id} value={c.id}>{c.name} · {t('cycleStatus', c.status)}</option>)}
             </select>
+            <span className={`text-sm font-semibold ${sem.text} pr-1`}>{summary.avgLevel}%</span>
+            <button onClick={openCfg} disabled={!cycleId} title="Configurar ciclo" className="p-1.5 hover:bg-gray-100 rounded-lg disabled:opacity-40"><Settings className="w-4 h-4 text-gray-500" /></button>
           </div>
-          <button onClick={createNext} disabled={busyCycle || !cycleId} className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"><Copy className="w-4 h-4" />Crear ciclo siguiente</button>
-          <button onClick={openNew} disabled={!cycleId} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"><Plus className="w-4 h-4" />Nueva</button>
+          <button onClick={createNext} disabled={busyCycle || !cycleId} className="flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"><Copy className="w-4 h-4" />Ciclo siguiente</button>
+          <button onClick={openNew} disabled={!cycleId} className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"><Plus className="w-4 h-4" />Nueva</button>
+          <button onClick={doPDF} disabled={!cycleId || !evals.length} className="flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"><FileText className="w-4 h-4" />Informe</button>
+          <button onClick={runAI} disabled={!cycleId || !evals.length} className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 text-white rounded-lg text-sm disabled:opacity-50"><Sparkles className="w-4 h-4" />Analizar con IA</button>
+          <div className="relative">
+            <button onClick={() => setExportOpen(o => !o)} disabled={!cycleId || !filtered.length} className="flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"><Download className="w-4 h-4" />Exportar</button>
+            {exportOpen && <div className="absolute right-0 mt-1 w-40 bg-white border rounded-lg shadow-lg z-30 text-sm" onMouseLeave={() => setExportOpen(false)}>
+              <button onClick={() => { doPDF(); setExportOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-gray-50">Exportar PDF</button>
+              <button onClick={() => { exportExcel(filtered, currentCycle?.name || 'ciclo'); setExportOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-gray-50">Exportar Excel</button>
+              <button onClick={() => { exportCSV(filtered, currentCycle?.name || 'ciclo'); setExportOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-gray-50">Exportar CSV</button>
+            </div>}
+          </div>
         </div>
       </div>
 
-      {/* Dashboard del período */}
+      {/* Resumen del ciclo */}
+      {currentCycle && <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs bg-white border rounded-lg px-4 py-2">
+        <span className="text-gray-500">Última revisión: <b className="text-gray-800">{lastReview ? new Date(lastReview).toLocaleDateString('es-AR') : '—'}</b></span>
+        <span className="text-gray-500">Próxima: <b className="text-gray-800">{nextReview ? new Date(nextReview).toLocaleDateString('es-AR') : '—'}</b></span>
+        <span className="text-gray-500">Estado: <b className={currentCycle.status === 'ACTIVE' ? 'text-green-600' : currentCycle.status === 'CLOSED' ? 'text-gray-600' : 'text-amber-600'}>{currentCycle.status === 'ACTIVE' ? 'Vigente' : t('cycleStatus', currentCycle.status)}</b></span>
+        {currentCycle.responsible && <span className="text-gray-500">Responsable: <b className="text-gray-800">{currentCycle.responsible}</b></span>}
+      </div>}
+
+      {/* FILA 2 — Dashboard KPIs interactivos */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 mt-4">
-        {[
-          { l: 'Total', v: summary.total, c: 'text-gray-700' },
-          { l: 'Cumplen', v: summary.complies, c: 'text-green-600' },
-          { l: 'Parciales', v: summary.partial, c: 'text-yellow-600' },
-          { l: 'No cumplen', v: summary.nonCompliant, c: 'text-red-600' },
-          { l: 'Pendientes', v: summary.pending, c: 'text-gray-500' },
-          { l: 'Acciones abiertas', v: summary.openActions, c: 'text-orange-600' },
-          { l: 'Eval. vencidas', v: summary.overdue, c: 'text-red-600' },
-          { l: 'Nivel prom.', v: `${summary.avgLevel}%`, c: 'text-blue-600' },
-        ].map((m, i) => (
-          <div key={i} className="bg-white rounded-lg border p-3 text-center">
+        {([
+          { l: 'Total', v: summary.total, c: 'text-gray-700', f: 'ALL' },
+          { l: 'Cumplen', v: summary.complies, c: 'text-green-600', f: 'COMPLIES' },
+          { l: 'Parciales', v: summary.partial, c: 'text-yellow-600', f: 'PARTIAL' },
+          { l: 'No cumplen', v: summary.nonCompliant, c: 'text-red-600', f: 'NON_COMPLIANT' },
+          { l: 'Pendientes', v: summary.pending, c: 'text-gray-500', f: 'PENDING' },
+          { l: 'Acciones abiertas', v: summary.openActions, c: 'text-orange-600', f: 'OPEN_ACTIONS' },
+          { l: 'Eval. vencidas', v: summary.overdue, c: 'text-red-600', f: 'OVERDUE' },
+          { l: 'Nivel prom.', v: `${summary.avgLevel}%`, c: 'text-blue-600', f: null },
+        ] as const).map((m, i) => (
+          <button key={i} onClick={() => m.f && setFilter(filter === m.f ? 'ALL' : m.f)} disabled={!m.f}
+            className={`bg-white rounded-lg border p-3 text-center transition ${m.f ? 'hover:border-blue-400 cursor-pointer' : 'cursor-default'} ${m.f && filter === m.f ? 'ring-2 ring-blue-500 border-blue-500' : ''}`}>
             <div className={`text-xl font-bold ${m.c}`}>{m.v}</div>
             <div className="text-[11px] text-gray-500 leading-tight mt-0.5">{m.l}</div>
-          </div>
+          </button>
         ))}
       </div>
 
-      {/* Matriz Poder vs Interés */}
-      <div className="grid grid-cols-2 gap-2 mt-4">
+      {/* Indicadores inteligentes */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+        <div className="bg-white rounded-lg border p-3 flex items-center justify-between">
+          <span className="text-xs text-gray-500">Nivel año anterior{prevCycleName ? ` (${prevCycleName})` : ''}</span>
+          <span className="text-base font-bold text-gray-700">{summary.prevAvg !== null ? `${summary.prevAvg}%` : '—'}</span>
+        </div>
+        <div className="bg-white rounded-lg border p-3 flex items-center justify-between">
+          <span className="text-xs text-gray-500">Variación</span>
+          <span className={`text-base font-bold inline-flex items-center gap-1 ${variation === null ? 'text-gray-400' : variation > 0 ? 'text-green-600' : variation < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+            {variation === null ? '—' : <>{variation > 0 ? <TrendingUp className="w-4 h-4" /> : variation < 0 ? <TrendingDown className="w-4 h-4" /> : <Minus className="w-4 h-4" />}{variation > 0 ? '+' : ''}{variation}%</>}
+          </span>
+        </div>
+        <button onClick={() => setFilter(filter === 'CRITICAL' ? 'ALL' : 'CRITICAL')} className={`bg-white rounded-lg border p-3 flex items-center justify-between hover:border-blue-400 ${filter === 'CRITICAL' ? 'ring-2 ring-blue-500 border-blue-500' : ''}`}>
+          <span className="text-xs text-gray-500">Partes críticas</span>
+          <span className="text-base font-bold text-rose-600">{summary.critical}</span>
+        </button>
+        <div className="bg-white rounded-lg border p-3 flex items-center justify-between">
+          <span className="text-xs text-gray-500">CAPAs abiertas</span>
+          <span className="text-base font-bold text-indigo-600">{summary.capasOpen}</span>
+        </div>
+      </div>
+
+      {/* FILA 3 — Matriz Poder vs Interés con chips clicables */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4">
         {(['MANAGE', 'SATISFY', 'INFORM', 'MONITOR'] as const).map(q => (
           <div key={q} className={`rounded-lg border p-3 ${QUAD[q].color}`}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold">{QUAD[q].label}</span>
+            <button onClick={() => setQuadFilter(quadFilter === q ? null : q)} className="w-full flex items-center justify-between mb-1.5">
+              <span className={`text-xs font-semibold ${quadFilter === q ? 'underline' : ''}`}>{QUAD[q].label}</span>
               <span className="text-xs font-bold">{matrix[q].length}</span>
+            </button>
+            <div className="flex flex-wrap gap-1">
+              {matrix[q].length === 0 && <span className="text-[11px] opacity-60">—</span>}
+              {matrix[q].map(e => (
+                <button key={e.id} onClick={() => setStFilter(stFilter?.id === e.stakeholderId ? null : { id: e.stakeholderId, name: e.stakeholder.name })}
+                  className={`px-2 py-0.5 text-[11px] rounded-full border bg-white/70 hover:bg-white ${stFilter?.id === e.stakeholderId ? 'ring-1 ring-blue-500 font-semibold' : ''}`}>
+                  {e.stakeholder.name}
+                </button>
+              ))}
             </div>
-            <div className="text-[11px] mt-1 line-clamp-2 opacity-80">{matrix[q].map(e => e.stakeholder.name).join(', ') || '—'}</div>
           </div>
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border p-3 my-4 flex items-center gap-2">
-        <select value={filter} onChange={e => setFilter(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
-          <option value="ALL">Todos</option>
-          <option value="COMPLIES">Cumple</option>
-          <option value="PARTIAL">Parcial</option>
-          <option value="NON_COMPLIANT">No cumple</option>
-          <option value="PENDING">Pendiente</option>
-        </select>
-        {currentCycle && <span className="text-xs text-gray-400">{currentCycle.name} — {t('cycleStatus', currentCycle.status)}</span>}
+      {/* Filtros activos */}
+      <div className="bg-white rounded-xl border p-3 my-4 flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-gray-500">Filtros:</span>
+        {!hasActiveFilter && <span className="text-xs text-gray-400">ninguno (mostrando todos)</span>}
+        {filter !== 'ALL' && <span className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-50 text-blue-700 border border-blue-200">{({ COMPLIES: 'Cumple', PARTIAL: 'Parcial', NON_COMPLIANT: 'No cumple', PENDING: 'Pendiente', OPEN_ACTIONS: 'Acciones abiertas', OVERDUE: 'Eval. vencidas', CRITICAL: 'Críticas' } as any)[filter] || filter}<button onClick={() => setFilter('ALL')}><X className="w-3 h-3" /></button></span>}
+        {quadFilter && <span className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-50 text-blue-700 border border-blue-200">{QUAD[quadFilter as keyof typeof QUAD].label}<button onClick={() => setQuadFilter(null)}><X className="w-3 h-3" /></button></span>}
+        {stFilter && <span className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-50 text-blue-700 border border-blue-200">{stFilter.name}<button onClick={() => setStFilter(null)}><X className="w-3 h-3" /></button></span>}
+        {hasActiveFilter && <button onClick={clearFilters} className="text-xs text-gray-500 underline ml-1">Quitar todos</button>}
+        <span className="ml-auto text-xs text-gray-400">{filtered.length} de {evals.length}</span>
       </div>
 
       {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> :
       !cycleId ? <div className="text-center py-12 text-gray-500">No hay ciclos de evaluación. Cree el primero.</div> :
-      <div className="bg-white rounded-xl border overflow-hidden">
+      <div className="bg-white rounded-xl border overflow-x-auto">
         <table className="w-full"><thead className="bg-gray-50 border-b"><tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold">Nombre</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold">Tipo</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold">Cat</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold">Estado</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold">Nivel</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold">Próx. eval</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold">Acción?</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold">Ops</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold">Nombre</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold hidden lg:table-cell">Tipo</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold hidden lg:table-cell">Cat</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold">Estado</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold w-40">Nivel</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold">Tend.</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold">Criticidad</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold">Próx. eval</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold">Acción</th>
+          <th className="px-3 py-3 text-left text-xs font-semibold">Ops</th>
         </tr></thead><tbody className="divide-y">
         {filtered.map(ev => (<tr key={ev.id} className="hover:bg-gray-50">
-          <td className="px-4 py-3 text-sm font-medium">{ev.stakeholder.name}</td>
-          <td className="px-4 py-3 text-sm">{t('stakeholderType', ev.stakeholder.type)}</td>
-          <td className="px-4 py-3 text-sm">{t('stakeholderCategory', ev.stakeholder.category)}</td>
-          <td className="px-4 py-3 text-sm"><div className="flex items-center gap-2">{statusIcon(ev.complianceStatus)}{t('complianceStatus', ev.complianceStatus || 'PENDING')}</div></td>
-          <td className="px-4 py-3 text-sm">{typeof ev.complianceLevel === 'number' ? `${ev.complianceLevel}%` : '—'}</td>
-          <td className="px-4 py-3 text-sm">{nextEvalBadge(ev.nextEvaluationDate)}</td>
-          <td className="px-4 py-3 text-sm">{ev.requiresAction ? 'Sí' : 'No'}</td>
-          <td className="px-4 py-3 text-sm"><div className="flex gap-2 items-center">
-            {ev.requiresAction && (ev.actionItemId
-              ? <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded flex items-center gap-1"><CheckCircle className="w-3 h-3 text-green-500" /> Acción</span>
-              : <button onClick={() => generateAction(ev)} disabled={genAction} className="px-2 py-1 text-xs bg-green-600 text-white rounded disabled:opacity-50">Generar Acción</button>)}
+          <td className="px-3 py-3 text-sm font-medium">{ev.stakeholder.name}</td>
+          <td className="px-3 py-3 text-sm hidden lg:table-cell">{t('stakeholderType', ev.stakeholder.type)}</td>
+          <td className="px-3 py-3 text-sm hidden lg:table-cell">{t('stakeholderCategory', ev.stakeholder.category)}</td>
+          <td className="px-3 py-3 text-sm"><div className="flex items-center gap-1.5">{statusIcon(ev.complianceStatus)}<span className="hidden xl:inline">{t('complianceStatus', ev.complianceStatus || 'PENDING')}</span></div></td>
+          <td className="px-3 py-3 text-sm">
+            {typeof ev.complianceLevel === 'number' ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden min-w-[60px]"><div className={`h-full ${barColor(ev.complianceLevel)} rounded-full transition-all`} style={{ width: `${ev.complianceLevel}%` }} /></div>
+                <span className="text-xs font-medium text-gray-700 w-9 text-right">{ev.complianceLevel}%</span>
+              </div>
+            ) : <span className="text-gray-400">—</span>}
+          </td>
+          <td className="px-3 py-3">{trendBadge(ev.complianceLevel, ev.previousLevel)}</td>
+          <td className="px-3 py-3 text-sm"><span className="text-amber-500 tracking-tight" title={ev.criticality ? CRIT_OPTS.find(o => o.v === ev.criticality)?.l : 'Sin definir'}>{ev.criticality ? criticalityStars(ev.criticality) : <span className="text-gray-300">☆☆☆☆☆</span>}</span></td>
+          <td className="px-3 py-3 text-sm">{nextEvalBadge(ev.nextEvaluationDate)}</td>
+          <td className="px-3 py-3 text-sm">
+            {ev.requiresAction ? (ev.actionItemId
+              ? <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded inline-flex items-center gap-1"><CheckCircle className="w-3 h-3 text-green-500" /> CAPA</span>
+              : <button onClick={() => generateAction(ev)} disabled={genAction} className="px-2 py-1 text-xs bg-green-600 text-white rounded disabled:opacity-50">Generar</button>)
+              : <span className="text-gray-400">—</span>}
+          </td>
+          <td className="px-3 py-3 text-sm"><div className="flex gap-1 items-center">
             <button onClick={() => openEdit(ev)} className="p-1 hover:bg-gray-200 rounded"><Edit className="w-4 h-4" /></button>
             <button onClick={() => del(ev)} className="p-1 hover:bg-gray-200 rounded"><Trash2 className="w-4 h-4" /></button>
           </div></td>
         </tr>))}
-        {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400 text-sm">Sin partes interesadas en este período.</td></tr>}
+        {filtered.length === 0 && <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400 text-sm">Sin partes interesadas para los filtros actuales.</td></tr>}
         </tbody></table>
       </div>}
 
@@ -377,10 +548,16 @@ export default function PartesContent() {
               </div>
             </div>
 
-            <div className="border-t pt-4 grid grid-cols-2 gap-4">
+            <div className="border-t pt-4 grid grid-cols-3 gap-4">
               <div><label className="block text-sm font-medium mb-1">Influencia (1-5)</label><input type="number" min="1" max="5" value={editEv.influence} onChange={e => setEditEv({ ...editEv, influence: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
               <div><label className="block text-sm font-medium mb-1">Interés (1-5)</label><input type="number" min="1" max="5" value={editEv.interest} onChange={e => setEditEv({ ...editEv, interest: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-              <div className="col-span-2 text-xs text-gray-500">Clasificación: <b>{QUAD[quadrant(Number(editEv.influence), Number(editEv.interest))].label}</b></div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Criticidad</label>
+                <select value={editEv.criticality} onChange={e => setEditEv({ ...editEv, criticality: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm">
+                  {CRIT_OPTS.map(o => <option key={o.v} value={o.v}>{criticalityStars(o.v)} {o.l}</option>)}
+                </select>
+              </div>
+              <div className="col-span-3 text-xs text-gray-500">Clasificación: <b>{QUAD[quadrant(Number(editEv.influence), Number(editEv.interest))].label}</b> · Criticidad: <b className="text-amber-600">{criticalityStars(Number(editEv.criticality))}</b></div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -462,6 +639,51 @@ export default function PartesContent() {
             <div className="pt-4 border-t flex gap-3">
               <button type="button" onClick={() => setShowNc(false)} className="flex-1 px-4 py-2 border rounded-lg text-sm">Cancelar</button>
               <button type="submit" disabled={ncSaving} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50 text-sm">{ncSaving ? 'Creando...' : 'Crear NC'}</button>
+            </div>
+          </form>
+        </div>
+      </div>}
+
+      {/* Modal Análisis IA */}
+      {showAI && <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+        <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto flex flex-col">
+          <div className="flex justify-between items-center p-6 border-b sticky top-0 bg-white z-10">
+            <div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-violet-600" /><h2 className="text-lg font-semibold">Análisis IA — {currentCycle?.name}</h2></div>
+            <div className="flex items-center gap-2">
+              {!aiLoading && aiText && <button onClick={runAI} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">Regenerar</button>}
+              <button onClick={() => setShowAI(false)} className="p-2 hover:bg-gray-100 rounded-lg"><XCircle className="w-5 h-5" /></button>
+            </div>
+          </div>
+          <div className="p-6">
+            {aiLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+                <Sparkles className="w-8 h-8 text-violet-500 animate-pulse mb-3" />
+                <p className="text-sm">Analizando el ciclo con IA...</p>
+              </div>
+            ) : (
+              <div className="prose prose-sm max-w-none">{renderAI(aiText)}</div>
+            )}
+          </div>
+        </div>
+      </div>}
+
+      {/* Modal Configuración del ciclo */}
+      {showCfg && cfg && <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+        <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col">
+          <div className="flex justify-between items-center p-6 border-b">
+            <div className="flex items-center gap-2"><Settings className="w-5 h-5 text-blue-600" /><h2 className="text-lg font-semibold">Configurar ciclo</h2></div>
+            <button onClick={() => setShowCfg(false)} className="p-2 hover:bg-gray-100 rounded-lg"><XCircle className="w-5 h-5" /></button>
+          </div>
+          <form onSubmit={saveCfg} className="p-6 space-y-4">
+            <div><label className="block text-sm font-medium mb-1">Nombre del ciclo</label><input value={cfg.name} onChange={e => setCfg({ ...cfg, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" required /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium mb-1">Estado</label><select value={cfg.status} onChange={e => setCfg({ ...cfg, status: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm"><option value="ACTIVE">Vigente</option><option value="DRAFT">Borrador</option><option value="CLOSED">Cerrado</option></select></div>
+              <div><label className="block text-sm font-medium mb-1">Fecha de cierre</label><input type="date" value={cfg.endDate} onChange={e => setCfg({ ...cfg, endDate: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+            </div>
+            <div><label className="block text-sm font-medium mb-1">Responsable del ciclo</label><input value={cfg.responsible} onChange={e => setCfg({ ...cfg, responsible: e.target.value })} placeholder="Nombre del responsable" className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+            <div className="pt-4 border-t flex gap-3">
+              <button type="button" onClick={() => setShowCfg(false)} className="flex-1 px-4 py-2 border rounded-lg text-sm">Cancelar</button>
+              <button type="submit" disabled={cfgSaving} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 text-sm">{cfgSaving ? 'Guardando...' : 'Guardar'}</button>
             </div>
           </form>
         </div>

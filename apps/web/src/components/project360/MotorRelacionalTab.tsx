@@ -76,7 +76,7 @@ export default function MotorRelacionalTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setChecking(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/relational-check`) as RelationalCheck;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/relational-check`) as RelationalCheck;
       setCheck(res);
     } catch (e: any) {
       console.error(e);

@@ -109,7 +109,7 @@ export default function ContratosTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/contracts`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/contracts`) as any;
       setContracts(res.contracts || []);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -119,7 +119,7 @@ export default function ContratosTab({ projectId }: Props) {
 
   const handleAdd = async () => {
     try {
-      await apiFetch(`/project360/projects/${projectId}/contracts`, {
+      await apiFetch(`/project360-v1/projects/${projectId}/contracts`, {
         method: 'POST',
         json: {
           ...newContract,
@@ -147,7 +147,7 @@ export default function ContratosTab({ projectId }: Props) {
   const handleAnalyzeIA = async (contractId: string) => {
     setAnalyzing(true);
     try {
-      await apiFetch(`/project360/contracts/${contractId}/analyze`, { method: 'POST' });
+      await apiFetch(`/project360-v1/contracts/${contractId}/analyze`, { method: 'POST' });
       load();
       alert('Análisis IA completado. Revisá las alertas generadas.');
     } catch (e: any) { alert(e.message); }
@@ -158,7 +158,7 @@ export default function ContratosTab({ projectId }: Props) {
     setLoadingAlerts(true);
     setAlertContract(contract);
     try {
-      const res = await apiFetch(`/project360/contracts/${contract.id}/alerts`) as any;
+      const res = await apiFetch(`/project360-v1/contracts/${contract.id}/alerts`) as any;
       setContractAlerts(res.alerts || []);
       setShowAlertsModal(true);
     } catch (e: any) { alert(e.message); }
@@ -180,7 +180,7 @@ export default function ContratosTab({ projectId }: Props) {
 
   const handleUpdateAdvanced = async () => {
     try {
-      await apiFetch(`/project360/contracts/${editContract.id}`, {
+      await apiFetch(`/project360-v1/contracts/${editContract.id}`, {
         method: 'PUT',
         json: {
           slaDescription: editContract.slaDescription || null,
@@ -200,7 +200,7 @@ export default function ContratosTab({ projectId }: Props) {
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar este contrato?')) return;
     try {
-      await apiFetch(`/project360/contracts/${id}`, { method: 'DELETE' });
+      await apiFetch(`/project360-v1/contracts/${id}`, { method: 'DELETE' });
       load();
     } catch (e: any) { alert(e.message); }
   };

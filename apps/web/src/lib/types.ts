@@ -34,6 +34,7 @@ export type DocumentRow = {
   normativeIds?: string[] | null;
   departmentId?: string | null;
   process?: string | null;
+  processes?: { id: string; name: string }[];
   ownerId?: string | null;
   owner?: { id: string; firstName: string; lastName: string; email: string } | null;
   reviewDate?: string | null;

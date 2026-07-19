@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { Compass, Save, Sparkles, Loader2, ArrowRight, X, Target } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import StrategicPanel from './StrategicPanel';
+import StrategicGenerators from './StrategicGenerators';
+import StrategicPriorities from './StrategicPriorities';
 
 interface Context {
   id?: string;
@@ -38,6 +41,7 @@ export default function ContextoPage() {
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [stratRefreshKey, setStratRefreshKey] = useState(0);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [data, setData] = useState<Context>({ year: new Date().getFullYear() });
   const [foda, setFoda] = useState({ s: '', w: '', o: '', t: '' });
@@ -195,8 +199,9 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
         opportunities: textareaToArray(foda.o),
         threats: textareaToArray(foda.t),
       };
-      await apiFetch(`/context/${year}`, { method: 'PUT', body: JSON.stringify(payload) });
+      await apiFetch(`/context/${year}`, { method: 'PUT', json: payload });
       alert('Contexto guardado');
+      setStratRefreshKey((k) => k + 1);
       await load();
     } catch (err: any) {
       alert(err?.message || 'Error al guardar');
@@ -235,6 +240,9 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
           <div className="bg-white border rounded-xl p-12 text-center text-gray-500">Cargando...</div>
         ) : (
           <>
+            {/* Fase 1 — Centro Estratégico (aditivo) */}
+            <StrategicPanel year={year} refreshKey={stratRefreshKey} />
+
             {/* Identidad */}
             <section className="bg-white border border-gray-200 rounded-xl p-6">
               <h2 className="text-lg font-semibold mb-4">Identidad</h2>
@@ -356,6 +364,22 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                 ))}
               </div>
             </section>
+
+            {/* Fase 5 — Prioridad estratégica por ítem FODA */}
+            <StrategicPriorities
+              year={year}
+              foda={foda}
+              onFodaChange={(q, text) => setFoda((prev) => ({ ...prev, [q]: text }))}
+              onSaved={() => setStratRefreshKey((k) => k + 1)}
+            />
+
+            {/* Fase 2 — Generadores estratégicos con trazabilidad */}
+            <StrategicGenerators
+              year={year}
+              foda={foda}
+              dafo={{ fo: data.dafoFo, fa: data.dafoFa, do: data.dafoDo, da: data.dafoDa }}
+              pestel={{ political: data.political, economic: data.economic, social: data.social, technological: data.technological, environmental: data.environmental, legal: data.legal }}
+            />
 
             {/* Botón enviar a acciones */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between gap-4">

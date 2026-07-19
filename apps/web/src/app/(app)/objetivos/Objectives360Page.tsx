@@ -39,9 +39,75 @@ import {
   AlertCircle,
   Layers,
   ArrowRight,
+  GitBranch,
+  Link2,
+  Gauge,
+  History,
+  ListChecks,
+  UserCog,
 } from 'lucide-react';
 
 /* ─── Types ─── */
+interface ProcessOption {
+  id: string;
+  name: string;
+  code?: string;
+  layer: string;
+}
+
+interface KpiOption {
+  id: string;
+  code: string;
+  name: string;
+  unit?: string;
+  currentValue?: number | null;
+  targetValue?: number | null;
+  direction?: string;
+  frequency?: string;
+  category?: string;
+}
+
+interface PositionOption {
+  id: string;
+  name: string;
+  code?: string;
+}
+
+interface ObjectiveProgressLogEntry {
+  id: string;
+  userName?: string | null;
+  previousProgress?: number | null;
+  newProgress?: number | null;
+  previousStatus?: string | null;
+  newStatus?: string | null;
+  kpiValue?: number | null;
+  justification?: string | null;
+  source: string;
+  evidenceUrl?: string | null;
+  evidenceName?: string | null;
+  createdAt: string;
+}
+
+interface ObjectiveAssessment {
+  progressMethod: string;
+  actualProgress: number;
+  expectedProgress: number | null;
+  deviation: number | null;
+  riskLevel: 'NORMAL' | 'ATTENTION' | 'AT_RISK';
+  computedStatus: string;
+  isAtRisk: boolean;
+  isDelayed: boolean;
+  reason: string;
+  kpi?: {
+    value: number | null;
+    target: number | null;
+    baseline: number | null;
+    unit: string | null;
+    direction: string | null;
+    frequency: string | null;
+  } | null;
+}
+
 interface Objective {
   id: string;
   code: string;
@@ -79,6 +145,24 @@ interface Objective {
   audits?: ObjectiveAudit[];
   capas?: ObjectiveCAPA[];
   risks?: ObjectiveRisk[];
+  // Trazabilidad estratégica
+  originType?: string;
+  originId?: string;
+  strategicPriority?: string;
+  strategicWeight?: number;
+  contextYear?: number;
+  // Gestión y medición avanzada
+  primaryIndicatorId?: string;
+  primaryIndicator?: KpiOption | null;
+  baselineValue?: number;
+  progressMethod?: string;
+  lastProgressNote?: string;
+  responsiblePositionId?: string;
+  responsiblePosition?: PositionOption | null;
+  involvedProcessIds?: string[];
+  policyIds?: string[];
+  progressLogs?: ObjectiveProgressLogEntry[];
+  _assessment?: ObjectiveAssessment;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,6 +225,8 @@ interface FilterState {
   status: string;
   policyId: string;
   processId: string;
+  originType: string;
+  standard: string;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -165,6 +251,53 @@ const ACTIVITY_STATUS_LABELS: Record<string, string> = {
   COMPLETED: 'Completada',
 };
 
+const ORIGIN_TYPE_LABELS: Record<string, string> = {
+  MANUAL: 'Manual',
+  FO: 'Estrategia FO',
+  FA: 'Estrategia FA',
+  DO: 'Estrategia DO',
+  DA: 'Estrategia DA',
+  RISK: 'Riesgo',
+  AUDIT: 'Hallazgo de Auditoría',
+  REVIEW: 'Revisión por la Dirección',
+  STAKEHOLDER: 'Parte Interesada',
+  FODA: 'Contexto / FODA',
+  PESTEL: 'PESTEL',
+};
+
+const ORIGIN_TYPE_COLORS: Record<string, string> = {
+  FO: 'bg-green-100 text-green-800',
+  FA: 'bg-blue-100 text-blue-800',
+  DO: 'bg-amber-100 text-amber-800',
+  DA: 'bg-red-100 text-red-800',
+  RISK: 'bg-rose-100 text-rose-700',
+  AUDIT: 'bg-purple-100 text-purple-800',
+  REVIEW: 'bg-indigo-100 text-indigo-800',
+  STAKEHOLDER: 'bg-teal-100 text-teal-800',
+  FODA: 'bg-emerald-100 text-emerald-800',
+  PESTEL: 'bg-cyan-100 text-cyan-800',
+  MANUAL: 'bg-gray-100 text-gray-600',
+};
+
+const PROGRESS_METHOD_LABELS: Record<string, string> = {
+  MANUAL: 'Manual',
+  KPI: 'Automático por KPI',
+  ACTIONS: 'Automático por acciones/hitos',
+};
+
+const RISK_LEVEL_CONFIG: Record<string, { label: string; color: string }> = {
+  NORMAL: { label: 'Normal', color: 'bg-green-100 text-green-800 border-green-300' },
+  ATTENTION: { label: 'Atención', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+  AT_RISK: { label: 'En riesgo', color: 'bg-red-100 text-red-800 border-red-300' },
+};
+
+const PROGRESS_SOURCE_LABELS: Record<string, string> = {
+  MANUAL: 'Manual',
+  KPI: 'KPI',
+  ACTIONS: 'Acciones/Hitos',
+  SYSTEM: 'Sistema',
+};
+
 /* ─── Component ─── */
 export default function Objectives360Page() {
   const currentYear = new Date().getFullYear();
@@ -180,7 +313,13 @@ export default function Objectives360Page() {
     status: '',
     policyId: '',
     processId: '',
+    originType: '',
+    standard: '',
   });
+  const [processes, setProcesses] = useState<ProcessOption[]>([]);
+  const [contextStrategies, setContextStrategies] = useState<{id: string; label: string}[]>([]);
+  const [kpis, setKpis] = useState<KpiOption[]>([]);
+  const [positions, setPositions] = useState<PositionOption[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingObjective, setEditingObjective] = useState<Objective | null>(null);
@@ -230,11 +369,83 @@ export default function Objectives360Page() {
     }
   }, [filters.year]);
 
+  const loadProcesses = useCallback(async () => {
+    try {
+      const res = await apiFetch('/objectives/processes') as ProcessOption[];
+      setProcesses(Array.isArray(res) ? res : []);
+    } catch { setProcesses([]); }
+  }, []);
+
+  const loadKpis = useCallback(async () => {
+    try {
+      const res = await apiFetch('/objectives/kpis') as KpiOption[];
+      setKpis(Array.isArray(res) ? res : []);
+    } catch { setKpis([]); }
+  }, []);
+
+  const loadPositions = useCallback(async () => {
+    try {
+      const res = await apiFetch('/objectives/positions') as PositionOption[];
+      setPositions(Array.isArray(res) ? res : []);
+    } catch { setPositions([]); }
+  }, []);
+
+  const loadContextStrategies = async (originType: string, year: number) => {
+    const DAFO_TYPES = ['FO', 'FA', 'DO', 'DA'];
+    if (!DAFO_TYPES.includes(originType)) { setContextStrategies([]); return; }
+    try {
+      const keyMap: Record<string, string> = { FO: 'dafoFo', FA: 'dafoFa', DO: 'dafoDo', DA: 'dafoDa' };
+      const res = await apiFetch<{ item: any }>(`/context/${year}`);
+      const text: string = res?.item?.[keyMap[originType]] || '';
+      const lines = text.split('\n').map((s: string) => s.trim()).filter(Boolean);
+      setContextStrategies(lines.map((l: string, i: number) => ({
+        id: `${originType}-${i + 1}`,
+        label: `${originType}-${i + 1} — ${l.length > 60 ? l.slice(0, 60) + '…' : l}`,
+      })));
+    } catch { setContextStrategies([]); }
+  };
+
   useEffect(() => {
     loadObjectives();
     loadPolicies();
     loadStats();
-  }, [loadObjectives, loadPolicies, loadStats]);
+    loadProcesses();
+    loadKpis();
+    loadPositions();
+  }, [loadObjectives, loadPolicies, loadStats, loadProcesses, loadKpis, loadPositions]);
+
+  // URL params pre-fill desde módulo Contexto
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const originType = params.get('originType');
+    const originId = params.get('originId');
+    const ctxYear = params.get('contextYear');
+    if (originType || params.get('openForm') === 'true') {
+      setEditingObjective(null);
+      setFormData((d) => ({
+        ...d,
+        code: '',
+        title: '',
+        description: '',
+        year: currentYear,
+        standard: 'ISO 9001',
+        target: '',
+        type: 'STRATEGIC',
+        sites: [],
+        status: 'PLANNED',
+        progress: 0,
+        originType: originType || 'FO',
+        originId: originId || '',
+        contextYear: ctxYear ? Number(ctxYear) : currentYear,
+      }));
+      if (originType && ['FO','FA','DO','DA'].includes(originType)) {
+        loadContextStrategies(originType, ctxYear ? Number(ctxYear) : currentYear);
+      }
+      setShowForm(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Actions */
   const handleCreate = () => {
@@ -257,6 +468,15 @@ export default function Objectives360Page() {
       notes: '',
       policyId: '',
       processId: '',
+      originType: 'MANUAL',
+      originId: '',
+      contextYear: currentYear,
+      primaryIndicatorId: '',
+      baselineValue: undefined,
+      progressMethod: 'MANUAL',
+      responsiblePositionId: '',
+      involvedProcessIds: [],
+      policyIds: [],
     });
     setShowForm(true);
   };
@@ -285,6 +505,10 @@ export default function Objectives360Page() {
       delete payload.risks;
       delete payload.createdAt;
       delete payload.updatedAt;
+      delete payload.primaryIndicator;
+      delete payload.responsiblePosition;
+      delete payload.progressLogs;
+      delete payload._assessment;
       // Normalize empty strings to undefined for optional nullable fields
       const normalize = (val: any) => (val === '' || val === null ? undefined : val);
       payload.description = normalize(payload.description);
@@ -299,6 +523,19 @@ export default function Objectives360Page() {
       payload.indicatorId = normalize(payload.indicatorId);
       payload.policyId = normalize(payload.policyId);
       payload.processId = normalize(payload.processId);
+      payload.originType = normalize(payload.originType);
+      payload.originId = normalize(payload.originId);
+      payload.strategicPriority = normalize(payload.strategicPriority);
+      payload.strategicWeight = payload.strategicWeight !== undefined && payload.strategicWeight !== '' ? Number(payload.strategicWeight) : undefined;
+      payload.contextYear = payload.contextYear ? Number(payload.contextYear) : undefined;
+      // Gestión y medición avanzada
+      payload.primaryIndicatorId = normalize(payload.primaryIndicatorId);
+      payload.responsiblePositionId = normalize(payload.responsiblePositionId);
+      payload.progressMethod = normalize(payload.progressMethod) || 'MANUAL';
+      payload.lastProgressNote = normalize(payload.lastProgressNote);
+      payload.baselineValue = payload.baselineValue !== undefined && payload.baselineValue !== '' ? Number(payload.baselineValue) : undefined;
+      payload.involvedProcessIds = Array.isArray(payload.involvedProcessIds) ? payload.involvedProcessIds : [];
+      payload.policyIds = Array.isArray(payload.policyIds) ? payload.policyIds : [];
       // Convert numeric fields from strings to numbers for Zod schema
       payload.year = payload.year ? Number(payload.year) : undefined;
       payload.targetValue = payload.targetValue !== '' && payload.targetValue !== undefined ? Number(payload.targetValue) : undefined;
@@ -376,6 +613,7 @@ export default function Objectives360Page() {
     if (!stats) return null;
     const cards = [
       { label: 'Total objetivos', value: stats.total, icon: Target, color: 'text-blue-600' },
+      { label: 'Planificados', value: stats.planned ?? 0, icon: Calendar, color: 'text-slate-600' },
       { label: 'En curso', value: stats.inProgress, icon: Activity, color: 'text-amber-600' },
       { label: 'Cumplidos', value: stats.achieved, icon: CheckCircle2, color: 'text-green-600' },
       { label: 'En riesgo', value: stats.atRisk, icon: AlertTriangle, color: 'text-red-600' },
@@ -383,7 +621,7 @@ export default function Objectives360Page() {
       { label: 'Progreso promedio', value: `${stats?.averageProgress ?? 0}%`, icon: TrendingUp, color: 'text-purple-600' },
     ];
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
         {cards.map((c) => (
           <Card key={c.label}>
             <CardContent className="p-4 flex items-center gap-3">
@@ -438,8 +676,29 @@ export default function Objectives360Page() {
           <option key={p.id} value={p.id}>{p.name}</option>
         ))}
       </select>
+      <select
+        className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+        value={filters.standard}
+        onChange={(e) => setFilters((f) => ({ ...f, standard: e.target.value }))}
+      >
+        <option value="">Todas las normas</option>
+        <option value="ISO 9001">ISO 9001</option>
+        <option value="ISO 14001">ISO 14001</option>
+        <option value="ISO 45001">ISO 45001</option>
+        <option value="MULTIPLE">Múltiple</option>
+      </select>
+      <select
+        className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+        value={filters.originType}
+        onChange={(e) => setFilters((f) => ({ ...f, originType: e.target.value }))}
+      >
+        <option value="">Todos los orígenes</option>
+        {Object.entries(ORIGIN_TYPE_LABELS).map(([k, v]) => (
+          <option key={k} value={k}>{v}</option>
+        ))}
+      </select>
       <Button variant="outline" onClick={() => {
-        setFilters({ search: '', year: String(currentYear), status: '', policyId: '', processId: '' });
+        setFilters({ search: '', year: String(currentYear), status: '', policyId: '', processId: '', originType: '', standard: '' });
       }}>
         <X className="w-4 h-4 mr-1" /> Limpiar
       </Button>
@@ -457,6 +716,7 @@ export default function Objectives360Page() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Objetivo</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Política</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Proceso</th>
+              <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-muted-foreground">Origen</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Meta</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Progreso</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Estado</th>
@@ -474,6 +734,14 @@ export default function Objectives360Page() {
                 </td>
                 <td className="px-4 py-3">{obj.policy?.name || '—'}</td>
                 <td className="px-4 py-3">{obj.process?.name || '—'}</td>
+                <td className="hidden md:table-cell px-4 py-3">
+                  {obj.originType && obj.originType !== 'MANUAL' ? (
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${ORIGIN_TYPE_COLORS[obj.originType] || 'bg-gray-100 text-gray-600'}`}>
+                      {ORIGIN_TYPE_LABELS[obj.originType] || obj.originType}
+                      {obj.originId ? ` — ${obj.originId}` : ''}
+                    </span>
+                  ) : <span className="text-xs text-muted-foreground">—</span>}
+                </td>
                 <td className="px-4 py-3">
                   {obj.target} {obj.targetValue ? `(${obj.targetValue}${obj.unit || ''})` : ''}
                 </td>
@@ -515,6 +783,7 @@ export default function Objectives360Page() {
   const FormDialog = () => {
     if (!showForm) return null;
     const update = (key: string, val: any) => setFormData((d) => ({ ...d, [key]: val }));
+    const selectedKpi = kpis.find((k) => k.id === formData.primaryIndicatorId);
     return (
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -619,7 +888,7 @@ export default function Objectives360Page() {
                 </div>
                 {policies.length > 0 && (
                   <div className="space-y-2 md:col-span-2">
-                    <Label>Política SGI</Label>
+                    <Label>Política SGI (principal)</Label>
                     <select
                       className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                       value={formData.policyId || ''}
@@ -630,6 +899,29 @@ export default function Objectives360Page() {
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
                     </select>
+                  </div>
+                )}
+                {policies.length > 0 && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label className="flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Políticas vinculadas (múltiples)</Label>
+                    <div className="max-h-32 overflow-y-auto rounded-md border p-2 space-y-1">
+                      {policies.map((p) => {
+                        const checked = (formData.policyIds || []).includes(p.id);
+                        return (
+                          <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                const cur = formData.policyIds || [];
+                                update('policyIds', e.target.checked ? [...cur, p.id] : cur.filter((x) => x !== p.id));
+                              }}
+                            />
+                            {p.name}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
                 <div className="space-y-2 md:col-span-2">
@@ -649,31 +941,179 @@ export default function Objectives360Page() {
                   <Input type="number" min={0} max={100} value={formData.progress || 0} onChange={(e) => update('progress', Number(e.target.value))} />
                 </div>
               </div>
+
+              {/* Origen Estratégico */}
+              <div className="border rounded-lg p-4 space-y-3 bg-slate-50">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <GitBranch className="w-4 h-4 text-blue-600" />
+                  Origen Estratégico
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Tipo de origen</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      value={formData.originType || 'MANUAL'}
+                      onChange={(e) => {
+                        update('originType', e.target.value);
+                        update('originId', '');
+                        if (['FO','FA','DO','DA'].includes(e.target.value)) {
+                          loadContextStrategies(e.target.value, formData.contextYear || currentYear);
+                        } else { setContextStrategies([]); }
+                      }}
+                    >
+                      {Object.entries(ORIGIN_TYPE_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Año de contexto</Label>
+                    <Input
+                      type="number"
+                      value={formData.contextYear || currentYear}
+                      onChange={(e) => {
+                        const y = Number(e.target.value);
+                        update('contextYear', y);
+                        if (['FO','FA','DO','DA'].includes(formData.originType || '')) {
+                          loadContextStrategies(formData.originType!, y);
+                        }
+                      }}
+                    />
+                  </div>
+                  {['FO','FA','DO','DA'].includes(formData.originType || '') && (
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Estrategia DAFO</Label>
+                      <select
+                        className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                        value={formData.originId || ''}
+                        onChange={(e) => update('originId', e.target.value)}
+                      >
+                        <option value="">— Seleccionar estrategia —</option>
+                        {contextStrategies.map((s) => (
+                          <option key={s.id} value={s.id}>{s.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {!['FO','FA','DO','DA'].includes(formData.originType || '') && formData.originType !== 'MANUAL' && (
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Referencia de origen</Label>
+                      <Input
+                        value={formData.originId || ''}
+                        onChange={(e) => update('originId', e.target.value)}
+                        placeholder="Código o referencia..."
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
             </TabsContent>
             <TabsContent value="indicators" className="space-y-4 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Nombre del KPI</Label>
-                  <Input value={formData.kpiName || ''} onChange={(e) => update('kpiName', e.target.value)} />
+                  <Label className="flex items-center gap-2"><Link2 className="w-4 h-4" /> Indicador / KPI vinculado</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.primaryIndicatorId || ''}
+                    onChange={(e) => update('primaryIndicatorId', e.target.value || undefined)}
+                  >
+                    <option value="">— Sin KPI vinculado —</option>
+                    {kpis.map((k) => (
+                      <option key={k.id} value={k.id}>{k.code ? `[${k.code}] ` : ''}{k.name}{k.unit ? ` (${k.unit})` : ''}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">La fuente de verdad de la medición es el indicador del módulo Indicadores.</p>
+                </div>
+                {selectedKpi && (
+                  <div className="md:col-span-2 rounded-lg border bg-slate-50 p-3 text-sm grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div><span className="text-muted-foreground">Valor actual:</span> <b>{selectedKpi.currentValue ?? '—'}{selectedKpi.unit || ''}</b></div>
+                    <div><span className="text-muted-foreground">Meta KPI:</span> <b>{selectedKpi.targetValue ?? '—'}{selectedKpi.unit || ''}</b></div>
+                    <div><span className="text-muted-foreground">Sentido:</span> <b>{selectedKpi.direction === 'LOWER_BETTER' ? 'Menor es mejor' : 'Mayor es mejor'}</b></div>
+                    <div><span className="text-muted-foreground">Frecuencia:</span> <b>{selectedKpi.frequency || '—'}</b></div>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Línea base (valor inicial)</Label>
+                  <Input type="number" value={formData.baselineValue ?? ''} onChange={(e) => update('baselineValue', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Ej: 80" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Meta del KPI</Label>
-                  <Input type="number" value={formData.kpiTarget || ''} onChange={(e) => update('kpiTarget', Number(e.target.value))} />
+                  <Label className="flex items-center gap-2"><Gauge className="w-4 h-4" /> Método de cálculo del progreso</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.progressMethod || 'MANUAL'}
+                    onChange={(e) => update('progressMethod', e.target.value)}
+                  >
+                    {Object.entries(PROGRESS_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Unidad del KPI</Label>
-                  <Input value={formData.kpiUnit || ''} onChange={(e) => update('kpiUnit', e.target.value)} />
-                </div>
+                {formData.progressMethod === 'MANUAL' && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Justificación del avance (obligatoria en modo manual)</Label>
+                    <Input value={formData.lastProgressNote || ''} onChange={(e) => update('lastProgressNote', e.target.value)} placeholder="Fundamento del % de avance..." />
+                  </div>
+                )}
+                {formData.progressMethod === 'KPI' && !formData.primaryIndicatorId && (
+                  <p className="md:col-span-2 text-xs text-amber-600">Seleccioná un KPI para calcular el progreso automáticamente.</p>
+                )}
+                {formData.progressMethod === 'ACTIONS' && (
+                  <p className="md:col-span-2 text-xs text-muted-foreground">El progreso se calculará según las actividades/hitos completados del objetivo.</p>
+                )}
               </div>
             </TabsContent>
             <TabsContent value="owner" className="space-y-4 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Proceso</Label>
-                  <Input value={formData.processId || ''} onChange={(e) => update('processId', e.target.value)} placeholder="ID del proceso" />
+                  <Label>Proceso responsable</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.processId || ''}
+                    onChange={(e) => update('processId', e.target.value || undefined)}
+                  >
+                    <option value="">— Sin proceso —</option>
+                    {processes.map((p) => (
+                      <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ''}{p.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Responsable</Label>
+                  <Label className="flex items-center gap-2"><Layers className="w-4 h-4" /> Procesos involucrados</Label>
+                  <div className="max-h-40 overflow-y-auto rounded-md border p-2 space-y-1">
+                    {processes.length === 0 && <p className="text-xs text-muted-foreground">No hay procesos en el Mapa de Procesos.</p>}
+                    {processes.map((p) => {
+                      const checked = (formData.involvedProcessIds || []).includes(p.id);
+                      return (
+                        <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const cur = formData.involvedProcessIds || [];
+                              update('involvedProcessIds', e.target.checked ? [...cur, p.id] : cur.filter((x) => x !== p.id));
+                            }}
+                          />
+                          {p.code ? `[${p.code}] ` : ''}{p.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="flex items-center gap-2"><UserCog className="w-4 h-4" /> Responsable funcional (puesto/rol)</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={formData.responsiblePositionId || ''}
+                    onChange={(e) => update('responsiblePositionId', e.target.value || undefined)}
+                  >
+                    <option value="">— Sin responsable funcional —</option>
+                    {positions.map((p) => (
+                      <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ''}{p.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">El objetivo conserva el responsable funcional aunque el usuario asignado cambie.</p>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Usuario asignado</Label>
                   <EmployeeCombobox
                     value={formData.owner || ''}
                     onChange={id => update('owner', id)}
@@ -733,10 +1173,11 @@ export default function Objectives360Page() {
             </DialogTitle>
           </DialogHeader>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid grid-cols-4 w-full">
+            <TabsList className="grid grid-cols-5 w-full">
               <TabsTrigger value="info">Información</TabsTrigger>
               <TabsTrigger value="activities">Actividades ({obj.activities?.length ?? 0})</TabsTrigger>
               <TabsTrigger value="indicators">Indicadores ({obj.indicators?.length ?? 0})</TabsTrigger>
+              <TabsTrigger value="history">Seguimiento ({obj.progressLogs?.length ?? 0})</TabsTrigger>
               <TabsTrigger value="links">Vínculos</TabsTrigger>
             </TabsList>
             <TabsContent value="info" className="space-y-4 py-4">
@@ -750,8 +1191,62 @@ export default function Objectives360Page() {
                 <div><span className="font-medium">Inicio:</span> {obj.startDate ? new Date(obj.startDate).toLocaleDateString() : '—'}</div>
                 <div><span className="font-medium">Fin:</span> {obj.endDate ? new Date(obj.endDate).toLocaleDateString() : '—'}</div>
                 <div><span className="font-medium">Política:</span> {obj.policy?.name || '—'}</div>
-                <div><span className="font-medium">Proceso:</span> {obj.process?.name || '—'}</div>
+                <div><span className="font-medium">Proceso responsable:</span> {obj.process?.name || '—'}</div>
+                <div><span className="font-medium">Responsable funcional:</span> {obj.responsiblePosition?.name || '—'}</div>
+                <div><span className="font-medium">Método de progreso:</span> {PROGRESS_METHOD_LABELS[obj.progressMethod || 'MANUAL']}</div>
               </div>
+              {obj.involvedProcessIds && obj.involvedProcessIds.length > 0 && (
+                <div className="text-sm">
+                  <span className="font-medium">Procesos involucrados:</span>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {obj.involvedProcessIds.map((pid) => {
+                      const p = processes.find((x) => x.id === pid);
+                      return <span key={pid} className="px-2 py-0.5 rounded bg-gray-100 text-xs">{p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : pid.slice(0, 8)}</span>;
+                    })}
+                  </div>
+                </div>
+              )}
+              {obj.originType && obj.originType !== 'MANUAL' && (
+                <div className="border rounded-lg p-4 bg-blue-50 space-y-1">
+                  <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+                    <GitBranch className="w-4 h-4" /> Trazabilidad Estratégica
+                  </h4>
+                  <div className="mt-2 flex flex-col gap-0.5 text-sm text-blue-700">
+                    {obj.contextYear && (
+                      <><span className="text-xs text-blue-500">Contexto SGI {obj.contextYear}</span><span className="text-xs text-blue-400">↓</span></>
+                    )}
+                    <span className="font-medium">{ORIGIN_TYPE_LABELS[obj.originType] || obj.originType}</span>
+                    {obj.originId && (
+                      <><span className="text-xs text-blue-400">↓</span><span>{obj.originId}</span></>
+                    )}
+                    <span className="text-xs text-blue-400">↓</span>
+                    <span className="font-medium">Objetivo: {obj.title}</span>
+                  </div>
+                </div>
+              )}
+              {obj._assessment?.kpi && (
+                <div className="border rounded-lg p-4 bg-indigo-50 space-y-2">
+                  <h4 className="text-sm font-semibold text-indigo-800 flex items-center gap-2"><Link2 className="w-4 h-4" /> Indicador / KPI vinculado</h4>
+                  <p className="text-sm font-medium">{obj.primaryIndicator?.name || '—'} {obj.primaryIndicator?.code ? `(${obj.primaryIndicator.code})` : ''}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                    <div><span className="text-muted-foreground">Línea base:</span> <b>{obj._assessment.kpi.baseline ?? '—'}</b></div>
+                    <div><span className="text-muted-foreground">Valor actual:</span> <b>{obj._assessment.kpi.value ?? '—'}{obj._assessment.kpi.unit || ''}</b></div>
+                    <div><span className="text-muted-foreground">Meta:</span> <b>{obj._assessment.kpi.target ?? '—'}{obj._assessment.kpi.unit || ''}</b></div>
+                    <div><span className="text-muted-foreground">Frecuencia:</span> <b>{obj._assessment.kpi.frequency || '—'}</b></div>
+                  </div>
+                </div>
+              )}
+              {obj._assessment && (obj._assessment.riskLevel !== 'NORMAL' || obj._assessment.isDelayed) && (
+                <div className={`border rounded-lg p-4 space-y-2 ${obj._assessment.isDelayed ? 'bg-orange-50 border-orange-300' : (RISK_LEVEL_CONFIG[obj._assessment.riskLevel]?.color || '')}`}>
+                  <h4 className="text-sm font-semibold flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {obj._assessment.isDelayed ? 'Objetivo retrasado' : `Estado de riesgo: ${RISK_LEVEL_CONFIG[obj._assessment.riskLevel]?.label}`}</h4>
+                  <p className="text-sm">{obj._assessment.reason}</p>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div><span className="text-muted-foreground">Real:</span> <b>{obj._assessment.actualProgress}%</b></div>
+                    <div><span className="text-muted-foreground">Esperado:</span> <b>{obj._assessment.expectedProgress ?? '—'}%</b></div>
+                    <div><span className="text-muted-foreground">Desviación:</span> <b>{obj._assessment.deviation !== null && obj._assessment.deviation !== undefined ? `${obj._assessment.deviation > 0 ? '+' : ''}${obj._assessment.deviation} pp` : '—'}</b></div>
+                  </div>
+                </div>
+              )}
               {obj.description && (
                 <div className="text-sm">
                   <span className="font-medium">Descripción:</span>
@@ -802,6 +1297,41 @@ export default function Objectives360Page() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-8">Sin indicadores vinculados</p>
+              )}
+            </TabsContent>
+            <TabsContent value="history" className="py-4">
+              {(obj.progressLogs && obj.progressLogs.length > 0) ? (
+                <div className="space-y-3">
+                  {obj.progressLogs.map((log) => (
+                    <div key={log.id} className="flex gap-3 text-sm">
+                      <div className="flex flex-col items-center">
+                        <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5" />
+                        <div className="flex-1 w-px bg-gray-200" />
+                      </div>
+                      <div className="flex-1 border rounded-lg p-3 bg-white">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">
+                            {log.previousProgress !== null && log.previousProgress !== undefined ? `${log.previousProgress}% → ` : ''}{log.newProgress ?? '—'}%
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-xs bg-gray-100">{PROGRESS_SOURCE_LABELS[log.source] || log.source}</span>
+                        </div>
+                        {(log.previousStatus || log.newStatus) && log.previousStatus !== log.newStatus && (
+                          <p className="text-xs text-muted-foreground mt-1">Estado: {STATUS_LABELS[log.previousStatus || ''] || log.previousStatus || '—'} → {STATUS_LABELS[log.newStatus || ''] || log.newStatus || '—'}</p>
+                        )}
+                        {log.kpiValue !== null && log.kpiValue !== undefined && (
+                          <p className="text-xs text-muted-foreground mt-1">Valor KPI: {log.kpiValue}</p>
+                        )}
+                        {log.justification && <p className="text-xs mt-1">{log.justification}</p>}
+                        {log.evidenceUrl && (
+                          <a href={log.evidenceUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline mt-1 inline-block">{log.evidenceName || 'Ver evidencia'}</a>
+                        )}
+                        <p className="text-[11px] text-muted-foreground mt-1">{log.userName || 'Sistema'} · {new Date(log.createdAt).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">Sin historial de seguimiento</p>
               )}
             </TabsContent>
             <TabsContent value="links" className="py-4">

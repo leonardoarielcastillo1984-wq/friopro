@@ -58,7 +58,7 @@ export default function PropuestasTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/proposals`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/proposals`) as any;
       setProposals(res.proposals || []);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -69,7 +69,7 @@ export default function PropuestasTab({ projectId }: Props) {
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      await apiFetch(`/project360/projects/${projectId}/proposals`, {
+      await apiFetch(`/project360-v1/projects/${projectId}/proposals`, {
         method: 'POST',
         json: generationConfig
       });
@@ -94,7 +94,7 @@ export default function PropuestasTab({ projectId }: Props) {
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar esta propuesta?')) return;
     try {
-      await apiFetch(`/project360/proposals/${id}`, { method: 'DELETE' });
+      await apiFetch(`/project360-v1/proposals/${id}`, { method: 'DELETE' });
       load();
     } catch (e: any) { alert(e.message); }
   };

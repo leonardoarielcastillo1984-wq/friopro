@@ -45,7 +45,7 @@ export default function CashflowTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/cashflow`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/cashflow`) as any;
       setItems(res.cashflows || []);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -85,7 +85,7 @@ export default function CashflowTab({ projectId }: Props) {
 
   const handleAdd = async () => {
     try {
-      await apiFetch(`/project360/projects/${projectId}/cashflow`, {
+      await apiFetch(`/project360-v1/projects/${projectId}/cashflow`, {
         method: 'POST',
         json: {
           ...newItem,
@@ -101,7 +101,7 @@ export default function CashflowTab({ projectId }: Props) {
 
   const handleUpdateActual = async (id: string, field: 'actualRevenue' | 'actualExpenses', value: number) => {
     try {
-      await apiFetch(`/project360/cashflow/${id}`, {
+      await apiFetch(`/project360-v1/cashflow/${id}`, {
         method: 'PUT',
         json: { [field]: value }
       });
@@ -112,7 +112,7 @@ export default function CashflowTab({ projectId }: Props) {
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar este item?')) return;
     try {
-      await apiFetch(`/project360/cashflow/${id}`, { method: 'DELETE' });
+      await apiFetch(`/project360-v1/cashflow/${id}`, { method: 'DELETE' });
       load();
     } catch (e: any) { alert(e.message); }
   };

@@ -48,7 +48,7 @@ export default function OperationalSizingTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/operational-sizing`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/operational-sizing`) as any;
       setSizing(res.operationalSizing);
       if (res.operationalSizing) setForm(res.operationalSizing);
     } catch (e) { console.error(e); }
@@ -60,7 +60,7 @@ export default function OperationalSizingTab({ projectId }: Props) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/operational-sizing`, {
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/operational-sizing`, {
         method: 'POST',
         json: form,
       }) as any;

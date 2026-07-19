@@ -17,7 +17,7 @@ export default function MilestonesTab({ projectId }: Props) {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/milestones`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/milestones`) as any;
       setMilestones(res.milestones || []);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -28,7 +28,7 @@ export default function MilestonesTab({ projectId }: Props) {
   const handleAdd = async () => {
     if (!newMilestone.name || !newMilestone.targetDate) return;
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/milestones`, { method: 'POST', json: newMilestone }) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/milestones`, { method: 'POST', json: newMilestone }) as any;
       setMilestones([...milestones, res.milestone].sort((a: any, b: any) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime()));
       setNewMilestone({ name: '', description: '', targetDate: '' });
       setShowAdd(false);
@@ -37,7 +37,7 @@ export default function MilestonesTab({ projectId }: Props) {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Eliminar hito?')) return;
-    await apiFetch(`/project360/milestones/${id}`, { method: 'DELETE' });
+    await apiFetch(`/project360-v1/milestones/${id}`, { method: 'DELETE' });
     setMilestones(milestones.filter(m => m.id !== id));
   };
 

@@ -8,6 +8,7 @@ type Layer = 'STRATEGIC' | 'OPERATIONAL' | 'SUPPORT';
 
 interface MiniProcess {
   id: string;
+  parentId?: string | null; // solo se consideran macroprocesos (parentId null) en el Mapa General
   layer: Layer;
   name: string;
   inputs?: string;
@@ -59,7 +60,7 @@ function classifyLayer(map: MiniMap): Layer {
   if (/(rrhh|recurso|compra|sistema|tecnolog|calidad|document|manten|administ|finanz|legal|seguridad|capacit|soporte)/.test(n)) return 'SUPPORT';
   // Fallback: dominant layer among its processes
   const counts: Record<Layer, number> = { STRATEGIC: 0, OPERATIONAL: 0, SUPPORT: 0 };
-  map.processes.forEach(p => { counts[p.layer] = (counts[p.layer] || 0) + 1; });
+  map.processes.filter(p => !p.parentId).forEach(p => { counts[p.layer] = (counts[p.layer] || 0) + 1; });
   const top = (Object.keys(counts) as Layer[]).sort((a, b) => counts[b] - counts[a])[0];
   return counts[top] > 0 ? top : 'OPERATIONAL';
 }
@@ -144,8 +145,8 @@ export default function MapaGeneralModal({ maps, onClose }: { maps: MiniMap[]; o
   function suggestFromSipoc() {
     const agg = maps.map(m => ({
       id: m.id,
-      out: tokens([m.outputLabel, ...m.processes.map(p => p.outputs || '')].join(' ')),
-      inp: tokens([m.inputLabel, ...m.processes.map(p => p.inputs || '')].join(' ')),
+      out: tokens([m.outputLabel, ...m.processes.filter(p => !p.parentId).map(p => p.outputs || '')].join(' ')),
+      inp: tokens([m.inputLabel, ...m.processes.filter(p => !p.parentId).map(p => p.inputs || '')].join(' ')),
     }));
     const found: MacroLink[] = [];
     for (const a of agg) for (const b of agg) {
@@ -186,7 +187,7 @@ export default function MapaGeneralModal({ maps, onClose }: { maps: MiniMap[]; o
       : `<div style="width:56px;height:56px;background:#1D4ED8;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:18px;">${companyName.charAt(0)}</div>`;
     const vb = svgEl.getAttribute('viewBox') || `0 0 ${layout.totalWidth} ${layout.totalHeight}`;
     const innerSVG = svgEl.innerHTML;
-    const rows = classified.map(c => `<tr><td>${c.map.name}</td><td>${LAYER_META[c.layer].label}</td><td style="text-align:center">${c.map.processes.length}</td></tr>`).join('');
+    const rows = classified.map(c => `<tr><td>${c.map.name}</td><td>${LAYER_META[c.layer].label}</td><td style="text-align:center">${c.map.processes.filter(p => !p.parentId).length}</td></tr>`).join('');
     const linkRows = links.length
       ? links.map(l => `<li>${mapName(l.from)} &rarr; ${mapName(l.to)}</li>`).join('')
       : '<li style="color:#9CA3AF">Sin vínculos definidos</li>';
@@ -361,7 +362,7 @@ export default function MapaGeneralModal({ maps, onClose }: { maps: MiniMap[]; o
                     {n.map.name.length > 22 ? n.map.name.slice(0, 21) + '…' : n.map.name}
                   </text>
                   <text x={n.x + 16} y={n.y + 48} fontSize={10.5} fill={meta.accent}>{meta.label}</text>
-                  <text x={n.x + 16} y={n.y + 64} fontSize={10} fill="#9CA3AF">{n.map.processes.length} {n.map.processes.length === 1 ? 'proceso' : 'procesos'}</text>
+                  <text x={n.x + 16} y={n.y + 64} fontSize={10} fill="#9CA3AF">{n.map.processes.filter(p => !p.parentId).length} {n.map.processes.filter(p => !p.parentId).length === 1 ? 'proceso' : 'procesos'}</text>
                 </g>
               );
             })}

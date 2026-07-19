@@ -65,7 +65,7 @@ export default function LessonsLearnedTab({ projectId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/project360/projects/${projectId}/lessons-learned`) as any;
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/lessons-learned`) as any;
       setLessons(res.lessons || []);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -75,7 +75,7 @@ export default function LessonsLearnedTab({ projectId }: Props) {
 
   const handleAdd = async () => {
     try {
-      await apiFetch(`/project360/projects/${projectId}/lessons-learned`, {
+      await apiFetch(`/project360-v1/projects/${projectId}/lessons-learned`, {
         method: 'POST',
         json: {
           ...newLesson,
@@ -91,7 +91,7 @@ export default function LessonsLearnedTab({ projectId }: Props) {
   const handleAnalyzeIA = async (lessonId: string) => {
     setAnalyzing(true);
     try {
-      await apiFetch(`/project360/lessons-learned/${lessonId}/analyze`, { method: 'POST' });
+      await apiFetch(`/project360-v1/lessons-learned/${lessonId}/analyze`, { method: 'POST' });
       load();
       alert('Análisis IA completado.');
     } catch (e: any) { alert(e.message); }
@@ -101,7 +101,7 @@ export default function LessonsLearnedTab({ projectId }: Props) {
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar esta lección aprendida?')) return;
     try {
-      await apiFetch(`/project360/lessons-learned/${id}`, { method: 'DELETE' });
+      await apiFetch(`/project360-v1/lessons-learned/${id}`, { method: 'DELETE' });
       load();
     } catch (e: any) { alert(e.message); }
   };

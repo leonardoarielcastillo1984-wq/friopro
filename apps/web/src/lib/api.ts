@@ -237,20 +237,27 @@ export async function apiFetch<T>(
   // Auto-refresh on 401 (expired access token) — excluir rutas públicas de auth
   const isPublicAuth = path.startsWith('/auth/refresh') || path.startsWith('/auth/login') ||
     path.startsWith('/auth/forgot-password') || path.startsWith('/auth/reset-password');
+  // /auth/me es un CHEQUEO de sesión: un 401 acá es esperado para visitantes anónimos
+  // (el AuthProvider corre en TODA página, incl. landings públicas y el root '/').
+  // Nunca debe forzar el redirect a session_expired.
+  const isAuthCheck = path.startsWith('/auth/me');
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
   const isOnLoginPage = typeof window !== 'undefined' &&
-    (window.location.pathname === '/login' || window.location.pathname.startsWith('/login') ||
-     window.location.pathname.startsWith('/sgi360-landing') ||
-     window.location.pathname.startsWith('/reset-password') || window.location.pathname.startsWith('/forgot-password') ||
-     window.location.pathname.startsWith('/canal/') || window.location.pathname.startsWith('/responder/') ||
-     window.location.pathname.startsWith('/inspeccionar/') || window.location.pathname.startsWith('/feedback-qr/') ||
-     window.location.pathname.startsWith('/feedback/'));
+    (pathname === '/' ||
+     pathname === '/login' || pathname.startsWith('/login') ||
+     pathname.includes('-landing') ||
+     pathname.startsWith('/reset-password') || pathname.startsWith('/forgot-password') ||
+     pathname.startsWith('/canal/') || pathname.startsWith('/responder/') ||
+     pathname.startsWith('/inspeccionar/') || pathname.startsWith('/feedback-qr/') ||
+     pathname.startsWith('/feedback/'));
   if (res.status === 401 && !isPublicAuth && !isOnLoginPage) {
     const refreshed = await getRefreshPromise();
     if (refreshed) {
       res = await rawFetch<T>(path, init);
     } else {
-      // Refresh falló (token expirado o sesión inválida) → redirigir a la landing de SGI360
-      if (typeof window !== 'undefined' && !isOnLoginPage) {
+      // Refresh falló (token expirado o sesión inválida) → redirigir a la landing de SGI360.
+      // Excepción: /auth/me nunca redirige (el AuthProvider maneja el user null en páginas públicas).
+      if (typeof window !== 'undefined' && !isOnLoginPage && !isAuthCheck) {
         window.localStorage.removeItem('accessToken');
         window.localStorage.removeItem('csrfToken');
         window.localStorage.removeItem('tenantId');

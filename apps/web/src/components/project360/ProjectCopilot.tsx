@@ -55,7 +55,7 @@ export default function ProjectCopilot({ projectId, projectName }: Props) {
 
     try {
       // First try the predictive IA endpoint for structured analysis
-      const res = await apiFetch(`/project360/projects/${projectId}/ia-predictiva`, {
+      const res = await apiFetch(`/project360-v1/projects/${projectId}/ia-predictiva`, {
         method: 'POST',
         json: { question: text },
       }) as any;
