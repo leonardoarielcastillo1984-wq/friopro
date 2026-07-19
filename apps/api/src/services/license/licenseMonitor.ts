@@ -3,6 +3,8 @@ import { sendEmail, notificationEmail } from '../email.js';
 import { getLicenseStatus } from './licenseStatus.js';
 
 const GRACE_PERIOD_DAYS = 7;
+const MAX_NOTIFICATIONS_PER_EVENT = 3;   // max emails per expired/grace event
+const MIN_HOURS_BETWEEN_EMAILS = 24;     // min gap between emails
 
 // Helper to check if running in production environment
 function isProductionEnvironment(): boolean {
@@ -23,6 +25,37 @@ export class LicenseMonitor {
 
   constructor(prisma: PrismaClient) {
     this.prisma = prisma;
+  }
+
+  // Check if we should send a notification for this event type.
+  // Uses license_notifications table (raw SQL) to enforce max 3 sends with 24h gap.
+  private async shouldNotify(tenantId: string, type: string): Promise<boolean> {
+    const threeDaysAgo = new Date(Date.now() - MAX_NOTIFICATIONS_PER_EVENT * 24 * 60 * 60 * 1000);
+    const minGapAgo = new Date(Date.now() - MIN_HOURS_BETWEEN_EMAILS * 60 * 60 * 1000);
+    try {
+      const rows = await this.prisma.$queryRaw<{ count: bigint; last_sent: Date | null }[]>`
+        SELECT COUNT(*)::bigint AS count, MAX("createdAt") AS last_sent
+        FROM license_notifications
+        WHERE "tenantId" = ${tenantId}::uuid AND type = ${type}::"LicenseNotificationType"
+          AND "createdAt" >= ${threeDaysAgo}
+      `;
+      const count = Number(rows[0]?.count ?? 0);
+      const lastSent = rows[0]?.last_sent ? new Date(rows[0].last_sent) : null;
+      if (count >= MAX_NOTIFICATIONS_PER_EVENT) return false;
+      if (lastSent && lastSent > minGapAgo) return false;
+      return true;
+    } catch {
+      return true; // on error allow sending
+    }
+  }
+
+  private async recordNotification(tenantId: string, type: string, title: string, message: string) {
+    try {
+      await this.prisma.$executeRaw`
+        INSERT INTO license_notifications (id, "tenantId", title, message, type, "createdAt")
+        VALUES (gen_random_uuid(), ${tenantId}::uuid, ${title}, ${message}, ${type}::"LicenseNotificationType", NOW())
+      `;
+    } catch { /* non-critical */ }
   }
 
   async runDailyCheck(): Promise<NotifyResult[]> {
@@ -73,41 +106,30 @@ export class LicenseMonitor {
 
       let emailsSent = 0;
 
-      // Check notifications progressively
-      if (status.status === 'EXPIRING' && status.daysUntilExpiry !== null) {
-        if (status.daysUntilExpiry <= 1 && !tenant.notified1Day) {
+      if (status.status === 'EXPIRING' && status.daysUntilExpiry !== null && status.daysUntilExpiry <= 1) {
+        const canSend = await this.shouldNotify(tenant.id, 'SUBSCRIPTION_EXPIRING_1D');
+        if (canSend) {
           await this.notifyExpiring(tenant, status.daysUntilExpiry, 'urgente');
-          await this.markNotified(tenant.id, 'notified1Day');
+          await this.recordNotification(tenant.id, 'SUBSCRIPTION_EXPIRING_1D', 'Licencia vence mañana', `Vence en ${status.daysUntilExpiry} día(s)`);
           emailsSent = adminEmails.length;
         }
       }
 
-      if (status.status === 'GRACE' && !tenant.notifiedGrace && status.graceDaysRemaining !== null) {
-        await this.notifyGrace(tenant, status.graceDaysRemaining);
-        await this.markNotified(tenant.id, 'notifiedGrace');
-        emailsSent = adminEmails.length;
+      if (status.status === 'GRACE' && status.graceDaysRemaining !== null) {
+        const canSend = await this.shouldNotify(tenant.id, 'GRACE_PERIOD_STARTED');
+        if (canSend) {
+          await this.notifyGrace(tenant, status.graceDaysRemaining);
+          await this.recordNotification(tenant.id, 'GRACE_PERIOD_STARTED', 'Período de gracia activo', `Quedan ${status.graceDaysRemaining} días`);
+          emailsSent = adminEmails.length;
+        }
       }
 
-      if (status.status === 'EXPIRED' && !tenant.notifiedExpired) {
-        await this.notifyExpired(tenant);
-        await this.markNotified(tenant.id, 'notifiedExpired');
-        emailsSent = adminEmails.length;
-      }
-
-      // Reset notification flags on renewal
-      if (status.status === 'ACTIVE' && tenant.licenseEndAt && new Date(tenant.licenseEndAt) > now) {
-        const anyFlag = tenant.notified7Days || tenant.notified3Days || tenant.notified1Day || tenant.notifiedExpired || tenant.notifiedGrace;
-        if (anyFlag) {
-          await this.prisma.tenant.update({
-            where: { id: tenant.id },
-            data: {
-              notified7Days: false,
-              notified3Days: false,
-              notified1Day: false,
-              notifiedExpired: false,
-              notifiedGrace: false,
-            },
-          });
+      if (status.status === 'EXPIRED') {
+        const canSend = await this.shouldNotify(tenant.id, 'SUBSCRIPTION_EXPIRED');
+        if (canSend) {
+          await this.notifyExpired(tenant);
+          await this.recordNotification(tenant.id, 'SUBSCRIPTION_EXPIRED', 'Licencia expirada', 'La licencia y el período de gracia finalizaron');
+          emailsSent = adminEmails.length;
         }
       }
 
@@ -120,13 +142,6 @@ export class LicenseMonitor {
     }
 
     return results;
-  }
-
-  private async markNotified(tenantId: string, field: string) {
-    await (this.prisma.tenant as any).update({
-      where: { id: tenantId },
-      data: { [field]: true },
-    });
   }
 
   private async notifyExpiring(

@@ -499,7 +499,7 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/revisions', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
     const { outputDefinitionId, status } = req.query as any;
     const where: any = { tenantId };
     if (outputDefinitionId) where.outputDefinitionId = outputDefinitionId;
@@ -513,7 +513,7 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
       },
       orderBy: { createdAt: 'desc' },
     });
-    reply.send(revisions);
+    return reply.send(revisions);
   });
 
   app.post('/revisions', async (req: FastifyRequest, reply: FastifyReply) => {

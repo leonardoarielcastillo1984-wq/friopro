@@ -87,8 +87,8 @@ export default function RevisionesAprobaciones() {
         apiFetch<Revision[]>('/doc-export/revisions'),
         apiFetch<OutputDef[]>('/doc-export/outputs'),
       ]);
-      setRevisions(revs);
-      setOutputs(outs);
+      setRevisions(Array.isArray(revs) ? revs : []);
+      setOutputs(Array.isArray(outs) ? outs : []);
     } catch (e: any) { setError(e.message); }
     setLoading(false);
   }
@@ -143,6 +143,7 @@ export default function RevisionesAprobaciones() {
   }
 
   const filtered = useMemo(() => {
+    if (!Array.isArray(revisions)) return [];
     return revisions.filter(r => {
       if (search) {
         const q = search.toLowerCase();
