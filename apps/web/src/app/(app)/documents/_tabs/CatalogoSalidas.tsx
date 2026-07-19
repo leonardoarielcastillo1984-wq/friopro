@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { apiFetch } from '@/lib/api';
 import {
   Plus, Edit3, Trash2, Save, X, Search, FileOutput,
-  Hash, Filter, Download, Eye, AlertCircle,
+  Hash, Filter, Download, Eye, AlertCircle, Loader2, Sparkles,
 } from 'lucide-react';
 
 interface OutputDef {
@@ -87,6 +87,8 @@ export default function CatalogoSalidas() {
   const [filterStatus, setFilterStatus] = useState('');
   const [assignCodeModal, setAssignCodeModal] = useState<OutputDef | null>(null);
   const [newCode, setNewCode] = useState('');
+  const [suggestingCode, setSuggestingCode] = useState(false);
+  const [hasRuleForCode, setHasRuleForCode] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -130,6 +132,20 @@ export default function CatalogoSalidas() {
       await apiFetch(`/doc-export/outputs/${id}`, { method: 'DELETE' });
       load();
     } catch (e: any) { setError(e.message); }
+  }
+
+  async function openAssignCode(d: OutputDef) {
+    setAssignCodeModal(d);
+    setNewCode(d.documentCode || '');
+    setHasRuleForCode(false);
+    if (!d.documentCode) {
+      setSuggestingCode(true);
+      try {
+        const res = await apiFetch<{ suggestedCode: string; hasRule: boolean }>(`/doc-export/outputs/${d.id}/suggest-code`);
+        if (res.suggestedCode) { setNewCode(res.suggestedCode); setHasRuleForCode(res.hasRule); }
+      } catch {}
+      setSuggestingCode(false);
+    }
   }
 
   async function assignCode() {
@@ -229,7 +245,7 @@ export default function CatalogoSalidas() {
                       <code className="font-mono text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{d.documentCode}</code>
                     ) : (
                       <button
-                        onClick={() => { setAssignCodeModal(d); setNewCode(''); }}
+                        onClick={() => openAssignCode(d)}
                         className="text-xs text-brand-600 hover:underline"
                       >
                         Asignar código
@@ -420,18 +436,36 @@ export default function CatalogoSalidas() {
             <p className="text-sm text-neutral-600">
               Asigná un código único a <strong>{assignCodeModal.screenName}</strong> ({assignCodeModal.outputKey})
             </p>
-            <input
-              value={newCode}
-              onChange={e => setNewCode(e.target.value)}
-              placeholder="Ej: DAD-SGI-RRHH-LST-001"
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-mono"
-            />
+            <div className="space-y-1">
+              <div className="relative">
+                <input
+                  value={newCode}
+                  onChange={e => setNewCode(e.target.value)}
+                  placeholder="Ej: DAD-SGI-RRHH-LST-001"
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-mono pr-8"
+                  disabled={suggestingCode}
+                />
+                {suggestingCode && (
+                  <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-neutral-400" />
+                )}
+              </div>
+              {!suggestingCode && newCode && !assignCodeModal.documentCode && (
+                <p className="flex items-center gap-1 text-xs text-amber-600">
+                  <Sparkles className="h-3 w-3" />
+                  {hasRuleForCode ? 'Código sugerido según regla del Maestro. Podés editarlo.' : 'Código generado automáticamente. Podés editarlo.'}
+                </p>
+              )}
+              {assignCodeModal.documentCode && (
+                <p className="text-xs text-neutral-500">Código actual: <code className="font-mono">{assignCodeModal.documentCode}</code></p>
+              )}
+            </div>
+            <p className="text-xs text-neutral-400">Al confirmar, el código se guardará también en el Maestro de Documentos.</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setAssignCodeModal(null)} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50">
                 Cancelar
               </button>
-              <button onClick={assignCode} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">
-                Asignar
+              <button onClick={assignCode} disabled={!newCode || suggestingCode} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+                Confirmar
               </button>
             </div>
           </div>

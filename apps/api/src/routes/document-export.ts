@@ -225,19 +225,88 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/outputs/:id/assign-code', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
     const { id } = req.params as any;
     const { documentCode } = req.body as any;
-    if (!documentCode) return reply.code(400).send({ error: 'Se requiere documentCode' });
+    if (!documentCode) { reply.code(400).send({ error: 'Se requiere documentCode' }); return; }
     const existing = await prisma.documentOutputDefinition.findFirst({
       where: { tenantId, documentCode, id: { not: id } },
     });
-    if (existing) return reply.code(409).send({ error: 'El código ya está en uso' });
-    const result = await prisma.documentOutputDefinition.updateMany({
-      where: { id, tenantId, deletedAt: null }, data: { documentCode },
+    if (existing) { reply.code(409).send({ error: 'El código ya está en uso' }); return; }
+    const def = await prisma.documentOutputDefinition.findFirst({
+      where: { id, tenantId, deletedAt: null },
     });
-    if (result.count === 0) return reply.code(404).send({ error: 'Definición no encontrada' });
-    reply.send({ ok: true, documentCode });
+    if (!def) { reply.code(404).send({ error: 'Definición no encontrada' }); return; }
+    const userId = (req as any).db?.userId || null;
+    const typeMap: Record<string, string> = {
+      LIST: 'Listado', RECORD: 'Registro', DASHBOARD: 'Tablero',
+      MATRIX: 'Matriz', MAP: 'Mapa', REPORT: 'Informe', FORM: 'Formulario',
+    };
+    let maestroDoc = await prisma.document.findFirst({
+      where: { tenantId, documentCode, deletedAt: null },
+    });
+    if (!maestroDoc) {
+      maestroDoc = await prisma.document.create({
+        data: {
+          tenantId, title: def.screenName,
+          type: typeMap[def.outputType] || def.outputType,
+          documentCode, status: 'EFFECTIVE', process: def.module,
+          createdById: userId,
+        },
+      });
+    } else {
+      await prisma.document.update({
+        where: { id: maestroDoc.id },
+        data: { documentCode, title: def.screenName },
+      });
+    }
+    await prisma.documentOutputDefinition.update({
+      where: { id },
+      data: { documentCode, documentId: maestroDoc.id },
+    });
+    const rule = await prisma.documentCodeRule.findFirst({
+      where: { tenantId, module: def.module, active: true },
+    });
+    if (rule) {
+      await prisma.documentCodeRule.update({
+        where: { id: rule.id },
+        data: { nextSequence: { increment: 1 } },
+      });
+    }
+    return reply.send({ ok: true, documentCode, documentId: maestroDoc.id });
+  });
+
+  app.get('/outputs/:id/suggest-code', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
+    const { id } = req.params as any;
+    const def = await prisma.documentOutputDefinition.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!def) { reply.code(404).send({ error: 'Definición no encontrada' }); return; }
+    const rule = await prisma.documentCodeRule.findFirst({
+      where: { tenantId, module: def.module, active: true },
+      orderBy: { subModule: 'asc' },
+    });
+    let suggestedCode = '';
+    if (rule) {
+      const sep = rule.separator || '-';
+      const digits = rule.digitCount || 3;
+      const seq = String(rule.nextSequence).padStart(digits, '0');
+      const parts: string[] = [];
+      if (rule.prefix) parts.push(rule.prefix);
+      if (rule.processCode) parts.push(rule.processCode);
+      if (rule.typeAbbr) parts.push(rule.typeAbbr);
+      parts.push(seq);
+      suggestedCode = parts.join(sep);
+    } else {
+      const count = await prisma.documentOutputDefinition.count({
+        where: { tenantId, module: def.module, documentCode: { not: null }, deletedAt: null },
+      });
+      const moduleAbbr = def.module.substring(0, 3).toUpperCase();
+      suggestedCode = `${moduleAbbr}-${String(count + 1).padStart(3, '0')}`;
+    }
+    return reply.send({ suggestedCode, hasRule: !!rule });
   });
 
   // ── EXPORTACIÓN ──
@@ -992,12 +1061,13 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/whitelabel', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
     const template = await prisma.documentTemplate.findFirst({ where: { tenantId, isDefault: true, deletedAt: null } });
-    if (!template) return reply.code(404).send({ error: 'No hay plantilla por defecto' });
-    reply.send({
-      companyName: template.companyName,
-      logoUrl: template.headerLogoUrl,
+    if (!template) { reply.code(404).send({ error: 'No hay plantilla por defecto' }); return; }
+    const settings = await prisma.companySettings.findUnique({ where: { tenantId } });
+    return reply.send({
+      companyName: template.companyName || settings?.companyName,
+      logoUrl: template.headerLogoUrl || settings?.logoUrl || null,
       headerColor: template.primaryColor,
       footerColor: template.secondaryColor,
       watermark: template.watermarkText,
