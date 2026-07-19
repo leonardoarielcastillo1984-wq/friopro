@@ -82,8 +82,8 @@ export default function ExportacionMasiva() {
       params.set('offset', String(page * limit));
       if (filterType) params.set('type', filterType);
       const data = await apiFetch<{ data: BulkExport[]; total: number }>(`/doc-export/bulk-exports?${params}`);
-      setItems(data.data);
-      setTotal(data.total);
+      setItems(Array.isArray(data?.data) ? data.data : []);
+      setTotal(typeof data?.total === 'number' ? data.total : 0);
     } catch (e: any) { setError(e.message); }
     setLoading(false);
   }
@@ -277,7 +277,7 @@ export default function ExportacionMasiva() {
               {item.description && <p className="mt-2 text-xs text-neutral-500">{item.description}</p>}
 
               <div className="mt-2 flex flex-wrap gap-1">
-                {item.modules.map(m => (
+                {(Array.isArray(item.modules) ? item.modules : []).map(m => (
                   <span key={m} className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">{m}</span>
                 ))}
               </div>

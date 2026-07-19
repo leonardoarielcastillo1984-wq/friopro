@@ -1202,6 +1202,61 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
       .send(csv);
   });
 
+  // ── EXPORTACIÓN MASIVA ──
+
+  app.get('/bulk-exports', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
+    const { type, limit: lim, offset: off } = req.query as any;
+    const take = Math.min(parseInt(lim) || 20, 100);
+    const skip = parseInt(off) || 0;
+    let rows: any[];
+    let countRes: any[];
+    if (type) {
+      rows = await prisma.$queryRaw`
+        SELECT * FROM document_bulk_exports WHERE "tenantId" = ${tenantId}::uuid AND type = ${type}
+        ORDER BY "createdAt" DESC LIMIT ${take} OFFSET ${skip}
+      `;
+      countRes = await prisma.$queryRaw`
+        SELECT COUNT(*)::int AS total FROM document_bulk_exports WHERE "tenantId" = ${tenantId}::uuid AND type = ${type}
+      `;
+    } else {
+      rows = await prisma.$queryRaw`
+        SELECT * FROM document_bulk_exports WHERE "tenantId" = ${tenantId}::uuid
+        ORDER BY "createdAt" DESC LIMIT ${take} OFFSET ${skip}
+      `;
+      countRes = await prisma.$queryRaw`
+        SELECT COUNT(*)::int AS total FROM document_bulk_exports WHERE "tenantId" = ${tenantId}::uuid
+      `;
+    }
+    return reply.send({ data: rows, total: Number((countRes as any[])[0]?.total ?? 0), limit: take, offset: skip });
+  });
+
+  app.post('/bulk-exports', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
+    const { name, type, description, modules, statuses, dateFrom, dateTo,
+      includeAnnexes, includeEvidence, includeObsolete, includeIndex, includeSeparators, outputMode } = req.body as any;
+    if (!name) { reply.code(400).send({ error: 'Se requiere nombre' }); return; }
+    const userId = (req as any).db?.userId || null;
+    const userName = (req as any).auth?.email || null;
+    const modulesJson = JSON.stringify(modules || []);
+    const statusesJson = JSON.stringify(statuses || []);
+    const result: any[] = await prisma.$queryRaw`
+      INSERT INTO document_bulk_exports
+        (id, "tenantId", name, type, description, modules, statuses, "dateFrom", "dateTo",
+         "includeAnnexes", "includeEvidence", "includeObsolete", "includeIndex", "includeSeparators",
+         "outputMode", "fileSize", "pageCount", status, "userId", "userName", "createdAt")
+      VALUES
+        (gen_random_uuid(), ${tenantId}::uuid, ${name}, ${type || 'CUSTOM'}, ${description || null},
+         ${modulesJson}::jsonb, ${statusesJson}::jsonb, ${dateFrom || null}::date, ${dateTo || null}::date,
+         ${!!includeAnnexes}, ${!!includeEvidence}, ${!!includeObsolete}, ${includeIndex !== false}, ${!!includeSeparators},
+         ${outputMode || 'SINGLE_PDF'}, 0, 0, 'PENDING', ${userId}::uuid, ${userName}, NOW())
+      RETURNING *
+    `;
+    return reply.code(201).send(result[0]);
+  });
+
   // ── HELP / DOCUMENTACIÓN IN-APP (Etapa 21) ──
 
   app.get('/help', async (req: FastifyRequest, reply: FastifyReply) => {
