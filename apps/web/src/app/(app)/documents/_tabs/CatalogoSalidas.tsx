@@ -95,8 +95,8 @@ export default function CatalogoSalidas() {
         apiFetch<OutputDef[]>('/doc-export/outputs'),
         apiFetch<Template[]>('/doc-export/templates').catch(() => []),
       ]);
-      setDefs(data);
-      setTemplates(tmpl);
+      setDefs(Array.isArray(data) ? data : []);
+      setTemplates(Array.isArray(tmpl) ? tmpl : []);
     } catch (e: any) {
       setError(e.message);
     }
@@ -146,6 +146,7 @@ export default function CatalogoSalidas() {
   }
 
   const filtered = useMemo(() => {
+    if (!Array.isArray(defs)) return [];
     return defs.filter(d => {
       if (search) {
         const q = search.toLowerCase();

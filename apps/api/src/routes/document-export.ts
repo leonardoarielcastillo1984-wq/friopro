@@ -111,7 +111,7 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/templates', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
     const { active, search } = req.query as any;
     const where: any = { tenantId, deletedAt: null };
     if (active === 'true') where.active = true;
@@ -120,7 +120,7 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
     const templates = await prisma.documentTemplate.findMany({
       where, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
     });
-    reply.send(templates);
+    return reply.send(templates);
   });
 
   app.post('/templates', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -168,7 +168,7 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/outputs', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
     const { module, status, search, active } = req.query as any;
     const where: any = { tenantId, deletedAt: null };
     if (module) where.module = module;
@@ -189,7 +189,7 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
       },
       orderBy: [{ module: 'asc' }, { screenName: 'asc' }],
     });
-    reply.send(outputs);
+    return reply.send(outputs);
   });
 
   app.post('/outputs', async (req: FastifyRequest, reply: FastifyReply) => {
