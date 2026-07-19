@@ -1,6 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import bcryptjs from 'bcryptjs';
+
+let _bcrypt: any = null;
+async function getBcrypt() {
+  if (_bcrypt) return _bcrypt;
+  _bcrypt = (await import('bcryptjs')).default;
+  return _bcrypt;
+}
 
 const LoginS = z.object({
   email: z.string().email().min(3),
@@ -61,7 +67,7 @@ export async function registerFlota360AuthRoutes(app: FastifyInstance) {
       return reply.code(401).send({ error: 'Credenciales inválidas' });
     }
 
-    const valid = await bcryptjs.compare(body.password, user.passwordHash);
+    const valid = await (await getBcrypt()).compare(body.password, user.passwordHash);
     if (!valid) {
       return reply.code(401).send({ error: 'Credenciales inválidas' });
     }
@@ -101,7 +107,7 @@ export async function registerFlota360AuthRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: 'El email ya está registrado para este tenant' });
     }
 
-    const passwordHash = await bcryptjs.hash(body.password, 12);
+    const passwordHash = await (await getBcrypt()).hash(body.password, 12);
 
     const user = await prisma.flota360User.create({
       data: {
@@ -156,7 +162,7 @@ export async function registerFlota360AuthRoutes(app: FastifyInstance) {
       slug = `f360-${baseSlug}-${n++}`;
     }
 
-    const passwordHash = await bcryptjs.hash(body.password, 12);
+    const passwordHash = await (await getBcrypt()).hash(body.password, 12);
 
     let tenant: any, user: any;
     try {
@@ -238,7 +244,7 @@ export async function registerFlota360AuthRoutes(app: FastifyInstance) {
       if (entry) await prisma.$executeRawUnsafe(`DELETE FROM flota360_password_resets WHERE token = $1`, token).catch(() => {});
       return reply.code(400).send({ error: 'Token inválido o expirado. Solicitá un nuevo enlace.' });
     }
-    const passwordHash = await bcryptjs.hash(password, 12);
+    const passwordHash = await (await getBcrypt()).hash(password, 12);
     await prisma.flota360User.update({ where: { id: entry.userId }, data: { passwordHash } });
     await prisma.$executeRawUnsafe(`DELETE FROM flota360_password_resets WHERE token = $1`, token).catch(() => {});
     return reply.send({ ok: true, message: 'Contraseña actualizada correctamente.' });

@@ -1,7 +1,13 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { signP360Token, verifyP360Token, provisionP360Workspace } from '../plugins/project360Auth.js';
-import bcryptjs from 'bcryptjs';
 import crypto from 'node:crypto';
+
+let _bcrypt: any = null;
+async function getBcrypt() {
+  if (_bcrypt) return _bcrypt;
+  _bcrypt = (await import('bcryptjs')).default;
+  return _bcrypt;
+}
 
 function slugify(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -43,7 +49,7 @@ export default async function project360AuthRoutes(app: FastifyInstance) {
     let slug = `p360-${slugBase}`; let n = 1;
     while (await prisma.tenant.findUnique({ where: { slug } })) { slug = `p360-${slugBase}-${n++}`; }
 
-    const passwordHash = await bcryptjs.hash(password, 12);
+    const passwordHash = await (await getBcrypt()).hash(password, 12);
 
     let tenant: any, user: any, workspace: any, member: any;
     try {
@@ -94,7 +100,7 @@ export default async function project360AuthRoutes(app: FastifyInstance) {
     if (!user || !user.passwordHash) {
       return reply.code(401).send({ error: 'Credenciales inválidas' });
     }
-    const valid = await bcryptjs.compare(password, user.passwordHash);
+    const valid = await (await getBcrypt()).compare(password, user.passwordHash);
     if (!valid) {
       return reply.code(401).send({ error: 'Credenciales inválidas' });
     }
@@ -215,7 +221,7 @@ export default async function project360AuthRoutes(app: FastifyInstance) {
       if (entry) await prisma.$executeRawUnsafe(`DELETE FROM p360_password_resets WHERE token = $1`, token).catch(() => {});
       return reply.code(400).send({ error: 'Token inválido o expirado. Solicitá un nuevo enlace.' });
     }
-    const passwordHash = await bcryptjs.hash(password, 12);
+    const passwordHash = await (await getBcrypt()).hash(password, 12);
     await prisma.p360User.update({ where: { id: entry.userId }, data: { passwordHash } });
     await prisma.$executeRawUnsafe(`DELETE FROM p360_password_resets WHERE token = $1`, token).catch(() => {});
     return reply.send({ ok: true, message: 'Contraseña actualizada correctamente.' });
