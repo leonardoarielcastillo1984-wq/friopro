@@ -4,7 +4,6 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
-import { Groq } from 'groq-sdk';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { notifySiniestroCreado, notifyCambioEstado, notifyAlertaCritica, notifyDocumentoSubido } from './siniestros360-email.js';
@@ -610,7 +609,13 @@ export async function registerSiniestros360Routes(app: FastifyInstance) {
   // ═══════════════════════════════════════════════════════════
   // IA ANALIZADORA DE POLIZAS — GROQ REAL
   // ═══════════════════════════════════════════════════════════
-  const groqClient = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
+  let groqClient: any = null;
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const { Groq } = await import('groq-sdk');
+      groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    } catch { groqClient = null; }
+  }
 
   app.post('/siniestros360/ia/analizar-poliza', async (req, reply) => {
     const p = await requireAuth(req, reply); if (!p) return;

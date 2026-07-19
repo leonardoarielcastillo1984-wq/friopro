@@ -4,15 +4,15 @@
 
 import { sendEmail, notificationEmail } from './email.js';
 import { PrismaClient } from '@prisma/client';
-import Redis from 'ioredis';
 
 const prisma = new PrismaClient();
 
 // Redis client for persistent cooldown (survives container restarts)
-let _redis: Redis | null = null;
-function getRedis(): Redis | null {
+let _redis: any = null;
+async function getRedis(): Promise<any | null> {
   if (_redis) return _redis;
   try {
+    const { default: Redis } = await import('ioredis');
     _redis = new (Redis as any)(process.env.REDIS_URL || 'redis://localhost:6379', {
       maxRetriesPerRequest: 1,
       lazyConnect: false,
@@ -38,7 +38,7 @@ export class SubscriptionMonitor {
   }
 
   private async isCooldownActive(alertKey: string): Promise<boolean> {
-    const redis = getRedis();
+    const redis = await getRedis();
     if (redis) {
       try {
         const val = await redis.get(`sub_alert:${alertKey}`);
@@ -49,7 +49,7 @@ export class SubscriptionMonitor {
   }
 
   private async setCooldown(alertKey: string): Promise<void> {
-    const redis = getRedis();
+    const redis = await getRedis();
     if (redis) {
       try {
         await redis.set(`sub_alert:${alertKey}`, '1', 'EX', this.ALERT_COOLDOWN_SECONDS);

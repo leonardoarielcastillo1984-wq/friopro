@@ -9,8 +9,6 @@
  * - Multi-tenant isolation
  */
 
-import Redis from 'ioredis';
-
 // ── Event Types ──────────────────────────────────────────────
 
 export type EventType =
@@ -51,7 +49,12 @@ export class EnterpriseEventEngine {
   private subscribers: Map<string, Array<(event: EnterpriseEvent) => void>> = new Map();
 
   constructor() {
+    this.initRedis();
+  }
+
+  private async initRedis() {
     try {
+      const { default: Redis } = await import('ioredis');
       this.redis = new (Redis as any)(process.env.REDIS_URL || 'redis://localhost:6379', {
         maxRetriesPerRequest: 3,
         lazyConnect: true,
