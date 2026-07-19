@@ -20,6 +20,7 @@ export default function IncidentesPage() {
       subtitle="Registro e investigación de incidentes y accidentes (ISO 45001)"
       endpoint="/incidents"
       icon={Siren}
+      outputKey="incidentes-listado"
       defaultValues={{ type: 'INCIDENT', severity: 'NONE', investigationStatus: 'PENDING' }}
       fields={[
         { key: 'type', label: 'Tipo', type: 'select', required: true, options: [

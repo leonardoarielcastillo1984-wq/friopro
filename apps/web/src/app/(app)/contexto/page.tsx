@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { Compass, Save, Sparkles, Loader2, ArrowRight, X, Target } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import ExportButton from '@/components/ExportButton';
 import StrategicPanel from './StrategicPanel';
 import StrategicGenerators from './StrategicGenerators';
 import StrategicPriorities from './StrategicPriorities';
@@ -231,6 +232,39 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
               onChange={(e) => setYear(parseInt(e.target.value) || new Date().getFullYear())}
               className="w-24 px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
             />
+            {!loading && (
+              <ExportButton
+                outputKey="contexto-organizacion"
+                title={`Contexto de la Organización — Año ${year}`}
+                moduleName="Contexto"
+                bodyHtml={`
+                  <h2>Misión, Visión y Valores</h2>
+                  <table style="width:100%;border-collapse:collapse;">
+                    <tr><td style="padding:6px 8px;font-weight:bold;width:140px;">Misión</td><td style="padding:6px 8px;">${data.mission || '—'}</td></tr>
+                    <tr style="background:#f9fafb"><td style="padding:6px 8px;font-weight:bold;">Visión</td><td style="padding:6px 8px;">${data.vision || '—'}</td></tr>
+                    <tr><td style="padding:6px 8px;font-weight:bold;">Valores</td><td style="padding:6px 8px;">${data.values || '—'}</td></tr>
+                  </table>
+                  <h2 style="margin-top:24px;">Análisis FODA</h2>
+                  <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;">
+                    <tr><th style="background:#16a34a;color:#fff;padding:8px;">Fortalezas</th><th style="background:#dc2626;color:#fff;padding:8px;">Debilidades</th></tr>
+                    <tr>
+                      <td style="padding:8px;border:1px solid #e5e7eb;vertical-align:top;">${(data.strengths||[]).map(s=>`<div>• ${s}</div>`).join('') || '—'}</td>
+                      <td style="padding:8px;border:1px solid #e5e7eb;vertical-align:top;">${(data.weaknesses||[]).map(s=>`<div>• ${s}</div>`).join('') || '—'}</td>
+                    </tr>
+                    <tr><th style="background:#2563eb;color:#fff;padding:8px;">Oportunidades</th><th style="background:#d97706;color:#fff;padding:8px;">Amenazas</th></tr>
+                    <tr>
+                      <td style="padding:8px;border:1px solid #e5e7eb;vertical-align:top;">${(data.opportunities||[]).map(s=>`<div>• ${s}</div>`).join('') || '—'}</td>
+                      <td style="padding:8px;border:1px solid #e5e7eb;vertical-align:top;">${(data.threats||[]).map(s=>`<div>• ${s}</div>`).join('') || '—'}</td>
+                    </tr>
+                  </table>
+                  <h2 style="margin-top:24px;">Análisis PESTEL</h2>
+                  <table style="width:100%;border-collapse:collapse;">
+                    ${[['Político',data.political],['Económico',data.economic],['Social',data.social],['Tecnológico',data.technological],['Ambiental',data.environmental],['Legal',data.legal]].map(([k,v],i)=>`<tr style="background:${i%2===0?'#fff':'#f9fafb'}"><td style="padding:6px 8px;font-weight:bold;width:120px;">${k}</td><td style="padding:6px 8px;">${v||'—'}</td></tr>`).join('')}
+                  </table>
+                `}
+                filters={{ year }}
+              />
+            )}
           </div>
         </div>
       </div>

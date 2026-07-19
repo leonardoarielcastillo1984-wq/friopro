@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { Truck, TrendingUp, AlertTriangle, Star, BarChart3, Plus, Search, RefreshCw, Edit2, Trash2, ClipboardCheck, X, Clock, CheckCircle, Calendar } from 'lucide-react';
+import ExportButton from '@/components/ExportButton';
 
 interface Supplier {
   id: string; code: string; name: string; legalName?: string; taxId?: string; email?: string; phone?: string;
@@ -150,6 +151,13 @@ export default function ProveedoresPage() {
           <button onClick={handleAi} disabled={aiLoading} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50">
             <BarChart3 className="w-4 h-4" /> {aiLoading ? 'Analizando...' : 'Analizar proveedores'}
           </button>
+          <ExportButton
+            outputKey="proveedores-listado"
+            title="Listado de Proveedores"
+            moduleName="Proveedores"
+            recordCount={suppliers.length}
+            bodyHtml={`<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#1e40af;color:#fff;"><th style="padding:6px 8px;">Nombre</th><th style="padding:6px 8px;">Código</th><th style="padding:6px 8px;">Categoría</th><th style="padding:6px 8px;">Estado</th><th style="padding:6px 8px;">Score</th><th style="padding:6px 8px;">Crítico</th></tr></thead><tbody>${suppliers.map((s,i)=>`<tr style="background:${i%2===0?'#fff':'#f9fafb'}"><td style="padding:6px 8px;">${s.name||''}</td><td style="padding:6px 8px;">${s.code||'—'}</td><td style="padding:6px 8px;">${s.category||'—'}</td><td style="padding:6px 8px;">${s.status||''}</td><td style="padding:6px 8px;">${s.avgScore!=null?Number(s.avgScore).toFixed(1):'—'}</td><td style="padding:6px 8px;">${s.isCritical?'Sí':'No'}</td></tr>`).join('')}</tbody></table>`}
+          />
           <button onClick={() => { setEditingSupplier(null); setSupplierForm({ status: 'PENDING', isCritical: false }); setShowSupplierModal(true); }} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
             <Plus className="w-4 h-4" /> Nuevo proveedor
           </button>

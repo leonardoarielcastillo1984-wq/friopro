@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, X, RefreshCw, Sparkles, Loader2, Download, Filter } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import ExportButton from '@/components/ExportButton';
 
 export type FieldType = 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'checkbox';
 
@@ -48,6 +49,7 @@ interface Props {
   aiFields?: AiFieldDef[];
   filterFields?: FilterDef[];
   showExport?: boolean;
+  outputKey?: string;
 }
 
 export default function GenericCrudPage({
@@ -61,6 +63,7 @@ export default function GenericCrudPage({
   aiFields = [],
   filterFields = [],
   showExport = false,
+  outputKey,
 }: Props) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -195,8 +198,17 @@ export default function GenericCrudPage({
           <div className="flex items-center gap-2">
             {showExport && (
               <button onClick={handleExport} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-200" title="Exportar CSV">
-                <Download className="h-4 w-4" /> Exportar
+                <Download className="h-4 w-4" /> CSV
               </button>
+            )}
+            {outputKey && items.length > 0 && (
+              <ExportButton
+                outputKey={outputKey}
+                title={title}
+                moduleName={title}
+                recordCount={items.length}
+                bodyHtml={`<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#1e40af;color:#fff;">${columns.map(c=>`<th style="padding:6px 8px;text-align:left;">${c.label}</th>`).join('')}</tr></thead><tbody>${items.map((it,i)=>`<tr style="background:${i%2===0?'#fff':'#f9fafb'}">${columns.map(c=>`<td style="padding:6px 8px;">${it[c.key]??'—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
+              />
             )}
             <button
               onClick={load}

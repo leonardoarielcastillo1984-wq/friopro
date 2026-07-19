@@ -11,6 +11,7 @@ export default function AspectosAmbientalesPage() {
       subtitle="Identificación y evaluación de aspectos e impactos ambientales (ISO 14001)"
       endpoint="/aspects"
       icon={Leaf}
+      outputKey="aspectos-ambientales-listado"
       defaultValues={{ condition: 'NORMAL', naturalness: 'DIRECT', magnitude: 3, severity: 3, frequency: 3, legalCompliance: 3, significance: 27, status: 'OPEN' }}
       fields={[
         { key: 'process', label: 'Proceso / Actividad', type: 'text', required: true },

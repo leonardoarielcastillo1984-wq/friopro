@@ -159,6 +159,7 @@ export default function AccionesPage() {
                 { value: 'HIGH', label: 'Alta' }, { value: 'CRITICAL', label: 'Crítica' },
               ]},
             ]}
+            outputKey="acciones-capa-listado"
             showExport
           />
   );

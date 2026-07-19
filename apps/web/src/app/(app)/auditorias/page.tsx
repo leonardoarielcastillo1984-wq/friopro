@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { Plus, Calendar, FileText, AlertCircle, CheckCircle, Clock, Users, List, Trash2 } from 'lucide-react';
+import ExportButton from '@/components/ExportButton';
 
 // Tipos
 type AuditProgram = {
@@ -178,6 +179,30 @@ export default function AuditoriasPage() {
             <Calendar className="w-4 h-4" />
             Programa Anual
           </Link>
+          <ExportButton
+            outputKey="auditorias-listado"
+            title="Listado de Auditorías ISO"
+            moduleName="Auditorías"
+            recordCount={audits.length}
+            bodyHtml={`
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead><tr style="background:#1e40af;color:#fff;">
+                  <th style="padding:6px 8px;text-align:left;">Código</th>
+                  <th style="padding:6px 8px;text-align:left;">Nombre</th>
+                  <th style="padding:6px 8px;text-align:left;">Tipo</th>
+                  <th style="padding:6px 8px;text-align:left;">Estado</th>
+                  <th style="padding:6px 8px;text-align:left;">Fecha Planificada</th>
+                </tr></thead>
+                <tbody>${audits.map((a,i)=>`<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
+                  <td style="padding:6px 8px;">${a.code||''}</td>
+                  <td style="padding:6px 8px;">${a.title||''}</td>
+                  <td style="padding:6px 8px;">${a.type||''}</td>
+                  <td style="padding:6px 8px;">${a.status||''}</td>
+                  <td style="padding:6px 8px;">${a.plannedStartDate?new Date(a.plannedStartDate).toLocaleDateString('es-AR'):'—'}</td>
+                </tr>`).join('')}</tbody>
+              </table>
+            `}
+          />
           <Link
             href="/auditorias/nueva"
             className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
