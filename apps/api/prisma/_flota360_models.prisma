@@ -1,0 +1,66 @@
+
+// ── FLOTA360 Identity (independiente: tabla de usuarios propia) ────────────
+
+model Flota360User {
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @db.Uuid
+  email        String
+  name         String
+  phone        String?
+  passwordHash String?
+  avatarUrl    String?
+  status       String  @default("ACTIVE")
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  memberships Flota360TenantMembership[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([status])
+  @@map("flota360_users")
+}
+
+model Flota360Role {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @db.Uuid
+  name        String
+  description String? @db.Text
+  permissions Json?
+  isSystem    Boolean @default(false)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  memberships Flota360TenantMembership[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("flota360_roles")
+}
+
+model Flota360TenantMembership {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  userId String       @db.Uuid
+  user   Flota360User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  roleId String       @db.Uuid
+  role   Flota360Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("flota360_tenant_memberships")
+}

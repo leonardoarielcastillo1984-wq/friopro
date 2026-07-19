@@ -1,0 +1,21 @@
+
+// -- PROJECT360 Identity (independiente: tabla de usuarios propia) --
+model P360User {
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @db.Uuid
+  email        String
+  name         String?
+  phone        String?
+  passwordHash String?
+  avatarUrl    String?
+  status       String  @default("ACTIVE")
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([status])
+  @@map("p360_users")
+}
