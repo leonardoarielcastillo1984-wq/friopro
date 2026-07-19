@@ -15,6 +15,6 @@ export interface LLMStreamChunk {
 }
 
 export interface LLMProvider {
-  chat(messages: LLMMessage[], maxTokens?: number): Promise<LLMResponse>;
+  chat(messages: LLMMessage[], maxTokens?: number, jsonMode?: boolean): Promise<LLMResponse>;
   chatStream?(messages: LLMMessage[], maxTokens?: number): AsyncGenerator<LLMStreamChunk>;
 }

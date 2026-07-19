@@ -4,20 +4,57 @@
 
 import { sendEmail, notificationEmail } from './email.js';
 import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
 
 const prisma = new PrismaClient();
 
+// Redis client for persistent cooldown (survives container restarts)
+let _redis: Redis | null = null;
+function getRedis(): Redis | null {
+  if (_redis) return _redis;
+  try {
+    _redis = new (Redis as any)(process.env.REDIS_URL || 'redis://localhost:6379', {
+      maxRetriesPerRequest: 1,
+      lazyConnect: false,
+      enableOfflineQueue: false,
+    });
+    _redis.on('error', () => { _redis = null; });
+    return _redis;
+  } catch {
+    return null;
+  }
+}
+
 export class SubscriptionMonitor {
   private static instance: SubscriptionMonitor;
-  private lastPaymentAlert: Map<string, Date> = new Map();
   private readonly PAYMENT_WARNING_DAYS = 3; // Alert 3 days before suspension
-  private readonly ALERT_COOLDOWN = 24 * 60 * 60 * 1000; // 24 hours
+  private readonly ALERT_COOLDOWN_SECONDS = 12 * 60 * 60; // 12 hours → 2 alerts/day max
 
   static getInstance(): SubscriptionMonitor {
     if (!SubscriptionMonitor.instance) {
       SubscriptionMonitor.instance = new SubscriptionMonitor();
     }
     return SubscriptionMonitor.instance;
+  }
+
+  private async isCooldownActive(alertKey: string): Promise<boolean> {
+    const redis = getRedis();
+    if (redis) {
+      try {
+        const val = await redis.get(`sub_alert:${alertKey}`);
+        return val !== null;
+      } catch { /* fall through to false */ }
+    }
+    return false;
+  }
+
+  private async setCooldown(alertKey: string): Promise<void> {
+    const redis = getRedis();
+    if (redis) {
+      try {
+        await redis.set(`sub_alert:${alertKey}`, '1', 'EX', this.ALERT_COOLDOWN_SECONDS);
+      } catch { /* ignore */ }
+    }
   }
 
   // Check for overdue and soon-to-be-overdue subscriptions
@@ -68,11 +105,9 @@ export class SubscriptionMonitor {
     const { tenant, plan, endsAt } = subscription;
     const daysUntilExpiry = Math.ceil((endsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
     
-    // Check cooldown for this specific subscription
+    // Check cooldown for this specific subscription (Redis-backed, survives restarts)
     const alertKey = `${tenant.id}_${subscription.id}`;
-    const lastAlert = this.lastPaymentAlert.get(alertKey);
-    
-    if (lastAlert && (now.getTime() - lastAlert.getTime()) < this.ALERT_COOLDOWN) {
+    if (await this.isCooldownActive(alertKey)) {
       console.log(`[SUBSCRIPTION_MONITOR] Alert cooldown active for ${tenant.name}`);
       return;
     }
@@ -92,7 +127,7 @@ export class SubscriptionMonitor {
     }
 
     await this.sendPaymentAlert(tenant, plan, daysUntilExpiry, alertType, urgency);
-    this.lastPaymentAlert.set(alertKey, now);
+    await this.setCooldown(alertKey);
   }
 
   private async sendPaymentAlert(
@@ -166,8 +201,8 @@ export class SubscriptionMonitor {
     }
   }
 
-  // Start monitoring with interval
-  startMonitoring(intervalHours: number = 6): void {
+  // Start monitoring with interval (default 12h = 2 checks/day)
+  startMonitoring(intervalHours: number = 12): void {
     console.log(`[SUBSCRIPTION_MONITOR] Starting monitoring with ${intervalHours} hour intervals`);
     
     // Check immediately on start

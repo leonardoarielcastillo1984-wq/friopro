@@ -19,7 +19,10 @@ const createProjectSchema = z.object({
   budget: z.number().optional(),
   budgetCurrency: z.string().default('ARS').optional(),
   licitationMode: z.string().optional(),
-  templateId: z.string().uuid().optional(),
+  templateId: z.preprocess((val) => {
+    if (val === "" || val === null || val === undefined) return null;
+    return val;
+  }, z.string().uuid().nullable().optional()),
 });
 
 async function enrichProjects(prisma: any, projects: any[]) {
@@ -1924,6 +1927,210 @@ Scores: ${JSON.stringify(a2.scores || {})}`;
         } as any
       });
       return reply.code(201).send({ lessonLearned: lesson });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // DELETE /project360/cashflow/:cashflowId
+  app.delete('/cashflow/:cashflowId', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { cashflowId } = req.params as { cashflowId: string };
+      await prisma.project360Cashflow.deleteMany({ where: { id: cashflowId, tenantId } });
+      return reply.send({ deleted: true });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // DELETE /project360/proposals/:id
+  app.delete('/proposals/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      await prisma.project360Proposal.deleteMany({ where: { id, tenantId } });
+      return reply.send({ deleted: true });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // DELETE /project360/lessons-learned/:id
+  app.delete('/lessons-learned/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      await prisma.project360LessonLearned.deleteMany({ where: { id, tenantId } });
+      return reply.send({ deleted: true });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/contracts/:id/analyze — análisis IA de cláusulas críticas
+  app.post('/contracts/:id/analyze', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const userId = (req as any).db?.userId;
+      const contract = await prisma.project360Contract.findFirst({ where: { id, tenantId } }) as any;
+      if (!contract) return reply.code(404).send({ error: 'Contrato no encontrado' });
+
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { llmProvider: true, llmApiKey: true, llmModel: true, llmBaseUrl: true } });
+      let llm;
+      try { llm = createGroqOnlyLLMProvider(tenant, prisma, tenantId, userId || null, 'project360-contract-analyze'); }
+      catch (e: any) { return reply.code(500).send({ error: 'Error configurando proveedor IA: ' + e.message }); }
+
+      const prompt = `Analizá este contrato y respondé ÚNICAMENTE en JSON con esta estructura exacta:
+{"iaRiskAlert":"resumen corto del riesgo contractual más importante","criticalClauses":[{"clause":"nombre de la cláusula","riskLevel":"ALTO|MEDIO|BAJO","description":"por qué es riesgosa"}]}
+
+DATOS DEL CONTRATO:
+- Número: ${contract.contractNumber || 'N/A'}
+- Tipo: ${contract.contractType || 'N/A'}
+- Valor total: ${contract.totalValue || 0}
+- SLA: ${contract.slaDescription || 'No definido'}
+- Penalidades: ${contract.penaltyClauses || 'No definidas'}
+- Garantías: ${JSON.stringify(contract.guarantees || [])}
+- Seguros: ${JSON.stringify(contract.insurances || [])}
+- Notas: ${contract.notes || 'N/A'}`;
+
+      const response = await llm.chat([{ role: 'user', content: prompt }], 2000);
+      const m = response.text.match(/\{[\s\S]*\}/);
+      let parsed: any = {};
+      if (m) { try { parsed = JSON.parse(m[0]); } catch { /* noop */ } }
+
+      const updated = await prisma.project360Contract.update({
+        where: { id },
+        data: {
+          iaRiskAlert: parsed.iaRiskAlert || 'Análisis IA sin alertas relevantes',
+          criticalClauses: Array.isArray(parsed.criticalClauses) ? parsed.criticalClauses : [],
+        } as any
+      });
+      return reply.send({ contract: updated });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/lessons-learned/:id/analyze — síntesis IA de la lección
+  app.post('/lessons-learned/:id/analyze', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const userId = (req as any).db?.userId;
+      const lesson = await prisma.project360LessonLearned.findFirst({ where: { id, tenantId } }) as any;
+      if (!lesson) return reply.code(404).send({ error: 'Lección no encontrada' });
+
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { llmProvider: true, llmApiKey: true, llmModel: true, llmBaseUrl: true } });
+      let llm;
+      try { llm = createGroqOnlyLLMProvider(tenant, prisma, tenantId, userId || null, 'project360-lesson-analyze'); }
+      catch (e: any) { return reply.code(500).send({ error: 'Error configurando proveedor IA: ' + e.message }); }
+
+      const prompt = `Analizá esta lección aprendida de un proyecto y respondé ÚNICAMENTE en JSON con esta estructura exacta:
+{"iaSummary":"resumen ejecutivo de la lección y su valor","recommendations":"recomendaciones concretas y accionables para futuros proyectos"}
+
+LECCIÓN:
+- Categoría: ${lesson.category}
+- Título: ${lesson.title}
+- Descripción: ${lesson.description}
+- Impacto: ${lesson.impact || 'N/A'}
+- Solución: ${lesson.solution || 'N/A'}
+- Desviación costo: ${lesson.costDeviation ?? 'N/A'}
+- Desviación tiempo: ${lesson.timeDeviation ?? 'N/A'}`;
+
+      const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
+      const m = response.text.match(/\{[\s\S]*\}/);
+      let parsed: any = {};
+      if (m) { try { parsed = JSON.parse(m[0]); } catch { /* noop */ } }
+
+      const updated = await prisma.project360LessonLearned.update({
+        where: { id },
+        data: {
+          iaSummary: parsed.iaSummary || lesson.iaSummary || 'Sin resumen IA',
+          recommendations: parsed.recommendations || lesson.recommendations || null,
+        } as any
+      });
+      return reply.send({ lessonLearned: updated });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /project360/projects/:id/calculate-critical-path — CPM (forward/backward pass)
+  app.post('/projects/:id/calculate-critical-path', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+
+      const tasks = await prisma.project360Task.findMany({ where: { projectId: id, tenantId, deletedAt: null } }) as any[];
+      if (tasks.length === 0) return reply.send({ success: true, criticalCount: 0, message: 'No hay tareas' });
+
+      const byId = new Map<string, any>();
+      tasks.forEach(t => byId.set(t.id, t));
+      const durationOf = (t: any): number => {
+        if (t.plannedStart && t.plannedEnd) {
+          const d = Math.ceil((new Date(t.plannedEnd).getTime() - new Date(t.plannedStart).getTime()) / 86400000);
+          if (d > 0) return d;
+        }
+        if (t.estimatedHours && t.estimatedHours > 0) return Math.max(1, Math.ceil(t.estimatedHours / 8));
+        return 1;
+      };
+      const predsOf = (t: any): string[] => (Array.isArray(t.dependencies) ? t.dependencies : []).filter((d: string) => byId.has(d));
+
+      // Forward pass (ES/EF) con memo, tolerante a ciclos
+      const ef = new Map<string, number>();
+      const es = new Map<string, number>();
+      const computeEF = (tid: string, stack: Set<string>): number => {
+        if (ef.has(tid)) return ef.get(tid)!;
+        if (stack.has(tid)) return 0;
+        stack.add(tid);
+        const t = byId.get(tid);
+        const preds = predsOf(t);
+        const start = preds.length ? Math.max(...preds.map(p => computeEF(p, stack))) : 0;
+        es.set(tid, start);
+        const fin = start + durationOf(t);
+        ef.set(tid, fin);
+        stack.delete(tid);
+        return fin;
+      };
+      tasks.forEach(t => computeEF(t.id, new Set()));
+      const projectEnd = Math.max(...tasks.map(t => ef.get(t.id) || 0));
+
+      // Successors
+      const succ = new Map<string, string[]>();
+      tasks.forEach(t => succ.set(t.id, []));
+      tasks.forEach(t => predsOf(t).forEach(p => succ.get(p)!.push(t.id)));
+
+      // Backward pass (LF/LS)
+      const lf = new Map<string, number>();
+      const computeLF = (tid: string, stack: Set<string>): number => {
+        if (lf.has(tid)) return lf.get(tid)!;
+        if (stack.has(tid)) return projectEnd;
+        stack.add(tid);
+        const ss = succ.get(tid) || [];
+        const finish = ss.length ? Math.min(...ss.map(s => computeLF(s, stack) - durationOf(byId.get(s)))) : projectEnd;
+        lf.set(tid, finish);
+        stack.delete(tid);
+        return finish;
+      };
+      tasks.forEach(t => computeLF(t.id, new Set()));
+
+      let criticalCount = 0;
+      await Promise.all(tasks.map(t => {
+        const slack = Math.max(0, (lf.get(t.id) || 0) - (ef.get(t.id) || 0));
+        const isCritical = slack === 0;
+        if (isCritical) criticalCount++;
+        return prisma.project360Task.update({ where: { id: t.id }, data: { isCriticalPath: isCritical, slackDays: slack } });
+      }));
+
+      return reply.send({ success: true, criticalCount, projectDurationDays: projectEnd, totalTasks: tasks.length });
     } catch (err: any) {
       return reply.code(500).send({ error: err.message });
     }

@@ -283,7 +283,25 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       app.log.error(`[LOGIN] Error en argon2.verify para ${body.email}: ${verifyErr}`);
       return reply.code(401).send({ error: 'Credenciales incorrectas. Verificá tu email y contraseña.' });
     }
-    if (!ok) return reply.code(401).send({ error: 'Credenciales incorrectas. Verificá tu email y contraseña.' });
+    if (!ok) {
+      // Registrar intento fallido (non-blocking)
+      const failedMembership = await app.prisma.tenantMembership.findFirst({
+        where: { userId: user.id, status: 'ACTIVE', deletedAt: null },
+        select: { tenantId: true },
+      }).catch(() => null);
+      if (failedMembership?.tenantId) {
+        app.prisma.auditEvent.create({
+          data: {
+            action: 'FAILED_LOGIN',
+            actorUserId: user.id,
+            tenantId: failedMembership.tenantId,
+            entityType: 'Session',
+            metadata: JSON.stringify({ email: user.email, ip: req.ip }),
+          },
+        }).catch(() => {});
+      }
+      return reply.code(401).send({ error: 'Credenciales incorrectas. Verificá tu email y contraseña.' });
+    }
 
     // 2FA is now optional - users can enable it in settings
     // For now, all users login directly without 2FA requirement
@@ -323,6 +341,23 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     setAuthCookies(reply, { accessToken, refreshToken });
     const csrfToken = await app.issueCsrfCookie(reply);
+
+    // Registrar evento de login exitoso (non-blocking)
+    if (activeTenant) {
+      app.prisma.auditEvent.create({
+        data: {
+          action: 'LOGIN',
+          actorUserId: user.id,
+          tenantId: activeTenant.id,
+          entityType: 'Session',
+          metadata: JSON.stringify({
+            email: user.email,
+            ip: req.ip,
+            userAgent: req.headers['user-agent']?.toString().slice(0, 150),
+          }),
+        },
+      }).catch(() => {});
+    }
 
     return reply.send({
       accessToken,
@@ -532,9 +567,27 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── POST /auth/logout — Cerrar sesión ──
-  app.post('/logout', async (_req: FastifyRequest, reply: FastifyReply) => {
+  app.post('/logout', async (req: FastifyRequest, reply: FastifyReply) => {
+    // Capturar usuario antes de limpiar cookies
+    const userId = (req as any).auth?.userId;
+    const tenantId = (req as any).db?.tenantId;
+
     clearAuthCookies(reply);
     reply.clearCookie('csrf_token', { path: '/' });
+
+    // Registrar evento de logout (non-blocking)
+    if (userId && tenantId) {
+      app.prisma.auditEvent.create({
+        data: {
+          action: 'LOGOUT',
+          actorUserId: userId,
+          tenantId,
+          entityType: 'Session',
+          metadata: JSON.stringify({ ip: req.ip }),
+        },
+      }).catch(() => {});
+    }
+
     return reply.send({ ok: true });
   });
 

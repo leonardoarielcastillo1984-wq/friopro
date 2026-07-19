@@ -14,15 +14,17 @@ export class OpenAIProvider implements LLMProvider {
 
   async chat(
     messages: LLMMessage[],
-    maxTokens: number = 1024
+    maxTokens: number = 1024,
+    jsonMode: boolean = false
   ): Promise<LLMResponse> {
     const response = await this.client.chat.completions.create({
       model: this.model,
       max_tokens: maxTokens,
       messages: messages.map((msg) => ({
-        role: msg.role,
+        role: msg.role as any,
         content: msg.content,
       })),
+      ...(jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
     });
 
     // Extract text from the first choice

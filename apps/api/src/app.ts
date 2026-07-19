@@ -42,6 +42,8 @@ import { riskRoutes } from './routes/risks.js';
 import { exportRoutes } from './routes/export.js';
 import { integrationRoutes } from './routes/integrations.js';
 import { objectivesRoutes } from './routes/objectives.js';
+import { absencesRoutes } from './routes/absences.js';
+import { performanceRoutes } from './routes/performance.js';
 import { minutasRoutes } from './routes/minutas.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
 import { commandCenterRoutes } from './routes/command-center.js';
@@ -121,6 +123,7 @@ import { registerSupplierRoutes } from './routes/suppliers.js';
 import { registerHelpRoutes } from './routes/help.js';
 import { demoRoutes } from './routes/demo.js';
 import { startNormativeWorker, startAuditWorker, recoverStuckNormatives } from './jobs/queue.js';
+import { startEmailWorker } from './jobs/emailQueue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import {
   actionsRoutes, stakeholdersRoutes, stakeholderActionRoutes,
@@ -166,6 +169,7 @@ import { registerSiniestros360Routes } from "./routes/siniestros360.js";
 import { audit360AuthPlugin } from "./plugins/audit360Auth.js";
 import { flota360AuthPlugin } from "./plugins/flota360Auth.js";
 import { registerFlota360AuthRoutes } from "./routes/flota360-auth.js";
+import { documentExportRoutes } from './routes/document-export.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -176,6 +180,7 @@ export async function buildApp() {
   // Iniciar workers
   startNormativeWorker();
   startAuditWorker();
+  startEmailWorker();
   // Recuperar normativos que quedaron atascados (p.ej. Redis read-only al subirlos)
   void recoverStuckNormatives();
 
@@ -405,6 +410,8 @@ await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
   // SGI Profesional (Abr 2026)
   await app.register(actionsRoutes, { prefix: '/actions' });
   await app.register(objectivesRoutes, { prefix: '/objectives' });
+  await app.register(absencesRoutes, { prefix: '/absences' });
+  await app.register(performanceRoutes, { prefix: '/performance' });
   await app.register(minutasRoutes, { prefix: '/minutas' });
   await app.register(stakeholdersRoutes, { prefix: '/stakeholders' });
   await app.register(stakeholderActionRoutes, { prefix: '/stakeholders' });
@@ -452,6 +459,9 @@ await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
   await app.register(registerAudit360ClientRoutes);
   await app.register(registerAudit360ContractRoutes);
   await app.register(registerSiniestros360Routes);
+
+  // Sistema Global de Exportación Documental
+  await app.register(documentExportRoutes, { prefix: '/doc-export' });
 
   // Endpoint genérico de IA para módulos del frontend - respuestas rápidas
   app.post('/ai/chat', async (req: any, reply: any) => {

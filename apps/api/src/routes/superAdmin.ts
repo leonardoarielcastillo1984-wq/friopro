@@ -511,6 +511,14 @@ export const superAdminRoutes: FastifyPluginAsync = async (app) => {
         console.log(`[API] Tenant ${tenantId} actualizado a status=${resolvedStatus}`);
       }
 
+      // Si se activó como ACTIVE, marcar el setup como PAID para que no bloquee el acceso
+      if (resolvedStatus === 'ACTIVE') {
+        await (app.prisma as any).tenantSetup.updateMany({
+          where: { tenantId },
+          data: { status: 'PAID', paidAt: new Date() }
+        });
+      }
+
       console.log(`[API] Suscripción actualizada:`, subscription?.id || 'none');
 
       return reply.send({

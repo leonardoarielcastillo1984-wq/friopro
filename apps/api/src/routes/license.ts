@@ -354,19 +354,23 @@ export async function licenseRoutes(app: FastifyInstance) {
         });
       }
 
-      // Calcular días restantes y estado de gracia
+      // Calcular días restantes y estado de gracia.
+      // Fuente autoritativa: tenant.licenseEndAt (sistema de licencias nuevo, el mismo que usa el bloqueo real).
+      // Fallback: subscription.endsAt (sistema legacy) para tenants sin licenseEndAt.
       const now = new Date();
-      const endsAt = subscription.endsAt ? new Date(subscription.endsAt) : null;
-      const gracePeriodDays = 5;
-      
+      const authoritativeEnd = tenant?.licenseEndAt
+        ? new Date(tenant.licenseEndAt)
+        : (subscription.endsAt ? new Date(subscription.endsAt) : null);
+      const gracePeriodDays = 7;
+
       let daysRemaining = 0;
       let graceDaysRemaining = 0;
       let isInGracePeriod = false;
 
-      if (endsAt) {
-        const diffTime = endsAt.getTime() - now.getTime();
+      if (authoritativeEnd) {
+        const diffTime = authoritativeEnd.getTime() - now.getTime();
         daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
+
         if (daysRemaining < 0) {
           isInGracePeriod = Math.abs(daysRemaining) <= gracePeriodDays;
           graceDaysRemaining = isInGracePeriod ? gracePeriodDays - Math.abs(daysRemaining) : 0;
@@ -379,7 +383,7 @@ export async function licenseRoutes(app: FastifyInstance) {
         planTier: subscription.providerRef === 'NO_PLAN' ? 'NO_PLAN' : (subscription.plan?.tier || subscription.status),
         status: subscription.status,
         startedAt: subscription.startedAt,
-        endsAt: subscription.endsAt,
+        endsAt: tenant?.licenseEndAt ?? subscription.endsAt,
         daysRemaining: Math.max(0, daysRemaining),
         isInGracePeriod,
         graceDaysRemaining,

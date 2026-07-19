@@ -191,7 +191,7 @@ export class AuditAnalysisService {
         role: 'user',
         content: prompt,
       },
-    ], 4096);
+    ], 4096, true);  // jsonMode=true → fuerza JSON puro en Groq/OpenAI
 
     console.log(`[AuditAnalysis] Raw LLM response length: ${response.text?.length || 0}, preview: ${(response.text || '').substring(0, 200)}...`);
     const result = this.parseAnalysisResponse(response.text);
@@ -259,11 +259,13 @@ export class AuditAnalysisService {
       )
       .join('\n\n');
 
-    return `Actuá como auditor experto en ISO. Analizá el siguiente documento contra cada cláusula normativa vinculada.
+    return `IMPORTANTE: Responder ÚNICAMENTE con JSON válido. Sin texto previo, sin markdown, sin explicaciones fuera del JSON.
+
+Tarea: Sos un auditor experto en ISO. Analizá el siguiente documento contra cada cláusula normativa vinculada y devolvé el resultado en el formato JSON indicado al final.
 
 DOCUMENTO A AUDITAR:
 Título: ${input.documentTitle}
-Contenido completo:
+Contenido:
 ${input.documentContent.substring(0, 1500)}${input.documentContent.length > 1500 ? '...' : ''}
 
 NORMA: ${input.normativeCode}
@@ -271,27 +273,16 @@ NORMA: ${input.normativeCode}
 CLÁUSULAS A EVALUAR:
 ${clausesList}
 
-INSTRUCCIONES DE ANÁLISIS PROFUNDO:
-1. Leé cuidadosamente el documento completo.
-2. Para CADA cláusula, determiná si el documento la CUBRE o NO.
-3. Si CUBRE: citá textualmente del documento la evidencia que lo demuestra. Describí POR QUÉ cumple.
-4. Si NO CUBRE: explicá QUÉ elemento de la cláusula falta en el documento. Sé específico.
-5. La descripción debe tener al menos 2-3 oraciones explicando el fundamento del hallazgo.
-6. Las acciones sugeridas deben ser concretas y aplicables (ej: "Incluir definición de responsables en la sección 3").
-7. Confidence: 0.95 si hay evidencia textual clara, 0.7 si es inferencia, 0.5 si es ambiguo.
+INSTRUCCIONES:
+1. Para CADA cláusula, determiná si el documento la CUBRE (covered: true) o NO (covered: false).
+2. Si CUBRE: citá textualmente la evidencia del documento.
+3. Si NO CUBRE: explicá qué elemento falta. Sé específico.
+4. severity: MUST (obligatorio) o SHOULD (recomendación).
+5. confidence: 0.95 si hay evidencia textual clara, 0.7 si es inferencia, 0.5 si es ambiguo.
+6. suggestedActions: acciones concretas (ej: "Incluir definición de responsables en sección 3").
 
-Formato de salida: JSON puro, sin markdown, sin bloques de código.
-Cada "finding" debe incluir:
-- clauseNumber: número exacto de la cláusula
-- covered: true/false
-- severity: MUST (obligatorio normativo) o SHOULD (recomendación)
-- title: título conciso del hallazgo (máx 10 palabras)
-- description: análisis detallado con fundamento (2-4 oraciones)
-- evidence: cita textual del documento que justifica el hallazgo, o "No se encontró evidencia" si no cubre
-- confidence: número 0.0-1.0
-- suggestedActions: array de strings con acciones concretas (mínimo 1 si no cubre)
-
-Output JSON: {"findings":[{"clauseNumber":"","covered":false,"severity":"MUST","title":"","description":"","evidence":"","confidence":0.8,"suggestedActions":["accion concreta 1","accion concreta 2"]}],"summary":"Resumen ejecutivo del análisis: cuántas cláusulas se cubren, cuáles no, y las principales brechas identificadas.","coveredCount":0,"missingCount":0}`;
+Formato de respuesta (JSON puro, sin ningún texto adicional):
+{"findings":[{"clauseNumber":"","covered":false,"severity":"MUST","title":"","description":"","evidence":"","confidence":0.8,"suggestedActions":["accion 1"]}],"summary":"Resumen del análisis.","coveredCount":0,"missingCount":0}`;
   }
 
   /**

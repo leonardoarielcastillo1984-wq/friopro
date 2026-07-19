@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
 // ═══════════════════════════════════════════════════════════════
 // DIGITAL TWIN & INTELIGENCIA PREDICTIVA
@@ -218,6 +219,211 @@ export default async function digitalTwinRoutes(app: FastifyInstance) {
       },
       activosCriticos,
     });
+  });
+
+  // POST /digital-twin/simulate — Simulación de escenarios por km adicionales
+  app.post('/simulate', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const schema = z.object({
+      assetId: z.string().uuid(),
+      escenarios: z.array(z.number().positive()).min(1).max(5),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+
+    const { assetId, escenarios } = body.data;
+
+    // Fetch asset with full maintenance context
+    const [asset, vehiculo, maintenancePlans] = await Promise.all([
+      (app.prisma as any).maintenanceAsset.findFirst({
+        where: { id: assetId, tenantId },
+        include: {
+          workOrders: {
+            orderBy: { completedAt: 'desc' },
+            take: 30,
+            select: {
+              title: true, type: true, priority: true, status: true,
+              totalCost: true, laborCost: true, partsCost: true,
+              completedAt: true, scheduledDate: true,
+              vehiculoHistorial: {
+                select: { odometro: true, fecha: true, tipo: true, descripcion: true },
+                take: 1,
+              },
+            },
+          },
+          costs: {
+            orderBy: { date: 'desc' },
+            take: 30,
+            select: { costType: true, amount: true, description: true, date: true },
+          },
+        },
+      }),
+      // Get linked vehicle for additional historial
+      (app.prisma as any).vehiculo.findFirst({
+        where: { maintenanceAssetId: assetId, tenantId },
+        select: {
+          currentOdometer: true,
+          historialMantenimiento: {
+            orderBy: { odometro: 'desc' },
+            take: 30,
+            select: { odometro: true, fecha: true, tipo: true, descripcion: true, costo: true },
+          },
+        },
+      }).catch(() => null),
+      (app.prisma as any).maintenancePlan.findMany({
+        where: { assetId, tenantId, status: 'ACTIVE' },
+        select: {
+          name: true, frequencyUnit: true, frequencyValue: true,
+          triggerKm: true, lastOdometerExecution: true, nextExecutionDate: true,
+        },
+        take: 10,
+      }).catch(() => []),
+    ]);
+
+    if (!asset) return reply.code(404).send({ error: 'Activo no encontrado' });
+
+    const odometroActual = vehiculo?.currentOdometer ?? asset.currentOdometer ?? 0;
+
+    // Build enriched maintenance timeline with km readings
+    const historialConKm: { km: number | null; fecha: string; tipo: string; descripcion: string; costo: number }[] = [];
+
+    // From vehicle historial (most reliable km data)
+    if (vehiculo?.historialMantenimiento?.length) {
+      for (const h of vehiculo.historialMantenimiento) {
+        historialConKm.push({ km: h.odometro ?? null, fecha: h.fecha ? new Date(h.fecha).toLocaleDateString('es-AR') : '—', tipo: h.tipo, descripcion: h.descripcion, costo: h.costo || 0 });
+      }
+    }
+
+    // From work orders vehiculoHistorial
+    for (const o of asset.workOrders) {
+      if (o.vehiculoHistorial?.[0]?.odometro) {
+        const h = o.vehiculoHistorial[0];
+        if (!historialConKm.find(x => x.descripcion === o.title)) {
+          historialConKm.push({ km: h.odometro, fecha: o.completedAt ? new Date(o.completedAt).toLocaleDateString('es-AR') : '—', tipo: o.type, descripcion: o.title, costo: (o.laborCost || 0) + (o.partsCost || 0) || o.totalCost || 0 });
+        }
+      }
+    }
+
+    // Sort by km descending
+    historialConKm.sort((a, b) => (b.km ?? 0) - (a.km ?? 0));
+
+    // Work orders without km (fallback)
+    const otsSinKm = asset.workOrders.filter(
+      (o: any) => !o.vehiculoHistorial?.[0]?.odometro
+    );
+
+    const costoPromOT = asset.workOrders.length > 0
+      ? asset.workOrders.reduce((s: number, o: any) => s + ((o.laborCost || 0) + (o.partsCost || 0) || o.totalCost || 0), 0) / asset.workOrders.length
+      : 0;
+
+    // Build human-readable maintenance timeline
+    const lineaDeVida = historialConKm.slice(0, 15).map(h =>
+      `  • [${h.km != null ? `${h.km.toLocaleString()} km` : 'km desconocido'}] ${h.fecha} — ${h.tipo}: ${h.descripcion} ($${h.costo.toLocaleString()})`
+    ).join('\n');
+
+    const otsSinKmResumen = otsSinKm.slice(0, 8).map((o: any) => {
+      const costo = (o.laborCost || 0) + (o.partsCost || 0) || o.totalCost || 0;
+      return `  • ${o.completedAt ? new Date(o.completedAt).toLocaleDateString('es-AR') : 'pendiente'} — ${o.type}: ${o.title} ($${costo.toLocaleString()})`;
+    }).join('\n');
+
+    const planesResumen = (maintenancePlans as any[]).map((p: any) =>
+      `  • ${p.name}: cada ${p.frequencyValue} ${p.frequencyUnit === 'KM' ? 'km' : 'días'}${p.triggerKm ? ` (umbral: ${p.triggerKm.toLocaleString()} km)` : ''}${p.lastOdometerExecution ? ` — último a ${p.lastOdometerExecution.toLocaleString()} km` : ''}`
+    ).join('\n');
+
+    const prompt = `Sos un ingeniero experto en mantenimiento predictivo de vehículos industriales y flotas de camiones y autoelevadores.
+
+ACTIVO: ${asset.name} (${asset.code}) — Categoría: ${asset.category}
+Odómetro actual: ${odometroActual.toLocaleString()} km
+Total OTs históricas: ${asset.workOrders.length}
+Costo promedio por intervención: $${Math.round(costoPromOT).toLocaleString()}
+
+HISTORIAL DE MANTENIMIENTO CON ODÓMETRO (ordenado por km):
+${lineaDeVida || 'Sin historial con km registrado'}
+
+INTERVENCIONES SIN ODÓMETRO REGISTRADO:
+${otsSinKmResumen || 'Ninguna'}
+
+PLANES DE MANTENIMIENTO ACTIVOS:
+${planesResumen || 'Sin planes activos'}
+
+ESCENARIOS A PROYECTAR (km adicionales sobre el odómetro actual):
+${escenarios.map((km: number) => `- +${km.toLocaleString()} km → total: ${(odometroActual + km).toLocaleString()} km`).join('\n')}
+
+Para CADA escenario proyectá el estado y necesidad de intervención de estos componentes específicos:
+- NEUMÁTICOS: desgaste de banda, profundidad estimada remanente, probabilidad de cambio
+- ACEITE DE MOTOR: nivel de degradación, necesidad de cambio
+- FILTROS: filtro de aceite, filtro de combustible, filtro de aire, filtro hidráulico
+- FRENOS: desgaste de pastillas/zapatas, líquido de frenos
+- CORREAS Y CADENAS: correa de distribución, correa serpentina, cadena de transmisión
+- SISTEMA DE REFRIGERACIÓN: anticongelante, termostato, bomba de agua
+- BATERÍA Y SISTEMA ELÉCTRICO: carga, bornes, alternador
+- AMORTIGUADORES Y SUSPENSIÓN: estado estimado
+- SISTEMA DE DIRECCIÓN: fluido, desgaste de componentes
+- EMBRAGUE/TRANSMISIÓN: estado estimado
+
+Para cada componente indicá: estado esperado (OK / ATENCIÓN / CAMBIO PRÓXIMO / CAMBIO URGENTE) y acción recomendada.
+
+Respondé SOLO con JSON válido, sin texto adicional, con esta estructura exacta:
+{
+  "escenarios": [
+    {
+      "kmAdicionales": 10000,
+      "odometroTotal": 50000,
+      "nivelRiesgo": "MEDIO",
+      "riesgos": ["riesgo principal 1", "riesgo principal 2"],
+      "mantenimientos": ["acción preventiva 1", "acción preventiva 2"],
+      "costoEstimado": 150000,
+      "accionPrioritaria": "texto de la acción más urgente",
+      "componentes": [
+        { "nombre": "Neumáticos", "estado": "ATENCIÓN", "detalle": "desgaste estimado al 60%, revisar profundidad de banda", "icono": "🛞" },
+        { "nombre": "Aceite de motor", "estado": "CAMBIO PRÓXIMO", "detalle": "supera intervalo recomendado de 10.000 km", "icono": "🛢️" },
+        { "nombre": "Filtro de aceite", "estado": "CAMBIO PRÓXIMO", "detalle": "cambiar junto con aceite de motor", "icono": "🔧" },
+        { "nombre": "Filtro de combustible", "estado": "OK", "detalle": "en buen estado, próximo cambio en 5.000 km", "icono": "⛽" },
+        { "nombre": "Filtro de aire", "estado": "ATENCIÓN", "detalle": "verificar obstrucción", "icono": "💨" },
+        { "nombre": "Frenos", "estado": "OK", "detalle": "pastillas con vida útil estimada al 70%", "icono": "🛑" },
+        { "nombre": "Correa de distribución", "estado": "OK", "detalle": "dentro del intervalo de reemplazo", "icono": "⚙️" },
+        { "nombre": "Sistema de refrigeración", "estado": "OK", "detalle": "verificar nivel de anticongelante", "icono": "🌡️" },
+        { "nombre": "Batería", "estado": "ATENCIÓN", "detalle": "verificar carga y bornes", "icono": "🔋" },
+        { "nombre": "Amortiguadores", "estado": "OK", "detalle": "sin signos de deterioro estimados", "icono": "🔩" }
+      ]
+    }
+  ],
+  "resumenGeneral": "texto de 2-3 oraciones con la proyección general del activo"
+}`;
+
+    try {
+      const llm = createGroqOnlyLLMProvider((req as any).tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'digital-twin-simulate');
+      const response = await llm.chat([{ role: 'user', content: prompt }], 2000);
+
+      let parsed: any;
+      try {
+        const text = response.text.trim();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      } catch { parsed = null; }
+
+      if (!parsed) {
+        return reply.send({
+          escenarios: escenarios.map((km: number) => ({
+            kmAdicionales: km,
+            odometroTotal: odometroActual + km,
+            nivelRiesgo: km > 20000 ? 'ALTO' : 'MEDIO',
+            riesgos: ['Desgaste acumulado de componentes', 'Revisión de frenos y neumáticos recomendada'],
+            mantenimientos: ['Service preventivo', 'Revisión de fluidos'],
+            costoEstimado: Math.round(costoPromOT * (km / 10000)),
+            accionPrioritaria: 'Programar service preventivo',
+          })),
+          resumenGeneral: 'Proyección estimada basada en historial del activo.',
+        });
+      }
+
+      return reply.send(parsed);
+    } catch (err: any) {
+      app.log.error(err, 'Error en simulación digital twin');
+      return reply.code(503).send({ error: 'IA no disponible. Intentá nuevamente.' });
+    }
   });
 }
 

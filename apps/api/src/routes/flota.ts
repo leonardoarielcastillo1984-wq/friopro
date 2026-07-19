@@ -342,44 +342,69 @@ export default async function flotaRoutes(app: FastifyInstance) {
 
     const { crearActivoMantenimiento, acquisitionCost, manufacturer, purchaseDate, ...vehiculoData } = body.data;
 
-    // Crear vehículo inicialmente sin maintenanceAssetId
-    let vehiculo = await (app.prisma as any).vehiculo.create({
-      data: { ...vehiculoData, tenantId, maintenanceAssetId: null }
+    // Verificar dominio duplicado para este tenant
+    const dominioExistente = await (app.prisma as any).vehiculo.findFirst({
+      where: { tenantId, dominio: vehiculoData.dominio }
+    });
+    if (dominioExistente) {
+      return reply.code(409).send({ error: `Ya existe un vehículo con el dominio "${vehiculoData.dominio}" en tu flota.` });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CREAR VEHÍCULO + ACTIVO EN UNA SOLA TRANSACCIÓN
+    // ═══════════════════════════════════════════════════════════════
+    let maintenanceAsset: any = null;
+    let vehiculo: any;
+
+    const txResult = await (app.prisma as any).$transaction(async (tx: any) => {
+      const v = await tx.vehiculo.create({
+        data: { ...vehiculoData, tenantId, maintenanceAssetId: null }
+      });
+
+      let asset = null;
+      if (crearActivoMantenimiento && !vehiculoData.maintenanceAssetId) {
+        const assetCode = `V-${v.dominio}`;
+        const assetName = `${v.marca || ''} ${v.modelo || ''} ${v.dominio}`.trim();
+
+        // Si ya existe un activo con este código, lo reutilizamos en vez de fallar
+        const existing = await tx.maintenanceAsset.findFirst({ where: { code: assetCode } });
+        if (existing) {
+          asset = existing;
+        } else {
+          asset = await tx.maintenanceAsset.create({
+            data: {
+              tenantId,
+              code: assetCode,
+              name: assetName || v.dominio,
+              description: `Vehículo de flota: ${v.dominio}. Tipo: ${v.tipo}. Creado automáticamente desde Flota 360.`,
+              category: 'VEHICLE',
+              status: 'ACTIVE',
+              manufacturer: manufacturer || v.marca || 'Sin especificar',
+              model: v.modelo || 'Sin especificar',
+              serialNumber: v.chasis || v.motor || undefined,
+              acquisitionCost: acquisitionCost || 0,
+              purchaseDate: purchaseDate ? new Date(purchaseDate) : undefined,
+              currentOdometer: v.currentOdometer,
+              location: 'Flota',
+            }
+          });
+        }
+
+        const updated = await tx.vehiculo.update({
+          where: { id: v.id },
+          data: { maintenanceAssetId: asset.id }
+        });
+        return { vehiculo: updated, maintenanceAsset: asset };
+      }
+
+      return { vehiculo: v, maintenanceAsset: null };
     });
 
-    // ═══════════════════════════════════════════════════════════════
-    // AUTO-CREAR ACTIVO DE MANTENIMIENTO VINCULADO
-    // ═══════════════════════════════════════════════════════════════
-    let maintenanceAsset = null;
-    if (crearActivoMantenimiento && !vehiculoData.maintenanceAssetId) {
-      const assetCode = `V-${vehiculo.dominio}`;
-      const assetName = `${vehiculo.marca || ''} ${vehiculo.modelo || ''} ${vehiculo.dominio}`.trim();
-      
-      maintenanceAsset = await (app.prisma as any).maintenanceAsset.create({
-        data: {
-          tenantId,
-          code: assetCode,
-          name: assetName || vehiculo.dominio,
-          description: `Vehículo de flota: ${vehiculo.dominio}. Tipo: ${vehiculo.tipo}. Creado automáticamente desde Flota 360.`,
-          category: 'VEHICLE',
-          status: 'ACTIVE',
-          manufacturer: manufacturer || vehiculo.marca || 'Sin especificar',
-          model: vehiculo.modelo || 'Sin especificar',
-          serialNumber: vehiculo.chasis || vehiculo.motor || undefined,
-          acquisitionCost: acquisitionCost || 0,
-          purchaseDate: purchaseDate ? new Date(purchaseDate) : undefined,
-          currentOdometer: vehiculo.currentOdometer,
-          location: 'Flota',
-        }
-      });
+    vehiculo = txResult.vehiculo;
+    maintenanceAsset = txResult.maintenanceAsset;
 
-      // Actualizar vehículo con el ID del activo creado
-      vehiculo = await (app.prisma as any).vehiculo.update({
-        where: { id: vehiculo.id, tenantId },
-        data: { maintenanceAssetId: maintenanceAsset.id }
-      });
-
-      // Crear Digital Twin automáticamente para el activo
+    // Crear Digital Twin fuera de la transacción (best-effort)
+    if (maintenanceAsset) {
       try {
         await (app.prisma as any).assetDigitalTwin.create({
           data: {

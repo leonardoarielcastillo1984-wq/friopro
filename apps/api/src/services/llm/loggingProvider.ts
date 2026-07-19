@@ -13,9 +13,9 @@ export class LoggingLLMProvider implements LLMProvider {
     private module: string,
   ) {}
 
-  async chat(messages: LLMMessage[], maxTokens?: number): Promise<LLMResponse> {
+  async chat(messages: LLMMessage[], maxTokens?: number, jsonMode?: boolean): Promise<LLMResponse> {
     const promptLen = messages.reduce((s, m) => s + m.content.length, 0);
-    const response = await this.inner.chat(messages, maxTokens);
+    const response = await this.inner.chat(messages, maxTokens, jsonMode);
 
     // Fire-and-forget log — never blocks
     this.prisma.aIUsageLog.create({

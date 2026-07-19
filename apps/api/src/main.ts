@@ -8,6 +8,7 @@ import { systemMonitor } from './services/systemMonitor.js';
 import { subscriptionMonitor } from './services/subscriptionMonitor.js';
 import { healthMonitor, HealthMonitor } from './services/healthMonitor.js';
 import { databaseMonitor } from './services/databaseMonitor.js';
+import { absenceScheduler } from './services/absenceScheduler.js';
 
 const app = await buildApp();
 
@@ -41,7 +42,7 @@ if (process.env.NODE_ENV === 'production') {
   app.log.info(`[SYSTEM_MONITOR] Started with ${monitorInterval} minute intervals`);
   
   // Start subscription monitoring
-  const subscriptionInterval = parseInt(process.env.SUBSCRIPTION_MONITOR_INTERVAL || '6', 10);
+  const subscriptionInterval = parseInt(process.env.SUBSCRIPTION_MONITOR_INTERVAL || '12', 10);
   subscriptionMonitor.startMonitoring(subscriptionInterval);
   app.log.info(`[SUBSCRIPTION_MONITOR] Started with ${subscriptionInterval} hour intervals`);
   
@@ -53,4 +54,9 @@ if (process.env.NODE_ENV === 'production') {
   const dbMonitorInterval = parseInt(process.env.DATABASE_MONITOR_INTERVAL || '15', 10);
   databaseMonitor.startMonitoring(dbMonitorInterval);
   app.log.info(`[DATABASE_MONITOR] Started with ${dbMonitorInterval} minute intervals`);
+
+  // Start absence lifecycle scheduler (state transitions, accrual, reminders)
+  const absenceInterval = parseInt(process.env.ABSENCE_SCHEDULER_INTERVAL || '6', 10);
+  absenceScheduler.startMonitoring(absenceInterval);
+  app.log.info(`[ABSENCE_SCHEDULER] Started with ${absenceInterval} hour intervals`);
 }

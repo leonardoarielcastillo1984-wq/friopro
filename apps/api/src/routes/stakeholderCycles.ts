@@ -8,6 +8,10 @@ import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
  */
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
+
+const CRIT_LABEL: Record<number, string> = { 5: 'Muy Alta', 4: 'Alta', 3: 'Media', 2: 'Baja', 1: 'Muy Baja' };
+const STATUS_LABEL: Record<string, string> = { COMPLIES: 'Cumple', PARTIAL: 'Parcial', NON_COMPLIANT: 'No cumple', PENDING: 'Pendiente' };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const toDate = (v: any) => (v ? new Date(v) : null);
@@ -20,6 +24,7 @@ const cycleCreateSchema = z.object({
   status: z.enum(['DRAFT', 'ACTIVE', 'CLOSED']).optional().default('ACTIVE'),
   startDate: z.string().optional().nullable(),
   endDate: z.string().optional().nullable(),
+  responsible: z.string().optional().nullable(),
 });
 
 const cyclePatchSchema = z.object({
@@ -27,6 +32,7 @@ const cyclePatchSchema = z.object({
   status: z.enum(['DRAFT', 'ACTIVE', 'CLOSED']).optional(),
   startDate: z.string().optional().nullable(),
   endDate: z.string().optional().nullable(),
+  responsible: z.string().optional().nullable(),
 });
 
 const evalPatchSchema = z.object({
@@ -38,6 +44,7 @@ const evalPatchSchema = z.object({
   requiresAction: z.boolean().optional(),
   influence: z.number().int().min(1).max(5).optional().nullable(),
   interest: z.number().int().min(1).max(5).optional().nullable(),
+  criticality: z.number().int().min(1).max(5).optional().nullable(),
   observations: z.string().optional().nullable(),
   needs: z.string().optional().nullable(),
   expectations: z.string().optional().nullable(),
@@ -97,6 +104,7 @@ export const evaluationCyclesRoutes: FastifyPluginAsync = async (app) => {
           data: {
             tenantId, name: body!.name, year: body!.year, status: body!.status,
             startDate: toDate(body!.startDate), endDate: toDate(body!.endDate),
+            responsible: body!.responsible || null,
           },
         });
       });
@@ -122,6 +130,7 @@ export const evaluationCyclesRoutes: FastifyPluginAsync = async (app) => {
       if (body!.status !== undefined) data.status = body!.status;
       if (body!.startDate !== undefined) data.startDate = toDate(body!.startDate);
       if (body!.endDate !== undefined) data.endDate = toDate(body!.endDate);
+      if (body!.responsible !== undefined) data.responsible = body!.responsible || null;
       return tx.evaluationCycle.update({ where: { id }, data });
     }).catch((err: any) => { throw err; });
     return reply.send({ cycle });
@@ -165,11 +174,24 @@ export const evaluationCyclesRoutes: FastifyPluginAsync = async (app) => {
           });
         }
       }
-      return tx.stakeholderEvaluation.findMany({
+      const list = await tx.stakeholderEvaluation.findMany({
         where: { tenantId, cycleId: id, stakeholder: { deletedAt: null } },
         include: { stakeholder: true },
         orderBy: { stakeholder: { name: 'asc' } },
       });
+      // Adjuntar nivel del ciclo anterior (para tendencia) sin fetch adicional en el cliente.
+      const prevCycle = await tx.evaluationCycle.findFirst({
+        where: { tenantId, year: { lt: cycle.year } }, orderBy: { year: 'desc' },
+      });
+      if (prevCycle) {
+        const prevEvals = await tx.stakeholderEvaluation.findMany({
+          where: { tenantId, cycleId: prevCycle.id },
+          select: { stakeholderId: true, complianceLevel: true },
+        });
+        const prevMap = new Map(prevEvals.map((e: any) => [e.stakeholderId, e.complianceLevel]));
+        return list.map((e: any) => ({ ...e, previousLevel: prevMap.has(e.stakeholderId) ? prevMap.get(e.stakeholderId) : null, previousCycleName: prevCycle.name }));
+      }
+      return list.map((e: any) => ({ ...e, previousLevel: null, previousCycleName: null }));
     });
     return reply.send({ evaluations });
   });
@@ -237,7 +259,7 @@ export const evaluationCyclesRoutes: FastifyPluginAsync = async (app) => {
               tenantId, stakeholderId: pe.stakeholderId, cycleId: newCycle.id,
               // Estructura copiada
               needs: pe.needs, expectations: pe.expectations, requirements: pe.requirements,
-              influence: pe.influence, interest: pe.interest,
+              influence: pe.influence, interest: pe.interest, criticality: pe.criticality,
               indicatorNote: pe.indicatorNote, indicatorId: pe.indicatorId,
               reviewFrequency: pe.reviewFrequency, followUpResponsible: pe.followUpResponsible,
               // Evaluación reiniciada a Pendiente
@@ -256,6 +278,81 @@ export const evaluationCyclesRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(201).send(result);
     } catch (err: any) {
       return reply.code(err.statusCode ?? 500).send({ error: err.message ?? 'Error al crear ciclo siguiente' });
+    }
+  });
+
+  // ANÁLISIS IA del ciclo de partes interesadas
+  app.post('/:id/ai-analysis', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const ctx = await app.runWithDbContext(req, async (tx: any) => {
+      const cycle = await tx.evaluationCycle.findFirst({ where: { id, tenantId } });
+      if (!cycle) throw Object.assign(new Error('Ciclo no encontrado'), { statusCode: 404 });
+      const evals = await tx.stakeholderEvaluation.findMany({
+        where: { tenantId, cycleId: id, stakeholder: { deletedAt: null } },
+        include: { stakeholder: true },
+      });
+      const prevCycle = await tx.evaluationCycle.findFirst({ where: { tenantId, year: { lt: cycle.year } }, orderBy: { year: 'desc' } });
+      let prevAvg: number | null = null;
+      if (prevCycle) {
+        const pe = await tx.stakeholderEvaluation.findMany({ where: { tenantId, cycleId: prevCycle.id }, select: { complianceLevel: true } });
+        const l = pe.map((e: any) => e.complianceLevel).filter((n: any) => typeof n === 'number');
+        prevAvg = l.length ? Math.round(l.reduce((a: number, b: number) => a + b, 0) / l.length) : null;
+      }
+      return { cycle, evals, prevCycle, prevAvg };
+    });
+
+    const now = Date.now();
+    const evals = ctx.evals;
+    const levels = evals.map((e: any) => e.complianceLevel).filter((n: any) => typeof n === 'number');
+    const avg = levels.length ? Math.round(levels.reduce((a: number, b: number) => a + b, 0) / levels.length) : 0;
+    const counts = {
+      total: evals.length,
+      complies: evals.filter((e: any) => e.complianceStatus === 'COMPLIES').length,
+      partial: evals.filter((e: any) => e.complianceStatus === 'PARTIAL').length,
+      nonCompliant: evals.filter((e: any) => e.complianceStatus === 'NON_COMPLIANT').length,
+      pending: evals.filter((e: any) => !e.complianceStatus || e.complianceStatus === 'PENDING').length,
+      openActions: evals.filter((e: any) => e.requiresAction && !e.actionItemId).length,
+      overdue: evals.filter((e: any) => e.nextEvaluationDate && new Date(e.nextEvaluationDate).getTime() < now).length,
+      critical: evals.filter((e: any) => (e.criticality ?? 0) >= 4).length,
+    };
+    const rows = evals.map((e: any) => {
+      const s = e.stakeholder;
+      const overdue = e.nextEvaluationDate && new Date(e.nextEvaluationDate).getTime() < now;
+      return `- ${s.name} | Estado: ${STATUS_LABEL[e.complianceStatus] || 'Pendiente'} | Nivel: ${e.complianceLevel ?? '—'}% | Criticidad: ${CRIT_LABEL[e.criticality] || '—'} | Influencia: ${e.influence ?? '—'} | Interés: ${e.interest ?? '—'} | ${e.requiresAction ? 'Requiere acción' : 'Sin acción'}${overdue ? ' | EVALUACIÓN VENCIDA' : ''}`;
+    }).join('\n');
+
+    const prompt = `Sos un consultor experto en Sistemas de Gestión Integrados (ISO 9001/14001/45001), especializado en el análisis de partes interesadas (cláusula 4.2 y 9.1).
+
+Analizá el siguiente ciclo de evaluación de partes interesadas y devolvé un informe profesional en español, en formato Markdown, con EXACTAMENTE estas secciones:
+## Resumen Ejecutivo
+## Fortalezas
+## Debilidades
+## Riesgos Detectados
+## Recomendaciones
+## Prioridades
+## Acciones Sugeridas
+
+Datos del ciclo "${ctx.cycle.name}" (${ctx.cycle.year}):
+- Nivel de cumplimiento promedio: ${avg}%
+- Nivel promedio del ciclo anterior (${ctx.prevCycle?.name || 'N/D'}): ${ctx.prevAvg ?? 'N/D'}%
+- Total partes: ${counts.total} | Cumplen: ${counts.complies} | Parciales: ${counts.partial} | No cumplen: ${counts.nonCompliant} | Pendientes: ${counts.pending}
+- Partes críticas (criticidad Alta/Muy Alta): ${counts.critical}
+- Acciones abiertas: ${counts.openActions} | Evaluaciones vencidas: ${counts.overdue}
+
+Detalle de partes interesadas:
+${rows || '(sin datos)'}
+
+Sé concreto, accionable y basado en los datos provistos. No inventes datos que no estén presentes.`;
+
+    try {
+      const llm = createGroqOnlyLLMProvider((req as any).tenant, (app as any).prisma, tenantId, (req as any).auth?.userId ?? null, 'stakeholders-cycle-analysis');
+      const aiRes = await llm.chat([{ role: 'user', content: prompt }], 2200);
+      return reply.send({ analysis: aiRes?.text || 'Sin respuesta del modelo', metrics: { avg, prevAvg: ctx.prevAvg, ...counts } });
+    } catch (e: any) {
+      return reply.code(e.statusCode ?? 500).send({ error: e?.message || 'Fallo el análisis IA' });
     }
   });
 };
@@ -298,6 +395,7 @@ export const stakeholderEvaluationsRoutes: FastifyPluginAsync = async (app) => {
       if (b.complianceLevel !== undefined) data.complianceLevel = b.complianceLevel;
       if (b.influence !== undefined) data.influence = b.influence;
       if (b.interest !== undefined) data.interest = b.interest;
+      if (b.criticality !== undefined) data.criticality = b.criticality;
       if (b.requiresAction !== undefined) data.requiresAction = b.requiresAction;
       if (b.evaluationDate !== undefined) data.evaluationDate = toDate(b.evaluationDate);
       if (b.nextEvaluationDate !== undefined) data.nextEvaluationDate = toDate(b.nextEvaluationDate);

@@ -44,6 +44,22 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
+    // Vinculación real documento ↔ proceso (tabla ProcessDocument, misma que usa el Mapa de Procesos).
+    const docIds = documents.map((d: any) => d.id);
+    const processLinks = docIds.length
+      ? await app.runWithDbContext(req, async (tx: any) => {
+          return tx.processDocument.findMany({
+            where: { documentId: { in: docIds } },
+            select: { documentId: true, process: { select: { id: true, name: true } } },
+          });
+        })
+      : [];
+    const processesByDoc: Record<string, { id: string; name: string }[]> = {};
+    for (const link of processLinks) {
+      if (!link.process) continue;
+      (processesByDoc[link.documentId] ??= []).push({ id: link.process.id, name: link.process.name });
+    }
+
     // Calcular estado automático de vigencia
     const today = new Date();
     const documentsWithAutoStatus = documents.map((d: any) => {
@@ -55,10 +71,32 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         else if (diffDays <= 15) autoStatus = 'POR_VENCER';
         else autoStatus = 'VIGENTE';
       }
-      return { ...d, autoStatus };
+      return { ...d, autoStatus, processes: processesByDoc[d.id] ?? [] };
     });
 
     return reply.send({ documents: documentsWithAutoStatus });
+  });
+
+  // ── PUT /documents/:id/processes — Sincronizar vinculación documento ↔ procesos ──
+  // Usa la misma tabla ProcessDocument que el Mapa de Procesos, por lo que la relación es bidireccional.
+  app.put('/:id/processes', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { processIds } = z.object({ processIds: z.array(z.string().uuid()) }).parse(req.body);
+
+    await app.runWithDbContext(req, async (tx: any) => {
+      const doc = await tx.document.findFirst({ where: { id, deletedAt: null }, select: { id: true } });
+      if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
+      await tx.processDocument.deleteMany({ where: { documentId: id } });
+      if (processIds.length) {
+        await tx.processDocument.createMany({
+          data: processIds.map((processId) => ({ processId, documentId: id })),
+          skipDuplicates: true,
+        });
+      }
+    });
+
+    return reply.send({ ok: true, processIds });
   });
 
   app.get('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -449,6 +487,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     let ownerId = (data.fields?.ownerId as any)?.value || null;
     const reviewDate = (data.fields?.reviewDate as any)?.value || null;
     const nextReviewDate = (data.fields?.nextReviewDate as any)?.value || null;
+    const documentCode = (data.fields?.documentCode as any)?.value || null;
+    const typeConfigId = (data.fields?.typeConfigId as any)?.value || null;
 
     // Validar ownerId - si no existe en PlatformUser, usar null
     if (ownerId) {
@@ -477,6 +517,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           ownerId,
           reviewDate: reviewDate ? new Date(reviewDate) : null,
           nextReviewDate: nextReviewDate ? new Date(nextReviewDate) : null,
+          documentCode: documentCode || null,
+          typeConfigId: typeConfigId || null,
           reviewStatus: 'APPROVED',
           status: 'DRAFT',
           version: 1,
@@ -1520,5 +1562,227 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
       app.log.error('AI validation error:', err);
       return reply.code(503).send({ error: err?.message || 'El servicio de IA no está disponible' });
     }
+  });
+
+  // ════════════════════════════════════════════════════════
+  // MAESTRO DE DOCUMENTOS — Configuración de codificación
+  // ════════════════════════════════════════════════════════
+
+  // ── GET /documents/code-config ──
+  app.get('/code-config', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    const config = await (app.prisma as any).documentCodeConfig.findUnique({ where: { tenantId } });
+    return reply.send(config || { prefix: 'SGI', digitCount: 3, separator: '-' });
+  });
+
+  // ── PUT /documents/code-config ──
+  app.put('/code-config', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    const schema = z.object({
+      prefix: z.string().min(1).max(10).toUpperCase(),
+      digitCount: z.number().int().min(2).max(6).default(3),
+      separator: z.string().max(1).default('-'),
+    });
+    const data = schema.parse(req.body);
+
+    const config = await (app.prisma as any).documentCodeConfig.upsert({
+      where: { tenantId },
+      update: data,
+      create: { tenantId, ...data },
+    });
+    return reply.send(config);
+  });
+
+  // ── GET /documents/types ──
+  app.get('/types', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    const types = await (app.prisma as any).documentTypeConfig.findMany({
+      where: { tenantId, deletedAt: null },
+      orderBy: { name: 'asc' },
+    });
+    return reply.send({ types });
+  });
+
+  // ── POST /documents/types ──
+  app.post('/types', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    const schema = z.object({
+      name: z.string().min(1).max(100),
+      abbreviation: z.string().min(1).max(10).toUpperCase(),
+      description: z.string().optional(),
+      color: z.string().optional(),
+    });
+    const data = schema.parse(req.body);
+
+    const existing = await (app.prisma as any).documentTypeConfig.findFirst({
+      where: { tenantId, abbreviation: data.abbreviation, deletedAt: null },
+    });
+    if (existing) return reply.code(409).send({ error: `La abreviatura "${data.abbreviation}" ya existe` });
+
+    const type = await (app.prisma as any).documentTypeConfig.create({
+      data: { tenantId, ...data },
+    });
+    return reply.code(201).send(type);
+  });
+
+  // ── PUT /documents/types/:typeId ──
+  app.put('/types/:typeId', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    const { typeId } = z.object({ typeId: z.string().uuid() }).parse(req.params);
+    const schema = z.object({
+      name: z.string().min(1).max(100).optional(),
+      description: z.string().optional(),
+      color: z.string().optional(),
+    });
+    const data = schema.parse(req.body);
+
+    const type = await (app.prisma as any).documentTypeConfig.update({
+      where: { id: typeId },
+      data,
+    });
+    return reply.send(type);
+  });
+
+  // ── DELETE /documents/types/:typeId ──
+  app.delete('/types/:typeId', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { typeId } = z.object({ typeId: z.string().uuid() }).parse(req.params);
+    await (app.prisma as any).documentTypeConfig.update({
+      where: { id: typeId },
+      data: { deletedAt: new Date() },
+    });
+    return reply.send({ ok: true });
+  });
+
+  // ── POST /documents/next-code — Obtener (y reservar) el próximo código ──
+  app.post('/next-code', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    const schema = z.object({
+      typeConfigId: z.string().uuid(),
+      reserve: z.boolean().default(false),
+    });
+    const { typeConfigId, reserve } = schema.parse(req.body);
+
+    const [typeConfig, codeConfig] = await Promise.all([
+      (app.prisma as any).documentTypeConfig.findFirst({ where: { id: typeConfigId, tenantId, deletedAt: null } }),
+      (app.prisma as any).documentCodeConfig.findUnique({ where: { tenantId } }),
+    ]);
+    if (!typeConfig) return reply.code(404).send({ error: 'Tipo de documento no encontrado' });
+
+    const prefix = codeConfig?.prefix || 'SGI';
+    const digits = codeConfig?.digitCount || 3;
+    const sep = codeConfig?.separator || '-';
+    const seq = typeConfig.nextSequence;
+    const code = `${prefix}${sep}${typeConfig.abbreviation}${sep}${String(seq).padStart(digits, '0')}`;
+
+    if (reserve) {
+      await (app.prisma as any).documentTypeConfig.update({
+        where: { id: typeConfigId },
+        data: { nextSequence: { increment: 1 } },
+      });
+    }
+
+    return reply.send({ code, nextSequence: seq, preview: !reserve });
+  });
+
+  // ── GET /documents/master — Vista maestro con todos los metadatos ──
+  app.get('/master', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Tenant requerido' });
+
+    const { status, typeConfigId, departmentId, search } = (req.query as any) || {};
+
+    const where: any = { tenantId, deletedAt: null };
+    if (status) where.status = status;
+    if (typeConfigId) where.typeConfigId = typeConfigId;
+    if (departmentId) where.departmentId = departmentId;
+    if (search) where.OR = [
+      { title: { contains: search, mode: 'insensitive' } },
+      { documentCode: { contains: search, mode: 'insensitive' } },
+    ];
+
+    const docs = await app.prisma.document.findMany({
+      where,
+      orderBy: [{ documentCode: 'asc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        documentCode: true,
+        title: true,
+        type: true,
+        status: true,
+        version: true,
+        process: true,
+        createdAt: true,
+        updatedAt: true,
+        approvedAt: true,
+        nextReviewDate: true,
+        typeConfig: { select: { id: true, name: true, abbreviation: true, color: true } },
+        department: { select: { id: true, name: true } },
+        owner: { select: { id: true, email: true, firstName: true, lastName: true } },
+        approvedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+        relatedDocument: { select: { id: true, title: true, documentCode: true } },
+        versions: { select: { id: true, version: true, createdAt: true }, orderBy: { version: 'desc' }, take: 5 },
+        _count: { select: { versions: true } },
+      },
+    } as any);
+
+    const [codeConfig, typeConfigs] = await Promise.all([
+      (app.prisma as any).documentCodeConfig.findUnique({ where: { tenantId } }),
+      (app.prisma as any).documentTypeConfig.findMany({ where: { tenantId, deletedAt: null }, orderBy: { name: 'asc' } }),
+    ]);
+
+    return reply.send({ documents: docs, codeConfig, typeConfigs });
+  });
+
+  // ── PUT /documents/:id/master — Actualizar metadatos del maestro ──
+  app.put('/:id/master', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      documentCode: z.string().optional(),
+      typeConfigId: z.string().uuid().optional().nullable(),
+      approvedAt: z.string().datetime().optional().nullable(),
+      approvedById: z.string().uuid().optional().nullable(),
+      relatedDocumentId: z.string().uuid().optional().nullable(),
+      nextReviewDate: z.string().datetime().optional().nullable(),
+      process: z.string().optional(),
+      status: z.enum(['DRAFT', 'REVIEW', 'EFFECTIVE', 'OBSOLETE']).optional(),
+    });
+    const data = schema.parse(req.body);
+
+    const updated = await app.prisma.document.update({
+      where: { id },
+      data: {
+        ...(data.documentCode !== undefined && { documentCode: data.documentCode }),
+        ...(data.typeConfigId !== undefined && { typeConfigId: data.typeConfigId }),
+        ...(data.approvedAt !== undefined && { approvedAt: data.approvedAt ? new Date(data.approvedAt) : null }),
+        ...(data.approvedById !== undefined && { approvedById: data.approvedById }),
+        ...(data.relatedDocumentId !== undefined && { relatedDocumentId: data.relatedDocumentId }),
+        ...(data.nextReviewDate !== undefined && { nextReviewDate: data.nextReviewDate ? new Date(data.nextReviewDate) : null }),
+        ...(data.process !== undefined && { process: data.process }),
+        ...(data.status !== undefined && { status: data.status as any }),
+      } as any,
+    });
+    return reply.send(updated);
   });
 };
