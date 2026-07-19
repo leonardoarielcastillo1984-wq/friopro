@@ -15,7 +15,7 @@ export default function AyudaExport() {
 
   useEffect(() => {
     apiFetch<{ sections: HelpSection[] }>('/doc-export/help')
-      .then(d => setSections(d.sections))
+      .then(d => setSections(Array.isArray(d?.sections) ? d.sections : []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

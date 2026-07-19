@@ -91,7 +91,7 @@ export default function PlantillasExport() {
     setError(null);
     try {
       const data = await apiFetch<Template[]>('/doc-export/templates');
-      setTemplates(data);
+      setTemplates(Array.isArray(data) ? data : []);
     } catch (e: any) {
       setError(e.message || 'Error al cargar plantillas');
     }
