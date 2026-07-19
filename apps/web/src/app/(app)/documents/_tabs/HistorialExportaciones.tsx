@@ -47,8 +47,8 @@ export default function HistorialExportaciones() {
       params.set('offset', String(page * limit));
       if (filterType) params.set('exportType', filterType);
       const data = await apiFetch<{ data: ExportRecord[]; total: number }>(`/doc-export/exports?${params}`);
-      setExports(data.data);
-      setTotal(data.total);
+      setExports(Array.isArray(data?.data) ? data.data : []);
+      setTotal(typeof data?.total === 'number' ? data.total : 0);
     } catch (e: any) {
       setError(e.message);
     }
@@ -58,6 +58,7 @@ export default function HistorialExportaciones() {
   useEffect(() => { load(); }, [page, filterType]);
 
   const filtered = useMemo(() => {
+    if (!Array.isArray(exports)) return [];
     if (!search) return exports;
     const q = search.toLowerCase();
     return exports.filter(e =>

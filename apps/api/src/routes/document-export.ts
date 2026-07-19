@@ -379,34 +379,28 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/exports', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
     const { outputDefinitionId, exportType, limit, offset } = req.query as any;
-    const where: any = { tenantId };
-    if (outputDefinitionId) where.outputDefinitionId = outputDefinitionId;
-    if (exportType) where.exportType = exportType;
     const take = Math.min(parseInt(limit) || 50, 200);
     const skip = parseInt(offset) || 0;
-    const [exports, total] = await Promise.all([
-      prisma.documentExport.findMany({ where, orderBy: { createdAt: 'desc' }, take, skip }),
-      prisma.documentExport.count({ where }),
-    ]);
-    reply.send({ data: exports, total, limit: take, offset: skip });
+    let q = `SELECT * FROM document_exports WHERE "tenantId" = $1`;
+    const p: any[] = [tenantId]; let pi = 2;
+    if (outputDefinitionId) { q += ` AND "outputDefinitionId" = $${pi++}::uuid`; p.push(outputDefinitionId); }
+    if (exportType) { q += ` AND "exportType" = $${pi++}`; p.push(exportType); }
+    const totalQ = q.replace('SELECT *', 'SELECT COUNT(*)::int AS c');
+    q += ` ORDER BY "createdAt" DESC LIMIT $${pi++} OFFSET $${pi++}`;
+    p.push(take, skip);
+    const [rows, cnt]: any = await Promise.all([prisma.$queryRawUnsafe(q, ...p), prisma.$queryRawUnsafe(totalQ, ...p.slice(0, pi - 2))]);
+    return reply.send({ data: rows, total: Number(cnt[0]?.c ?? 0), limit: take, offset: skip });
   });
 
   app.get('/exports/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
     const { id } = req.params as any;
-    const exportRecord = await prisma.documentExport.findFirst({
-      where: { id, tenantId },
-      include: {
-        outputDefinition: { select: { id: true, screenName: true, module: true, outputKey: true } },
-        revision: { select: { id: true, revision: true, status: true } },
-        validationToken: { select: { token: true, expiresAt: true } },
-      },
-    });
-    if (!exportRecord) return reply.code(404).send({ error: 'Exportación no encontrada' });
-    reply.send(exportRecord);
+    const rows: any[] = await prisma.$queryRawUnsafe(`SELECT * FROM document_exports WHERE id = $1::uuid AND "tenantId" = $2 LIMIT 1`, id, tenantId);
+    if (!rows.length) { reply.code(404).send({ error: 'Exportación no encontrada' }); return; }
+    return reply.send(rows[0]);
   });
 
   // ── VALIDACIÓN PÚBLICA (QR) ──
@@ -670,11 +664,8 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/retention-rules', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const rules = await prisma.documentRetentionRule.findMany({
-      where: { tenantId, active: true },
-      orderBy: [{ documentType: 'asc' }, { name: 'asc' }],
-    });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
+    const rules = await prisma.$queryRawUnsafe(`SELECT * FROM document_retention_rules WHERE "tenantId" = $1 AND active = true ORDER BY "documentType" ASC, name ASC`, tenantId);
     reply.send(rules);
   });
 
@@ -682,32 +673,34 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { name, description, documentType, module, retentionYears, medium, observations } = req.body as any;
-    if (!name || !retentionYears) return reply.code(400).send({ error: 'name y retentionYears son requeridos' });
-    const rule = await prisma.documentRetentionRule.create({
-      data: { tenantId, name, description, documentType, module, retentionYears, medium: medium || 'DIGITAL', observations },
-    });
-    reply.code(201).send(rule);
+    if (!name || !retentionYears) { reply.code(400).send({ error: 'name y retentionYears son requeridos' }); return; }
+    const rows: any[] = await prisma.$queryRawUnsafe(
+      `INSERT INTO document_retention_rules (id,"tenantId",name,description,"documentType",module,"retentionYears",medium,observations,active,"createdAt","updatedAt") VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,true,NOW(),NOW()) RETURNING *`,
+      tenantId, name, description||null, documentType||null, module||null, retentionYears, medium||'DIGITAL', observations||null
+    );
+    return reply.code(201).send(rows[0]);
   });
 
   app.put('/retention-rules/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
-    const data = (req.body as any);
-    const result = await prisma.documentRetentionRule.updateMany({ where: { id, tenantId }, data });
-    if (result.count === 0) return reply.code(404).send({ error: 'Regla no encontrada' });
-    reply.send({ ok: true });
+    const { name, description, documentType, module: mod, retentionYears, medium, observations } = req.body as any;
+    const count: any[] = await prisma.$queryRawUnsafe(
+      `UPDATE document_retention_rules SET name=COALESCE($3,name),description=$4,"documentType"=$5,module=$6,"retentionYears"=COALESCE($7,"retentionYears"),medium=COALESCE($8,medium),observations=$9,"updatedAt"=NOW() WHERE id=$1::uuid AND "tenantId"=$2 RETURNING id`,
+      id, tenantId, name||null, description||null, documentType||null, mod||null, retentionYears||null, medium||null, observations||null
+    );
+    if (!count.length) { reply.code(404).send({ error: 'Regla no encontrada' }); return; }
+    return reply.send({ ok: true });
   });
 
   app.delete('/retention-rules/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as any;
-    const result = await prisma.documentRetentionRule.updateMany({
-      where: { id, tenantId }, data: { active: false },
-    });
-    if (result.count === 0) return reply.code(404).send({ error: 'Regla no encontrada' });
-    reply.send({ ok: true });
+    const rows: any[] = await prisma.$queryRawUnsafe(`UPDATE document_retention_rules SET active=false,"updatedAt"=NOW() WHERE id=$1::uuid AND "tenantId"=$2 RETURNING id`, id, tenantId);
+    if (!rows.length) { reply.code(404).send({ error: 'Regla no encontrada' }); return; }
+    return reply.send({ ok: true });
   });
 
   // ── EXPORTACIÓN MASIVA (Etapa 4) ──
@@ -781,28 +774,31 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/dashboard', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
 
     const [
       totalOutputs, effectiveOutputs, pendingOutputs, obsoleteOutputs,
-      totalExports, totalTemplates, totalRevisions, totalBulkExports,
-      recentExports,
+      totalTemplates, totalRevisions,
+      exportCnt, bulkCnt, recentExports,
     ] = await Promise.all([
       prisma.documentOutputDefinition.count({ where: { tenantId, deletedAt: null } }),
       prisma.documentOutputDefinition.count({ where: { tenantId, deletedAt: null, status: 'EFFECTIVE' } }),
       prisma.documentOutputDefinition.count({ where: { tenantId, deletedAt: null, status: { in: ['PENDING', 'DRAFT', 'REVIEW', 'PENDING_APPROVAL'] } } }),
       prisma.documentOutputDefinition.count({ where: { tenantId, deletedAt: null, status: 'OBSOLETE' } }),
-      prisma.documentExport.count({ where: { tenantId } }),
       prisma.documentTemplate.count({ where: { tenantId, deletedAt: null } }),
       prisma.documentRevision.count({ where: { tenantId } }),
-      prisma.documentBulkExport.count({ where: { tenantId } }),
-      prisma.documentExport.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 10 }),
+      prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM document_exports WHERE "tenantId" = $1`, tenantId),
+      prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM document_bulk_exports WHERE "tenantId" = $1`, tenantId),
+      prisma.$queryRawUnsafe(`SELECT * FROM document_exports WHERE "tenantId" = $1 ORDER BY "createdAt" DESC LIMIT 10`, tenantId),
     ]);
 
-    reply.send({
+    return reply.send({
       totalOutputs, effectiveOutputs, pendingOutputs, obsoleteOutputs,
-      totalExports, totalTemplates, totalRevisions, totalBulkExports,
-      recentExports,
+      totalExports: Number((exportCnt as any[])[0]?.c ?? 0),
+      totalTemplates,
+      totalRevisions,
+      totalBulkExports: Number((bulkCnt as any[])[0]?.c ?? 0),
+      recentExports: recentExports as any[],
     });
   });
 
@@ -980,12 +976,9 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/scheduled-exports', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const items = await prisma.documentBulkExport.findMany({
-      where: { tenantId, status: 'PENDING' },
-      orderBy: { createdAt: 'asc' },
-    });
-    reply.send(items);
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
+    const items = await prisma.$queryRawUnsafe(`SELECT * FROM document_bulk_exports WHERE "tenantId" = $1 AND status = 'PENDING' ORDER BY "createdAt" ASC`, tenantId);
+    return reply.send(items);
   });
 
   // ── COMPARACIÓN DE REVISIONES (Etapa 12) ──
@@ -1028,8 +1021,8 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const [byType, byUser, byMonth, byModule] = await Promise.all([
-      prisma.documentExport.groupBy({ by: ['exportType'], where, _count: true }),
-      prisma.documentExport.groupBy({ by: ['userName'], where, _count: true, orderBy: { _count: { userName: 'desc' } }, take: 10 }),
+      prisma.$queryRawUnsafe(`SELECT "exportType", COUNT(*)::int AS count FROM document_exports WHERE "tenantId" = $1 GROUP BY "exportType"`, tenantId),
+      prisma.$queryRawUnsafe(`SELECT "userName", COUNT(*)::int AS count FROM document_exports WHERE "tenantId" = $1 GROUP BY "userName" ORDER BY count DESC LIMIT 10`, tenantId),
       prisma.$queryRawUnsafe(`
         SELECT DATE_TRUNC('month', "createdAt") as month, COUNT(*) as count
         FROM document_exports WHERE "tenantId" = $1
@@ -1157,23 +1150,19 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/audit-log', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    if (!tenantId) { reply.code(400).send({ error: 'Se requiere contexto de tenant' }); return; }
     const { limit, offset, userId, action } = req.query as any;
     const take = Math.min(parseInt(limit) || 100, 500);
     const skip = parseInt(offset) || 0;
-
-    const where: any = { tenantId };
-    if (userId) where.userId = userId;
-    if (action) where.exportType = action;
-
-    const [items, total] = await Promise.all([
-      prisma.documentExport.findMany({
-        where, orderBy: { createdAt: 'desc' }, take, skip,
-        select: { id: true, documentCode: true, documentTitle: true, exportType: true, userName: true, userIp: true, userAgent: true, fileHash: true, fileSize: true, createdAt: true },
-      }),
-      prisma.documentExport.count({ where }),
-    ]);
-    reply.send({ data: items, total, limit: take, offset: skip });
+    let q = `SELECT id,"documentCode","documentTitle","exportType","userName","userIp","userAgent","fileHash","fileSize","createdAt" FROM document_exports WHERE "tenantId" = $1`;
+    const p: any[] = [tenantId]; let pi = 2;
+    if (userId) { q += ` AND "userId" = $${pi++}::uuid`; p.push(userId); }
+    if (action) { q += ` AND "exportType" = $${pi++}`; p.push(action); }
+    const totalQ = `SELECT COUNT(*)::int AS c FROM document_exports WHERE "tenantId" = $1` + (userId ? ` AND "userId" = $2::uuid` : '') + (action ? ` AND "exportType" = $${userId ? 3 : 2}` : '');
+    q += ` ORDER BY "createdAt" DESC LIMIT $${pi++} OFFSET $${pi++}`;
+    p.push(take, skip);
+    const [items, cnt]: any = await Promise.all([prisma.$queryRawUnsafe(q, ...p), prisma.$queryRawUnsafe(totalQ, ...p.slice(0, pi - 2))]);
+    return reply.send({ data: items, total: Number(cnt[0]?.c ?? 0), limit: take, offset: skip });
   });
 
   // ── EXPORTACIÓN EXCEL/WORD (Etapa 20) ──

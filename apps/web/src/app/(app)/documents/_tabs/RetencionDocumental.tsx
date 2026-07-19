@@ -36,7 +36,7 @@ export default function RetencionDocumental() {
     setLoading(true);
     try {
       const data = await apiFetch<RetentionRule[]>('/doc-export/retention-rules');
-      setRules(data);
+      setRules(Array.isArray(data) ? data : []);
     } catch (e: any) { setError(e.message); }
     setLoading(false);
   }

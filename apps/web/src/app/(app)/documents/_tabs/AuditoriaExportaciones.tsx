@@ -34,8 +34,8 @@ export default function AuditoriaExportaciones() {
       params.set('offset', String(page * limit));
       if (search) params.set('userId', search);
       const data = await apiFetch<{ data: AuditEntry[]; total: number }>(`/doc-export/audit-log?${params}`);
-      setItems(data.data);
-      setTotal(data.total);
+      setItems(Array.isArray(data?.data) ? data.data : []);
+      setTotal(typeof data?.total === 'number' ? data.total : 0);
     } catch (e: any) { setError(e.message); }
     setLoading(false);
   }

@@ -26,7 +26,7 @@ export default function DashboardExport() {
 
   useEffect(() => {
     apiFetch<Dashboard>('/doc-export/dashboard')
-      .then(d => setData(d))
+      .then(d => setData(d && typeof d === 'object' && !Array.isArray(d) ? d : null))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -69,13 +69,13 @@ export default function DashboardExport() {
         })}
       </div>
 
-      {data.recentExports.length > 0 && (
+      {(data.recentExports || []).length > 0 && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
           <h3 className="font-semibold text-sm text-neutral-800 mb-3 flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-brand-600" /> Exportaciones Recientes
           </h3>
           <div className="space-y-2">
-            {data.recentExports.map((e: any) => (
+            {(data.recentExports || []).map((e: any) => (
               <div key={e.id} className="flex items-center justify-between text-sm border-b border-neutral-50 pb-2">
                 <div className="flex items-center gap-2">
                   <Download className="h-4 w-4 text-neutral-400" />
