@@ -1,3 +1,1 @@
-import type { FastifyPluginAsync } from 'fastify';
-const plugin: FastifyPluginAsync = async (app) => {};
-export default plugin;
+export const registerSeh360AIRoutes = async (_app: any) => {};

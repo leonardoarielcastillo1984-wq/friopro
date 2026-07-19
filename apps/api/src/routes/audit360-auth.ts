@@ -1,3 +1,1 @@
-import type { FastifyPluginAsync } from 'fastify';
-const plugin: FastifyPluginAsync = async (app) => {};
-export default plugin;
+export const registerAudit360AuthRoutes = async (_app: any) => {};

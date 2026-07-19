@@ -8,6 +8,29 @@ Este workflow garantiza que el build de Next.js se complete correctamente antes 
 
 ## Pasos
 
+### 0. Guarda de rutas críticas (PREVIENE REGRESIONES)
+Verifica que el sidebar apunte a las rutas correctas ANTES de gastar tiempo en un build.
+Corre sobre el source del HOST del server (que es lo que se buildeará).
+Bash puro — no requiere node en el host. Y auto-corrige el caso conocido.
+```bash
+cd /root/friopro
+SB=apps/web/src/components/layout/Sidebar.tsx
+HREF=$(grep -oE "label: ['\"]Proyectos['\"][^}]*href: ['\"][^'\"]*['\"]" "$SB" | grep -oE "href: ['\"][^'\"]*['\"]" | grep -oE "/[a-zA-Z0-9/_-]+")
+echo "Proyectos href actual: $HREF"
+if [ "$HREF" = "/project360" ] || [ "$HREF" = "/project360/projects" ]; then
+  echo "⚠️  Proyectos apunta a '$HREF' (producto standalone). Auto-corrigiendo a /proyectos..."
+  sed -i "s|\(label: ['\"]Proyectos['\"], icon: BarChart3, href: \)['\"][^'\"]*['\"]|\1'/proyectos'|" "$SB"
+  HREF=$(grep -oE "label: ['\"]Proyectos['\"][^}]*href: ['\"][^'\"]*['\"]" "$SB" | grep -oE "/[a-zA-Z0-9/_-]+$")
+fi
+if [ "$HREF" != "/proyectos" ]; then
+  echo "❌ Proyectos apunta a '$HREF', debe ser /proyectos. Corregir Sidebar.tsx antes de deployar."
+  exit 1
+fi
+echo "✅ Proyectos → /proyectos OK"
+```
+> Nota: /proyectos = módulo INTERNO de SGI. /project360 = producto STANDALONE (redirige a /proyect360-landing). El sidebar SIEMPRE debe usar /proyectos.
+> Para chequeo local (con node disponible): `node scripts/check-critical-routes.mjs`
+
 ### 1. Limpiar caché de builds anteriores
 ```bash
 cd /root/friopro
@@ -32,6 +55,17 @@ if [ $? -ne 0 ]; then
   echo "❌ Chunks no encontrados - build corrupto"
   exit 1
 fi
+```
+
+### 3b. Verificar rutas críticas EN EL BUNDLE construido
+Confirma que el build realmente compiló la ruta correcta (atrapa builds stale por caché).
+```bash
+docker run --rm friopro-web sh -c 'grep -rho "\"/proyectos\"" /app/apps/web/.next/static/chunks/*.js | head -1' | grep -q "/proyectos"
+if [ $? -ne 0 ]; then
+  echo "❌ El bundle NO contiene la ruta /proyectos - build stale o roto. Rebuild con --no-cache."
+  exit 1
+fi
+echo "✅ Bundle contiene /proyectos"
 ```
 
 ### 4. Iniciar servicio

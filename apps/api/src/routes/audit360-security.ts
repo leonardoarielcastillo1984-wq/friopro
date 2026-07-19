@@ -1,3 +1,2 @@
-import type { FastifyPluginAsync } from 'fastify';
-const plugin: FastifyPluginAsync = async (app) => {};
-export default plugin;
+export const audit360SecurityRoutes = async (_app: any) => {};
+export async function logAction(..._a: any[]): Promise<void> {}
