@@ -53,6 +53,7 @@ export interface PdfDocumentMetadata {
   approvedBy?: string;
   approvedAt?: Date | null;
   nextReviewDate?: Date | null;
+  createdAt?: Date | null;
   confidentialLevel?: string;
 }
 
@@ -69,6 +70,27 @@ export interface PdfRenderResult {
   pageCount: number;
   fileHash: string;
   qrDataUrl?: string;
+}
+
+function translateStatus(s: string): string {
+  const map: Record<string, string> = {
+    EFFECTIVE: 'VIGENTE', OBSOLETE: 'OBSOLETO', DRAFT: 'BORRADOR',
+    REVIEW: 'EN REVISIÓN', PENDING_APPROVAL: 'PENDIENTE DE APROBACIÓN',
+    PENDING: 'PENDIENTE', SUSPENDED: 'SUSPENDIDO', ARCHIVED: 'ARCHIVADO',
+  };
+  return map[s] ?? s;
+}
+
+function cleanModuleName(m: string): string {
+  const map: Record<string, string> = {
+    calidad: 'Calidad', rrhh: 'Recursos Humanos', objetivos: 'Objetivos',
+    normativos: 'Normativos', riesgos: 'Riesgos', indicadores: 'Indicadores',
+    capacitaciones: 'Capacitaciones', audit: 'Auditorías', 'no-conformidades': 'No Conformidades',
+    proveedores: 'Proveedores', mantenimiento: 'Mantenimiento', documentos: 'Documentos',
+    sgi: 'SGI', contexto: 'Contexto', procesos: 'Procesos',
+  };
+  const key = m.replace(/^page-/, '').replace(/-+$/, '').toLowerCase();
+  return map[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
 }
 
 function formatDate(d: Date | null | undefined): string {
@@ -379,21 +401,24 @@ export function buildMetadataTable(metadata: PdfDocumentMetadata): string {
   const rows: string[] = [];
 
   if (metadata.module) {
-    rows.push(`<tr><th>Módulo</th><td>${metadata.module}${metadata.subModule ? ' / ' + metadata.subModule : ''}</td></tr>`);
+    const modName = cleanModuleName(metadata.module);
+    const subName = metadata.subModule ? ' / ' + cleanModuleName(metadata.subModule) : '';
+    rows.push(`<tr><th>Módulo</th><td>${modName}${subName}</td></tr>`);
   }
   rows.push(`<tr><th>Código</th><td style="font-family:monospace;font-weight:bold;">${metadata.documentCode}</td></tr>`);
-  if (metadata.revision > 0) {
-    rows.push(`<tr><th>Revisión</th><td>R${String(metadata.revision).padStart(2, '0')}</td></tr>`);
-  }
-  rows.push(`<tr><th>Estado</th><td>${metadata.status}</td></tr>`);
-  if (metadata.confidentialLevel) {
-    rows.push(`<tr><th>Clasificación</th><td>${metadata.confidentialLevel}</td></tr>`);
+  rows.push(`<tr><th>Revisión</th><td>R${String(metadata.revision).padStart(2, '0')}${metadata.revision === 0 ? ' — Versión inicial' : ''}</td></tr>`);
+  rows.push(`<tr><th>Estado</th><td>${translateStatus(metadata.status)}</td></tr>`);
+  if (metadata.createdAt) {
+    rows.push(`<tr><th>Fecha de creación</th><td>${formatDate(metadata.createdAt)}</td></tr>`);
   }
   if (metadata.approvedAt) {
     rows.push(`<tr><th>Fecha de aprobación</th><td>${formatDate(metadata.approvedAt)}</td></tr>`);
   }
   if (metadata.nextReviewDate) {
     rows.push(`<tr><th>Próxima revisión</th><td>${formatDate(metadata.nextReviewDate)}</td></tr>`);
+  }
+  if (metadata.confidentialLevel) {
+    rows.push(`<tr><th>Clasificación</th><td>${metadata.confidentialLevel}</td></tr>`);
   }
 
   return `

@@ -65,12 +65,18 @@ export async function executeExport(
     throw new Error('Solo los documentos vigentes pueden exportarse como PDF controlado');
   }
 
-  // 3. Construir configuración de plantilla
+  // 3. Obtener branding de empresa como fallback
+  const companySettings = await prismaAny.companySettings.findUnique({
+    where: { tenantId: ctx.tenantId },
+    select: { logoUrl: true, companyName: true },
+  }).catch(() => null);
+
+  // 3b. Construir configuración de plantilla
   const template: PdfTemplateConfig = outputDef.template
     ? {
-        headerLogoUrl: outputDef.template.headerLogoUrl,
+        headerLogoUrl: outputDef.template.headerLogoUrl || companySettings?.logoUrl || undefined,
         headerLogoSecondaryUrl: outputDef.template.headerLogoSecondaryUrl,
-        companyName: outputDef.template.companyName,
+        companyName: outputDef.template.companyName || companySettings?.companyName || undefined,
         commercialName: outputDef.template.commercialName,
         companyAddress: outputDef.template.companyAddress,
         companyCuit: outputDef.template.companyCuit,
@@ -100,6 +106,8 @@ export async function executeExport(
         signatureStyle: outputDef.template.signatureStyle,
       }
     : {
+        headerLogoUrl: companySettings?.logoUrl || undefined,
+        companyName: companySettings?.companyName || undefined,
         primaryColor: '#1e40af',
         secondaryColor: '#64748b',
         fontSize: 11,
@@ -118,7 +126,17 @@ export async function executeExport(
     module: outputDef.module,
     subModule: outputDef.subModule || undefined,
     confidentialLevel: outputDef.confidentialLevel || undefined,
+    createdAt: outputDef.createdAt || null,
   };
+
+  // 4b. Asegurar que el logo URL sea absoluto (Puppeteer no carga rutas relativas)
+  const appUrl = process.env.APP_URL || process.env.PUBLIC_URL || 'https://logismart.ar';
+  if (template.headerLogoUrl && template.headerLogoUrl.startsWith('/')) {
+    template.headerLogoUrl = `${appUrl}${template.headerLogoUrl}`;
+  }
+  if (template.headerLogoSecondaryUrl && template.headerLogoSecondaryUrl.startsWith('/')) {
+    template.headerLogoSecondaryUrl = `${appUrl}${template.headerLogoSecondaryUrl}`;
+  }
 
   // 5. Generar token de validación
   const validationToken = crypto.randomBytes(24).toString('hex');
