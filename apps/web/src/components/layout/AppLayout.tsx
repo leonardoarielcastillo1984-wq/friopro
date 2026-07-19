@@ -17,6 +17,7 @@ import { DemoExpiredModal } from '@/components/DemoExpiredModal';
 import { SugerenciaBot } from '@/components/clima/SugerenciaBot';
 import { BackButton } from './BackButton';
 import ImpersonationBanner, { getImpersonationState } from '@/components/ImpersonationBanner';
+import GlobalExportFAB from '@/components/GlobalExportFAB';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -123,6 +124,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
       {/* Buzón de sugerencias global */}
       <SugerenciaBot />
+
+      {/* Botón flotante de exportación PDF — disponible en todos los módulos */}
+      <GlobalExportFAB />
 
     </div>
   );
