@@ -330,9 +330,11 @@ export async function renderPdf(options: PdfRenderOptions): Promise<PdfRenderRes
 
   let browser: any = null;
   try {
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
     browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
+      ...(executablePath ? { executablePath } : {}),
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
     });
 
     const page = await browser.newPage();
