@@ -112,7 +112,23 @@ export default function AuditDetailPage() {
     interviewees: '',
     plannedStartDate: '',
     plannedEndDate: '',
+    // Planning & Coordination
+    plannedStartTime: '',
+    plannedEndTime: '',
+    modality: '',
+    auditLocation: '',
+    locationAddress: '',
+    virtualMeetingLink: '',
+    auditedProcessOwner: '',
+    auditedProcessOwnerEmail: '',
+    expectedParticipants: '',
+    additionalAuditTeam: '',
+    logisticObservations: '',
+    specialInstructions: '',
+    requiresOpeningMeeting: true,
+    requiresClosingMeeting: true,
   });
+  const [showPlanningEdit, setShowPlanningEdit] = useState(false);
 
   useEffect(() => {
     if (auditId) {
@@ -147,6 +163,8 @@ export default function AuditDetailPage() {
   function openEdit() {
     if (!audit) return;
     setError(null);
+    const hasPlanning = !!(audit.plannedStartTime || audit.modality || audit.auditLocation || audit.auditedProcessOwner);
+    setShowPlanningEdit(hasPlanning);
     setEditForm({
       title: audit.title || '',
       description: audit.description || '',
@@ -159,6 +177,21 @@ export default function AuditDetailPage() {
       interviewees: audit.interviewees || '',
       plannedStartDate: toDateInputValue(audit.plannedStartDate),
       plannedEndDate: toDateInputValue(audit.plannedEndDate),
+      // Planning & Coordination
+      plannedStartTime: audit.plannedStartTime || '',
+      plannedEndTime: audit.plannedEndTime || '',
+      modality: audit.modality || '',
+      auditLocation: audit.auditLocation || '',
+      locationAddress: audit.locationAddress || '',
+      virtualMeetingLink: audit.virtualMeetingLink || '',
+      auditedProcessOwner: audit.auditedProcessOwner || '',
+      auditedProcessOwnerEmail: audit.auditedProcessOwnerEmail || '',
+      expectedParticipants: audit.expectedParticipants || '',
+      additionalAuditTeam: audit.additionalAuditTeam || '',
+      logisticObservations: audit.logisticObservations || '',
+      specialInstructions: audit.specialInstructions || '',
+      requiresOpeningMeeting: audit.requiresOpeningMeeting ?? true,
+      requiresClosingMeeting: audit.requiresClosingMeeting ?? true,
     });
     setShowEditModal(true);
   }
@@ -169,18 +202,34 @@ export default function AuditDetailPage() {
     try {
       setSaving(true);
       setError(null);
+      const t = (s: string) => s?.trim() || null;
       const payload: any = {
         title: editForm.title,
-        description: editForm.description?.trim() ? editForm.description.trim() : null,
+        description: t(editForm.description),
         status: editForm.status,
         type: editForm.type,
         area: editForm.area,
-        process: editForm.process?.trim() ? editForm.process.trim() : null,
-        scope: editForm.scope?.trim() ? editForm.scope.trim() : null,
-        objective: editForm.objective?.trim() ? editForm.objective.trim() : null,
-        interviewees: editForm.interviewees?.trim() ? editForm.interviewees.trim() : null,
+        process: t(editForm.process),
+        scope: t(editForm.scope),
+        objective: t(editForm.objective),
+        interviewees: t(editForm.interviewees),
         plannedStartDate: editForm.plannedStartDate ? new Date(editForm.plannedStartDate).toISOString() : null,
         plannedEndDate: editForm.plannedEndDate ? new Date(editForm.plannedEndDate).toISOString() : null,
+        // Planning & Coordination
+        plannedStartTime: t(editForm.plannedStartTime),
+        plannedEndTime: t(editForm.plannedEndTime),
+        modality: editForm.modality || null,
+        auditLocation: t(editForm.auditLocation),
+        locationAddress: t(editForm.locationAddress),
+        virtualMeetingLink: t(editForm.virtualMeetingLink),
+        auditedProcessOwner: t(editForm.auditedProcessOwner),
+        auditedProcessOwnerEmail: t(editForm.auditedProcessOwnerEmail),
+        expectedParticipants: t(editForm.expectedParticipants),
+        additionalAuditTeam: t(editForm.additionalAuditTeam),
+        logisticObservations: t(editForm.logisticObservations),
+        specialInstructions: t(editForm.specialInstructions),
+        requiresOpeningMeeting: editForm.requiresOpeningMeeting,
+        requiresClosingMeeting: editForm.requiresClosingMeeting,
       };
 
       const res = await apiFetch(`/audit/audits/${auditId}`, {
@@ -475,7 +524,7 @@ export default function AuditDetailPage() {
                 <span className="text-gray-500">×</span>
               </button>
             </div>
-            <form onSubmit={saveEdit} className="p-6 space-y-4">
+            <form onSubmit={saveEdit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Título <span className="text-red-500">*</span></label>
                 <input
@@ -604,6 +653,152 @@ export default function AuditDetailPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                 />
+              </div>
+
+              {/* Planificación y Coordinación */}
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowPlanningEdit(!showPlanningEdit)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors text-left"
+                >
+                  <span className="text-sm font-semibold text-blue-900">Planificación y Coordinación</span>
+                  <span className="text-xs text-blue-600">{showPlanningEdit ? '▲ Ocultar' : '▼ Expandir'}</span>
+                </button>
+                {showPlanningEdit && (
+                  <div className="p-4 space-y-4">
+
+                    {/* Horario y Modalidad */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Hora inicio</label>
+                        <input type="time" value={editForm.plannedStartTime}
+                          onChange={e => setEditForm({ ...editForm, plannedStartTime: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Hora fin</label>
+                        <input type="time" value={editForm.plannedEndTime}
+                          onChange={e => setEditForm({ ...editForm, plannedEndTime: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Modalidad</label>
+                        <select value={editForm.modality} onChange={e => setEditForm({ ...editForm, modality: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="">Seleccionar...</option>
+                          <option value="PRESENCIAL">Presencial</option>
+                          <option value="REMOTA">Remota</option>
+                          <option value="HIBRIDA">Híbrida</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Lugar */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Lugar / Sede</label>
+                        <input type="text" value={editForm.auditLocation}
+                          onChange={e => setEditForm({ ...editForm, auditLocation: e.target.value })}
+                          placeholder="Sala de reuniones, planta, etc."
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Dirección / Referencia</label>
+                        <input type="text" value={editForm.locationAddress}
+                          onChange={e => setEditForm({ ...editForm, locationAddress: e.target.value })}
+                          placeholder="Dirección o referencia del lugar"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    </div>
+
+                    {/* Enlace virtual */}
+                    {(editForm.modality === 'REMOTA' || editForm.modality === 'HIBRIDA') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Enlace de reunión virtual</label>
+                        <input type="url" value={editForm.virtualMeetingLink}
+                          onChange={e => setEditForm({ ...editForm, virtualMeetingLink: e.target.value })}
+                          placeholder="https://meet.google.com/... o https://teams.microsoft.com/..."
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    )}
+
+                    {/* Responsable del proceso */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Responsable del proceso auditado</label>
+                        <input type="text" value={editForm.auditedProcessOwner}
+                          onChange={e => setEditForm({ ...editForm, auditedProcessOwner: e.target.value })}
+                          placeholder="Nombre del responsable"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email del responsable</label>
+                        <input type="email" value={editForm.auditedProcessOwnerEmail}
+                          onChange={e => setEditForm({ ...editForm, auditedProcessOwnerEmail: e.target.value })}
+                          placeholder="email@empresa.com"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    </div>
+
+                    {/* Participantes y equipo */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Participantes previstos</label>
+                        <textarea value={editForm.expectedParticipants}
+                          onChange={e => setEditForm({ ...editForm, expectedParticipants: e.target.value })}
+                          placeholder="Nombres o roles de los participantes..."
+                          rows={2}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Equipo auditor adicional</label>
+                        <textarea value={editForm.additionalAuditTeam}
+                          onChange={e => setEditForm({ ...editForm, additionalAuditTeam: e.target.value })}
+                          placeholder="Auditores adicionales o expertos técnicos..."
+                          rows={2}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    </div>
+
+                    {/* Observaciones logísticas */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones logísticas</label>
+                      <textarea value={editForm.logisticObservations}
+                        onChange={e => setEditForm({ ...editForm, logisticObservations: e.target.value })}
+                        placeholder="Necesidades especiales, equipos, accesos, etc."
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+
+                    {/* Instrucciones especiales */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Instrucciones especiales</label>
+                      <textarea value={editForm.specialInstructions}
+                        onChange={e => setEditForm({ ...editForm, specialInstructions: e.target.value })}
+                        placeholder="Instrucciones de seguridad, confidencialidad, etc."
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+
+                    {/* Reuniones */}
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={editForm.requiresOpeningMeeting}
+                          onChange={e => setEditForm({ ...editForm, requiresOpeningMeeting: e.target.checked })}
+                          className="w-4 h-4 text-blue-600 rounded" />
+                        <span className="text-sm text-gray-700">Requiere reunión de apertura</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={editForm.requiresClosingMeeting}
+                          onChange={e => setEditForm({ ...editForm, requiresClosingMeeting: e.target.checked })}
+                          className="w-4 h-4 text-blue-600 rounded" />
+                        <span className="text-sm text-gray-700">Requiere reunión de cierre</span>
+                      </label>
+                    </div>
+
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
