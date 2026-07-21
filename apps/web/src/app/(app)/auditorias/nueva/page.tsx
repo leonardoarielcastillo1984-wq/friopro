@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Plus, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronUp, Plus, AlertCircle, MapPin, Video, Users, ClipboardList } from 'lucide-react';
 
 type AuditProgram = {
   id: string;
@@ -79,7 +79,23 @@ export default function NuevaAuditoriaPage() {
     isoStandard: [] as string[],
     scope: '',
     objective: '',
+    // Planning & Coordination
+    plannedStartTime: '',
+    plannedEndTime: '',
+    modality: '',
+    auditLocation: '',
+    locationAddress: '',
+    virtualMeetingLink: '',
+    auditedProcessOwner: '',
+    auditedProcessOwnerEmail: '',
+    expectedParticipants: '',
+    additionalAuditTeam: '',
+    logisticObservations: '',
+    specialInstructions: '',
+    requiresOpeningMeeting: true,
+    requiresClosingMeeting: true,
   });
+  const [showPlanningSection, setShowPlanningSection] = useState(false);
 
   useEffect(() => {
     loadProgramsAndAuditors();
@@ -115,15 +131,29 @@ export default function NuevaAuditoriaPage() {
         return new Date(`${dateStr}T00:00:00.000Z`).toISOString();
       };
 
+      const trimOrUndef = (s: string) => s?.trim() || undefined;
       const payload = {
         ...formData,
-        description: formData.description?.trim() ? formData.description.trim() : undefined,
+        description: trimOrUndef(formData.description),
         plannedStartDate: toIsoDateTime(formData.plannedStartDate),
         plannedEndDate: toIsoDateTime(formData.plannedEndDate),
         duration: formData.duration ? parseInt(formData.duration) : undefined,
-        process: formData.process?.trim() ? formData.process.trim() : undefined,
-        scope: formData.scope?.trim() ? formData.scope.trim() : undefined,
-        objective: formData.objective?.trim() ? formData.objective.trim() : undefined,
+        process: trimOrUndef(formData.process),
+        scope: trimOrUndef(formData.scope),
+        objective: trimOrUndef(formData.objective),
+        // Planning fields - empty string → undefined
+        plannedStartTime: trimOrUndef(formData.plannedStartTime),
+        plannedEndTime: trimOrUndef(formData.plannedEndTime),
+        modality: formData.modality || undefined,
+        auditLocation: trimOrUndef(formData.auditLocation),
+        locationAddress: trimOrUndef(formData.locationAddress),
+        virtualMeetingLink: trimOrUndef(formData.virtualMeetingLink),
+        auditedProcessOwner: trimOrUndef(formData.auditedProcessOwner),
+        auditedProcessOwnerEmail: trimOrUndef(formData.auditedProcessOwnerEmail),
+        expectedParticipants: trimOrUndef(formData.expectedParticipants),
+        additionalAuditTeam: trimOrUndef(formData.additionalAuditTeam),
+        logisticObservations: trimOrUndef(formData.logisticObservations),
+        specialInstructions: trimOrUndef(formData.specialInstructions),
       };
 
       const res = await apiFetch('/audit/audits', {
@@ -395,6 +425,157 @@ export default function NuevaAuditoriaPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+
+          {/* Planificación y Coordinación */}
+          <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowPlanningSection(!showPlanningSection)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors text-left"
+            >
+              <div className="flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-blue-600" />
+                <span className="text-sm font-semibold text-blue-900">Planificación y Coordinación</span>
+                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">Opcional</span>
+              </div>
+              {showPlanningSection ? <ChevronUp className="w-4 h-4 text-blue-600" /> : <ChevronDown className="w-4 h-4 text-blue-600" />}
+            </button>
+
+            {showPlanningSection && (
+              <div className="p-4 space-y-4">
+
+                {/* Horario y Modalidad */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Hora inicio</label>
+                    <input type="time" value={formData.plannedStartTime}
+                      onChange={e => setFormData({ ...formData, plannedStartTime: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Hora fin</label>
+                    <input type="time" value={formData.plannedEndTime}
+                      onChange={e => setFormData({ ...formData, plannedEndTime: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Modalidad</label>
+                    <select value={formData.modality} onChange={e => setFormData({ ...formData, modality: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Seleccionar...</option>
+                      <option value="PRESENCIAL">Presencial</option>
+                      <option value="REMOTA">Remota</option>
+                      <option value="HIBRIDA">Híbrida</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Lugar */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1"><MapPin className="w-3 h-3" /> Lugar / Sede</label>
+                    <input type="text" value={formData.auditLocation}
+                      onChange={e => setFormData({ ...formData, auditLocation: e.target.value })}
+                      placeholder="Sala de reuniones, planta, etc."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Dirección / Referencia</label>
+                    <input type="text" value={formData.locationAddress}
+                      onChange={e => setFormData({ ...formData, locationAddress: e.target.value })}
+                      placeholder="Dirección o referencia del lugar"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+
+                {/* Enlace virtual */}
+                {(formData.modality === 'REMOTA' || formData.modality === 'HIBRIDA') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1"><Video className="w-3 h-3" /> Enlace de reunión virtual</label>
+                    <input type="url" value={formData.virtualMeetingLink}
+                      onChange={e => setFormData({ ...formData, virtualMeetingLink: e.target.value })}
+                      placeholder="https://meet.google.com/... o https://teams.microsoft.com/..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                )}
+
+                {/* Responsable del proceso auditado */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Responsable del proceso auditado</label>
+                    <input type="text" value={formData.auditedProcessOwner}
+                      onChange={e => setFormData({ ...formData, auditedProcessOwner: e.target.value })}
+                      placeholder="Nombre del responsable"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email del responsable</label>
+                    <input type="email" value={formData.auditedProcessOwnerEmail}
+                      onChange={e => setFormData({ ...formData, auditedProcessOwnerEmail: e.target.value })}
+                      placeholder="email@empresa.com"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+
+                {/* Participantes y equipo */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1"><Users className="w-3 h-3" /> Participantes previstos</label>
+                    <textarea value={formData.expectedParticipants}
+                      onChange={e => setFormData({ ...formData, expectedParticipants: e.target.value })}
+                      placeholder="Nombres o roles de los participantes previstos..."
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Equipo auditor adicional</label>
+                    <textarea value={formData.additionalAuditTeam}
+                      onChange={e => setFormData({ ...formData, additionalAuditTeam: e.target.value })}
+                      placeholder="Auditores adicionales o expertos técnicos..."
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+
+                {/* Observaciones logísticas */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Observaciones logísticas</label>
+                  <textarea value={formData.logisticObservations}
+                    onChange={e => setFormData({ ...formData, logisticObservations: e.target.value })}
+                    placeholder="Necesidades especiales, equipos, accesos, etc."
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                {/* Instrucciones especiales */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Instrucciones especiales para el equipo auditor</label>
+                  <textarea value={formData.specialInstructions}
+                    onChange={e => setFormData({ ...formData, specialInstructions: e.target.value })}
+                    placeholder="Instrucciones de seguridad, confidencialidad, etc."
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                {/* Reuniones */}
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={formData.requiresOpeningMeeting}
+                      onChange={e => setFormData({ ...formData, requiresOpeningMeeting: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded" />
+                    <span className="text-sm text-gray-700">Requiere reunión de apertura</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={formData.requiresClosingMeeting}
+                      onChange={e => setFormData({ ...formData, requiresClosingMeeting: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded" />
+                    <span className="text-sm text-gray-700">Requiere reunión de cierre</span>
+                  </label>
+                </div>
+
+              </div>
+            )}
           </div>
         </div>
 

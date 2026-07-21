@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
-import { Plus, Calendar, FileText, AlertCircle, CheckCircle, Clock, Users, List, Trash2 } from 'lucide-react';
+import { Plus, Calendar, FileText, AlertCircle, CheckCircle, Clock, Users, List, Trash2, BarChart2 } from 'lucide-react';
 import ExportButton from '@/components/ExportButton';
+import dynamic from 'next/dynamic';
+const AgendaAuditorias   = dynamic(() => import('./_tabs/AgendaAuditorias'),   { ssr: false, loading: () => <div className="p-8 text-center text-gray-400 text-sm">Cargando agenda...</div> });
+const CronogramaAuditorias = dynamic(() => import('./_tabs/CronogramaAuditorias'), { ssr: false, loading: () => <div className="p-8 text-center text-gray-400 text-sm">Cargando cronograma...</div> });
 
 // Tipos
 type AuditProgram = {
@@ -41,7 +44,7 @@ export default function AuditoriasPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'lista' | 'calendario'>('lista');
+  const [activeTab, setActiveTab] = useState<'lista' | 'agenda' | 'cronograma' | 'calendario'>('lista');
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   useEffect(() => {
@@ -215,33 +218,28 @@ export default function AuditoriasPage() {
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
-        <nav className="flex gap-8">
-          <button
-            onClick={() => setActiveTab('lista')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'lista'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <List className="w-4 h-4" />
-              Lista de Auditorías
-            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab('calendario')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'calendario'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4" />
-              Calendario
-            </div>
-          </button>
+        <nav className="flex gap-1 overflow-x-auto">
+          {([
+            { id: 'lista',      label: 'Lista de Auditorías',  Icon: List },
+            { id: 'agenda',     label: 'Agenda',               Icon: FileText },
+            { id: 'cronograma', label: 'Cronograma',           Icon: BarChart2 },
+            { id: 'calendario', label: 'Calendario',           Icon: Calendar },
+          ] as const).map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`pb-4 px-4 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
+                activeTab === id
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Icon className="w-4 h-4" />
+                {label}
+              </div>
+            </button>
+          ))}
         </nav>
       </div>
 
@@ -380,6 +378,9 @@ export default function AuditoriasPage() {
           </div>
         </>
       )}
+
+      {activeTab === 'agenda' && <AgendaAuditorias />}
+      {activeTab === 'cronograma' && <CronogramaAuditorias />}
 
       {activeTab === 'calendario' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

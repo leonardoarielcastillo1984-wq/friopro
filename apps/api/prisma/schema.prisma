@@ -2035,6 +2035,26 @@ model Audit {
   mainRisks                   String? @map("mainrisks") @db.Text
   reportVersion               Int     @default(1) @map("reportversion")
 
+  // Planning & Coordination (aditivo — todos opcionales para retrocompatibilidad)
+  plannedStartTime         String?   @map("plannedstarttime")   // "HH:MM"
+  plannedEndTime           String?   @map("plannedendtime")     // "HH:MM"
+  modality                 String?   // PRESENCIAL | REMOTA | HIBRIDA
+  auditLocation            String?   @map("auditlocation")      // Lugar o sede
+  locationAddress          String?   @map("locationaddress")
+  virtualMeetingLink       String?   @map("virtualmeetinglink")
+  auditedProcessOwner      String?   @map("auditedprocessowner")
+  auditedProcessOwnerEmail String?   @map("auditedprocessowneremail")
+  expectedParticipants     String?   @map("expectedparticipants") @db.Text
+  additionalAuditTeam      String?   @map("additionalauditteam")  @db.Text
+  logisticObservations     String?   @map("logisticobservations")  @db.Text
+  specialInstructions      String?   @map("specialinstructions")   @db.Text
+  requiresOpeningMeeting   Boolean   @default(true) @map("requiresopeningmeeting")
+  requiresClosingMeeting   Boolean   @default(true) @map("requiresclosingmeeting")
+  notificationStatus       String?   @map("notificationstatus") // PENDING_NOTIFICATION | DRAFT_READY | SENT | RECEIVED | CONFIRMED | NEEDS_RESCHEDULE
+  cancelledAt              DateTime? @db.Timestamptz @map("cancelledat")
+  cancelReason             String?   @db.Text @map("cancelreason")
+  rescheduleCount          Int       @default(0) @map("reschedulecount")
+
   // Metadata
   createdById    String               @db.Uuid
   createdAt      DateTime             @default(now()) @db.Timestamptz
@@ -2044,6 +2064,8 @@ model Audit {
   auditTeams     AuditTeam[]
   checklist      AuditChecklistItem[]
   findings       AuditFinding[]
+  agendaItems    AuditAgendaItem[]
+  changeLog      AuditChangeLog[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -2336,6 +2358,58 @@ model AuditReport {
   deletedAt     DateTime? @db.Timestamptz
 
   @@map("audit_reports")
+}
+
+// Agenda Items per Audit (detailed schedule)
+model AuditAgendaItem {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  auditId  String @db.Uuid
+  audit    Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  order              Int      @default(0)
+  itemDate           String?  // "YYYY-MM-DD" — puede diferir de la fecha de la auditoría en auditorías de varios días
+  startTime          String?  // "HH:MM"
+  endTime            String?  // "HH:MM"
+  durationMinutes    Int?
+  activity           String   // Reunión de apertura, Revisión documental, etc.
+  processOrTopic     String?  @map("processoortopic")
+  criterion          String?
+  responsibleAuditorId String? @db.Uuid @map("responsibleauditorid")
+  requiredParticipants String? @db.Text @map("requiredparticipants")
+  location           String?
+  expectedEvidence   String?  @db.Text @map("expectedevidence")
+  observations       String?  @db.Text
+
+  createdById String    @db.Uuid @map("createdbyid")
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  deletedAt   DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([auditId])
+  @@map("audit_agenda_items")
+}
+
+// Change history / traceability per audit
+model AuditChangeLog {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  auditId  String @db.Uuid
+
+  action       String   // CREATED | EDITED | RESCHEDULED | CANCELLED | STATUS_CHANGED | NOTIFICATION_SENT | AGENDA_UPDATED
+  fieldChanged String?  @map("fieldchanged")
+  oldValue     String?  @db.Text @map("oldvalue")
+  newValue     String?  @db.Text @map("newvalue")
+  reason       String?  @db.Text
+  userId       String   @db.Uuid @map("userid")
+  userName     String?  @map("username")
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([auditId])
+  @@map("audit_change_logs")
 }
 
 // Management Review (Informes para la Dirección)

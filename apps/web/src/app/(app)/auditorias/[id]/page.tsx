@@ -26,6 +26,25 @@ type Audit = {
   objective: string | null;
   interviewees: string | null;
   createdAt: string;
+  // Planning & Coordination
+  plannedStartTime: string | null;
+  plannedEndTime: string | null;
+  modality: string | null;
+  auditLocation: string | null;
+  locationAddress: string | null;
+  virtualMeetingLink: string | null;
+  auditedProcessOwner: string | null;
+  auditedProcessOwnerEmail: string | null;
+  expectedParticipants: string | null;
+  additionalAuditTeam: string | null;
+  logisticObservations: string | null;
+  specialInstructions: string | null;
+  requiresOpeningMeeting: boolean;
+  requiresClosingMeeting: boolean;
+  notificationStatus: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  rescheduleCount: number;
 };
 
 type Finding = {
@@ -359,6 +378,85 @@ export default function AuditDetailPage() {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Planificación y Coordinación */}
+          {(audit.plannedStartTime || audit.modality || audit.auditLocation || audit.auditedProcessOwner || audit.expectedParticipants) && (
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Planificación y Coordinación</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {audit.plannedStartTime && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Horario</h4>
+                    <p className="text-gray-900 text-sm">
+                      {audit.plannedStartTime}{audit.plannedEndTime ? ` – ${audit.plannedEndTime}` : ''}
+                    </p>
+                  </div>
+                )}
+                {audit.modality && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Modalidad</h4>
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                      audit.modality === 'PRESENCIAL' ? 'bg-green-100 text-green-700' :
+                      audit.modality === 'REMOTA' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                    }`}>
+                      {audit.modality === 'PRESENCIAL' ? 'Presencial' : audit.modality === 'REMOTA' ? 'Remota' : 'Híbrida'}
+                    </span>
+                  </div>
+                )}
+                {audit.auditLocation && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Lugar / Sede</h4>
+                    <p className="text-gray-900 text-sm">{audit.auditLocation}</p>
+                    {audit.locationAddress && <p className="text-gray-500 text-xs">{audit.locationAddress}</p>}
+                  </div>
+                )}
+                {audit.virtualMeetingLink && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Enlace virtual</h4>
+                    <a href={audit.virtualMeetingLink} target="_blank" rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline text-sm truncate block">{audit.virtualMeetingLink}</a>
+                  </div>
+                )}
+                {audit.auditedProcessOwner && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Responsable del proceso auditado</h4>
+                    <p className="text-gray-900 text-sm">{audit.auditedProcessOwner}</p>
+                    {audit.auditedProcessOwnerEmail && <p className="text-gray-500 text-xs">{audit.auditedProcessOwnerEmail}</p>}
+                  </div>
+                )}
+                {audit.expectedParticipants && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Participantes previstos</h4>
+                    <p className="text-gray-900 text-sm whitespace-pre-line">{audit.expectedParticipants}</p>
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+                    audit.requiresOpeningMeeting ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {audit.requiresOpeningMeeting ? '✓' : '✗'} Reunión apertura
+                  </span>
+                  <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+                    audit.requiresClosingMeeting ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {audit.requiresClosingMeeting ? '✓' : '✗'} Reunión cierre
+                  </span>
+                </div>
+              </div>
+              {audit.logisticObservations && (
+                <div className="mt-3">
+                  <h4 className="text-xs font-medium text-gray-500 mb-1">Observaciones logísticas</h4>
+                  <p className="text-gray-900 text-sm whitespace-pre-line">{audit.logisticObservations}</p>
+                </div>
+              )}
+              {audit.cancelledAt && (
+                <div className="mt-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  <p className="text-xs font-medium text-red-700">Auditoría cancelada el {formatDate(audit.cancelledAt)}</p>
+                  {audit.cancelReason && <p className="text-xs text-red-600 mt-0.5">{audit.cancelReason}</p>}
+                </div>
+              )}
             </div>
           )}
         </div>

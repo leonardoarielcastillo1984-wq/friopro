@@ -133,6 +133,21 @@ const CreateAuditSchema = z.object({
   isoStandard: z.array(z.string()).default([]),
   scope: z.string().optional(),
   objective: z.string().optional(),
+  // Planning & Coordination
+  plannedStartTime: z.string().optional(),
+  plannedEndTime: z.string().optional(),
+  modality: z.enum(['PRESENCIAL', 'REMOTA', 'HIBRIDA']).optional(),
+  auditLocation: z.string().optional(),
+  locationAddress: z.string().optional(),
+  virtualMeetingLink: z.string().optional(),
+  auditedProcessOwner: z.string().optional(),
+  auditedProcessOwnerEmail: z.string().optional(),
+  expectedParticipants: z.string().optional(),
+  additionalAuditTeam: z.string().optional(),
+  logisticObservations: z.string().optional(),
+  specialInstructions: z.string().optional(),
+  requiresOpeningMeeting: z.boolean().optional(),
+  requiresClosingMeeting: z.boolean().optional(),
 });
 
 const CreateAuditorSchema = z.object({
@@ -526,6 +541,22 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       setIfDefined('scope');
       setIfDefined('objective');
       setIfDefined('interviewees');
+      // Planning & Coordination fields
+      setIfDefined('plannedStartTime');
+      setIfDefined('plannedEndTime');
+      setIfDefined('modality');
+      setIfDefined('auditLocation');
+      setIfDefined('locationAddress');
+      setIfDefined('virtualMeetingLink');
+      setIfDefined('auditedProcessOwner');
+      setIfDefined('auditedProcessOwnerEmail');
+      setIfDefined('expectedParticipants');
+      setIfDefined('additionalAuditTeam');
+      setIfDefined('logisticObservations');
+      setIfDefined('specialInstructions');
+      setIfDefined('requiresOpeningMeeting');
+      setIfDefined('requiresClosingMeeting');
+      setIfDefined('notificationStatus');
       if ('isoStandard' in body) data.isoStandard = Array.isArray(body.isoStandard) ? body.isoStandard : undefined;
 
       if ('plannedStartDate' in body) data.plannedStartDate = body.plannedStartDate ? new Date(body.plannedStartDate) : null;
@@ -2065,6 +2096,524 @@ Donde "relevantClauses" es un array con objetos que contienen:
         console.error('Error generando checklist:', err.message);
         return reply.code(500).send({ error: 'Error generando checklist', details: err.message });
       }
+    },
+  );
+
+  // ═══════════════════════════════════════════════════════════════
+  // AGENDA ITEMS  (audit_agenda_items)
+  // ═══════════════════════════════════════════════════════════════
+
+  // GET /audit/agenda — Agenda general con filtros
+  app.get('/audit/agenda', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const q = (req.query as any) || {};
+    const where: any = { tenantId, deletedAt: null };
+    if (q.programId) where.programId = q.programId;
+    if (q.status)    where.status    = q.status;
+    if (q.modality)  where.modality  = q.modality;
+    if (q.leadAuditorId) where.leadAuditorId = q.leadAuditorId;
+    if (q.area)      where.area      = { contains: q.area, mode: 'insensitive' };
+    if (q.year) {
+      const y = parseInt(q.year);
+      where.plannedStartDate = {
+        gte: new Date(`${y}-01-01T00:00:00Z`),
+        lte: new Date(`${y}-12-31T23:59:59Z`),
+      };
+    }
+    if (q.from && q.to) {
+      where.plannedStartDate = { gte: new Date(q.from), lte: new Date(q.to) };
+    }
+
+    const audits = await app.runWithDbContext(req, async (tx) => {
+      return tx.audit.findMany({
+        where,
+        orderBy: [{ plannedStartDate: 'asc' }, { plannedStartTime: 'asc' }],
+        include: {
+          agendaItems: {
+            where: { deletedAt: null },
+            orderBy: { order: 'asc' },
+          },
+        },
+      } as any);
+    });
+
+    return reply.send({ audits });
+  });
+
+  // GET /audit/audits/:id/agenda-items — Ítems de agenda por auditoría
+  app.get(
+    '/audit/audits/:id/agenda-items',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const result = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
+        if (!audit) return null;
+        return (tx as any).auditAgendaItem.findMany({
+          where: { auditId: req.params.id, deletedAt: null },
+          orderBy: { order: 'asc' },
+        });
+      });
+
+      if (result === null) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.send({ items: result });
+    },
+  );
+
+  // POST /audit/audits/:id/agenda-items — Crear ítem de agenda
+  app.post(
+    '/audit/audits/:id/agenda-items',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = (req.body ?? {}) as any;
+      if (!body.activity || typeof body.activity !== 'string') {
+        return reply.code(400).send({ error: 'activity es obligatorio' });
+      }
+
+      const item = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
+        if (!audit) return null;
+
+        const last = await (tx as any).auditAgendaItem.findFirst({
+          where: { auditId: req.params.id, deletedAt: null },
+          orderBy: { order: 'desc' },
+        });
+        const nextOrder = last ? last.order + 1 : 0;
+
+        return (tx as any).auditAgendaItem.create({
+          data: {
+            tenantId,
+            auditId: req.params.id,
+            order: body.order ?? nextOrder,
+            itemDate: body.itemDate || null,
+            startTime: body.startTime || null,
+            endTime: body.endTime || null,
+            durationMinutes: body.durationMinutes ? parseInt(body.durationMinutes) : null,
+            activity: body.activity,
+            processOrTopic: body.processOrTopic || null,
+            criterion: body.criterion || null,
+            responsibleAuditorId: body.responsibleAuditorId || null,
+            requiredParticipants: body.requiredParticipants || null,
+            location: body.location || null,
+            expectedEvidence: body.expectedEvidence || null,
+            observations: body.observations || null,
+            createdById: req.auth!.userId,
+          },
+        });
+      });
+
+      if (!item) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.code(201).send({ item });
+    },
+  );
+
+  // PATCH /audit/agenda-items/:itemId — Actualizar ítem de agenda
+  app.patch(
+    '/audit/agenda-items/:itemId',
+    async (req: FastifyRequest<{ Params: { itemId: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = (req.body ?? {}) as any;
+      const allowedFields = [
+        'order', 'itemDate', 'startTime', 'endTime', 'durationMinutes',
+        'activity', 'processOrTopic', 'criterion', 'responsibleAuditorId',
+        'requiredParticipants', 'location', 'expectedEvidence', 'observations',
+      ];
+      const data: any = {};
+      for (const f of allowedFields) {
+        if (f in body) data[f] = body[f];
+      }
+
+      if (Object.keys(data).length === 0) {
+        return reply.code(400).send({ error: 'No hay campos actualizables' });
+      }
+
+      const item = await app.runWithDbContext(req, async (tx) => {
+        const existing = await (tx as any).auditAgendaItem.findFirst({
+          where: { id: req.params.itemId, tenantId, deletedAt: null },
+        });
+        if (!existing) return null;
+        return (tx as any).auditAgendaItem.update({
+          where: { id: req.params.itemId },
+          data,
+        });
+      });
+
+      if (!item) return reply.code(404).send({ error: 'Ítem no encontrado' });
+      return reply.send({ item });
+    },
+  );
+
+  // DELETE /audit/agenda-items/:itemId — Eliminar ítem de agenda (soft delete)
+  app.delete(
+    '/audit/agenda-items/:itemId',
+    async (req: FastifyRequest<{ Params: { itemId: string } }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const item = await app.runWithDbContext(req, async (tx) => {
+        const existing = await (tx as any).auditAgendaItem.findFirst({
+          where: { id: req.params.itemId, tenantId, deletedAt: null },
+        });
+        if (!existing) return null;
+        return (tx as any).auditAgendaItem.update({
+          where: { id: req.params.itemId },
+          data: { deletedAt: new Date() },
+        });
+      });
+
+      if (!item) return reply.code(404).send({ error: 'Ítem no encontrado' });
+      return reply.send({ success: true });
+    },
+  );
+
+  // POST /audit/agenda-items/reorder — Reordenar ítems de agenda
+  app.post(
+    '/audit/agenda-items/reorder',
+    async (req: FastifyRequest<{ Body: { auditId: string; orderedIds: string[] } }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = (req.body ?? {}) as any;
+      if (!body.auditId || !Array.isArray(body.orderedIds)) {
+        return reply.code(400).send({ error: 'auditId y orderedIds son requeridos' });
+      }
+
+      await app.runWithDbContext(req, async (tx) => {
+        for (let i = 0; i < body.orderedIds.length; i++) {
+          await (tx as any).auditAgendaItem.updateMany({
+            where: { id: body.orderedIds[i], auditId: body.auditId, tenantId },
+            data: { order: i },
+          });
+        }
+      });
+
+      return reply.send({ success: true });
+    },
+  );
+
+  // ═══════════════════════════════════════════════════════════════
+  // REPROGRAMACIÓN Y CANCELACIÓN
+  // ═══════════════════════════════════════════════════════════════
+
+  // POST /audit/audits/:id/reschedule — Reprogramar auditoría
+  app.post(
+    '/audit/audits/:id/reschedule',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = (req.body ?? {}) as any;
+      if (!body.reason || typeof body.reason !== 'string') {
+        return reply.code(400).send({ error: 'El motivo de reprogramación es obligatorio' });
+      }
+
+      const result = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
+        if (!audit) return null;
+
+        const updateData: any = {
+          rescheduleCount: (audit as any).rescheduleCount + 1,
+          notificationStatus: 'PENDING_NOTIFICATION',
+        };
+        if (body.plannedStartDate) updateData.plannedStartDate = new Date(body.plannedStartDate);
+        if (body.plannedEndDate) updateData.plannedEndDate = new Date(body.plannedEndDate);
+        if (body.plannedStartTime) updateData.plannedStartTime = body.plannedStartTime;
+        if (body.plannedEndTime) updateData.plannedEndTime = body.plannedEndTime;
+
+        const updated = await tx.audit.update({
+          where: { id: req.params.id, tenantId },
+          data: updateData,
+        });
+
+        // Registrar en historial
+        const user = await (tx as any).platformUser.findUnique({
+          where: { id: req.auth!.userId },
+          select: { fullName: true, email: true },
+        }).catch(() => null);
+
+        await (tx as any).auditChangeLog.create({
+          data: {
+            tenantId,
+            auditId: req.params.id,
+            action: 'RESCHEDULED',
+            oldValue: audit.plannedStartDate ? new Date(audit.plannedStartDate as any).toISOString() : null,
+            newValue: body.plannedStartDate || null,
+            reason: body.reason,
+            userId: req.auth!.userId,
+            userName: user?.fullName || user?.email || null,
+          },
+        });
+
+        return updated;
+      });
+
+      if (!result) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.send({ audit: result });
+    },
+  );
+
+  // POST /audit/audits/:id/cancel — Cancelar auditoría
+  app.post(
+    '/audit/audits/:id/cancel',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = (req.body ?? {}) as any;
+      if (!body.reason || typeof body.reason !== 'string') {
+        return reply.code(400).send({ error: 'El motivo de cancelación es obligatorio' });
+      }
+
+      const result = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
+        if (!audit) return null;
+
+        const updated = await tx.audit.update({
+          where: { id: req.params.id, tenantId },
+          data: {
+            status: 'CANCELLED' as any,
+            cancelledAt: new Date(),
+            cancelReason: body.reason,
+          } as any,
+        });
+
+        const user = await (tx as any).platformUser.findUnique({
+          where: { id: req.auth!.userId },
+          select: { fullName: true, email: true },
+        }).catch(() => null);
+
+        await (tx as any).auditChangeLog.create({
+          data: {
+            tenantId,
+            auditId: req.params.id,
+            action: 'CANCELLED',
+            oldValue: audit.status,
+            newValue: 'CANCELLED',
+            reason: body.reason,
+            userId: req.auth!.userId,
+            userName: user?.fullName || user?.email || null,
+          },
+        });
+
+        return updated;
+      });
+
+      if (!result) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+      return reply.send({ audit: result });
+    },
+  );
+
+  // ═══════════════════════════════════════════════════════════════
+  // HISTORIAL / TRAZABILIDAD
+  // ═══════════════════════════════════════════════════════════════
+
+  // GET /audit/audits/:id/history
+  app.get(
+    '/audit/audits/:id/history',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const audit = await app.runWithDbContext(req, async (tx) =>
+        tx.audit.findUnique({ where: { id: req.params.id, tenantId }, select: { id: true } }),
+      );
+      if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+
+      const logs = await app.runWithDbContext(req, async (tx) =>
+        (tx as any).auditChangeLog.findMany({
+          where: { auditId: req.params.id, tenantId },
+          orderBy: { createdAt: 'desc' },
+        }),
+      );
+
+      return reply.send({ history: logs });
+    },
+  );
+
+  // ═══════════════════════════════════════════════════════════════
+  // CRONOGRAMA
+  // ═══════════════════════════════════════════════════════════════
+
+  // GET /audit/cronograma — Vista cronograma anual
+  app.get('/audit/cronograma', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const q = (req.query as any) || {};
+    const year = q.year ? parseInt(q.year) : new Date().getFullYear();
+    const programId = q.programId || undefined;
+
+    const where: any = {
+      tenantId,
+      deletedAt: null,
+      OR: [
+        { plannedStartDate: { gte: new Date(`${year}-01-01T00:00:00Z`), lte: new Date(`${year}-12-31T23:59:59Z`) } },
+        { plannedEndDate:   { gte: new Date(`${year}-01-01T00:00:00Z`), lte: new Date(`${year}-12-31T23:59:59Z`) } },
+      ],
+    };
+    if (programId) where.programId = programId;
+    if (q.status) where.status = q.status;
+
+    const [audits, programs] = await app.runWithDbContext(req, async (tx) => {
+      return Promise.all([
+        tx.audit.findMany({
+          where,
+          orderBy: { plannedStartDate: 'asc' },
+          select: {
+            id: true, code: true, title: true, type: true, status: true,
+            plannedStartDate: true, plannedEndDate: true,
+            plannedStartTime: true, plannedEndTime: true,
+            area: true, process: true, isoStandard: true,
+            leadAuditorId: true, modality: true, auditLocation: true,
+            notificationStatus: true, programId: true,
+            auditedProcessOwner: true,
+          } as any,
+        }),
+        tx.auditProgram.findMany({
+          where: { tenantId, deletedAt: null, year },
+          orderBy: { name: 'asc' },
+        }),
+      ]);
+    });
+
+    // Build summary counts
+    const byStatus: Record<string, number> = {};
+    for (const a of audits) {
+      byStatus[a.status] = (byStatus[a.status] || 0) + 1;
+    }
+
+    return reply.send({
+      year,
+      programs,
+      audits,
+      summary: {
+        total: audits.length,
+        byStatus,
+        planned: byStatus['PLANNED'] || 0,
+        inProgress: byStatus['IN_PROGRESS'] || 0,
+        completed: byStatus['COMPLETED'] || 0,
+        cancelled: byStatus['CANCELLED'] || 0,
+        rescheduled: byStatus['RESCHEDULED'] || 0,
+      },
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // NOTIFICACIONES (preparar borrador)
+  // ═══════════════════════════════════════════════════════════════
+
+  // POST /audit/audits/:id/notify/prepare — Preparar borrador de correo
+  app.post(
+    '/audit/audits/:id/notify/prepare',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const audit = await app.runWithDbContext(req, async (tx) =>
+        tx.audit.findUnique({ where: { id: req.params.id, tenantId } }),
+      );
+      if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+
+      const a = audit as any;
+      const startDate = a.plannedStartDate
+        ? new Date(a.plannedStartDate).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
+        : '[fecha a confirmar]';
+      const startTime = a.plannedStartTime || '[hora inicio]';
+      const endTime   = a.plannedEndTime   || '[hora fin]';
+      const responsible = a.auditedProcessOwner || '[Responsable]';
+      const process = a.process || a.area || '[Proceso]';
+      const location = a.auditLocation || a.virtualMeetingLink || '[lugar/enlace]';
+
+      const subject = `Notificación de Auditoría Interna – ${a.code} – ${process} – ${startDate}`;
+
+      const body = `Estimado/a ${responsible}:
+
+Por medio del presente se informa la programación de la auditoría interna correspondiente al proceso ${process}, prevista para el día ${startDate}, de ${startTime} a ${endTime}.
+
+La auditoría tendrá como objetivo: ${a.objective || 'Verificar el cumplimiento de los requisitos aplicables'}.
+
+Alcance: ${a.scope || 'A definir en reunión de apertura'}.
+
+${a.auditLocation ? `Lugar: ${a.auditLocation}.` : ''}${a.virtualMeetingLink ? ` Enlace de reunión: ${a.virtualMeetingLink}.` : ''}
+
+Se adjunta la agenda de auditoría con el detalle de las actividades previstas.
+
+Solicitamos asegurar la disponibilidad de los responsables involucrados y de la documentación y registros requeridos.
+
+Ante cualquier necesidad de coordinación o reprogramación, agradeceremos informarlo con anticipación.
+
+Saludos cordiales.`;
+
+      // Actualizar estado de notificación
+      await app.runWithDbContext(req, async (tx) => {
+        await tx.audit.update({
+          where: { id: req.params.id, tenantId },
+          data: { notificationStatus: 'DRAFT_READY' } as any,
+        });
+        const user = await (tx as any).platformUser.findUnique({
+          where: { id: req.auth!.userId },
+          select: { fullName: true, email: true },
+        }).catch(() => null);
+        await (tx as any).auditChangeLog.create({
+          data: {
+            tenantId, auditId: req.params.id,
+            action: 'NOTIFICATION_DRAFT_PREPARED',
+            userId: req.auth!.userId,
+            userName: user?.fullName || user?.email || null,
+          },
+        });
+      });
+
+      return reply.send({
+        draft: {
+          to: a.auditedProcessOwnerEmail || '',
+          subject,
+          body,
+          attachPdf: true,
+        },
+      });
+    },
+  );
+
+  // POST /audit/audits/:id/notify/send — Registrar envío de notificación
+  app.post(
+    '/audit/audits/:id/notify/send',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const audit = await app.runWithDbContext(req, async (tx) =>
+        tx.audit.findUnique({ where: { id: req.params.id, tenantId }, select: { id: true } }),
+      );
+      if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+
+      await app.runWithDbContext(req, async (tx) => {
+        await tx.audit.update({
+          where: { id: req.params.id, tenantId },
+          data: { notificationStatus: 'SENT' } as any,
+        });
+        const user = await (tx as any).platformUser.findUnique({
+          where: { id: req.auth!.userId },
+          select: { fullName: true, email: true },
+        }).catch(() => null);
+        await (tx as any).auditChangeLog.create({
+          data: {
+            tenantId, auditId: req.params.id,
+            action: 'NOTIFICATION_SENT',
+            userId: req.auth!.userId,
+            userName: user?.fullName || user?.email || null,
+          },
+        });
+      });
+
+      return reply.send({ success: true });
     },
   );
 }
