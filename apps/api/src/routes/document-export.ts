@@ -289,22 +289,42 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
       orderBy: { subModule: 'asc' },
     });
     let suggestedCode = '';
+
+    async function isCodeTaken(code: string): Promise<boolean> {
+      const conflict = await prisma.documentOutputDefinition.findFirst({
+        where: { tenantId, documentCode: code, id: { not: id }, deletedAt: null },
+      });
+      return !!conflict;
+    }
+
     if (rule) {
       const sep = rule.separator || '-';
       const digits = rule.digitCount || 3;
-      const seq = String(rule.nextSequence).padStart(digits, '0');
-      const parts: string[] = [];
-      if (rule.prefix) parts.push(rule.prefix);
-      if (rule.processCode) parts.push(rule.processCode);
-      if (rule.typeAbbr) parts.push(rule.typeAbbr);
-      parts.push(seq);
-      suggestedCode = parts.join(sep);
+      let seq = rule.nextSequence;
+      const buildCode = (n: number) => {
+        const parts: string[] = [];
+        if (rule.prefix) parts.push(rule.prefix);
+        if (rule.processCode) parts.push(rule.processCode);
+        if (rule.typeAbbr) parts.push(rule.typeAbbr);
+        parts.push(String(n).padStart(digits, '0'));
+        return parts.join(sep);
+      };
+      suggestedCode = buildCode(seq);
+      while (await isCodeTaken(suggestedCode)) {
+        seq++;
+        suggestedCode = buildCode(seq);
+      }
     } else {
       const count = await prisma.documentOutputDefinition.count({
         where: { tenantId, module: def.module, documentCode: { not: null }, deletedAt: null },
       });
       const moduleAbbr = def.module.substring(0, 3).toUpperCase();
-      suggestedCode = `${moduleAbbr}-${String(count + 1).padStart(3, '0')}`;
+      let seq = count + 1;
+      suggestedCode = `${moduleAbbr}-${String(seq).padStart(3, '0')}`;
+      while (await isCodeTaken(suggestedCode)) {
+        seq++;
+        suggestedCode = `${moduleAbbr}-${String(seq).padStart(3, '0')}`;
+      }
     }
     return reply.send({ suggestedCode, hasRule: !!rule });
   });
