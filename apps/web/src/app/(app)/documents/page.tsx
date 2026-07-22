@@ -235,7 +235,7 @@ export default function DocumentsPage() {
     try {
       await apiFetch(`/documents/${processModalDoc.id}/processes`, {
         method: 'PUT',
-        body: JSON.stringify({ processIds: processModalSelected }),
+        json: { processIds: processModalSelected },
       });
       const selectedObjs = processOptions.filter(o => processModalSelected.includes(o.id));
       setDocs(prev => prev.map(d => d.id === processModalDoc.id ? { ...d, processes: selectedObjs } : d));
@@ -325,7 +325,7 @@ export default function DocumentsPage() {
         try {
           await apiFetch(`/documents/${data.document.id}/processes`, {
             method: 'PUT',
-            body: JSON.stringify({ processIds: uploadProcessIds }),
+            json: { processIds: uploadProcessIds },
           });
         } catch { /* no bloquear la carga si falla la vinculación */ }
       }
