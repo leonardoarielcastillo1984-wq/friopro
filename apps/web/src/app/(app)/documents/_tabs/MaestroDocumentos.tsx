@@ -6,8 +6,29 @@ import { apiFetch } from '@/lib/api';
 import {
   Search, Filter, FileText, Download, Eye, Edit2, CheckCircle2,
   AlertTriangle, Clock, Archive, RefreshCw, ChevronDown, X, Save,
-  Calendar, User, Link2, Tag, Hash
+  Calendar, User, Link2, Tag, Hash, ExternalLink
 } from 'lucide-react';
+
+const SYSTEM_MODULES = [
+  { url: '/dashboard',           label: 'Dashboard General' },
+  { url: '/auditorias',          label: 'Auditorías' },
+  { url: '/calidad',             label: 'No Conformidades / Calidad' },
+  { url: '/seguridad',           label: 'Seguridad y Salud' },
+  { url: '/riesgos',             label: 'Riesgos' },
+  { url: '/cumplimiento',        label: 'Cumplimiento Normativo' },
+  { url: '/objetivos',           label: 'Objetivos de Calidad' },
+  { url: '/indicadores',         label: 'Indicadores' },
+  { url: '/capacitaciones',      label: 'Capacitaciones' },
+  { url: '/rrhh',                label: 'Recursos Humanos' },
+  { url: '/proveedores',         label: 'Proveedores' },
+  { url: '/clientes',            label: 'Clientes' },
+  { url: '/proyectos',           label: 'Proyectos' },
+  { url: '/infraestructura',     label: 'Infraestructura' },
+  { url: '/contexto-sgi',        label: 'Contexto SGI' },
+  { url: '/revision-direccion',  label: 'Revisión por la Dirección' },
+  { url: '/clima',               label: 'Clima Laboral' },
+  { url: '/documents',           label: 'Gestión Documental' },
+];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
   DRAFT:     { label: 'Borrador',    color: 'text-amber-700',   bg: 'bg-amber-50 border-amber-200',   icon: Clock },
@@ -32,6 +53,7 @@ interface DocRow {
   owner: { id: string; email: string; firstName?: string; lastName?: string } | null;
   approvedBy: { id: string; email: string; firstName?: string; lastName?: string } | null;
   relatedDocument: { id: string; title: string; documentCode: string | null } | null;
+  systemModuleUrl: string | null;
   _count: { versions: number };
 }
 
@@ -45,6 +67,7 @@ interface EditModal {
   nextReviewDate: string;
   approvedAt: string;
   relatedDocumentId: string;
+  systemModuleUrl: string;
 }
 
 export default function MaestroDocumentos() {
@@ -100,6 +123,7 @@ export default function MaestroDocumentos() {
       nextReviewDate: doc.nextReviewDate ? doc.nextReviewDate.slice(0, 10) : '',
       approvedAt: doc.approvedAt ? doc.approvedAt.slice(0, 10) : '',
       relatedDocumentId: doc.relatedDocument?.id || '',
+      systemModuleUrl: doc.systemModuleUrl || '',
     });
   }
 
@@ -109,13 +133,14 @@ export default function MaestroDocumentos() {
     try {
       await apiFetch(`/documents/${editModal.doc.id}/master`, {
         method: 'PUT',
-        body: JSON.stringify({
+        json: {
           status: editModal.status,
           process: editModal.process || undefined,
           nextReviewDate: editModal.nextReviewDate ? new Date(editModal.nextReviewDate).toISOString() : null,
           approvedAt: editModal.approvedAt ? new Date(editModal.approvedAt).toISOString() : null,
           relatedDocumentId: editModal.relatedDocumentId || null,
-        }),
+          systemModuleUrl: editModal.systemModuleUrl || null,
+        },
       });
       setEditModal(null);
       load();
@@ -326,13 +351,24 @@ export default function MaestroDocumentos() {
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => openEdit(doc)}
-                        className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-500 hover:text-blue-600"
-                        title="Editar metadatos"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {doc.systemModuleUrl && (
+                          <button
+                            onClick={() => router.push(doc.systemModuleUrl!)}
+                            className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500"
+                            title={`Abrir módulo: ${doc.systemModuleUrl}`}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openEdit(doc)}
+                          className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-500 hover:text-blue-600"
+                          title="Editar metadatos"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -396,6 +432,25 @@ export default function MaestroDocumentos() {
                     onChange={e => setEditModal(m => m ? { ...m, nextReviewDate: e.target.value } : null)}
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Módulo del sistema vinculado</label>
+                <select
+                  className="w-full text-sm border border-neutral-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={editModal.systemModuleUrl}
+                  onChange={e => setEditModal(m => m ? { ...m, systemModuleUrl: e.target.value } : null)}
+                >
+                  <option value="">— Sin vincular —</option>
+                  {SYSTEM_MODULES.map(m => (
+                    <option key={m.url} value={m.url}>{m.label}</option>
+                  ))}
+                </select>
+                {editModal.systemModuleUrl && (
+                  <p className="mt-1 text-xs text-blue-600 flex items-center gap-1">
+                    <ExternalLink className="h-3 w-3" />
+                    Al abrir el documento se navegará a: <code className="font-mono">{editModal.systemModuleUrl}</code>
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Documento relacionado</label>

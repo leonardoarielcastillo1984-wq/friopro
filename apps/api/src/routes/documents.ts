@@ -1787,6 +1787,7 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
         owner: { select: { id: true, email: true, firstName: true, lastName: true } },
         approvedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
         relatedDocument: { select: { id: true, title: true, documentCode: true } },
+        systemModuleUrl: true,
         versions: { select: { id: true, version: true, createdAt: true }, orderBy: { version: 'desc' }, take: 5 },
         _count: { select: { versions: true } },
       },
@@ -1814,6 +1815,7 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
       nextReviewDate: z.string().datetime().optional().nullable(),
       process: z.string().optional(),
       status: z.enum(['DRAFT', 'REVIEW', 'EFFECTIVE', 'OBSOLETE']).optional(),
+      systemModuleUrl: z.string().optional().nullable(),
     });
     const data = schema.parse(req.body);
 
@@ -1828,6 +1830,7 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
         ...(data.nextReviewDate !== undefined && { nextReviewDate: data.nextReviewDate ? new Date(data.nextReviewDate) : null }),
         ...(data.process !== undefined && { process: data.process }),
         ...(data.status !== undefined && { status: data.status as any }),
+        ...(data.systemModuleUrl !== undefined && { systemModuleUrl: data.systemModuleUrl || null }),
       } as any,
     });
     return reply.send(updated);
