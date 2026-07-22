@@ -9,25 +9,50 @@ import {
   Calendar, User, Link2, Tag, Hash, ExternalLink
 } from 'lucide-react';
 
-const SYSTEM_MODULES = [
-  { url: '/dashboard',           label: 'Dashboard General' },
-  { url: '/auditorias',          label: 'Auditorías' },
-  { url: '/calidad',             label: 'No Conformidades / Calidad' },
-  { url: '/seguridad',           label: 'Seguridad y Salud' },
-  { url: '/riesgos',             label: 'Riesgos' },
-  { url: '/cumplimiento',        label: 'Cumplimiento Normativo' },
-  { url: '/objetivos',           label: 'Objetivos de Calidad' },
-  { url: '/indicadores',         label: 'Indicadores' },
-  { url: '/capacitaciones',      label: 'Capacitaciones' },
-  { url: '/rrhh',                label: 'Recursos Humanos' },
-  { url: '/proveedores',         label: 'Proveedores' },
-  { url: '/clientes',            label: 'Clientes' },
-  { url: '/proyectos',           label: 'Proyectos' },
-  { url: '/infraestructura',     label: 'Infraestructura' },
-  { url: '/contexto-sgi',        label: 'Contexto SGI' },
-  { url: '/revision-direccion',  label: 'Revisión por la Dirección' },
-  { url: '/clima',               label: 'Clima Laboral' },
-  { url: '/documents',           label: 'Gestión Documental' },
+const SYSTEM_MODULE_GROUPS = [
+  { group: 'General', items: [
+    { url: '/dashboard', label: 'Dashboard General' },
+  ]},
+  { group: 'Auditorías', items: [
+    { url: '/auditorias',                    label: 'Auditorías — General' },
+    { url: '/auditorias?tab=lista',          label: 'Auditorías — Lista' },
+    { url: '/auditorias?tab=agenda',         label: 'Auditorías — Agenda' },
+    { url: '/auditorias?tab=cronograma',     label: 'Auditorías — Cronograma' },
+    { url: '/auditorias?tab=calendario',     label: 'Auditorías — Calendario' },
+  ]},
+  { group: 'Calidad', items: [
+    { url: '/calidad',                       label: 'No Conformidades — General' },
+    { url: '/calidad?tab=lista',             label: 'No Conformidades — Lista' },
+    { url: '/calidad?tab=dashboard',         label: 'No Conformidades — Dashboard' },
+  ]},
+  { group: 'Documentos', items: [
+    { url: '/documents',                     label: 'Gestión Documental — General' },
+    { url: '/documents?tab=lista',           label: 'Gestión Documental — Lista' },
+    { url: '/documents?tab=maestro',         label: 'Gestión Documental — Maestro' },
+    { url: '/documents?tab=salidas',         label: 'Gestión Documental — Salidas' },
+  ]},
+  { group: 'Capacitaciones', items: [
+    { url: '/capacitaciones',                label: 'Capacitaciones — General' },
+    { url: '/capacitaciones?tab=list',       label: 'Capacitaciones — Lista' },
+    { url: '/capacitaciones?tab=calendar',   label: 'Capacitaciones — Calendario' },
+    { url: '/capacitaciones?tab=dashboard',  label: 'Capacitaciones — Dashboard ISO' },
+    { url: '/capacitaciones?tab=report',     label: 'Capacitaciones — Reporte' },
+  ]},
+  { group: 'Otros módulos', items: [
+    { url: '/seguridad',          label: 'Seguridad y Salud' },
+    { url: '/riesgos',            label: 'Riesgos' },
+    { url: '/cumplimiento',       label: 'Cumplimiento Normativo' },
+    { url: '/objetivos',          label: 'Objetivos de Calidad' },
+    { url: '/indicadores',        label: 'Indicadores' },
+    { url: '/rrhh',               label: 'Recursos Humanos' },
+    { url: '/proveedores',        label: 'Proveedores' },
+    { url: '/clientes',           label: 'Clientes' },
+    { url: '/proyectos',          label: 'Proyectos' },
+    { url: '/infraestructura',    label: 'Infraestructura' },
+    { url: '/contexto-sgi',       label: 'Contexto SGI' },
+    { url: '/revision-direccion', label: 'Revisión por la Dirección' },
+    { url: '/clima',              label: 'Clima Laboral' },
+  ]},
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
@@ -441,8 +466,12 @@ export default function MaestroDocumentos() {
                   onChange={e => setEditModal(m => m ? { ...m, systemModuleUrl: e.target.value } : null)}
                 >
                   <option value="">— Sin vincular —</option>
-                  {SYSTEM_MODULES.map(m => (
-                    <option key={m.url} value={m.url}>{m.label}</option>
+                  {SYSTEM_MODULE_GROUPS.map(g => (
+                    <optgroup key={g.group} label={g.group}>
+                      {g.items.map(item => (
+                        <option key={item.url} value={item.url}>{item.label}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 {editModal.systemModuleUrl && (

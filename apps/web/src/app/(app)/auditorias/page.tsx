@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { Plus, Calendar, FileText, AlertCircle, CheckCircle, Clock, Users, List, Trash2, BarChart2 } from 'lucide-react';
@@ -39,12 +40,14 @@ type Stats = {
 };
 
 export default function AuditoriasPage() {
+  const searchParams = useSearchParams();
   const [programs, setPrograms] = useState<AuditProgram[]>([]);
   const [audits, setAudits] = useState<Audit[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'lista' | 'agenda' | 'cronograma' | 'calendario'>('lista');
+  const initialTab = (searchParams.get('tab') as 'lista' | 'agenda' | 'cronograma' | 'calendario') || 'lista';
+  const [activeTab, setActiveTab] = useState<'lista' | 'agenda' | 'cronograma' | 'calendario'>(initialTab);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   useEffect(() => {

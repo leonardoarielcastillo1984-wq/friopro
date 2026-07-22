@@ -2,7 +2,7 @@
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import type { Training, TrainingStats } from '@/lib/types';
 import {
@@ -63,7 +63,10 @@ export default function CapacitacionesPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [creating, setCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'dashboard' | 'report'>('list');
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'dashboard' | 'report'>(
+    (searchParams.get('tab') as 'list' | 'calendar' | 'dashboard' | 'report') || 'list'
+  );
 
   const [form, setForm] = useState({
     title: '', description: '', category: 'Seguridad',
