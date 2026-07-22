@@ -202,8 +202,8 @@ export default function AuditoriasPage() {
                 <tbody>${audits.map((a,i)=>`<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
                   <td style="padding:6px 8px;">${a.code||''}</td>
                   <td style="padding:6px 8px;">${a.title||''}</td>
-                  <td style="padding:6px 8px;">${a.type||''}</td>
-                  <td style="padding:6px 8px;">${a.status||''}</td>
+                  <td style="padding:6px 8px;">${getTypeLabel(a.type)||''}</td>
+                  <td style="padding:6px 8px;">${getStatusLabel(a.status)||''}</td>
                   <td style="padding:6px 8px;">${a.plannedStartDate?new Date(a.plannedStartDate).toLocaleDateString('es-AR'):'—'}</td>
                 </tr>`).join('')}</tbody>
               </table>
