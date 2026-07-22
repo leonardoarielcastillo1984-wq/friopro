@@ -42,6 +42,7 @@ export type DocumentRow = {
   reviewStatus?: 'APPROVED' | 'REQUIRES_UPDATE';
   documentQualityStatus?: 'ADEQUATE' | 'IMPROVABLE' | 'NON_CONFORMING';
   autoStatus?: 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' | 'SIN_FECHA';
+  systemModuleUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 };

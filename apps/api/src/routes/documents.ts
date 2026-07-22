@@ -40,6 +40,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           nextReviewDate: true,
           reviewStatus: true,
           documentQualityStatus: true,
+          systemModuleUrl: true,
         },
       });
     });
@@ -367,6 +368,52 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return reply.send({ ok: true });
+  });
+
+  // ── POST /documents/module — Registrar un módulo del sistema como documento (sin archivo) ──
+  app.post('/module', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, 'documentos');
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const body = z.object({
+      title: z.string().min(1),
+      type: z.string().default('PROCEDURE'),
+      systemModuleUrl: z.string().min(1),
+      departmentId: z.string().uuid().optional().nullable(),
+      normativeIds: z.array(z.string()).optional(),
+      process: z.string().optional().nullable(),
+      ownerId: z.string().uuid().optional().nullable(),
+      nextReviewDate: z.string().optional().nullable(),
+      documentCode: z.string().optional().nullable(),
+      typeConfigId: z.string().uuid().optional().nullable(),
+      status: z.enum(['DRAFT','EFFECTIVE','REVIEW','OBSOLETE']).optional().default('EFFECTIVE'),
+    }).parse(req.body);
+
+    const created = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.document.create({
+        data: {
+          tenantId,
+          title: body.title,
+          type: body.type,
+          systemModuleUrl: body.systemModuleUrl,
+          departmentId: body.departmentId ?? null,
+          normativeIds: body.normativeIds ?? [],
+          process: body.process ?? null,
+          ownerId: body.ownerId ?? null,
+          nextReviewDate: body.nextReviewDate ? new Date(body.nextReviewDate) : null,
+          documentCode: body.documentCode ?? null,
+          typeConfigId: body.typeConfigId ?? null,
+          reviewStatus: 'APPROVED',
+          status: body.status ?? 'EFFECTIVE',
+          version: 1,
+          createdById: req.auth?.userId ?? null,
+          updatedById: req.auth?.userId ?? null,
+        },
+      });
+    });
+
+    return reply.code(201).send({ document: created, extractedChars: 0 });
   });
 
   // ── POST /documents/upload — Subir PDF y extraer contenido ──

@@ -1107,6 +1107,7 @@ model Document {
   deletedAt DateTime? @db.Timestamptz
 
   documentCode      String?
+  systemModuleUrl   String?   @db.Text
   typeConfigId      String?   @db.Uuid
   typeConfig        DocumentTypeConfig? @relation(fields: [typeConfigId], references: [id], onDelete: SetNull)
   approvedAt        DateTime? @db.Timestamptz

@@ -23,8 +23,30 @@ import {
   FileSpreadsheet, FileType, File, Clock, CheckCircle2, AlertCircle,
   Plus, X, Download, Edit3, FileCheck, FileX, Files, AlertTriangle,
   Calendar, User, Shield, ShieldCheck, Hash, Settings, List,
-  GitBranch, Package, Archive, BarChart3, Palette, ScrollText, HelpCircle
+  GitBranch, Package, Archive, BarChart3, Palette, ScrollText, HelpCircle,
+  ExternalLink, Link2
 } from 'lucide-react';
+
+const SYSTEM_MODULES = [
+  { url: '/dashboard',           label: 'Dashboard General' },
+  { url: '/auditorias',          label: 'Auditorías' },
+  { url: '/calidad',             label: 'No Conformidades / Calidad' },
+  { url: '/seguridad',           label: 'Seguridad y Salud' },
+  { url: '/riesgos',             label: 'Riesgos' },
+  { url: '/cumplimiento',        label: 'Cumplimiento Normativo' },
+  { url: '/objetivos',           label: 'Objetivos de Calidad' },
+  { url: '/indicadores',         label: 'Indicadores' },
+  { url: '/capacitaciones',      label: 'Capacitaciones' },
+  { url: '/rrhh',                label: 'Recursos Humanos' },
+  { url: '/proveedores',         label: 'Proveedores' },
+  { url: '/clientes',            label: 'Clientes' },
+  { url: '/proyectos',           label: 'Proyectos' },
+  { url: '/infraestructura',     label: 'Infraestructura' },
+  { url: '/contexto-sgi',        label: 'Contexto SGI' },
+  { url: '/revision-direccion',  label: 'Revisión por la Dirección' },
+  { url: '/clima',               label: 'Clima Laboral' },
+  { url: '/documents',           label: 'Gestión Documental' },
+];
 
 const DOC_TYPES = [
   { value: 'PROCEDURE', label: 'Procedimiento', icon: FileText },
@@ -85,6 +107,8 @@ export default function DocumentsPage() {
   const [uploadNextReviewDate, setUploadNextReviewDate] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'file' | 'module'>('file');
+  const [uploadModuleUrl, setUploadModuleUrl] = useState('');
   const [departments, setDepartments] = useState<{id: string; name: string}[]>([]);
   const [normatives, setNormatives] = useState<{id: string; name: string; code: string}[]>([]);
   const [employees, setEmployees] = useState<{id: string; firstName: string; lastName: string; email: string}[]>([]);
@@ -273,6 +297,52 @@ export default function DocumentsPage() {
     setSelectedFile(file);
     if (file && !uploadTitle) {
       setUploadTitle(file.name.replace(/\.(pdf|docx|xlsx|xls)$/i, ''));
+    }
+  }
+
+  async function handleUploadModule(e: React.FormEvent) {
+    e.preventDefault();
+    if (!uploadModuleUrl || !uploadTitle) return;
+    setUploading(true);
+    try {
+      const data = await apiFetch('/documents/module', {
+        method: 'POST',
+        json: {
+          title: uploadTitle,
+          type: uploadType,
+          systemModuleUrl: uploadModuleUrl,
+          departmentId: uploadDepartmentId || null,
+          normativeIds: uploadNormativeIds,
+          process: uploadProcess || null,
+          ownerId: uploadOwnerId || null,
+          nextReviewDate: uploadNextReviewDate || null,
+        },
+      }) as { document: { id: string; title: string } };
+      if (uploadProcessIds.length > 0 && data.document?.id) {
+        try {
+          await apiFetch(`/documents/${data.document.id}/processes`, {
+            method: 'PUT',
+            json: { processIds: uploadProcessIds },
+          });
+        } catch { /* non-blocking */ }
+      }
+      setSuccess(`Módulo "${data.document.title}" registrado correctamente`);
+      setShowUpload(false);
+      setUploadTitle('');
+      setUploadType('PROCEDURE');
+      setUploadDepartmentId('');
+      setUploadNormativeIds([]);
+      setUploadProcess('');
+      setUploadProcessIds([]);
+      setUploadOwnerId('');
+      setUploadNextReviewDate('');
+      setUploadModuleUrl('');
+      setUploadMode('file');
+      await load();
+    } catch (err: any) {
+      setError('Error al registrar módulo: ' + (err?.message ?? 'Error desconocido'));
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -503,7 +573,7 @@ export default function DocumentsPage() {
 
       {/* Upload Form */}
       {showUpload && (
-        <form onSubmit={handleUpload} className="rounded-xl border border-brand-200 bg-brand-50/30 p-6">
+        <form onSubmit={uploadMode === 'module' ? handleUploadModule : handleUpload} className="rounded-xl border border-brand-200 bg-brand-50/30 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="rounded-lg bg-brand-100 p-2"><Upload className="h-5 w-5 text-brand-600" /></div>
             <div>
@@ -649,17 +719,56 @@ export default function DocumentsPage() {
               />
             </div>
           </div>
+          {/* Toggle file / module */}
           <div className="mt-4">
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Archivo</label>
-            <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png" onChange={handleFileChange} className="block w-full text-sm text-neutral-600 file:mr-4 file:rounded-lg file:border-0 file:bg-brand-600 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700 file:cursor-pointer" required />
+            <div className="flex gap-2 mb-3">
+              <button type="button"
+                onClick={() => setUploadMode('file')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                  uploadMode === 'file' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50'
+                }`}>
+                <Upload className="h-3.5 w-3.5" /> Subir archivo
+              </button>
+              <button type="button"
+                onClick={() => setUploadMode('module')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                  uploadMode === 'module' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50'
+                }`}>
+                <Link2 className="h-3.5 w-3.5" /> Módulo del sistema
+              </button>
+            </div>
+
+            {uploadMode === 'file' ? (
+              <>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Archivo</label>
+                <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png" onChange={handleFileChange} className="block w-full text-sm text-neutral-600 file:mr-4 file:rounded-lg file:border-0 file:bg-brand-600 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700 file:cursor-pointer" />
+              </>
+            ) : (
+              <>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Módulo del sistema</label>
+                <select
+                  value={uploadModuleUrl}
+                  onChange={e => setUploadModuleUrl(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                  required={uploadMode === 'module'}
+                >
+                  <option value="">Seleccionar módulo...</option>
+                  {SYSTEM_MODULES.map(m => (
+                    <option key={m.url} value={m.url}>{m.label}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-neutral-400">El documento quedará vinculado a este módulo. Se abrirá directamente en el sistema sin descargar archivo.</p>
+              </>
+            )}
           </div>
+
           <button
             type="submit"
-            disabled={uploading || !selectedFile}
+            disabled={uploading || (uploadMode === 'file' ? !selectedFile : !uploadModuleUrl)}
             className="mt-4 flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-neutral-300 disabled:cursor-not-allowed transition-colors"
           >
-            <Upload className="h-4 w-4" />
-            {uploading ? 'Subiendo y extrayendo texto...' : 'Subir documento'}
+            {uploadMode === 'file' ? <Upload className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+            {uploading ? 'Procesando...' : uploadMode === 'file' ? 'Subir documento' : 'Registrar módulo'}
           </button>
         </form>
       )}
@@ -855,13 +964,23 @@ export default function DocumentsPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => router.push(`/documents/${d.id}`)}
-                          className="text-brand-600 hover:text-brand-700 text-sm font-medium p-1 rounded hover:bg-brand-50"
-                          title="Ver detalle"
-                        >
-                          <FileText className="h-4 w-4" />
-                        </button>
+                        {d.systemModuleUrl ? (
+                          <button
+                            onClick={() => router.push(d.systemModuleUrl!)}
+                            className="text-brand-600 hover:text-brand-700 text-sm font-medium p-1 rounded hover:bg-brand-50"
+                            title={`Abrir módulo: ${d.systemModuleUrl}`}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => router.push(`/documents/${d.id}`)}
+                            className="text-brand-600 hover:text-brand-700 text-sm font-medium p-1 rounded hover:bg-brand-50"
+                            title="Ver detalle"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); router.push(`/documents/${d.id}`); }}
                           className="text-amber-600 hover:text-amber-700 text-sm font-medium p-1 rounded hover:bg-amber-50"
