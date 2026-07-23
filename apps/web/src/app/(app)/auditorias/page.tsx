@@ -27,8 +27,15 @@ type Audit = {
   type: string;
   status: string;
   plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  plannedStartTime: string | null;
+  plannedEndTime: string | null;
   area: string;
+  process: string | null;
   isoStandard: string[];
+  modality: string | null;
+  auditLocation: string | null;
+  objective: string | null;
 };
 
 type Stats = {
@@ -191,21 +198,30 @@ export default function AuditoriasPage() {
             moduleName="Auditorías"
             recordCount={audits.length}
             bodyHtml={`
-              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <table style="width:100%;border-collapse:collapse;font-size:11px;">
                 <thead><tr style="background:#1e40af;color:#fff;">
-                  <th style="padding:6px 8px;text-align:left;">Código</th>
-                  <th style="padding:6px 8px;text-align:left;">Nombre</th>
-                  <th style="padding:6px 8px;text-align:left;">Tipo</th>
-                  <th style="padding:6px 8px;text-align:left;">Estado</th>
-                  <th style="padding:6px 8px;text-align:left;">Fecha Planificada</th>
+                  <th style="padding:6px 8px;text-align:left;width:110px;">Código</th>
+                  <th style="padding:6px 8px;text-align:left;">Proceso / Área — Referenciales</th>
+                  <th style="padding:6px 8px;text-align:left;width:80px;">Tipo</th>
+                  <th style="padding:6px 8px;text-align:left;width:90px;">Estado</th>
+                  <th style="padding:6px 8px;text-align:left;width:150px;">Fecha y Horario</th>
                 </tr></thead>
-                <tbody>${audits.map((a,i)=>`<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
-                  <td style="padding:6px 8px;">${a.code||''}</td>
-                  <td style="padding:6px 8px;">${a.title||''}</td>
+                <tbody>${audits.map((a,i)=>{
+                  const normas = (a.isoStandard||[]).map(s=>s.replace(/_/g,' ')).join(', ');
+                  const fechaStr = a.plannedStartDate ? new Date(a.plannedStartDate).toLocaleDateString('es-AR') : '—';
+                  const horario = (a.plannedStartTime||a.plannedEndTime) ? `<br><span style="color:#555;font-size:10px;">${a.plannedStartTime||''}${a.plannedEndTime?' – '+a.plannedEndTime:''}</span>` : '';
+                  const modalidad = a.modality ? `<span style="color:#555;font-size:10px;">${a.modality==='PRESENCIAL'?'Presencial':a.modality==='REMOTA'?'Remota':'Híbrida'}${a.auditLocation?' · '+a.auditLocation:''}</span>` : '';
+                  return `<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
+                  <td style="padding:6px 8px;font-family:monospace;">${a.code||''}</td>
+                  <td style="padding:6px 8px;">
+                    <div style="font-weight:600;">${a.area||a.title||''}</div>
+                    ${normas?`<div style="color:#1e40af;font-size:10px;margin-top:2px;">📋 ${normas}</div>`:''}
+                    ${modalidad?`<div style="margin-top:2px;">${modalidad}</div>`:''}
+                  </td>
                   <td style="padding:6px 8px;">${getTypeLabel(a.type)||''}</td>
                   <td style="padding:6px 8px;">${getStatusLabel(a.status)||''}</td>
-                  <td style="padding:6px 8px;">${a.plannedStartDate?new Date(a.plannedStartDate).toLocaleDateString('es-AR'):'—'}</td>
-                </tr>`).join('')}</tbody>
+                  <td style="padding:6px 8px;">${fechaStr}${horario}</td>
+                </tr>`;}).join('')}</tbody>
               </table>
             `}
           />
