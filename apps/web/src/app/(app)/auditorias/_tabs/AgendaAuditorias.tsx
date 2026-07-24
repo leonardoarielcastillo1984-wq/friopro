@@ -82,7 +82,7 @@ const MODALITY_LABELS: Record<string, string> = {
 
 function formatDate(s: string | null) {
   if (!s) return '—';
-  return new Date(s).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return new Date(s).toLocaleDateString('es-AR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 function calcDuration(start: string | null, end: string | null, startDate: string | null, endDate: string | null): string {
   if (!start || !end) return '—';

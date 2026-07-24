@@ -252,6 +252,7 @@ export default function AuditDetailPage() {
   function formatDate(date: string | null) {
     if (!date) return 'No definida';
     return new Date(date).toLocaleDateString('es-ES', {
+      timeZone: 'UTC',
       year: 'numeric',
       month: 'long',
       day: 'numeric',

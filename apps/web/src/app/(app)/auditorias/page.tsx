@@ -149,7 +149,9 @@ export default function AuditoriasPage() {
     return audits.filter(audit => {
       if (!audit.plannedStartDate) return false;
       const auditDate = new Date(audit.plannedStartDate);
-      return auditDate.toDateString() === date.toDateString();
+      return auditDate.getUTCFullYear() === date.getFullYear() &&
+             auditDate.getUTCMonth() === date.getMonth() &&
+             auditDate.getUTCDate() === date.getDate();
     });
   }
 
@@ -208,7 +210,7 @@ export default function AuditoriasPage() {
                 </tr></thead>
                 <tbody>${audits.map((a,i)=>{
                   const normas = (a.isoStandard||[]).map(s=>s.replace(/_/g,' ')).join(', ');
-                  const fechaStr = a.plannedStartDate ? new Date(a.plannedStartDate).toLocaleDateString('es-AR') : '—';
+                  const fechaStr = a.plannedStartDate ? new Date(a.plannedStartDate).toLocaleDateString('es-AR', { timeZone: 'UTC' }) : '—';
                   const horario = (a.plannedStartTime||a.plannedEndTime) ? `<br><span style="color:#555;font-size:10px;">${a.plannedStartTime||''}${a.plannedEndTime?' – '+a.plannedEndTime:''}</span>` : '';
                   const modalidad = a.modality ? `<span style="color:#555;font-size:10px;">${a.modality==='PRESENCIAL'?'Presencial':a.modality==='REMOTA'?'Remota':'Híbrida'}${a.auditLocation?' · '+a.auditLocation:''}</span>` : '';
                   return `<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
