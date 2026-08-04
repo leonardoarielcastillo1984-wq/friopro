@@ -28,7 +28,8 @@ async function getRedis(): Promise<any | null> {
 export class SubscriptionMonitor {
   private static instance: SubscriptionMonitor;
   private readonly PAYMENT_WARNING_DAYS = 3; // Alert 3 days before suspension
-  private readonly ALERT_COOLDOWN_SECONDS = 12 * 60 * 60; // 12 hours → 2 alerts/day max
+  private readonly ALERT_COOLDOWN_SECONDS = 12 * 60 * 60; // 12 hours (used for warnings only)
+  private readonly MAX_OVERDUE_DAYS_TO_ALERT = 30; // Stop alerting after 30 days overdue
 
   static getInstance(): SubscriptionMonitor {
     if (!SubscriptionMonitor.instance) {
@@ -48,11 +49,11 @@ export class SubscriptionMonitor {
     return false;
   }
 
-  private async setCooldown(alertKey: string): Promise<void> {
+  private async setCooldown(alertKey: string, seconds: number = this.ALERT_COOLDOWN_SECONDS): Promise<void> {
     const redis = await getRedis();
     if (redis) {
       try {
-        await redis.set(`sub_alert:${alertKey}`, '1', 'EX', this.ALERT_COOLDOWN_SECONDS);
+        await redis.set(`sub_alert:${alertKey}`, '1', 'EX', seconds);
       } catch { /* ignore */ }
     }
   }
@@ -101,10 +102,24 @@ export class SubscriptionMonitor {
     }
   }
 
+  private getOverdueCooldownSeconds(daysOverdue: number): number | null {
+    if (daysOverdue <= 0) return this.ALERT_COOLDOWN_SECONDS; // upcoming: 12h
+    if (daysOverdue <= 7)  return 24 * 60 * 60;               // 1-7 days overdue: once per day
+    if (daysOverdue <= 30) return 7 * 24 * 60 * 60;           // 8-30 days overdue: once per week
+    return null; // > 30 days overdue: stop alerting
+  }
+
   private async processExpiringSubscription(subscription: any, now: Date): Promise<void> {
     const { tenant, plan, endsAt } = subscription;
     const daysUntilExpiry = Math.ceil((endsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
-    
+    const daysOverdue = daysUntilExpiry < 0 ? Math.abs(daysUntilExpiry) : 0;
+
+    // Stop alerting entirely after MAX_OVERDUE_DAYS_TO_ALERT days
+    if (daysOverdue > this.MAX_OVERDUE_DAYS_TO_ALERT) {
+      console.log(`[SUBSCRIPTION_MONITOR] Skipping alert for ${tenant.name} — overdue ${daysOverdue} days (> ${this.MAX_OVERDUE_DAYS_TO_ALERT} day limit)`);
+      return;
+    }
+
     // Check cooldown for this specific subscription (Redis-backed, survives restarts)
     const alertKey = `${tenant.id}_${subscription.id}`;
     if (await this.isCooldownActive(alertKey)) {
@@ -117,7 +132,7 @@ export class SubscriptionMonitor {
     
     if (daysUntilExpiry < 0) {
       alertType = 'overdue';
-      urgency = Math.abs(daysUntilExpiry) > 7 ? 'critical' : 'high';
+      urgency = daysOverdue > 7 ? 'critical' : 'high';
     } else if (daysUntilExpiry === 0) {
       alertType = 'overdue';
       urgency = 'high';
@@ -127,7 +142,8 @@ export class SubscriptionMonitor {
     }
 
     await this.sendPaymentAlert(tenant, plan, daysUntilExpiry, alertType, urgency);
-    await this.setCooldown(alertKey);
+    const cooldownSeconds = this.getOverdueCooldownSeconds(daysOverdue);
+    if (cooldownSeconds) await this.setCooldown(alertKey, cooldownSeconds);
   }
 
   private async sendPaymentAlert(
