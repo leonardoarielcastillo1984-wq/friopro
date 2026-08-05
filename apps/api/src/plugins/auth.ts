@@ -117,8 +117,13 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     } catch (error) {
       console.log('[AUTH] Token verification failed - clearing auth:', error);
 
+      // Rutas públicas de auth: limpiar y continuar sin lanzar error
+      const PUBLIC_AUTH_ROUTES = ['/auth/login', '/auth/refresh', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
+      const isPublicAuthRoute = PUBLIC_AUTH_ROUTES.some(r => req.url.includes(r));
+
       // Token expirado → 401 para que el frontend dispare el refresh automático
-      if (error instanceof Error && error.message === 'jwt expired') {
+      // Excepto en rutas públicas donde el token expirado no debe bloquear
+      if (error instanceof Error && error.message === 'jwt expired' && !isPublicAuthRoute) {
         req.auth = null;
         const reply = (req as any).server?.reply ?? (req.raw as any)._reply;
         // Usar el reply de Fastify directamente a través del contexto
