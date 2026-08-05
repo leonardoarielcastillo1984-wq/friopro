@@ -5,7 +5,7 @@ Mantener paridad funcional entre Testing y Producción con el mismo código, per
 
 ## Arquitectura
 
-### Testing (http://46.62.253.81:4000)
+### Testing (https://test.logismart.ar)
 - Frontend: `sgi-web-test` (puerto 3001 interno, expuesto vía nginx en 4000)
 - Backend: `sgi-api-test` (puerto 4002)
 - Base de datos: `sgi_test` (usuario: `sgi_test`)
@@ -75,7 +75,7 @@ docker compose -f docker-compose.test.yml build --no-cache
 docker compose -f docker-compose.test.yml up -d
 
 # 4. Verificar login
-# URL: http://46.62.253.81:4000
+# URL: https://test.logismart.ar
 # Credenciales: admin@sgi360.com / Admin123!
 ```
 
@@ -127,10 +127,10 @@ Si necesitas sincronizar datos de producción a testing:
 docker exec sgi-postgres pg_dump -U sgi sgi > production_backup.sql
 
 # 2. Transferir al servidor de testing
-scp production_backup.sql root@46.62.253.81:/root/
+scp -i ~/Downloads/logismart-prod.pem production_backup.sql ubuntu@18.191.206.203:/tmp/
 
 # 3. Restaurar en testing
-docker exec -i sgi-postgres-test psql -U sgi_test -d sgi_test < /root/production_backup.sql
+docker exec -i sgi-postgres psql -U sgi -d sgi < /tmp/production_backup.sql
 ```
 
 **IMPORTANTE:** Solo hacer esto cuando sea necesario para probar funcionalidades específicas. No hacer esto rutinariamente.
@@ -138,8 +138,8 @@ docker exec -i sgi-postgres-test psql -U sgi_test -d sgi_test < /root/production
 ## Verificación Post-Deploy
 
 ### Testing
-1. Verificar login: http://46.62.253.81:4000
-2. Verificar que las llamadas API van a http://46.62.253.81:4002
+1. Verificar login: https://test.logismart.ar
+2. Verificar que las llamadas API responden en /api/health
 3. Verificar que los datos son los de la base de datos de testing
 
 ### Producción

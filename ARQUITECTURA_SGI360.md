@@ -1,5 +1,5 @@
 # ARQUITECTURA ENTERPRISE SGI360
-*Última actualización: Mayo 2026*
+*Última actualización: Agosto 2026 — Migrado a AWS*
 
 ---
 
@@ -8,20 +8,22 @@
 ```
 INTERNET
     │
-    ├──► 🟢 PRODUCCIÓN — 46.62.145.171 (www.logismart.ar)
+    ├──► 🟢 PRODUCCIÓN — 54.94.33.5 (AWS sa-east-1, São Paulo)
+    │         logismart.ar / www.logismart.ar / docs.logismart.ar
     │
-    └──► 🟡 TESTING    — 46.62.253.81  (test.logismart.ar)
+    └──► 🟡 TESTING    — 18.191.206.203 (AWS us-east-2, Ohio)
+              test.logismart.ar
 ```
 
 ---
 
-## 🟢 PRODUCCIÓN — 46.62.145.171
+## 🟢 PRODUCCIÓN — 54.94.33.5
 
 ### Acceso
-- **Dominio:** https://www.logismart.ar
-- **IP:** 46.62.145.171
-- **SSH:** `ssh root@46.62.145.171` (pass: en vault)
-- **SSL:** válido hasta 16/08/2026 (auto-renovación certbot)
+- **Dominio:** https://logismart.ar
+- **IP:** 54.94.33.5 (AWS EC2 t3.large, sa-east-1)
+- **SSH:** `ssh -i ~/Downloads/sgi360-sa-east-1.pem ubuntu@54.94.33.5`
+- **SSL:** wildcard `*.logismart.ar` (Let's Encrypt, auto-renovación certbot)
 
 ### Stack
 | Componente | Imagen | Puerto interno | Notas |
@@ -41,63 +43,64 @@ location /           → proxy :3000
 ```
 
 ### Seguridad
-- **UFW:** activo — permite 22, 80, 443, 8080
+- **UFW:** activo — permite 22, 80, 443
 - **fail2ban:** activo — SSH maxretry=3, ban=24h
-- **Redis/PG:** solo accesibles internamente (UFW bloquea 5432, 6379 externamente)
-- **Restart policy:** `unless-stopped` en todos los contenedores
+- **AWS Security Group:** solo puertos 22, 80, 443
+- **Redis/PG:** solo accesibles internamente
+- **Monitor containers:** cron cada 5min con alerta por email
+- **Grafana + Prometheus:** stack de monitoreo activo
 
 ### Backups automáticos
-- **Frecuencia:** 2x día (03:00 y 15:00)
-- **Ubicación:** `/root/friopro/backups-prod/`
-- **Contenido:** pg_dump, uploads, nginx+SSL, docker-compose
-- **Retención:** automática (ver script)
-- **Último backup:** exitoso ✅
+- **Frecuencia:** diaria (03:00 UTC = 00:00 Argentina)
+- **Ubicación:** `s3://sgi360-backups-prod/prod/YYYYMMDD_HHMMSS/`
+- **Contenido:** sgi_prod.dump, uploads.tar.gz, config.tar.gz
+- **Retención:** 30 días en S3
 
 ### Comandos útiles
 ```bash
+# Acceso al servidor
+ssh -i ~/Downloads/sgi360-sa-east-1.pem ubuntu@54.94.33.5
+
 # Ver contenedores
 docker ps
 
 # Logs API
 docker logs sgi-api --since=1h
 
-# Deploy producción (requiere confirmación)
-/root/friopro/scripts/deploy-production.sh --AUTORIZADO
-
 # Backup manual
-/root/friopro/backups-prod/scripts/backup-production.sh
+bash /home/ubuntu/backup-prod.sh
+
+# Deploy (desde local, con confirmación)
+git push origin main
+ssh -i ~/Downloads/sgi360-sa-east-1.pem ubuntu@54.94.33.5 "cd /home/ubuntu/friopro && git fetch origin main -q && git checkout origin/main -- apps/api/src/plugins/auth.ts && docker compose -f /home/ubuntu/docker-compose.prod.yml build sgi-api && docker compose -f /home/ubuntu/docker-compose.prod.yml up -d sgi-api"
 ```
 
 ---
 
-## 🟡 TESTING — 46.62.253.81
+## 🟡 TESTING — 18.191.206.203
 
 ### Acceso
-- **Dominio:** http://test.logismart.ar (HTTP por ahora)
-- **IP:** 46.62.253.81
-- **SSH:** `ssh root@46.62.253.81` (pass: mykCpXh0wDfk)
-- **SSL:** pendiente — requiere actualizar DNS primero
-
-### ⚠️ DNS PENDIENTE
-Actualizar en panel DNS: `test.logismart.ar` → `46.62.253.81`  
-(actualmente apunta a producción 46.62.145.171)
+- **Dominio:** https://test.logismart.ar
+- **IP:** 18.191.206.203 (AWS EC2 t3.medium, us-east-2 Ohio)
+- **SSH:** `ssh -i ~/Downloads/logismart-prod.pem ubuntu@18.191.206.203`
+- **SSL:** wildcard `*.logismart.ar` (Let's Encrypt, activo)
 
 ### Stack
-| Componente | Puerto interno | Puerto externo |
+| Componente | Puerto interno | Notas |
 |---|---|---|
-| sgi-web-testing | :3000 | 127.0.0.1:4001 |
-| sgi-api-testing | :4002 | 0.0.0.0:4002 |
-| sgi-postgres-testing | :5432 | 0.0.0.0:5433 |
-| sgi-redis-testing | :6379 | 0.0.0.0:6380 |
-
-### Activar SSL (después de actualizar DNS)
-```bash
-/root/friopro/scripts/ssl-testing.sh
-```
+| sgi-web | :3000 (→ Nginx) | SGI360 testing |
+| sgi-api | :3002 (→ Nginx) | SGI360 testing |
+| sgi-postgres | :5432 (interno) | DB testing |
+| sgi-redis | :6379 (interno) | Cache testing |
+| seg360-api | interno | Seg360 app |
+| seg360-web | interno | Seg360 app |
+| flota360-api | interno | Flota360 app |
+| flota360-web | interno | Flota360 app |
 
 ### Deploy testing
 ```bash
-/root/friopro/scripts/deploy-testing.sh
+git push origin main
+ssh -i ~/Downloads/logismart-prod.pem ubuntu@18.191.206.203 "cd /home/ubuntu/friopro && git fetch origin main -q && git checkout origin/main -- apps/web && docker compose -f /home/ubuntu/docker-compose.testing.yml build sgi-web && docker compose -f /home/ubuntu/docker-compose.testing.yml up -d sgi-web"
 ```
 
 ### Aislamiento
@@ -130,7 +133,7 @@ Actualizar en panel DNS: `test.logismart.ar` → `46.62.253.81`
 
 ## 🔑 VARIABLES DE ENTORNO
 
-Archivo en servidor: `/root/friopro/.env`  
+Archivo en servidor: `/home/ubuntu/friopro/.env`  
 **NUNCA commitear al repo.**
 
 Variables clave:
@@ -146,42 +149,50 @@ Variables clave:
 
 ### Escenario: Producción caída
 
-1. **SSH al servidor:** `ssh root@46.62.145.171`
+1. **SSH al servidor:** `ssh -i ~/Downloads/sgi360-sa-east-1.pem ubuntu@54.94.33.5`
 2. **Ver estado:** `docker ps`
 3. **Reiniciar servicio:** `docker restart sgi-api` o `sgi-web`
-4. **Si todo caído:** `cd /root/friopro && docker compose up -d`
+4. **Si todo caído:** `docker compose -f /home/ubuntu/docker-compose.prod.yml up -d`
 5. **Verificar:** `curl http://localhost:3002/health`
 
 ### Escenario: DB corrupta
 
-1. **Parar API:** `docker stop sgi-api`
-2. **Ver último backup:** `ls -lt /root/friopro/backups-prod/pg/`
-3. **Restaurar:**
+1. **Descargar último backup desde S3:**
    ```bash
-   gunzip -c /root/friopro/backups-prod/pg/sgi_prod_pg_YYYYMMDD_HHMMSS.sql.gz | \
-   docker exec -i sgi-postgres psql -U sgi
+   aws s3 ls s3://sgi360-backups-prod/prod/ --region sa-east-1 | tail -5
+   aws s3 cp s3://sgi360-backups-prod/prod/FECHA/sgi_prod.dump /tmp/ --region sa-east-1
    ```
-4. **Reiniciar API:** `docker start sgi-api`
+2. **Restaurar:**
+   ```bash
+   docker stop sgi-api
+   docker exec sgi-postgres pg_restore -U sgi -d sgi -c /tmp/sgi_prod.dump
+   docker start sgi-api
+   ```
 
 ### Escenario: Servidor no responde
 
-1. Reiniciar desde panel Hetzner
-2. Al levantár: todos los contenedores arrancan solos (`restart: unless-stopped`)
+1. Reiniciar desde AWS Console → EC2 → sgi360-prod → Reboot
+2. Al levantar: containers arrancan solos (cron @reboot)
 3. Verificar nginx: `systemctl status nginx`
 
 ---
 
-## 📊 MONITOREO (PENDIENTE DE IMPLEMENTAR)
+## 📊 MONITOREO (ACTIVO)
 
-- [ ] Prometheus + Grafana + Node Exporter + cAdvisor
-- [ ] Alertas: caída nginx, Docker, PostgreSQL, Redis, disco, RAM, CPU
-- [ ] Dashboard métricas sistema
+- [x] Prometheus + Grafana + Loki + Node Exporter + cAdvisor + Alertmanager
+- [x] Monitor de containers cada 5 min — alerta email si algo cae
+- [x] Cron de renovación SSL (lunes 09:00 UTC)
+- [x] Backups diarios BD + uploads + config → S3
 
 ---
 
-## ☁️ DR / AWS (PENDIENTE)
+## ☁️ INFRAESTRUCTURA AWS
 
-- [ ] S3 bucket para backups externos
-- [ ] Script sync backups producción → S3
-- [ ] DNS failover documentado
-- [ ] Recovery desde S3 documentado
+| Recurso | Detalle |
+|---|---|
+| EC2 Prod | t3.large, sa-east-1, Ubuntu 24.04, 100GB gp3 |
+| EC2 Testing | t3.medium, us-east-2, Ubuntu 24.04 |
+| S3 Backup | `sgi360-backups-prod` (sa-east-1) |
+| IAM | `sgi360-backup-bot` (solo S3) |
+| DNS | Cloudflare → AWS IPs (proxied) |
+| SSL | Let's Encrypt wildcard *.logismart.ar |

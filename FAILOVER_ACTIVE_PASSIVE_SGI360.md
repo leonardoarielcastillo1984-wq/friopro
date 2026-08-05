@@ -1,5 +1,13 @@
-# FAILOVER ACTIVE-PASSIVE SGI360
-## Arquitectura Enterprise de Alta Disponibilidad
+# ~~SGI360 — ARQUITECTURA FAILOVER ACTIVE-PASSIVE~~
+
+> ⚠️ **DOCUMENTO OBSOLETO — Agosto 2026**
+> 
+> La infraestructura fue migrada completamente a AWS. Hetzner fue dado de baja.
+> Ver arquitectura actual en `ARQUITECTURA_SGI360.md`.
+
+---
+
+## ARQUITECTURA ENTERPRISE DE ALTA DISPONIBILIDAD
 
 ---
 

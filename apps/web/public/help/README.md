@@ -2,7 +2,7 @@
 
 ## Instrucciones Rápidas
 
-1. Accedé al sistema en testing: **http://46.62.253.81:4000**
+1. Accedé al sistema en testing: **https://test.logismart.ar**
 2. Navegá a cada módulo listado abajo
 3. Capturá la pantalla (Cmd+Shift+4 en Mac, o herramienta de captura)
 4. Guardá la imagen con el nombre indicado en esta carpeta (`/public/help/`)
@@ -271,7 +271,7 @@
 ## Comando para redeploy después de agregar screenshots
 
 ```bash
-ssh root@46.62.253.81 "cd /root/friopro && docker compose -p friopro-testing -f docker-compose.testing.yml build web && docker compose -p friopro-testing -f docker-compose.testing.yml up -d web"
+ssh -i ~/Downloads/logismart-prod.pem ubuntu@18.191.206.203 "cd /home/ubuntu/friopro && git checkout origin/main -- apps/web && docker compose -f /home/ubuntu/docker-compose.testing.yml build sgi-web && docker compose -f /home/ubuntu/docker-compose.testing.yml up -d sgi-web"
 ```
 
 ## Nota técnica
