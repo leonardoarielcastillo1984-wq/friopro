@@ -4,7 +4,7 @@ import PageTitleHelp from '@/components/ui/PageTitleHelp';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { 
   ChevronLeft, 
   Plus, 
@@ -62,9 +62,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function InformeDireccionPage() {
   const { settings: companySettings } = useCompany();
+  const router = useRouter();
   const [reviews, setReviews] = useState<ManagementReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -116,6 +118,7 @@ export default function InformeDireccionPage() {
   }
 
   async function generateDraft(reviewId: string) {
+    setGeneratingId(reviewId);
     try {
       setError(null);
       const res = await apiFetch(`/management-reviews/${reviewId}/generate-draft`, {
@@ -123,11 +126,13 @@ export default function InformeDireccionPage() {
       }) as { review: ManagementReview };
       
       if (res.review) {
-        setReviews(prev => prev.map(r => r.id === reviewId ? res.review : r));
+        router.push(`/revision-direccion/${reviewId}`);
       }
     } catch (err) {
       console.error('Error generating draft:', err);
       setError(err instanceof Error ? err.message : 'Error al generar borrador');
+    } finally {
+      setGeneratingId(null);
     }
   }
 
@@ -279,11 +284,13 @@ export default function InformeDireccionPage() {
                         </Link>
                         <button
                           onClick={() => generateDraft(review.id)}
-                          className="p-1 text-gray-600 hover:text-green-600 transition-colors"
-                          title="Generar borrador"
-                          disabled={review.status === 'FINAL'}
+                          className="p-1 text-gray-600 hover:text-green-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={review.status === 'FINAL' ? 'El informe está finalizado' : 'Generar borrador con datos del sistema'}
+                          disabled={review.status === 'FINAL' || generatingId === review.id}
                         >
-                          <FileBarChart className="w-4 h-4" />
+                          {generatingId === review.id
+                            ? <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                            : <FileBarChart className="w-4 h-4" />}
                         </button>
                         <button
                           onClick={() => deleteReview(review.id)}
