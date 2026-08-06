@@ -60,6 +60,22 @@ type ManagementReviewSection = {
   updatedAt: string;
 };
 
+type PuntoSalida = {
+  id: string;
+  description: string;
+  responsible?: string;
+  dueDate?: string;
+  status: 'pending' | 'in_progress' | 'done';
+};
+
+function parseSalidas(decisions: any): PuntoSalida[] {
+  if (!decisions) return [];
+  try {
+    const arr = typeof decisions === 'string' ? JSON.parse(decisions) : decisions;
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
 const ISO_STANDARD_LABELS: Record<string, string> = {
   'ISO_9001': 'ISO 9001',
   'ISO_14001': 'ISO 14001',
@@ -124,6 +140,10 @@ export default function InformeDireccionDetailPage() {
   const [editingActa, setEditingActa] = useState(false);
   const [actaForm, setActaForm] = useState({ fecha: '', lugar: '', asistentes: '', acuerdos: '', proxima: '' });
   const [savingActa, setSavingActa] = useState(false);
+
+  const [showAddInput, setShowAddInput] = useState(false);
+  const [newInputTitle, setNewInputTitle] = useState('');
+  const [addingInput, setAddingInput] = useState(false);
 
   useEffect(() => {
     if (reviewId) {
@@ -257,6 +277,27 @@ export default function InformeDireccionDetailPage() {
       setError(err instanceof Error ? err.message : 'Error al guardar acta');
     } finally {
       setSavingActa(false);
+    }
+  }
+
+  async function addInputSection() {
+    if (!newInputTitle.trim()) return;
+    setAddingInput(true);
+    try {
+      const key = `input_${Date.now()}`;
+      const res = await apiFetch(`/management-reviews/${reviewId}/sections`, {
+        method: 'POST',
+        json: { key, title: newInputTitle.trim() },
+      }) as { section: ManagementReviewSection };
+      if (res.section && review) {
+        setReview({ ...review, sections: [...review.sections, res.section] });
+      }
+      setNewInputTitle('');
+      setShowAddInput(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al agregar punto de entrada');
+    } finally {
+      setAddingInput(false);
     }
   }
 
@@ -470,7 +511,7 @@ export default function InformeDireccionDetailPage() {
 
         {/* Sections ISO (excluir meeting_minutes que va al acta) */}
         <div className="space-y-8">
-          {review.sections.filter(s => s.key !== 'meeting_minutes').map((section) => {
+          {review.sections.filter(s => s.key !== 'meeting_minutes' && !s.key.startsWith('input_')).map((section) => {
             const Icon = SECTION_ICONS[section.key] || FileText;
             const isCustom = section.key.startsWith('custom_');
             return (
@@ -534,6 +575,69 @@ export default function InformeDireccionDetailPage() {
             )}
           </div>
         )}
+
+        {/* ── PUNTOS DE ENTRADA Y SALIDA (MANUAL) ───────────────── */}
+        {(() => {
+          const inputSections = review.sections.filter(s => s.key.startsWith('input_'));
+          return (
+            <div className="mt-8 space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+                <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <ArrowRight className="w-4 h-4 text-blue-600" />
+                  Puntos de Entrada Adicionales
+                </h2>
+                {review.status !== 'FINAL' && (
+                  <button
+                    onClick={() => setShowAddInput(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 print:hidden"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Agregar punto de entrada
+                  </button>
+                )}
+              </div>
+
+              {inputSections.length === 0 && !showAddInput && (
+                <p className="text-sm text-gray-400 italic print:hidden">
+                  Sin puntos de entrada adicionales. Hacé clic en &quot;Agregar punto de entrada&quot; para registrar uno.
+                </p>
+              )}
+
+              {inputSections.map(section => (
+                <InputSectionCard
+                  key={section.key}
+                  section={section}
+                  reviewId={reviewId}
+                  disabled={review.status === 'FINAL'}
+                  onDelete={() => deleteSection(section.key)}
+                  onUpdated={(updated) => setReview({ ...review, sections: review.sections.map(s => s.key === updated.key ? updated : s) })}
+                />
+              ))}
+
+              {showAddInput && review.status !== 'FINAL' && (
+                <div className="border-2 border-dashed border-blue-300 rounded-xl p-4 flex items-center gap-3 bg-blue-50 print:hidden">
+                  <input
+                    autoFocus
+                    value={newInputTitle}
+                    onChange={e => setNewInputTitle(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') addInputSection(); if (e.key === 'Escape') setShowAddInput(false); }}
+                    placeholder="Título del punto de entrada (ej: Resultados de encuesta de clima)..."
+                    className="flex-1 px-3 py-2 border border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                  />
+                  <button
+                    onClick={addInputSection}
+                    disabled={addingInput || !newInputTitle.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {addingInput ? 'Agregando...' : 'Agregar'}
+                  </button>
+                  <button onClick={() => setShowAddInput(false)} className="p-2 text-gray-400 hover:text-gray-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── ACTA DE REUNIÓN ─────────────────────────────────────── */}
         <div className="border-2 border-gray-200 rounded-xl overflow-hidden">
@@ -892,6 +996,279 @@ function SectionEditor({
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Tarjeta de Punto de Entrada con Puntos de Salida estructurados
+function InputSectionCard({
+  section,
+  reviewId,
+  disabled,
+  onDelete,
+  onUpdated,
+}: {
+  section: ManagementReviewSection;
+  reviewId: string;
+  disabled: boolean;
+  onDelete: () => void;
+  onUpdated: (updated: ManagementReviewSection) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [freeText, setFreeText] = useState(section.freeText || '');
+  const [salidas, setSalidas] = useState<PuntoSalida[]>(() => parseSalidas(section.decisions));
+  const [saving, setSaving] = useState(false);
+  const [showAddSalida, setShowAddSalida] = useState(false);
+  const [newSalidaDesc, setNewSalidaDesc] = useState('');
+  const [newSalidaResp, setNewSalidaResp] = useState('');
+  const [newSalidaDate, setNewSalidaDate] = useState('');
+
+  useEffect(() => {
+    if (!editing) {
+      setFreeText(section.freeText || '');
+      setSalidas(parseSalidas(section.decisions));
+    }
+  }, [section, editing]);
+
+  const salidaStatusLabel: Record<string, string> = {
+    pending: 'Pendiente',
+    in_progress: 'En progreso',
+    done: 'Completado',
+  };
+  const salidaStatusColor: Record<string, string> = {
+    pending: 'bg-gray-100 text-gray-600',
+    in_progress: 'bg-blue-100 text-blue-700',
+    done: 'bg-green-100 text-green-700',
+  };
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/management-reviews/${reviewId}/sections/${section.key}`, {
+        method: 'PATCH',
+        json: {
+          freeText: freeText.trim() || null,
+          decisions: salidas.length > 0 ? salidas : null,
+        },
+      }) as { section: ManagementReviewSection };
+      if (res.section) {
+        onUpdated(res.section);
+        setEditing(false);
+        setShowAddSalida(false);
+      }
+    } catch (err) {
+      console.error('Error saving input section:', err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function addSalida() {
+    if (!newSalidaDesc.trim()) return;
+    const salida: PuntoSalida = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      description: newSalidaDesc.trim(),
+      responsible: newSalidaResp.trim() || undefined,
+      dueDate: newSalidaDate || undefined,
+      status: 'pending',
+    };
+    setSalidas(prev => [...prev, salida]);
+    setNewSalidaDesc('');
+    setNewSalidaResp('');
+    setNewSalidaDate('');
+    setShowAddSalida(false);
+  }
+
+  function removeSalida(id: string) {
+    setSalidas(prev => prev.filter(s => s.id !== id));
+  }
+
+  function cycleSalidaStatus(id: string) {
+    const cycle: PuntoSalida['status'][] = ['pending', 'in_progress', 'done'];
+    setSalidas(prev => prev.map(s => {
+      if (s.id !== id) return s;
+      const next = cycle[(cycle.indexOf(s.status) + 1) % cycle.length];
+      return { ...s, status: next };
+    }));
+  }
+
+  function cancelEdit() {
+    setFreeText(section.freeText || '');
+    setSalidas(parseSalidas(section.decisions));
+    setEditing(false);
+    setShowAddSalida(false);
+    setNewSalidaDesc('');
+    setNewSalidaResp('');
+    setNewSalidaDate('');
+  }
+
+  return (
+    <div className="border border-blue-200 rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 bg-blue-50 border-b border-blue-100">
+        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+          <ArrowRight className="w-3.5 h-3.5 text-blue-500" />
+          {section.title}
+        </h3>
+        <div className="flex items-center gap-2 print:hidden">
+          {!disabled && (
+            <>
+              {!editing ? (
+                <button
+                  onClick={() => setEditing(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  <Edit3 className="w-3 h-3" /> Editar
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={save}
+                    disabled={saving}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    <Save className="w-3 h-3" /> {saving ? 'Guardando...' : 'Guardar'}
+                  </button>
+                  <button onClick={cancelEdit} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+              <button
+                onClick={onDelete}
+                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                title="Eliminar punto de entrada"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="p-5 space-y-4 bg-white">
+        {/* Descripción / análisis */}
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Descripción / Análisis</p>
+          {editing ? (
+            <textarea
+              value={freeText}
+              onChange={e => setFreeText(e.target.value)}
+              rows={3}
+              placeholder="Describí el punto de entrada: contexto, datos analizados, observaciones..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          ) : freeText ? (
+            <p className="text-sm text-gray-700 whitespace-pre-line">{freeText}</p>
+          ) : (
+            <p className="text-sm text-gray-400 italic">Sin descripción. {!disabled && 'Hacé clic en "Editar" para completar.'}</p>
+          )}
+        </div>
+
+        {/* Puntos de Salida */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider flex items-center gap-1">
+              <CheckCircle className="w-3 h-3" /> Puntos de Salida ({salidas.length})
+            </p>
+            {editing && (
+              <button
+                onClick={() => setShowAddSalida(true)}
+                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >
+                <Plus className="w-3 h-3" /> Agregar salida
+              </button>
+            )}
+          </div>
+
+          {salidas.length === 0 && !showAddSalida && (
+            <p className="text-xs text-gray-400 italic">
+              {editing ? 'Hacé clic en "Agregar salida" para añadir puntos de salida.' : 'Sin puntos de salida registrados.'}
+            </p>
+          )}
+
+          <div className="space-y-2">
+            {salidas.map(salida => (
+              <div key={salida.id} className="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-800 font-medium leading-snug">{salida.description}</p>
+                  <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                    {salida.responsible && (
+                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <Users className="w-3 h-3" /> {salida.responsible}
+                      </span>
+                    )}
+                    {salida.dueDate && (
+                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <CalendarDays className="w-3 h-3" /> {new Date(salida.dueDate + 'T00:00').toLocaleDateString('es-AR')}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => editing && cycleSalidaStatus(salida.id)}
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${salidaStatusColor[salida.status] || 'bg-gray-100 text-gray-600'} ${editing ? 'cursor-pointer hover:opacity-75' : 'cursor-default'}`}
+                      title={editing ? 'Clic para cambiar estado' : undefined}
+                    >
+                      {salidaStatusLabel[salida.status] || salida.status}
+                    </button>
+                  </div>
+                </div>
+                {editing && (
+                  <button
+                    onClick={() => removeSalida(salida.id)}
+                    className="flex-shrink-0 p-1 text-red-400 hover:text-red-600 rounded mt-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Formulario nueva salida */}
+          {showAddSalida && editing && (
+            <div className="mt-2 border border-blue-200 rounded-lg p-3 bg-blue-50/50 space-y-2">
+              <input
+                autoFocus
+                value={newSalidaDesc}
+                onChange={e => setNewSalidaDesc(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addSalida(); if (e.key === 'Escape') setShowAddSalida(false); }}
+                placeholder="Descripción del punto de salida (acción, decisión, recurso a proveer...)"
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+              />
+              <div className="flex gap-2">
+                <input
+                  value={newSalidaResp}
+                  onChange={e => setNewSalidaResp(e.target.value)}
+                  placeholder="Responsable (opcional)"
+                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                />
+                <input
+                  type="date"
+                  value={newSalidaDate}
+                  onChange={e => setNewSalidaDate(e.target.value)}
+                  title="Fecha límite (opcional)"
+                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={addSalida}
+                  disabled={!newSalidaDesc.trim()}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Agregar salida
+                </button>
+                <button
+                  onClick={() => { setShowAddSalida(false); setNewSalidaDesc(''); setNewSalidaResp(''); setNewSalidaDate(''); }}
+                  className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
