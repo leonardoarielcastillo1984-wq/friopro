@@ -1101,6 +1101,35 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // PATCH /audit/iso-findings/:id — Actualizar severidad (y opcionalmente tipo/descripción) del hallazgo
+  app.patch(
+    '/audit/iso-findings/:id',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const body = (req.body ?? {}) as any;
+      const VALID_SEVERITY = ['CRITICAL', 'MAJOR', 'MINOR', 'TRIVIAL'];
+      const VALID_TYPE = ['NON_CONFORMITY', 'OBSERVATION', 'OPPORTUNITY'];
+
+      const data: any = {};
+      if (body.severity && VALID_SEVERITY.includes(body.severity)) data.severity = body.severity;
+      if (body.type && VALID_TYPE.includes(body.type)) data.type = body.type;
+      if (typeof body.description === 'string' && body.description.trim()) data.description = body.description.trim();
+
+      if (Object.keys(data).length === 0) return reply.code(400).send({ error: 'Nada que actualizar' });
+
+      const finding = await app.runWithDbContext(req, async (tx) => {
+        const existing = await tx.auditFinding.findFirst({ where: { id: req.params.id, tenantId, deletedAt: null } });
+        if (!existing) return null;
+        return tx.auditFinding.update({ where: { id: req.params.id }, data });
+      });
+
+      if (!finding) return reply.code(404).send({ error: 'Hallazgo no encontrado' });
+      return reply.send({ finding });
+    },
+  );
+
   app.get(
     '/audit/iso-findings/:id/actions',
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {

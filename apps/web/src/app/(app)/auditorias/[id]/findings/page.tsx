@@ -50,6 +50,7 @@ export default function FindingsPage() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [patchingSeverity, setPatchingSeverity] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [newFinding, setNewFinding] = useState({
@@ -143,6 +144,23 @@ export default function FindingsPage() {
     return SEVERITY_OPTIONS.find(s => s.value === severity)?.color || 'bg-gray-100 text-gray-800';
   }
 
+  async function updateFindingSeverity(findingId: string, severity: string) {
+    setPatchingSeverity(findingId);
+    try {
+      const res = await apiFetch(`/audit/iso-findings/${findingId}`, {
+        method: 'PATCH',
+        json: { severity },
+      }) as { finding: Finding };
+      if (res.finding) {
+        setFindings(prev => prev.map(f => f.id === findingId ? { ...f, severity: res.finding.severity } : f));
+      }
+    } catch (err) {
+      setError('Error al actualizar severidad');
+    } finally {
+      setPatchingSeverity(null);
+    }
+  }
+
   const checklistFindings = findings.filter(f => (f.code || '').startsWith('NC-'));
   const manualFindings = findings.filter(f => !(f.code || '').startsWith('NC-'));
 
@@ -215,14 +233,21 @@ export default function FindingsPage() {
               {checklistFindings.map((finding) => (
                 <div key={finding.id} className="p-6">
                   <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-sm font-medium text-gray-900">{finding.code}</span>
                       <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(finding.type)}`}>
                         {getTypeLabel(finding.type)}
                       </span>
-                      <span className={`px-2 py-1 text-xs rounded-full ${getSeverityColor(finding.severity)}`}>
-                        {getSeverityLabel(finding.severity)}
-                      </span>
+                      <select
+                        value={finding.severity}
+                        onChange={(e) => updateFindingSeverity(finding.id, e.target.value)}
+                        disabled={patchingSeverity === finding.id}
+                        className={`text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 disabled:opacity-50 ${getSeverityColor(finding.severity)}`}
+                      >
+                        {SEVERITY_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
                     </div>
                     <span className="text-sm text-gray-500">
                       {new Date(finding.createdAt).toLocaleDateString()}
@@ -263,14 +288,21 @@ export default function FindingsPage() {
                 manualFindings.map((finding) => (
                   <div key={finding.id} className="p-6">
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono text-sm font-medium text-gray-900">{finding.code}</span>
                         <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(finding.type)}`}>
                           {getTypeLabel(finding.type)}
                         </span>
-                        <span className={`px-2 py-1 text-xs rounded-full ${getSeverityColor(finding.severity)}`}>
-                          {getSeverityLabel(finding.severity)}
-                        </span>
+                        <select
+                          value={finding.severity}
+                          onChange={(e) => updateFindingSeverity(finding.id, e.target.value)}
+                          disabled={patchingSeverity === finding.id}
+                          className={`text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 disabled:opacity-50 ${getSeverityColor(finding.severity)}`}
+                        >
+                          {SEVERITY_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                       </div>
                       <span className="text-sm text-gray-500">
                         {new Date(finding.createdAt).toLocaleDateString()}

@@ -128,6 +128,7 @@ export default function ReportPage() {
   const [editMode, setEditMode] = useState(false);
   const [editingReport, setEditingReport] = useState<AuditReport | null>(null);
   const [saving, setSaving] = useState(false);
+  const [patchingSeverity, setPatchingSeverity] = useState<string | null>(null);
 
   useEffect(() => {
     if (auditId) {
@@ -215,6 +216,23 @@ export default function ReportPage() {
       conclusion: draft?.conclusion || null,
     });
     setEditMode(true);
+  }
+
+  async function updateFindingSeverity(findingId: string, severity: string) {
+    setPatchingSeverity(findingId);
+    try {
+      const res = await apiFetch(`/audit/iso-findings/${findingId}`, {
+        method: 'PATCH',
+        json: { severity },
+      }) as { finding: Finding };
+      if (res.finding) {
+        setFindings(prev => prev.map(f => f.id === findingId ? { ...f, severity: res.finding.severity } : f));
+      }
+    } catch (err) {
+      setError('Error al actualizar severidad');
+    } finally {
+      setPatchingSeverity(null);
+    }
   }
 
   async function createNCRFromFinding(findingId: string) {
@@ -535,16 +553,24 @@ export default function ReportPage() {
             <div className="space-y-4">
               {findings.map((finding, index) => (
                 <div key={finding.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="font-mono text-sm font-medium">{finding.code}</span>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      finding.severity === 'CRITICAL' ? 'bg-red-100 text-red-800' :
-                      finding.severity === 'MAJOR' ? 'bg-orange-100 text-orange-800' :
-                      finding.severity === 'MINOR' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {SEVERITY_LABELS[finding.severity] || finding.severity}
-                    </span>
+                    <select
+                      value={finding.severity}
+                      onChange={(e) => updateFindingSeverity(finding.id, e.target.value)}
+                      disabled={patchingSeverity === finding.id}
+                      className={`text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 disabled:opacity-50 ${
+                        finding.severity === 'CRITICAL' ? 'bg-red-100 text-red-800' :
+                        finding.severity === 'MAJOR' ? 'bg-orange-100 text-orange-800' :
+                        finding.severity === 'MINOR' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      <option value="CRITICAL">Crítica</option>
+                      <option value="MAJOR">Mayor</option>
+                      <option value="MINOR">Menor</option>
+                      <option value="TRIVIAL">Trivial</option>
+                    </select>
                     <span className={`px-2 py-1 text-xs rounded-full ${
                       finding.type === 'NON_CONFORMITY' ? 'bg-red-100 text-red-800' :
                       finding.type === 'OBSERVATION' ? 'bg-yellow-100 text-yellow-800' :
