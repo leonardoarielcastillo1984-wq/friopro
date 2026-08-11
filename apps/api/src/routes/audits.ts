@@ -1327,15 +1327,6 @@ export async function registerAuditRoutes(app: FastifyInstance) {
           data.result = body.result;
         }
 
-        // Calcular score automático desde checklist
-        if (existing.checklist && existing.checklist.length > 0) {
-          const answered = existing.checklist.filter((i: any) => i.response != null);
-          const compliant = answered.filter((i: any) => i.response === 'COMPLIES').length;
-          const na = answered.filter((i: any) => i.response === 'NOT_APPLICABLE').length;
-          const denom = Math.max(1, answered.length - na);
-          data.complianceScore = Math.round((compliant / denom) * 10000) / 100;
-        }
-
         if (Object.keys(data).length === 0) return { kind: 'no_changes' as const, audit: existing };
 
         const updated = await tx.audit.update({
