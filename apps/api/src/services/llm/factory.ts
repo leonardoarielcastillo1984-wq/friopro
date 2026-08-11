@@ -148,7 +148,7 @@ export function createGroqOnlyLLMProvider(
     );
   }
   
-  const model = 'openai/gpt-oss-20b';
+  const model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
   const inner = new OpenAIProvider(apiKey, 'https://api.groq.com/openai/v1', model);
   return new LoggingLLMProvider(inner, prisma, tenantId, userId, module);
 }
