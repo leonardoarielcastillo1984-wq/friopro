@@ -36,7 +36,7 @@ function buildProvider(
           'IA no configurada: falta GROQ_API_KEY. Configurá la variable de entorno o la key del tenant para habilitar el asistente IA.'
         );
       }
-      const m = model || 'llama-3.1-8b-instant';
+      const m = model || 'openai/gpt-oss-20b';
       return new OpenAIProvider(apiKey, 'https://api.groq.com/openai/v1', m);
     }
     case 'openai': {
@@ -148,7 +148,7 @@ export function createGroqOnlyLLMProvider(
     );
   }
   
-  const model = 'llama-3.1-8b-instant';
+  const model = 'openai/gpt-oss-20b';
   const inner = new OpenAIProvider(apiKey, 'https://api.groq.com/openai/v1', model);
   return new LoggingLLMProvider(inner, prisma, tenantId, userId, module);
 }

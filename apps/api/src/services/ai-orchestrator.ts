@@ -110,7 +110,7 @@ export interface AISubscription {
 
 const AI_CONFIG = {
   groq: {
-    model: 'llama-3.3-70b-versatile',
+    model: 'openai/gpt-oss-120b',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
     maxTokens: 4096,
     temperature: 0.7,

@@ -927,7 +927,7 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         userId,
         sessionId: resolvedConversationId,
         provider: (result as any).provider || 'groq',
-        model: (result as any).model || 'llama-3.1-8b-instant',
+        model: (result as any).model || 'openai/gpt-oss-20b',
         tokensUsed: result.tokensUsed || 0,
         cost: result.cost || 0,
         latency,
@@ -1370,7 +1370,7 @@ export async function commandCenterRoutes(app: FastifyInstance) {
         query, 
         intent, 
         provider || 'groq', 
-        model || 'llama-3.1-8b-instant'
+        model || 'openai/gpt-oss-20b'
       );
 
       // Iniciar simulación de progreso
