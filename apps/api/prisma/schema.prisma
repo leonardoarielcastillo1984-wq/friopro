@@ -1883,6 +1883,7 @@ enum ProgramStatus {
 
 enum FindingType {
   NON_CONFORMITY
+  OBSERVATION
   OPPORTUNITY
   COMMENDATION
 }

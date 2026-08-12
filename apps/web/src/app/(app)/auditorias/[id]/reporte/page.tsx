@@ -702,6 +702,25 @@ export default function ReportPage() {
           </div>
         </div>
 
+        {/* Finding type legend */}
+        <div className="border border-gray-200 rounded-lg p-4 mb-8 bg-gray-50">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Glosario de tipos de hallazgo</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 shrink-0 px-2 py-0.5 bg-red-100 text-red-800 rounded-full text-xs font-medium">No Conformidad</span>
+              <p className="text-gray-600">Incumplimiento de un requisito de la norma o procedimiento establecido que requiere acción correctiva.</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 shrink-0 px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">Observación</span>
+              <p className="text-gray-600">Situación detectada que, si no se corrige, podría convertirse en una no conformidad. No implica incumplimiento directo.</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 shrink-0 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">Oportunidad de Mejora</span>
+              <p className="text-gray-600">Área o práctica donde la organización puede mejorar su desempeño, más allá del cumplimiento mínimo requerido.</p>
+            </div>
+          </div>
+        </div>
+
         {/* Footer */}
         <div className="border-t border-gray-200 pt-6 mt-8">
           <div className="flex justify-between items-center text-sm text-gray-500">
