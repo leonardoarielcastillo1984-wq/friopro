@@ -145,16 +145,20 @@ export default function FindingsPage() {
   }
 
   async function updateFindingType(findingId: string, type: string) {
+    const prevType = findings.find(f => f.id === findingId)?.type;
+    setFindings(list => list.map(f => f.id === findingId ? { ...f, type: type as Finding['type'] } : f));
     try {
       const res = await apiFetch(`/audit/iso-findings/${findingId}`, {
         method: 'PATCH',
         json: { type },
-      }) as { finding: Finding };
-      if (res.finding) {
-        setFindings(prev => prev.map(f => f.id === findingId ? { ...f, type: res.finding.type } : f));
+      }) as any;
+      if (!res.finding) {
+        setFindings(list => list.map(f => f.id === findingId ? { ...f, type: prevType as Finding['type'] } : f));
+        setError(res.error || 'Error al actualizar tipo');
       }
-    } catch {
-      setError('Error al actualizar tipo de hallazgo');
+    } catch (e: any) {
+      setFindings(list => list.map(f => f.id === findingId ? { ...f, type: prevType as Finding['type'] } : f));
+      setError(e?.message || 'Error al actualizar tipo de hallazgo');
     }
   }
 
