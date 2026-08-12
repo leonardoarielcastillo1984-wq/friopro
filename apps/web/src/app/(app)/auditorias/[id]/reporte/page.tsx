@@ -43,6 +43,9 @@ type ChecklistItem = {
   clause: string;
   requirement: string;
   response: 'COMPLIES' | 'DOES_NOT_COMPLY' | 'NOT_APPLICABLE' | null;
+  comment: string | null;
+  evidence: string | null;
+  order: number;
 };
 
 type AuditReport = {
@@ -629,14 +632,21 @@ export default function ReportPage() {
                       <option value="OPPORTUNITY">Oportunidad de Mejora</option>
                     </select>
                   </div>
-                  {finding.description && (
-                    <p className="text-gray-900 mt-1">{finding.description}</p>
-                  )}
-                  {finding.evidence && (
-                    <p className="text-sm text-gray-600 mt-1 italic">
-                      <span className="font-medium not-italic">Evidencia:</span> {finding.evidence}
-                    </p>
-                  )}
+                  {(() => {
+                    const matchItem = audit ? checklist.find(item => `NC-${audit.code}-${item.order + 1}` === finding.code) : null;
+                    const desc = matchItem?.comment || finding.description;
+                    const evid = matchItem?.evidence || finding.evidence;
+                    return (
+                      <>
+                        {desc && <p className="text-gray-900 mt-1">{desc}</p>}
+                        {evid && (
+                          <p className="text-sm text-gray-600 mt-1 italic">
+                            <span className="font-medium not-italic">Evidencia:</span> {evid}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                   <div className="flex gap-4 mt-2 text-sm text-gray-500">
                     <span>Cláusula: {finding.clause}</span>
                     <span>Área: {finding.area}</span>
