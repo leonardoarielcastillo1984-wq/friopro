@@ -954,17 +954,32 @@ export async function registerAuditRoutes(app: FastifyInstance) {
                 createdById: req.auth!.userId,
               },
             });
-          } else if (findingType && already.type !== findingType) {
-            await tx.auditFinding.update({ where: { id: already.id }, data: { type: findingType as any } });
+          } else {
+            // Sync description/evidence/type whenever comment or evidence change
+            const syncData: any = {};
+            if ('comment' in body) syncData.description = updated.comment || updated.requirement;
+            if ('evidence' in body) syncData.evidence = updated.evidence || null;
+            if (findingType && already.type !== findingType) syncData.type = findingType;
+            if (Object.keys(syncData).length > 0) {
+              await tx.auditFinding.update({ where: { id: already.id }, data: syncData });
+            }
           }
-        } else if (findingType) {
-          // Actualizar tipo de finding existente sin cambiar la respuesta del ítem
+        } else if (findingType || 'comment' in body || 'evidence' in body) {
+          // Actualizar finding existente aunque no cambie la respuesta del ítem
           const code = `NC-${audit.code}-${existing.order + 1}`;
           const already = await tx.auditFinding.findFirst({
             where: { tenantId, auditId: audit.id, code, deletedAt: null },
             select: { id: true, type: true },
           });
-          if (already && already.type !== findingType) {
+          if (already && updated.response === 'DOES_NOT_COMPLY') {
+            const syncData: any = {};
+            if ('comment' in body) syncData.description = updated.comment || updated.requirement;
+            if ('evidence' in body) syncData.evidence = updated.evidence || null;
+            if (findingType && already.type !== findingType) syncData.type = findingType;
+            if (Object.keys(syncData).length > 0) {
+              await tx.auditFinding.update({ where: { id: already.id }, data: syncData });
+            }
+          } else if (already && findingType && already.type !== findingType) {
             await tx.auditFinding.update({ where: { id: already.id }, data: { type: findingType as any } });
           }
         }

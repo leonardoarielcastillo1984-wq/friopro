@@ -32,6 +32,7 @@ type Finding = {
   severity: 'CRITICAL' | 'MAJOR' | 'MINOR' | 'TRIVIAL';
   status: string;
   description: string;
+  evidence: string | null;
   clause: string;
   area: string;
   ncrId: string | null;
@@ -628,7 +629,14 @@ export default function ReportPage() {
                       <option value="OPPORTUNITY">Oportunidad de Mejora</option>
                     </select>
                   </div>
-                  <p className="text-gray-900">{finding.description}</p>
+                  {finding.description && (
+                    <p className="text-gray-900 mt-1">{finding.description}</p>
+                  )}
+                  {finding.evidence && (
+                    <p className="text-sm text-gray-600 mt-1 italic">
+                      <span className="font-medium not-italic">Evidencia:</span> {finding.evidence}
+                    </p>
+                  )}
                   <div className="flex gap-4 mt-2 text-sm text-gray-500">
                     <span>Cláusula: {finding.clause}</span>
                     <span>Área: {finding.area}</span>
