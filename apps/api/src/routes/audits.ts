@@ -924,16 +924,15 @@ export async function registerAuditRoutes(app: FastifyInstance) {
           data,
         });
 
+        const findingTypeRaw = body.findingType;
+        const VALID_FINDING_TYPES = ['NON_CONFORMITY', 'OBSERVATION', 'OPPORTUNITY'];
+        const findingType = VALID_FINDING_TYPES.includes(findingTypeRaw) ? findingTypeRaw : null;
+
         if (data.response === 'DOES_NOT_COMPLY') {
           const code = `NC-${audit.code}-${existing.order + 1}`;
           const already = await tx.auditFinding.findFirst({
-            where: {
-              tenantId,
-              auditId: audit.id,
-              code,
-              deletedAt: null,
-            },
-            select: { id: true },
+            where: { tenantId, auditId: audit.id, code, deletedAt: null },
+            select: { id: true, type: true },
           });
 
           if (!already) {
@@ -942,7 +941,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
                 tenantId,
                 auditId: audit.id,
                 code,
-                type: 'NON_CONFORMITY',
+                type: (findingType || 'NON_CONFORMITY') as any,
                 severity: 'MINOR',
                 status: 'OPEN',
                 description: updated.comment || updated.requirement,
@@ -955,6 +954,18 @@ export async function registerAuditRoutes(app: FastifyInstance) {
                 createdById: req.auth!.userId,
               },
             });
+          } else if (findingType && already.type !== findingType) {
+            await tx.auditFinding.update({ where: { id: already.id }, data: { type: findingType as any } });
+          }
+        } else if (findingType) {
+          // Actualizar tipo de finding existente sin cambiar la respuesta del ítem
+          const code = `NC-${audit.code}-${existing.order + 1}`;
+          const already = await tx.auditFinding.findFirst({
+            where: { tenantId, auditId: audit.id, code, deletedAt: null },
+            select: { id: true, type: true },
+          });
+          if (already && already.type !== findingType) {
+            await tx.auditFinding.update({ where: { id: already.id }, data: { type: findingType as any } });
           }
         }
         return { kind: 'ok' as const, item: updated };

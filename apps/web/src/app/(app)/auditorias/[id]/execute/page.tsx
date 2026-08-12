@@ -104,6 +104,7 @@ export default function AuditExecutePage() {
   const [chatInput, setChatInput] = useState('');
   const [classificationResult, setClassificationResult] = useState<any>(null);
   const [showClassificationModal, setShowClassificationModal] = useState(false);
+  const [itemFindingTypes, setItemFindingTypes] = useState<Record<string, string>>({});
 
   const loadData = useCallback(async () => {
     try {
@@ -130,10 +131,10 @@ export default function AuditExecutePage() {
 
   useEffect(() => { if (auditId) loadData(); }, [auditId, loadData]);
 
-  async function updateItem(itemId: string, response: ChecklistItem['response'], comment?: string, evidence?: string, customFields?: Record<string, any>) {
+  async function updateItem(itemId: string, response: ChecklistItem['response'], comment?: string, evidence?: string, customFields?: Record<string, any>, findingType?: string) {
     try {
       setSaving(true);
-      const res = (await apiFetch(`/audit/checklist/${itemId}`, { method:'PATCH', json:{ response, comment, evidence, customFields } })) as any;
+      const res = (await apiFetch(`/audit/checklist/${itemId}`, { method:'PATCH', json:{ response, comment, evidence, customFields, findingType } })) as any;
       if (res.item) {
         setChecklist(prev => prev.map(i => i.id === itemId ? res.item : i));
         const fRes = (await apiFetch(`/audit/audits/${auditId}/findings`)) as any;
@@ -498,7 +499,7 @@ export default function AuditExecutePage() {
                         <p className="text-sm text-purple-900">{item.aiSuggestion}</p>
                       </div>
                     )}
-                    <div className="flex flex-wrap gap-2 mb-3">
+                    <div className="flex flex-wrap gap-2 mb-2">
                       {(['COMPLIES','DOES_NOT_COMPLY','NOT_APPLICABLE'] as const).map(resp => {
                         const labels: Record<string,string> = { COMPLIES:'Conforme', DOES_NOT_COMPLY:'No conforme', NOT_APPLICABLE:'N/A' };
                         const active = item.response === resp;
@@ -509,7 +510,7 @@ export default function AuditExecutePage() {
                           : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50';
                         return (
                           <button key={resp} disabled={saving}
-                            onClick={() => updateItem(item.id, resp, item.comment || undefined, item.evidence || undefined)}
+                            onClick={() => updateItem(item.id, resp, item.comment || undefined, item.evidence || undefined, item.customFields || undefined, itemFindingTypes[item.id])}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-colors ${color}`}>
                             {resp==='COMPLIES' ? <CheckCircle className="w-4 h-4"/>
                               : resp==='DOES_NOT_COMPLY' ? <XCircle className="w-4 h-4"/>
@@ -518,6 +519,22 @@ export default function AuditExecutePage() {
                           </button>
                         );
                       })}
+                      {item.response === 'DOES_NOT_COMPLY' && (
+                        <select
+                          value={itemFindingTypes[item.id] || 'NON_CONFORMITY'}
+                          onChange={(e) => {
+                            const newType = e.target.value;
+                            setItemFindingTypes(prev => ({ ...prev, [item.id]: newType }));
+                            updateItem(item.id, item.response, item.comment || undefined, item.evidence || undefined, item.customFields || undefined, newType);
+                          }}
+                          disabled={saving}
+                          className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="NON_CONFORMITY">No Conformidad</option>
+                          <option value="OBSERVATION">Observación</option>
+                          <option value="OPPORTUNITY">Oportunidad de Mejora</option>
+                        </select>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <input type="text" placeholder="Comentario..."
@@ -566,7 +583,18 @@ export default function AuditExecutePage() {
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="text-sm font-medium text-gray-900">{f.code}</span>
                         <span className={`px-2 py-0.5 rounded text-xs ${SEVERITY_COLORS[f.severity]||'bg-gray-100 text-gray-800'}`}>{SEVERITY_LABELS[f.severity]||f.severity}</span>
-                        <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">{FINDING_TYPE_LABELS[f.type]||f.type}</span>
+                        <select
+                          value={f.type}
+                          onChange={async (e) => {
+                            await apiFetch(`/audit/iso-findings/${f.id}`, { method:'PATCH', json:{ type: e.target.value } });
+                            setFindings(prev => prev.map(x => x.id === f.id ? { ...x, type: e.target.value as any } : x));
+                          }}
+                          className="text-xs border-0 bg-gray-100 text-gray-700 rounded px-2 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        >
+                          <option value="NON_CONFORMITY">No Conformidad</option>
+                          <option value="OBSERVATION">Observación</option>
+                          <option value="OPPORTUNITY">Oportunidad de Mejora</option>
+                        </select>
                       </div>
                       <p className="text-sm text-gray-800 mb-2">{f.description}</p>
                       {f.clause && <p className="text-xs text-gray-500 mb-1">Cláusula: {f.clause}</p>}

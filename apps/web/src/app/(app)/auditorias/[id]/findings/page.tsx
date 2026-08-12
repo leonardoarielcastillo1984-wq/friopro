@@ -144,6 +144,20 @@ export default function FindingsPage() {
     return SEVERITY_OPTIONS.find(s => s.value === severity)?.color || 'bg-gray-100 text-gray-800';
   }
 
+  async function updateFindingType(findingId: string, type: string) {
+    try {
+      const res = await apiFetch(`/audit/iso-findings/${findingId}`, {
+        method: 'PATCH',
+        json: { type },
+      }) as { finding: Finding };
+      if (res.finding) {
+        setFindings(prev => prev.map(f => f.id === findingId ? { ...f, type: res.finding.type } : f));
+      }
+    } catch {
+      setError('Error al actualizar tipo de hallazgo');
+    }
+  }
+
   async function updateFindingSeverity(findingId: string, severity: string) {
     setPatchingSeverity(findingId);
     try {
@@ -235,9 +249,15 @@ export default function FindingsPage() {
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-sm font-medium text-gray-900">{finding.code}</span>
-                      <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(finding.type)}`}>
-                        {getTypeLabel(finding.type)}
-                      </span>
+                      <select
+                        value={finding.type}
+                        onChange={(e) => updateFindingType(finding.id, e.target.value)}
+                        className={`text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${getTypeColor(finding.type)}`}
+                      >
+                        {TYPE_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
                       <select
                         value={finding.severity}
                         onChange={(e) => updateFindingSeverity(finding.id, e.target.value)}
@@ -290,9 +310,15 @@ export default function FindingsPage() {
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono text-sm font-medium text-gray-900">{finding.code}</span>
-                        <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(finding.type)}`}>
-                          {getTypeLabel(finding.type)}
-                        </span>
+                        <select
+                          value={finding.type}
+                          onChange={(e) => updateFindingType(finding.id, e.target.value)}
+                          className={`text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${getTypeColor(finding.type)}`}
+                        >
+                          {TYPE_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                         <select
                           value={finding.severity}
                           onChange={(e) => updateFindingSeverity(finding.id, e.target.value)}

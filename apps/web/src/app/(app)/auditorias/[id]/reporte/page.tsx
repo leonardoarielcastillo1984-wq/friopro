@@ -246,6 +246,20 @@ export default function ReportPage() {
     }
   }
 
+  async function updateFindingType(findingId: string, type: string) {
+    try {
+      const res = await apiFetch(`/audit/iso-findings/${findingId}`, {
+        method: 'PATCH',
+        json: { type },
+      }) as { finding: Finding };
+      if (res.finding) {
+        setFindings(prev => prev.map(f => f.id === findingId ? { ...f, type: res.finding.type } : f));
+      }
+    } catch {
+      setError('Error al actualizar tipo de hallazgo');
+    }
+  }
+
   async function createNCRFromFinding(findingId: string) {
     try {
       await apiFetch(`/audit/audits/findings/${findingId}/convert-to-ncr`, {
@@ -600,13 +614,19 @@ export default function ReportPage() {
                       <option value="MINOR">Menor</option>
                       <option value="TRIVIAL">Trivial</option>
                     </select>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      finding.type === 'NON_CONFORMITY' ? 'bg-red-100 text-red-800' :
-                      finding.type === 'OBSERVATION' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-blue-100 text-blue-800'
-                    }`}>
-                      {FINDING_TYPE_LABELS[finding.type] || finding.type.replace('_', ' ')}
-                    </span>
+                    <select
+                      value={finding.type}
+                      onChange={(e) => updateFindingType(finding.id, e.target.value)}
+                      className={`text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${
+                        finding.type === 'NON_CONFORMITY' ? 'bg-red-100 text-red-800' :
+                        finding.type === 'OBSERVATION' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-blue-100 text-blue-800'
+                      }`}
+                    >
+                      <option value="NON_CONFORMITY">No Conformidad</option>
+                      <option value="OBSERVATION">Observación</option>
+                      <option value="OPPORTUNITY">Oportunidad de Mejora</option>
+                    </select>
                   </div>
                   <p className="text-gray-900">{finding.description}</p>
                   <div className="flex gap-4 mt-2 text-sm text-gray-500">
