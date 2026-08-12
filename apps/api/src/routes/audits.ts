@@ -1026,19 +1026,48 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // GET /audit/audits/:id/report-content — Leer informe guardado manualmente
+  app.get(
+    '/audit/audits/:id/report-content',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const report = await app.runWithDbContext(req, async (tx) => {
+        const audit = await tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
+        if (!audit) return null;
+        return tx.auditReport.findUnique({ where: { auditId: audit.id } });
+      });
+
+      return reply.send({ report: report || null });
+    },
+  );
+
   // PATCH /audit/audits/:id/report-content — Guardar contenido de informe manualmente
   app.patch(
     '/audit/audits/:id/report-content',
-    async (req: FastifyRequest<{ Params: { id: string }, Body: Partial<AuditReport> }>, reply: FastifyReply) => {
+    async (req: FastifyRequest<{ Params: { id: string }, Body: Partial<AuditReport> & { actualStartDate?: string; actualEndDate?: string } }>, reply: FastifyReply) => {
       const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       try {
-        const report = await app.runWithDbContext(req, async (tx) => {
+        const result = await app.runWithDbContext(req, async (tx) => {
           const audit = await tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
           if (!audit) return null;
 
-          return tx.auditReport.upsert({
+          // Actualizar fechas en el registro Audit si se envían
+          const dateData: any = {};
+          if (req.body.actualStartDate !== undefined) {
+            dateData.actualStartDate = req.body.actualStartDate ? new Date(req.body.actualStartDate) : null;
+          }
+          if (req.body.actualEndDate !== undefined) {
+            dateData.actualEndDate = req.body.actualEndDate ? new Date(req.body.actualEndDate) : null;
+          }
+          if (Object.keys(dateData).length > 0) {
+            await tx.audit.update({ where: { id: req.params.id }, data: dateData });
+          }
+
+          const report = await tx.auditReport.upsert({
             where: { auditId: audit.id },
             create: {
               auditId: audit.id,
@@ -1072,10 +1101,11 @@ export async function registerAuditRoutes(app: FastifyInstance) {
               generatedById: req.auth!.userId,
             },
           });
+          return report;
         });
 
-        if (!report) return reply.code(404).send({ error: 'Auditoría no encontrada' });
-        return reply.send({ report });
+        if (!result) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+        return reply.send({ report: result });
       } catch (err) {
         console.error('Error saving report:', err);
         return reply.code(500).send({ error: 'Error al guardar el informe' });

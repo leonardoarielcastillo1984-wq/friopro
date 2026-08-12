@@ -58,6 +58,8 @@ type AuditReport = {
   openFindings: number;
   closedFindings: number;
   conclusion: string | null;
+  actualStartDate?: string | null;
+  actualEndDate?: string | null;
 };
 
 type DraftResponse = {
@@ -140,15 +142,17 @@ export default function ReportPage() {
     try {
       setLoading(true);
       setError(null);
-      const [auditRes, findingsRes, checklistRes] = await Promise.all([
+      const [auditRes, findingsRes, checklistRes, reportRes] = await Promise.all([
         apiFetch(`/audit/audits/${auditId}`) as Promise<{ audit: Audit }>,
         apiFetch(`/audit/audits/${auditId}/findings`) as Promise<{ findings: Finding[] }>,
         apiFetch(`/audit/audits/${auditId}/checklist`) as Promise<{ items: ChecklistItem[] }>,
+        apiFetch(`/audit/audits/${auditId}/report-content`).catch(() => ({ report: null })) as Promise<{ report: AuditReport | null }>,
       ]);
 
       if (auditRes.audit) setAudit(auditRes.audit);
       if (findingsRes.findings) setFindings(findingsRes.findings);
       if (checklistRes.items) setChecklist(checklistRes.items);
+      if (reportRes.report) setReport(reportRes.report);
     } catch (err) {
       console.error('Error loading data:', err);
       setError(err instanceof Error ? err.message : 'Error loading data');
@@ -191,6 +195,11 @@ export default function ReportPage() {
         json: editingReport,
       });
       setReport(editingReport);
+      // Reload audit to reflect updated dates
+      if (editingReport.actualStartDate !== undefined || editingReport.actualEndDate !== undefined) {
+        const auditRes = await apiFetch(`/audit/audits/${auditId}`) as { audit: Audit };
+        if (auditRes.audit) setAudit(auditRes.audit);
+      }
       setEditMode(false);
     } catch (err) {
       setError('Error al guardar el informe');
@@ -200,20 +209,22 @@ export default function ReportPage() {
   }
 
   function startEdit() {
-    setEditingReport(report || {
+    setEditingReport({
       auditId,
-      executiveSummary: draft?.executiveSummary || null,
-      objective: draft?.objective || audit.objective || null,
-      scope: draft?.scope || audit.scope || null,
-      processesAudited: draft?.processesAudited || [],
-      overallScore: draft?.overallScore || null,
-      totalItems: draft?.totalItems || 0,
-      compliantItems: draft?.compliantItems || 0,
-      nonCompliantItems: draft?.nonCompliantItems || 0,
-      totalFindings: draft?.totalFindings || 0,
-      openFindings: draft?.openFindings || 0,
-      closedFindings: draft?.closedFindings || 0,
-      conclusion: draft?.conclusion || null,
+      executiveSummary: report?.executiveSummary ?? draft?.executiveSummary ?? null,
+      objective: report?.objective ?? draft?.objective ?? audit?.objective ?? null,
+      scope: report?.scope ?? draft?.scope ?? audit?.scope ?? null,
+      processesAudited: report?.processesAudited ?? draft?.processesAudited ?? [],
+      overallScore: report?.overallScore ?? draft?.overallScore ?? null,
+      totalItems: report?.totalItems ?? draft?.totalItems ?? 0,
+      compliantItems: report?.compliantItems ?? draft?.compliantItems ?? 0,
+      nonCompliantItems: report?.nonCompliantItems ?? draft?.nonCompliantItems ?? 0,
+      totalFindings: report?.totalFindings ?? draft?.totalFindings ?? 0,
+      openFindings: report?.openFindings ?? draft?.openFindings ?? 0,
+      closedFindings: report?.closedFindings ?? draft?.closedFindings ?? 0,
+      conclusion: report?.conclusion ?? draft?.conclusion ?? null,
+      actualStartDate: audit?.actualStartDate ? audit.actualStartDate.slice(0, 10) : null,
+      actualEndDate: audit?.actualEndDate ? audit.actualEndDate.slice(0, 10) : null,
     });
     setEditMode(true);
   }
@@ -438,9 +449,9 @@ export default function ReportPage() {
             </div>
           ) : (
             <>
-              {draft?.executiveSummary && (
+              {(report?.executiveSummary || draft?.executiveSummary) && (
                 <div className="bg-gray-50 border border-gray-200 px-4 py-3 rounded-lg mb-6">
-                  <p className="text-gray-700 whitespace-pre-line">{draft.executiveSummary}</p>
+                  <p className="text-gray-700 whitespace-pre-line">{report?.executiveSummary || draft?.executiveSummary}</p>
                 </div>
               )}
             </>
@@ -487,19 +498,37 @@ export default function ReportPage() {
             </div>
             <div>
               <p className="text-sm text-gray-500">Fecha de Inicio</p>
-              <p className="font-medium">
-                {audit.actualStartDate 
-                  ? new Date(audit.actualStartDate).toLocaleDateString() 
-                  : 'No iniciada'}
-              </p>
+              {editMode && editingReport ? (
+                <input
+                  type="date"
+                  value={editingReport.actualStartDate || ''}
+                  onChange={(e) => setEditingReport({ ...editingReport, actualStartDate: e.target.value || null })}
+                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              ) : (
+                <p className="font-medium">
+                  {audit.actualStartDate
+                    ? new Date(audit.actualStartDate).toLocaleDateString('es-AR', { timeZone: 'UTC' })
+                    : 'No iniciada'}
+                </p>
+              )}
             </div>
             <div>
               <p className="text-sm text-gray-500">Fecha de Finalización</p>
-              <p className="font-medium">
-                {audit.actualEndDate 
-                  ? new Date(audit.actualEndDate).toLocaleDateString() 
-                  : 'En progreso'}
-              </p>
+              {editMode && editingReport ? (
+                <input
+                  type="date"
+                  value={editingReport.actualEndDate || ''}
+                  onChange={(e) => setEditingReport({ ...editingReport, actualEndDate: e.target.value || null })}
+                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              ) : (
+                <p className="font-medium">
+                  {audit.actualEndDate
+                    ? new Date(audit.actualEndDate).toLocaleDateString('es-AR', { timeZone: 'UTC' })
+                    : 'En progreso'}
+                </p>
+              )}
             </div>
           </div>
           {audit.scope && (
