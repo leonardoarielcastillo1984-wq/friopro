@@ -117,12 +117,8 @@ async function generateQR(data: string): Promise<string> {
 }
 
 function buildHeaderHtml(template: PdfTemplateConfig, metadata: PdfDocumentMetadata): string {
-  const logo = template.headerLogoUrl
-    ? `<img src="${template.headerLogoUrl}" style="max-height:60px;max-width:180px;object-fit:contain;" />`
-    : '';
-  const logoSec = template.headerLogoSecondaryUrl
-    ? `<img src="${template.headerLogoSecondaryUrl}" style="max-height:50px;max-width:120px;object-fit:contain;" />`
-    : '';
+  const logo = '';
+  const logoSec = '';
 
   const companyName = template.companyName || '';
   const commercialName = template.commercialName || '';
@@ -145,7 +141,6 @@ function buildHeaderHtml(template: PdfTemplateConfig, metadata: PdfDocumentMetad
   return `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;width:100%;border-bottom:2px solid ${template.primaryColor || '#1e40af'};padding-bottom:8px;">
       <div style="display:flex;align-items:center;gap:12px;">
-        ${logo}
         <div>
           <div style="font-size:14px;font-weight:bold;color:${template.primaryColor || '#1e40af'};">${companyName}</div>
           ${commercialName ? `<div style="font-size:11px;color:#64748b;">${commercialName}</div>` : ''}
@@ -154,8 +149,7 @@ function buildHeaderHtml(template: PdfTemplateConfig, metadata: PdfDocumentMetad
         </div>
       </div>
       <div style="text-align:right;">
-        ${logoSec}
-        <div style="margin-top:4px;">
+        <div style="margin-top:0;">
           <span style="font-size:10px;font-weight:bold;color:${statusColor};border:1px solid ${statusColor};padding:2px 8px;border-radius:4px;">${statusLabel}</span>
         </div>
       </div>

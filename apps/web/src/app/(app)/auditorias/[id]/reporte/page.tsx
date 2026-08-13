@@ -392,28 +392,16 @@ export default function ReportPage() {
 
       {/* Report Content - Print-friendly */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 print:shadow-none print:border-none">
-        {/* Report Header with Logo */}
+        {/* Report Header */}
         <div className="border-b border-gray-200 pb-6 mb-6">
-          <div className="flex items-center justify-between">
-            {companySettings?.logoUrl && (
-              <div className="w-24 h-24 flex-shrink-0">
-                <img 
-                  src={companySettings.logoUrl} 
-                  alt={companySettings.companyName || 'Logo'} 
-                  className="max-w-full max-h-full object-contain"
-                />
-              </div>
+          <div className="text-center">
+            <p className="text-sm text-gray-500 uppercase tracking-wider">
+              {companySettings?.companyName || 'SGI 360'}
+            </p>
+            <h1 className="text-2xl font-bold text-gray-900 mt-1">INFORME DE AUDITORÍA</h1>
+            {companySettings?.headerText && (
+              <p className="text-sm text-gray-600 mt-2 italic">{companySettings.headerText}</p>
             )}
-            <div className={`text-center flex-1 ${!companySettings?.logoUrl ? '' : 'px-4'}`}>
-              <p className="text-sm text-gray-500 uppercase tracking-wider">
-                {companySettings?.companyName || 'SGI 360'}
-              </p>
-              <h1 className="text-2xl font-bold text-gray-900 mt-1">INFORME DE AUDITORÍA</h1>
-              {companySettings?.headerText && (
-                <p className="text-sm text-gray-600 mt-2 italic">{companySettings.headerText}</p>
-              )}
-            </div>
-            <div className="w-24" /> {/* Spacer for balance */}
           </div>
           <div className="text-center mt-4 pt-4 border-t border-gray-100">
             <p className="text-xl text-gray-700 font-medium">{audit.code}</p>
