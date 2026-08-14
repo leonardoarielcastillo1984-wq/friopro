@@ -2114,8 +2114,10 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
             index: i + 1,
             reasoning: 'Incluida por selección manual (todas las cláusulas)'
           }));
-        } else if (llm && allClauses.length <= 200) {
+        } else if (llm) {
           // Modo "relevantes": usar IA para filtrar cláusulas relevantes según el proceso/área
+          // Procesar en lotes de 50 para no exceder límites de contexto
+          const BATCH_SIZE = 50;
           const processContext = [
             audit.title ? `Título de auditoría: ${audit.title}` : '',
             audit.area ? `Área/Departamento: ${audit.area}` : '',
@@ -2124,7 +2126,15 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
             audit.objective ? `Objetivo: ${audit.objective}` : '',
           ].filter(Boolean).join('\n');
 
-          const filterPrompt = `Eres un auditor experto ISO. Tu tarea es filtrar qué cláusulas normativas son RELEVANTES para una auditoría específica y explicar por qué.
+          console.log(`[CHECKLIST] Filtrando ${allClauses.length} cláusulas en lotes de ${BATCH_SIZE}...`);
+
+          for (let batchStart = 0; batchStart < allClauses.length; batchStart += BATCH_SIZE) {
+            const batchEnd = Math.min(batchStart + BATCH_SIZE, allClauses.length);
+            const batchClauses = allClauses.slice(batchStart, batchEnd);
+            const batchNum = Math.floor(batchStart / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(allClauses.length / BATCH_SIZE);
+
+            const batchPrompt = `Eres un auditor experto ISO. Tu tarea es filtrar qué cláusulas normativas son RELEVANTES para una auditoría específica.
 
 Normas ISO: ${isoStandards.join(', ')}
 ${processContext}
@@ -2133,38 +2143,49 @@ INSTRUCCIONES:
 - Selecciona SOLO las cláusulas que estén directamente relacionadas con el proceso, área o actividad auditada.
 - Por ejemplo, si el proceso es "Compras", incluye cláusulas sobre evaluación de proveedores, criterios de selección, verificación de productos comprados, etc.
 - Excluye cláusulas que no apliquen al proceso específico (ej: diseño si es un proceso de compras).
-- Si el proceso/área no está especificado o es genérico, incluye las cláusulas más relevantes para una auditoría general del sistema de gestión.
+- Si el proceso/área no está especificado o es genérico, incluye las cláusulas más relevantes para una auditoría general.
 
-Cláusulas disponibles (solo número y título):
-${allClauses.map((c, i) => `${i + 1}. ${c.clauseNumber} - ${c.title}`).join('\n')}
+Cláusulas disponibles (lote ${batchNum}/${totalBatches}, índices ${batchStart + 1} a ${batchEnd}):
+${batchClauses.map((c, i) => `${batchStart + i + 1}. ${c.clauseNumber} - ${c.title}`).join('\n')}
 
 Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
 {
   "relevantClauses": [
-    { "index": 1, "reasoning": "Explicación breve de por qué esta cláusula es relevante para el departamento/proceso" },
-    { "index": 3, "reasoning": "Explicación breve de por qué esta cláusula es relevante para el departamento/proceso" }
+    { "index": ${batchStart + 1}, "reasoning": "por qué es relevante" }
   ]
 }
 
-Donde "relevantClauses" es un array con objetos que contienen:
-- "index": número de índice (basados en 1) de la cláusula relevante
-- "reasoning": explicación específica de por qué esa cláusula es relevante para el departamento/proceso especificado`;
+Donde "index" es el número de índice global (basado en 1) de la cláusula relevante.`;
 
-          try {
-            const filterResult = await llm.chat([{ role: 'user', content: filterPrompt }], 2048);
             try {
-              const parsed = JSON.parse(filterResult.text);
-              relevantClauses = parsed.relevantClauses || [];
-            } catch {
-              relevantClauses = allClauses.map((_, i) => ({
-                index: i + 1,
-                reasoning: 'Cláusula incluida por defecto (error en procesamiento de IA)'
-              }));
+              const batchResult = await llm.chat([{ role: 'user', content: batchPrompt }], 2048);
+              try {
+                const parsed = JSON.parse(batchResult.text);
+                const batchRelevant = parsed.relevantClauses || [];
+                // Validar que los índices estén en el rango del lote actual
+                for (const rc of batchRelevant) {
+                  if (rc.index >= batchStart + 1 && rc.index <= batchEnd) {
+                    relevantClauses.push({ index: rc.index, reasoning: rc.reasoning || '' });
+                  }
+                }
+                console.log(`[CHECKLIST] Lote ${batchNum}/${totalBatches}: ${batchRelevant.length} relevantes de ${batchClauses.length}`);
+              } catch {
+                // Si falla el parseo del lote, incluir todas las del lote
+                for (let i = batchStart; i < batchEnd; i++) {
+                  relevantClauses.push({ index: i + 1, reasoning: 'Incluida por defecto (error en parseo de IA)' });
+                }
+                console.log(`[CHECKLIST] Lote ${batchNum}/${totalBatches}: error de parseo, incluyendo todas`);
+              }
+            } catch (e: any) {
+              console.log(`[CHECKLIST] Lote ${batchNum}/${totalBatches} falló:`, e.message);
+              // Si el lote falla, incluir todas las del lote
+              for (let i = batchStart; i < batchEnd; i++) {
+                relevantClauses.push({ index: i + 1, reasoning: 'Incluida por defecto (IA no disponible)' });
+              }
             }
-          } catch (e: any) {
-            console.log('[CHECKLIST] IA falló, usando fallback determinístico:', e.message);
-            relevantClauses = [];
           }
+
+          console.log(`[CHECKLIST] Total: ${relevantClauses.length} cláusulas relevantes de ${allClauses.length}`);
         }
 
         // Fallback determinístico: si la IA falló o hay demasiadas cláusulas, usar todas
