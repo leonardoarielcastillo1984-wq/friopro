@@ -3,7 +3,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getStorage } from '../services/storage.js';
 import { randomUUID } from 'node:crypto';
-import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
+import { createGroqOnlyLLMProvider, createSmartLLMProvider } from '../services/llm/factory.js';
 
 const storage = getStorage();
 
@@ -2088,10 +2088,10 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
           return reply.code(400).send({ error: 'No se encontraron normas normativas procesadas para las normas ISO seleccionadas' });
         }
 
-        // Usar IA para filtrar cláusulas relevantes según el departamento/proceso
+        // Usar IA smart provider (OpenAI si disponible, Groq fallback) para mayor contexto
         let llm: any = null;
         try {
-          llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
+          llm = createSmartLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
         } catch (e) {
           console.log('[CHECKLIST] LLM provider no disponible, usando fallback determinístico');
         }
@@ -2107,7 +2107,7 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
 
         let relevantClauses: Array<{ index: number; reasoning: string }> = [];
 
-        if (llm && allClauses.length <= 50) {
+        if (llm && allClauses.length <= 200) {
           // Usar IA solo cuando hay razonable cantidad de cláusulas
           const filterPrompt = `Eres un auditor experto ISO. Tu tarea es filtrar qué cláusulas normativas son RELEVANTES para una auditoría específica y explicar por qué.
 

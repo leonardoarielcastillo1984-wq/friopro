@@ -152,3 +152,37 @@ export function createGroqOnlyLLMProvider(
   const inner = new OpenAIProvider(apiKey, 'https://api.groq.com/openai/v1', model);
   return new LoggingLLMProvider(inner, prisma, tenantId, userId, module);
 }
+
+/**
+ * Creates a smart LLM provider that uses OpenAI for large context (better quality)
+ * and falls back to Groq for simpler tasks or when OpenAI is not available.
+ * Similar to Command Center's provider selection logic.
+ */
+export function createSmartLLMProvider(
+  tenant: TenantLLMConfig | null | undefined,
+  prisma: any,
+  tenantId: string | null,
+  userId: string | null,
+  module: string,
+): LLMProvider {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+
+  // Prefer OpenAI if available (higher context window, better quality)
+  if (openaiKey) {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const inner = new OpenAIProvider(openaiKey, undefined, model);
+    return new LoggingLLMProvider(inner, prisma, tenantId, userId, module);
+  }
+
+  // Fallback to Groq
+  if (groqKey) {
+    const model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+    const inner = new OpenAIProvider(groqKey, 'https://api.groq.com/openai/v1', model);
+    return new LoggingLLMProvider(inner, prisma, tenantId, userId, module);
+  }
+
+  throw new LLMConfigError(
+    'IA no configurada: falta OPENAI_API_KEY o GROQ_API_KEY. Configurá al menos una variable de entorno.'
+  );
+}
