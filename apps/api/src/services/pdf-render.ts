@@ -117,7 +117,9 @@ async function generateQR(data: string): Promise<string> {
 }
 
 function buildHeaderHtml(template: PdfTemplateConfig, metadata: PdfDocumentMetadata): string {
-  const logo = '';
+  const logo = template.headerLogoUrl
+    ? `<img src="${template.headerLogoUrl}" style="max-height:50px;max-width:160px;object-fit:contain;" />`
+    : '';
   const logoSec = '';
 
   const companyName = template.companyName || '';
@@ -141,12 +143,7 @@ function buildHeaderHtml(template: PdfTemplateConfig, metadata: PdfDocumentMetad
   return `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;width:100%;border-bottom:2px solid ${template.primaryColor || '#1e40af'};padding-bottom:8px;">
       <div style="display:flex;align-items:center;gap:12px;">
-        <div>
-          <div style="font-size:14px;font-weight:bold;color:${template.primaryColor || '#1e40af'};">${companyName}</div>
-          ${commercialName ? `<div style="font-size:11px;color:#64748b;">${commercialName}</div>` : ''}
-          ${address ? `<div style="font-size:9px;color:#94a3b8;">${address}</div>` : ''}
-          <div style="font-size:9px;color:#94a3b8;">${cuit}${site ? ' · ' + site : ''}</div>
-        </div>
+        ${logo || `<div style="font-size:14px;font-weight:bold;color:${template.primaryColor || '#1e40af'};">${companyName}</div>`}
       </div>
       <div style="text-align:right;">
         <div style="margin-top:0;">
@@ -296,7 +293,7 @@ export async function renderPdf(options: PdfRenderOptions): Promise<PdfRenderRes
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         body {
           font-family: ${template.fontFamily || 'Arial, sans-serif'};
           font-size: ${template.fontSize || 11}px;
@@ -308,13 +305,15 @@ export async function renderPdf(options: PdfRenderOptions): Promise<PdfRenderRes
         thead { display: table-header-group; }
         th { background: ${template.secondaryColor || '#64748b'}; color: #fff; font-weight: bold; }
         tr:nth-child(even) { background: #f8fafc; }
-        h1, h2, h3, h4 { color: ${template.primaryColor || '#1e40af'}; margin-top: 16px; margin-bottom: 8px; }
+        h1, h2, h3, h4 { color: ${template.primaryColor || '#1e40af'}; margin-top: 16px; margin-bottom: 8px; break-after: avoid; }
         h1 { font-size: 20px; }
         h2 { font-size: 16px; }
         h3 { font-size: 14px; }
         .page-break { page-break-before: always; }
         .document-header { position: running(header); }
         .document-footer { position: running(footer); }
+        .rounded-lg, .border { break-inside: avoid; page-break-inside: avoid; }
+        .bg-blue-50, .bg-green-50, .bg-red-50, .bg-yellow-50, .bg-orange-50, .bg-gray-50 { break-inside: avoid; page-break-inside: avoid; }
         @page {
           size: ${template.pageSize || 'A4'} ${template.orientation || 'portrait'};
           margin: ${template.marginTop || 25}mm ${template.marginRight || 20}mm ${template.marginBottom || 25}mm ${template.marginLeft || 20}mm;
