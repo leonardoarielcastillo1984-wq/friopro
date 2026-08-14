@@ -1,0 +1,128 @@
+[
+  {
+    "id": "443b00c6-b86d-40c4-9c8d-1feb9138292c",
+    "title": "Manual de Calidad SGI",
+    "filePath": null,
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "ece777d4-5bd3-4d50-91b8-8a623031af1b",
+    "title": "Procedimiento de Auditoría Interna",
+    "filePath": null,
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "8b868f07-2355-46b8-b27c-6b16f8f65923",
+    "title": "Política de Seguridad Vial",
+    "filePath": null,
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "dd404b62-7797-4ea9-8541-f94378723f13",
+    "title": "Procedimiento de Control de Documentos",
+    "filePath": null,
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "6380c86d-1501-41b5-bd7a-dd75f50f2adb",
+    "title": "Plan de Gestión Ambiental",
+    "filePath": null,
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "4a885052-1036-4984-acab-9fa730a14f66",
+    "title": "Procedimiento de No Conformidades",
+    "filePath": null,
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "990167d0-191c-46ec-8a05-8ddf4322774e",
+    "title": "Manual de Seguridad y Salud Ocupacional",
+    "filePath": null,
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "be7eb043-2f91-45d7-a7b2-c50248c5a602",
+    "title": "Registro de Capacitaciones (Borrador)",
+    "filePath": null,
+    "status": "DRAFT"
+  },
+  {
+    "id": "7a8b80fd-7c15-46e2-bd32-3c7507bddfc1",
+    "title": "Instructivo de Manejo Defensivo",
+    "filePath": null,
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "4c4bf877-0e81-45ff-86b8-af4d32a2f5cc",
+    "title": "Política de Calidad (Obsoleta v1)",
+    "filePath": null,
+    "status": "OBSOLETE"
+  },
+  {
+    "id": "e232d0de-8e01-4cc9-96cf-8f9b0c3b4556",
+    "title": "Procedimiento de Compras",
+    "filePath": null,
+    "status": "DRAFT"
+  },
+  {
+    "id": "85729238-d87f-4cb0-89de-b018bf714abb",
+    "title": "Plan de Emergencias",
+    "filePath": null,
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "b5fb144f-a5cb-49c8-8369-07c6c2cdac0f",
+    "title": "SV POL 001 Política de Seguridad Vial",
+    "filePath": "SV-POL-001 Política de Seguridad Vial-1775177133015.docx",
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "1123a1f6-31c9-4229-a5fa-89b0c2add209",
+    "title": "SV PRO 001 Contexto de la Organización",
+    "filePath": "SV-PRO-001 Contexto de la Organización-1775177153520.docx",
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "123c7615-b6bb-4f9e-af5b-310494a07914",
+    "title": "SV PRO 002 Liderazgo Roles y Responsabilidades",
+    "filePath": "SV-PRO-002 Liderazgo Roles y Responsabilidades-1775177524469.docx",
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "8886b4ce-f2de-493e-8a0f-11a6da18f811",
+    "title": "SV PRO 004 Evaluación de Riesgos Viales",
+    "filePath": "SV-PRO-004 Evaluación de Riesgos Viales-1775177749701.docx",
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "cb9bab6a-bee8-410a-a272-862d46e68127",
+    "title": "SV PRO 004 Evaluación de Riesgos Viales v1",
+    "filePath": "SV-PRO-004 Evaluación de Riesgos Viales-v1-1775180224787.docx",
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "14b04091-6da9-4097-b95f-a1f2e32bbb05",
+    "title": "SV PRO 005 Competencia y Formación",
+    "filePath": "SV-PRO-005 Competencia y Formación-1775177964007.docx",
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "4c3de62b-5ec4-423d-aa02-e24b52555078",
+    "title": "SV PRO 009 Auditoría Interna",
+    "filePath": "SV-PRO-009 Auditoría Interna-1775178088785.docx",
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "4470b2be-e7a8-456f-8a16-cb0f205d42d2",
+    "title": "test_safety_quality",
+    "filePath": "test_safety_quality-1775181636090.txt",
+    "status": "EFFECTIVE"
+  },
+  {
+    "id": "b1e6b1fa-fb80-4178-bd2f-61f28bceca9f",
+    "title": "test_safety_quality",
+    "filePath": "test_safety_quality-1775181638641.txt",
+    "status": "EFFECTIVE"
+  }
+]
