@@ -135,7 +135,7 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
         }
         console.log('[EXCEL] logo URL:', template.headerLogoUrl, 'ext:', logoExt, 'bufLen:', logoBuf.length, 'firstBytes:', logoBuf.slice(0, 4).toString('hex'));
         if (logoExt && logoBuf.length > 0) {
-          const imageId = (wb as any).addImage(logoBuf, logoExt);
+          const imageId = (wb as any).addImage({ buffer: logoBuf, extension: logoExt });
           (ws as any).addImage(imageId, {
             tl: { col: 0, row: 0 },
             ext: { width: 140, height: 50 },
@@ -387,7 +387,7 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
   // QR image (col 1-2) | Trazabilidad info (col 3-8)
   try {
     console.log('[EXCEL] QR buffer len:', qrBuffer.length, 'firstBytes:', qrBuffer.slice(0, 4).toString('hex'));
-    const imageId = (wb as any).addImage(qrBuffer, 'png');
+    const imageId = (wb as any).addImage({ buffer: qrBuffer, extension: 'png' });
     (ws as any).addImage(imageId, {
       tl: { col: 0, row: row - 1 },
       ext: { width: 90, height: 90 },
