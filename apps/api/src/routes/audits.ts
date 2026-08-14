@@ -1088,6 +1088,10 @@ export async function registerAuditRoutes(app: FastifyInstance) {
           }
           if (req.body.actualEndDate !== undefined) {
             dateData.actualEndDate = req.body.actualEndDate ? new Date(req.body.actualEndDate) : null;
+            // Auto-transition to COMPLETED when end date is set and audit is in PENDING_REPORT or IN_PROGRESS
+            if (req.body.actualEndDate && (audit.status === 'PENDING_REPORT' || audit.status === 'IN_PROGRESS')) {
+              dateData.status = 'COMPLETED';
+            }
           }
           if (Object.keys(dateData).length > 0) {
             await tx.audit.update({ where: { id: req.params.id }, data: dateData });
