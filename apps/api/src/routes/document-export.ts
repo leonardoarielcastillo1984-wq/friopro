@@ -72,14 +72,18 @@ const outputDefSchema = z.object({
 const exportSchema = z.object({
   outputDefinitionId: z.string().uuid().optional(),
   outputKey: z.string().optional(),
-  exportType: z.enum(['CONTROLLED', 'INFORMATIVE']),
-  bodyHtml: z.string().min(1),
+  exportType: z.enum(['CONTROLLED', 'INFORMATIVE', 'EXCEL_CONTROLLED']),
+  bodyHtml: z.string().optional(),
   title: z.string().optional(),
   filters: z.record(z.any()).optional(),
   recordCount: z.number().int().optional(),
+  sections: z.array(z.any()).optional(),
 }).refine(
   (data) => data.outputDefinitionId || data.outputKey,
   { message: 'Se requiere outputDefinitionId o outputKey' }
+).refine(
+  (data) => data.bodyHtml || (data.exportType === 'EXCEL_CONTROLLED' && data.sections),
+  { message: 'Se requiere bodyHtml o sections para Excel' }
 );
 
 const codeRuleSchema = z.object({
@@ -379,13 +383,15 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
       }, {
         outputDefinitionId: outputDefinitionId!,
         exportType: data.exportType,
-        bodyHtml: data.bodyHtml,
+        bodyHtml: data.bodyHtml || '',
         title: data.title,
         filters: data.filters,
         recordCount: data.recordCount,
+        sections: data.sections as any,
       });
+      const isExcel = data.exportType === 'EXCEL_CONTROLLED';
       reply
-        .header('Content-Type', 'application/pdf')
+        .header('Content-Type', isExcel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf')
         .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
         .header('X-Export-Id', result.exportId)
         .header('X-File-Hash', result.fileHash)

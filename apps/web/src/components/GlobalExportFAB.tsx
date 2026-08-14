@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { FileDown, Loader2, Shield, ShieldOff, X, ChevronDown } from 'lucide-react';
+import { FileDown, Loader2, Shield, ShieldOff, X, ChevronDown, FileSpreadsheet } from 'lucide-react';
 
 const SKIP_PATHS = ['/login', '/register', '/validate-doc', '/select-tenant', '/onboarding', '/plan-selection', '/plans', '/billing'];
 
@@ -27,6 +27,152 @@ function pathToTitle(path: string): string {
     reportes: 'Reportes', dashboard: 'Dashboard', clima: 'Clima Organizacional',
   };
   return labels[segments[0]] || segments.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' — ');
+}
+
+function capturePageContentForExcel(): any[] {
+  const main = document.querySelector('main');
+  if (!main) return [];
+
+  const sections: any[] = [];
+  const clone = main.cloneNode(true) as HTMLElement;
+
+  // Remove interactive elements
+  clone.querySelectorAll('button, input, textarea, select, form, nav, script, style, [data-no-export], [aria-modal]').forEach(el => el.remove());
+
+  // Convert selects to spans with selected value
+  // (already removed above, but in case they were re-added by clone)
+
+  function walk(node: Element, depth: number = 0) {
+    for (const child of Array.from(node.children)) {
+      const tag = child.tagName.toLowerCase();
+
+      // Headings
+      if (/^h[1-6]$/.test(tag)) {
+        const level = parseInt(tag.substring(1));
+        sections.push({ type: 'heading', level, text: child.textContent?.trim() || '' });
+        continue;
+      }
+
+      // Tables
+      if (tag === 'table') {
+        const headers: string[] = [];
+        const rows: string[][] = [];
+
+        const thead = child.querySelector('thead');
+        if (thead) {
+          thead.querySelectorAll('th').forEach(th => {
+            headers.push(th.textContent?.trim() || '');
+          });
+        }
+
+        const tbody = child.querySelector('tbody') || child;
+        tbody.querySelectorAll('tr').forEach((tr, idx) => {
+          if (thead && idx === 0 && tr.closest('thead')) return;
+          const cells: string[] = [];
+          tr.querySelectorAll('td, th').forEach(td => {
+            cells.push(td.textContent?.trim() || '');
+          });
+          if (cells.length > 0) rows.push(cells);
+        });
+
+        // If no thead, use first row as headers
+        if (headers.length === 0 && rows.length > 0) {
+          sections.push({ type: 'table', columns: rows[0], rows: rows.slice(1) });
+        } else {
+          sections.push({ type: 'table', columns: headers, rows });
+        }
+        continue;
+      }
+
+      // Cards / indicators — detect divs with bg-* classes that contain a number + label
+      const cls = child.className || '';
+      if (typeof cls === 'string' && /bg-(blue|green|red|yellow|orange|gray|emerald|amber)-50/.test(cls)) {
+        const text = child.textContent?.trim() || '';
+        if (text.length > 0 && text.length < 200) {
+          // Try to extract label + value pattern
+          const numbers = child.querySelectorAll('[class*="text-2xl"], [class*="text-3xl"], [class*="text-xl"], [class*="font-bold"]');
+          if (numbers.length > 0) {
+            const value = numbers[0]?.textContent?.trim() || '';
+            const label = text.replace(value, '').trim() || text;
+            const colorMatch = cls.match(/bg-(\w+)-50/);
+            const colorMap: Record<string, string> = {
+              blue: '#eff6ff', green: '#ecfdf5', emerald: '#ecfdf5',
+              red: '#fef2f2', yellow: '#fffbeb', amber: '#fff7ed',
+              orange: '#fff7ed', gray: '#f9fafb',
+            };
+            const color = colorMatch ? colorMap[colorMatch[1]] : undefined;
+            // Accumulate cards
+            const lastSection = sections[sections.length - 1];
+            if (lastSection && lastSection.type === 'cards') {
+              lastSection.cards.push({ label, value, color });
+            } else {
+              sections.push({ type: 'cards', cards: [{ label, value, color }] });
+            }
+            continue;
+          }
+        }
+      }
+
+      // Badges — spans with badge-like classes
+      if (tag === 'span' && typeof cls === 'string' && /bg-(blue|green|red|yellow|orange|gray|emerald|amber)-100/.test(cls)) {
+        const text = child.textContent?.trim() || '';
+        if (text) {
+          const colorMatch = cls.match(/bg-(\w+)-100/);
+          const colorMap: Record<string, string> = {
+            blue: '#dbeafe', green: '#dcfce7', emerald: '#dcfce7',
+            red: '#fee2e2', yellow: '#fef3c7', amber: '#fef3c7',
+            orange: '#ffedd5', gray: '#f3f4f6',
+          };
+          const color = colorMatch ? colorMap[colorMatch[1]] : undefined;
+          const lastSection = sections[sections.length - 1];
+          if (lastSection && lastSection.type === 'badges') {
+            lastSection.badges.push({ text, color });
+          } else {
+            sections.push({ type: 'badges', badges: [{ text, color }] });
+          }
+          continue;
+        }
+      }
+
+      // Paragraphs
+      if (tag === 'p') {
+        const text = child.textContent?.trim() || '';
+        if (text) sections.push({ type: 'text', text });
+        continue;
+      }
+
+      // Recurse into divs/sections
+      if (tag === 'div' || tag === 'section' || tag === 'article' || tag === 'main') {
+        // Check if this div has direct text content (not just children)
+        const directText = Array.from(child.childNodes)
+          .filter(n => n.nodeType === Node.TEXT_NODE)
+          .map(n => n.textContent?.trim())
+          .filter(Boolean)
+          .join(' ');
+        if (directText && directText.length > 3) {
+          sections.push({ type: 'text', text: directText });
+        }
+        walk(child, depth + 1);
+      }
+    }
+  }
+
+  walk(clone, 0);
+
+  // Add spacers between sections for visual separation
+  const result: any[] = [];
+  for (let i = 0; i < sections.length; i++) {
+    result.push(sections[i]);
+    if (i < sections.length - 1) {
+      const next = sections[i + 1];
+      const cur = sections[i];
+      if (cur.type !== 'spacer' && next.type !== 'spacer') {
+        result.push({ type: 'spacer' });
+      }
+    }
+  }
+
+  return result;
 }
 
 function capturePageContent(): string {
@@ -180,13 +326,15 @@ export default function GlobalExportFAB() {
   const outputKey = `page-${pathToOutputKey(pathname || 'general')}`;
   const title = pathToTitle(pathname || '');
 
-  async function doExport(exportType: 'CONTROLLED' | 'INFORMATIVE') {
+  async function doExport(exportType: 'CONTROLLED' | 'INFORMATIVE' | 'EXCEL_CONTROLLED') {
     setLoading(true);
     setError(null);
     setShowMenu(false);
 
     try {
-      const bodyHtml = capturePageContent();
+      const isExcel = exportType === 'EXCEL_CONTROLLED';
+      const bodyHtml = isExcel ? '' : capturePageContent();
+      const sections = isExcel ? capturePageContentForExcel() : undefined;
       const token = localStorage.getItem('accessToken');
       const tenantId = localStorage.getItem('tenantId');
       const csrf = localStorage.getItem('csrfToken');
@@ -199,7 +347,7 @@ export default function GlobalExportFAB() {
           ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
           ...(csrf ? { 'x-csrf-token': csrf } : {}),
         },
-        body: JSON.stringify({ outputKey, exportType, bodyHtml, title }),
+        body: JSON.stringify({ outputKey, exportType, bodyHtml, title, sections }),
       });
 
       if (!res.ok) {
@@ -260,17 +408,28 @@ export default function GlobalExportFAB() {
               <div className="text-xs text-neutral-400">Copia no controlada</div>
             </div>
           </button>
+          <div className="border-t border-neutral-100" />
+          <button
+            onClick={() => doExport('EXCEL_CONTROLLED')}
+            className="flex items-center gap-2 w-full px-3 py-2.5 text-left text-sm hover:bg-emerald-50 transition-colors"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600 shrink-0" />
+            <div>
+              <div className="font-medium text-neutral-800">Excel Controlado</div>
+              <div className="text-xs text-neutral-400">Con formato y trazabilidad</div>
+            </div>
+          </button>
         </div>
       )}
 
       <button
         onClick={() => setShowMenu(!showMenu)}
         disabled={loading}
-        title="Exportar esta página a PDF"
+        title="Exportar esta página"
         className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-full shadow-lg px-4 py-2.5 text-sm font-medium transition-all"
       >
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-        Exportar PDF
+        Exportar
         {!loading && <ChevronDown className="h-3 w-3 opacity-70" />}
       </button>
     </div>

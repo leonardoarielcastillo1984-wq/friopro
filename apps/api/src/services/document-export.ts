@@ -4,6 +4,7 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import { renderPdf, buildMetadataTable, type PdfTemplateConfig, type PdfDocumentMetadata } from './pdf-render.js';
+import { renderExcel, type ExcelSection } from './excel-render.js';
 import crypto from 'crypto';
 
 export interface ExportContext {
@@ -16,11 +17,12 @@ export interface ExportContext {
 
 export interface ExportRequest {
   outputDefinitionId: string;
-  exportType: 'CONTROLLED' | 'INFORMATIVE';
+  exportType: 'CONTROLLED' | 'INFORMATIVE' | 'EXCEL_CONTROLLED';
   bodyHtml: string;
   title?: string;
   filters?: Record<string, any>;
   recordCount?: number;
+  sections?: ExcelSection[];
 }
 
 export interface ExportResult {
@@ -122,7 +124,7 @@ export async function executeExport(
     revision: outputDef.revision || 0,
     title: req.title || outputDef.screenName,
     status: outputDef.status,
-    exportType: req.exportType,
+    exportType: req.exportType === 'EXCEL_CONTROLLED' ? 'CONTROLLED' : req.exportType,
     module: outputDef.module,
     subModule: outputDef.subModule || undefined,
     confidentialLevel: outputDef.confidentialLevel || undefined,
@@ -142,21 +144,41 @@ export async function executeExport(
   const validationToken = crypto.randomBytes(24).toString('hex');
   const validationUrl = `${process.env.PUBLIC_URL || 'https://logismart.ar'}/validate-doc?token=${validationToken}`;
 
-  // 6. Renderizar PDF
-  const fullBody = buildMetadataTable(metadata) + req.bodyHtml;
+  // 6. Renderizar (Excel o PDF)
+  const isExcel = req.exportType === 'EXCEL_CONTROLLED';
 
-  const pdfResult = await renderPdf({
-    template,
-    metadata,
-    bodyHtml: fullBody,
-    validationUrl: outputDef.includeQR ? validationUrl : undefined,
-    userName: ctx.userName,
-  });
+  let resultBuffer: Buffer;
+  let resultHash: string;
+  let resultFileName: string;
 
-  // 7. Generar nombre de archivo
-  const safeCode = (outputDef.documentCode || 'documento').replace(/[^a-zA-Z0-9-]/g, '_');
-  const dateStr = new Date().toISOString().slice(0, 10);
-  const fileName = `${safeCode}_R${String(outputDef.revision || 0).padStart(2, '0')}_${dateStr}.pdf`;
+  if (isExcel) {
+    const excelResult = await renderExcel({
+      template,
+      metadata,
+      sections: req.sections || [],
+      validationUrl: outputDef.includeQR ? validationUrl : undefined,
+      userName: ctx.userName,
+    });
+    resultBuffer = excelResult.buffer;
+    resultHash = excelResult.fileHash;
+    const safeCode = (outputDef.documentCode || 'documento').replace(/[^a-zA-Z0-9-]/g, '_');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    resultFileName = `${safeCode}_R${String(outputDef.revision || 0).padStart(2, '0')}_${dateStr}.xlsx`;
+  } else {
+    const fullBody = buildMetadataTable(metadata) + req.bodyHtml;
+    const pdfResult = await renderPdf({
+      template,
+      metadata,
+      bodyHtml: fullBody,
+      validationUrl: outputDef.includeQR ? validationUrl : undefined,
+      userName: ctx.userName,
+    });
+    resultBuffer = pdfResult.buffer;
+    resultHash = pdfResult.fileHash;
+    const safeCode = (outputDef.documentCode || 'documento').replace(/[^a-zA-Z0-9-]/g, '_');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    resultFileName = `${safeCode}_R${String(outputDef.revision || 0).padStart(2, '0')}_${dateStr}.pdf`;
+  }
 
   // 8. Registrar exportación
   const exportRecord = await prismaAny.documentExport.create({
@@ -166,12 +188,12 @@ export async function executeExport(
       documentCode: outputDef.documentCode,
       revisionNumber: outputDef.revision || 0,
       documentTitle: metadata.title,
-      exportType: req.exportType,
+      exportType: isExcel ? 'CONTROLLED' : req.exportType,
       templateName: outputDef.template?.name,
-      fileName,
-      fileSize: pdfResult.buffer.length,
-      pageCount: pdfResult.pageCount,
-      fileHash: pdfResult.fileHash,
+      fileName: resultFileName,
+      fileSize: resultBuffer.length,
+      pageCount: 1,
+      fileHash: resultHash,
       filters: req.filters || undefined,
       recordCount: req.recordCount || 0,
       userId: ctx.userId,
@@ -213,11 +235,11 @@ export async function executeExport(
   });
 
   return {
-    buffer: pdfResult.buffer,
-    fileName,
-    fileSize: pdfResult.buffer.length,
-    pageCount: pdfResult.pageCount,
-    fileHash: pdfResult.fileHash,
+    buffer: resultBuffer,
+    fileName: resultFileName,
+    fileSize: resultBuffer.length,
+    pageCount: 1,
+    fileHash: resultHash,
     exportId: exportRecord.id,
     validationToken: outputDef.includeQR ? validationToken : undefined,
   };

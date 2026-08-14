@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Download, Loader2, Shield, ShieldOff, FileDown } from 'lucide-react';
+import { Download, Loader2, Shield, ShieldOff, FileDown, FileSpreadsheet } from 'lucide-react';
 
 interface ExportButtonProps {
   outputKey: string;
@@ -32,7 +32,7 @@ export default function ExportButton({
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  async function doExport(exportType: 'CONTROLLED' | 'INFORMATIVE') {
+  async function doExport(exportType: 'CONTROLLED' | 'INFORMATIVE' | 'EXCEL_CONTROLLED') {
     setLoading(true);
     setError(null);
     setShowMenu(false);
@@ -114,6 +114,18 @@ export default function ExportButton({
             <div>
               <div className="font-medium text-neutral-800">PDF Informativo</div>
               <div className="text-xs text-neutral-400">Copia no controlada</div>
+            </div>
+          </button>
+          <div className="border-t border-neutral-100" />
+          <button
+            onClick={() => doExport('EXCEL_CONTROLLED')}
+            disabled={loading}
+            className="flex items-center gap-2 w-full px-3 py-2.5 text-left text-sm hover:bg-emerald-50 transition-colors"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+            <div>
+              <div className="font-medium text-neutral-800">Excel Controlado</div>
+              <div className="text-xs text-neutral-400">Con formato y trazabilidad</div>
             </div>
           </button>
         </div>
