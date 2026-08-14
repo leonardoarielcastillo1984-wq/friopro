@@ -117,6 +117,7 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
 
   // ── HEADER DOCUMENTAL ──
   // Fila 1: Logo (si hay) | Espacio | Estado badge
+  let logoAdded = false;
   if (template.headerLogoUrl) {
     try {
       const logoRes = await fetch(template.headerLogoUrl);
@@ -132,12 +133,14 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
           else if (logoBuf[0] === 0xFF && logoBuf[1] === 0xD8) logoExt = 'jpg';
           else if (logoBuf[0] === 0x47 && logoBuf[1] === 0x49) logoExt = 'gif';
         }
+        console.log('[EXCEL] logo URL:', template.headerLogoUrl, 'ext:', logoExt, 'bufLen:', logoBuf.length, 'firstBytes:', logoBuf.slice(0, 4).toString('hex'));
         if (logoExt && logoBuf.length > 0) {
           const imageId = (wb as any).addImage(logoBuf, logoExt);
           (ws as any).addImage(imageId, {
             tl: { col: 0, row: 0 },
             ext: { width: 140, height: 50 },
           });
+          logoAdded = true;
         }
       }
     } catch { /* logo fetch fails silently */ }
@@ -383,12 +386,13 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
 
   // QR image (col 1-2) | Trazabilidad info (col 3-8)
   try {
+    console.log('[EXCEL] QR buffer len:', qrBuffer.length, 'firstBytes:', qrBuffer.slice(0, 4).toString('hex'));
     const imageId = (wb as any).addImage(qrBuffer, 'png');
     (ws as any).addImage(imageId, {
       tl: { col: 0, row: row - 1 },
       ext: { width: 90, height: 90 },
     });
-  } catch { /* QR fails silently */ }
+  } catch (e) { console.log('[EXCEL] QR addImage error:', e); /* QR fails silently */ }
 
   ws.mergeCells(row, 3, row, 8);
   const traceCell = ws.getCell(row, 3);
