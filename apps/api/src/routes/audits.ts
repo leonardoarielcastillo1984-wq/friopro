@@ -2050,7 +2050,8 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
   // POST /audit/audits/:id/generate-checklist-from-normative — Generar checklist basado en normas normativas
   app.post(
     '/audit/audits/:id/generate-checklist-from-normative',
-    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const filterMode = (req.body as any)?.filterMode || 'relevant'; // 'relevant' | 'all'
       const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
@@ -2107,15 +2108,32 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
 
         let relevantClauses: Array<{ index: number; reasoning: string }> = [];
 
-        if (llm && allClauses.length <= 200) {
-          // Usar IA solo cuando hay razonable cantidad de cláusulas
+        if (filterMode === 'all') {
+          // Modo "todas": traer todas las cláusulas sin filtrar por IA
+          relevantClauses = allClauses.map((_, i) => ({
+            index: i + 1,
+            reasoning: 'Incluida por selección manual (todas las cláusulas)'
+          }));
+        } else if (llm && allClauses.length <= 200) {
+          // Modo "relevantes": usar IA para filtrar cláusulas relevantes según el proceso/área
+          const processContext = [
+            audit.title ? `Título de auditoría: ${audit.title}` : '',
+            audit.area ? `Área/Departamento: ${audit.area}` : '',
+            audit.process ? `Proceso: ${audit.process}` : '',
+            audit.scope ? `Alcance: ${audit.scope}` : '',
+            audit.objective ? `Objetivo: ${audit.objective}` : '',
+          ].filter(Boolean).join('\n');
+
           const filterPrompt = `Eres un auditor experto ISO. Tu tarea es filtrar qué cláusulas normativas son RELEVANTES para una auditoría específica y explicar por qué.
 
 Normas ISO: ${isoStandards.join(', ')}
-Área/Departamento: ${audit.area || 'N/A'}
-Proceso: ${audit.process || 'N/A'}
-Alcance: ${audit.scope || 'N/A'}
-Objetivo: ${audit.objective || 'Verificar conformidad'}
+${processContext}
+
+INSTRUCCIONES:
+- Selecciona SOLO las cláusulas que estén directamente relacionadas con el proceso, área o actividad auditada.
+- Por ejemplo, si el proceso es "Compras", incluye cláusulas sobre evaluación de proveedores, criterios de selección, verificación de productos comprados, etc.
+- Excluye cláusulas que no apliquen al proceso específico (ej: diseño si es un proceso de compras).
+- Si el proceso/área no está especificado o es genérico, incluye las cláusulas más relevantes para una auditoría general del sistema de gestión.
 
 Cláusulas disponibles (solo número y título):
 ${allClauses.map((c, i) => `${i + 1}. ${c.clauseNumber} - ${c.title}`).join('\n')}

@@ -46,6 +46,7 @@ export default function ChecklistPage() {
   const [progress, setProgress] = useState({ answered: 0, total: 0 });
   const [aiLoading, setAiLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const [newItem, setNewItem] = useState({ clause: '', requirement: '', whatToCheck: '' });
   const [suggestedClauses, setSuggestedClauses] = useState<any[]>([]);
   const [searchingClause, setSearchingClause] = useState(false);
@@ -77,13 +78,17 @@ export default function ChecklistPage() {
     }
   }
 
-  async function generateAiChecklist() {
+  async function generateAiChecklist(filterMode: 'relevant' | 'all') {
+    setShowFilterModal(false);
     try {
       setAiLoading(true);
       setError(null);
       // Intentar primero con normativas, si falla usar endpoint genérico
       try {
-        const res = await apiFetch(`/audit/audits/${auditId}/generate-checklist-from-normative`, { method: 'POST' }) as any;
+        const res = await apiFetch(`/audit/audits/${auditId}/generate-checklist-from-normative`, {
+          method: 'POST',
+          json: { filterMode },
+        }) as any;
         if (res.message) {
           await loadChecklist();
           return;
@@ -272,7 +277,7 @@ export default function ChecklistPage() {
               Agregar item manual
             </button>
             <button
-              onClick={generateAiChecklist}
+              onClick={() => setShowFilterModal(true)}
               disabled={aiLoading}
               className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200 text-sm"
             >
@@ -517,6 +522,53 @@ export default function ChecklistPage() {
                     Agregar al Checklist
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Selección de modo de generación */}
+      {showFilterModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Generar Checklist desde Normas</h3>
+              <button onClick={() => setShowFilterModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Seleccioná cómo querés generar el checklist para <strong>{audit?.title || 'esta auditoría'}</strong>:
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => generateAiChecklist('relevant')}
+                className="w-full text-left p-4 border-2 border-purple-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-colors"
+              >
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div className="font-medium text-gray-900">Cláusulas relevantes al proceso</div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      La IA analiza el proceso/área auditada y selecciona solo las cláusulas relacionadas (ej: si es &quot;Compras&quot;, trae proveedores, selección, verificación).
+                    </div>
+                  </div>
+                </div>
+              </button>
+              <button
+                onClick={() => generateAiChecklist('all')}
+                className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-gray-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div className="font-medium text-gray-900">Todas las cláusulas de la norma</div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      Trae todas las cláusulas de la norma seleccionada sin filtrar. Útil para auditorías completas del sistema.
+                    </div>
+                  </div>
+                </div>
               </button>
             </div>
           </div>
