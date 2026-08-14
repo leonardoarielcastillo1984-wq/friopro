@@ -2089,7 +2089,12 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
         }
 
         // Usar IA para filtrar cláusulas relevantes según el departamento/proceso
-        const llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
+        let llm: any = null;
+        try {
+          llm = createGroqOnlyLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
+        } catch (e) {
+          console.log('[CHECKLIST] LLM provider no disponible, usando fallback determinístico');
+        }
 
         // Preparar lista de cláusulas para que la IA las evalúe
         const allClauses = normativeStandards.flatMap((normative) => {
@@ -2100,8 +2105,11 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
           }));
         });
 
-        // Prompt para que la IA filtre cláusulas relevantes con razonamiento específico
-        const filterPrompt = `Eres un auditor experto ISO. Tu tarea es filtrar qué cláusulas normativas son RELEVANTES para una auditoría específica y explicar por qué.
+        let relevantClauses: Array<{ index: number; reasoning: string }> = [];
+
+        if (llm && allClauses.length <= 50) {
+          // Usar IA solo cuando hay razonable cantidad de cláusulas
+          const filterPrompt = `Eres un auditor experto ISO. Tu tarea es filtrar qué cláusulas normativas son RELEVANTES para una auditoría específica y explicar por qué.
 
 Normas ISO: ${isoStandards.join(', ')}
 Área/Departamento: ${audit.area || 'N/A'}
@@ -2124,17 +2132,28 @@ Donde "relevantClauses" es un array con objetos que contienen:
 - "index": número de índice (basados en 1) de la cláusula relevante
 - "reasoning": explicación específica de por qué esa cláusula es relevante para el departamento/proceso especificado`;
 
-        const filterResult = await llm.chat([{ role: 'user', content: filterPrompt }], 2048);
+          try {
+            const filterResult = await llm.chat([{ role: 'user', content: filterPrompt }], 2048);
+            try {
+              const parsed = JSON.parse(filterResult.text);
+              relevantClauses = parsed.relevantClauses || [];
+            } catch {
+              relevantClauses = allClauses.map((_, i) => ({
+                index: i + 1,
+                reasoning: 'Cláusula incluida por defecto (error en procesamiento de IA)'
+              }));
+            }
+          } catch (e: any) {
+            console.log('[CHECKLIST] IA falló, usando fallback determinístico:', e.message);
+            relevantClauses = [];
+          }
+        }
 
-        let relevantClauses: Array<{ index: number; reasoning: string }> = [];
-        try {
-          const parsed = JSON.parse(filterResult.text);
-          relevantClauses = parsed.relevantClauses || [];
-        } catch {
-          // Si falla el parseo, usar todas las cláusulas con razonamiento genérico
+        // Fallback determinístico: si la IA falló o hay demasiadas cláusulas, usar todas
+        if (relevantClauses.length === 0) {
           relevantClauses = allClauses.map((_, i) => ({
             index: i + 1,
-            reasoning: 'Cláusula incluida por defecto (error en procesamiento de IA)'
+            reasoning: 'Cláusula incluida (generación determinística)'
           }));
         }
 
