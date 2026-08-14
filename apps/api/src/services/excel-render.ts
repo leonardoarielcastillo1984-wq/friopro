@@ -91,10 +91,12 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
   wb.created = new Date();
 
   const sheetName = (metadata.title || 'Documento').substring(0, 31).replace(/[\\/?*[\]:]/g, '');
+  const maxTableCols = Math.max(0, ...sections.filter(s => s.type === 'table' && s.columns).map(s => s.columns!.length));
+  const orientation = maxTableCols > 10 ? 'landscape' : 'portrait';
   const ws = wb.addWorksheet(sheetName || 'Documento', {
     pageSetup: {
       paperSize: 9, // A4
-      orientation: 'portrait',
+      orientation,
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 0,
@@ -105,11 +107,10 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
     views: [{ showGridLines: false }],
   });
 
-  // Columnas base — 8 columnas para flexibilidad
-  ws.columns = [
-    { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 },
-    { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 },
-  ];
+  // Columnas base — 8 columnas para header/footer, se expande dinámicamente para tablas
+  const baseColCount = 8;
+  const baseColWidth = 18;
+  ws.columns = Array.from({ length: baseColCount }, () => ({ width: baseColWidth }));
 
   const primaryArgb = hexToArgb(template.primaryColor || '#1e40af');
   const secondaryArgb = hexToArgb(template.secondaryColor || '#64748b');
@@ -324,7 +325,14 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
 
     } else if (section.type === 'table' && section.columns) {
       const cols = section.columns;
-      const numCols = Math.min(cols.length, 8);
+      const numCols = cols.length;
+
+      // Expand worksheet columns if table needs more than base
+      if (numCols > baseColCount) {
+        for (let c = ws.columns.length; c < numCols; c++) {
+          ws.getColumn(c + 1).width = baseColWidth;
+        }
+      }
 
       // Header row
       const headerRow = ws.getRow(row);
@@ -333,7 +341,7 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
         cell.value = cols[c];
         cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: primaryArgb } };
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
         cell.border = {
           top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
           bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -375,16 +383,17 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
   }
 
   // ── FOOTER: QR + Trazabilidad ──
+  const totalCols = Math.max(baseColCount, maxTableCols);
   row += 1;
   ws.getRow(row).height = 6;
   row++;
 
   // Línea separadora
-  ws.mergeCells(row, 1, row, 8);
+  ws.mergeCells(row, 1, row, totalCols);
   ws.getCell(row, 1).border = { top: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
   row++;
 
-  // QR image (col 1-2) | Trazabilidad info (col 3-8)
+  // QR image (col 1-2) | Trazabilidad info (col 3-totalCols)
   try {
     console.log('[EXCEL] QR buffer len:', qrBuffer.length, 'firstBytes:', qrBuffer.slice(0, 4).toString('hex'));
     const imageId = (wb as any).addImage({ buffer: qrBuffer, extension: 'png' });
@@ -394,7 +403,7 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
     });
   } catch (e) { console.log('[EXCEL] QR addImage error:', e); /* QR fails silently */ }
 
-  ws.mergeCells(row, 3, row, 8);
+  ws.mergeCells(row, 3, row, totalCols);
   const traceCell = ws.getCell(row, 3);
   traceCell.value = 'TRAZABILIDAD DOCUMENTAL';
   traceCell.font = { bold: true, size: 9, color: { argb: secondaryArgb } };
@@ -411,7 +420,7 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
   ].filter(Boolean);
 
   for (const line of traceLines) {
-    ws.mergeCells(row, 3, row, 8);
+    ws.mergeCells(row, 3, row, totalCols);
     const cell = ws.getCell(row, 3);
     cell.value = line;
     cell.font = { size: 8, color: { argb: 'FF64748B' } };
