@@ -338,8 +338,6 @@ export default function ReportPage() {
             <ChevronLeft className="w-4 h-4" />
             Volver a la auditoría
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">Informe de Auditoría</h1>
-          <p className="text-gray-600">{audit.code} - {audit.title}</p>
         </div>
         <div className="flex gap-2">
           {editMode ? (
@@ -395,9 +393,17 @@ export default function ReportPage() {
         {/* Report Header */}
         <div className="border-b border-gray-200 pb-6 mb-6">
           <div className="text-center">
-            <p className="text-sm text-gray-500 uppercase tracking-wider">
-              {companySettings?.companyName || 'SGI 360'}
-            </p>
+            {companySettings?.logoUrl ? (
+              <img
+                src={companySettings.logoUrl}
+                alt={companySettings.companyName || 'Logo'}
+                className="mx-auto max-h-20 max-w-[200px] object-contain mb-2"
+              />
+            ) : (
+              <p className="text-sm text-gray-500 uppercase tracking-wider mb-1">
+                {companySettings?.companyName || 'SGI 360'}
+              </p>
+            )}
             <h1 className="text-2xl font-bold text-gray-900 mt-1">INFORME DE AUDITORÍA</h1>
             {companySettings?.headerText && (
               <p className="text-sm text-gray-600 mt-2 italic">{companySettings.headerText}</p>
