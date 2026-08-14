@@ -390,14 +390,15 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
         sections: data.sections as any,
       });
       const isExcel = data.exportType === 'EXCEL_CONTROLLED';
-      reply
+      return reply
         .header('Content-Type', isExcel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf')
         .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
         .header('X-Export-Id', result.exportId)
         .header('X-File-Hash', result.fileHash)
         .send(result.buffer);
     } catch (err: any) {
-      reply.code(400).send({ error: err.message || 'Error en exportación' });
+      req.log.error({ err }, 'Export failed');
+      return reply.code(400).send({ error: err.message || 'Error en exportación' });
     }
   });
 
