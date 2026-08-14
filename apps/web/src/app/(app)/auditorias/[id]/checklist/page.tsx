@@ -307,6 +307,14 @@ export default function ChecklistPage() {
                   <p className="text-sm text-gray-500 mb-2">
                     <span className="font-medium">Verificar:</span> {item.whatToCheck}
                   </p>
+                  {item.customFields?.expectedEvidence && (
+                    <div className="mt-1 mb-2 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-amber-900">
+                        <span className="font-medium">Evidencia esperada:</span> {item.customFields.expectedEvidence}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
               <button

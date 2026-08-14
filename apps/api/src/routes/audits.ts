@@ -2106,7 +2106,7 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
           }));
         });
 
-        let relevantClauses: Array<{ index: number; reasoning: string }> = [];
+        let relevantClauses: Array<{ index: number; reasoning: string; expectedEvidence?: string }> = [];
 
         if (filterMode === 'all') {
           // Modo "todas": traer todas las cláusulas sin filtrar por IA
@@ -2144,6 +2144,7 @@ INSTRUCCIONES:
 - Por ejemplo, si el proceso es "Compras", incluye cláusulas sobre evaluación de proveedores, criterios de selección, verificación de productos comprados, etc.
 - Excluye cláusulas que no apliquen al proceso específico (ej: diseño si es un proceso de compras).
 - Si el proceso/área no está especificado o es genérico, incluye las cláusulas más relevantes para una auditoría general.
+- Para cada cláusula relevante, indica qué evidencia esperada debería buscar el auditor (ej: "Mapa de procesos", "Perfil de puesto", "Matriz de polivalencia", "Registro de capacitación", "Procedimiento documentado", etc.).
 
 Cláusulas disponibles (lote ${batchNum}/${totalBatches}, índices ${batchStart + 1} a ${batchEnd}):
 ${batchClauses.map((c, i) => `${batchStart + i + 1}. ${c.clauseNumber} - ${c.title}`).join('\n')}
@@ -2151,11 +2152,11 @@ ${batchClauses.map((c, i) => `${batchStart + i + 1}. ${c.clauseNumber} - ${c.tit
 Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
 {
   "relevantClauses": [
-    { "index": ${batchStart + 1}, "reasoning": "por qué es relevante" }
+    { "index": ${batchStart + 1}, "reasoning": "por qué es relevante", "expectedEvidence": "qué evidencia buscar" }
   ]
 }
 
-Donde "index" es el número de índice global (basado en 1) de la cláusula relevante.`;
+Donde "index" es el número de índice global (basado en 1) de la cláusula relevante, "reasoning" es la justificación y "expectedEvidence" describe el tipo de documento o registro que el auditor debería verificar.`;
 
             try {
               const batchResult = await llm.chat([{ role: 'user', content: batchPrompt }], 2048);
@@ -2165,7 +2166,7 @@ Donde "index" es el número de índice global (basado en 1) de la cláusula rele
                 // Validar que los índices estén en el rango del lote actual
                 for (const rc of batchRelevant) {
                   if (rc.index >= batchStart + 1 && rc.index <= batchEnd) {
-                    relevantClauses.push({ index: rc.index, reasoning: rc.reasoning || '' });
+                    relevantClauses.push({ index: rc.index, reasoning: rc.reasoning || '', expectedEvidence: rc.expectedEvidence || '' });
                   }
                 }
                 console.log(`[CHECKLIST] Lote ${batchNum}/${totalBatches}: ${batchRelevant.length} relevantes de ${batchClauses.length}`);
@@ -2209,6 +2210,7 @@ Donde "index" es el número de índice global (basado en 1) de la cláusula rele
               weight: 1,
               order: index,
               aiSuggestion: relevantInfo?.reasoning || null,
+              customFields: { expectedEvidence: relevantInfo?.expectedEvidence || '' },
             };
           });
 
