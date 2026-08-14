@@ -389,30 +389,44 @@ export default function ReportPage() {
       </div>
 
       {/* Report Content - Print-friendly */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 print:shadow-none print:border-none">
-        {/* Report Header */}
-        <div className="border-b border-gray-200 pb-6 mb-6">
-          <div className="text-center">
-            {companySettings?.logoUrl ? (
-              <img
-                src={companySettings.logoUrl}
-                alt={companySettings.companyName || 'Logo'}
-                className="mx-auto max-h-20 max-w-[200px] object-contain mb-2"
-              />
-            ) : (
-              <p className="text-sm text-gray-500 uppercase tracking-wider mb-1">
-                {companySettings?.companyName || 'SGI 360'}
-              </p>
-            )}
-            <h1 className="text-2xl font-bold text-gray-900 mt-1">INFORME DE AUDITORÍA</h1>
-            {companySettings?.headerText && (
-              <p className="text-sm text-gray-600 mt-2 italic">{companySettings.headerText}</p>
-            )}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 print:shadow-none print:border-none print:p-0">
+        {/* Report Header — logo left, status right, blue line, then code/title */}
+        <div className="border-b-2 border-blue-700 pb-3 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {companySettings?.logoUrl ? (
+                <img
+                  src={companySettings.logoUrl}
+                  alt={companySettings.companyName || 'Logo'}
+                  className="max-h-14 max-w-[160px] object-contain"
+                />
+              ) : (
+                <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+                  {companySettings?.companyName || 'SGI 360'}
+                </span>
+              )}
+            </div>
+            <div className="text-right">
+              <span className="inline-block text-xs font-bold text-green-700 border border-green-600 px-2 py-1 rounded">
+                VIGENTE
+              </span>
+            </div>
           </div>
-          <div className="text-center mt-4 pt-4 border-t border-gray-100">
-            <p className="text-xl text-gray-700 font-medium">{audit.code}</p>
-            <p className="text-lg text-gray-600 mt-1">{audit.title}</p>
+          <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+            <div>
+              <strong>Código:</strong>{' '}
+              <span className="font-mono font-bold text-blue-700">{audit.code}</span>
+            </div>
+            <div className="font-semibold">Auditorías</div>
           </div>
+        </div>
+        {/* Title block */}
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">INFORME DE AUDITORÍA</h1>
+          <p className="text-lg text-gray-600 mt-1">{audit.title}</p>
+          {companySettings?.headerText && (
+            <p className="text-sm text-gray-600 mt-2 italic">{companySettings.headerText}</p>
+          )}
         </div>
 
         {/* Executive Summary */}
@@ -605,7 +619,7 @@ export default function ReportPage() {
                       value={finding.severity}
                       onChange={(e) => updateFindingSeverity(finding.id, e.target.value)}
                       disabled={patchingSeverity === finding.id}
-                      className={`text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 disabled:opacity-50 ${
+                      className={`print:hidden text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 disabled:opacity-50 ${
                         finding.severity === 'CRITICAL' ? 'bg-red-100 text-red-800' :
                         finding.severity === 'MAJOR' ? 'bg-orange-100 text-orange-800' :
                         finding.severity === 'MINOR' ? 'bg-yellow-100 text-yellow-800' :
@@ -617,10 +631,18 @@ export default function ReportPage() {
                       <option value="MINOR">Menor</option>
                       <option value="TRIVIAL">Trivial</option>
                     </select>
+                    <span className={`hidden print:inline-block text-xs rounded-full px-2 py-1 font-medium ${
+                      finding.severity === 'CRITICAL' ? 'bg-red-100 text-red-800' :
+                      finding.severity === 'MAJOR' ? 'bg-orange-100 text-orange-800' :
+                      finding.severity === 'MINOR' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {SEVERITY_LABELS[finding.severity] || finding.severity}
+                    </span>
                     <select
                       value={finding.type}
                       onChange={(e) => updateFindingType(finding.id, e.target.value)}
-                      className={`text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${
+                      className={`print:hidden text-xs rounded-full px-2 py-1 border-0 cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${
                         finding.type === 'NON_CONFORMITY' ? 'bg-red-100 text-red-800' :
                         finding.type === 'OBSERVATION' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-blue-100 text-blue-800'
@@ -630,6 +652,13 @@ export default function ReportPage() {
                       <option value="OBSERVATION">Observación</option>
                       <option value="OPPORTUNITY">Oportunidad de Mejora</option>
                     </select>
+                    <span className={`hidden print:inline-block text-xs rounded-full px-2 py-1 font-medium ${
+                      finding.type === 'NON_CONFORMITY' ? 'bg-red-100 text-red-800' :
+                      finding.type === 'OBSERVATION' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-blue-100 text-blue-800'
+                    }`}>
+                      {FINDING_TYPE_LABELS[finding.type] || finding.type}
+                    </span>
                   </div>
                   {(() => {
                     const matchItem = audit ? checklist.find(item => `NC-${audit.code}-${item.order + 1}` === finding.code) : null;
@@ -660,7 +689,7 @@ export default function ReportPage() {
                   ) : (
                     <button
                       onClick={() => createNCRFromFinding(finding.id)}
-                      className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                      className="mt-3 print:hidden inline-flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
                     >
                       <Plus className="w-3 h-3" />
                       Crear No Conformidad
@@ -737,14 +766,50 @@ export default function ReportPage() {
       {/* Print Styles */}
       <style jsx global>{`
         @media print {
-          .print\:hidden {
+          @page {
+            size: A4 portrait;
+            margin: 15mm;
+          }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          /* Hide sidebar, topbar, and all navigation */
+          aside, nav, header[class*="sidebar"], [class*="sidebar"],
+          .print\\:hidden {
             display: none !important;
           }
-          .print\:shadow-none {
+          /* Reset layout for print */
+          body, main, div[class*="ml-"] {
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: 100% !important;
+          }
+          .print\\:shadow-none {
             box-shadow: none !important;
           }
-          .print\:border-none {
+          .print\\:border-none {
             border: none !important;
+          }
+          .print\\:p-0 {
+            padding: 0 !important;
+          }
+          /* Avoid breaking inside cards and findings */
+          .bg-blue-50, .bg-green-50, .bg-red-50, .bg-yellow-50,
+          .bg-orange-50, .bg-gray-50,
+          .border, .rounded-lg {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          /* Section headings stay with their content */
+          h2, h3 {
+            break-after: avoid;
+            page-break-after: avoid;
+          }
+          /* Findings cards don't split */
+          .space-y-4 > div {
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
         }
       `}</style>
