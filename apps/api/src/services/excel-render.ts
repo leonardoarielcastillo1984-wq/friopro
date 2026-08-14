@@ -122,12 +122,23 @@ export async function renderExcel(options: ExcelExportRequest): Promise<ExcelRen
       const logoRes = await fetch(template.headerLogoUrl);
       if (logoRes.ok) {
         const logoBuf = Buffer.from(await logoRes.arrayBuffer());
-        const logoExt = template.headerLogoUrl.match(/\.(png|jpg|jpeg|gif|webp)$/i)?.[1]?.toLowerCase() || 'png';
-        const imageId = (wb as any).addImage(logoBuf, logoExt);
-        (ws as any).addImage(imageId, {
-          tl: { col: 0, row: 0 },
-          ext: { width: 140, height: 50 },
-        });
+        // ExcelJS only supports png, jpg, jpeg, gif — NOT webp/svg
+        let logoExt = template.headerLogoUrl.match(/[?&]format=(png|jpg|jpeg|gif)/i)?.[1]?.toLowerCase()
+          || template.headerLogoUrl.replace(/[?#].*$/, '').match(/\.(png|jpe?g|gif)$/i)?.[1]?.toLowerCase()
+          || null;
+        // Fallback: detect from magic bytes
+        if (!logoExt && logoBuf.length >= 4) {
+          if (logoBuf[0] === 0x89 && logoBuf[1] === 0x50) logoExt = 'png';
+          else if (logoBuf[0] === 0xFF && logoBuf[1] === 0xD8) logoExt = 'jpg';
+          else if (logoBuf[0] === 0x47 && logoBuf[1] === 0x49) logoExt = 'gif';
+        }
+        if (logoExt && logoBuf.length > 0) {
+          const imageId = (wb as any).addImage(logoBuf, logoExt);
+          (ws as any).addImage(imageId, {
+            tl: { col: 0, row: 0 },
+            ext: { width: 140, height: 50 },
+          });
+        }
       }
     } catch { /* logo fetch fails silently */ }
   }
