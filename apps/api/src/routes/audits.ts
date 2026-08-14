@@ -862,6 +862,23 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // DELETE /audit/audits/:id/checklist — Eliminar todos los items del checklist de una auditoría
+  app.delete(
+    '/audit/audits/:id/checklist',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const result = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditChecklistItem.deleteMany({
+          where: { auditId: req.params.id },
+        });
+      });
+
+      return reply.send({ success: true, deleted: result.count });
+    },
+  );
+
   // DELETE /audit/checklist/:id — Eliminar un item del checklist
   app.delete(
     '/audit/checklist/:id',

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle, Sparkles, Loader2, Plus, X, Trash2, ListChecks } from 'lucide-react';
+import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle, Sparkles, Loader2, Plus, X, Trash2, ListChecks, Pencil } from 'lucide-react';
 
 type ChecklistItem = {
   id: string;
@@ -51,6 +51,8 @@ export default function ChecklistPage() {
   const [availableClauses, setAvailableClauses] = useState<any[]>([]);
   const [selectedClauses, setSelectedClauses] = useState<Set<string>>(new Set());
   const [loadingClauses, setLoadingClauses] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{ clause: string; requirement: string; whatToCheck: string; expectedEvidence: string }>({ clause: '', requirement: '', whatToCheck: '', expectedEvidence: '' });
   const [newItem, setNewItem] = useState({ clause: '', requirement: '', whatToCheck: '' });
   const [suggestedClauses, setSuggestedClauses] = useState<any[]>([]);
   const [searchingClause, setSearchingClause] = useState(false);
@@ -196,6 +198,61 @@ export default function ChecklistPage() {
     }
   }
 
+  async function deleteAllItems() {
+    if (items.length === 0) return;
+    if (!confirm(`¿Está seguro de eliminar TODOS los ${items.length} items del checklist? Esta acción no se puede deshacer.`)) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      await apiFetch(`/audit/audits/${auditId}/checklist`, { method: 'DELETE' });
+      setItems([]);
+      setProgress({ answered: 0, total: 0 });
+    } catch (err: any) {
+      setError(err?.error || 'Error al eliminar el checklist');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function startEditItem(item: ChecklistItem) {
+    setEditingItemId(item.id);
+    setEditDraft({
+      clause: item.clause,
+      requirement: item.requirement,
+      whatToCheck: item.whatToCheck,
+      expectedEvidence: item.customFields?.expectedEvidence || '',
+    });
+  }
+
+  function cancelEditItem() {
+    setEditingItemId(null);
+    setEditDraft({ clause: '', requirement: '', whatToCheck: '', expectedEvidence: '' });
+  }
+
+  async function saveEditItem(itemId: string) {
+    try {
+      setSaving(true);
+      setError(null);
+      await apiFetch(`/audit/checklist/${itemId}`, {
+        method: 'PATCH',
+        json: {
+          clause: editDraft.clause,
+          requirement: editDraft.requirement,
+          whatToCheck: editDraft.whatToCheck,
+          customFields: { ...items.find(i => i.id === itemId)?.customFields, expectedEvidence: editDraft.expectedEvidence },
+        },
+      });
+      setEditingItemId(null);
+      setEditDraft({ clause: '', requirement: '', whatToCheck: '', expectedEvidence: '' });
+      await loadChecklist();
+    } catch (err: any) {
+      setError(err?.error || 'Error al guardar cambios');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function updateProgress(itemsList: ChecklistItem[]) {
     const answered = itemsList.filter(i => i.response !== null).length;
     setProgress({ answered, total: itemsList.length });
@@ -304,6 +361,16 @@ export default function ChecklistPage() {
               {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
               {aiLoading ? 'Generando...' : 'Regenerar desde normas'}
             </button>
+            {items.length > 0 && (
+              <button
+                onClick={deleteAllItems}
+                disabled={saving}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors border border-red-200 text-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+                Eliminar todos
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -318,32 +385,107 @@ export default function ChecklistPage() {
                   {index + 1}
                 </span>
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                      {item.clause}
-                    </span>
-                  </div>
-                  <p className="text-gray-900 font-medium mb-2">{item.requirement}</p>
-                  <p className="text-sm text-gray-500 mb-2">
-                    <span className="font-medium">Verificar:</span> {item.whatToCheck}
-                  </p>
-                  {item.customFields?.expectedEvidence && (
-                    <div className="mt-1 mb-2 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-amber-900">
-                        <span className="font-medium">Evidencia esperada:</span> {item.customFields.expectedEvidence}
-                      </p>
+                  {editingItemId === item.id ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-medium text-gray-500 w-20">Cláusula:</label>
+                        <input
+                          type="text"
+                          value={editDraft.clause}
+                          onChange={(e) => setEditDraft({ ...editDraft, clause: e.target.value })}
+                          className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 block mb-1">Requisito:</label>
+                        <input
+                          type="text"
+                          value={editDraft.requirement}
+                          onChange={(e) => setEditDraft({ ...editDraft, requirement: e.target.value })}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 block mb-1">Verificar:</label>
+                        <textarea
+                          value={editDraft.whatToCheck}
+                          onChange={(e) => setEditDraft({ ...editDraft, whatToCheck: e.target.value })}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows={3}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 block mb-1">Evidencia esperada:</label>
+                        <input
+                          type="text"
+                          value={editDraft.expectedEvidence}
+                          onChange={(e) => setEditDraft({ ...editDraft, expectedEvidence: e.target.value })}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Ej: Mapa de procesos, Perfil de puesto..."
+                        />
+                      </div>
                     </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                          {item.clause}
+                        </span>
+                      </div>
+                      <p className="text-gray-900 font-medium mb-2">{item.requirement}</p>
+                      <p className="text-sm text-gray-500 mb-2">
+                        <span className="font-medium">Verificar:</span> {item.whatToCheck}
+                      </p>
+                      {item.customFields?.expectedEvidence && (
+                        <div className="mt-1 mb-2 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                          <p className="text-sm text-amber-900">
+                            <span className="font-medium">Evidencia esperada:</span> {item.customFields.expectedEvidence}
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => deleteItem(item.id)}
-                className="flex-shrink-0 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                title="Eliminar item"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col gap-1 flex-shrink-0">
+                {editingItemId === item.id ? (
+                  <>
+                    <button
+                      onClick={() => saveEditItem(item.id)}
+                      disabled={saving}
+                      className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      title="Guardar cambios"
+                    >
+                      <Save className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={cancelEditItem}
+                      className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
+                      title="Cancelar"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => startEditItem(item)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Editar item"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteItem(item.id)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Eliminar item"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* AI Suggestion */}
