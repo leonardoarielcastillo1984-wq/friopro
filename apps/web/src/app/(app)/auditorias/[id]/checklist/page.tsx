@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle, Sparkles, Loader2, Plus, X, Trash2 } from 'lucide-react';
+import { ChevronLeft, Save, AlertCircle, CheckCircle, XCircle, HelpCircle, Sparkles, Loader2, Plus, X, Trash2, ListChecks } from 'lucide-react';
 
 type ChecklistItem = {
   id: string;
@@ -47,6 +47,10 @@ export default function ChecklistPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [availableClauses, setAvailableClauses] = useState<any[]>([]);
+  const [selectedClauses, setSelectedClauses] = useState<Set<string>>(new Set());
+  const [loadingClauses, setLoadingClauses] = useState(false);
   const [newItem, setNewItem] = useState({ clause: '', requirement: '', whatToCheck: '' });
   const [suggestedClauses, setSuggestedClauses] = useState<any[]>([]);
   const [searchingClause, setSearchingClause] = useState(false);
@@ -78,8 +82,24 @@ export default function ChecklistPage() {
     }
   }
 
-  async function generateAiChecklist(filterMode: 'relevant' | 'all') {
+  async function loadAvailableClauses() {
+    try {
+      setLoadingClauses(true);
+      const res = await apiFetch(`/audit/audits/${auditId}/normative-clauses`) as any;
+      if (res.clauses) {
+        setAvailableClauses(res.clauses);
+        setSelectedClauses(new Set());
+      }
+    } catch (err) {
+      setError('Error al cargar cláusulas de normas');
+    } finally {
+      setLoadingClauses(false);
+    }
+  }
+
+  async function generateAiChecklist(filterMode: 'relevant' | 'all' | 'manual', selectedClauseNumbers?: string[]) {
     setShowFilterModal(false);
+    setShowManualModal(false);
     try {
       setAiLoading(true);
       setError(null);
@@ -87,7 +107,7 @@ export default function ChecklistPage() {
       try {
         const res = await apiFetch(`/audit/audits/${auditId}/generate-checklist-from-normative`, {
           method: 'POST',
-          json: { filterMode },
+          json: selectedClauseNumbers ? { filterMode, selectedClauses: selectedClauseNumbers } : { filterMode },
         }) as any;
         if (res.message) {
           await loadChecklist();
@@ -578,7 +598,133 @@ export default function ChecklistPage() {
                   </div>
                 </div>
               </button>
+              <button
+                onClick={() => { setShowFilterModal(false); setShowManualModal(true); loadAvailableClauses(); }}
+                className="w-full text-left p-4 border-2 border-blue-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
+              >
+                <div className="flex items-start gap-3">
+                  <ListChecks className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div className="font-medium text-gray-900">Selección manual de cláusulas</div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      Elegí manualmente qué cláusulas incluir del listado de normas (ISO 9001, IATF 16949, etc.). La IA generará la evidencia esperada para cada una.
+                    </div>
+                  </div>
+                </div>
+              </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Selección manual de cláusulas */}
+      {showManualModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Selección manual de cláusulas</h3>
+              <button onClick={() => setShowManualModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {loadingClauses ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                <span className="ml-2 text-gray-500">Cargando cláusulas...</span>
+              </div>
+            ) : availableClauses.length === 0 ? (
+              <p className="text-sm text-gray-500 py-8 text-center">
+                No hay cláusulas disponibles. Asegurate de que las normas estén cargadas y procesadas.
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-3 gap-2">
+                  <p className="text-sm text-gray-600">
+                    Seleccioná las cláusulas a incluir en el checklist:
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedClauses(new Set(availableClauses.map(c => c.clauseNumber)))}
+                      className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Tildar todas
+                    </button>
+                    <button
+                      onClick={() => setSelectedClauses(new Set())}
+                      className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Destildar todas
+                    </button>
+                  </div>
+                </div>
+                <div className="overflow-y-auto flex-1 border border-gray-200 rounded-lg">
+                  {Object.entries(
+                    availableClauses.reduce<Record<string, any[]>>((acc, c) => {
+                      const key = c.standardCode || c.normativeCode || 'Norma';
+                      if (!acc[key]) acc[key] = [];
+                      acc[key].push(c);
+                      return acc;
+                    }, {})
+                  ).map(([standardCode, clauses]) => (
+                    <div key={standardCode} className="mb-2">
+                      <div className="sticky top-0 bg-gray-50 px-3 py-2 border-b border-gray-200 font-medium text-sm text-gray-700 z-10">
+                        {standardCode} ({clauses.filter(c => selectedClauses.has(c.clauseNumber)).length}/{clauses.length})
+                      </div>
+                      {clauses.map((clause) => (
+                        <label
+                          key={clause.id || clause.clauseNumber}
+                          className="flex items-start gap-3 px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedClauses.has(clause.clauseNumber)}
+                            onChange={() => {
+                              const next = new Set(selectedClauses);
+                              if (next.has(clause.clauseNumber)) {
+                                next.delete(clause.clauseNumber);
+                              } else {
+                                next.add(clause.clauseNumber);
+                              }
+                              setSelectedClauses(next);
+                            }}
+                            className="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-medium text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">
+                                {clause.clauseNumber}
+                              </span>
+                              <span className="text-sm text-gray-900 truncate">{clause.title}</span>
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-sm text-gray-600">
+                    {selectedClauses.size} cláusula(s) seleccionada(s)
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowManualModal(false)}
+                      className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => generateAiChecklist('manual', Array.from(selectedClauses))}
+                      disabled={selectedClauses.size === 0 || aiLoading}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {aiLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {aiLoading ? 'Generando...' : `Generar checklist (${selectedClauses.size})`}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

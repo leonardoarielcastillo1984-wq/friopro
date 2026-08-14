@@ -2011,6 +2011,50 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
     return reply.send({ standards });
   });
 
+  // GET /audit/audits/:id/normative-clauses — Listar todas las cláusulas disponibles para las normas del audit
+  app.get('/audit/audits/:id/normative-clauses', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const audit = await app.runWithDbContext(req, async (tx) => {
+      return tx.audit.findUnique({ where: { id: req.params.id, tenantId } });
+    });
+    if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
+
+    const isoStandards = audit.isoStandard as string[] || [];
+    if (isoStandards.length === 0) {
+      return reply.send({ clauses: [] });
+    }
+
+    const normativeStandards = await app.runWithDbContext(req, async (tx) => {
+      return tx.normativeStandard.findMany({
+        where: { tenantId, status: 'READY', code: { in: isoStandards }, deletedAt: null },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          clauses: {
+            where: { status: 'ACTIVE', deletedAt: null },
+            select: { id: true, clauseNumber: true, title: true },
+            orderBy: { extractionOrder: 'asc' },
+          },
+        },
+      });
+    });
+
+    const clauses = normativeStandards.flatMap((ns) =>
+      ns.clauses.map((c) => ({
+        id: c.id,
+        clauseNumber: c.clauseNumber,
+        title: c.title,
+        standardCode: ns.code,
+        standardName: ns.name,
+      }))
+    );
+
+    return reply.send({ clauses });
+  });
+
   // GET /audit/normative-clauses — Buscar cláusulas por número y código de norma
   app.get('/audit/normative-clauses', async (req: FastifyRequest<{ Querystring: { clauseNumber: string; standardCode: string } }>, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -2051,7 +2095,8 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
   app.post(
     '/audit/audits/:id/generate-checklist-from-normative',
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
-      const filterMode = (req.body as any)?.filterMode || 'relevant'; // 'relevant' | 'all'
+      const filterMode = (req.body as any)?.filterMode || 'relevant'; // 'relevant' | 'all' | 'manual'
+      const selectedClauseNumbers: string[] = (req.body as any)?.selectedClauses || [];
       const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
@@ -2114,6 +2159,93 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
             index: i + 1,
             reasoning: 'Incluida por selección manual (todas las cláusulas)'
           }));
+        } else if (filterMode === 'manual' && selectedClauseNumbers.length > 0) {
+          // Modo "manual": filtrar solo las cláusulas seleccionadas por el usuario
+          const selectedIndices: number[] = [];
+          allClauses.forEach((clause, i) => {
+            if (selectedClauseNumbers.includes(clause.clauseNumber)) {
+              selectedIndices.push(i + 1);
+            }
+          });
+
+          console.log(`[CHECKLIST] Modo manual: ${selectedIndices.length} cláusulas seleccionadas de ${allClauses.length}`);
+
+          // Usar IA para generar expectedEvidence de las cláusulas seleccionadas (en lotes)
+          if (llm && selectedIndices.length > 0) {
+            const BATCH_SIZE = 50;
+            const processContext = [
+              audit.title ? `Título: ${audit.title}` : '',
+              audit.area ? `Área: ${audit.area}` : '',
+              audit.process ? `Proceso: ${audit.process}` : '',
+            ].filter(Boolean).join(', ');
+
+            for (let batchStart = 0; batchStart < allClauses.length; batchStart += BATCH_SIZE) {
+              const batchEnd = Math.min(batchStart + BATCH_SIZE, allClauses.length);
+              const batchSelected = selectedIndices.filter(idx => idx >= batchStart + 1 && idx <= batchEnd);
+              if (batchSelected.length === 0) continue;
+
+              const batchClausesInfo = batchSelected.map(idx => {
+                const c = allClauses[idx - 1];
+                return `${idx}. ${c.clauseNumber} - ${c.title}`;
+              }).join('\n');
+
+              const evidencePrompt = `Eres un auditor experto ISO. Para cada cláusula seleccionada, indica qué evidencia esperada debería buscar el auditor.
+
+Normas ISO: ${isoStandards.join(', ')}
+${processContext}
+
+Cláusulas seleccionadas:
+${batchClausesInfo}
+
+Para cada cláusula, sugiere 1-3 tipos de evidencia o documentos que el auditor debería verificar (ej: "Mapa de procesos", "Perfil de puesto", "Matriz de polivalencia", "Registro de capacitación", "Procedimiento documentado", etc.).
+
+Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
+{
+  "evidence": [
+    { "index": ${batchSelected[0]}, "expectedEvidence": "descripción de la evidencia a buscar" }
+  ]
+}`;
+
+              try {
+                const evidenceResult = await llm.chat([{ role: 'user', content: evidencePrompt }], 2048);
+                try {
+                  const parsed = JSON.parse(evidenceResult.text);
+                  const evidenceList = parsed.evidence || [];
+                  for (const ev of evidenceList) {
+                    if (selectedIndices.includes(ev.index)) {
+                      relevantClauses.push({
+                        index: ev.index,
+                        reasoning: 'Cláusula seleccionada manualmente',
+                        expectedEvidence: ev.expectedEvidence || '',
+                      });
+                    }
+                  }
+                  // Si la IA no devolvió evidence para alguna, incluirla sin evidence
+                  for (const idx of batchSelected) {
+                    if (!relevantClauses.some(rc => rc.index === idx)) {
+                      relevantClauses.push({ index: idx, reasoning: 'Cláusula seleccionada manualmente', expectedEvidence: '' });
+                    }
+                  }
+                } catch {
+                  for (const idx of batchSelected) {
+                    relevantClauses.push({ index: idx, reasoning: 'Cláusula seleccionada manualmente', expectedEvidence: '' });
+                  }
+                }
+              } catch (e: any) {
+                console.log(`[CHECKLIST] IA evidence falló:`, e.message);
+                for (const idx of batchSelected) {
+                  relevantClauses.push({ index: idx, reasoning: 'Cláusula seleccionada manualmente', expectedEvidence: '' });
+                }
+              }
+            }
+          } else {
+            // Sin IA, incluir las seleccionadas sin evidence
+            relevantClauses = selectedIndices.map(idx => ({
+              index: idx,
+              reasoning: 'Cláusula seleccionada manualmente',
+              expectedEvidence: '',
+            }));
+          }
         } else if (llm) {
           // Modo "relevantes": usar IA para filtrar cláusulas relevantes según el proceso/área
           // Procesar en lotes de 50 para no exceder límites de contexto
