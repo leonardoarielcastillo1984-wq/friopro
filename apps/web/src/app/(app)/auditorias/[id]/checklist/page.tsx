@@ -565,17 +565,19 @@ export default function ChecklistPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Evidencia</label>
-                <input
-                  type="text"
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Documentos / Evidencia revisada
+                </label>
+                <textarea
                   value={item.evidence || ''}
                   onChange={(e) => {
                     const next = items.map(i => (i.id === item.id ? { ...i, evidence: e.target.value } : i));
                     setItems(next);
                   }}
                   onBlur={(e) => updateItem(item.id, { evidence: e.target.value })}
-                  placeholder="URL o referencia de evidencia..."
+                  placeholder="Ej: Procedimiento de compras rev.3, Registro de evaluación de proveedores..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={2}
                 />
               </div>
             </div>

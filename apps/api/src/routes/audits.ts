@@ -882,6 +882,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
         : item.response === 'DOES_NOT_COMPLY' ? 'No Cumple'
         : item.response === 'NOT_APPLICABLE' ? 'No Aplica'
         : 'Sin respuesta aún';
+      const evidenceReviewed = item.evidence?.trim() || '';
 
       try {
         const llm = createSmartLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
@@ -892,13 +893,15 @@ Cláusula: ${item.clause}
 Requisito: ${item.requirement}
 Qué verificar: ${item.whatToCheck}
 Evidencia esperada: ${customFields.expectedEvidence || 'No especificada'}
+Documentos / evidencia revisada por el auditor: ${evidenceReviewed || 'No especificada'}
 Resultado del auditor: ${responseLabel}
 
 INSTRUCCIONES:
-- Si el resultado es "Cumple": redactá una observación positiva que mencione qué evidencia se verificó y cómo se cumple el requisito.
-- Si el resultado es "No Cumple": redactá una no conformidad indicando qué faltó o qué no se encontró.
+- Si el resultado es "Cumple": redactá una observación positiva que mencione EXPLÍCITAMENTE los documentos o elementos revisados (campo "Documentos / evidencia revisada") y cómo demuestran el cumplimiento. Ejemplo: "Se verificó cumplimiento mediante [mencionar el documento/evidencia revisada]...".
+- Si el resultado es "No Cumple": redactá una no conformidad indicando qué faltó. Si hay evidencia revisada, mencioná que no fue suficiente o no estaba disponible.
 - Si es "No Aplica": justificá brevemente por qué no aplica al proceso auditado.
 - Si es "Sin respuesta aún": redactá una observación neutral sobre qué se evaluó.
+- Si no hay documentos/evidencia revisada, redactá la observación de forma genérica basándote en el requisito.
 - Sé específico, usa lenguaje técnico ISO, máximo 2-3 oraciones.
 - NO incluyas comentarios, explicaciones ni formato extra. Solo el texto de la observación.`;
 
