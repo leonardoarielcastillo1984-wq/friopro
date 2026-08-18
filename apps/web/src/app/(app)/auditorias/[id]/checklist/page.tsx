@@ -52,6 +52,7 @@ export default function ChecklistPage() {
   const [selectedClauses, setSelectedClauses] = useState<Set<string>>(new Set());
   const [loadingClauses, setLoadingClauses] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [suggestingCommentId, setSuggestingCommentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{ clause: string; requirement: string; whatToCheck: string; expectedEvidence: string }>({ clause: '', requirement: '', whatToCheck: '', expectedEvidence: '' });
   const [newItem, setNewItem] = useState({ clause: '', requirement: '', whatToCheck: '' });
   const [suggestedClauses, setSuggestedClauses] = useState<any[]>([]);
@@ -523,7 +524,34 @@ export default function ChecklistPage() {
             {/* Comment & Evidence */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">Observaciones</label>
+                  <button
+                    onClick={async () => {
+                      setSuggestingCommentId(item.id);
+                      try {
+                        const res = await apiFetch(`/audit/checklist/${item.id}/suggest-comment`, { method: 'POST', json: {} }) as any;
+                        if (res.suggestion) {
+                          const next = items.map(i => (i.id === item.id ? { ...i, comment: res.suggestion } : i));
+                          setItems(next);
+                          await updateItem(item.id, { comment: res.suggestion });
+                        }
+                      } catch (e) {
+                        setError('Error al generar sugerencia de IA');
+                      } finally {
+                        setSuggestingCommentId(null);
+                      }
+                    }}
+                    disabled={suggestingCommentId === item.id}
+                    title="Sugerir observación con IA"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded-md hover:bg-purple-100 transition-colors disabled:opacity-50"
+                  >
+                    {suggestingCommentId === item.id
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <Sparkles className="w-3 h-3" />}
+                    {suggestingCommentId === item.id ? 'Generando...' : 'Sugerir con IA'}
+                  </button>
+                </div>
                 <textarea
                   value={item.comment || ''}
                   onChange={(e) => {

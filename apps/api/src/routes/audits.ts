@@ -862,6 +862,57 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // POST /audit/checklist/:id/suggest-comment — IA sugiere observación para un item del checklist
+  app.post(
+    '/audit/checklist/:id/suggest-comment',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const item = await app.runWithDbContext(req, async (tx) => {
+        return tx.auditChecklistItem.findUnique({
+          where: { id: req.params.id },
+          include: { audit: true },
+        });
+      });
+      if (!item) return reply.code(404).send({ error: 'Item no encontrado' });
+
+      const customFields = (item.customFields as any) || {};
+      const responseLabel = item.response === 'COMPLIES' ? 'Cumple'
+        : item.response === 'DOES_NOT_COMPLY' ? 'No Cumple'
+        : item.response === 'NOT_APPLICABLE' ? 'No Aplica'
+        : 'Sin respuesta aún';
+
+      try {
+        const llm = createSmartLLMProvider(req.tenant, app.prisma, tenantId, (req as any).auth?.userId ?? null, 'audit-generate-checklist');
+
+        const prompt = `Eres un auditor ISO experto. Redactá una observación de auditoría concreta y profesional en español.
+
+Cláusula: ${item.clause}
+Requisito: ${item.requirement}
+Qué verificar: ${item.whatToCheck}
+Evidencia esperada: ${customFields.expectedEvidence || 'No especificada'}
+Resultado del auditor: ${responseLabel}
+
+INSTRUCCIONES:
+- Si el resultado es "Cumple": redactá una observación positiva que mencione qué evidencia se verificó y cómo se cumple el requisito.
+- Si el resultado es "No Cumple": redactá una no conformidad indicando qué faltó o qué no se encontró.
+- Si es "No Aplica": justificá brevemente por qué no aplica al proceso auditado.
+- Si es "Sin respuesta aún": redactá una observación neutral sobre qué se evaluó.
+- Sé específico, usa lenguaje técnico ISO, máximo 2-3 oraciones.
+- NO incluyas comentarios, explicaciones ni formato extra. Solo el texto de la observación.`;
+
+        const result = await llm.chat([{ role: 'user', content: prompt }], 400);
+        const suggestion = result.text.trim().replace(/^["']|["']$/g, '');
+
+        return reply.send({ suggestion });
+      } catch (err: any) {
+        console.error('Error generando sugerencia de observación:', err.message);
+        return reply.code(500).send({ error: 'Error al generar sugerencia', details: err.message });
+      }
+    },
+  );
+
   // DELETE /audit/audits/:id/checklist — Eliminar todos los items del checklist de una auditoría
   app.delete(
     '/audit/audits/:id/checklist',
