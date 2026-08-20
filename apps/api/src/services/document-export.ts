@@ -23,6 +23,8 @@ export interface ExportRequest {
   filters?: Record<string, any>;
   recordCount?: number;
   sections?: ExcelSection[];
+  orientationOverride?: string;
+  pageSizeOverride?: string;
 }
 
 export interface ExportResult {
@@ -143,6 +145,10 @@ export async function executeExport(
   // 5. Generar token de validación
   const validationToken = crypto.randomBytes(24).toString('hex');
   const validationUrl = `${process.env.PUBLIC_URL || 'https://logismart.ar'}/validate-doc?token=${validationToken}`;
+
+  // 5b. Apply caller-supplied overrides (e.g. landscape for process maps)
+  if (req.orientationOverride) template.orientation = req.orientationOverride;
+  if (req.pageSizeOverride) template.pageSize = req.pageSizeOverride;
 
   // 6. Renderizar (Excel o PDF)
   const isExcel = req.exportType === 'EXCEL_CONTROLLED';

@@ -353,6 +353,8 @@ export async function renderPdf(options: PdfRenderOptions): Promise<PdfRenderRes
     });
 
     const page = await browser.newPage();
+    const isLandscape = template.orientation === 'landscape';
+    await page.setViewport({ width: isLandscape ? 1400 : 900, height: isLandscape ? 900 : 1200, deviceScaleFactor: 1 });
     await page.setContent(fullHtml, { waitUntil: 'networkidle0', timeout: 60000 });
 
     const pdfBuffer = await page.pdf({

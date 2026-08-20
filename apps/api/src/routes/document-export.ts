@@ -78,6 +78,8 @@ const exportSchema = z.object({
   filters: z.record(z.any()).optional(),
   recordCount: z.number().int().optional(),
   sections: z.array(z.any()).optional(),
+  orientation: z.string().optional(),
+  pageSize: z.string().optional(),
 }).refine(
   (data) => data.outputDefinitionId || data.outputKey,
   { message: 'Se requiere outputDefinitionId o outputKey' }
@@ -388,6 +390,8 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
         filters: data.filters,
         recordCount: data.recordCount,
         sections: data.sections as any,
+        orientationOverride: data.orientation,
+        pageSizeOverride: data.pageSize,
       });
       const isExcel = data.exportType === 'EXCEL_CONTROLLED';
       return reply

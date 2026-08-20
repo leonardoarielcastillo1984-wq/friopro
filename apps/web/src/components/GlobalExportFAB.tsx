@@ -175,7 +175,14 @@ function capturePageContentForExcel(): any[] {
   return result;
 }
 
-function capturePageContent(): string {
+function getPageOrientation(path: string): { orientation: string; pageSize: string } {
+  if (path.includes('contexto-sgi') || path.includes('mapa')) {
+    return { orientation: 'landscape', pageSize: 'A3' };
+  }
+  return { orientation: 'portrait', pageSize: 'A4' };
+}
+
+function capturePageContent(path?: string): string {
   const main = document.querySelector('main');
   if (!main) return document.body.innerHTML;
 
@@ -262,10 +269,54 @@ function capturePageContent(): string {
     .gap-2 { gap: 8px; }
     .gap-4 { gap: 16px; }
     .gap-3 { gap: 12px; }
+    .gap-2 { gap: 8px; }
     .items-center { align-items: center; }
     .items-start { align-items: flex-start; }
+    .items-stretch { align-items: stretch; }
     .justify-between { justify-content: space-between; }
     .justify-center { justify-content: center; }
+    .flex-1 { flex: 1 1 0%; min-width: 0; }
+    .flex-shrink-0 { flex-shrink: 0; }
+    .flex-col { flex-direction: column; }
+    .flex-wrap { flex-wrap: wrap; }
+    .min-w-0 { min-width: 0; }
+    .w-28 { width: 7rem; }
+    .w-64 { width: 16rem; }
+    .h-full { height: 100%; }
+    .space-y-2 > * + * { margin-top: 8px; }
+    .space-y-3 > * + * { margin-top: 12px; }
+    .space-y-1 > * + * { margin-top: 4px; }
+    .border-2 { border-width: 2px; }
+    .border-dashed { border-style: dashed; }
+    .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .lg\:grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .sm\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+    .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .overflow-hidden { overflow: hidden; }
+    .w-full { width: 100%; }
+    .text-\[11px\] { font-size: 11px; }
+    .text-\[10px\] { font-size: 10px; }
+    .leading-tight { line-height: 1.25; }
+    .opacity-60 { opacity: 0.6; }
+    .px-3 { padding-left: 12px; padding-right: 12px; }
+    .py-5 { padding-top: 20px; padding-bottom: 20px; }
+    .px-4 { padding-left: 16px; padding-right: 16px; }
+    .py-3 { padding-top: 12px; padding-bottom: 12px; }
+    .bg-blue-100 { background-color: #dbeafe; }
+    .bg-green-100 { background-color: #dcfce7; }
+    .bg-orange-100 { background-color: #ffedd5; }
+    .text-blue-500 { color: #3b82f6; }
+    .text-blue-700 { color: #1d4ed8; }
+    .text-green-500 { color: #22c55e; }
+    .text-green-700 { color: #15803d; }
+    .text-orange-500 { color: #f97316; }
+    .text-orange-700 { color: #c2410c; }
+    .border-blue-200 { border-color: #bfdbfe; }
+    .border-green-200 { border-color: #bbf7d0; }
+    .border-orange-200 { border-color: #fed7aa; }
+    .bg-blue-50 { background-color: #eff6ff; }
+    .bg-green-50 { background-color: #f0fdf4; }
+    .bg-orange-50 { background-color: #fff7ed; }
     .p-3 { padding: 12px; }
     .p-4 { padding: 16px; }
     .p-8 { padding: 32px; }
@@ -311,7 +362,11 @@ function capturePageContent(): string {
     th { background: #f1f5f9; font-weight: 600; }
   `;
 
-  return `<div style="font-family:Arial,sans-serif;font-size:12px;color:#1e293b;"><style>${essentialCss}</style>${clone.innerHTML}</div>`;
+  const isMapPage = path && (path.includes('contexto-sgi') || path.includes('mapa'));
+  const extraStyle = isMapPage
+    ? `<style>.flex.gap-4.items-stretch { display: flex !important; gap: 16px !important; align-items: stretch !important; } .flex-1 { flex: 1 1 0% !important; } .flex-shrink-0 { flex-shrink: 0 !important; } .grid.grid-cols-1.sm\:grid-cols-2.lg\:grid-cols-3 { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }</style>`
+    : '';
+  return `<div style="font-family:Arial,sans-serif;font-size:${isMapPage ? '10' : '12'}px;color:#1e293b;"><style>${essentialCss}</style>${extraStyle}${clone.innerHTML}</div>`;
 }
 
 export default function GlobalExportFAB() {
@@ -333,7 +388,8 @@ export default function GlobalExportFAB() {
 
     try {
       const isExcel = exportType === 'EXCEL_CONTROLLED';
-      const bodyHtml = isExcel ? '' : capturePageContent();
+      const { orientation, pageSize } = getPageOrientation(pathname || '');
+      const bodyHtml = isExcel ? '' : capturePageContent(pathname || '');
       const sections = isExcel ? capturePageContentForExcel() : undefined;
       const token = localStorage.getItem('accessToken');
       const tenantId = localStorage.getItem('tenantId');
@@ -347,7 +403,7 @@ export default function GlobalExportFAB() {
           ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
           ...(csrf ? { 'x-csrf-token': csrf } : {}),
         },
-        body: JSON.stringify({ outputKey, exportType, bodyHtml, title, sections }),
+        body: JSON.stringify({ outputKey, exportType, bodyHtml, title, sections, orientation, pageSize }),
       });
 
       if (!res.ok) {
