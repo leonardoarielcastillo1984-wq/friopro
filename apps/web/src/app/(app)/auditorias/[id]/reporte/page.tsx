@@ -42,6 +42,7 @@ type ChecklistItem = {
   id: string;
   clause: string;
   requirement: string;
+  whatToCheck: string | null;
   response: 'COMPLIES' | 'DOES_NOT_COMPLY' | 'NOT_APPLICABLE' | null;
   comment: string | null;
   evidence: string | null;
@@ -695,6 +696,48 @@ export default function ReportPage() {
                       Crear No Conformidad
                     </button>
                   )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Compliant Items */}
+        {checklist.filter(i => i.response === 'COMPLIES').length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              Puntos Relevados y Conformes
+            </h2>
+            <p className="text-sm text-gray-500 mb-4">Cláusulas auditadas que cumplen con el requisito. Se detalla la evidencia relevada por el auditor durante la auditoría.</p>
+            <div className="space-y-3">
+              {checklist.filter(i => i.response === 'COMPLIES').map((item) => (
+                <div key={item.id} className="border border-green-200 bg-green-50 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-green-800 text-sm">{item.clause}</span>
+                        <span className="text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded-full">Conforme</span>
+                      </div>
+                      <p className="text-sm text-gray-800 font-medium mb-1">{item.requirement}</p>
+                      {item.whatToCheck && (
+                        <p className="text-xs text-gray-500 mb-2"><span className="font-medium">Qué se verificó:</span> {item.whatToCheck}</p>
+                      )}
+                      {item.evidence && (
+                        <div className="bg-white border border-green-200 rounded p-2 mt-1">
+                          <p className="text-xs text-gray-500 font-medium mb-0.5">Evidencia relevada</p>
+                          <p className="text-sm text-gray-700">{item.evidence}</p>
+                        </div>
+                      )}
+                      {item.comment && (
+                        <p className="text-xs text-gray-600 mt-1.5"><span className="font-medium">Observación:</span> {item.comment}</p>
+                      )}
+                      {!item.evidence && !item.comment && (
+                        <p className="text-xs text-gray-400 italic">Sin evidencia ni observación registrada</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
