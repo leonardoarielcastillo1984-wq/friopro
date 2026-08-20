@@ -34,8 +34,10 @@ type ChecklistItem = {
   id: string;
   clause: string;
   requirement: string;
+  whatToCheck: string | null;
   response: 'COMPLIES' | 'DOES_NOT_COMPLY' | 'NOT_APPLICABLE' | null;
   comment: string | null;
+  evidence: string | null;
 };
 
 type Finding = {
@@ -446,15 +448,15 @@ export default function AuditReportPage() {
                 <th className="px-4 py-2 text-left font-medium text-gray-700">Cláusula</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-700">Requisito</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-700">Estado</th>
-                <th className="px-4 py-2 text-left font-medium text-gray-700">Comentarios</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-700">Evidencia / Observaciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {checklist.map((item, idx) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium">{item.clause}</td>
+              {checklist.map((item) => (
+                <tr key={item.id} className={`hover:bg-gray-50 ${item.response === 'DOES_NOT_COMPLY' ? 'bg-red-50/40' : item.response === 'COMPLIES' ? 'bg-green-50/30' : ''}`}>
+                  <td className="px-4 py-2 font-medium text-xs">{item.clause}</td>
                   <td className="px-4 py-2">{item.requirement}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 whitespace-nowrap">
                     {item.response === 'COMPLIES' && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
                         <CheckCircle className="w-3 h-3" /> Cumple
@@ -471,10 +473,14 @@ export default function AuditReportPage() {
                       </span>
                     )}
                     {!item.response && (
-                      <span className="text-gray-400">Pendiente</span>
+                      <span className="text-gray-400 text-xs">Pendiente</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-gray-600">{item.comment || '-'}</td>
+                  <td className="px-4 py-2 text-gray-600 text-xs">
+                    {item.evidence && <div><span className="font-medium text-gray-500">Evidencia:</span> {item.evidence}</div>}
+                    {item.comment && <div className="mt-0.5"><span className="font-medium text-gray-500">Obs:</span> {item.comment}</div>}
+                    {!item.evidence && !item.comment && <span className="text-gray-300">—</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -482,11 +488,53 @@ export default function AuditReportPage() {
         </div>
       </div>
 
-      {/* 5. Hallazgos Mejorados con Evidencia */}
+      {/* 5. Puntos Conformes con Evidencia */}
+      {checklist.filter(i => i.response === 'COMPLIES').length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-green-200 p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle className="w-5 h-5 text-green-600" />
+            <h2 className="text-lg font-semibold text-gray-900">5. Puntos Relevados y Conformes</h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-4">Cláusulas auditadas que cumplen con el requisito. Se detalla la evidencia relevada por el auditor.</p>
+          <div className="space-y-3">
+            {checklist.filter(i => i.response === 'COMPLIES').map((item) => (
+              <div key={item.id} className="border border-green-100 bg-green-50/50 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-green-800 text-sm">{item.clause}</span>
+                      <span className="text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded-full">Conforme</span>
+                    </div>
+                    <p className="text-sm text-gray-800 font-medium mb-1">{item.requirement}</p>
+                    {item.whatToCheck && (
+                      <p className="text-xs text-gray-500 mb-2"><span className="font-medium">Qué se verificó:</span> {item.whatToCheck}</p>
+                    )}
+                    {item.evidence && (
+                      <div className="bg-white border border-green-200 rounded p-2 mt-1">
+                        <p className="text-xs text-gray-500 font-medium mb-0.5">Evidencia relevada</p>
+                        <p className="text-sm text-gray-700">{item.evidence}</p>
+                      </div>
+                    )}
+                    {item.comment && (
+                      <p className="text-xs text-gray-600 mt-1.5"><span className="font-medium">Observación:</span> {item.comment}</p>
+                    )}
+                    {!item.evidence && !item.comment && (
+                      <p className="text-xs text-gray-400 italic">Sin evidencia ni observación registrada</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 6. Hallazgos */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4">
-          <AlertTriangle className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">5. Hallazgos Detallados con Evidencia</h2>
+          <AlertTriangle className="w-5 h-5 text-red-500" />
+          <h2 className="text-lg font-semibold text-gray-900">6. Hallazgos Detallados — No Conformidades</h2>
         </div>
         {findings.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No hay hallazgos registrados</p>
@@ -573,11 +621,11 @@ export default function AuditReportPage() {
         )}
       </div>
 
-      {/* 6. Recomendaciones de Mejora */}
+      {/* 7. Recomendaciones de Mejora */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">6. Recomendaciones de Mejora</h2>
+          <h2 className="text-lg font-semibold text-gray-900">7. Recomendaciones de Mejora</h2>
         </div>
         <div className="space-y-6">
           <div>
@@ -646,11 +694,11 @@ export default function AuditReportPage() {
         </div>
       </div>
 
-      {/* 7. Trazabilidad y Firma */}
+      {/* 8. Trazabilidad y Firma */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4">
           <PenTool className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">7. Trazabilidad y Firma</h2>
+          <h2 className="text-lg font-semibold text-gray-900">8. Trazabilidad y Firma</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
@@ -689,11 +737,11 @@ export default function AuditReportPage() {
         </div>
       </div>
 
-      {/* 8. Indicadores Visuales */}
+      {/* 9. Indicadores Visuales */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4">
           <Zap className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">8. Indicadores de Cumplimiento</h2>
+          <h2 className="text-lg font-semibold text-gray-900">9. Indicadores de Cumplimiento</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
