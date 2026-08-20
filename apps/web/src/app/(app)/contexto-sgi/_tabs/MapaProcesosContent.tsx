@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
 import MapaGeneralModal from './MapaGeneralModal';
@@ -267,6 +267,8 @@ export default function MapaProcesosContent() {
   // Drag & drop para reordenar subprocesos dentro del desglose
   const [subDragId, setSubDragId] = useState<string | null>(null);
   const [subDragOverId, setSubDragOverId] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
 
   async function loadEmployees() {
     try {
@@ -326,6 +328,105 @@ export default function MapaProcesosContent() {
       }
     } catch { setError('Error cargando mapas'); }
     finally { setLoading(false); }
+  }
+
+  // ── Export PDF inteligente ─────────────────────────────────────────
+  async function exportPdf() {
+    if (!selected || !mapContainerRef.current) return;
+    setExportingPdf(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const jsPDF = (await import('jspdf')).jsPDF;
+
+      const el = mapContainerRef.current;
+      // Temporarily expand to full scroll size so nothing is clipped
+      const prevOverflow = el.style.overflow;
+      const prevHeight = el.style.height;
+      el.style.overflow = 'visible';
+      el.style.height = 'auto';
+
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
+      });
+
+      el.style.overflow = prevOverflow;
+      el.style.height = prevHeight;
+
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+      const ratio = imgH / imgW;
+
+      // Intelligent page sizing: choose orientation and paper size
+      // A4 = 210x297mm, A3 = 297x420mm
+      // We try to fit on one page; if ratio makes it too small, use A3
+      const isLandscape = imgW >= imgH;
+      const orientation: 'l' | 'p' = isLandscape ? 'l' : 'p';
+
+      // Available area in mm (A4 margins ~10mm each side)
+      const a4 = isLandscape ? { w: 297, h: 210 } : { w: 210, h: 297 };
+      const a3 = isLandscape ? { w: 420, h: 297 } : { w: 297, h: 420 };
+      const margin = 10;
+
+      // Try A4 first; if content height after fitting would be < 80% of page, use A3
+      const a4ContentW = a4.w - margin * 2;
+      const a4ContentH = a4ContentW * ratio;
+      const paper = a4ContentH <= a4.h - margin * 2 ? 'a4' : 'a3';
+      const page = paper === 'a4' ? a4 : a3;
+      const contentW = page.w - margin * 2;
+      const contentH = contentW * ratio;
+
+      const pdf = new jsPDF({ orientation, unit: 'mm', format: paper });
+
+      // Title
+      const mapName = selected.name || 'Mapa de Procesos';
+      pdf.setFontSize(11);
+      pdf.setTextColor(60, 60, 60);
+      pdf.text(mapName, margin, margin - 2);
+      pdf.setFontSize(8);
+      pdf.setTextColor(150, 150, 150);
+      pdf.text(`Exportado el ${new Date().toLocaleDateString('es-AR')} — SGI360`, margin, margin + 3);
+
+      const imgData = canvas.toDataURL('image/png');
+      const imgTop = margin + 8;
+
+      // If content fits on one page
+      if (contentH <= page.h - imgTop - margin) {
+        pdf.addImage(imgData, 'PNG', margin, imgTop, contentW, contentH);
+      } else {
+        // Multi-page: slice canvas into page-height chunks
+        const pageImgH = (page.h - imgTop - margin) / contentW * imgW;
+        let yOffset = 0;
+        let isFirstPage = true;
+        while (yOffset < imgH) {
+          const sliceH = Math.min(pageImgH, imgH - yOffset);
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = imgW;
+          sliceCanvas.height = sliceH;
+          const ctx = sliceCanvas.getContext('2d')!;
+          ctx.drawImage(canvas, 0, yOffset, imgW, sliceH, 0, 0, imgW, sliceH);
+          const sliceData = sliceCanvas.toDataURL('image/png');
+          const sliceContentH = sliceH / imgW * contentW;
+          if (!isFirstPage) { pdf.addPage(); }
+          const topY = isFirstPage ? imgTop : margin;
+          pdf.addImage(sliceData, 'PNG', margin, topY, contentW, sliceContentH);
+          yOffset += sliceH;
+          isFirstPage = false;
+        }
+      }
+
+      const safe = mapName.replace(/[^a-zA-Z0-9-_]+/g, '_');
+      pdf.save(`${safe}_mapa_procesos.pdf`);
+    } catch (e) {
+      setError('No se pudo exportar el PDF');
+    } finally {
+      setExportingPdf(false);
+    }
   }
 
   // ── Import / Export de plantillas .sgi360.json ───────────────────
@@ -757,6 +858,9 @@ export default function MapaProcesosContent() {
                     <button onClick={() => setShowDiagram(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50">
                       <Eye className="h-3.5 w-3.5" /> Ver como diagrama
                     </button>
+                    <button onClick={exportPdf} disabled={!selected || exportingPdf} title="Exportar mapa como PDF" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-40">
+                      {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} {exportingPdf ? 'Generando...' : 'Exportar PDF'}
+                    </button>
                     <button onClick={exportMap} disabled={!selected} title="Exportar este mapa como plantilla .sgi360.json" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-40">
                       <Download className="h-3.5 w-3.5" /> Exportar
                     </button>
@@ -780,6 +884,7 @@ export default function MapaProcesosContent() {
               </div>
             </div>
 
+            {/* Map container ref for PDF export */}
             {/* Ítem 4 + 5 + 8: contexto, resumen y selector de vista (solo en desglose) */}
             {viewMacro && (
               <div className="space-y-3">
@@ -877,7 +982,7 @@ export default function MapaProcesosContent() {
             </div>
 
             {/* Layout: entrada → capas → salida */}
-            <div className="flex gap-4 items-stretch">
+            <div ref={mapContainerRef} className="flex gap-4 items-stretch">
               {viewMacro ? (
                 /* Ítem 6: panel dinámico con el resumen del proceso */
                 <div className="w-64 flex-shrink-0">
