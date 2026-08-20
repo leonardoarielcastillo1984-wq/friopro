@@ -9323,6 +9323,9 @@ model DocumentOutputDefinition {
   documentId    String?  @db.Uuid
   document      Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
+  // Referencia estable a la entidad del sistema (ej: ProcessMap.id)
+  entityRef     String?  @db.Uuid
+
   // Configuración documental
   documentCode  String?  // código asignado
   revision      Int      @default(0)
@@ -9367,6 +9370,7 @@ model DocumentOutputDefinition {
   @@index([tenantId])
   @@index([tenantId, module])
   @@index([tenantId, status])
+  @@index([tenantId, entityRef])
   @@map("document_output_definitions")
 }
 

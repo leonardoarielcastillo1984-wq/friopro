@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
 import MapaGeneralModal from './MapaGeneralModal';
@@ -12,7 +13,7 @@ import {
   ClipboardCheck, ShoppingCart, GraduationCap, AlertTriangle, Repeat, BrainCircuit,
   ChevronRight, ArrowLeft, Network, LayoutGrid, ListTree, Table2, Workflow,
   LogIn, LogOut, UserCircle2, Info, GripVertical, ClipboardList, ArrowLeftRight,
-  Send, Inbox, Download, Upload, FileJson, FileDown
+  Send, Inbox, Download, Upload, FileJson, FileDown, Hash, Sparkles, X as XIcon
 } from 'lucide-react';
 
 interface Process {
@@ -58,6 +59,15 @@ interface ProcessMap {
   outputLabel?: string;
   processes: Process[];
 }
+
+type DocOutputInfo = {
+  id: string;
+  documentCode: string | null;
+  status: string;
+  screenName: string;
+  outputKey: string;
+  document?: { id: string; title: string; documentCode?: string } | null;
+} | null;
 
 const LAYER_CONFIG = {
   STRATEGIC: { label: 'Estratégicos', icon: Target, color: 'bg-blue-50 border-blue-200', badge: 'bg-blue-100 text-blue-700', iconColor: 'text-blue-500' },
@@ -200,6 +210,18 @@ export default function MapaProcesosContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Document code state
+  const [docOutput, setDocOutput] = useState<DocOutputInfo>(null);
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [newCode, setNewCode] = useState('');
+  const [suggestingCode, setSuggestingCode] = useState(false);
+  const [hasRuleForCode, setHasRuleForCode] = useState(false);
+  const [assigningCode, setAssigningCode] = useState(false);
+
+  // Deep-linking
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   // Map form
   const [showMapForm, setShowMapForm] = useState(false);
   const [mapForm, setMapForm] = useState({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI' });
@@ -320,7 +342,20 @@ export default function MapaProcesosContent() {
       const raw = await apiFetch<ProcessMap[] | { data: ProcessMap[] }>('/process-maps');
       const data: ProcessMap[] = Array.isArray(raw) ? raw : (raw as any).data ?? [];
       setMaps(data);
-      if (selected) {
+
+      // Deep-linking: si hay ?map=ID, seleccionar ese mapa
+      const mapParam = searchParams.get('map');
+      if (mapParam) {
+        const found = data.find(m => m.id === mapParam);
+        if (found) {
+          setSelected(found);
+        } else if (selected) {
+          const updated = data.find(m => m.id === selected.id);
+          setSelected(updated ?? data[0] ?? null);
+        } else {
+          setSelected(data[0] ?? null);
+        }
+      } else if (selected) {
         const updated = data.find(m => m.id === selected.id);
         setSelected(updated ?? data[0] ?? null);
       } else {
@@ -328,6 +363,55 @@ export default function MapaProcesosContent() {
       }
     } catch { setError('Error cargando mapas'); }
     finally { setLoading(false); }
+  }
+
+  async function loadDocOutput(mapId: string) {
+    try {
+      const res = await apiFetch<{ output: DocOutputInfo }>(`/process-maps/${mapId}/document-output`);
+      setDocOutput(res?.output ?? null);
+    } catch {
+      setDocOutput(null);
+    }
+  }
+
+  async function openAssignCode() {
+    if (!selected) return;
+    setShowCodeModal(true);
+    setNewCode('');
+    setHasRuleForCode(false);
+    setSuggestingCode(true);
+    try {
+      // Asegurar que existe la salida documental
+      await apiFetch(`/process-maps/${selected.id}/document-output`, { method: 'POST' });
+      // Cargar la salida actualizada
+      await loadDocOutput(selected.id);
+      // Sugerir código
+      const res = await apiFetch<{ suggestedCode: string; hasRule: boolean }>(`/process-maps/${selected.id}/suggest-code`);
+      setNewCode(res.suggestedCode || '');
+      setHasRuleForCode(res.hasRule ?? false);
+    } catch (e: any) {
+      // Si falla, permitir ingresar manualmente
+    } finally {
+      setSuggestingCode(false);
+    }
+  }
+
+  async function assignCode() {
+    if (!selected || !newCode.trim()) return;
+    setAssigningCode(true);
+    try {
+      await apiFetch(`/process-maps/${selected.id}/assign-code`, {
+        method: 'POST',
+        json: { documentCode: newCode.trim() },
+      });
+      await loadDocOutput(selected.id);
+      setShowCodeModal(false);
+    } catch (e: any) {
+      setError(e?.message || 'Error al asignar código');
+      setTimeout(() => setError(''), 3000);
+    } finally {
+      setAssigningCode(false);
+    }
   }
 
   // ── Export PDF inteligente ─────────────────────────────────────────
@@ -388,6 +472,12 @@ export default function MapaProcesosContent() {
       pdf.setFontSize(11);
       pdf.setTextColor(60, 60, 60);
       pdf.text(mapName, margin, margin - 2);
+      // Código documental si existe
+      if (docOutput?.documentCode) {
+        pdf.setFontSize(9);
+        pdf.setTextColor(99, 102, 241);
+        pdf.text(`Código: ${docOutput.documentCode}`, margin, margin + 0.5);
+      }
       pdf.setFontSize(8);
       pdf.setTextColor(150, 150, 150);
       pdf.text(`Exportado el ${new Date().toLocaleDateString('es-AR')} — SGI360`, margin, margin + 3);
@@ -511,6 +601,15 @@ export default function MapaProcesosContent() {
 
   useEffect(() => { load(); loadEmployees(); loadRelations(); }, []);
 
+  // Cargar salida documental cuando cambia el mapa seleccionado
+  useEffect(() => {
+    if (selected) {
+      loadDocOutput(selected.id);
+    } else {
+      setDocOutput(null);
+    }
+  }, [selected?.id]);
+
   // Close menu when clicking outside
   useEffect(() => {
     if (!openMenuPid) return;
@@ -536,7 +635,18 @@ export default function MapaProcesosContent() {
   }
 
   async function deleteMap(id: string) {
-    if (!confirm('¿Eliminar este mapa de procesos?')) return;
+    // Verificar si el mapa tiene salida documental con código asignado
+    let warningMsg = '¿Eliminar este mapa de procesos?';
+    try {
+      const res = await apiFetch<{ output: DocOutputInfo }>(`/process-maps/${id}/document-output`);
+      if (res?.output?.documentCode) {
+        warningMsg = `Este mapa tiene asignado el código documental "${res.output.documentCode}".\n\nAl eliminarlo, la salida documental se marcará como OBSOLETA (no se eliminará el historial ni el código).\n\n¿Desea continuar?`;
+      } else if (res?.output) {
+        warningMsg = 'Este mapa tiene una salida documental registrada que se marcará como OBSOLETA.\n\n¿Eliminar el mapa de procesos?';
+      }
+    } catch { /* si no se puede verificar, usar mensaje por defecto */ }
+
+    if (!confirm(warningMsg)) return;
     await apiFetch(`/process-maps/${id}`, { method: 'DELETE' });
     if (selected?.id === id) setSelected(null);
     await load();
@@ -843,7 +953,14 @@ export default function MapaProcesosContent() {
                     </>
                   ) : (
                     <>
-                      <h3 className="text-lg font-semibold text-neutral-900">{selected.name}</h3>
+                      <h3 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+                        {selected.name}
+                        {docOutput?.documentCode && (
+                          <span className="inline-flex items-center gap-1 text-xs font-mono font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                            <Hash className="h-3 w-3" /> {docOutput.documentCode}
+                          </span>
+                        )}
+                      </h3>
                       <span className="text-xs text-neutral-400">{displayProcesses.length} {displayProcesses.length === 1 ? 'macroproceso' : 'macroprocesos'}</span>
                     </>
                   )}
@@ -875,6 +992,9 @@ export default function MapaProcesosContent() {
                     </button>
                     <button onClick={() => setShowAIWizard(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg hover:from-purple-700 hover:to-indigo-700">
                       <BrainCircuit className="h-3.5 w-3.5" /> Implementación con IA
+                    </button>
+                    <button onClick={openAssignCode} disabled={!selected} title="Asignar o modificar código documental del mapa" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 disabled:opacity-40">
+                      <Hash className="h-3.5 w-3.5" /> {docOutput?.documentCode ? 'Cambiar código' : 'Asignar código'}
                     </button>
                   </>
                 )}
@@ -2083,6 +2203,77 @@ export default function MapaProcesosContent() {
             <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-neutral-100">
               <button onClick={() => { setShowBaseTemplates(false); openImport(); }} className="px-4 py-2 text-sm font-medium text-brand-700 border border-brand-200 bg-brand-50 rounded-lg hover:bg-brand-100">Ir a importar</button>
               <button onClick={() => setShowBaseTemplates(false)} className="px-4 py-2 text-sm font-medium text-neutral-700 border border-neutral-300 rounded-lg hover:bg-neutral-50">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Asignar código documental */}
+      {showCodeModal && selected && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+              <h3 className="font-semibold text-neutral-900 flex items-center gap-2">
+                <Hash className="h-4 w-4 text-indigo-600" /> Asignar código documental
+              </h3>
+              <button onClick={() => setShowCodeModal(false)} className="p-1.5 rounded-lg hover:bg-neutral-100">
+                <XIcon className="h-4 w-4 text-neutral-400" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Mapa de procesos</p>
+                <p className="text-sm font-medium text-neutral-800">{selected.name}</p>
+              </div>
+              {docOutput?.documentCode && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs text-amber-700">
+                    <strong>Código actual:</strong> <span className="font-mono">{docOutput.documentCode}</span>
+                  </p>
+                  <p className="text-xs text-amber-600 mt-1">Al asignar un nuevo código, el anterior quedará reemplazado pero se conservará en el historial del documento.</p>
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1.5">Código documental</label>
+                {suggestingCode ? (
+                  <div className="flex items-center gap-2 text-sm text-neutral-500 py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Sugiriendo código...
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={newCode}
+                    onChange={e => setNewCode(e.target.value)}
+                    placeholder="Ej: SGI-MAP-001"
+                    className="w-full px-3 py-2 text-sm font-mono border border-neutral-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                  />
+                )}
+                {hasRuleForCode && !suggestingCode && (
+                  <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" /> Código sugerido según regla de codificación del módulo
+                  </p>
+                )}
+                {!hasRuleForCode && !suggestingCode && (
+                  <p className="text-xs text-neutral-400 mt-1">No hay regla de codificación configurada para este módulo. Ingrese el código manualmente.</p>
+                )}
+              </div>
+              {docOutput?.document && (
+                <div className="text-xs text-neutral-500 bg-neutral-50 rounded-lg p-2.5">
+                  <p>Documento vinculado en el Maestro: <span className="font-medium text-neutral-700">{docOutput.document.title}</span></p>
+                  <p className="mt-0.5">Podrá asociar cláusulas normativas desde <span className="font-medium">Documentos &gt; {docOutput.document.title}</span></p>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-neutral-100">
+              <button onClick={() => setShowCodeModal(false)} className="px-4 py-2 text-sm font-medium text-neutral-700 border border-neutral-300 rounded-lg hover:bg-neutral-50">Cancelar</button>
+              <button
+                onClick={assignCode}
+                disabled={!newCode.trim() || assigningCode || suggestingCode}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-40 flex items-center gap-2"
+              >
+                {assigningCode ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hash className="h-4 w-4" />}
+                {assigningCode ? 'Asignando...' : 'Asignar código'}
+              </button>
             </div>
           </div>
         </div>

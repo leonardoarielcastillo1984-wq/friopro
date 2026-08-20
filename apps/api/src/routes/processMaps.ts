@@ -433,6 +433,18 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
         include: { processes: { where: { deletedAt: null }, orderBy: [{ layer: 'asc' }, { order: 'asc' }] } },
       });
     });
+
+    // Sincronizar screenName de la salida documental si el mapa fue renombrado
+    if (body.name) {
+      try {
+        const screenName = `Mapa de Procesos — ${body.name}`;
+        await (app.prisma as any).documentOutputDefinition.updateMany({
+          where: { tenantId, entityRef: req.params.id, deletedAt: null },
+          data: { screenName },
+        });
+      } catch { /* no crítico */ }
+    }
+
     return reply.send(map);
   });
 
@@ -441,10 +453,34 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
+    // Verificar si el mapa tiene salida documental o asociaciones normativas
+    const output = await (app.prisma as any).documentOutputDefinition.findFirst({
+      where: { tenantId, entityRef: req.params.id, deletedAt: null },
+      include: { document: { select: { id: true } } },
+    });
+    let hasMappings = false;
+    if (output?.documentId) {
+      const count = await (app.prisma as any).documentClauseMapping.count({
+        where: { documentId: output.documentId, deletedAt: null },
+      });
+      hasMappings = count > 0;
+    }
+
     await app.runWithDbContext(req, async (tx: any) => {
       return tx.processMap.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
     });
-    return reply.code(204).send();
+
+    // Marcar la salida documental como OBSOLETE (no eliminarla, conservar trazabilidad)
+    if (output) {
+      try {
+        await (app.prisma as any).documentOutputDefinition.update({
+          where: { id: output.id },
+          data: { status: 'OBSOLETE', active: false },
+        });
+      } catch { /* no crítico */ }
+    }
+
+    return reply.code(204).header('X-Has-Document-Output', output ? 'true' : 'false').header('X-Has-Normative-Mappings', hasMappings ? 'true' : 'false').send();
   });
 
   // ── POST /process-maps/:id/processes ──────────────────────────
@@ -549,5 +585,249 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
       return tx.processRisk.delete({ where: { id: req.params.rid } });
     });
     return reply.code(204).send();
+  });
+
+  // ── Integración con Salidas Documentales ──────────────────────
+
+  // GET /process-maps/:id/document-output — obtiene la salida documental vinculada al mapa
+  app.get('/:id/document-output', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const map = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processMap.findFirst({ where: { id: req.params.id, deletedAt: null } });
+    });
+    if (!map) return reply.code(404).send({ error: 'Mapa no encontrado' });
+
+    const output = await (app.prisma as any).documentOutputDefinition.findFirst({
+      where: { tenantId, entityRef: req.params.id, deletedAt: null },
+      include: {
+        template: { select: { id: true, name: true } },
+        document: { select: { id: true, title: true, documentCode: true } },
+      },
+    });
+    return reply.send({ output });
+  });
+
+  // POST /process-maps/:id/document-output — crea o reutiliza la salida documental (idempotente)
+  app.post('/:id/document-output', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const map = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processMap.findFirst({ where: { id: req.params.id, deletedAt: null } });
+    });
+    if (!map) return reply.code(404).send({ error: 'Mapa no encontrado' });
+
+    const outputKey = `contexto-sgi.mapa-de-procesos.${map.id}`;
+    const screenName = `Mapa de Procesos — ${map.name}`;
+
+    // Idempotente: buscar salida existente por entityRef o outputKey
+    let output = await (app.prisma as any).documentOutputDefinition.findFirst({
+      where: { tenantId, entityRef: map.id, deletedAt: null },
+    });
+
+    if (!output) {
+      // Buscar por outputKey (puede existir sin entityRef, creado manualmente)
+      output = await (app.prisma as any).documentOutputDefinition.findFirst({
+        where: { tenantId, outputKey, deletedAt: null },
+      });
+    }
+
+    if (output) {
+      // Actualizar screenName si el mapa fue renombrado
+      if (output.screenName !== screenName) {
+        output = await (app.prisma as any).documentOutputDefinition.update({
+          where: { id: output.id },
+          data: { screenName, entityRef: map.id },
+        });
+      }
+      return reply.send({ output, created: false });
+    }
+
+    // Crear nueva salida documental
+    output = await (app.prisma as any).documentOutputDefinition.create({
+      data: {
+        tenantId,
+        module: 'contexto-sgi',
+        subModule: 'mapa-de-procesos',
+        screenName,
+        outputKey,
+        outputType: 'MAP',
+        entityRef: map.id,
+        status: 'PENDING',
+        description: `Mapa de procesos: ${map.name}`,
+      },
+    });
+
+    try {
+      if (req.auth?.userId) {
+        await logAuditEvent({
+          tenantId,
+          entityType: 'ProcessMap',
+          entityId: map.id,
+          action: 'UPDATE',
+          userId: req.auth.userId,
+          description: `Salida documental creada para el mapa "${map.name}" (${outputKey})`,
+        });
+      }
+    } catch { /* auditoría opcional */ }
+
+    return reply.code(201).send({ output, created: true });
+  });
+
+  // GET /process-maps/:id/suggest-code — sugiere un código documental para el mapa
+  app.get('/:id/suggest-code', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const map = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processMap.findFirst({ where: { id: req.params.id, deletedAt: null } });
+    });
+    if (!map) return reply.code(404).send({ error: 'Mapa no encontrado' });
+
+    // Asegurar que existe la salida documental
+    const outputKey = `contexto-sgi.mapa-de-procesos.${map.id}`;
+    let output = await (app.prisma as any).documentOutputDefinition.findFirst({
+      where: { tenantId, entityRef: map.id, deletedAt: null },
+    });
+    if (!output) {
+      output = await (app.prisma as any).documentOutputDefinition.findFirst({
+        where: { tenantId, outputKey, deletedAt: null },
+      });
+    }
+    if (!output) return reply.code(404).send({ error: 'Salida documental no encontrada. Ejecute POST /document-output primero.' });
+
+    const rule = await (app.prisma as any).documentCodeRule.findFirst({
+      where: { tenantId, module: 'contexto-sgi', active: true },
+      orderBy: { subModule: 'asc' },
+    });
+
+    let suggestedCode = '';
+
+    async function isCodeTaken(code: string): Promise<boolean> {
+      const conflict = await (app.prisma as any).documentOutputDefinition.findFirst({
+        where: { tenantId, documentCode: code, id: { not: output.id }, deletedAt: null },
+      });
+      return !!conflict;
+    }
+
+    if (rule) {
+      const sep = rule.separator || '-';
+      const digits = rule.digitCount || 3;
+      let seq = rule.nextSequence;
+      const buildCode = (n: number) => {
+        const parts: string[] = [];
+        if (rule.prefix) parts.push(rule.prefix);
+        if (rule.processCode) parts.push(rule.processCode);
+        if (rule.typeAbbr) parts.push(rule.typeAbbr);
+        parts.push(String(n).padStart(digits, '0'));
+        return parts.join(sep);
+      };
+      suggestedCode = buildCode(seq);
+      while (await isCodeTaken(suggestedCode)) {
+        seq++;
+        suggestedCode = buildCode(seq);
+      }
+    } else {
+      const count = await (app.prisma as any).documentOutputDefinition.count({
+        where: { tenantId, module: 'contexto-sgi', documentCode: { not: null }, deletedAt: null },
+      });
+      let seq = count + 1;
+      suggestedCode = `MAP-${String(seq).padStart(3, '0')}`;
+      while (await isCodeTaken(suggestedCode)) {
+        seq++;
+        suggestedCode = `MAP-${String(seq).padStart(3, '0')}`;
+      }
+    }
+    return reply.send({ suggestedCode, hasRule: !!rule, outputId: output.id });
+  });
+
+  // POST /process-maps/:id/assign-code — asigna un código documental al mapa
+  app.post('/:id/assign-code', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const { documentCode } = req.body as any;
+    if (!documentCode) return reply.code(400).send({ error: 'Se requiere documentCode' });
+
+    const map = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.processMap.findFirst({ where: { id: req.params.id, deletedAt: null } });
+    });
+    if (!map) return reply.code(404).send({ error: 'Mapa no encontrado' });
+
+    const outputKey = `contexto-sgi.mapa-de-procesos.${map.id}`;
+    let output = await (app.prisma as any).documentOutputDefinition.findFirst({
+      where: { tenantId, entityRef: map.id, deletedAt: null },
+    });
+    if (!output) {
+      output = await (app.prisma as any).documentOutputDefinition.findFirst({
+        where: { tenantId, outputKey, deletedAt: null },
+      });
+    }
+    if (!output) return reply.code(404).send({ error: 'Salida documental no encontrada. Ejecute POST /document-output primero.' });
+
+    // Verificar unicidad del código
+    const existing = await (app.prisma as any).documentOutputDefinition.findFirst({
+      where: { tenantId, documentCode, id: { not: output.id }, deletedAt: null },
+    });
+    if (existing) return reply.code(409).send({ error: 'El código ya está en uso' });
+
+    const userId = (req as any).auth?.userId ?? null;
+
+    // Crear o actualizar el documento en el Maestro
+    let maestroDoc = await (app.prisma as any).document.findFirst({
+      where: { tenantId, documentCode, deletedAt: null },
+    });
+    if (!maestroDoc) {
+      maestroDoc = await (app.prisma as any).document.create({
+        data: {
+          tenantId,
+          title: output.screenName,
+          type: 'Mapa',
+          documentCode,
+          status: 'EFFECTIVE',
+          process: 'contexto-sgi',
+          createdById: userId,
+        },
+      });
+    } else {
+      await (app.prisma as any).document.update({
+        where: { id: maestroDoc.id },
+        data: { documentCode, title: output.screenName },
+      });
+    }
+
+    // Actualizar la salida con el código y el documento
+    await (app.prisma as any).documentOutputDefinition.update({
+      where: { id: output.id },
+      data: { documentCode, documentId: maestroDoc.id, status: 'EFFECTIVE' },
+    });
+
+    // Incrementar la secuencia de la regla
+    const rule = await (app.prisma as any).documentCodeRule.findFirst({
+      where: { tenantId, module: 'contexto-sgi', active: true },
+    });
+    if (rule) {
+      await (app.prisma as any).documentCodeRule.update({
+        where: { id: rule.id },
+        data: { nextSequence: { increment: 1 } },
+      });
+    }
+
+    try {
+      if (req.auth?.userId) {
+        await logAuditEvent({
+          tenantId,
+          entityType: 'ProcessMap',
+          entityId: map.id,
+          action: 'UPDATE',
+          userId: req.auth.userId,
+          description: `Código documental ${documentCode} asignado al mapa "${map.name}"`,
+        });
+      }
+    } catch { /* auditoría opcional */ }
+
+    return reply.send({ ok: true, documentCode, documentId: maestroDoc.id });
   });
 };
