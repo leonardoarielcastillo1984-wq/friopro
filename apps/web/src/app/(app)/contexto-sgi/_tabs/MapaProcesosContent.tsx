@@ -966,9 +966,12 @@ export default function MapaProcesosContent() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {!viewMacro && (
                   <>
+                    <button onClick={openAssignCode} disabled={!selected} title="Asignar o modificar código documental del mapa" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 border border-indigo-700 rounded-lg hover:bg-indigo-700 disabled:opacity-40">
+                      <Hash className="h-3.5 w-3.5" /> {docOutput?.documentCode ? `Código: ${docOutput.documentCode}` : 'Asignar código'}
+                    </button>
                     <button onClick={() => setShowGeneral(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100">
                       <Layers className="h-3.5 w-3.5" /> Mapa General
                     </button>
@@ -992,9 +995,6 @@ export default function MapaProcesosContent() {
                     </button>
                     <button onClick={() => setShowAIWizard(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg hover:from-purple-700 hover:to-indigo-700">
                       <BrainCircuit className="h-3.5 w-3.5" /> Implementación con IA
-                    </button>
-                    <button onClick={openAssignCode} disabled={!selected} title="Asignar o modificar código documental del mapa" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 disabled:opacity-40">
-                      <Hash className="h-3.5 w-3.5" /> {docOutput?.documentCode ? 'Cambiar código' : 'Asignar código'}
                     </button>
                   </>
                 )}

@@ -18,6 +18,7 @@ import DashboardExport from './_tabs/DashboardExport';
 import MarcaBlanca from './_tabs/MarcaBlanca';
 import AuditoriaExportaciones from './_tabs/AuditoriaExportaciones';
 import AyudaExport from './_tabs/AyudaExport';
+import ControlDocumental from './_tabs/ControlDocumental';
 import {
   FileText, Upload, Trash2, Search, Filter, ChevronDown,
   FileSpreadsheet, FileType, File, Clock, CheckCircle2, AlertCircle,
@@ -151,7 +152,7 @@ export default function DocumentsPage() {
   // Tabs
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as any) || 'lista';
-  const [activeTab, setActiveTab] = useState<'lista' | 'maestro' | 'config' | 'plantillas' | 'salidas' | 'historial' | 'revisiones' | 'masiva' | 'retencion' | 'dashboard' | 'marca' | 'auditoria' | 'ayuda'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'lista' | 'maestro' | 'config' | 'plantillas' | 'salidas' | 'control' | 'historial' | 'revisiones' | 'masiva' | 'retencion' | 'dashboard' | 'marca' | 'auditoria' | 'ayuda'>(initialTab as any);
 
   // Maestro: tipos documentales para el formulario de carga
   const [typeConfigs, setTypeConfigs] = useState<{id: string; name: string; abbreviation: string; color: string; nextSequence: number}[]>([]);
@@ -500,7 +501,8 @@ export default function DocumentsPage() {
           { key: 'maestro', label: 'Maestro', icon: Hash },
           { key: 'config', label: 'Codificación', icon: Settings },
           { key: 'plantillas', label: 'Plantillas', icon: FileText },
-          { key: 'salidas', label: 'Salidas', icon: FileSpreadsheet },
+          { key: 'control', label: 'Control Documental', icon: Hash },
+          { key: 'salidas', label: 'Salidas (cat.)', icon: FileSpreadsheet },
           { key: 'revisiones', label: 'Revisiones', icon: GitBranch },
           { key: 'historial', label: 'Historial', icon: Clock },
           { key: 'masiva', label: 'Masiva', icon: Package },
@@ -527,6 +529,7 @@ export default function DocumentsPage() {
       {activeTab === 'maestro' && <MaestroDocumentos />}
       {activeTab === 'config' && <ConfiguracionDocumentos />}
       {activeTab === 'plantillas' && <PlantillasExport />}
+      {activeTab === 'control' && <ControlDocumental />}
       {activeTab === 'salidas' && <CatalogoSalidas />}
       {activeTab === 'revisiones' && <RevisionesAprobaciones />}
       {activeTab === 'historial' && <HistorialExportaciones />}
