@@ -291,6 +291,8 @@ export default function MapaProcesosContent() {
   const [subDragOverId, setSubDragOverId] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const mapPanelRef = useRef<HTMLDivElement>(null);
 
   async function loadEmployees() {
     try {
@@ -414,50 +416,53 @@ export default function MapaProcesosContent() {
     }
   }
 
-  // ── Export PDF inteligente ─────────────────────────────────────────
+  // ── Export PDF ─────────────────────────────────────────────────────
   async function exportPdf() {
-    if (!selected || !mapContainerRef.current) return;
+    if (!selected) return;
     setExportingPdf(true);
     try {
       const html2canvas = (await import('html2canvas')).default;
       const jsPDF = (await import('jspdf')).jsPDF;
 
-      const el = mapContainerRef.current;
-      // Temporarily expand to full scroll size so nothing is clipped
-      const prevOverflow = el.style.overflow;
-      const prevHeight = el.style.height;
-      el.style.overflow = 'visible';
-      el.style.height = 'auto';
+      // Obtain current document code (use state or fetch fresh)
+      let currentCode: string | null = docOutput?.documentCode ?? null;
+      if (!currentCode) {
+        try {
+          const fresh = await apiFetch<any>(`/process-maps/${selected.id}/document-output`);
+          currentCode = fresh?.documentCode ?? null;
+        } catch {}
+      }
 
-      const canvas = await html2canvas(el, {
+      // Ocultar sidebar para que no aparezca en el PDF
+      const sidebar = sidebarRef.current;
+      if (sidebar) sidebar.style.visibility = 'hidden';
+
+      // Capturar solo el diagrama del mapa (sin sidebar, sin toolbar)
+      const diagramEl = mapContainerRef.current;
+      if (!diagramEl) {
+        if (sidebar) sidebar.style.visibility = '';
+        return;
+      }
+
+      const canvas = await html2canvas(diagramEl, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: el.scrollWidth,
-        windowHeight: el.scrollHeight,
+        logging: false,
+        allowTaint: false,
       });
 
-      el.style.overflow = prevOverflow;
-      el.style.height = prevHeight;
+      if (sidebar) sidebar.style.visibility = '';
 
       const imgW = canvas.width;
       const imgH = canvas.height;
       const ratio = imgH / imgW;
 
-      // Intelligent page sizing: choose orientation and paper size
-      // A4 = 210x297mm, A3 = 297x420mm
-      // We try to fit on one page; if ratio makes it too small, use A3
       const isLandscape = imgW >= imgH;
       const orientation: 'l' | 'p' = isLandscape ? 'l' : 'p';
-
-      // Available area in mm (A4 margins ~10mm each side)
       const a4 = isLandscape ? { w: 297, h: 210 } : { w: 210, h: 297 };
       const a3 = isLandscape ? { w: 420, h: 297 } : { w: 297, h: 420 };
       const margin = 10;
-
-      // Try A4 first; if content height after fitting would be < 80% of page, use A3
       const a4ContentW = a4.w - margin * 2;
       const a4ContentH = a4ContentW * ratio;
       const paper = a4ContentH <= a4.h - margin * 2 ? 'a4' : 'a3';
@@ -467,29 +472,29 @@ export default function MapaProcesosContent() {
 
       const pdf = new jsPDF({ orientation, unit: 'mm', format: paper });
 
-      // Title
+      // Header del PDF
       const mapName = selected.name || 'Mapa de Procesos';
-      pdf.setFontSize(11);
-      pdf.setTextColor(60, 60, 60);
-      pdf.text(mapName, margin, margin - 2);
-      // Código documental si existe
-      if (docOutput?.documentCode) {
+      let headerY = margin - 2;
+      pdf.setFontSize(13);
+      pdf.setTextColor(30, 30, 30);
+      pdf.text(mapName, margin, headerY);
+      headerY += 5;
+      if (currentCode) {
         pdf.setFontSize(9);
-        pdf.setTextColor(99, 102, 241);
-        pdf.text(`Código: ${docOutput.documentCode}`, margin, margin + 0.5);
+        pdf.setTextColor(79, 70, 229);
+        pdf.text(`Código: ${currentCode}`, margin, headerY);
+        headerY += 4;
       }
       pdf.setFontSize(8);
       pdf.setTextColor(150, 150, 150);
-      pdf.text(`Exportado el ${new Date().toLocaleDateString('es-AR')} — SGI360`, margin, margin + 3);
+      pdf.text(`Exportado el ${new Date().toLocaleDateString('es-AR')} — SGI360`, margin, headerY);
 
       const imgData = canvas.toDataURL('image/png');
-      const imgTop = margin + 8;
+      const imgTop = headerY + 4;
 
-      // If content fits on one page
       if (contentH <= page.h - imgTop - margin) {
         pdf.addImage(imgData, 'PNG', margin, imgTop, contentW, contentH);
       } else {
-        // Multi-page: slice canvas into page-height chunks
         const pageImgH = (page.h - imgTop - margin) / contentW * imgW;
         let yOffset = 0;
         let isFirstPage = true;
@@ -869,7 +874,7 @@ export default function MapaProcesosContent() {
   return (
     <div className="flex gap-6 min-h-[500px]">
       {/* Sidebar: lista de mapas */}
-      <div className="w-56 flex-shrink-0 space-y-2">
+      <div ref={sidebarRef} className="w-56 flex-shrink-0 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Mapas</span>
           <button onClick={() => { setShowMapForm(true); setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI' }); }} className="p-1 rounded hover:bg-neutral-100">
@@ -912,7 +917,7 @@ export default function MapaProcesosContent() {
       </div>
 
       {/* Main: mapa visual */}
-      <div className="flex-1">
+      <div ref={mapPanelRef} className="flex-1">
         {!selected ? (
           <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
             <Layers className="h-10 w-10 mb-3 opacity-30" />
@@ -921,7 +926,7 @@ export default function MapaProcesosContent() {
         ) : (
           <div className="space-y-4">
             {/* Breadcrumb de navegación (2 niveles: Mapa General → Mapa → Desglose) */}
-            <nav className="flex items-center gap-1.5 text-xs text-neutral-500 flex-wrap">
+            <nav className="flex items-center gap-1.5 text-xs text-neutral-500 flex-wrap" data-pdf-ignore="true">
               <button onClick={() => setShowGeneral(true)} className="hover:text-brand-600 font-medium">Mapa General</button>
               <ChevronRight className="h-3.5 w-3.5 text-neutral-300" />
               <button onClick={() => setViewMacroId(null)} className={`hover:text-brand-600 ${!viewMacro ? 'font-semibold text-neutral-700' : 'font-medium'}`}>{selected.name}</button>
@@ -936,7 +941,7 @@ export default function MapaProcesosContent() {
             </nav>
 
             {/* Header del mapa */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between" data-pdf-ignore="true">
               <div className="flex items-center gap-3">
                 {viewMacro && (
                   <button onClick={() => setViewMacroId(null)} title="Volver al mapa de procesos" className="p-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-50">
@@ -1079,7 +1084,7 @@ export default function MapaProcesosContent() {
             )}
 
             {/* Filtros */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2" data-pdf-ignore="true">
               <Filter className="h-4 w-4 text-neutral-400" />
               <select value={filterLayer} onChange={e => setFilterLayer(e.target.value)} className="text-xs border border-neutral-200 rounded-lg px-2 py-1.5 bg-white">
                 <option value="">Todas las capas</option>
@@ -1102,7 +1107,7 @@ export default function MapaProcesosContent() {
             </div>
 
             {/* Layout: entrada → capas → salida */}
-            <div ref={mapContainerRef} className="flex gap-4 items-stretch">
+            <div ref={mapContainerRef} className="flex gap-4 items-stretch" id="map-diagram-area">
               {viewMacro ? (
                 /* Ítem 6: panel dinámico con el resumen del proceso */
                 <div className="w-64 flex-shrink-0">
