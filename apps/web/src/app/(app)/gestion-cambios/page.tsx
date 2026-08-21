@@ -236,6 +236,8 @@ export default function GestionCambiosPage() {
             title="Registro de Gestión de Cambios"
             moduleName="calidad"
             recordCount={filtered.length}
+            showDocCode={true}
+            docCodeType="RECORD"
             bodyHtml={buildFullDocument([
               { title: 'Cambios', html: buildTableHtml([
                 { key: 'code', label: 'Código', width: '80px' },

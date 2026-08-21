@@ -514,6 +514,8 @@ export default function RiesgosPage() {
             title="Matriz de Riesgos y Oportunidades"
             moduleName="calidad"
             recordCount={filtered.length}
+            showDocCode={true}
+            docCodeType="MATRIX"
             filters={{ status: filterStatus, category: filterCategory }}
             bodyHtml={buildFullDocument([
               { title: 'Listado de Riesgos', html: buildTableHtml([

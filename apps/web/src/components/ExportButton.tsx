@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Download, Loader2, Shield, ShieldOff, FileDown, FileSpreadsheet } from 'lucide-react';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 interface ExportButtonProps {
   outputKey: string;
@@ -14,6 +15,8 @@ interface ExportButtonProps {
   defaultExportType?: 'CONTROLLED' | 'INFORMATIVE';
   className?: string;
   label?: string;
+  showDocCode?: boolean;
+  docCodeType?: 'LIST' | 'RECORD' | 'DASHBOARD' | 'MATRIX' | 'MAP' | 'REPORT' | 'FORM';
 }
 
 export default function ExportButton({
@@ -26,6 +29,8 @@ export default function ExportButton({
   defaultExportType = 'INFORMATIVE',
   className,
   label,
+  showDocCode = false,
+  docCodeType = 'LIST',
 }: ExportButtonProps) {
   const [loading, setLoading] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -83,7 +88,7 @@ export default function ExportButton({
     setLoading(false);
   }
 
-  return (
+  const dropdownNode = (
     <div className="relative inline-block" ref={menuRef}>
       {error && (
         <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-lg bg-red-50 border border-red-200 p-2 text-xs text-red-700 shadow-sm">
@@ -147,4 +152,20 @@ export default function ExportButton({
       </button>
     </div>
   );
+
+  if (showDocCode) {
+    return (
+      <div className="flex items-center gap-2">
+        <DocCodeBadge
+          outputKey={outputKey}
+          title={title || outputKey}
+          module={(moduleName || 'general').toLowerCase()}
+          outputType={docCodeType}
+        />
+        {dropdownNode}
+      </div>
+    );
+  }
+
+  return dropdownNode;
 }

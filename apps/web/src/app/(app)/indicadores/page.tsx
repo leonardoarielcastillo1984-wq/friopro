@@ -379,6 +379,8 @@ export default function IndicadoresPage() {
             title="Tablero de Indicadores"
             moduleName="calidad"
             recordCount={filtered.length}
+            showDocCode={true}
+            docCodeType="DASHBOARD"
             bodyHtml={buildFullDocument([
               { title: 'Indicadores', html: buildTableHtml([
                 { key: 'code', label: 'Código', width: '80px' },

@@ -237,6 +237,8 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                 outputKey="contexto-organizacion"
                 title={`Contexto de la Organización — Año ${year}`}
                 moduleName="Contexto"
+                showDocCode={true}
+                docCodeType="REPORT"
                 bodyHtml={`
                   <h2>Misión, Visión y Valores</h2>
                   <table style="width:100%;border-collapse:collapse;">

@@ -199,6 +199,8 @@ export default function AuditoriasPage() {
             title="Listado de Auditorías ISO"
             moduleName="Auditorías"
             recordCount={audits.length}
+            showDocCode={true}
+            docCodeType="REPORT"
             bodyHtml={`
               <table style="width:100%;border-collapse:collapse;font-size:11px;">
                 <thead><tr style="background:#1e40af;color:#fff;">

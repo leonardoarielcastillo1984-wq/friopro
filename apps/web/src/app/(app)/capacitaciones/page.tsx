@@ -200,6 +200,8 @@ export default function CapacitacionesPage() {
             title="Plan de Capacitaciones"
             moduleName="rrhh"
             recordCount={trainings.length}
+            showDocCode={true}
+            docCodeType="LIST"
             bodyHtml={buildFullDocument([
               { title: 'Capacitaciones', html: buildTableHtml([
                 { key: 'title', label: 'Título' },

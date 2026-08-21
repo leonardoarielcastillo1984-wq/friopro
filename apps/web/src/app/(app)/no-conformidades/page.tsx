@@ -144,6 +144,8 @@ export default function NoConformidadesPage() {
             title="Registro de No Conformidades"
             moduleName="calidad"
             recordCount={filtered.length}
+            showDocCode={true}
+            docCodeType="RECORD"
             bodyHtml={buildFullDocument([
               { title: 'No Conformidades', html: buildTableHtml([
                 { key: 'code', label: 'Código', width: '80px' },
