@@ -874,7 +874,7 @@ export default function MapaProcesosContent() {
   return (
     <div className="flex gap-6 min-h-[500px]">
       {/* Sidebar: lista de mapas */}
-      <div ref={sidebarRef} className="w-56 flex-shrink-0 space-y-2">
+      <div ref={sidebarRef} data-no-export="true" className="w-56 flex-shrink-0 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Mapas</span>
           <button onClick={() => { setShowMapForm(true); setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI' }); }} className="p-1 rounded hover:bg-neutral-100">
@@ -917,7 +917,7 @@ export default function MapaProcesosContent() {
       </div>
 
       {/* Main: mapa visual */}
-      <div ref={mapPanelRef} className="flex-1">
+      <div ref={mapPanelRef} data-doc-output-key={docOutput?.outputKey ?? ''} className="flex-1">
         {!selected ? (
           <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
             <Layers className="h-10 w-10 mb-3 opacity-30" />

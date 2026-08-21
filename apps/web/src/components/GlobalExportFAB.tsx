@@ -203,7 +203,7 @@ function capturePageContent(path?: string): string {
   // Remove interactive and non-printable elements
   const removeSelectors = [
     'button', 'input', 'textarea', 'form',
-    '[data-no-export]', '.fixed', '[aria-modal]',
+    '[data-no-export]', '[data-pdf-ignore]', '.fixed', '[aria-modal]',
     'script', 'style', 'nav',
   ];
   removeSelectors.forEach(sel => {
@@ -395,6 +395,10 @@ export default function GlobalExportFAB() {
       const tenantId = localStorage.getItem('tenantId');
       const csrf = localStorage.getItem('csrfToken');
 
+      // Si hay un mapa seleccionado con su outputKey específico, usarlo en lugar del genérico de la página
+      const domOutputKey = document.querySelector('[data-doc-output-key]')?.getAttribute('data-doc-output-key');
+      const effectiveOutputKey = (domOutputKey && domOutputKey.trim()) ? domOutputKey.trim() : outputKey;
+
       const res = await fetch('/api/doc-export/export', {
         method: 'POST',
         headers: {
@@ -403,7 +407,7 @@ export default function GlobalExportFAB() {
           ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
           ...(csrf ? { 'x-csrf-token': csrf } : {}),
         },
-        body: JSON.stringify({ outputKey, exportType, bodyHtml, title, sections, orientation, pageSize }),
+        body: JSON.stringify({ outputKey: effectiveOutputKey, exportType, bodyHtml, title, sections, orientation, pageSize }),
       });
 
       if (!res.ok) {
