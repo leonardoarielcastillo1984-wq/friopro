@@ -507,6 +507,14 @@ export default function NCRDetailPage() {
             )}
           </div>
           <div className="bg-white rounded-xl border border-neutral-200 p-6">
+            <h2 className="font-semibold text-neutral-900 mb-3">Acción correctiva</h2>
+            {ncr.correctiveAction ? (
+              <p className="text-sm text-neutral-700 whitespace-pre-wrap">{ncr.correctiveAction}</p>
+            ) : (
+              <p className="text-sm text-neutral-400 italic">Sin acción correctiva registrada</p>
+            )}
+          </div>
+          <div className="bg-white rounded-xl border border-neutral-200 p-6">
             <h2 className="font-semibold text-neutral-900 mb-3">Acción preventiva</h2>
             {ncr.preventiveAction ? (
               <p className="text-sm text-neutral-700 whitespace-pre-wrap">{ncr.preventiveAction}</p>
