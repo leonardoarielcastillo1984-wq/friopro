@@ -140,7 +140,6 @@ interface ColDef {
 const COLUMNS: ColDef[] = [
   { key: 'checkbox', label: '', group: 'general', width: 36, sticky: true },
   { key: 'sequenceNumber', label: 'Nro', group: 'general', width: 50, sticky: true },
-  { key: 'code', label: 'Codigo', group: 'general', width: 110, sticky: true },
   { key: 'ncrCode', label: 'NCR', group: 'general', width: 90 },
   { key: 'status', label: 'Estado', group: 'general', width: 120, editable: true, cellType: 'select', options: STATUS_OPTS, field: 'status' },
   { key: 'type', label: 'Tipo', group: 'general', width: 120, editable: true, cellType: 'select', options: TYPE_OPTS, field: 'type' },
@@ -182,7 +181,7 @@ const GROUP_COLORS: Record<string, string> = {
   verificacion: 'bg-green-50/40', control: 'bg-purple-50/40',
 };
 
-const NO_SORT = ['checkbox','actions','ncrCode','executorName','sequenceNumber'];
+const NO_SORT = ['checkbox','actions','ncrCode','executorName','sequenceNumber','code'];
 
 // ── Stat Card ────────────────────────────────────────────────────────────────
 
@@ -730,41 +729,8 @@ export default function PlanAccionPage() {
                               {col.key === 'sequenceNumber' && (
                                 <span className="font-mono text-xs text-neutral-500 font-medium text-center block">{plan.sequenceNumber ?? DASH}</span>
                               )}
-                              {col.key === 'code' && (
-                                <div className="flex items-center gap-1">
-                                  {light && <span className={`w-2 h-2 rounded-full shrink-0 ${light === 'red' ? 'bg-red-500' : light === 'amber' ? 'bg-amber-400' : 'bg-green-500'}`} />}
-                                  <span className="font-mono text-xs text-neutral-600 whitespace-nowrap">{plan.code || <span className="text-neutral-300 italic">sin codigo</span>}</span>
-                                  {!plan.code && !isReadOnly && (
-                                    <button onClick={() => assignSingle(plan.id)} disabled={assigning}
-                                      className="text-[10px] text-blue-600 hover:underline disabled:opacity-50" title="Asignar codigo">
-                                      <Code2 className="w-3 h-3" />
-                                    </button>
-                                  )}
-                                </div>
-                              )}
                               {col.key === 'ncrCode' && <span className="font-mono text-xs text-neutral-500">{plan.ncr?.code ?? DASH}</span>}
-                              {col.key === 'status' && (
-                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-medium ${stCfg.bg} ${stCfg.color}`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${stCfg.dot}`} />{stCfg.label}
-                                </span>
-                              )}
-                              {col.key === 'type' && <span className="text-xs text-neutral-600">{TYPE_LABELS[plan.type]}</span>}
-                              {col.key === 'origin' && <span className="text-xs text-neutral-600">{ORIGIN_LABELS[plan.origin]}</span>}
-                              {col.key === 'analysisMethod' && <span className="text-xs text-neutral-600">{plan.analysisMethod ? METHOD_LABELS[plan.analysisMethod] : DASH}</span>}
-                              {col.key === 'effectiveness' && (
-                                <span className={`text-xs font-medium ${plan.effectiveness === 'EFFECTIVE' ? 'text-green-600' : plan.effectiveness === 'NOT_EFFECTIVE' ? 'text-red-600' : 'text-amber-600'}`}>
-                                  {EFF_LABELS[plan.effectiveness]}
-                                </span>
-                              )}
                               {col.key === 'executorName' && <span className="text-xs text-neutral-600 truncate" title={userName(plan.executor)}>{userName(plan.executor)}</span>}
-                              {col.key === 'progressPercent' && (
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-12 bg-neutral-200 rounded-full h-1.5">
-                                    <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${plan.progressPercent}%` }} />
-                                  </div>
-                                  <span className="text-[10px] text-neutral-500">{plan.progressPercent}%</span>
-                                </div>
-                              )}
                               {col.key === 'createdAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.createdAt)}</span>}
                               {col.key === 'updatedAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.updatedAt)}</span>}
                               {col.key === 'actions' && (

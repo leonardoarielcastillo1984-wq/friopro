@@ -132,16 +132,16 @@ export function InlineCell({
     );
   }
 
-  const display = displayValue ?? value ?? '—';
-  const isEmpty = !value && value !== 0;
+  const display = displayValue ?? value ?? '';
+  const isEmpty = !value && value !== 0 && !displayValue;
 
   return (
     <span
       onClick={startEdit}
-      className={`text-xs cursor-text px-1 py-0.5 rounded hover:bg-blue-50 transition-colors truncate block ${isEmpty ? 'text-neutral-300' : 'text-neutral-700'} ${error ? 'ring-1 ring-red-300' : ''} ${className}`}
-      title={String(display)}
+      className={`text-xs cursor-text px-1.5 py-1 rounded hover:bg-blue-50 hover:ring-1 hover:ring-blue-200 transition-colors block min-h-[20px] whitespace-pre-wrap break-words ${isEmpty ? 'text-neutral-300 italic' : 'text-neutral-700'} ${error ? 'ring-1 ring-red-300' : ''} ${className}`}
+      title={isEmpty ? 'Click para editar' : String(display)}
     >
-      {display}
+      {isEmpty ? 'Click para editar...' : display}
     </span>
   );
 }
