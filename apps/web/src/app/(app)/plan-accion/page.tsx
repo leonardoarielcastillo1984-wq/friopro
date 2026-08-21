@@ -616,12 +616,10 @@ export default function PlanAccionPage() {
         </div>
 
         {/* Assign code button - assigns to ALL plans without code */}
-        {plansWithoutCode.length > 0 && (
-          <button onClick={assignAllCodes} disabled={assigning}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-            <Code2 className="w-4 h-4" /> {assigning ? 'Asignando...' : `Asignar codigo (${plansWithoutCode.length})`}
-          </button>
-        )}
+        <button onClick={assignAllCodes} disabled={assigning || plansWithoutCode.length === 0}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          <Code2 className="w-4 h-4" /> {assigning ? 'Asignando...' : `Asignar codigo${plansWithoutCode.length > 0 ? ` (${plansWithoutCode.length})` : ''}`}
+        </button>
       </div>
 
       {/* Save status indicators */}
