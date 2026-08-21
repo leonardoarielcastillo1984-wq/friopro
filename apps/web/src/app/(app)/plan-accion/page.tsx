@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import {
   Plus, Search, X, Eye, Code2, FileText, Loader2, ChevronDown, ChevronUp,
-  Columns3, Check, AlertCircle, Clock, History, Sparkles,
+  Columns3, Check, AlertCircle, Clock, History, Sparkles, Filter,
 } from 'lucide-react';
 import DocCodeBadge from '@/components/DocCodeBadge';
 import ExportButton from '@/components/ExportButton';
@@ -382,6 +382,8 @@ export default function PlanAccionPage() {
   const [sortKey, setSortKey] = useState<string|null>(null);
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saving'|'saved'|'error'>>({});
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  const [openFilterCol, setOpenFilterCol] = useState<string|null>(null);
   const saveTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
   const plansWithoutCode = useMemo(() => {
@@ -425,6 +427,24 @@ export default function PlanAccionPage() {
       }
       return true;
     });
+    // Apply per-column filters
+    for (const [colKey, selectedValues] of Object.entries(colFilters)) {
+      if (selectedValues.size === 0) continue;
+      result = result.filter(p => {
+        let val: string;
+        if (colKey === 'ncrCode') val = p.ncr?.code ?? '';
+        else if (colKey === 'executorName') val = p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '';
+        else if (colKey === 'status') val = STATUS_CFG[p.status]?.label ?? p.status;
+        else if (colKey === 'type') val = TYPE_LABELS[p.type] ?? '';
+        else if (colKey === 'origin') val = ORIGIN_LABELS[p.origin] ?? '';
+        else if (colKey === 'analysisMethod') val = p.analysisMethod ? METHOD_LABELS[p.analysisMethod] : '';
+        else if (colKey === 'effectiveness') val = EFF_LABELS[p.effectiveness] ?? '';
+        else if (colKey === 'progressPercent') val = String(p.progressPercent);
+        else if (colKey === 'sequenceNumber') val = String(p.sequenceNumber ?? '');
+        else val = String((p as any)[colKey] ?? '');
+        return selectedValues.has(val);
+      });
+    }
     if (sortKey) {
       result = [...result].sort((a, b) => {
         const av = (a as any)[sortKey] ?? '';
@@ -434,7 +454,7 @@ export default function PlanAccionPage() {
       });
     }
     return result;
-  }, [plans, search, filterStatus, filterOrigin, filterType, sortKey, sortDir]);
+  }, [plans, search, filterStatus, filterOrigin, filterType, sortKey, sortDir, colFilters]);
 
   const visibleCols = COLUMNS.filter(c => !hiddenCols.has(c.key));
 
@@ -513,6 +533,44 @@ export default function PlanAccionPage() {
   function toggleColumn(key: string) {
     setHiddenCols(prev => { const ns = new Set(prev); if (ns.has(key)) ns.delete(key); else ns.add(key); return ns; });
   }
+
+  function getUniqueValues(colKey: string): string[] {
+    const vals = new Set<string>();
+    for (const p of plans) {
+      let val: string;
+      if (colKey === 'ncrCode') val = p.ncr?.code ?? '(vacio)';
+      else if (colKey === 'executorName') val = p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '(vacio)';
+      else if (colKey === 'status') val = STATUS_CFG[p.status]?.label ?? p.status;
+      else if (colKey === 'type') val = TYPE_LABELS[p.type] ?? '';
+      else if (colKey === 'origin') val = ORIGIN_LABELS[p.origin] ?? '';
+      else if (colKey === 'analysisMethod') val = p.analysisMethod ? METHOD_LABELS[p.analysisMethod] : '(vacio)';
+      else if (colKey === 'effectiveness') val = EFF_LABELS[p.effectiveness] ?? '';
+      else if (colKey === 'progressPercent') val = String(p.progressPercent);
+      else if (colKey === 'sequenceNumber') val = String(p.sequenceNumber ?? '');
+      else if (['createdAt','updatedAt'].includes(colKey)) val = fmt((p as any)[colKey]);
+      else if (['plannedStartDate','plannedEndDate','actualEndDate','effectivenessCheckDate'].includes(colKey)) val = fmt((p as any)[colKey]);
+      else val = String((p as any)[colKey] ?? '(vacio)');
+      if (!val || val === 'null' || val === 'undefined') val = '(vacio)';
+      vals.add(val);
+    }
+    return Array.from(vals).sort((a, b) => a.localeCompare(b));
+  }
+
+  function toggleColFilter(colKey: string, value: string) {
+    setColFilters(prev => {
+      const ns = { ...prev };
+      const cur = new Set(ns[colKey] ?? []);
+      if (cur.has(value)) cur.delete(value); else cur.add(value);
+      ns[colKey] = cur;
+      return ns;
+    });
+  }
+
+  function clearColFilter(colKey: string) {
+    setColFilters(prev => { const ns = { ...prev }; delete ns[colKey]; return ns; });
+  }
+
+  const FILTERABLE_COLS = COLUMNS.filter(c => !['checkbox','actions'].includes(c.key)).map(c => c.key);
 
   // ── Export HTML ────────────────────────────────────────────────────────────
 
@@ -650,7 +708,7 @@ export default function PlanAccionPage() {
           <button onClick={() => setShowCreate(true)} className="mt-3 text-blue-600 text-sm hover:underline">Crear el primero</button>
         </div>
       ) : (
-        <div className="rounded-xl border border-neutral-200 overflow-hidden">
+        <div className="rounded-xl border border-neutral-200 overflow-hidden" onClick={() => openFilterCol && setOpenFilterCol(null)}>
           <div className="overflow-x-auto" style={{ maxHeight: '70vh' }}>
             <table className="border-collapse text-xs">
               <thead className="sticky top-0 z-20">
@@ -686,15 +744,55 @@ export default function PlanAccionPage() {
                       const stickyStyle = col.sticky ? { position: 'sticky' as const, left: off, zIndex: 26, background: 'white' as const } : {};
                       if (col.sticky) off += col.width;
                       const canSort = !NO_SORT.includes(col.key);
+                      const canFilter = FILTERABLE_COLS.includes(col.key);
+                      const hasFilter = colFilters[col.key] && colFilters[col.key].size > 0;
+                      const uniqueVals = openFilterCol === col.key ? getUniqueValues(col.key) : [];
                       return (
                         <th key={col.key}
                           style={{ ...stickyStyle, minWidth: col.width, width: col.width }}
-                          onClick={() => canSort && toggleSort(col.key)}
-                          className={`border-b border-r border-neutral-200 px-2 py-2 text-left font-medium text-neutral-700 bg-neutral-50 ${canSort ? 'cursor-pointer hover:bg-neutral-100' : ''} ${col.sticky ? 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]' : ''}`}>
+                          className={`border-b border-r border-neutral-200 px-2 py-2 text-left font-medium text-neutral-700 bg-neutral-50 ${col.sticky ? 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]' : ''} relative`}>
                           <div className="flex items-center gap-1">
-                            <span className="truncate">{col.label}</span>
-                            {sortKey === col.key && (sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                            <span className="truncate cursor-pointer" onClick={() => canSort && toggleSort(col.key)}>
+                              {col.label}
+                            </span>
+                            {canSort && sortKey === col.key && (sortDir === 'asc' ? <ChevronUp className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />)}
+                            {canFilter && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setOpenFilterCol(openFilterCol === col.key ? null : col.key); }}
+                                className={`shrink-0 p-0.5 rounded hover:bg-neutral-200 ${hasFilter ? 'text-blue-600' : 'text-neutral-400'}`}
+                                title="Filtrar columna"
+                              >
+                                <Filter className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
+                          {openFilterCol === col.key && (
+                            <div onClick={(e) => e.stopPropagation()} className="absolute top-full left-0 mt-0.5 bg-white rounded-lg shadow-xl border border-neutral-200 z-50 max-h-60 overflow-y-auto w-56">
+                              <div className="sticky top-0 bg-white border-b border-neutral-100 px-2 py-1.5 flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-neutral-500 uppercase">Filtrar</span>
+                                <div className="flex gap-1">
+                                  {hasFilter && (
+                                    <button onClick={() => clearColFilter(col.key)} className="text-[10px] text-red-500 hover:underline">Limpiar</button>
+                                  )}
+                                  <button onClick={() => setOpenFilterCol(null)} className="text-neutral-400 hover:text-neutral-600"><X className="w-3 h-3" /></button>
+                                </div>
+                              </div>
+                              <div className="p-1">
+                                {uniqueVals.length === 0 && <p className="text-xs text-neutral-400 italic px-2 py-1">Sin datos</p>}
+                                {uniqueVals.map(v => (
+                                  <label key={v} className="flex items-center gap-2 px-2 py-1 hover:bg-neutral-50 rounded cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={colFilters[col.key]?.has(v) ?? false}
+                                      onChange={() => toggleColFilter(col.key, v)}
+                                      className="rounded border-neutral-300 text-blue-600"
+                                    />
+                                    <span className="text-xs text-neutral-700 truncate">{v}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </th>
                       );
                     });
