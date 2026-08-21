@@ -467,7 +467,7 @@ export default function PlanAccionPage() {
   }, [patchPlan]);
 
   async function assignAllCodes() {
-    if (plansWithoutCode.length === 0) return;
+    if (plansWithoutCode.length === 0) { alert('No hay planes sin codigo para asignar.'); return; }
     if (!confirm(`Asignar codigo a ${plansWithoutCode.length} plan(es) sin codigo? Esta accion no se puede revertir.`)) return;
     setAssigning(true);
     try {
@@ -616,7 +616,7 @@ export default function PlanAccionPage() {
         </div>
 
         {/* Assign code button - assigns to ALL plans without code */}
-        <button onClick={assignAllCodes} disabled={assigning || plansWithoutCode.length === 0}
+        <button onClick={assignAllCodes} disabled={assigning}
           className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
           <Code2 className="w-4 h-4" /> {assigning ? 'Asignando...' : `Asignar codigo${plansWithoutCode.length > 0 ? ` (${plansWithoutCode.length})` : ''}`}
         </button>
