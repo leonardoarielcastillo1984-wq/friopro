@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import type { NonConformity, NCRStats, NCRSeverity, NCRSource } from '@/lib/types';
 import {
-  AlertTriangle, Plus, X, Search, AlertCircle, CheckCircle2, Clock, Target, BrainCircuit
+  AlertTriangle, Plus, X, Search, AlertCircle, CheckCircle2, Clock, Target, BrainCircuit, ClipboardList
 } from 'lucide-react';
 import ExportButton from '@/components/ExportButton';
 import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
@@ -72,6 +72,8 @@ export default function NoConformidadesPage() {
   const [showCreateFromFinding, setShowCreateFromFinding] = useState(false);
   const [findings, setFindings] = useState<AiFinding[]>([]);
   const [loadingFindings, setLoadingFindings] = useState(false);
+  const [ncrPlanMap, setNcrPlanMap] = useState<Record<string, string>>({}); // ncrId → planId
+  const [addingPlan, setAddingPlan] = useState<string | null>(null);
 
   async function loadFindings() {
     setLoadingFindings(true);
@@ -98,6 +100,38 @@ export default function NoConformidadesPage() {
     }
   }
 
+  async function loadPlanMap() {
+    try {
+      const res = await apiFetch<{ plans: { id: string; ncrId: string | null }[] }>('/action-plans');
+      const map: Record<string, string> = {};
+      for (const p of res.plans ?? []) { if (p.ncrId) map[p.ncrId] = p.id; }
+      setNcrPlanMap(map);
+    } catch {}
+  }
+
+  async function addToPlan(ncr: NonConformity, e: React.MouseEvent) {
+    e.stopPropagation();
+    setAddingPlan(ncr.id);
+    try {
+      await apiFetch('/action-plans', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ncrId: ncr.id,
+          origin: 'NCR',
+          type: 'CORRECTIVE',
+          findingDescription: ncr.description,
+          requirement: ncr.standard ? `${ncr.standard}${ncr.clause ? ' §' + ncr.clause : ''}` : undefined,
+          severity: ncr.severity,
+          process: (ncr as any).process ?? undefined,
+        }),
+      });
+      setSuccess('Plan de Acción creado. Hacé clic en la pestaña "Plan de Acción" para verlo.');
+      await loadPlanMap();
+    } catch (err: any) { setError(err?.message ?? 'Error'); }
+    setAddingPlan(null);
+  }
+
   async function load() {
     setError(null); setLoading(true);
     try {
@@ -106,6 +140,7 @@ export default function NoConformidadesPage() {
         apiFetch<{ stats: NCRStats }>('/ncr/stats'),
       ]);
       setNcrs(ncrsRes.ncrs ?? []); setStats(statsRes.stats ?? null);
+      void loadPlanMap();
     } catch (err: any) {
       setError(err?.message ?? 'Error'); if (err?.message === 'Unauthorized') router.push('/login');
     } finally { setLoading(false); }
@@ -302,6 +337,21 @@ export default function NoConformidadesPage() {
                     </div>
                     <h3 className="mt-1 font-medium text-sm text-neutral-900">{ncr.title}</h3>
                     <p className="mt-0.5 text-xs text-neutral-500 line-clamp-1">{ncr.description}</p>
+                    <div className="mt-2">
+                      {ncrPlanMap[ncr.id] ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5 font-medium">
+                          <ClipboardList className="h-3 w-3" /> Plan de Acción asignado
+                        </span>
+                      ) : (
+                        <button
+                          onClick={(e) => addToPlan(ncr, e)}
+                          disabled={addingPlan === ncr.id}
+                          className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-0.5 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                        >
+                          {addingPlan === ncr.id ? '...' : <><Plus className="h-3 w-3" /> Agregar a Plan de Acción</>}
+                        </button>
+                      )}
+                    </div>
                     <div className="mt-1.5 flex items-center gap-3 text-xs text-neutral-400">
                       {ncr.standard && <span>{ncr.standard} {ncr.clause && `§${ncr.clause}`}</span>}
                       <span>{new Date(ncr.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
