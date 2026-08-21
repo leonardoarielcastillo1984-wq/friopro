@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
 const uuidOrNull = z.preprocess(
   (v) => (v === '' || v === null || v === undefined ? null : v),
@@ -183,10 +184,17 @@ export const actionPlanRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    // Auto-assign sequence number
+    const seqResult = await app.runWithDbContext(req, async (tx: any) =>
+      tx.$queryRaw`SELECT nextval('action_plan_seq')::int as seq`
+    );
+    const seqNum = Array.isArray(seqResult) ? seqResult[0]?.seq : null;
+
     const plan = await app.runWithDbContext(req, async (tx: any) => {
       const created = await tx.actionPlan.create({
         data: {
           tenantId,
+          sequenceNumber: seqNum ?? undefined,
           ncrId: body.ncrId ?? null,
           origin: body.origin ?? (body.ncrId ? 'NCR' : 'MANUAL'),
           type: body.type ?? 'CORRECTIVE',
@@ -481,5 +489,86 @@ export const actionPlanRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return reply.send({ success: true });
+  });
+
+  // ── POST /action-plans/:id/ai-fill ─────────────────────────────────────────
+  app.post('/:id/ai-fill', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const { field } = z.object({
+      field: z.enum(['immediateCorrection','rootCauseAnalysis','validatedRootCause','plannedAction','expectedResult']),
+    }).parse(req.body);
+
+    const plan = await app.runWithDbContext(req, async (tx: any) =>
+      tx.actionPlan.findFirst({
+        where: { id, tenantId, deletedAt: null },
+        include: {
+          ncr: { select: { id: true, code: true, title: true, description: true, severity: true } },
+          executor: { select: USER_SELECT },
+        },
+      })
+    );
+    if (!plan) return reply.code(404).send({ error: 'Plan no encontrado' });
+
+    const FIELD_LABELS: Record<string, string> = {
+      immediateCorrection: 'Corrección inmediata / Medida de contención',
+      rootCauseAnalysis: 'Análisis de causa raíz',
+      validatedRootCause: 'Causa raíz validada',
+      plannedAction: 'Acción planificada',
+      expectedResult: 'Resultado esperado / Criterio de éxito',
+    };
+
+    const contextParts: string[] = [
+      `Tipo de acción: ${plan.type}`,
+      `Origen: ${plan.origin}`,
+      `Estado: ${plan.status}`,
+      plan.severity ? `Criticidad: ${plan.severity}` : '',
+      plan.site ? `Sede: ${plan.site}` : '',
+      plan.area ? `Área: ${plan.area}` : '',
+      plan.process ? `Proceso: ${plan.process}` : '',
+      plan.findingDescription ? `Descripción del hallazgo: ${plan.findingDescription}` : '',
+      plan.requirement ? `Requisito: ${plan.requirement}` : '',
+      plan.classification ? `Clasificación: ${plan.classification}` : '',
+      plan.ncr?.title ? `NCR relacionada: ${plan.ncr.title}` : '',
+      plan.ncr?.description ? `Descripción NCR: ${plan.ncr.description}` : '',
+      plan.immediateCorrection ? `Corrección inmediata: ${plan.immediateCorrection}` : '',
+      plan.rootCauseAnalysis ? `Análisis de causa raíz: ${plan.rootCauseAnalysis}` : '',
+      plan.analysisMethod ? `Metodología: ${plan.analysisMethod}` : '',
+      plan.validatedRootCause ? `Causa raíz validada: ${plan.validatedRootCause}` : '',
+      plan.plannedAction ? `Acción planificada: ${plan.plannedAction}` : '',
+      plan.expectedResult ? `Resultado esperado: ${plan.expectedResult}` : '',
+    ].filter(Boolean);
+
+    const prompt = `Sos un experto en gestión de calidad (ISO 9001/14001/45001/19011). Analizá el siguiente contexto de un Plan de Acción y completá el campo "${FIELD_LABELS[field]}".
+
+Contexto del plan:
+${contextParts.join('\n')}
+
+Generá únicamente el contenido para el campo "${FIELD_LABELS[field]}". Sea específico, técnico y accionable. No incluís saludos ni explicaciones. Respondé en español.`;
+
+    try {
+      const llm = createGroqOnlyLLMProvider(
+        null, app.prisma, tenantId, req.auth?.userId ?? null, 'action-plan-ai-fill'
+      );
+      const response = await llm.chat([
+        { role: 'user', content: prompt },
+      ], 1024);
+
+      const generatedText = response.text.trim();
+
+      await app.runWithDbContext(req, async (tx: any) => {
+        await tx.actionPlan.update({
+          where: { id },
+          data: { [field]: generatedText, updatedById: req.auth?.userId ?? null },
+        });
+        await addLog(tx, id, req.auth?.userId, 'AI_FILL', FIELD_LABELS[field], null, generatedText, `Campo completado con IA`);
+      });
+
+      return reply.send({ field, value: generatedText });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err?.message ?? 'Error en IA' });
+    }
   });
 };

@@ -9823,7 +9823,10 @@ model ActionPlan {
   tenantId String @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // Código del plan (PAC-YYYY-NNNN)
+  // Número correlativo auto-asignado
+  sequenceNumber      Int?          @unique
+
+  // Código del plan (PAC-YYYY-NNNN) — asignado manualmente
   code                String?
   codeAssignedAt      DateTime?     @db.Timestamptz
   codeAssignedById    String?       @db.Uuid
