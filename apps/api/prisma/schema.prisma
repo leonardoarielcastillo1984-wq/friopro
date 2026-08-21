@@ -69,6 +69,7 @@ model NonConformity {
   environmentalAspects EnvironmentalAspect[] @relation("NcrEnvironmentalAspect")
   hazards              Hazard[]              @relation("NcrHazard")
   drillScenarios       DrillScenario[]       @relation("DrillNcr")
+  actionPlans          ActionPlan[]          @relation("ActionPlanNcr")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -129,6 +130,56 @@ enum NCRStatus {
   VERIFICATION
   CLOSED
   CANCELLED
+}
+
+enum ActionPlanStatus {
+  DRAFT
+  PENDING_CODE
+  PENDING_APPROVAL
+  OPEN
+  IN_EXECUTION
+  PENDING_EVIDENCE
+  PENDING_EFFECTIVENESS
+  EFFECTIVE
+  NOT_EFFECTIVE
+  OVERDUE
+  CLOSED
+  CANCELLED
+}
+
+enum ActionPlanType {
+  IMMEDIATE_CORRECTION
+  CORRECTIVE
+  PREVENTIVE
+  IMPROVEMENT
+  RISK_TREATMENT
+}
+
+enum ActionPlanOrigin {
+  MANUAL
+  AUDIT
+  NCR
+  INCIDENT
+  COMPLAINT
+  INSPECTION
+  INDICATOR
+  MANAGEMENT_REVIEW
+  RISK
+  OTHER
+}
+
+enum ActionPlanAnalysisMethod {
+  FIVE_WHYS
+  ISHIKAWA
+  FAULT_TREE
+  EIGHT_D
+  OTHER
+}
+
+enum ActionPlanEffectiveness {
+  PENDING
+  EFFECTIVE
+  NOT_EFFECTIVE
 }
 
 enum NCRSeverity {
@@ -394,6 +445,9 @@ model Tenant {
   documentTypeConfigs  DocumentTypeConfig[]
   documentCodeConfig   DocumentCodeConfig?
 
+  // Action Plan Relations
+  actionPlans ActionPlan[]
+
   // Global Document Export System Relations
   documentOutputDefinitions DocumentOutputDefinition[]
   documentTemplates         DocumentTemplate[]
@@ -450,6 +504,18 @@ model PlatformUser {
   ncrsAssigned NonConformity[] @relation("NcrAssignedTo")
   ncrsCreated  NonConformity[] @relation("NcrCreatedBy")
   ncrsUpdated  NonConformity[] @relation("NcrUpdatedBy")
+
+  // Action Plan Relations
+  actionPlansCreated         ActionPlan[] @relation("ActionPlanCreatedBy")
+  actionPlansUpdated         ActionPlan[] @relation("ActionPlanUpdatedBy")
+  actionPlansExecutor        ActionPlan[] @relation("ActionPlanExecutor")
+  actionPlansSupervisor      ActionPlan[] @relation("ActionPlanSupervisor")
+  actionPlansCodeAssigned    ActionPlan[] @relation("ActionPlanCodeAssignedBy")
+  actionPlansEffChecker      ActionPlan[] @relation("ActionPlanEffectivenessChecker")
+  actionPlansClosed          ActionPlan[] @relation("ActionPlanClosedBy")
+  actionPlansApprovedClose   ActionPlan[] @relation("ActionPlanApprovedCloseBy")
+  actionPlanLogs             ActionPlanLog[] @relation("ActionPlanLogUser")
+  actionPlanAttachments      ActionPlanAttachment[] @relation("ActionPlanAttachmentUploadedBy")
 
   aiFindingsCreated AiFinding[] @relation("AiFindingCreatedBy")
   aiFindingsUpdated AiFinding[] @relation("AiFindingUpdatedBy")
@@ -9749,4 +9815,146 @@ model DocumentExportNotification {
   @@index([tenantId, readAt])
   @@index([userId])
   @@map("document_export_notifications")
+}
+
+// ── Plan de Acción (ISO 9001/14001/45001/19011) ──────────────────────────────
+model ActionPlan {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Código del plan (PAC-YYYY-NNNN)
+  code                String?
+  codeAssignedAt      DateTime?     @db.Timestamptz
+  codeAssignedById    String?       @db.Uuid
+  codeAssignedBy      PlatformUser? @relation("ActionPlanCodeAssignedBy", fields: [codeAssignedById], references: [id], onDelete: SetNull)
+
+  // Vinculación con NCR
+  ncrId String?        @db.Uuid
+  ncr   NonConformity? @relation("ActionPlanNcr", fields: [ncrId], references: [id], onDelete: SetNull)
+
+  // Clasificación
+  origin   ActionPlanOrigin @default(MANUAL)
+  type     ActionPlanType   @default(CORRECTIVE)
+  status   ActionPlanStatus @default(DRAFT)
+  severity String?
+
+  // Ubicación
+  site    String?
+  area    String?
+  process String?
+
+  // Descripción y contexto
+  findingDescription String?
+  requirement        String?
+  classification     String?
+
+  // Corrección inmediata
+  immediateCorrection String?
+
+  // Análisis de causa raíz
+  rootCauseAnalysis  String?
+  analysisMethod     ActionPlanAnalysisMethod?
+  validatedRootCause String?
+
+  // Acción planificada
+  plannedAction  String?
+  expectedResult String?
+
+  // Responsables
+  executorId   String?       @db.Uuid
+  executor     PlatformUser? @relation("ActionPlanExecutor", fields: [executorId], references: [id], onDelete: SetNull)
+  supervisorId String?       @db.Uuid
+  supervisor   PlatformUser? @relation("ActionPlanSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+
+  // Recursos
+  requiredResources String?
+
+  // Fechas
+  openedAt         DateTime  @default(now()) @db.Timestamptz
+  plannedStartDate DateTime? @db.Timestamptz
+  plannedEndDate   DateTime? @db.Timestamptz
+  actualEndDate    DateTime? @db.Timestamptz
+
+  // Progreso
+  progressPercent Int @default(0)
+
+  // Verificación de eficacia
+  effectivenessCheckDate DateTime?               @db.Timestamptz
+  effectivenessMethod    String?
+  effectivenessResult    String?
+  effectiveness          ActionPlanEffectiveness @default(PENDING)
+  effectivenessCheckerId String?                 @db.Uuid
+  effectivenessChecker   PlatformUser?           @relation("ActionPlanEffectivenessChecker", fields: [effectivenessCheckerId], references: [id], onDelete: SetNull)
+
+  // Cierre
+  closedAt          DateTime?     @db.Timestamptz
+  closedById        String?       @db.Uuid
+  closedBy          PlatformUser? @relation("ActionPlanClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  approvedCloseById String?       @db.Uuid
+  approvedCloseBy   PlatformUser? @relation("ActionPlanApprovedCloseBy", fields: [approvedCloseById], references: [id], onDelete: SetNull)
+
+  // Cancelación
+  cancellationReason String?
+
+  // Observaciones
+  observations String?
+
+  // Trazabilidad
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  createdById String?       @db.Uuid
+  createdBy   PlatformUser? @relation("ActionPlanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById String?       @db.Uuid
+  updatedBy   PlatformUser? @relation("ActionPlanUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  logs        ActionPlanLog[]
+  attachments ActionPlanAttachment[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([ncrId])
+  @@map("action_plans")
+}
+
+model ActionPlanLog {
+  id           String     @id @default(uuid()) @db.Uuid
+  actionPlanId String     @db.Uuid
+  actionPlan   ActionPlan @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
+
+  userId String?       @db.Uuid
+  user   PlatformUser? @relation("ActionPlanLogUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  action   String
+  field    String?
+  oldValue String?
+  newValue String?
+  note     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([actionPlanId])
+  @@map("action_plan_logs")
+}
+
+model ActionPlanAttachment {
+  id           String     @id @default(uuid()) @db.Uuid
+  actionPlanId String     @db.Uuid
+  actionPlan   ActionPlan @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
+
+  filename     String
+  url          String
+  mimeType     String?
+  size         Int?
+
+  uploadedById String?       @db.Uuid
+  uploadedBy   PlatformUser? @relation("ActionPlanAttachmentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([actionPlanId])
+  @@map("action_plan_attachments")
 }
