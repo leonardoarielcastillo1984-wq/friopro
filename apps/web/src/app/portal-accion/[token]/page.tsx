@@ -336,11 +336,11 @@ export default function PortalAccionPage({ params }: { params: { token: string }
         else if (c.key === 'progressPercent') val = `${p.progressPercent ?? 0}%`;
         else if (['createdAt','updatedAt','plannedStartDate','plannedEndDate','actualEndDate','effectivenessCheckDate'].includes(c.key)) val = fmtDate(p[c.key]);
         else val = p[c.key] ?? '—';
-        return `<td style="padding:4px 6px;border:1px solid #e5e7f0;font-size:10px;">${String(val).replace(/</g,'&lt;')}</td>`;
+        return `<td style="padding:4px 6px;border:1px solid #e5e7f0;font-size:10px;color:#1e293b;">${String(val).replace(/</g,'&lt;')}</td>`;
       }).join('');
       return `<tr>${tds}</tr>`;
     }).join('');
-    const headers = cols.map(c => `<th style="padding:4px 6px;border:1px solid #e5e7f0;background:#f1f5f9;font-size:10px;font-weight:600;text-align:left;">${c.label}</th>`).join('');
+    const headers = cols.map(c => `<th style="padding:4px 6px;border:1px solid #e5e7f0;background:#f1f5f9;font-size:10px;font-weight:600;text-align:left;color:#1e293b;">${c.label}</th>`).join('');
     return `<table style="width:100%;border-collapse:collapse;"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
   }
 
