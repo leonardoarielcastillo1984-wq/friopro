@@ -512,7 +512,7 @@ export default function PlanAccionPage() {
     for (const p of plans) {
       let val: string;
       if (colKey === 'ncrCode') val = p.ncr?.code ?? '(vacio)';
-      else if (colKey === 'executorName') val = p.executorNameText || (p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '(vacio)';
+      else if (colKey === 'executorName') val = p.executorNameText || (p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '') || '(vacio)';
       else if (colKey === 'status') val = STATUS_CFG[p.status]?.label ?? p.status;
       else if (colKey === 'type') val = TYPE_LABELS[p.type] ?? '';
       else if (colKey === 'origin') val = ORIGIN_LABELS[p.origin] ?? '';
