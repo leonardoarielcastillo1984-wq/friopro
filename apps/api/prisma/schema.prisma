@@ -9895,10 +9895,11 @@ model ActionPlan {
   expectedResult String?
 
   // Responsables
-  executorId   String?       @db.Uuid
-  executor     PlatformUser? @relation("ActionPlanExecutor", fields: [executorId], references: [id], onDelete: SetNull)
-  supervisorId String?       @db.Uuid
-  supervisor   PlatformUser? @relation("ActionPlanSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+  executorId      String?       @db.Uuid
+  executor        PlatformUser? @relation("ActionPlanExecutor", fields: [executorId], references: [id], onDelete: SetNull)
+  executorNameText String?
+  supervisorId    String?       @db.Uuid
+  supervisor      PlatformUser? @relation("ActionPlanSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
 
   // Recursos
   requiredResources String?

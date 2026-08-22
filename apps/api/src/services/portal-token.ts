@@ -85,6 +85,7 @@ export const FIELDS_DIRECT_EDIT = [
   'effectivenessMethod',
   'effectiveness',
   'executorId',
+  'executorNameText',
 ];
 
 export const ALL_EDITABLE_FIELDS = [...FIELDS_DIRECT_EDIT, ...FIELDS_REQUIRING_APPROVAL];

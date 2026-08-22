@@ -62,7 +62,7 @@ const MATRIX_COLUMNS = [
   { key: 'plannedAction', label: 'Acción planificada', width: 160, editable: true, cellType: 'textarea' as CellType, field: 'plannedAction' },
   { key: 'expectedResult', label: 'Resultado esperado', width: 130, editable: true, cellType: 'textarea' as CellType, field: 'expectedResult' },
   { key: 'requiredResources', label: 'Recursos', width: 100, editable: true, cellType: 'textarea' as CellType, field: 'requiredResources' },
-  { key: 'executorName', label: 'Responsable', width: 120, editable: true, cellType: 'text' as CellType, field: 'executorId', optionsKey: 'users' },
+  { key: 'executorName', label: 'Responsable', width: 120, editable: true, cellType: 'text' as CellType, field: 'executorNameText' },
   { key: 'progressPercent', label: 'Avance %', width: 60, editable: true, cellType: 'number' as CellType, field: 'progressPercent', min: 0, max: 100 },
   { key: 'actualEndDate', label: 'F. real fin.', width: 80, editable: true, cellType: 'date' as CellType, field: 'actualEndDate' },
   { key: 'effectivenessCheckDate', label: 'F. verif. efic.', width: 80, editable: true, cellType: 'date' as CellType, field: 'effectivenessCheckDate' },
@@ -89,7 +89,7 @@ function toDateInput(d: string|null|undefined): string {
 function getCellValue(plan: any, key: string, override?: any) {
   if (override && override[key] !== undefined) return override[key];
   if (key === 'ncrCode') return plan.ncr?.code ?? '—';
-  if (key === 'executorName') return plan.executor ? (plan.executor.firstName ? `${plan.executor.firstName} ${plan.executor.lastName ?? ''}`.trim() : plan.executor.email) : '—';
+  if (key === 'executorName') return plan.executorNameText || (plan.executor ? (plan.executor.firstName ? `${plan.executor.firstName} ${plan.executor.lastName ?? ''}`.trim() : plan.executor.email) : '') || '—';
   if (key === 'status') return STATUS_LABELS[plan.status] ?? plan.status ?? '—';
   if (key === 'type') return TYPE_LABELS[plan.type] ?? plan.type ?? '—';
   if (key === 'origin') return ORIGIN_LABELS[plan.origin] ?? plan.origin ?? '—';
@@ -200,11 +200,7 @@ export default function PortalAccionPage({ params }: { params: { token: string }
 
   const handleCellSave = useCallback(async (planId: string, field: string, value: string) => {
     try {
-      let payload: any = { [field]: field === 'progressPercent' ? Number(value) : value };
-      if (field === 'executorId') {
-        const matched = (data.users || []).find((u: any) => u.label.toLowerCase() === value.toLowerCase().trim());
-        payload = { executorId: matched ? matched.id : null };
-      }
+      const payload: any = { [field]: field === 'progressPercent' ? Number(value) : value };
       const res = await fetch(`${API_BASE}/portal-accion/public/${params.token}/plans/${planId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -221,7 +217,7 @@ export default function PortalAccionPage({ params }: { params: { token: string }
     } catch (e: any) {
       alert(e.message || 'Error al guardar');
     }
-  }, [params.token, data]);
+  }, [params.token]);
 
   async function aiFill(planId: string, field: string) {
     const key = `${planId}-${field}`;
@@ -474,7 +470,7 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                               <div className="flex items-start gap-1">
                                 <div className="flex-1 min-w-0">
                                   <InlineCell
-                                    value={(col as any).field === 'executorId' ? (plan.executor ? (plan.executor.firstName ? `${plan.executor.firstName} ${plan.executor.lastName ?? ''}`.trim() : plan.executor.email) : '') : (col as any).cellType === 'date' ? toDateInput(plan[(col as any).field]) : plan[(col as any).field]}
+                                    value={(col as any).field === 'executorNameText' ? (plan.executorNameText || (plan.executor ? (plan.executor.firstName ? `${plan.executor.firstName} ${plan.executor.lastName ?? ''}`.trim() : plan.executor.email) : '')) : (col as any).cellType === 'date' ? toDateInput(plan[(col as any).field]) : plan[(col as any).field]}
                                     type={(col as any).cellType}
                                     options={(col as any).optionsKey === 'users' ? (data.users || []) : (col as any).options}
                                     min={(col as any).min}
