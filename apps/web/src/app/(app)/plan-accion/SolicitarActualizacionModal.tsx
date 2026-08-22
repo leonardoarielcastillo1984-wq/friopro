@@ -20,6 +20,10 @@ export default function SolicitarActualizacionModal({
   const [canEdit, setCanEdit] = useState(true);
   const [canAttachEvidence, setCanAttachEvidence] = useState(true);
   const [canDownloadPdf, setCanDownloadPdf] = useState(true);
+  const [canCreateNcr, setCanCreateNcr] = useState(true);
+  const [canViewNcrOwn, setCanViewNcrOwn] = useState(true);
+  const [canViewNcrScope, setCanViewNcrScope] = useState(false);
+  const [canDownloadNcrPdf, setCanDownloadNcrPdf] = useState(true);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -38,6 +42,12 @@ export default function SolicitarActualizacionModal({
           canEdit,
           canAttachEvidence,
           canDownloadPdf,
+          canCreateNonConformities: canCreateNcr,
+          canViewNcrOwn,
+          canViewNcrScope,
+          canEditNcrDraft: true,
+          canCorrectNcrReturned: true,
+          canDownloadNcrPdf,
           expiresAt: expiresAt || undefined,
         },
       });
@@ -148,7 +158,7 @@ export default function SolicitarActualizacionModal({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700 block">Permisos</label>
+            <label className="text-sm font-medium text-gray-700 block">Permisos de Planes de Acción</label>
             <div className="flex flex-wrap gap-3">
               <label className="flex items-center gap-2 text-sm text-gray-600">
                 <input type="checkbox" checked={canEdit} onChange={(e) => setCanEdit(e.target.checked)} className="rounded" />
@@ -161,6 +171,28 @@ export default function SolicitarActualizacionModal({
               <label className="flex items-center gap-2 text-sm text-gray-600">
                 <input type="checkbox" checked={canDownloadPdf} onChange={(e) => setCanDownloadPdf(e.target.checked)} className="rounded" />
                 Descargar PDF
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 block">Permisos de No Conformidades</label>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" checked={canCreateNcr} onChange={(e) => setCanCreateNcr(e.target.checked)} className="rounded" />
+                Crear No Conformidades
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" checked={canViewNcrOwn} onChange={(e) => setCanViewNcrOwn(e.target.checked)} className="rounded" />
+                Ver propias
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" checked={canViewNcrScope} onChange={(e) => setCanViewNcrScope(e.target.checked)} className="rounded" />
+                Ver todas del sector
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" checked={canDownloadNcrPdf} onChange={(e) => setCanDownloadNcrPdf(e.target.checked)} className="rounded" />
+                Descargar PDF NCR
               </label>
             </div>
           </div>
