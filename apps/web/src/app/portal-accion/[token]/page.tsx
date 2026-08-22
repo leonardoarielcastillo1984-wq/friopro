@@ -212,7 +212,7 @@ export default function PortalAccionPage({ params }: { params: { token: string }
       }
       setPlanData(prev => ({
         ...prev,
-        [planId]: { ...(prev[planId] || {}), [field]: value },
+        [planId]: { ...(prev[planId] || {}), [field]: value, executorName: field === 'executorNameText' ? value : prev[planId]?.executorName },
       }));
     } catch (e: any) {
       alert(e.message || 'Error al guardar');
