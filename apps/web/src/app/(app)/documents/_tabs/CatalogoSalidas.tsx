@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api';
 import {
   Plus, Edit3, Trash2, Save, X, Search, FileOutput,
   Hash, Filter, Download, Eye, AlertCircle, Loader2, Sparkles,
+  CheckCircle2, RotateCcw,
 } from 'lucide-react';
 
 interface OutputDef {
@@ -130,6 +131,14 @@ export default function CatalogoSalidas() {
     if (!confirm('¿Eliminar esta definición de salida?')) return;
     try {
       await apiFetch(`/doc-export/outputs/${id}`, { method: 'DELETE' });
+      load();
+    } catch (e: any) { setError(e.message); }
+  }
+
+  async function changeStatus(id: string, status: string, label: string) {
+    try {
+      await apiFetch(`/doc-export/outputs/${id}`, { method: 'PUT', json: { status } });
+      setSuccess(`Estado cambiado a «${label}»`);
       load();
     } catch (e: any) { setError(e.message); }
   }
@@ -265,6 +274,24 @@ export default function CatalogoSalidas() {
                   <td className="px-3 py-2 text-center text-neutral-500 text-xs">{d.exportCount}</td>
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-1">
+                      {d.status !== 'EFFECTIVE' && (
+                        <button
+                          onClick={() => changeStatus(d.id, 'EFFECTIVE', 'Vigente')}
+                          title="Aprobar y poner vigente"
+                          className="text-green-500 hover:text-green-700"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </button>
+                      )}
+                      {d.status === 'EFFECTIVE' && (
+                        <button
+                          onClick={() => changeStatus(d.id, 'PENDING', 'Pendiente')}
+                          title="Revertir a pendiente"
+                          className="text-neutral-400 hover:text-amber-600"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </button>
+                      )}
                       <button onClick={() => { setEditing(d); setIsNew(false); }} className="text-neutral-400 hover:text-brand-600">
                         <Edit3 className="h-4 w-4" />
                       </button>
