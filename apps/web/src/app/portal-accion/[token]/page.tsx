@@ -1,11 +1,12 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ClipboardList, FileDown, AlertCircle, CheckCircle, Clock, Loader2,
   Search, Building2, User, Calendar, TrendingUp, Filter, ExternalLink,
   Plus, FileWarning, FileText, Sparkles,
 } from 'lucide-react';
+import { InlineCell, type CellType, type SelectOption } from '@/app/(app)/plan-accion/InlineCell';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -23,35 +24,50 @@ const EFF_LABELS: Record<string, string> = {
   PENDING: 'Pendiente', EFFECTIVE: 'Eficaz', NOT_EFFECTIVE: 'No eficaz',
 };
 
+const STATUS_OPTS: SelectOption[] = [
+  { value: 'DRAFT', label: 'Borrador' }, { value: 'OPEN', label: 'Abierto' },
+  { value: 'IN_EXECUTION', label: 'En ejecución' }, { value: 'PENDING_EVIDENCE', label: 'Pend. evidencia' },
+  { value: 'PENDING_EFFECTIVENESS', label: 'Pend. eficacia' },
+  { value: 'EFFECTIVE', label: 'Eficaz' }, { value: 'NOT_EFFECTIVE', label: 'No eficaz' },
+  { value: 'CLOSED', label: 'Cerrado' }, { value: 'CANCELLED', label: 'Cancelado' },
+];
+const METHOD_OPTS: SelectOption[] = [
+  { value: '5WHY', label: '5 Porqués' }, { value: 'FISHBONE', label: 'Ishikawa' },
+  { value: 'FTA', label: 'FTA' }, { value: 'BRAINSTORM', label: 'Brainstorm' }, { value: 'OTHER', label: 'Otra' },
+];
+const EFF_OPTS: SelectOption[] = [
+  { value: 'PENDING', label: 'Pendiente' }, { value: 'EFFECTIVE', label: 'Eficaz' }, { value: 'NOT_EFFECTIVE', label: 'No eficaz' },
+];
+
 const MATRIX_COLUMNS = [
   { key: 'sequenceNumber', label: 'Nro', width: 50 },
   { key: 'ncrCode', label: 'NCR', width: 90 },
   { key: 'code', label: 'Código', width: 90 },
-  { key: 'status', label: 'Estado', width: 120 },
+  { key: 'status', label: 'Estado', width: 120, editable: true, cellType: 'select' as CellType, options: STATUS_OPTS, field: 'status' },
   { key: 'type', label: 'Tipo', width: 100 },
   { key: 'origin', label: 'Origen', width: 100 },
   { key: 'severity', label: 'Criticidad', width: 80 },
   { key: 'site', label: 'Sede', width: 70 },
   { key: 'area', label: 'Área', width: 70 },
   { key: 'process', label: 'Proceso', width: 80 },
-  { key: 'requirement', label: 'Requisito', width: 90 },
-  { key: 'findingDescription', label: 'Desc. hallazgo', width: 180 },
-  { key: 'observations', label: 'Observaciones', width: 130 },
-  { key: 'plannedStartDate', label: 'F. inicio prev.', width: 80 },
-  { key: 'plannedEndDate', label: 'F. cierre prev.', width: 80 },
-  { key: 'immediateCorrection', label: 'Corrección inmediata', width: 160 },
-  { key: 'rootCauseAnalysis', label: 'Análisis causa raíz', width: 160 },
-  { key: 'analysisMethod', label: 'Metodología', width: 90 },
-  { key: 'validatedRootCause', label: 'Causa raíz validada', width: 130 },
-  { key: 'plannedAction', label: 'Acción planificada', width: 160 },
-  { key: 'expectedResult', label: 'Resultado esperado', width: 130 },
-  { key: 'requiredResources', label: 'Recursos', width: 100 },
+  { key: 'requirement', label: 'Requisito', width: 90, editable: true, cellType: 'text' as CellType, field: 'requirement' },
+  { key: 'findingDescription', label: 'Desc. hallazgo', width: 180, editable: true, cellType: 'textarea' as CellType, field: 'findingDescription' },
+  { key: 'observations', label: 'Observaciones', width: 130, editable: true, cellType: 'textarea' as CellType, field: 'observations' },
+  { key: 'plannedStartDate', label: 'F. inicio prev.', width: 80, editable: true, cellType: 'date' as CellType, field: 'plannedStartDate' },
+  { key: 'plannedEndDate', label: 'F. cierre prev.', width: 80, editable: true, cellType: 'date' as CellType, field: 'plannedEndDate' },
+  { key: 'immediateCorrection', label: 'Corrección inmediata', width: 160, editable: true, cellType: 'textarea' as CellType, field: 'immediateCorrection' },
+  { key: 'rootCauseAnalysis', label: 'Análisis causa raíz', width: 160, editable: true, cellType: 'textarea' as CellType, field: 'rootCauseAnalysis' },
+  { key: 'analysisMethod', label: 'Metodología', width: 90, editable: true, cellType: 'select' as CellType, options: METHOD_OPTS, field: 'analysisMethod' },
+  { key: 'validatedRootCause', label: 'Causa raíz validada', width: 130, editable: true, cellType: 'textarea' as CellType, field: 'validatedRootCause' },
+  { key: 'plannedAction', label: 'Acción planificada', width: 160, editable: true, cellType: 'textarea' as CellType, field: 'plannedAction' },
+  { key: 'expectedResult', label: 'Resultado esperado', width: 130, editable: true, cellType: 'textarea' as CellType, field: 'expectedResult' },
+  { key: 'requiredResources', label: 'Recursos', width: 100, editable: true, cellType: 'textarea' as CellType, field: 'requiredResources' },
   { key: 'executorName', label: 'Responsable', width: 100 },
-  { key: 'progressPercent', label: 'Avance %', width: 60 },
+  { key: 'progressPercent', label: 'Avance %', width: 60, editable: true, cellType: 'number' as CellType, field: 'progressPercent', min: 0, max: 100 },
   { key: 'actualEndDate', label: 'F. real fin.', width: 80 },
   { key: 'effectivenessCheckDate', label: 'F. verif. efic.', width: 80 },
   { key: 'effectivenessMethod', label: 'Método verif.', width: 110 },
-  { key: 'effectivenessResult', label: 'Resultado verif.', width: 130 },
+  { key: 'effectivenessResult', label: 'Resultado verif.', width: 130, editable: true, cellType: 'textarea' as CellType, field: 'effectivenessResult' },
   { key: 'effectiveness', label: 'Eficaz?', width: 80 },
   { key: 'createdAt', label: 'Creado', width: 80 },
   { key: 'updatedAt', label: 'Modificado', width: 80 },
@@ -61,6 +77,13 @@ const MATRIX_COLUMNS = [
 function fmtDate(v: any) {
   if (!v) return '—';
   try { return new Date(v).toLocaleDateString('es-AR'); } catch { return '—'; }
+}
+
+function toDateInput(d: string|null|undefined): string {
+  if (!d) return '';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '';
+  return date.toISOString().split('T')[0];
 }
 
 function getCellValue(plan: any, key: string, override?: any) {
@@ -175,6 +198,26 @@ export default function PortalAccionPage({ params }: { params: { token: string }
     }
   }
 
+  const handleCellSave = useCallback(async (planId: string, field: string, value: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/portal-accion/public/${params.token}/plans/${planId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: field === 'progressPercent' ? Number(value) : value }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Error al guardar');
+      }
+      setPlanData(prev => ({
+        ...prev,
+        [planId]: { ...(prev[planId] || {}), [field]: value },
+      }));
+    } catch (e: any) {
+      alert(e.message || 'Error al guardar');
+    }
+  }, [params.token]);
+
   async function aiFill(planId: string, field: string) {
     const key = `${planId}-${field}`;
     setAiLoading(s => ({ ...s, [key]: true }));
@@ -251,7 +294,6 @@ export default function PortalAccionPage({ params }: { params: { token: string }
   }
 
   const { access, branding } = data;
-  const canViewNcrs = access.canCreateNonConformities || access.canViewNcrOwn || access.canViewNcrScope;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -299,8 +341,8 @@ export default function PortalAccionPage({ params }: { params: { token: string }
           )}
         </div>
 
-        {/* View tabs */}
-        {canViewNcrs && (
+        {/* View tabs — only show NCR tab if can create */}
+        {access.canCreateNonConformities && (
           <div className="flex gap-1 border-b mb-6">
             <button
               onClick={() => setView('plans')}
@@ -316,7 +358,7 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                 view === 'ncrs' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              <FileWarning className="w-4 h-4 inline mr-1.5" /> Mis No Conformidades ({ncrs.length})
+              <FileWarning className="w-4 h-4 inline mr-1.5" /> No Conformidades ({ncrs.length})
             </button>
           </div>
         )}
@@ -383,18 +425,18 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                     {filteredPlans.map((plan: any) => {
                       const override = planData[plan.id];
                       const isReadOnly = ['CLOSED','CANCELLED'].includes(plan.status);
+                      const canEditRow = access.canEdit && !isReadOnly;
                       return (
                       <tr
                         key={plan.id}
-                        className="hover:bg-blue-50/30 cursor-pointer transition-colors"
-                        onClick={() => router.push(`/portal-accion/${params.token}/plan/${plan.id}`)}
+                        className="hover:bg-blue-50/30 transition-colors"
                       >
                         {MATRIX_COLUMNS.map(col => (
                           <td
                             key={col.key}
                             style={{ minWidth: col.width, width: col.width }}
                             className="px-2 py-1.5 border-r border-gray-100 align-top"
-                            onClick={(e) => (col.key === 'actions' || AI_FIELDS.includes(col.key)) && e.stopPropagation()}
+                            onClick={(e) => (col.key === 'actions' || (col as any).editable || AI_FIELDS.includes(col.key)) && e.stopPropagation()}
                           >
                             {col.key === 'actions' ? (
                               <div className="flex items-center gap-1">
@@ -415,12 +457,21 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                                   <ExternalLink className="w-4 h-4" />
                                 </button>
                               </div>
-                            ) : AI_FIELDS.includes(col.key) ? (
+                            ) : (col as any).editable && (col as any).field ? (
                               <div className="flex items-start gap-1">
-                                <span className="text-xs text-gray-700 flex-1 min-w-0" title={String(getCellValue(plan, col.key, override))}>
-                                  {getCellValue(plan, col.key, override)}
-                                </span>
-                                {access.canEdit && !isReadOnly && (
+                                <div className="flex-1 min-w-0">
+                                  <InlineCell
+                                    value={(col as any).cellType === 'date' ? toDateInput(plan[(col as any).field]) : plan[(col as any).field]}
+                                    type={(col as any).cellType}
+                                    options={(col as any).options}
+                                    min={(col as any).min}
+                                    max={(col as any).max}
+                                    editable={canEditRow}
+                                    displayValue={getCellValue(plan, col.key, override)}
+                                    onSave={(v) => handleCellSave(plan.id, (col as any).field, v)}
+                                  />
+                                </div>
+                                {AI_FIELDS.includes(col.key) && canEditRow && (
                                   <button
                                     onClick={() => aiFill(plan.id, col.key)}
                                     disabled={aiLoading[`${plan.id}-${col.key}`]}
@@ -431,10 +482,6 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                                   </button>
                                 )}
                               </div>
-                            ) : col.key === 'status' ? (
-                              <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[plan.status] || 'bg-gray-100 text-gray-600'}`}>
-                                {getCellValue(plan, col.key, override)}
-                              </span>
                             ) : col.key === 'progressPercent' ? (
                               <div className="flex items-center gap-1.5">
                                 <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
