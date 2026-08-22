@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   ClipboardList, FileDown, AlertCircle, CheckCircle, Clock, Loader2,
   Search, Building2, User, Calendar, TrendingUp, Filter, ExternalLink,
-  Plus, FileWarning, FileText, Sparkles,
+  Plus, FileWarning, FileText, Sparkles, Shield, ShieldOff, FileSpreadsheet,
 } from 'lucide-react';
 import { InlineCell, type CellType, type SelectOption } from '@/app/(app)/plan-accion/InlineCell';
 
@@ -157,10 +157,53 @@ export default function PortalAccionPage({ params }: { params: { token: string }
   const [view, setView] = useState<'plans' | 'ncrs'>('plans');
   const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
   const [planData, setPlanData] = useState<Record<string, any>>({});
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportMenu, setExportMenu] = useState(false);
+  const [editingCell, setEditingCell] = useState(false);
+  const [retryQueue, setRetryQueue] = useState<Array<{planId: string; field: string; value: string}>>([]);
 
   useEffect(() => {
     loadPortal();
   }, []);
+
+  // beforeunload warning when editing
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (editingCell) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [editingCell]);
+
+  // Retry queue: attempt to flush failed saves when connection returns
+  useEffect(() => {
+    if (retryQueue.length === 0) return;
+    const timer = setInterval(async () => {
+      const queue = [...retryQueue];
+      const remaining: typeof queue = [];
+      for (const item of queue) {
+        try {
+          const res = await fetch(`${API_BASE}/portal-accion/public/${params.token}/plans/${item.planId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [item.field]: item.field === 'progressPercent' ? Number(item.value) : item.value }),
+          });
+          if (!res.ok) throw new Error();
+        } catch {
+          remaining.push(item);
+        }
+      }
+      setRetryQueue(remaining);
+      if (remaining.length === 0) {
+        setPlanData(prev => { /* refresh */ return prev; });
+        loadPortal();
+      }
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [retryQueue, params.token]);
 
   async function loadPortal() {
     setLoading(true);
@@ -199,6 +242,7 @@ export default function PortalAccionPage({ params }: { params: { token: string }
   }
 
   const handleCellSave = useCallback(async (planId: string, field: string, value: string) => {
+    setEditingCell(true);
     try {
       const payload: any = { [field]: field === 'progressPercent' ? Number(value) : value };
       const res = await fetch(`${API_BASE}/portal-accion/public/${params.token}/plans/${planId}`, {
@@ -214,8 +258,12 @@ export default function PortalAccionPage({ params }: { params: { token: string }
         ...prev,
         [planId]: { ...(prev[planId] || {}), [field]: value, executorName: field === 'executorNameText' ? value : prev[planId]?.executorName },
       }));
+      setEditingCell(false);
     } catch (e: any) {
-      alert(e.message || 'Error al guardar');
+      setEditingCell(false);
+      // Add to retry queue for automatic retry
+      setRetryQueue(prev => [...prev, { planId, field, value }]);
+      alert(e.message || 'Error al guardar. Se reintentará automáticamente.');
     }
   }, [params.token]);
 
@@ -270,6 +318,85 @@ export default function PortalAccionPage({ params }: { params: { token: string }
       ).length,
     };
   }, [data]);
+
+  function buildMatrixHtml(): string {
+    if (!data?.plans) return '<p>Sin datos</p>';
+    const cols = MATRIX_COLUMNS.filter(c => c.key !== 'actions');
+    const rows = filteredPlans.map((p: any) => {
+      const override = planData[p.id] || {};
+      const tds = cols.map(c => {
+        let val = '';
+        if (override[c.key] !== undefined) val = override[c.key];
+        else if (c.key === 'executorName') val = p.executorNameText || (p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '') || '—';
+        else if (c.key === 'ncrCode') val = p.ncr?.code ?? '—';
+        else if (c.key === 'status') val = STATUS_LABELS[p.status] ?? p.status ?? '—';
+        else if (c.key === 'type') val = TYPE_LABELS[p.type] ?? p.type ?? '—';
+        else if (c.key === 'origin') val = ORIGIN_LABELS[p.origin] ?? p.origin ?? '—';
+        else if (c.key === 'effectiveness') val = EFF_LABELS[p.effectiveness] ?? p.effectiveness ?? '—';
+        else if (c.key === 'progressPercent') val = `${p.progressPercent ?? 0}%`;
+        else if (['createdAt','updatedAt','plannedStartDate','plannedEndDate','actualEndDate','effectivenessCheckDate'].includes(c.key)) val = fmtDate(p[c.key]);
+        else val = p[c.key] ?? '—';
+        return `<td style="padding:4px 6px;border:1px solid #e5e7f0;font-size:10px;">${String(val).replace(/</g,'&lt;')}</td>`;
+      }).join('');
+      return `<tr>${tds}</tr>`;
+    }).join('');
+    const headers = cols.map(c => `<th style="padding:4px 6px;border:1px solid #e5e7f0;background:#f1f5f9;font-size:10px;font-weight:600;text-align:left;">${c.label}</th>`).join('');
+    return `<table style="width:100%;border-collapse:collapse;"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function buildMatrixSections(): any[] {
+    if (!data?.plans) return [];
+    const cols = MATRIX_COLUMNS.filter(c => c.key !== 'actions');
+    const columns = cols.map(c => c.label);
+    const rows = filteredPlans.map((p: any) => {
+      const override = planData[p.id] || {};
+      return cols.map(c => {
+        if (override[c.key] !== undefined) return String(override[c.key]);
+        if (c.key === 'executorName') return p.executorNameText || (p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '') || '—';
+        if (c.key === 'ncrCode') return p.ncr?.code ?? '—';
+        if (c.key === 'status') return STATUS_LABELS[p.status] ?? p.status ?? '—';
+        if (c.key === 'type') return TYPE_LABELS[p.type] ?? p.type ?? '—';
+        if (c.key === 'origin') return ORIGIN_LABELS[p.origin] ?? p.origin ?? '—';
+        if (c.key === 'effectiveness') return EFF_LABELS[p.effectiveness] ?? p.effectiveness ?? '—';
+        if (c.key === 'progressPercent') return `${p.progressPercent ?? 0}%`;
+        if (['createdAt','updatedAt','plannedStartDate','plannedEndDate','actualEndDate','effectivenessCheckDate'].includes(c.key)) return fmtDate(p[c.key]);
+        return String(p[c.key] ?? '—');
+      });
+    });
+    return [{ type: 'table', columns, rows }];
+  }
+
+  async function doExport(exportType: 'CONTROLLED' | 'INFORMATIVE' | 'EXCEL_CONTROLLED') {
+    setExportLoading(true);
+    setExportMenu(false);
+    try {
+      const isExcel = exportType === 'EXCEL_CONTROLLED';
+      const bodyHtml = isExcel ? '' : buildMatrixHtml();
+      const sections = isExcel ? buildMatrixSections() : undefined;
+      const res = await fetch(`${API_BASE}/portal-accion/public/${params.token}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exportType, bodyHtml, sections, orientation: 'landscape', pageSize: 'A3' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Error al exportar' }));
+        throw new Error(err.error || 'Error al exportar');
+      }
+      const blob = await res.blob();
+      const contentDisp = res.headers.get('Content-Disposition') || '';
+      const match = contentDisp.match(/filename="?(.+?)"?$/);
+      const fileName = match ? match[1] : `export_${Date.now()}.${isExcel ? 'xlsx' : 'pdf'}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(e.message || 'Error al exportar');
+    }
+    setExportLoading(false);
+  }
 
   if (loading) {
     return (
@@ -340,14 +467,71 @@ export default function PortalAccionPage({ params }: { params: { token: string }
               Gestión colaborativa de planes de acción y no conformidades
             </p>
           </div>
-          {access.canCreateNonConformities && (
-            <button
-              onClick={() => router.push(`/portal-accion/${params.token}/ncr/new`)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-4 h-4" /> Informar No Conformidad
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {access.canCreateNonConformities && (
+              <button
+                onClick={() => router.push(`/portal-accion/${params.token}/ncr/new`)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Informar No Conformidad
+              </button>
+            )}
+            <div className="relative">
+              {exportMenu && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-neutral-200 bg-white shadow-lg overflow-hidden">
+                  <button
+                    onClick={() => doExport('CONTROLLED')}
+                    disabled={exportLoading}
+                    className="flex items-center gap-2 w-full px-3 py-2.5 text-left text-sm hover:bg-green-50 transition-colors"
+                  >
+                    <Shield className="h-4 w-4 text-green-600 shrink-0" />
+                    <div>
+                      <div className="font-medium text-neutral-800">PDF Controlado</div>
+                      <div className="text-xs text-neutral-400">Con QR y trazabilidad</div>
+                    </div>
+                  </button>
+                  <div className="border-t border-neutral-100" />
+                  <button
+                    onClick={() => doExport('INFORMATIVE')}
+                    disabled={exportLoading}
+                    className="flex items-center gap-2 w-full px-3 py-2.5 text-left text-sm hover:bg-blue-50 transition-colors"
+                  >
+                    <ShieldOff className="h-4 w-4 text-blue-500 shrink-0" />
+                    <div>
+                      <div className="font-medium text-neutral-800">PDF Informativo</div>
+                      <div className="text-xs text-neutral-400">Copia no controlada</div>
+                    </div>
+                  </button>
+                  <div className="border-t border-neutral-100" />
+                  <button
+                    onClick={() => doExport('EXCEL_CONTROLLED')}
+                    disabled={exportLoading}
+                    className="flex items-center gap-2 w-full px-3 py-2.5 text-left text-sm hover:bg-emerald-50 transition-colors"
+                  >
+                    <FileSpreadsheet className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <div className="font-medium text-neutral-800">Excel Controlado</div>
+                      <div className="text-xs text-neutral-400">Con formato y trazabilidad</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={() => setExportMenu(!exportMenu)}
+                disabled={exportLoading}
+                className="flex items-center gap-2 px-4 py-2 border border-neutral-300 text-neutral-700 text-sm font-medium rounded-lg hover:bg-neutral-50 transition-colors disabled:opacity-50"
+              >
+                {exportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                Exportar
+              </button>
+            </div>
+            {retryQueue.length > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Reintentando {retryQueue.length} guardado{retryQueue.length > 1 ? 's' : ''}...
+              </div>
+            )}
+          </div>
         </div>
 
         {/* View tabs — only show NCR tab if can create */}

@@ -25,6 +25,7 @@ import {
   portalNcrReviewResultEmail,
   portalNcrInternalNotificationEmail,
 } from '../services/email.js';
+import { executeExport } from '../services/document-export.js';
 import { getStorage } from '../services/storage.js';
 import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
@@ -619,6 +620,54 @@ Generá únicamente el contenido para el campo "${FIELD_LABELS[field]}". Sea esp
       return reply.send({ field, value: generatedText });
     } catch (err: any) {
       return reply.code(500).send({ error: err?.message ?? 'Error en IA' });
+    }
+  });
+
+  // ── POST /public/:token/export — exportar matriz a PDF controlado o Excel ──
+  app.post('/public/:token/export', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as { token: string };
+    const body = req.body as { exportType: 'CONTROLLED' | 'INFORMATIVE' | 'EXCEL_CONTROLLED'; bodyHtml?: string; sections?: any[]; orientation?: string; pageSize?: string };
+
+    const access = await app.prisma.portalAccessToken.findFirst({
+      where: { tokenHash: hashToken(token), revokedAt: null },
+    });
+    if (!access) return reply.code(404).send({ error: 'Token no válido' });
+
+    const validity = isAccessValid(access);
+    if (!validity.valid) return reply.code(403).send({ error: validity.reason });
+
+    if (!access.canDownloadPdf) {
+      return reply.code(403).send({ error: 'No tiene permiso para exportar' });
+    }
+
+    const outputDef = await app.prisma.documentOutputDefinition.findFirst({
+      where: { tenantId: access.tenantId, outputKey: 'calidad.plan-accion.list', deletedAt: null },
+    });
+    if (!outputDef) return reply.code(404).send({ error: 'Definición de salida no encontrada' });
+
+    try {
+      const result = await executeExport(app.prisma, {
+        tenantId: access.tenantId,
+        userName: access.recipientName || 'Portal Externo',
+        userIp: req.ip ?? undefined,
+        userAgent: req.headers['user-agent'] ?? undefined,
+      }, {
+        outputDefinitionId: outputDef.id,
+        exportType: body.exportType,
+        bodyHtml: body.bodyHtml || '',
+        title: 'Plan de Acción',
+        sections: body.sections,
+        orientationOverride: body.orientation,
+        pageSizeOverride: body.pageSize,
+      });
+
+      await addPortalLog(app.prisma, access.id, 'EXPORT', undefined, undefined, undefined, `${body.exportType}: ${result.fileName}`, req.ip ?? undefined, req.headers['user-agent'] ?? undefined);
+
+      reply.header('Content-Disposition', `attachment; filename="${result.fileName}"`);
+      reply.header('Content-Type', body.exportType === 'EXCEL_CONTROLLED' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf');
+      return reply.send(result.buffer);
+    } catch (err: any) {
+      return reply.code(500).send({ error: err?.message ?? 'Error al exportar' });
     }
   });
 
