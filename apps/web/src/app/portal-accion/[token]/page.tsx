@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   ClipboardList, FileDown, AlertCircle, CheckCircle, Clock, Loader2,
   Search, Building2, User, Calendar, TrendingUp, Filter, ExternalLink,
-  Plus, FileWarning, FileText,
+  Plus, FileWarning, FileText, Sparkles,
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -63,7 +63,8 @@ function fmtDate(v: any) {
   try { return new Date(v).toLocaleDateString('es-AR'); } catch { return '—'; }
 }
 
-function getCellValue(plan: any, key: string) {
+function getCellValue(plan: any, key: string, override?: any) {
+  if (override && override[key] !== undefined) return override[key];
   if (key === 'ncrCode') return plan.ncr?.code ?? '—';
   if (key === 'executorName') return plan.executor ? (plan.executor.firstName ? `${plan.executor.firstName} ${plan.executor.lastName ?? ''}`.trim() : plan.executor.email) : '—';
   if (key === 'status') return STATUS_LABELS[plan.status] ?? plan.status ?? '—';
@@ -119,6 +120,8 @@ const NCR_STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-gray-200 text-gray-500',
 };
 
+const AI_FIELDS = ['immediateCorrection','rootCauseAnalysis','validatedRootCause','plannedAction','expectedResult'];
+
 export default function PortalAccionPage({ params }: { params: { token: string } }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -129,6 +132,8 @@ export default function PortalAccionPage({ params }: { params: { token: string }
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [view, setView] = useState<'plans' | 'ncrs'>('plans');
+  const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
+  const [planData, setPlanData] = useState<Record<string, any>>({});
 
   useEffect(() => {
     loadPortal();
@@ -168,6 +173,30 @@ export default function PortalAccionPage({ params }: { params: { token: string }
     } finally {
       setNcrLoading(false);
     }
+  }
+
+  async function aiFill(planId: string, field: string) {
+    const key = `${planId}-${field}`;
+    setAiLoading(s => ({ ...s, [key]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/portal-accion/public/${params.token}/plans/${planId}/ai-fill`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Error en IA');
+      }
+      const result = await res.json();
+      setPlanData(prev => ({
+        ...prev,
+        [planId]: { ...(prev[planId] || {}), [field]: result.value },
+      }));
+    } catch (e: any) {
+      alert(e.message || 'Error al generar con IA');
+    }
+    setAiLoading(s => { const ns = { ...s }; delete ns[key]; return ns; });
   }
 
   const filteredPlans = useMemo(() => {
@@ -351,7 +380,10 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                         </td>
                       </tr>
                     )}
-                    {filteredPlans.map((plan: any) => (
+                    {filteredPlans.map((plan: any) => {
+                      const override = planData[plan.id];
+                      const isReadOnly = ['CLOSED','CANCELLED'].includes(plan.status);
+                      return (
                       <tr
                         key={plan.id}
                         className="hover:bg-blue-50/30 cursor-pointer transition-colors"
@@ -362,7 +394,7 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                             key={col.key}
                             style={{ minWidth: col.width, width: col.width }}
                             className="px-2 py-1.5 border-r border-gray-100 align-top"
-                            onClick={(e) => col.key === 'actions' && e.stopPropagation()}
+                            onClick={(e) => (col.key === 'actions' || AI_FIELDS.includes(col.key)) && e.stopPropagation()}
                           >
                             {col.key === 'actions' ? (
                               <div className="flex items-center gap-1">
@@ -383,9 +415,25 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                                   <ExternalLink className="w-4 h-4" />
                                 </button>
                               </div>
+                            ) : AI_FIELDS.includes(col.key) ? (
+                              <div className="flex items-start gap-1">
+                                <span className="text-xs text-gray-700 flex-1 min-w-0" title={String(getCellValue(plan, col.key, override))}>
+                                  {getCellValue(plan, col.key, override)}
+                                </span>
+                                {access.canEdit && !isReadOnly && (
+                                  <button
+                                    onClick={() => aiFill(plan.id, col.key)}
+                                    disabled={aiLoading[`${plan.id}-${col.key}`]}
+                                    className="shrink-0 p-0.5 rounded text-purple-600 hover:bg-purple-100 disabled:opacity-40"
+                                    title="Completar con IA"
+                                  >
+                                    {aiLoading[`${plan.id}-${col.key}`] ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                  </button>
+                                )}
+                              </div>
                             ) : col.key === 'status' ? (
                               <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[plan.status] || 'bg-gray-100 text-gray-600'}`}>
-                                {getCellValue(plan, col.key)}
+                                {getCellValue(plan, col.key, override)}
                               </span>
                             ) : col.key === 'progressPercent' ? (
                               <div className="flex items-center gap-1.5">
@@ -395,14 +443,15 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                                 <span className="text-xs text-gray-500">{plan.progressPercent || 0}%</span>
                               </div>
                             ) : (
-                              <span className="text-xs text-gray-700 truncate block" title={String(getCellValue(plan, col.key))}>
-                                {getCellValue(plan, col.key)}
+                              <span className="text-xs text-gray-700 truncate block" title={String(getCellValue(plan, col.key, override))}>
+                                {getCellValue(plan, col.key, override)}
                               </span>
                             )}
                           </td>
                         ))}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

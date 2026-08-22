@@ -26,6 +26,7 @@ import {
   portalNcrInternalNotificationEmail,
 } from '../services/email.js';
 import { getStorage } from '../services/storage.js';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
 const USER_SELECT = { id: true, email: true, firstName: true, lastName: true };
 
@@ -132,11 +133,8 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
       },
     });
 
-    // Build filter for plans
-    const where: any = { tenantId: access.tenantId };
-    if (access.area) where.area = access.area;
-    if (access.process) where.process = access.process;
-    if (access.executorId) where.executorId = access.executorId;
+    // Show all plans for this tenant — the portal gives full matrix visibility
+    const where: any = { tenantId: access.tenantId, deletedAt: null };
 
     const [plans, branding] = await Promise.all([
       prisma.actionPlan.findMany({
@@ -537,6 +535,84 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
       await browser.close();
       console.error('[PORTAL PDF] Error:', err);
       return reply.code(500).send({ error: 'Error generando PDF' });
+    }
+  });
+
+  // ── POST /portal-accion/public/:token/plans/:planId/ai-fill ──
+  app.post('/public/:token/plans/:planId/ai-fill', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token, planId } = req.params as any;
+    const result = await verifyToken(app.prisma, token);
+    if (!result) return reply.code(404).send({ error: 'Token no encontrado' });
+    if (result.error) return reply.code(403).send({ error: result.error });
+    const access = result.access;
+
+    if (!access.canEdit) {
+      return reply.code(403).send({ error: 'No tiene permiso para editar' });
+    }
+
+    const { field } = z.object({
+      field: z.enum(['immediateCorrection','rootCauseAnalysis','validatedRootCause','plannedAction','expectedResult']),
+    }).parse(req.body);
+
+    const plan = await app.prisma.actionPlan.findFirst({
+      where: { id: planId, tenantId: access.tenantId, deletedAt: null },
+      include: {
+        ncr: { select: { id: true, code: true, title: true, description: true, severity: true } },
+        executor: { select: USER_SELECT },
+      },
+    });
+    if (!plan) return reply.code(404).send({ error: 'Plan no encontrado' });
+
+    const FIELD_LABELS: Record<string, string> = {
+      immediateCorrection: 'Corrección inmediata / Medida de contención',
+      rootCauseAnalysis: 'Análisis de causa raíz',
+      validatedRootCause: 'Causa raíz validada',
+      plannedAction: 'Acción planificada',
+      expectedResult: 'Resultado esperado / Criterio de éxito',
+    };
+
+    const contextParts: string[] = [
+      `Tipo de acción: ${plan.type}`,
+      `Origen: ${plan.origin}`,
+      `Estado: ${plan.status}`,
+      plan.severity ? `Criticidad: ${plan.severity}` : '',
+      plan.site ? `Sede: ${plan.site}` : '',
+      plan.area ? `Área: ${plan.area}` : '',
+      plan.process ? `Proceso: ${plan.process}` : '',
+      plan.findingDescription ? `Descripción del hallazgo: ${plan.findingDescription}` : '',
+      plan.requirement ? `Requisito: ${plan.requirement}` : '',
+      plan.ncr?.title ? `NCR relacionada: ${plan.ncr.title}` : '',
+      plan.ncr?.description ? `Descripción NCR: ${plan.ncr.description}` : '',
+      plan.immediateCorrection ? `Corrección inmediata: ${plan.immediateCorrection}` : '',
+      plan.rootCauseAnalysis ? `Análisis de causa raíz: ${plan.rootCauseAnalysis}` : '',
+      plan.analysisMethod ? `Metodología: ${plan.analysisMethod}` : '',
+      plan.validatedRootCause ? `Causa raíz validada: ${plan.validatedRootCause}` : '',
+      plan.plannedAction ? `Acción planificada: ${plan.plannedAction}` : '',
+      plan.expectedResult ? `Resultado esperado: ${plan.expectedResult}` : '',
+    ].filter(Boolean);
+
+    const prompt = `Sos un experto en gestión de calidad (ISO 9001/14001/45001/19011). Analizá el siguiente contexto de un Plan de Acción y completá el campo "${FIELD_LABELS[field]}".
+
+Contexto del plan:
+${contextParts.join('\n')}
+
+Generá únicamente el contenido para el campo "${FIELD_LABELS[field]}". Sea específico, técnico y accionable. No incluís saludos ni explicaciones. Respondé en español.`;
+
+    try {
+      const llm = createGroqOnlyLLMProvider(
+        null, app.prisma, access.tenantId, null, 'portal-ai-fill'
+      );
+      const response = await llm.chat([
+        { role: 'user', content: prompt },
+      ], 1024);
+
+      const generatedText = response.text.trim();
+
+      await addPortalLog(app.prisma, access.id, 'AI_FILL', planId, field, null, generatedText, req.ip ?? undefined, req.headers['user-agent'] ?? undefined);
+
+      return reply.send({ field, value: generatedText });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err?.message ?? 'Error en IA' });
     }
   });
 
@@ -1007,28 +1083,16 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
     const where: any = {
       tenantId: access.tenantId,
       deletedAt: null,
-      source: 'PORTAL_EXTERNAL',
     };
 
     if (access.canViewNcrScope) {
-      // Can see all NCRs in authorized scope
+      // Can see all NCRs for this tenant
+    } else if (access.canViewNcrOwn) {
+      // Show NCRs created from this portal token OR linked to any action plan in the tenant
       where.OR = [
         { portalAccessTokenId: access.id },
-        {
-          AND: [
-            access.sector ? { } : {},
-          ],
-        },
+        { actionPlans: { some: { tenantId: access.tenantId, deletedAt: null } } },
       ];
-      // Filter by sector/area/process if set
-      if (access.sector || access.area || access.process) {
-        where.OR = [
-          { portalAccessTokenId: access.id },
-          { externalLocation: { contains: access.sector ?? '' } },
-        ];
-      }
-    } else if (access.canViewNcrOwn) {
-      where.portalAccessTokenId = access.id;
     } else {
       return reply.send({ ncrs: [] });
     }
@@ -1065,9 +1129,10 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
 
     if (!ncr) return reply.code(404).send({ error: 'NCR no encontrada' });
 
-    // Verify access: own or scope
+    // Verify access: own, linked to action plans, or scope
     const isOwn = ncr.portalAccessTokenId === access.id;
-    if (!isOwn && !access.canViewNcrScope) {
+    const hasLinkedPlans = ncr.actionPlans && ncr.actionPlans.length > 0;
+    if (!isOwn && !hasLinkedPlans && !access.canViewNcrScope) {
       return reply.code(403).send({ error: 'No autorizado para ver esta NCR' });
     }
 
@@ -1476,7 +1541,8 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
     if (!ncr) return reply.code(404).send({ error: 'NCR no encontrada' });
 
     const isOwn = ncr.portalAccessTokenId === access.id;
-    if (!isOwn && !access.canViewNcrScope) {
+    const hasLinkedPlans = ncr.actionPlans && ncr.actionPlans.length > 0;
+    if (!isOwn && !hasLinkedPlans && !access.canViewNcrScope) {
       return reply.code(403).send({ error: 'No autorizado' });
     }
 
