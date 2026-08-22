@@ -52,23 +52,36 @@ export default function DocCodeBadge({
       if (found) {
         setDef(found);
       } else {
-        const created = await apiFetch<OutputDef>('/doc-export/outputs', {
-          method: 'POST',
-          json: {
-            module,
-            subModule: subModule || null,
-            screenName: title,
-            outputKey,
-            outputType,
-          },
-        });
-        setDef(created);
+        try {
+          const created = await apiFetch<OutputDef>('/doc-export/outputs', {
+            method: 'POST',
+            json: {
+              module,
+              subModule: subModule || null,
+              screenName: title,
+              outputKey,
+              outputType,
+            },
+          });
+          if (created && created.id) setDef(created);
+        } catch {
+          // POST failed — def stays null, button will retry on click
+        }
       }
     } catch {
-      // Silent fail
+      // GET failed — def stays null, button will retry on click
     } finally {
       setLoadingDef(false);
     }
+  }
+
+  async function handleButtonClick() {
+    if (!def) {
+      // Retry loading if def failed previously
+      await loadDef();
+      return;
+    }
+    openModal();
   }
 
   async function openModal() {
@@ -133,10 +146,9 @@ export default function DocCodeBadge({
         </button>
       ) : (
         <button
-          onClick={openModal}
-          disabled={!def}
-          title="Asignar código documental a este módulo"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-40"
+          onClick={handleButtonClick}
+          title={def ? 'Asignar código documental a este módulo' : 'Clic para reintentar'}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
         >
           <Hash className="h-3 w-3" />
           Asignar código
