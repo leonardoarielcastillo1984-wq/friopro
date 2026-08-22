@@ -52,7 +52,8 @@ export default function SolicitarActualizacionModal({
         setExpiresAt('');
       }, 2500);
     } catch (e: any) {
-      setResult({ ok: false, message: e.message });
+      console.error('[SolicitarActualizacion] Error:', e);
+      setResult({ ok: false, message: e?.message || 'Error al enviar link' });
     } finally {
       setSending(false);
     }
