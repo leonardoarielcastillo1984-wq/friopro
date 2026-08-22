@@ -27,7 +27,7 @@ interface ActionPlan {
   findingDescription: string|null; requirement: string|null; classification: string|null;
   immediateCorrection: string|null; rootCauseAnalysis: string|null; analysisMethod: APMethod|null;
   validatedRootCause: string|null; plannedAction: string|null; expectedResult: string|null;
-  executorId: string|null; supervisorId: string|null; requiredResources: string|null;
+  executorId: string|null; executorNameText: string|null; supervisorId: string|null; requiredResources: string|null;
   openedAt: string; plannedStartDate: string|null; plannedEndDate: string|null; actualEndDate: string|null;
   progressPercent: number; effectivenessCheckDate: string|null; effectivenessMethod: string|null;
   effectivenessResult: string|null; effectiveness: APEffectiveness; cancellationReason: string|null;
@@ -103,7 +103,7 @@ function fmtDateTime(d: string|null|undefined) {
   const date = new Date(d);
   return isNaN(date.getTime()) ? DASH : date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
-function userName(u?: User|null) { return u ? (u.firstName ? `${u.firstName} ${u.lastName ?? ''}`.trim() : u.email) : DASH; }
+function userName(u?: User|null, text?: string|null) { return text || (u ? (u.firstName ? `${u.firstName} ${u.lastName ?? ''}`.trim() : u.email) : DASH); }
 
 function trafficLight(plan: ActionPlan): 'green'|'amber'|'red'|null {
   if (!plan.plannedEndDate || ['CLOSED','EFFECTIVE','CANCELLED'].includes(plan.status)) return null;
@@ -431,7 +431,7 @@ export default function PlanAccionPage() {
       result = result.filter(p => {
         let val: string;
         if (colKey === 'ncrCode') val = p.ncr?.code ?? '';
-        else if (colKey === 'executorName') val = p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '';
+        else if (colKey === 'executorName') val = p.executorNameText || (p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '');
         else if (colKey === 'status') val = STATUS_CFG[p.status]?.label ?? p.status;
         else if (colKey === 'type') val = TYPE_LABELS[p.type] ?? '';
         else if (colKey === 'origin') val = ORIGIN_LABELS[p.origin] ?? '';
@@ -512,7 +512,7 @@ export default function PlanAccionPage() {
     for (const p of plans) {
       let val: string;
       if (colKey === 'ncrCode') val = p.ncr?.code ?? '(vacio)';
-      else if (colKey === 'executorName') val = p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '(vacio)';
+      else if (colKey === 'executorName') val = p.executorNameText || (p.executor ? (p.executor.firstName ? `${p.executor.firstName} ${p.executor.lastName ?? ''}`.trim() : p.executor.email) : '(vacio)';
       else if (colKey === 'status') val = STATUS_CFG[p.status]?.label ?? p.status;
       else if (colKey === 'type') val = TYPE_LABELS[p.type] ?? '';
       else if (colKey === 'origin') val = ORIGIN_LABELS[p.origin] ?? '';
@@ -557,7 +557,7 @@ export default function PlanAccionPage() {
           if (c.key === 'checkbox' || c.key === 'actions') continue;
           if (c.key === 'sequenceNumber') row[c.key] = p.sequenceNumber ?? DASH;
           else if (c.key === 'ncrCode') row[c.key] = p.ncr?.code ?? DASH;
-          else if (c.key === 'executorName') row[c.key] = userName(p.executor);
+          else if (c.key === 'executorName') row[c.key] = userName(p.executor, p.executorNameText);
           else if (c.key === 'status') row[c.key] = STATUS_CFG[p.status]?.label ?? p.status;
           else if (c.key === 'type') row[c.key] = TYPE_LABELS[p.type];
           else if (c.key === 'origin') row[c.key] = ORIGIN_LABELS[p.origin];
@@ -806,7 +806,7 @@ export default function PlanAccionPage() {
                                 <span className="font-mono text-xs text-neutral-500 font-medium text-center block">{plan.sequenceNumber ?? DASH}</span>
                               )}
                               {col.key === 'ncrCode' && <span className="font-mono text-xs text-neutral-500">{plan.ncr?.code ?? DASH}</span>}
-                              {col.key === 'executorName' && <span className="text-xs text-neutral-600 truncate" title={userName(plan.executor)}>{userName(plan.executor)}</span>}
+                              {col.key === 'executorName' && <span className="text-xs text-neutral-600 truncate" title={userName(plan.executor, plan.executorNameText)}>{userName(plan.executor, plan.executorNameText)}</span>}
                               {col.key === 'createdAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.createdAt)}</span>}
                               {col.key === 'updatedAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.updatedAt)}</span>}
                               {col.key === 'actions' && (
