@@ -9,6 +9,75 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+const TYPE_LABELS: Record<string, string> = {
+  CORRECTIVE: 'Correctiva', PREVENTIVE: 'Preventiva', IMPPROVEMENT: 'Mejora',
+};
+const ORIGIN_LABELS: Record<string, string> = {
+  AUDIT: 'Auditoría', COMPLAINT: 'Queja', INSPECTION: 'Inspección',
+  REVIEW: 'Revisión', EXTERNAL: 'Externa', OTHER: 'Otra',
+};
+const METHOD_LABELS: Record<string, string> = {
+  '5WHY': '5 Porqués', FISHBONE: 'Ishikawa', FTA: 'FTA', BRAINSTORM: 'Brainstorm', OTHER: 'Otra',
+};
+const EFF_LABELS: Record<string, string> = {
+  PENDING: 'Pendiente', EFFECTIVE: 'Eficaz', NOT_EFFECTIVE: 'No eficaz',
+};
+
+const MATRIX_COLUMNS = [
+  { key: 'sequenceNumber', label: 'Nro', width: 50 },
+  { key: 'ncrCode', label: 'NCR', width: 90 },
+  { key: 'code', label: 'Código', width: 90 },
+  { key: 'status', label: 'Estado', width: 120 },
+  { key: 'type', label: 'Tipo', width: 100 },
+  { key: 'origin', label: 'Origen', width: 100 },
+  { key: 'severity', label: 'Criticidad', width: 80 },
+  { key: 'site', label: 'Sede', width: 70 },
+  { key: 'area', label: 'Área', width: 70 },
+  { key: 'process', label: 'Proceso', width: 80 },
+  { key: 'requirement', label: 'Requisito', width: 90 },
+  { key: 'findingDescription', label: 'Desc. hallazgo', width: 180 },
+  { key: 'observations', label: 'Observaciones', width: 130 },
+  { key: 'plannedStartDate', label: 'F. inicio prev.', width: 80 },
+  { key: 'plannedEndDate', label: 'F. cierre prev.', width: 80 },
+  { key: 'immediateCorrection', label: 'Corrección inmediata', width: 160 },
+  { key: 'rootCauseAnalysis', label: 'Análisis causa raíz', width: 160 },
+  { key: 'analysisMethod', label: 'Metodología', width: 90 },
+  { key: 'validatedRootCause', label: 'Causa raíz validada', width: 130 },
+  { key: 'plannedAction', label: 'Acción planificada', width: 160 },
+  { key: 'expectedResult', label: 'Resultado esperado', width: 130 },
+  { key: 'requiredResources', label: 'Recursos', width: 100 },
+  { key: 'executorName', label: 'Responsable', width: 100 },
+  { key: 'progressPercent', label: 'Avance %', width: 60 },
+  { key: 'actualEndDate', label: 'F. real fin.', width: 80 },
+  { key: 'effectivenessCheckDate', label: 'F. verif. efic.', width: 80 },
+  { key: 'effectivenessMethod', label: 'Método verif.', width: 110 },
+  { key: 'effectivenessResult', label: 'Resultado verif.', width: 130 },
+  { key: 'effectiveness', label: 'Eficaz?', width: 80 },
+  { key: 'createdAt', label: 'Creado', width: 80 },
+  { key: 'updatedAt', label: 'Modificado', width: 80 },
+  { key: 'actions', label: '', width: 60 },
+];
+
+function fmtDate(v: any) {
+  if (!v) return '—';
+  try { return new Date(v).toLocaleDateString('es-AR'); } catch { return '—'; }
+}
+
+function getCellValue(plan: any, key: string) {
+  if (key === 'ncrCode') return plan.ncr?.code ?? '—';
+  if (key === 'executorName') return plan.executor ? (plan.executor.firstName ? `${plan.executor.firstName} ${plan.executor.lastName ?? ''}`.trim() : plan.executor.email) : '—';
+  if (key === 'status') return STATUS_LABELS[plan.status] ?? plan.status ?? '—';
+  if (key === 'type') return TYPE_LABELS[plan.type] ?? plan.type ?? '—';
+  if (key === 'origin') return ORIGIN_LABELS[plan.origin] ?? plan.origin ?? '—';
+  if (key === 'analysisMethod') return plan.analysisMethod ? (METHOD_LABELS[plan.analysisMethod] ?? plan.analysisMethod) : '—';
+  if (key === 'effectiveness') return EFF_LABELS[plan.effectiveness] ?? plan.effectiveness ?? '—';
+  if (key === 'progressPercent') return `${plan.progressPercent ?? 0}%`;
+  if (key === 'createdAt' || key === 'updatedAt' || key === 'plannedStartDate' || key === 'plannedEndDate' || key === 'actualEndDate' || key === 'effectivenessCheckDate') return fmtDate(plan[key]);
+  if (key === 'actions') return null;
+  if (key === 'code') return plan.code ?? '—';
+  return plan[key] ?? '—';
+}
+
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Borrador', PENDING_CODE: 'Pend. código', PENDING_APPROVAL: 'Pend. aprobación',
   OPEN: 'Abierto', IN_EXECUTION: 'En ejecución', PENDING_EVIDENCE: 'Pend. evidencia',
@@ -257,25 +326,27 @@ export default function PortalAccionPage({ params }: { params: { token: string }
               </select>
             </div>
 
-            {/* Plans Table */}
+            {/* Full Matrix Table */}
             <div className="bg-white rounded-lg border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Código</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Descripción</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Área</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Progreso</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Fin prev.</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600">Acciones</th>
+              <div className="overflow-x-auto" style={{ maxHeight: '70vh' }}>
+                <table className="border-collapse text-xs">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="bg-gray-50 border-b">
+                      {MATRIX_COLUMNS.map(col => (
+                        <th
+                          key={col.key}
+                          style={{ minWidth: col.width, width: col.width }}
+                          className="text-left px-2 py-2 font-semibold text-gray-600 border-r border-gray-200 whitespace-nowrap"
+                        >
+                          {col.label}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody className="divide-y divide-gray-100">
                     {filteredPlans.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="text-center py-12 text-gray-400">
+                        <td colSpan={MATRIX_COLUMNS.length} className="text-center py-12 text-gray-400">
                           No hay planes que coincidan con los filtros
                         </td>
                       </tr>
@@ -283,60 +354,53 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                     {filteredPlans.map((plan: any) => (
                       <tr
                         key={plan.id}
-                        className="hover:bg-gray-50 cursor-pointer transition-colors"
+                        className="hover:bg-blue-50/30 cursor-pointer transition-colors"
                         onClick={() => router.push(`/portal-accion/${params.token}/plan/${plan.id}`)}
                       >
-                        <td className="px-4 py-3 font-mono text-xs font-medium text-gray-900">
-                          {plan.code || <span className="text-gray-400">Sin código</span>}
-                        </td>
-                        <td className="px-4 py-3 max-w-xs">
-                          <div className="truncate text-gray-700">
-                            {plan.findingDescription || plan.classification || '—'}
-                          </div>
-                          {plan.ncr?.code && (
-                            <div className="text-xs text-gray-400 mt-0.5">NCR: {plan.ncr.code}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">{plan.area || plan.sector || '—'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[plan.status] || 'bg-gray-100 text-gray-600'}`}>
-                            {STATUS_LABELS[plan.status] || plan.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-blue-600 rounded-full"
-                                style={{ width: `${plan.progressPercent || 0}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-gray-500">{plan.progressPercent || 0}%</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 text-xs">
-                          {plan.plannedEndDate ? new Date(plan.plannedEndDate).toLocaleDateString('es-AR') : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            {access.canDownloadPdf && (
-                              <button
-                                onClick={() => window.open(`${API_BASE}/portal-accion/public/${params.token}/plans/${plan.id}/pdf`, '_blank')}
-                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                title="Descargar PDF"
-                              >
-                                <FileDown className="w-4 h-4" />
-                              </button>
+                        {MATRIX_COLUMNS.map(col => (
+                          <td
+                            key={col.key}
+                            style={{ minWidth: col.width, width: col.width }}
+                            className="px-2 py-1.5 border-r border-gray-100 align-top"
+                            onClick={(e) => col.key === 'actions' && e.stopPropagation()}
+                          >
+                            {col.key === 'actions' ? (
+                              <div className="flex items-center gap-1">
+                                {access.canDownloadPdf && (
+                                  <button
+                                    onClick={() => window.open(`${API_BASE}/portal-accion/public/${params.token}/plans/${plan.id}/pdf`, '_blank')}
+                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                    title="Descargar PDF"
+                                  >
+                                    <FileDown className="w-4 h-4" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => router.push(`/portal-accion/${params.token}/plan/${plan.id}`)}
+                                  className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                  title="Ver detalle"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : col.key === 'status' ? (
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[plan.status] || 'bg-gray-100 text-gray-600'}`}>
+                                {getCellValue(plan, col.key)}
+                              </span>
+                            ) : col.key === 'progressPercent' ? (
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                  <div className="h-full bg-blue-600 rounded-full" style={{ width: `${plan.progressPercent || 0}%` }} />
+                                </div>
+                                <span className="text-xs text-gray-500">{plan.progressPercent || 0}%</span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-700 truncate block" title={String(getCellValue(plan, col.key))}>
+                                {getCellValue(plan, col.key)}
+                              </span>
                             )}
-                            <button
-                              onClick={() => router.push(`/portal-accion/${params.token}/plan/${plan.id}`)}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                              title="Ver detalle"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
