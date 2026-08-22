@@ -136,13 +136,17 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
     // Show all plans for this tenant — the portal gives full matrix visibility
     const where: any = { tenantId: access.tenantId, deletedAt: null };
 
-    const [plans, branding] = await Promise.all([
+    const [plans, branding, docOutput] = await Promise.all([
       prisma.actionPlan.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         include: planInclude(),
       }),
       getCompanyBranding(prisma, access.tenantId),
+      prisma.documentOutputDefinition.findFirst({
+        where: { tenantId: access.tenantId, outputKey: 'calidad.plan-accion.list' },
+        select: { documentCode: true, screenName: true },
+      }),
     ]);
 
     await addPortalLog(prisma, access.id, 'LOGIN', undefined, undefined, undefined, undefined, req.ip, req.headers['user-agent']);
@@ -169,6 +173,7 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
         expiresAt: access.expiresAt,
       },
       branding,
+      docCode: docOutput?.documentCode || null,
       plans: plans.map((p: any) => ({
         ...p,
         attachments: undefined,
@@ -220,9 +225,7 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
     if (result.error) return reply.code(403).send({ error: result.error });
 
     const access = result.access;
-    const where: any = { id: planId, tenantId: access.tenantId };
-    if (access.area) where.area = access.area;
-    if (access.executorId) where.executorId = access.executorId;
+    const where: any = { id: planId, tenantId: access.tenantId, deletedAt: null };
 
     const plan = await app.prisma.actionPlan.findFirst({
       where,
@@ -269,9 +272,7 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
     const approvalFields = requestedFields.filter((f) => FIELDS_REQUIRING_APPROVAL.includes(f));
     const directFields = requestedFields.filter((f) => FIELDS_DIRECT_EDIT.includes(f));
 
-    const where: any = { id: planId, tenantId: access.tenantId };
-    if (access.area) where.area = access.area;
-    if (access.executorId) where.executorId = access.executorId;
+    const where: any = { id: planId, tenantId: access.tenantId, deletedAt: null };
 
     const plan = await app.prisma.actionPlan.findFirst({ where });
     if (!plan) return reply.code(404).send({ error: 'Plan no encontrado' });
@@ -417,9 +418,7 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
     const access = result.access;
     if (!access.canAttachEvidence) return reply.code(403).send({ error: 'No tiene permiso para adjuntar evidencias' });
 
-    const where: any = { id: planId, tenantId: access.tenantId };
-    if (access.area) where.area = access.area;
-    if (access.executorId) where.executorId = access.executorId;
+    const where: any = { id: planId, tenantId: access.tenantId, deletedAt: null };
 
     const plan = await app.prisma.actionPlan.findFirst({ where });
     if (!plan) return reply.code(404).send({ error: 'Plan no encontrado' });
@@ -495,9 +494,7 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
     const access = result.access;
     if (!access.canDownloadPdf) return reply.code(403).send({ error: 'No tiene permiso para descargar PDF' });
 
-    const where: any = { id: planId, tenantId: access.tenantId };
-    if (access.area) where.area = access.area;
-    if (access.executorId) where.executorId = access.executorId;
+    const where: any = { id: planId, tenantId: access.tenantId, deletedAt: null };
 
     const plan = await app.prisma.actionPlan.findFirst({
       where,
@@ -608,7 +605,7 @@ Generá únicamente el contenido para el campo "${FIELD_LABELS[field]}". Sea esp
 
       const generatedText = response.text.trim();
 
-      await addPortalLog(app.prisma, access.id, 'AI_FILL', planId, field, null, generatedText, req.ip ?? undefined, req.headers['user-agent'] ?? undefined);
+      await addPortalLog(app.prisma, access.id, 'AI_FILL', planId, field, undefined, generatedText, req.ip ?? undefined, req.headers['user-agent'] ?? undefined);
 
       return reply.send({ field, value: generatedText });
     } catch (err: any) {

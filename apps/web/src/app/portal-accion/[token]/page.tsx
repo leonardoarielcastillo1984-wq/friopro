@@ -294,6 +294,7 @@ export default function PortalAccionPage({ params }: { params: { token: string }
   }
 
   const { access, branding } = data;
+  const docCode = data.docCode;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -326,7 +327,14 @@ export default function PortalAccionPage({ params }: { params: { token: string }
         {/* Title */}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Portal de Planes de Acción</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-gray-900">Portal de Planes de Acción</h1>
+              {docCode && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                  {docCode}
+                </span>
+              )}
+            </div>
             <p className="text-gray-500 text-sm mt-1">
               Gestión colaborativa de planes de acción y no conformidades
             </p>
