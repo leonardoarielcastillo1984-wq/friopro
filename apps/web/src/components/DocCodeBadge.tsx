@@ -37,6 +37,15 @@ export default function DocCodeBadge({
   const [err, setErr] = useState('');
 
   useEffect(() => {
+    // Wait for auth token to be available before loading
+    if (typeof window !== 'undefined') {
+      const token = window.localStorage.getItem('accessToken');
+      if (!token) {
+        // Retry shortly — AuthProvider may not have set token yet
+        const timer = setTimeout(() => loadDef(), 1500);
+        return () => clearTimeout(timer);
+      }
+    }
     loadDef();
   }, [outputKey]);
 
@@ -58,7 +67,7 @@ export default function DocCodeBadge({
           method: 'POST',
           json: {
             module,
-            subModule: subModule || null,
+            subModule: subModule || undefined,
             screenName: title,
             outputKey,
             outputType,
