@@ -2,51 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Hash, Loader2, Sparkles, X } from 'lucide-react';
-import { getTenantId } from '@/lib/api';
-
-function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (typeof window !== 'undefined') {
-    const token = window.localStorage.getItem('accessToken');
-    if (token) headers['authorization'] = `Bearer ${token}`;
-    const tid = getTenantId();
-    if (tid) headers['x-tenant-id'] = tid;
-    const csrf = window.localStorage.getItem('csrfToken');
-    if (csrf) headers['x-csrf-token'] = csrf;
-  }
-  return headers;
-}
-
-async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    method: 'GET',
-    headers: { ...getAuthHeaders() },
-    credentials: 'include',
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    ...getAuthHeaders(),
-  };
-  const res = await fetch(`/api${path}`, {
-    method: 'POST',
-    headers,
-    credentials: 'include',
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const resp = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(resp.error || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
+import { apiFetch } from '@/lib/api';
 
 interface DocCodeBadgeProps {
   outputKey: string;
@@ -88,23 +44,31 @@ export default function DocCodeBadge({
     setLoadingDef(true);
     setErr('');
     try {
-      const results = await apiGet<OutputDef[]>(
+      const results = await apiFetch<OutputDef[]>(
         `/doc-export/outputs?module=${encodeURIComponent(module)}`
       );
-      const found = Array.isArray(results)
+      const found = Array.isArray(results) && results.length > 0
         ? results.find((r) => r.outputKey === outputKey)
         : null;
       if (found) {
         setDef(found);
       } else {
-        const created = await apiPost<OutputDef>('/doc-export/outputs', {
-          module,
-          subModule: subModule || null,
-          screenName: title,
-          outputKey,
-          outputType,
+        // Auto-create the output definition for this matrix
+        const created = await apiFetch<OutputDef>('/doc-export/outputs', {
+          method: 'POST',
+          json: {
+            module,
+            subModule: subModule || null,
+            screenName: title,
+            outputKey,
+            outputType,
+          },
         });
-        if (created && created.id) setDef(created);
+        if (created && created.id) {
+          setDef(created);
+        } else {
+          setErr('No se pudo crear la definición documental');
+        }
       }
     } catch (e: any) {
       setErr(e?.message || 'Error al cargar definición documental');
@@ -132,13 +96,15 @@ export default function DocCodeBadge({
     setNewCode(def.documentCode || '');
     setSuggestingCode(true);
     try {
-      const res = await apiGet<{ suggestedCode: string; hasRule: boolean }>(
+      const res = await apiFetch<{ suggestedCode: string; hasRule: boolean }>(
         `/doc-export/outputs/${def.id}/suggest-code`
       );
-      if (!def.documentCode) setNewCode(res.suggestedCode || '');
-      setHasRule(res.hasRule || false);
+      if (res && res.suggestedCode) {
+        if (!def.documentCode) setNewCode(res.suggestedCode);
+        setHasRule(res.hasRule || false);
+      }
     } catch (e: any) {
-      setErr(e?.message || 'Error al sugerir código');
+      // Non-critical: modal still works without suggestion
     }
     setSuggestingCode(false);
   }
@@ -147,11 +113,13 @@ export default function DocCodeBadge({
     if (!def) return;
     setSuggestingCode(true);
     try {
-      const r = await apiGet<{ suggestedCode: string; hasRule: boolean }>(
+      const r = await apiFetch<{ suggestedCode: string; hasRule: boolean }>(
         `/doc-export/outputs/${def.id}/suggest-code`
       );
-      setNewCode(r.suggestedCode || '');
-      setHasRule(r.hasRule || false);
+      if (r && r.suggestedCode) {
+        setNewCode(r.suggestedCode);
+        setHasRule(r.hasRule || false);
+      }
     } catch (e: any) {
       setErr(e?.message || 'Error al sugerir código');
     }
@@ -163,8 +131,9 @@ export default function DocCodeBadge({
     setAssigning(true);
     setErr('');
     try {
-      await apiPost(`/doc-export/outputs/${def.id}/assign-code`, {
-        documentCode: newCode.trim(),
+      await apiFetch(`/doc-export/outputs/${def.id}/assign-code`, {
+        method: 'POST',
+        json: { documentCode: newCode.trim() },
       });
       setDef({ ...def, documentCode: newCode.trim() });
       setShowModal(false);
