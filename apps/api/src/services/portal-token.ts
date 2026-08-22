@@ -63,8 +63,6 @@ export function isAccessValid(access: PortalAccessInfo): { valid: boolean; reaso
 export const FIELDS_REQUIRING_APPROVAL = [
   'validatedRootCause',
   'plannedAction',
-  'plannedStartDate',
-  'plannedEndDate',
   'effectivenessResult',
   'status',
 ];
@@ -80,6 +78,8 @@ export const FIELDS_DIRECT_EDIT = [
   'findingDescription',
   'requirement',
   'classification',
+  'plannedStartDate',
+  'plannedEndDate',
 ];
 
 export const ALL_EDITABLE_FIELDS = [...FIELDS_DIRECT_EDIT, ...FIELDS_REQUIRING_APPROVAL];
