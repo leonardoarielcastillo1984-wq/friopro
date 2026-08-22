@@ -2,7 +2,50 @@
 
 import { useState, useEffect } from 'react';
 import { Hash, Loader2, Sparkles, X } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (typeof window !== 'undefined') {
+    const token = window.localStorage.getItem('accessToken');
+    if (token) headers['authorization'] = `Bearer ${token}`;
+    const tenantId = window.localStorage.getItem('tenantId');
+    if (tenantId) headers['x-tenant-id'] = tenantId;
+    const csrf = window.localStorage.getItem('csrfToken');
+    if (csrf) headers['x-csrf-token'] = csrf;
+  }
+  return headers;
+}
+
+async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: 'GET',
+    headers: { ...getAuthHeaders() },
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...getAuthHeaders(),
+  };
+  const res = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const resp = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(resp.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
 
 interface DocCodeBadgeProps {
   outputKey: string;
@@ -42,8 +85,9 @@ export default function DocCodeBadge({
 
   async function loadDef() {
     setLoadingDef(true);
+    setErr('');
     try {
-      const results = await apiFetch<OutputDef[]>(
+      const results = await apiGet<OutputDef[]>(
         `/doc-export/outputs?module=${encodeURIComponent(module)}`
       );
       const found = Array.isArray(results)
@@ -52,24 +96,17 @@ export default function DocCodeBadge({
       if (found) {
         setDef(found);
       } else {
-        try {
-          const created = await apiFetch<OutputDef>('/doc-export/outputs', {
-            method: 'POST',
-            json: {
-              module,
-              subModule: subModule || null,
-              screenName: title,
-              outputKey,
-              outputType,
-            },
-          });
-          if (created && created.id) setDef(created);
-        } catch {
-          // POST failed — def stays null, button will retry on click
-        }
+        const created = await apiPost<OutputDef>('/doc-export/outputs', {
+          module,
+          subModule: subModule || null,
+          screenName: title,
+          outputKey,
+          outputType,
+        });
+        if (created && created.id) setDef(created);
       }
-    } catch {
-      // GET failed — def stays null, button will retry on click
+    } catch (e: any) {
+      setErr(e?.message || 'Error al cargar definición documental');
     } finally {
       setLoadingDef(false);
     }
@@ -77,11 +114,14 @@ export default function DocCodeBadge({
 
   async function handleButtonClick() {
     if (!def) {
-      // Retry loading if def failed previously
       await loadDef();
       return;
     }
-    openModal();
+    if (!def.documentCode) {
+      openModal();
+    } else {
+      openModal();
+    }
   }
 
   async function openModal() {
@@ -91,12 +131,14 @@ export default function DocCodeBadge({
     setNewCode(def.documentCode || '');
     setSuggestingCode(true);
     try {
-      const res = await apiFetch<{ suggestedCode: string; hasRule: boolean }>(
+      const res = await apiGet<{ suggestedCode: string; hasRule: boolean }>(
         `/doc-export/outputs/${def.id}/suggest-code`
       );
       if (!def.documentCode) setNewCode(res.suggestedCode || '');
       setHasRule(res.hasRule || false);
-    } catch {}
+    } catch (e: any) {
+      setErr(e?.message || 'Error al sugerir código');
+    }
     setSuggestingCode(false);
   }
 
@@ -104,12 +146,14 @@ export default function DocCodeBadge({
     if (!def) return;
     setSuggestingCode(true);
     try {
-      const r = await apiFetch<{ suggestedCode: string; hasRule: boolean }>(
+      const r = await apiGet<{ suggestedCode: string; hasRule: boolean }>(
         `/doc-export/outputs/${def.id}/suggest-code`
       );
       setNewCode(r.suggestedCode || '');
       setHasRule(r.hasRule || false);
-    } catch {}
+    } catch (e: any) {
+      setErr(e?.message || 'Error al sugerir código');
+    }
     setSuggestingCode(false);
   }
 
@@ -118,9 +162,8 @@ export default function DocCodeBadge({
     setAssigning(true);
     setErr('');
     try {
-      await apiFetch(`/doc-export/outputs/${def.id}/assign-code`, {
-        method: 'POST',
-        json: { documentCode: newCode.trim() },
+      await apiPost(`/doc-export/outputs/${def.id}/assign-code`, {
+        documentCode: newCode.trim(),
       });
       setDef({ ...def, documentCode: newCode.trim() });
       setShowModal(false);
@@ -131,7 +174,14 @@ export default function DocCodeBadge({
     }
   }
 
-  if (loadingDef) return null;
+  if (loadingDef) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        ...
+      </span>
+    );
+  }
 
   return (
     <>
@@ -147,11 +197,11 @@ export default function DocCodeBadge({
       ) : (
         <button
           onClick={handleButtonClick}
-          title={def ? 'Asignar código documental a este módulo' : 'Clic para reintentar'}
+          title={def ? 'Asignar código documental a este módulo' : 'Clic para reintentar — ' + (err || 'cargando...')}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
         >
           <Hash className="h-3 w-3" />
-          Asignar código
+          {def ? 'Asignar código' : (err ? 'Reintentar' : 'Asignar código')}
         </button>
       )}
 
