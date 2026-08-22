@@ -80,6 +80,11 @@ export const FIELDS_DIRECT_EDIT = [
   'classification',
   'plannedStartDate',
   'plannedEndDate',
+  'actualEndDate',
+  'effectivenessCheckDate',
+  'effectivenessMethod',
+  'effectiveness',
+  'executorId',
 ];
 
 export const ALL_EDITABLE_FIELDS = [...FIELDS_DIRECT_EDIT, ...FIELDS_REQUIRING_APPROVAL];

@@ -62,13 +62,13 @@ const MATRIX_COLUMNS = [
   { key: 'plannedAction', label: 'Acción planificada', width: 160, editable: true, cellType: 'textarea' as CellType, field: 'plannedAction' },
   { key: 'expectedResult', label: 'Resultado esperado', width: 130, editable: true, cellType: 'textarea' as CellType, field: 'expectedResult' },
   { key: 'requiredResources', label: 'Recursos', width: 100, editable: true, cellType: 'textarea' as CellType, field: 'requiredResources' },
-  { key: 'executorName', label: 'Responsable', width: 100 },
+  { key: 'executorName', label: 'Responsable', width: 120, editable: true, cellType: 'select' as CellType, field: 'executorId', optionsKey: 'users' },
   { key: 'progressPercent', label: 'Avance %', width: 60, editable: true, cellType: 'number' as CellType, field: 'progressPercent', min: 0, max: 100 },
-  { key: 'actualEndDate', label: 'F. real fin.', width: 80 },
-  { key: 'effectivenessCheckDate', label: 'F. verif. efic.', width: 80 },
-  { key: 'effectivenessMethod', label: 'Método verif.', width: 110 },
+  { key: 'actualEndDate', label: 'F. real fin.', width: 80, editable: true, cellType: 'date' as CellType, field: 'actualEndDate' },
+  { key: 'effectivenessCheckDate', label: 'F. verif. efic.', width: 80, editable: true, cellType: 'date' as CellType, field: 'effectivenessCheckDate' },
+  { key: 'effectivenessMethod', label: 'Método verif.', width: 110, editable: true, cellType: 'text' as CellType, field: 'effectivenessMethod' },
   { key: 'effectivenessResult', label: 'Resultado verif.', width: 130, editable: true, cellType: 'textarea' as CellType, field: 'effectivenessResult' },
-  { key: 'effectiveness', label: 'Eficaz?', width: 80 },
+  { key: 'effectiveness', label: 'Eficaz?', width: 80, editable: true, cellType: 'select' as CellType, options: EFF_OPTS, field: 'effectiveness' },
   { key: 'createdAt', label: 'Creado', width: 80 },
   { key: 'updatedAt', label: 'Modificado', width: 80 },
   { key: 'actions', label: '', width: 60 },
@@ -471,7 +471,7 @@ export default function PortalAccionPage({ params }: { params: { token: string }
                                   <InlineCell
                                     value={(col as any).cellType === 'date' ? toDateInput(plan[(col as any).field]) : plan[(col as any).field]}
                                     type={(col as any).cellType}
-                                    options={(col as any).options}
+                                    options={(col as any).optionsKey === 'users' ? (data.users || []) : (col as any).options}
                                     min={(col as any).min}
                                     max={(col as any).max}
                                     editable={canEditRow}

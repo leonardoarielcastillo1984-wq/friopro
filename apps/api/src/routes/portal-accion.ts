@@ -136,7 +136,7 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
     // Show all plans for this tenant — the portal gives full matrix visibility
     const where: any = { tenantId: access.tenantId, deletedAt: null };
 
-    const [plans, branding, docOutput] = await Promise.all([
+    const [plans, branding, docOutput, users] = await Promise.all([
       prisma.actionPlan.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -146,6 +146,14 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
       prisma.documentOutputDefinition.findFirst({
         where: { tenantId: access.tenantId, outputKey: 'calidad.plan-accion.list' },
         select: { documentCode: true, screenName: true },
+      }),
+      prisma.platformUser.findMany({
+        where: {
+          memberships: { some: { tenantId: access.tenantId } },
+          deletedAt: null,
+        },
+        select: { id: true, email: true, firstName: true, lastName: true },
+        orderBy: { firstName: 'asc' },
       }),
     ]);
 
@@ -174,6 +182,7 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
       },
       branding,
       docCode: docOutput?.documentCode || null,
+      users: users.map((u: any) => ({ id: u.id, label: u.firstName ? `${u.firstName} ${u.lastName ?? ''}`.trim() : u.email })),
       plans: plans.map((p: any) => ({
         ...p,
         attachments: undefined,
@@ -293,7 +302,7 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
     if (directFields.length > 0) {
       const updateData: any = {};
       for (const f of directFields) {
-        if (['plannedStartDate', 'plannedEndDate'].includes(f)) {
+        if (['plannedStartDate', 'plannedEndDate', 'actualEndDate', 'effectivenessCheckDate'].includes(f)) {
           updateData[f] = body[f] ? new Date(body[f]) : null;
         } else {
           updateData[f] = body[f];
