@@ -1,8 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { X, Send, Loader2, CheckCircle, AlertCircle, Mail, User, Calendar } from 'lucide-react';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+import { apiFetch } from '@/lib/api';
 
 export default function SolicitarActualizacionModal({
   open,
@@ -28,11 +27,9 @@ export default function SolicitarActualizacionModal({
     setSending(true);
     setResult(null);
     try {
-      const res = await fetch(`${API_BASE}/portal-accion/admin/send-links`, {
+      await apiFetch('/portal-accion/admin/send-links', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        json: {
           planIds: selectedPlanIds,
           recipientName,
           recipientEmail,
@@ -41,12 +38,10 @@ export default function SolicitarActualizacionModal({
           canEdit,
           canAttachEvidence,
           canDownloadPdf,
-          expiresAt: expiresAt || null,
-        }),
+          expiresAt: expiresAt || undefined,
+        },
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Error');
-      setResult({ ok: true, message: json.message || 'Link enviado correctamente' });
+      setResult({ ok: true, message: 'Link enviado correctamente' });
       setTimeout(() => {
         onClose();
         setResult(null);
