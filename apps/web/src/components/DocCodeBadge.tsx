@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { Hash, Loader2, Sparkles, X } from 'lucide-react';
+import { getTenantId } from '@/lib/api';
 
 function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
   if (typeof window !== 'undefined') {
     const token = window.localStorage.getItem('accessToken');
     if (token) headers['authorization'] = `Bearer ${token}`;
-    const tenantId = window.localStorage.getItem('tenantId');
-    if (tenantId) headers['x-tenant-id'] = tenantId;
+    const tid = getTenantId();
+    if (tid) headers['x-tenant-id'] = tid;
     const csrf = window.localStorage.getItem('csrfToken');
     if (csrf) headers['x-csrf-token'] = csrf;
   }
