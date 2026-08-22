@@ -171,6 +171,7 @@ import { flota360AuthPlugin } from "./plugins/flota360Auth.js";
 import { registerFlota360AuthRoutes } from "./routes/flota360-auth.js";
 import { documentExportRoutes } from './routes/document-export.js';
 import { actionPlanRoutes } from './routes/action-plan.js';
+import { portalAccionRoutes } from './routes/portal-accion.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -325,6 +326,7 @@ export async function buildApp() {
   await app.register(registerManagementReviewRoutes);
   await app.register(ncrRoutes, { prefix: '/ncr' });
   await app.register(actionPlanRoutes, { prefix: '/action-plans' });
+  await app.register(portalAccionRoutes, { prefix: '/portal-accion' });
   await app.register(project360Routes, { prefix: '/project360-v1' });
   await app.register(project360BaseRoutes, { prefix: '/project360' });
   await app.register(project360AuthRoutes, { prefix: '/project360' });

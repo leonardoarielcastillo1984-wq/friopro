@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import {
-  Plus, Search, X, Eye, Code2, FileText, Loader2, ChevronDown, ChevronUp,
-  Columns3, Check, AlertCircle, Clock, History, Sparkles, Filter,
+  Plus, Search, X, Eye, FileText, Loader2, ChevronDown, ChevronUp,
+  Columns3, Check, AlertCircle, Clock, History, Sparkles, Filter, Send,
 } from 'lucide-react';
-import DocCodeBadge from '@/components/DocCodeBadge';
 import ExportButton from '@/components/ExportButton';
 import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
 import { InlineCell, type SelectOption } from './InlineCell';
+import SolicitarActualizacionModal from './SolicitarActualizacionModal';
+import PortalAdminPanel from './PortalAdminPanel';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -374,8 +375,9 @@ export default function PlanAccionPage() {
   const [filterType, setFilterType] = useState('ALL');
   const [selectedPlan, setSelectedPlan] = useState<ActionPlan|null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showSolicitar, setShowSolicitar] = useState(false);
+  const [showPortalAdmin, setShowPortalAdmin] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
-  const [assigning, setAssigning] = useState(false);
   const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const [showColSelector, setShowColSelector] = useState(false);
@@ -385,10 +387,6 @@ export default function PlanAccionPage() {
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
   const [openFilterCol, setOpenFilterCol] = useState<string|null>(null);
   const saveTimers = useRef<Record<string, NodeJS.Timeout>>({});
-
-  const plansWithoutCode = useMemo(() => {
-    return plans.filter(p => !p.code && !['CANCELLED','CLOSED'].includes(p.status));
-  }, [plans]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -485,31 +483,6 @@ export default function PlanAccionPage() {
     }
     return patchPlan(plan.id, patch);
   }, [patchPlan]);
-
-  async function assignAllCodes() {
-    if (plansWithoutCode.length === 0) { alert('No hay planes sin codigo para asignar.'); return; }
-    if (!confirm(`Asignar codigo a ${plansWithoutCode.length} plan(es) sin codigo? Esta accion no se puede revertir.`)) return;
-    setAssigning(true);
-    try {
-      const ids = plansWithoutCode.map(p => p.id);
-      const res = await apiFetch<{ plans: ActionPlan[]; assigned: number }>('/action-plans/assign-code-bulk', { method: 'POST', json: { ids } });
-      const updatedMap = new Map((res.plans ?? []).map(p => [p.id, p]));
-      setPlans(prev => prev.map(p => updatedMap.get(p.id) ?? p));
-      setSelected([]);
-      void reloadStats();
-    } catch (e: any) { alert(e.message || 'Error'); }
-    setAssigning(false);
-  }
-
-  async function assignSingle(id: string) {
-    setAssigning(true);
-    try {
-      const res = await apiFetch<{ plan: ActionPlan }>(`/action-plans/${id}/assign-code`, { method: 'POST', json: {} });
-      setPlans(prev => prev.map(p => p.id === id ? { ...p, ...res.plan } : p));
-      void reloadStats();
-    } catch (e: any) { alert(e.message || 'Error'); }
-    setAssigning(false);
-  }
 
   async function aiFill(planId: string, field: string) {
     const key = `${planId}-${field}`;
@@ -608,10 +581,22 @@ export default function PlanAccionPage() {
           <p className="text-sm text-neutral-500 mt-0.5">Matriz completa - ISO 9001/14001/45001/19011</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <DocCodeBadge outputKey="calidad.plan-accion.list" title="Plan de Accion" module="calidad" />
-          <ExportButton outputKey="calidad.plan-accion.list" title="Plan de Accion" moduleName="calidad" bodyHtml={bodyHtml} recordCount={filtered.length} />
+          <ExportButton outputKey="calidad.plan-accion.list" title="Matriz de Planes de Acción" moduleName="calidad" bodyHtml={bodyHtml} recordCount={filtered.length} showDocCode={true} docCodeType="MATRIX" />
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
             <Plus className="w-4 h-4" /> Nuevo Plan
+          </button>
+          <button
+            onClick={() => setShowSolicitar(true)}
+            disabled={selected.length === 0}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <Send className="w-4 h-4" /> Solicitar actualización
+          </button>
+          <button
+            onClick={() => setShowPortalAdmin(v => !v)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${showPortalAdmin ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          >
+            <Eye className="w-4 h-4" /> Portal externo
           </button>
         </div>
       </div>
@@ -673,11 +658,6 @@ export default function PlanAccionPage() {
           )}
         </div>
 
-        {/* Assign code button - assigns to ALL plans without code */}
-        <button onClick={assignAllCodes} disabled={assigning}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-          <Code2 className="w-4 h-4" /> {assigning ? 'Asignando...' : `Asignar codigo${plansWithoutCode.length > 0 ? ` (${plansWithoutCode.length})` : ''}`}
-        </button>
       </div>
 
       {/* Save status indicators */}
@@ -916,6 +896,12 @@ export default function PlanAccionPage() {
       {/* Modals */}
       {selectedPlan && <DetailModal plan={selectedPlan} onClose={() => setSelectedPlan(null)} />}
       {showCreate && <CreateModal onClose={() => setShowCreate(false)} onCreated={load} />}
+      <SolicitarActualizacionModal
+        open={showSolicitar}
+        onClose={() => setShowSolicitar(false)}
+        selectedPlanIds={selected}
+      />
+      {showPortalAdmin && <PortalAdminPanel />}
     </div>
   );
 }

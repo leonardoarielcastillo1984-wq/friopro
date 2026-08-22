@@ -65,16 +65,34 @@ model NonConformity {
   updatedById String?       @db.Uuid
   updatedBy   PlatformUser? @relation("NcrUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
+  // Portal externo — trazabilidad de NCRs creadas desde el portal
+  portalAccessTokenId  String?  @db.Uuid
+  externalReporterName String?
+  externalReporterEmail String?
+  externalDetectedAt   DateTime? @db.Timestamptz
+  externalLocation     String?
+  externalProductsAffected String?
+  externalObservations String?
+  externalImmediateCorrection String?
+  reviewNotes          String?
+  reviewedById         String?  @db.Uuid
+  reviewedBy           PlatformUser? @relation("NcrReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt           DateTime? @db.Timestamptz
+  idempotencyKey       String?  @unique
+  possibleDuplicateOfId String? @db.Uuid
+
   deletedAt            DateTime?             @db.Timestamptz
   environmentalAspects EnvironmentalAspect[] @relation("NcrEnvironmentalAspect")
   hazards              Hazard[]              @relation("NcrHazard")
   drillScenarios       DrillScenario[]       @relation("DrillNcr")
   actionPlans          ActionPlan[]          @relation("ActionPlanNcr")
+  attachments          NonConformityAttachment[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([status])
   @@index([severity])
+  @@index([portalAccessTokenId])
 }
 
 datasource db {
@@ -123,6 +141,9 @@ enum DocumentStatus {
 }
 
 enum NCRStatus {
+  EXTERNAL_DRAFT
+  REPORTED
+  NEEDS_CORRECTION
   OPEN
   IN_ANALYSIS
   ACTION_PLANNED
@@ -197,6 +218,7 @@ enum NCRSource {
   SUPPLIER_ISSUE
   AI_FINDING
   STAKEHOLDER
+  PORTAL_EXTERNAL
   OTHER
 }
 
@@ -448,6 +470,9 @@ model Tenant {
   // Action Plan Relations
   actionPlans ActionPlan[]
 
+  // Portal Externo Relations
+  portalAccessTokens PortalAccessToken[]
+
   // Global Document Export System Relations
   documentOutputDefinitions DocumentOutputDefinition[]
   documentTemplates         DocumentTemplate[]
@@ -504,6 +529,8 @@ model PlatformUser {
   ncrsAssigned NonConformity[] @relation("NcrAssignedTo")
   ncrsCreated  NonConformity[] @relation("NcrCreatedBy")
   ncrsUpdated  NonConformity[] @relation("NcrUpdatedBy")
+  ncrsReviewed NonConformity[] @relation("NcrReviewedBy")
+  ncrAttachmentsUploaded NonConformityAttachment[] @relation("NcrAttachmentUploadedBy")
 
   // Action Plan Relations
   actionPlansCreated         ActionPlan[] @relation("ActionPlanCreatedBy")
@@ -516,6 +543,9 @@ model PlatformUser {
   actionPlansApprovedClose   ActionPlan[] @relation("ActionPlanApprovedCloseBy")
   actionPlanLogs             ActionPlanLog[] @relation("ActionPlanLogUser")
   actionPlanAttachments      ActionPlanAttachment[] @relation("ActionPlanAttachmentUploadedBy")
+
+  // Portal Externo Relations
+  portalAccessesCreated      PortalAccessToken[] @relation("PortalAccessCreatedBy")
 
   aiFindingsCreated AiFinding[] @relation("AiFindingCreatedBy")
   aiFindingsUpdated AiFinding[] @relation("AiFindingUpdatedBy")
@@ -9915,6 +9945,7 @@ model ActionPlan {
 
   logs        ActionPlanLog[]
   attachments ActionPlanAttachment[]
+  portalDrafts PortalDraftSnapshot[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -9960,4 +9991,145 @@ model ActionPlanAttachment {
 
   @@index([actionPlanId])
   @@map("action_plan_attachments")
+}
+
+// ── Portal Externo de Planes de Acción ──────────────────────────────────────
+
+enum PortalAccessStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  REVOKED
+}
+
+enum DraftStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  APPLIED
+}
+
+model PortalAccessToken {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tokenHash     String   @unique
+  tokenPrefix   String
+
+  recipientName     String
+  recipientEmail    String
+  recipientPhone    String?
+
+  sector        String?
+  area          String?
+  process       String?
+  executorId    String?  @db.Uuid
+
+  canEdit           Boolean  @default(true)
+  canAttachEvidence Boolean  @default(true)
+  canDownloadPdf    Boolean  @default(true)
+  canChangeStatus   Boolean  @default(false)
+  canEditFields     String[] @default([])
+
+  // NCR permissions
+  canCreateNonConformities Boolean @default(false)
+  canViewNcrOwn            Boolean @default(false)
+  canViewNcrScope          Boolean @default(false)
+  canEditNcrDraft          Boolean @default(false)
+  canCorrectNcrReturned    Boolean @default(false)
+  canDownloadNcrPdf        Boolean @default(false)
+
+  status            PortalAccessStatus @default(ACTIVE)
+  expiresAt         DateTime? @db.Timestamptz
+  lastAccessAt      DateTime? @db.Timestamptz
+  accessCount       Int      @default(0)
+  maxAccesses       Int?
+
+  sessionToken      String?  @unique
+  sessionExpiresAt  DateTime? @db.Timestamptz
+
+  createdById       String?  @db.Uuid
+  createdBy         PlatformUser? @relation("PortalAccessCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  revokedById       String?  @db.Uuid
+  revokedAt         DateTime? @db.Timestamptz
+  revokeReason      String?
+
+  createdAt         DateTime @default(now()) @db.Timestamptz
+  updatedAt         DateTime @updatedAt @db.Timestamptz
+
+  logs              PortalAccessLog[]
+  drafts            PortalDraftSnapshot[]
+
+  @@index([tenantId])
+  @@index([tokenHash])
+  @@index([tokenPrefix])
+  @@map("portal_access_tokens")
+}
+
+model PortalAccessLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  accessTokenId String   @db.Uuid
+  accessToken   PortalAccessToken @relation(fields: [accessTokenId], references: [id], onDelete: Cascade)
+
+  action        String
+  actionPlanId  String?  @db.Uuid
+  field         String?
+  oldValue      String?
+  newValue      String?
+  ipAddress     String?
+  userAgent     String?
+
+  createdAt     DateTime @default(now()) @db.Timestamptz
+
+  @@index([accessTokenId])
+  @@index([actionPlanId])
+  @@map("portal_access_logs")
+}
+
+model PortalDraftSnapshot {
+  id            String   @id @default(uuid()) @db.Uuid
+  accessTokenId String   @db.Uuid
+  accessToken   PortalAccessToken @relation(fields: [accessTokenId], references: [id], onDelete: Cascade)
+  actionPlanId  String   @db.Uuid
+  actionPlan    ActionPlan @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
+
+  draftData     Json
+  status        DraftStatus @default(DRAFT)
+
+  submittedAt   DateTime? @db.Timestamptz
+  reviewedAt    DateTime? @db.Timestamptz
+  reviewedById  String?   @db.Uuid
+  reviewNotes   String?
+
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+
+  @@index([accessTokenId])
+  @@index([actionPlanId])
+  @@map("portal_draft_snapshots")
+}
+
+model NonConformityAttachment {
+  id           String          @id @default(uuid()) @db.Uuid
+  ncrId        String          @db.Uuid
+  ncr          NonConformity   @relation(fields: [ncrId], references: [id], onDelete: Cascade)
+
+  filename     String
+  url          String
+  mimeType     String?
+  size         Int?
+
+  uploadedById String?       @db.Uuid
+  uploadedBy   PlatformUser? @relation("NcrAttachmentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  // Track if uploaded from portal
+  uploadedFromPortal Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([ncrId])
+  @@map("ncr_attachments")
 }

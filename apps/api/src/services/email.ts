@@ -777,3 +777,171 @@ export function securityAlertEmail(
     `).trim(),
   };
 }
+
+// ── Portal Externo Email Templates ───────────────────────────
+
+export function portalInvitationEmail(
+  to: string,
+  recipientName: string,
+  portalUrl: string,
+  sectorLabel: string,
+  companyName: string,
+  expiresAt?: Date | null,
+): EmailPayload {
+  const expiryText = expiresAt
+    ? `<p style="color:#6b7280;font-size:13px;margin:0 0 16px;">Este enlace será válido hasta el <strong>${expiresAt.toLocaleDateString('es-AR')}</strong>.</p>`
+    : '';
+  return {
+    to,
+    subject: `SGI 360 — Acceso al Portal de Planes de Acción (${sectorLabel})`,
+    text: [
+      `Hola ${recipientName},`,
+      ``,
+      `${companyName} te ha invitado a gestionar Planes de Acción y No Conformidades correspondientes a ${sectorLabel}.`,
+      ``,
+      `Accedé al portal en:`,
+      portalUrl,
+      ``,
+      `Desde el portal podrás:`,
+      `- Ver y editar planes de acción asignados`,
+      `- Subir evidencias y adjuntos`,
+      `- Descargar PDF controlado`,
+      `- Marcar progreso y enviar actualizaciones`,
+      ``,
+      expiryText ? `Vence: ${expiresAt?.toLocaleDateString('es-AR')}` : '',
+      ``,
+      `— Equipo SGI 360`,
+    ].filter(Boolean).join('\n'),
+    html: EMAIL_TEMPLATE_BASE(`
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:32px;">
+        <h2 style="color:#111827;font-size:18px;margin:0 0 16px;">📋 Acceso al Portal de Planes de Acción</h2>
+        <p style="color:#4B5563;font-size:14px;line-height:1.6;margin:0 0 16px;">
+          Hola <strong>${recipientName}</strong>,
+        </p>
+        <p style="color:#4B5563;font-size:14px;line-height:1.6;margin:0 0 16px;">
+          <strong>${companyName}</strong> te ha invitado a gestionar Planes de Acción y No Conformidades correspondientes a <strong>${sectorLabel}</strong>.
+        </p>
+        <div style="text-align:center;margin:24px 0;">
+          <a href="${portalUrl}" style="display:inline-block;background:#2563eb;color:#fff;font-weight:600;font-size:14px;padding:12px 32px;border-radius:8px;text-decoration:none;">
+            Acceder al Portal
+          </a>
+        </div>
+        <p style="color:#4B5563;font-size:13px;margin:0 0 8px;">Desde el portal podrás:</p>
+        <ul style="color:#4B5563;font-size:13px;margin:0 0 16px;padding-left:20px;line-height:1.8;">
+          <li>Ver y editar planes de acción asignados</li>
+          <li>Subir evidencias y adjuntos</li>
+          <li>Descargar PDF controlado</li>
+          <li>Marcar progreso y enviar actualizaciones</li>
+        </ul>
+        ${expiryText}
+        <p style="color:#9ca3af;font-size:12px;margin:16px 0 0;">
+          Si no esperabas este correo, podés ignorarlo. Este enlace es personal e intransferible.
+        </p>
+      </div>
+    `).trim(),
+  };
+}
+
+export function portalDraftSubmittedEmail(
+  to: string,
+  recipientName: string,
+  planCode: string,
+  portalUrl: string,
+): EmailPayload {
+  return notificationEmail({
+    userEmail: to,
+    title: '📝 Actualización enviada para revisión',
+    message: `El responsable <strong>${recipientName}</strong> ha enviado una actualización del plan <strong>${planCode}</strong> que requiere revisión antes de aplicarse.`,
+    actionLabel: 'Revisar actualización',
+    actionUrl: portalUrl,
+    type: 'info',
+  });
+}
+
+export function portalDraftResultEmail(
+  to: string,
+  recipientName: string,
+  planCode: string,
+  approved: boolean,
+  notes?: string,
+): EmailPayload {
+  return notificationEmail({
+    userEmail: to,
+    title: approved ? '✅ Actualización aprobada' : '❌ Actualización rechazada',
+    message: `Tu actualización del plan <strong>${planCode}</strong> fue <strong>${approved ? 'aprobada' : 'rechazada'}</strong>.${notes ? `<br><br><em>Motivo:</em> ${notes}` : ''}`,
+    type: approved ? 'success' : 'error',
+  });
+}
+
+export function portalRevokedEmail(to: string, recipientName: string, reason: string): EmailPayload {
+  return notificationEmail({
+    userEmail: to,
+    title: '🔒 Acceso revocado',
+    message: `Hola <strong>${recipientName}</strong>, tu acceso al Portal de Planes de Acción ha sido revocado.${reason ? `<br><br><em>Motivo:</em> ${reason}` : ''}`,
+    type: 'warning',
+  });
+}
+
+export function portalNewPlanEmail(
+  to: string,
+  recipientName: string,
+  planCode: string,
+  planTitle: string,
+  portalUrl: string,
+): EmailPayload {
+  return notificationEmail({
+    userEmail: to,
+    title: '📋 Nuevo plan asignado',
+    message: `Se te ha asignado un nuevo plan de acción: <strong>${planCode}: ${planTitle}</strong>. Accedé al portal para revisarlo.`,
+    actionLabel: 'Ver plan',
+    actionUrl: portalUrl,
+    type: 'info',
+  });
+}
+
+export function portalNcrSubmittedEmail(
+  to: string,
+  recipientName: string,
+  ncrTitle: string,
+): EmailPayload {
+  return notificationEmail({
+    userEmail: to,
+    title: '✅ No Conformidad enviada',
+    message: `Tu No Conformidad "<strong>${ncrTitle}</strong>" ha sido enviada para revisión. Recibirás una notificación cuando sea revisada.`,
+    type: 'success',
+  });
+}
+
+export function portalNcrReviewResultEmail(
+  to: string,
+  recipientName: string,
+  ncrTitle: string,
+  approved: boolean,
+  notes?: string,
+): EmailPayload {
+  return notificationEmail({
+    userEmail: to,
+    title: approved ? '✅ No Conformidad aprobada' : '⚠️ Revisión de No Conformidad',
+    message: approved
+      ? `Tu No Conformidad "<strong>${ncrTitle}</strong>" ha sido aprobada e incorporada al sistema.`
+      : `Tu No Conformidad "<strong>${ncrTitle}</strong>" requiere corrección. ${notes ? `<br/><br/>Observaciones: ${notes}` : ''}<br/><br/>Accedé al portal para realizar las correcciones y reenviar.`,
+    type: approved ? 'success' : 'warning',
+  });
+}
+
+export function portalNcrInternalNotificationEmail(
+  to: string,
+  recipientName: string,
+  ncrTitle: string,
+  reporterName: string,
+  ncrUrl: string,
+): EmailPayload {
+  return notificationEmail({
+    userEmail: to,
+    title: '🔔 Nueva No Conformidad desde Portal Externo',
+    message: `Se ha recibido una nueva No Conformidad desde el portal externo: "<strong>${ncrTitle}</strong>", reportada por <strong>${reporterName}</strong>. Revisala en el sistema.`,
+    actionLabel: 'Revisar NCR',
+    actionUrl: ncrUrl,
+    type: 'info',
+  });
+}
