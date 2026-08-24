@@ -15,7 +15,7 @@ function pathToTitle(path: string): string {
   const labels: Record<string, string> = {
     contexto: 'Contexto de la Organización', 'contexto-sgi': 'Contexto SGI', objetivos: 'Objetivos',
     'objetivos/politicas': 'Política y Objetivos', indicadores: 'Indicadores', riesgos: 'Riesgos',
-    'no-conformidades': 'No Conformidades', acciones: 'Acciones CAPA', auditorias: 'Auditorías',
+    'no-conformidades': 'No Conformidades', 'plan-accion': 'Plan de Acción', acciones: 'Plan de Acción', auditorias: 'Auditorías',
     capacitaciones: 'Capacitaciones', documentos: 'Documentos', documents: 'Documentos',
     proveedores: 'Proveedores', clientes: 'Clientes', incidentes: 'Incidentes',
     ambientales: 'Aspectos Ambientales', rrhh: 'RRHH', 'gestion-cambios': 'Gestión de Cambios',

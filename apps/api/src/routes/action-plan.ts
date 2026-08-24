@@ -31,6 +31,18 @@ const createSchema = z.object({
   plannedStartDate: z.string().optional().nullable(),
   plannedEndDate: z.string().optional().nullable(),
   observations: z.string().optional(),
+  priority: z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).nullable().optional(),
+  detectedBy: z.string().optional(),
+  preventiveAction: z.string().optional(),
+  processChanges: z.string().optional(),
+  documentationChanges: z.string().optional(),
+  initialProbability: z.number().int().min(1).max(5).nullable().optional(),
+  initialImpact: z.number().int().min(1).max(5).nullable().optional(),
+  initialRiskLevel: z.string().nullable().optional(),
+  residualProbability: z.number().int().min(1).max(5).nullable().optional(),
+  residualImpact: z.number().int().min(1).max(5).nullable().optional(),
+  residualRiskLevel: z.string().nullable().optional(),
+  riskReduction: z.number().nullable().optional(),
 });
 
 const updateSchema = createSchema.extend({

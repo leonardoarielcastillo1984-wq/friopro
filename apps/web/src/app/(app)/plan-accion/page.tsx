@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import {
   Plus, Search, X, Eye, FileText, Loader2, ChevronDown, ChevronUp,
   Columns3, Check, AlertCircle, Clock, History, Sparkles, Filter, Send,
+  ExternalLink,
 } from 'lucide-react';
 import ExportButton from '@/components/ExportButton';
 import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
@@ -811,9 +813,12 @@ export default function PlanAccionPage() {
                               {col.key === 'updatedAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.updatedAt)}</span>}
                               {col.key === 'actions' && (
                                 <div className="flex items-center gap-1">
-                                  <button onClick={() => setSelectedPlan(plan)} className="p-1 rounded hover:bg-blue-100 text-blue-600" title="Ver detalle">
+                                  <button onClick={() => setSelectedPlan(plan)} className="p-1 rounded hover:bg-blue-100 text-blue-600" title="Ver resumen">
                                     <Eye className="w-3.5 h-3.5" />
                                   </button>
+                                  <a href={`/plan-accion/${plan.id}`} className="p-1 rounded hover:bg-green-100 text-green-600" title="Abrir ficha 8D completa">
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
                                   {plan._count?.logs ? (
                                     <span className="text-[10px] text-neutral-400 flex items-center gap-0.5" title={`${plan._count.logs} registros`}>
                                       <History className="w-3 h-3" />{plan._count.logs}

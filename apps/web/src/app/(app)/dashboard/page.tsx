@@ -140,7 +140,7 @@ export default function DashboardPage() {
 
   const alerts: { msg: string; href: string; level: 'red' | 'yellow' }[] = [];
   if (data.actions.overdue > 0)
-    alerts.push({ msg: `${data.actions.overdue} acción${data.actions.overdue > 1 ? 'es' : ''} CAPA vencida${data.actions.overdue > 1 ? 's' : ''}`, href: '/acciones', level: 'red' });
+    alerts.push({ msg: `${data.actions.overdue} acción${data.actions.overdue > 1 ? 'es' : ''} vencida${data.actions.overdue > 1 ? 's' : ''}`, href: '/plan-accion', level: 'red' });
   if (data.ncrs.open > 0)
     alerts.push({ msg: `${data.ncrs.open} no conformidad${data.ncrs.open > 1 ? 'es' : ''} abierta${data.ncrs.open > 1 ? 's' : ''}`, href: '/no-conformidades', level: 'red' });
   if (data.hazards.critical > 0)
@@ -269,7 +269,7 @@ export default function DashboardPage() {
             <StatCard icon={CheckSquare} label="Acciones CAPA" value={data.actions.open}
               sub={data.actions.overdue > 0 ? `${data.actions.overdue} vencidas` : 'abiertas'}
               subAlert={data.actions.overdue > 0}
-              href="/acciones" color="bg-blue-100 text-blue-600" />
+              href="/plan-accion" color="bg-blue-100 text-blue-600" />
             <StatCard icon={TrendingUp} label="Indicadores" value={data.indicators.total}
               href="/indicadores" color="bg-purple-100 text-purple-600" />
             <StatCard icon={CalendarDays} label="Ver calendario" value="→"

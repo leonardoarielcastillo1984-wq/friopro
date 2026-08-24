@@ -9934,6 +9934,27 @@ model ActionPlan {
   // Observaciones
   observations String?
 
+  // ---- Campos unificados desde CAPA (ActionItem) ----
+  // Prioridad
+  priority String? // LOW, MEDIUM, HIGH, CRITICAL
+
+  // Identificación extendida
+  detectedBy String?
+
+  // Sección 5: Acción para evitar recurrencia (sistémica)
+  preventiveAction     String?
+  processChanges       String?
+  documentationChanges String?
+
+  // Evaluación de riesgo (Matriz Prob×Impacto)
+  initialProbability  Int?
+  initialImpact       Int?
+  initialRiskLevel    String? // LOW, MEDIUM, HIGH, CRITICAL
+  residualProbability Int?
+  residualImpact      Int?
+  residualRiskLevel   String?
+  riskReduction       Float?
+
   // Trazabilidad
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
