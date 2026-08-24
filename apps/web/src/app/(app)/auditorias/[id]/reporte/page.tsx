@@ -441,7 +441,7 @@ export default function ReportPage() {
       </div>
 
       {/* Report Content - Print-friendly */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 print:shadow-none print:border-none print:p-0">
+      <div data-doc-output-key="audit-report" className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 print:shadow-none print:border-none print:p-0">
         {/* Report Header — logo left, status right, blue line, then code/title */}
         <div className="border-b-2 border-blue-700 pb-3 mb-6">
           <div className="flex items-center justify-between">
