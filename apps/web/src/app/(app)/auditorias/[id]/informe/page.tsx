@@ -9,6 +9,7 @@ import {
   Users, Calendar, Shield, TrendingUp, Download, Printer,
   Award, Target, ClipboardCheck, PenTool, Zap, Save, Edit,
 } from 'lucide-react';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 type Audit = {
   id: string;
@@ -151,7 +152,16 @@ export default function AuditReportPage() {
           <Link href={`/auditorias/${auditId}`} className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 mb-2">
             <ChevronLeft className="w-4 h-4" /> Volver a auditoría
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">Informe de Auditoría Profesional</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">Informe de Auditoría Profesional</h1>
+            <DocCodeBadge
+              outputKey="audit-report"
+              title="Formato Informe de Auditoría"
+              module="auditorias"
+              subModule="informe"
+              outputType="REPORT"
+            />
+          </div>
           <p className="text-gray-600">{audit.code} - {audit.title}</p>
         </div>
         <div className="flex items-center gap-2">
