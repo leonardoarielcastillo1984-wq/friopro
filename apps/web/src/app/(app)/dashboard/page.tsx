@@ -266,7 +266,7 @@ export default function DashboardPage() {
               sub={data.ncrs.open > 0 ? `${data.ncrs.open} abiertas` : `${data.ncrs.closed} cerradas`}
               subAlert={data.ncrs.open > 0}
               href="/no-conformidades" color="bg-red-100 text-red-600" />
-            <StatCard icon={CheckSquare} label="Acciones CAPA" value={data.actions.open}
+            <StatCard icon={CheckSquare} label="Plan de Acción" value={data.actions.open}
               sub={data.actions.overdue > 0 ? `${data.actions.overdue} vencidas` : 'abiertas'}
               subAlert={data.actions.overdue > 0}
               href="/plan-accion" color="bg-blue-100 text-blue-600" />
