@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation';
 import { ChevronLeft, FileText, Download, Printer, Share2, CheckCircle, AlertCircle, FileBarChart, Edit, Save, X, Plus } from 'lucide-react';
 import { useCompany } from '@/lib/company-context';
 import DocCodeBadge from '@/components/DocCodeBadge';
+import ExportButton from '@/components/ExportButton';
 
 type Audit = {
   id: string;
@@ -190,6 +191,47 @@ export default function ReportPage() {
     setGenerating(true);
     window.print();
     setTimeout(() => setGenerating(false), 1000);
+  }
+
+  function buildReportHtml(): string {
+    if (!audit) return '';
+    const sections: string[] = [];
+    sections.push(`<h1>INFORME DE AUDITORÍA</h1>`);
+    sections.push(`<h2>${audit.title}</h2>`);
+    sections.push(`<p><strong>Código:</strong> ${audit.code} · <strong>Área:</strong> ${audit.area}</p>`);
+    if (report?.executiveSummary) {
+      sections.push(`<h2>Resumen Ejecutivo</h2><p>${report.executiveSummary}</p>`);
+    } else if (draft?.executiveSummary) {
+      sections.push(`<h2>Resumen Ejecutivo</h2><p>${draft.executiveSummary}</p>`);
+    }
+    if (report?.objective || audit.objective) {
+      sections.push(`<h2>Objetivo</h2><p>${report?.objective || audit.objective}</p>`);
+    }
+    if (report?.scope || audit.scope) {
+      sections.push(`<h2>Alcance</h2><p>${report?.scope || audit.scope}</p>`);
+    }
+    if (checklist.length > 0) {
+      sections.push(`<h2>Matriz de Cumplimiento</h2>`);
+      sections.push(`<table><thead><tr><th>Cláusula</th><th>Requisito</th><th>Resultado</th></tr></thead><tbody>`);
+      for (const c of checklist) {
+        const resp = c.response === 'COMPLIES' ? 'Conforme' : c.response === 'DOES_NOT_COMPLY' ? 'No Conforme' : c.response === 'NOT_APPLICABLE' ? 'N/A' : '—';
+        sections.push(`<tr><td>${c.clause}</td><td>${c.requirement}</td><td>${resp}</td></tr>`);
+      }
+      sections.push(`</tbody></table>`);
+    }
+    if (findings.length > 0) {
+      sections.push(`<h2>Hallazgos</h2>`);
+      for (const f of findings) {
+        sections.push(`<h3>${f.code} — ${f.type === 'NON_CONFORMITY' ? 'No Conformidad' : f.type === 'OBSERVATION' ? 'Observación' : 'Oportunidad'}</h3>`);
+        sections.push(`<p><strong>Severidad:</strong> ${f.severity} · <strong>Estado:</strong> ${f.status}</p>`);
+        sections.push(`<p>${f.description}</p>`);
+        if (f.clause) sections.push(`<p><strong>Cláusula:</strong> ${f.clause}</p>`);
+      }
+    }
+    if (report?.conclusion || draft?.conclusion) {
+      sections.push(`<h2>Conclusión</h2><p>${report?.conclusion || draft?.conclusion}</p>`);
+    }
+    return sections.join('\n');
   }
 
   async function saveReport() {
@@ -383,8 +425,16 @@ export default function ReportPage() {
                 className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
               >
                 <Download className="w-4 h-4" />
-                {generating ? 'Generando...' : 'Descargar PDF'}
+                {generating ? 'Generando...' : 'Imprimir PDF'}
               </button>
+              <ExportButton
+                outputKey="audit-report"
+                title={`Informe de Auditoría - ${audit?.title || ''}`}
+                bodyHtml={buildReportHtml()}
+                moduleName="auditorias"
+                defaultExportType="CONTROLLED"
+                label="PDF Controlado"
+              />
             </>
           )}
         </div>
