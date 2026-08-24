@@ -268,7 +268,7 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
     }
     await prisma.documentOutputDefinition.update({
       where: { id },
-      data: { documentCode, documentId: maestroDoc.id },
+      data: { documentCode, documentId: maestroDoc.id, status: 'EFFECTIVE' },
     });
     const rule = await prisma.documentCodeRule.findFirst({
       where: { tenantId, module: def.module, active: true },
