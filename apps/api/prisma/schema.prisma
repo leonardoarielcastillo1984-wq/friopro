@@ -10056,6 +10056,9 @@ model PortalAccessToken {
   canChangeStatus   Boolean  @default(false)
   canEditFields     String[] @default([])
 
+  // Plan IDs específicos asignados a este token (vacío = todos los planes)
+  planIds           String[] @default([])
+
   // NCR permissions
   canCreateNonConformities Boolean @default(false)
   canViewNcrOwn            Boolean @default(false)

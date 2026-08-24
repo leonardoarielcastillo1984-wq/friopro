@@ -134,8 +134,11 @@ export const portalAccionRoutes: FastifyPluginAsync = async (app) => {
       },
     });
 
-    // Show all plans for this tenant — the portal gives full matrix visibility
+    // If the token has specific planIds, filter by them; otherwise show all tenant plans
     const where: any = { tenantId: access.tenantId, deletedAt: null };
+    if (access.planIds && access.planIds.length > 0) {
+      where.id = { in: access.planIds };
+    }
 
     const [plans, branding, docOutput, users] = await Promise.all([
       prisma.actionPlan.findMany({
@@ -973,6 +976,7 @@ Generá únicamente el contenido para el campo "${FIELD_LABELS[field]}". Sea esp
         canEditNcrDraft: body.canEditNcrDraft,
         canCorrectNcrReturned: body.canCorrectNcrReturned,
         canDownloadNcrPdf: body.canDownloadNcrPdf,
+        planIds: body.planIds,
         expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
         createdById: req.auth?.userId ?? null,
       },
