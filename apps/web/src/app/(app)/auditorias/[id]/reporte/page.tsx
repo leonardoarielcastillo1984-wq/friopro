@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ChevronLeft, FileText, Download, Printer, Share2, CheckCircle, AlertCircle, FileBarChart, Edit, Save, X, Plus } from 'lucide-react';
 import { useCompany } from '@/lib/company-context';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 type Audit = {
   id: string;
@@ -423,7 +424,16 @@ export default function ReportPage() {
         </div>
         {/* Title block */}
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">INFORME DE AUDITORÍA</h1>
+          <div className="flex items-center justify-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">INFORME DE AUDITORÍA</h1>
+            <DocCodeBadge
+              outputKey="audit-report"
+              title="Formato Informe de Auditoría"
+              module="auditorias"
+              subModule="reporte"
+              outputType="REPORT"
+            />
+          </div>
           <p className="text-lg text-gray-600 mt-1">{audit.title}</p>
           {companySettings?.headerText && (
             <p className="text-sm text-gray-600 mt-2 italic">{companySettings.headerText}</p>
