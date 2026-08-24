@@ -999,13 +999,13 @@ INSTRUCCIONES:
         const VALID_FINDING_TYPES = ['NON_CONFORMITY', 'OBSERVATION', 'OPPORTUNITY'];
         const findingType = VALID_FINDING_TYPES.includes(findingTypeRaw) ? findingTypeRaw : null;
 
-        if (data.response === 'DOES_NOT_COMPLY') {
-          const code = `NC-${audit.code}-${existing.order + 1}`;
-          const already = await tx.auditFinding.findFirst({
-            where: { tenantId, auditId: audit.id, code, deletedAt: null },
-            select: { id: true, type: true },
-          });
+        const code = `NC-${audit.code}-${existing.order + 1}`;
+        const already = await tx.auditFinding.findFirst({
+          where: { tenantId, auditId: audit.id, code, deletedAt: null },
+          select: { id: true, type: true },
+        });
 
+        if (data.response === 'DOES_NOT_COMPLY') {
           if (!already) {
             await tx.auditFinding.create({
               data: {
@@ -1035,13 +1035,11 @@ INSTRUCCIONES:
               await tx.auditFinding.update({ where: { id: already.id }, data: syncData });
             }
           }
+        } else if (data.response && data.response !== 'DOES_NOT_COMPLY' && already) {
+          // Si la respuesta cambió de DOES_NOT_COMPLY a otro valor, eliminar el hallazgo auto-generado
+          await tx.auditFinding.update({ where: { id: already.id }, data: { deletedAt: new Date() } });
         } else if (findingType || 'comment' in body || 'evidence' in body) {
           // Actualizar finding existente aunque no cambie la respuesta del ítem
-          const code = `NC-${audit.code}-${existing.order + 1}`;
-          const already = await tx.auditFinding.findFirst({
-            where: { tenantId, auditId: audit.id, code, deletedAt: null },
-            select: { id: true, type: true },
-          });
           if (already && updated.response === 'DOES_NOT_COMPLY') {
             const syncData: any = {};
             if ('comment' in body) syncData.description = updated.comment || updated.requirement;
@@ -1187,18 +1185,18 @@ INSTRUCCIONES:
               generatedById: req.auth!.userId,
             },
             update: {
-              executiveSummary: req.body.executiveSummary,
-              objective: req.body.objective,
-              scope: req.body.scope,
-              processesAudited: req.body.processesAudited,
-              overallScore: req.body.overallScore,
-              totalItems: req.body.totalItems,
-              compliantItems: req.body.compliantItems,
-              nonCompliantItems: req.body.nonCompliantItems,
-              totalFindings: req.body.totalFindings,
-              openFindings: req.body.openFindings,
-              closedFindings: req.body.closedFindings,
-              conclusion: req.body.conclusion,
+              executiveSummary: req.body.executiveSummary ?? '',
+              objective: req.body.objective ?? '',
+              scope: req.body.scope ?? '',
+              processesAudited: req.body.processesAudited ?? [],
+              overallScore: req.body.overallScore ?? null,
+              totalItems: req.body.totalItems ?? 0,
+              compliantItems: req.body.compliantItems ?? 0,
+              nonCompliantItems: req.body.nonCompliantItems ?? 0,
+              totalFindings: req.body.totalFindings ?? 0,
+              openFindings: req.body.openFindings ?? 0,
+              closedFindings: req.body.closedFindings ?? 0,
+              conclusion: req.body.conclusion ?? '',
               generatedById: req.auth!.userId,
             },
           });
