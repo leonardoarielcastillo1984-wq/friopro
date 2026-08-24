@@ -353,6 +353,12 @@ export default function NoConformidadesPage() {
                       )}
                     </div>
                     <div className="mt-1.5 flex items-center gap-3 text-xs text-neutral-400">
+                      {ncr.source && (
+                        <span className="inline-flex items-center gap-1 text-neutral-500">
+                          <span className="font-medium">{SOURCE_OPTIONS.find(o => o.value === ncr.source)?.label || ncr.source}</span>
+                          {ncr.process && <span>· {ncr.process}</span>}
+                        </span>
+                      )}
                       {ncr.standard && <span>{ncr.standard} {ncr.clause && `§${ncr.clause}`}</span>}
                       <span>{new Date(ncr.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                       {ncr.assignedTo && <span>→ {ncr.assignedTo.email}</span>}

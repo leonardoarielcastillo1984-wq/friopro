@@ -175,6 +175,7 @@ export type NonConformity = {
   rootCause: string | null;
   correctiveAction: string | null;
   preventiveAction: string | null;
+  process: string | null;
   dueDate: string | null;
   closedAt: string | null;
   assignedTo: { id: string; email: string } | null;
