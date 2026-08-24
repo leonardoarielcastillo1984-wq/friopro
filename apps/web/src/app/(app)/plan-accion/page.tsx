@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import {
   Plus, Search, X, Eye, FileText, Loader2, ChevronDown, ChevronUp,
   Columns3, Check, AlertCircle, Clock, History, Sparkles, Filter, Send,
-  ExternalLink,
+  ExternalLink, Trash2,
 } from 'lucide-react';
 import ExportButton from '@/components/ExportButton';
 import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
@@ -143,7 +143,7 @@ interface ColDef {
 const COLUMNS: ColDef[] = [
   { key: 'checkbox', label: '', group: 'general', width: 36, sticky: true },
   { key: 'sequenceNumber', label: 'Nro', group: 'general', width: 50, sticky: true },
-  { key: 'ncrCode', label: 'NCR', group: 'general', width: 90 },
+  { key: 'ncrCode', label: 'NCR', group: 'general', width: 90, editable: true, cellType: 'text', field: 'ncrCode' as any },
   { key: 'status', label: 'Estado', group: 'general', width: 120, editable: true, cellType: 'select', options: STATUS_OPTS, field: 'status' },
   { key: 'type', label: 'Tipo', group: 'general', width: 120, editable: true, cellType: 'select', options: TYPE_OPTS, field: 'type' },
   { key: 'origin', label: 'Origen', group: 'general', width: 110, editable: true, cellType: 'select', options: ORIGIN_OPTS, field: 'origin' },
@@ -172,7 +172,7 @@ const COLUMNS: ColDef[] = [
   { key: 'effectiveness', label: 'Eficaz?', group: 'verificacion', width: 100, editable: true, cellType: 'select', options: EFF_OPTS, field: 'effectiveness' },
   { key: 'createdAt', label: 'Creado', group: 'control', width: 90 },
   { key: 'updatedAt', label: 'Modificado', group: 'control', width: 90 },
-  { key: 'actions', label: '', group: 'control', width: 60 },
+  { key: 'actions', label: '', group: 'control', width: 90 },
 ];
 
 const GROUP_LABELS: Record<string, string> = {
@@ -485,6 +485,16 @@ export default function PlanAccionPage() {
     }
     return patchPlan(plan.id, patch);
   }, [patchPlan]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      await apiFetch(`/action-plans/${id}`, { method: 'DELETE' });
+      setPlans(prev => prev.filter(p => p.id !== id));
+      void reloadStats();
+    } catch (e: any) {
+      alert(e.message || 'Error al eliminar');
+    }
+  }, [reloadStats]);
 
   async function aiFill(planId: string, field: string) {
     const key = `${planId}-${field}`;
@@ -807,7 +817,15 @@ export default function PlanAccionPage() {
                               {col.key === 'sequenceNumber' && (
                                 <span className="font-mono text-xs text-neutral-500 font-medium text-center block">{plan.sequenceNumber ?? DASH}</span>
                               )}
-                              {col.key === 'ncrCode' && <span className="font-mono text-xs text-neutral-500">{plan.ncr?.code ?? DASH}</span>}
+                              {col.key === 'ncrCode' && (
+                                <InlineCell
+                                  value={plan.ncr?.code ?? ''}
+                                  type="text"
+                                  editable={!isReadOnly}
+                                  displayValue={plan.ncr?.code ?? DASH}
+                                  onSave={(v) => patchPlan(plan.id, { ncrCode: v })}
+                                />
+                              )}
                               {col.key === 'executorName' && <span className="text-xs text-neutral-600 truncate" title={userName(plan.executor, plan.executorNameText)}>{userName(plan.executor, plan.executorNameText)}</span>}
                               {col.key === 'createdAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.createdAt)}</span>}
                               {col.key === 'updatedAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.updatedAt)}</span>}
@@ -819,6 +837,17 @@ export default function PlanAccionPage() {
                                   <a href={`/plan-accion/${plan.id}`} className="p-1 rounded hover:bg-green-100 text-green-600" title="Abrir ficha 8D completa">
                                     <ExternalLink className="w-3.5 h-3.5" />
                                   </a>
+                                  <button
+                                    onClick={() => {
+                                      if (confirm(`¿Eliminar el plan de acción ${plan.code || plan.sequenceNumber || ''}?`)) {
+                                        handleDelete(plan.id);
+                                      }
+                                    }}
+                                    className="p-1 rounded hover:bg-red-100 text-red-600"
+                                    title="Eliminar"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
                                   {plan._count?.logs ? (
                                     <span className="text-[10px] text-neutral-400 flex items-center gap-0.5" title={`${plan._count.logs} registros`}>
                                       <History className="w-3 h-3" />{plan._count.logs}
@@ -827,7 +856,7 @@ export default function PlanAccionPage() {
                                 </div>
                               )}
                               {/* Editable cells (text, textarea, date, number) */}
-                              {col.editable && col.field && !['status','type','origin','analysisMethod','effectiveness','progressPercent'].includes(col.key) && (
+                              {col.editable && col.field && !['status','type','origin','analysisMethod','effectiveness','progressPercent','ncrCode'].includes(col.key) && (
                                 <div className="flex items-start gap-1">
                                   <div className="flex-1 min-w-0">
                                     <InlineCell

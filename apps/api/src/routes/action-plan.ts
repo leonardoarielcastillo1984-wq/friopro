@@ -56,6 +56,8 @@ const updateSchema = createSchema.extend({
   effectivenessCheckerId: uuidOrNull,
   approvedCloseById: uuidOrNull,
   cancellationReason: z.string().optional(),
+  ncrId: uuidOrNull,
+  ncrCode: z.string().optional().nullable(),
 });
 
 const USER_SELECT = { id: true, email: true, firstName: true, lastName: true };
@@ -297,6 +299,22 @@ export const actionPlanRoutes: FastifyPluginAsync = async (app) => {
       // Validación de cancelación
       if (body.status === 'CANCELLED' && !body.cancellationReason && !existing.cancellationReason) {
         throw Object.assign(new Error('Se requiere justificación para cancelar'), { statusCode: 422 });
+      }
+
+      // Resolver ncrCode → ncrId si viene ncrCode en el body
+      if (body.ncrCode !== undefined) {
+        const code = (body.ncrCode as string)?.trim() || '';
+        if (code) {
+          const ncr = await tx.nonConformity.findFirst({ where: { tenantId, code, deletedAt: null } });
+          if (ncr) {
+            body.ncrId = ncr.id;
+          } else {
+            body.ncrId = null;
+          }
+        } else {
+          body.ncrId = null;
+        }
+        delete body.ncrCode;
       }
 
       const closedAt = body.status === 'CLOSED' && existing.status !== 'CLOSED' ? new Date() : existing.closedAt;
