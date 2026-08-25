@@ -106,10 +106,13 @@ export default function MaestroDocumentos() {
   const [filterType, setFilterType] = useState('ALL');
   const [editModal, setEditModal] = useState<EditModal | null>(null);
   const [saving, setSaving] = useState(false);
+  const [assigningCodeId, setAssigningCodeId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [allDocs, setAllDocs] = useState<{ id: string; title: string; documentCode: string | null }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
@@ -138,6 +141,30 @@ export default function MaestroDocumentos() {
     if (!u) return '—';
     const name = [u.firstName, u.lastName].filter(Boolean).join(' ');
     return name || u.email;
+  }
+
+  async function handleAssignCode(doc: DocRow) {
+    if (!doc.typeConfig) {
+      openEdit(doc);
+      return;
+    }
+    try {
+      setAssigningCodeId(doc.id);
+      const codeData = await apiFetch('/documents/next-code', {
+        method: 'POST',
+        json: { typeConfigId: doc.typeConfig.id, reserve: true },
+      }) as any;
+      if (!codeData?.code) throw new Error('No se pudo generar el código');
+      await apiFetch(`/documents/${doc.id}/master`, {
+        method: 'PUT',
+        json: { documentCode: codeData.code },
+      });
+      load();
+    } catch (e: any) {
+      setError(e?.message || 'Error al asignar código');
+    } finally {
+      setAssigningCodeId(null);
+    }
   }
 
   function openEdit(doc: DocRow) {
@@ -209,6 +236,15 @@ export default function MaestroDocumentos() {
 
   return (
     <div className="space-y-4">
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+          <span className="text-sm text-red-700">{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
@@ -324,8 +360,18 @@ export default function MaestroDocumentos() {
                         <code className="font-mono text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
                           {doc.documentCode}
                         </code>
+                      ) : assigningCodeId === doc.id ? (
+                        <span className="text-neutral-400 text-xs italic flex items-center gap-1">
+                          <RefreshCw className="h-3 w-3 animate-spin" /> Asignando...
+                        </span>
                       ) : (
-                        <span className="text-neutral-300 text-xs italic">Sin código</span>
+                        <button
+                          onClick={() => handleAssignCode(doc)}
+                          className="text-neutral-400 hover:text-indigo-600 text-xs italic hover:underline transition-colors"
+                          title={doc.typeConfig ? 'Asignar código automáticamente' : 'Asignar tipo documental primero'}
+                        >
+                          Sin código
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-3 max-w-56">
