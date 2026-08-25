@@ -13,7 +13,8 @@ import {
   ClipboardCheck, ShoppingCart, GraduationCap, AlertTriangle, Repeat, BrainCircuit,
   ChevronRight, ArrowLeft, Network, LayoutGrid, ListTree, Table2, Workflow,
   LogIn, LogOut, UserCircle2, Info, GripVertical, ClipboardList, ArrowLeftRight,
-  Send, Inbox, Download, Upload, FileJson, FileDown, Hash, Sparkles, X as XIcon
+  Send, Inbox, Download, Upload, FileJson, FileDown, Hash, Sparkles, X as XIcon,
+  ChevronDown, SlidersHorizontal
 } from 'lucide-react';
 
 interface Process {
@@ -315,6 +316,18 @@ export default function MapaProcesosContent() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const mapPanelRef = useRef<HTMLDivElement>(null);
+
+  // Menú desplegable "Herramientas" de la toolbar del mapa (agrupa vistas, exportación y plantillas)
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showToolsMenu) return;
+    function onClickOutside(e: MouseEvent) {
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(e.target as Node)) setShowToolsMenu(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [showToolsMenu]);
 
   async function loadEmployees() {
     try {
@@ -1269,33 +1282,61 @@ export default function MapaProcesosContent() {
                     <button onClick={openAssignCode} disabled={!selected} title="Asignar o modificar código documental del mapa" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 border border-indigo-700 rounded-lg hover:bg-indigo-700 disabled:opacity-40">
                       <Hash className="h-3.5 w-3.5" /> {docOutput?.documentCode ? `Código: ${docOutput.documentCode}` : 'Asignar código'}
                     </button>
-                    <button onClick={() => setShowGeneral(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100">
-                      <Layers className="h-3.5 w-3.5" /> Mapa General
-                    </button>
-                    <button onClick={() => setShowDiagram(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50">
-                      <Eye className="h-3.5 w-3.5" /> Ver como diagrama
-                    </button>
-                    <button onClick={exportPdf} disabled={!selected || exportingPdf} title="Exportar mapa como PDF (captura visual estática)" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-40">
-                      {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} {exportingPdf ? 'Generando...' : 'Exportar PDF'}
-                    </button>
-                    <button onClick={() => exportNavigablePdf('CONTROLLED')} disabled={!selected || exportingNavPdf} title="PDF Controlado navegable: mapa general → macroprocesos → subprocesos con enlaces internos" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 disabled:opacity-40">
-                      {exportingNavPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Network className="h-3.5 w-3.5" />} {exportingNavPdf ? 'Generando...' : 'PDF Navegable'}
-                    </button>
-                    <button onClick={exportMap} disabled={!selected} title="Exportar este mapa como plantilla .sgi360.json" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-40">
-                      <Download className="h-3.5 w-3.5" /> Exportar
-                    </button>
-                    <button onClick={openImport} title="Importar una plantilla .sgi360.json" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50">
-                      <Upload className="h-3.5 w-3.5" /> Importar
-                    </button>
-                    <button onClick={openBaseTemplates} title="Descargar una plantilla base predefinida" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50">
-                      <FileDown className="h-3.5 w-3.5" /> Plantilla base
-                    </button>
-                    <button onClick={() => setShowWizard(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-brand-600 to-indigo-600 rounded-lg hover:from-brand-700 hover:to-indigo-700">
-                      <Layers className="h-3.5 w-3.5" /> Crear desde plantilla
-                    </button>
-                    <button onClick={() => setShowAIWizard(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg hover:from-purple-700 hover:to-indigo-700">
-                      <BrainCircuit className="h-3.5 w-3.5" /> Implementación con IA
-                    </button>
+
+                    {/* Menú "Herramientas": agrupa vistas, exportación y plantillas para no saturar la toolbar */}
+                    <div className="relative" ref={toolsMenuRef}>
+                      <button onClick={() => setShowToolsMenu(v => !v)} title="Más herramientas del mapa" className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${showToolsMenu ? 'text-brand-700 bg-brand-50 border-brand-200' : 'text-neutral-600 bg-white border-neutral-200 hover:bg-neutral-50'}`}>
+                        <SlidersHorizontal className="h-3.5 w-3.5" /> Herramientas
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showToolsMenu ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {showToolsMenu && (
+                        <div className="absolute right-0 top-full mt-1.5 w-64 bg-white border border-neutral-200 rounded-xl shadow-xl z-30 overflow-hidden py-1.5">
+                          <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Vistas</p>
+                          <button onClick={() => { setShowGeneral(true); setShowToolsMenu(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50">
+                            <Layers className="h-4 w-4 text-indigo-500" /> Mapa General
+                          </button>
+                          <button onClick={() => { setShowDiagram(true); setShowToolsMenu(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50">
+                            <Eye className="h-4 w-4 text-neutral-400" /> Ver como diagrama
+                          </button>
+
+                          <div className="border-t border-neutral-100 my-1.5" />
+                          <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Exportar</p>
+                          <button onClick={() => { setShowToolsMenu(false); exportNavigablePdf('CONTROLLED'); }} disabled={!selected || exportingNavPdf} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-indigo-50 disabled:opacity-40">
+                            {exportingNavPdf ? <Loader2 className="h-4 w-4 text-indigo-500 animate-spin" /> : <Network className="h-4 w-4 text-indigo-500" />}
+                            <div>
+                              <div className="font-medium">{exportingNavPdf ? 'Generando...' : 'PDF Navegable'}</div>
+                              <div className="text-[10px] text-neutral-400">Controlado, con QR y enlaces internos</div>
+                            </div>
+                          </button>
+                          <button onClick={() => { setShowToolsMenu(false); exportPdf(); }} disabled={!selected || exportingPdf} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-red-50 disabled:opacity-40">
+                            {exportingPdf ? <Loader2 className="h-4 w-4 text-red-500 animate-spin" /> : <FileText className="h-4 w-4 text-red-500" />}
+                            <div>
+                              <div className="font-medium">{exportingPdf ? 'Generando...' : 'Exportar PDF'}</div>
+                              <div className="text-[10px] text-neutral-400">Captura visual estática</div>
+                            </div>
+                          </button>
+                          <button onClick={() => { exportMap(); setShowToolsMenu(false); }} disabled={!selected} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-40">
+                            <Download className="h-4 w-4 text-neutral-400" /> Exportar como plantilla (.json)
+                          </button>
+
+                          <div className="border-t border-neutral-100 my-1.5" />
+                          <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Plantillas</p>
+                          <button onClick={() => { openImport(); setShowToolsMenu(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50">
+                            <Upload className="h-4 w-4 text-neutral-400" /> Importar plantilla
+                          </button>
+                          <button onClick={() => { openBaseTemplates(); setShowToolsMenu(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50">
+                            <FileDown className="h-4 w-4 text-neutral-400" /> Plantilla base
+                          </button>
+                          <button onClick={() => { setShowWizard(true); setShowToolsMenu(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-brand-50">
+                            <Layers className="h-4 w-4 text-brand-600" /> Crear desde plantilla
+                          </button>
+                          <button onClick={() => { setShowAIWizard(true); setShowToolsMenu(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-purple-50">
+                            <BrainCircuit className="h-4 w-4 text-purple-600" /> Implementación con IA
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
                 <button onClick={() => openNewProcess('OPERATIONAL')} title={viewMacro ? 'Cree un nuevo subproceso perteneciente a este Macroproceso.' : 'Cree un nuevo macroproceso de la organización.'} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
