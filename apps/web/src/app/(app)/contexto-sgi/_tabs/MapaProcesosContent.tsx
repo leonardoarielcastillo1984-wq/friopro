@@ -1224,6 +1224,14 @@ export default function MapaProcesosContent() {
               )}
             </nav>
 
+            {error && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700" data-pdf-ignore="true" data-no-export="true">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <span className="flex-1">{error}</span>
+                <button onClick={() => setError('')} className="text-red-400 hover:text-red-600"><X className="h-3.5 w-3.5" /></button>
+              </div>
+            )}
+
             {/* Header del mapa */}
             <div className="flex items-center justify-between" data-pdf-ignore="true">
               <div className="flex items-center gap-3">

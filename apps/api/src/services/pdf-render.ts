@@ -349,13 +349,22 @@ export async function renderPdf(options: PdfRenderOptions): Promise<PdfRenderRes
     browser = await puppeteer.launch({
       headless: true,
       ...(executablePath ? { executablePath } : {}),
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
+      args: [
+        '--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+        // Evita que servicios de red en segundo plano de Chromium (safe browsing, component
+        // updater, etc.) mantengan conexiones abiertas indefinidamente. Como nuestro HTML es
+        // autocontenido (sin recursos externos, salvo imágenes base64 inline), 'networkidle0'
+        // podía esperar para siempre por esas conexiones y hacer fallar la exportación por timeout.
+        '--disable-background-networking', '--disable-component-update',
+        '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+      ],
     });
 
     const page = await browser.newPage();
     const isLandscape = template.orientation === 'landscape';
     await page.setViewport({ width: isLandscape ? 1400 : 900, height: isLandscape ? 900 : 1200, deviceScaleFactor: 1 });
-    await page.setContent(fullHtml, { waitUntil: 'networkidle0', timeout: 60000 });
+    await page.setContent(fullHtml, { waitUntil: 'load', timeout: 90000 });
 
     const pdfBuffer = await page.pdf({
       format: (template.pageSize || 'A4') as any,
