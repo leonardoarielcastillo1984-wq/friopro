@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import {
   Search, Filter, FileText, Download, Eye, Edit2, CheckCircle2,
   AlertTriangle, Clock, Archive, RefreshCw, ChevronDown, X, Save,
-  Calendar, User, Link2, Tag, Hash, ExternalLink
+  Calendar, User, Link2, Tag, Hash, ExternalLink, Loader2, Sparkles
 } from 'lucide-react';
 
 const SYSTEM_MODULE_GROUPS = [
@@ -106,8 +106,12 @@ export default function MaestroDocumentos() {
   const [filterType, setFilterType] = useState('ALL');
   const [editModal, setEditModal] = useState<EditModal | null>(null);
   const [saving, setSaving] = useState(false);
-  const [assigningCodeId, setAssigningCodeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [codeModal, setCodeModal] = useState<DocRow | null>(null);
+  const [newCode, setNewCode] = useState('');
+  const [suggestingCode, setSuggestingCode] = useState(false);
+  const [hasRuleForCode, setHasRuleForCode] = useState(false);
+  const [assigningCode, setAssigningCode] = useState(false);
   const [allDocs, setAllDocs] = useState<{ id: string; title: string; documentCode: string | null }[]>([]);
 
   const load = useCallback(async () => {
@@ -144,26 +148,50 @@ export default function MaestroDocumentos() {
   }
 
   async function handleAssignCode(doc: DocRow) {
-    if (!doc.typeConfig) {
-      openEdit(doc);
-      return;
-    }
+    setCodeModal(doc);
+    setNewCode(doc.documentCode || '');
+    setHasRuleForCode(false);
+    setSuggestingCode(true);
+    setError(null);
     try {
-      setAssigningCodeId(doc.id);
-      const codeData = await apiFetch('/documents/next-code', {
-        method: 'POST',
-        json: { typeConfigId: doc.typeConfig.id, reserve: true },
-      }) as any;
-      if (!codeData?.code) throw new Error('No se pudo generar el código');
-      await apiFetch(`/documents/${doc.id}/master`, {
+      if (doc.typeConfig) {
+        const codeData = await apiFetch('/documents/next-code', {
+          method: 'POST',
+          json: { typeConfigId: doc.typeConfig.id, reserve: false },
+        }) as any;
+        if (codeData?.code) {
+          setNewCode(codeData.code);
+          setHasRuleForCode(true);
+        }
+      }
+    } catch {
+      // Si falla, el usuario puede ingresar manualmente
+    } finally {
+      setSuggestingCode(false);
+    }
+  }
+
+  async function confirmAssignCode() {
+    if (!codeModal || !newCode.trim()) return;
+    setAssigningCode(true);
+    setError(null);
+    try {
+      if (codeModal.typeConfig) {
+        await apiFetch('/documents/next-code', {
+          method: 'POST',
+          json: { typeConfigId: codeModal.typeConfig.id, reserve: true },
+        });
+      }
+      await apiFetch(`/documents/${codeModal.id}/master`, {
         method: 'PUT',
-        json: { documentCode: codeData.code },
+        json: { documentCode: newCode.trim() },
       });
+      setCodeModal(null);
       load();
     } catch (e: any) {
       setError(e?.message || 'Error al asignar código');
     } finally {
-      setAssigningCodeId(null);
+      setAssigningCode(false);
     }
   }
 
@@ -360,15 +388,11 @@ export default function MaestroDocumentos() {
                         <code className="font-mono text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
                           {doc.documentCode}
                         </code>
-                      ) : assigningCodeId === doc.id ? (
-                        <span className="text-neutral-400 text-xs italic flex items-center gap-1">
-                          <RefreshCw className="h-3 w-3 animate-spin" /> Asignando...
-                        </span>
                       ) : (
                         <button
                           onClick={() => handleAssignCode(doc)}
                           className="text-neutral-400 hover:text-indigo-600 text-xs italic hover:underline transition-colors"
-                          title={doc.typeConfig ? 'Asignar código automáticamente' : 'Asignar tipo documental primero'}
+                          title="Asignar código documental"
                         >
                           Sin código
                         </button>
@@ -557,6 +581,78 @@ export default function MaestroDocumentos() {
               >
                 <Save className="h-4 w-4" />
                 {saving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal asignar código */}
+      {codeModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+              <h3 className="font-semibold text-neutral-900 flex items-center gap-2">
+                <Hash className="h-4 w-4 text-indigo-600" />
+                {codeModal.documentCode ? 'Modificar código documental' : 'Asignar código documental'}
+              </h3>
+              <button onClick={() => setCodeModal(null)} className="p-1 rounded hover:bg-neutral-100">
+                <X className="h-5 w-5 text-neutral-400" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div className="bg-neutral-50 rounded-lg px-4 py-3 space-y-1">
+                <p className="text-xs text-neutral-500">Documento</p>
+                <p className="text-sm font-medium text-neutral-800">{codeModal.title}</p>
+                {codeModal.documentCode && (
+                  <p className="text-xs font-mono text-indigo-600">Código actual: {codeModal.documentCode}</p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-neutral-700 flex items-center gap-1">
+                  Código documental
+                  {hasRuleForCode && (
+                    <span className="text-[10px] text-green-600 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full">
+                      Regla activa
+                    </span>
+                  )}
+                </label>
+                {suggestingCode ? (
+                  <div className="flex items-center gap-2 text-sm text-neutral-500 py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Sugiriendo código...
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={newCode}
+                    onChange={e => setNewCode(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && confirmAssignCode()}
+                    placeholder="Ej: SGI-PR-001"
+                    className="w-full px-3 py-2 text-sm font-mono border border-neutral-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                  />
+                )}
+                <p className="text-[11px] text-neutral-400">
+                  {hasRuleForCode
+                    ? 'Código sugerido según la configuración de codificación del tipo documental.'
+                    : 'No hay tipo documental configurado. Ingrese el código manualmente.'}
+                </p>
+              </div>
+              {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+            </div>
+            <div className="px-5 py-3 border-t border-neutral-100 flex justify-end gap-2">
+              <button
+                onClick={() => setCodeModal(null)}
+                className="px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50 border border-neutral-200 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmAssignCode}
+                disabled={!newCode.trim() || assigningCode || suggestingCode}
+                className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {assigningCode ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hash className="h-4 w-4" />}
+                {assigningCode ? 'Asignando...' : 'Asignar código'}
               </button>
             </div>
           </div>
