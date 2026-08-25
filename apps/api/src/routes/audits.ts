@@ -7,6 +7,12 @@ import { createGroqOnlyLLMProvider, createSmartLLMProvider } from '../services/l
 
 const storage = getStorage();
 
+// Guard anti-carrera: evita que dos generaciones de checklist (IA) para la misma auditoría
+// corran en paralelo. Sin esto, si el usuario reintenta tras un timeout de red (ej. 504 de
+// nginx) mientras el pedido anterior sigue procesándose en el backend, ambos ejecutan su propio
+// delete+insert y pueden interleavearse, generando items de checklist duplicados.
+const checklistGenerationInProgress = new Set<string>();
+
 function buildDefaultChecklistItems(isoStandard: string[]) {
   const items: Array<{ clause: string; requirement: string; whatToCheck: string }> = [];
 
@@ -2169,6 +2175,12 @@ El usuario es un auditor ejecutando la auditoría y necesita asesoramiento norma
       const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
+      const auditId = req.params.id;
+      if (checklistGenerationInProgress.has(auditId)) {
+        return reply.code(409).send({ error: 'Ya se está generando el checklist para esta auditoría. Esperá a que termine antes de reintentar.' });
+      }
+      checklistGenerationInProgress.add(auditId);
+
       try {
         const audit = await app.runWithDbContext(req, async (tx) => {
           return tx.audit.findUnique({
@@ -2436,6 +2448,8 @@ Donde "index" es el número de índice global (basado en 1) de la cláusula rele
       } catch (err: any) {
         console.error('Error generando checklist:', err.message);
         return reply.code(500).send({ error: 'Error generando checklist', details: err.message });
+      } finally {
+        checklistGenerationInProgress.delete(auditId);
       }
     },
   );
