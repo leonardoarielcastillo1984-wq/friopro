@@ -25,7 +25,7 @@ import {
   Plus, X, Download, Edit3, FileCheck, FileX, Files, AlertTriangle,
   Calendar, User, Shield, ShieldCheck, Hash, Settings, List,
   GitBranch, Package, Archive, BarChart3, Palette, ScrollText, HelpCircle,
-  ExternalLink, Link2
+  ExternalLink, Link2, Loader2
 } from 'lucide-react';
 
 const SYSTEM_MODULE_GROUPS = [
@@ -165,6 +165,9 @@ export default function DocumentsPage() {
   const [docToDelete, setDocToDelete] = useState<DocumentRow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Publicación rápida (Borrador → Vigente)
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+
   const sorted = useMemo(() => {
     let filtered = [...docs].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
     if (searchTerm) {
@@ -191,6 +194,23 @@ export default function DocumentsPage() {
     }
     return filtered;
   }, [docs, searchTerm, filterType, filterNormative, filterDepartment, filterAutoStatus, filterReviewStatus, filterProcess]);
+
+  async function handlePublish(docId: string) {
+    try {
+      setPublishingId(docId);
+      await apiFetch(`/documents/${docId}`, {
+        method: 'PATCH',
+        json: { status: 'EFFECTIVE' },
+      });
+      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'EFFECTIVE' as const } : d));
+      setSuccess('Documento publicado como Vigente');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      setError(err?.message || 'Error al publicar documento');
+    } finally {
+      setPublishingId(null);
+    }
+  }
 
   async function load() {
     setError(null);
@@ -1013,6 +1033,18 @@ export default function DocumentsPage() {
                             title="Ver detalle"
                           >
                             <FileText className="h-4 w-4" />
+                          </button>
+                        )}
+                        {d.status === 'DRAFT' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handlePublish(d.id); }}
+                            disabled={publishingId === d.id}
+                            className="text-green-600 hover:text-green-700 text-sm font-medium p-1 rounded hover:bg-green-50 disabled:opacity-40"
+                            title="Publicar como Vigente"
+                          >
+                            {publishingId === d.id
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <CheckCircle2 className="h-4 w-4" />}
                           </button>
                         )}
                         <button
