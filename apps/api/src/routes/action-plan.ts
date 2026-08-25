@@ -11,7 +11,7 @@ const uuidOrNull = z.preprocess(
 const createSchema = z.object({
   ncrId: uuidOrNull,
   origin: z.enum(['MANUAL','AUDIT','NCR','INCIDENT','COMPLAINT','INSPECTION','INDICATOR','MANAGEMENT_REVIEW','RISK','OTHER']).optional(),
-  type: z.enum(['IMMEDIATE_CORRECTION','CORRECTIVE','PREVENTIVE','IMPROVEMENT','RISK_TREATMENT']).optional(),
+  type: z.enum(['IMMEDIATE_CORRECTION','CORRECTIVE','PREVENTIVE','IMPROVEMENT','RISK_TREATMENT','OPPORTUNITY']).optional(),
   severity: z.string().optional(),
   site: z.string().optional(),
   area: z.string().optional(),

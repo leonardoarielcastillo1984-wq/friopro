@@ -68,6 +68,7 @@ const TYPE_OPTS: SelectOption[] = [
   { value: 'PREVENTIVE', label: 'Preventiva' },
   { value: 'IMPROVEMENT', label: 'Mejora' },
   { value: 'RISK_TREATMENT', label: 'Tratamiento riesgo' },
+  { value: 'OPPORTUNITY', label: 'Oportunidad' },
 ];
 const ORIGIN_OPTS: SelectOption[] = [
   { value: 'MANUAL', label: 'Manual' }, { value: 'AUDIT', label: 'Auditoria' },
