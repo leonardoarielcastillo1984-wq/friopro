@@ -49,16 +49,16 @@ export default function StakeholderClient() {
     try {
       if (d.id) {
         await apiFetch(`/stakeholders/${d.id}`, { method:'PATCH', json:d });
-        // Si cambiaron campos de cumplimiento y tiene CAPA vinculada, ofrecer reabrir
+        // Si cambiaron campos de cumplimiento y tiene Plan de Acción vinculado, ofrecer reabrir
         const relevantChanged = original && d.actionItemId && (
           original.complianceStatus !== d.complianceStatus ||
           original.complianceLevel !== d.complianceLevel ||
           original.requiresAction !== d.requiresAction
         );
         if (relevantChanged) {
-          if (confirm('La evaluación de cumplimiento cambió y esta parte interesada tiene una acción CAPA vinculada. ¿Desea reabrir la acción para re-análisis?')) {
-            await apiFetch(`/actions/${d.actionItemId}`, { method:'PATCH', json:{ status:'IN_PROGRESS', closedAt:null } });
-            alert('Acción CAPA reabierta para re-análisis.');
+          if (confirm('La evaluación de cumplimiento cambió y esta parte interesada tiene un Plan de Acción vinculado. ¿Desea reabrir el plan para re-análisis?')) {
+            await apiFetch(`/action-plans/${d.actionItemId}`, { method:'PATCH', json:{ status:'IN_EXECUTION' } });
+            alert('Plan de Acción reabierto para re-análisis.');
           }
         }
       } else {
@@ -76,13 +76,12 @@ export default function StakeholderClient() {
     if (!item.id) return;
     setGenAction(true);
     try {
-      await apiFetch('/actions', { method:'POST', json:{
-        title: `Acción ${item.name} - ${item.complianceStatus==='NON_COMPLIANT'?'No Cumple':'Parcial'}`,
-        description: `Origen: Parte Interesada\n${item.name}\nEstado: ${item.complianceStatus}\nNivel: ${item.complianceLevel}%\nEvidencia: ${item.complianceEvidence||'—'}`,
+      await apiFetch('/action-plans', { method:'POST', json:{
+        findingDescription: `Acción ${item.name} - ${item.complianceStatus==='NON_COMPLIANT'?'No Cumple':'Parcial'}`,
+        observations: `Origen: Parte Interesada\n${item.name}\nEstado: ${item.complianceStatus}\nNivel: ${item.complianceLevel}%\nEvidencia: ${item.complianceEvidence||'—'}`,
         type: item.complianceStatus==='NON_COMPLIANT'?'CORRECTIVE':'IMPROVEMENT',
+        origin: 'OTHER',
         priority: item.complianceStatus==='NON_COMPLIANT'?'HIGH':'MEDIUM',
-        sourceType:'STAKEHOLDER', sourceId:item.id, status:'OPEN',
-        openDate: new Date().toISOString().split('T')[0]
       }});
     } catch(e: any){ alert('Error: '+e.message); }
     finally{ setGenAction(false); }
@@ -146,7 +145,7 @@ export default function StakeholderClient() {
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Fecha última evaluación</label><input type="date" value={editing.lastEvaluationDate||''} onChange={e=>setEditing({...editing,lastEvaluationDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Evidencia</label><textarea rows={3} value={editing.complianceEvidence||''} onChange={e=>setEditing({...editing,complianceEvidence:e.target.value})} placeholder="Ej: indicadores, auditorías" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             <div className="mb-4"><label className="block text-sm font-medium mb-1">Indicador asociado (referencia)</label><input type="text" value={editing.indicatorNote||editing.indicatorId||''} onChange={e=>setEditing({...editing,indicatorNote:e.target.value,indicatorId:undefined})} placeholder="Ej: Nivel de cumplimiento normativo" className="w-full px-3 py-2 border rounded-lg text-sm"/><p className="text-xs text-gray-400 mt-1">Campo informativo, no vincula a un indicador del sistema</p></div>
-            <div className="flex items-center gap-2"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere acción CAPA?</label></div>
+            <div className="flex items-center gap-2"><input type="checkbox" id="ra" checked={editing.requiresAction||false} onChange={e=>setEditing({...editing,requiresAction:e.target.checked})} className="w-4 h-4"/><label htmlFor="ra" className="text-sm font-medium">¿Requiere Plan de Acción?</label></div>
             <div className="mt-2 p-3 bg-red-100 border border-red-500 text-red-700 font-bold text-center rounded">TEST: Button should appear below this</div>
             <div className="mt-2">
               <button type="button" onClick={()=>{

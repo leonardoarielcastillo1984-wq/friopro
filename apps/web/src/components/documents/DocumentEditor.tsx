@@ -64,7 +64,7 @@ const AI_ACTIONS = [
   { id: 'scope', label: 'Completar alcance', icon: '🔭' },
   { id: 'responsibilities', label: 'Generar responsabilidades', icon: '👥' },
   { id: 'indicators', label: 'Sugerir indicadores', icon: '📊' },
-  { id: 'capa', label: 'Generar CAPA asociado', icon: '⚡' },
+  { id: 'capa', label: 'Generar Plan de Acción asociado', icon: '⚡' },
 ];
 
 export default function DocumentEditor({ documentId, documentTitle, onClose, onSaved }: DocumentEditorProps) {
@@ -297,7 +297,7 @@ export default function DocumentEditor({ documentId, documentTitle, onClose, onS
       scope: `Generá una sección de Alcance completa y profesional para el siguiente documento de gestión:\n\n${selectedText}`,
       responsibilities: `Generá una sección de Responsabilidades/Roles con matriz RACI para el siguiente procedimiento:\n\n${selectedText}`,
       indicators: `Sugerí 3-5 indicadores de desempeño (KPIs) medibles para controlar el cumplimiento del siguiente proceso:\n\n${selectedText}`,
-      capa: `Basándote en las brechas detectadas en el siguiente documento, generá una descripción de CAPA (Corrección y Acción Preventiva) apropiada:\n\n${selectedText}`,
+      capa: `Basándote en las brechas detectadas en el siguiente documento, generá una descripción de Plan de Acción (Corrección y Acción Preventiva) apropiada:\n\n${selectedText}`,
     };
 
     try {

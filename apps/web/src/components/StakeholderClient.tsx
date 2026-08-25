@@ -50,15 +50,14 @@ export default function StakeholderClient() {
     if (!item.id) return;
     setGenAction(true);
     try {
-      await apiFetch('/actions', { method:'POST', json:{
-        title: `Acción ${item.name} - ${item.complianceStatus==='NON_COMPLIANT'?'No Cumple':'Parcial'}`,
-        description: `Origen: Parte Interesada\n${item.name}\nEstado: ${item.complianceStatus}\nNivel: ${item.complianceLevel}%\nEvidencia: ${item.complianceEvidence||'—'}`,
+      await apiFetch('/action-plans', { method:'POST', json:{
+        findingDescription: `Acción ${item.name} - ${item.complianceStatus==='NON_COMPLIANT'?'No Cumple':'Parcial'}`,
+        observations: `Origen: Parte Interesada\n${item.name}\nEstado: ${item.complianceStatus}\nNivel: ${item.complianceLevel}%\nEvidencia: ${item.complianceEvidence||'—'}`,
         type: item.complianceStatus==='NON_COMPLIANT'?'CORRECTIVE':'IMPROVEMENT',
+        origin: 'OTHER',
         priority: item.complianceStatus==='NON_COMPLIANT'?'HIGH':'MEDIUM',
-        sourceType:'STAKEHOLDER', sourceId:item.id, status:'OPEN',
-        openDate: new Date().toISOString().split('T')[0]
       }});
-      alert('Acción creada');
+      alert('Plan de Acción creado');
     } catch(e: any){ alert('Error: '+e.message); }
     finally{ setGenAction(false); }
   };

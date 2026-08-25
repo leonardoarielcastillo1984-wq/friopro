@@ -12,7 +12,7 @@ const FEATURES = [
   { icon: ClipboardCheck, title: 'Auditorías ISO', desc: 'Planificación anual, ejecución de auditorías internas y seguimiento de hallazgos.' },
   { icon: BarChart3, title: 'Indicadores de Desempeño', desc: 'Tablero de KPIs con metas, tendencias y alertas automáticas de desvíos.' },
   { icon: AlertTriangle, title: 'No Conformidades', desc: 'Registro, análisis de causa raíz y cierre de no conformidades con trazabilidad completa.' },
-  { icon: CheckSquare, title: 'Acciones CAPA', desc: 'Gestión de acciones correctivas, preventivas y de mejora con seguimiento de cumplimiento.' },
+  { icon: CheckSquare, title: 'Plan de Acción', desc: 'Gestión de acciones correctivas, preventivas y de mejora con seguimiento de cumplimiento.' },
   { icon: FileText, title: 'Documentos Controlados', desc: 'Control de versiones, aprobaciones digitales y distribución de documentos del SGI.' },
   { icon: Target, title: 'Objetivos de Calidad', desc: 'Planificación, seguimiento y cierre de objetivos ISO alineados a la estrategia organizacional.' },
   { icon: Users, title: 'Capacitación y Competencias', desc: 'Gestión de formación, evaluación de competencias y evidencias por puesto de trabajo.' },

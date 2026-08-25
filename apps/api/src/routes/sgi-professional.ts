@@ -178,7 +178,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
           data.updatedById = req.auth?.userId ?? null;
         }
 
-        // ----- CAPA PROGRESS & VALIDATION (actionItem only) -----
+        // ----- PLAN DE ACCIÓN PROGRESS & VALIDATION (actionItem only) -----
         if (opts.model === 'actionItem') {
           const merged = { ...existing, ...data };
           let progress = 0;
@@ -232,7 +232,7 @@ function makeCrud(prefix: string, opts: CrudOptions): FastifyPluginAsync {
 export const actionsRoutes = makeCrud('actions', { model: 'actionItem', codePrefix: 'ACT', filterableFields: ['status', 'type', 'sourceType', 'origin', 'priority'] });
 export const stakeholdersRoutes = makeCrud('stakeholders', { model: 'stakeholder' });
 
-// Endpoint adicional para generar acción CAPA desde stakeholder
+// Endpoint adicional para generar Plan de Acción desde stakeholder
 export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:id/generate-action', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -248,27 +248,22 @@ export const stakeholderActionRoutes: FastifyPluginAsync = async (app) => {
     const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody as any;
 
     const action = await app.runWithDbContext(req, async (tx: any) => {
-      // Auto-generate action code like ACT-2026-001
-      const year = new Date().getFullYear();
-      const count = await tx.actionItem.count({
-        where: { tenantId, code: { startsWith: `ACT-${year}-` } }
-      });
-      const code = `ACT-${year}-${String(count + 1).padStart(3, '0')}`;
+      const seqResult = await tx.$queryRaw`SELECT nextval('action_plan_seq')::int as seq`;
+      const seqNum = Array.isArray(seqResult) ? seqResult[0]?.seq : null;
 
-      // Create action item
-      const newAction = await tx.actionItem.create({
+      const newAction = await tx.actionPlan.create({
         data: {
           tenantId,
-          code,
-          title: body.title || `Acción ${stakeholder.name} - ${stakeholder.complianceStatus}`,
-          description: body.description || `Origen: Parte Interesada ${stakeholder.name}`,
+          sequenceNumber: seqNum ?? undefined,
+          findingDescription: body.title || `Acción ${stakeholder.name} - ${stakeholder.complianceStatus}`,
+          observations: body.description || `Origen: Parte Interesada ${stakeholder.name}`,
           type: body.type || (stakeholder.complianceStatus === 'NON_COMPLIANT' ? 'CORRECTIVE' : 'IMPROVEMENT'),
+          origin: 'OTHER',
           priority: body.priority || (stakeholder.complianceStatus === 'NON_COMPLIANT' ? 'HIGH' : 'MEDIUM'),
-          status: body.status || 'OPEN',
-          sourceType: 'STAKEHOLDER',
-          sourceId: id,
-          openDate: body.openDate ? new Date(body.openDate) : new Date(),
-          dueDate: body.dueDate || new Date(Date.now() + 30 * 24 * 3600 * 1000),
+          status: 'DRAFT',
+          plannedEndDate: body.dueDate ? new Date(body.dueDate) : new Date(Date.now() + 30 * 24 * 3600 * 1000),
+          createdById: req.auth?.userId ?? null,
+          updatedById: req.auth?.userId ?? null,
         }
       });
       // Update stakeholder with action reference

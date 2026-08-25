@@ -438,7 +438,7 @@ export const stakeholderEvaluationsRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(201).send({ ncr });
   });
 
-  // Generar acción CAPA vinculada a la evaluación
+  // Generar Plan de Acción vinculado a la evaluación
   app.post('/:id/generate-action', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
@@ -448,26 +448,27 @@ export const stakeholderEvaluationsRoutes: FastifyPluginAsync = async (app) => {
     const action = await app.runWithDbContext(req, async (tx: any) => {
       const ev = await tx.stakeholderEvaluation.findFirst({ where: { id, tenantId }, include: { stakeholder: true, cycle: true } });
       if (!ev) throw Object.assign(new Error('Evaluación no encontrada'), { statusCode: 404 });
-      const year = new Date().getFullYear();
-      const count = await tx.actionItem.count({ where: { tenantId, code: { startsWith: `ACT-${year}-` } } });
-      const code = `ACT-${year}-${String(count + 1).padStart(3, '0')}`;
+      const seqResult = await tx.$queryRaw`SELECT nextval('action_plan_seq')::int as seq`;
+      const seqNum = Array.isArray(seqResult) ? seqResult[0]?.seq : null;
       const s = ev.stakeholder;
-      const newAction = await tx.actionItem.create({
+      const newAction = await tx.actionPlan.create({
         data: {
-          tenantId, code,
-          title: body.title || `Acción ${s.name} — ${ev.cycle?.name ?? ''}`,
-          description: body.description || `Origen: Parte Interesada (período ${ev.cycle?.name ?? '—'})\n${s.name}\nEstado: ${ev.complianceStatus}\nNivel: ${ev.complianceLevel ?? '—'}%`,
+          tenantId,
+          sequenceNumber: seqNum ?? undefined,
+          findingDescription: body.title || `Acción ${s.name} — ${ev.cycle?.name ?? ''}`,
+          observations: body.description || `Origen: Parte Interesada (período ${ev.cycle?.name ?? '—'})\n${s.name}\nEstado: ${ev.complianceStatus}\nNivel: ${ev.complianceLevel ?? '—'}%`,
           type: body.type || (ev.complianceStatus === 'NON_COMPLIANT' ? 'CORRECTIVE' : 'IMPROVEMENT'),
+          origin: 'OTHER',
           priority: body.priority || (ev.complianceStatus === 'NON_COMPLIANT' ? 'HIGH' : 'MEDIUM'),
-          status: 'OPEN', sourceType: 'STAKEHOLDER', sourceId: ev.stakeholderId,
-          openDate: new Date(), dueDate: body.dueDate ? new Date(body.dueDate) : new Date(Date.now() + 30 * 24 * 3600 * 1000),
+          status: 'DRAFT',
+          plannedEndDate: body.dueDate ? new Date(body.dueDate) : new Date(Date.now() + 30 * 24 * 3600 * 1000),
+          createdById: req.auth?.userId ?? null,
+          updatedById: req.auth?.userId ?? null,
         },
       });
       await tx.stakeholderEvaluation.update({ where: { id }, data: { actionItemId: newAction.id } });
       // Reflejar en el stakeholder maestro si el ciclo es activo
-      const updatedEv = { ...ev, actionItemId: newAction.id };
       await tx.stakeholder.update({ where: { id: ev.stakeholderId }, data: { actionItemId: newAction.id } }).catch(() => {});
-      void updatedEv;
       return newAction;
     });
     return reply.send({ action });
