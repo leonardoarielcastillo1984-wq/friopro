@@ -169,20 +169,19 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
       };
       const category = strategicPlanForm.quadrant.replace('dafo', '').toUpperCase();
 
-      await apiFetch('/actions', {
+      await apiFetch('/action-plans', {
         method: 'POST',
         json: {
-          title: strategicPlanForm.title,
-          description: `${strategicPlanForm.description}\n\n--- Trazabilidad ---\nOrigen: DAFO\nCategoría: ${category} (${labels[strategicPlanForm.quadrant]})\nAño: ${year}\nResponsable: ${strategicPlanForm.responsible}`,
+          findingDescription: strategicPlanForm.title,
+          observations: `${strategicPlanForm.description}\n\n--- Trazabilidad ---\nOrigen: DAFO\nCategoría: ${category} (${labels[strategicPlanForm.quadrant]})\nAño: ${year}\nResponsable: ${strategicPlanForm.responsible}`,
           type: 'IMPROVEMENT',
+          origin: 'MANUAL',
           priority: strategicPlanForm.priority,
-          sourceType: 'MANUAL',
-          dueDate: strategicPlanForm.dueDate ? `${strategicPlanForm.dueDate}T00:00:00Z` : null,
-          status: 'OPEN',
+          plannedEndDate: strategicPlanForm.dueDate ? `${strategicPlanForm.dueDate}T00:00:00Z` : null,
         },
       });
       setShowStrategicPlanModal(false);
-      alert('Plan de Acción Estratégico creado correctamente en el módulo Acciones');
+      alert('Plan de Acción creado correctamente en el módulo Plan de Acción');
     } catch (err: any) {
       alert('Error al crear el plan: ' + (err?.message || 'Error desconocido'));
     } finally {
@@ -494,19 +493,18 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                         }
                         const key = `foda-action-sent-${year}`;
                         if (localStorage.getItem(key)) {
-                          alert('Ya se envió una acción CAPA para este año. Revisa el módulo Acciones.');
+                          alert('Ya se envió una acción para este año. Revisa el módulo Plan de Acción.');
                           return;
                         }
                         try {
-                          await apiFetch('/actions', {
+                          await apiFetch('/action-plans', {
                             method: 'POST',
                             json: {
-                              title: `Tratamiento FODA ${year}`,
-                              description: `Origen: Análisis FODA ${year}\n\n${sendWeaknesses && foda.w ? `Debilidades identificadas:\n${foda.w}\n\n` : ''}${sendThreats && foda.t ? `Amenazas identificadas:\n${foda.t}` : ''}`,
+                              findingDescription: `Tratamiento FODA ${year}`,
+                              observations: `Origen: Análisis FODA ${year}\n\n${sendWeaknesses && foda.w ? `Debilidades identificadas:\n${foda.w}\n\n` : ''}${sendThreats && foda.t ? `Amenazas identificadas:\n${foda.t}` : ''}`,
                               type: 'IMPROVEMENT',
+                              origin: 'MANUAL',
                               priority: 'MEDIUM',
-                              sourceType: 'MANUAL',
-                              status: 'OPEN',
                             },
                           });
                           localStorage.setItem(key, Date.now().toString());
@@ -516,7 +514,7 @@ Sugiere 3 estrategias concretas y accionables para el cuadrante ${labels[quadran
                         }
                       }}
                       className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
-                      Enviar a Acciones
+                      Enviar a Plan de Acción
                     </button>
                   </div>
                 </div>
