@@ -54,7 +54,7 @@ export function SugerenciaBot() {
   return (
     // Desplazado a la izquierda del botón "Exportar" (GlobalExportFAB) para que no queden
     // montados: ambos widgets flotantes globales comparten el mismo rincón de la pantalla.
-    <div className="fixed bottom-6 right-28 z-50 flex flex-col items-end gap-3">
+    <div className="fixed bottom-6 right-44 z-50 flex flex-col items-end gap-3">
 
       {/* Panel */}
       {step !== 'closed' && (
