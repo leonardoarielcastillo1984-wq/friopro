@@ -75,6 +75,27 @@ const LAYER_CONFIG = {
   SUPPORT: { label: 'Soporte', icon: Users, color: 'bg-orange-50 border-orange-200', badge: 'bg-orange-100 text-orange-700', iconColor: 'text-orange-500' },
 };
 
+// Colores por capa para el PDF navegable (hex, ya que se renderiza fuera del árbol Tailwind)
+const LAYER_PDF_COLORS: Record<'STRATEGIC' | 'OPERATIONAL' | 'SUPPORT', { bg: string; border: string; badgeBg: string; badgeText: string; label: string }> = {
+  STRATEGIC: { bg: '#eff6ff', border: '#bfdbfe', badgeBg: '#dbeafe', badgeText: '#1d4ed8', label: 'Estratégicos' },
+  OPERATIONAL: { bg: '#f0fdf4', border: '#bbf7d0', badgeBg: '#dcfce7', badgeText: '#15803d', label: 'Operativos' },
+  SUPPORT: { bg: '#fff7ed', border: '#fed7aa', badgeBg: '#ffedd5', badgeText: '#c2410c', label: 'Soporte' },
+};
+
+function escapePdfHtml(s?: string | null): string {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+function pdfOrNotDefined(s?: string | null): string {
+  const v = escapePdfHtml(s);
+  return v || 'No definido';
+}
+
 function getProcessIcon(name: string) {
   const n = name.toLowerCase();
   if (n.includes('compra') || n.includes('adquis')) return ShoppingCart;
@@ -290,6 +311,7 @@ export default function MapaProcesosContent() {
   const [subDragId, setSubDragId] = useState<string | null>(null);
   const [subDragOverId, setSubDragOverId] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingNavPdf, setExportingNavPdf] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const mapPanelRef = useRef<HTMLDivElement>(null);
@@ -521,6 +543,268 @@ export default function MapaProcesosContent() {
       setError('No se pudo exportar el PDF');
     } finally {
       setExportingPdf(false);
+    }
+  }
+
+  // ── Export PDF Navegable (Controlado) ─────────────────────────────
+  // Genera un documento multipágina con enlaces internos (mapa general → macroproceso → subproceso
+  // y de vuelta), reutilizando el pipeline existente de exportación controlada (Puppeteer + plantilla
+  // institucional + código/revisión del Maestro de Documentos). No usa JavaScript embebido: la
+  // navegación se resuelve con <a href="#anchor"> estándar, que Chromium convierte en enlaces
+  // internos reales al imprimir a PDF.
+  function buildNavigablePdfHtml(map: ProcessMap): string {
+    const macros = map.processes.filter(p => !p.parentId).sort((a, b) => a.order - b.order);
+    const subsOf = (macroId: string) => map.processes.filter(p => p.parentId === macroId).sort((a, b) => a.order - b.order);
+    const splitCountLocal = (s?: string) => (s ? s.split(',').filter(x => x.trim()).length : 0);
+    const docCountLocal = (p: Process) => (p.processDocuments?.length ?? 0) + splitCountLocal(p.documents);
+    const riskCountLocal = (p: Process) => (p.processRisks?.length ?? 0) + splitCountLocal(p.risks);
+    const kpiCountLocal = (p: Process) => (p.processIndicators?.length ?? 0) + splitCountLocal(p.indicators);
+    const mainIndicatorLocal = (p: Process) => (p.indicators || '').split(',').map(x => x.trim()).filter(Boolean)[0] || null;
+    const toBulletsLocal = (s?: string) => (s || '').split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
+    const processNameLocal = (id: string) => map.processes.find(p => p.id === id)?.name ?? id;
+    const docLabelLocal = (id: string) => docOptions.find(o => o.id === id)?.label ?? id;
+    const riskLabelLocal = (id: string) => riskOptions.find(o => o.id === id)?.label ?? id;
+    const indicatorLabelLocal = (id: string) => indicatorOptions.find(o => o.id === id)?.label ?? id;
+    const ownerLabel = (id?: string) => { const n = getEmployeeName(id); return n && n !== '-' ? n : ''; };
+
+    const styles = `
+      <style>
+        .npm-card { border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; background:#fff; text-decoration:none; color:inherit; display:block; break-inside:avoid; page-break-inside:avoid; }
+        .npm-grid { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
+        .npm-grid > div { flex:1 1 220px; max-width:100%; }
+        .npm-badge { display:inline-block; font-size:9px; font-weight:700; padding:2px 8px; border-radius:999px; letter-spacing:.03em; }
+        .npm-nav { font-size:9.5px; color:#64748b; margin-bottom:8px; }
+        .npm-nav a { color:#1e40af; text-decoration:none; font-weight:700; }
+        .npm-breadcrumb { font-size:9px; color:#94a3b8; margin-bottom:6px; }
+        .npm-breadcrumb a { color:#64748b; text-decoration:none; }
+        .npm-stats { display:flex; gap:5px; margin-top:8px; }
+        .npm-stat { flex:1; text-align:center; border-radius:6px; padding:4px 2px; font-size:8.5px; line-height:1.5; }
+        .npm-layer-section { border:2px solid; border-radius:12px; padding:12px; margin-bottom:12px; break-inside:avoid; }
+        .npm-section-title { font-size:11px; font-weight:700; color:#1e40af; text-transform:uppercase; letter-spacing:.03em; margin:14px 0 6px; border-bottom:1px solid #e2e8f0; padding-bottom:3px; }
+        .npm-info-table td { padding:4px 8px; font-size:10px; border:1px solid #e2e8f0; }
+        .npm-info-table td.label { font-weight:700; color:#64748b; background:#f8fafc; width:140px; }
+        ul.npm-list { margin:4px 0 4px 16px; padding:0; font-size:10px; }
+        ul.npm-list li { margin-bottom:2px; }
+        ol.npm-activities { margin:4px 0 4px 18px; padding:0; font-size:10px; }
+        ol.npm-activities li { margin-bottom:4px; }
+        .npm-empty { font-size:10px; color:#94a3b8; font-style:italic; }
+        @media print { .npm-nav, .npm-breadcrumb { opacity:0.85; } }
+      </style>
+    `;
+
+    // ── Página 1: Mapa General ──
+    const overviewSections = (['STRATEGIC', 'OPERATIONAL', 'SUPPORT'] as const).map((layer, idx) => {
+      const cfg = LAYER_PDF_COLORS[layer];
+      const layerMacros = macros.filter(p => p.layer === layer);
+      const cards = layerMacros.length === 0
+        ? `<p class="npm-empty">Sin procesos en esta capa.</p>`
+        : `<div class="npm-grid">${layerMacros.map(p => `
+            <div>
+              <a class="npm-card" href="#macro-${p.id}" style="border-color:${cfg.border};">
+                <div style="font-size:11px;font-weight:700;color:#1e293b;">${escapePdfHtml(p.name)}</div>
+                <div style="font-size:9px;color:#94a3b8;margin-top:2px;">${p.code ? escapePdfHtml(p.code) + ' · ' : ''}${escapePdfHtml((p.sites || [])[0]) || 'Sede no definida'}</div>
+                <div class="npm-stats">
+                  <div class="npm-stat" style="background:#eef2ff;color:#4338ca;">${subsOf(p.id).length}<br/>Subproc.</div>
+                  <div class="npm-stat" style="background:#ecfdf5;color:#047857;">${docCountLocal(p)}<br/>Docs</div>
+                  <div class="npm-stat" style="background:#fff7ed;color:#c2410c;">${riskCountLocal(p)}<br/>Riesgos</div>
+                  <div class="npm-stat" style="background:#eff6ff;color:#1d4ed8;">${kpiCountLocal(p)}<br/>KPI</div>
+                </div>
+              </a>
+            </div>
+          `).join('')}</div>`;
+      return `
+        ${idx > 0 ? `<div style="text-align:center;font-size:16px;color:#cbd5e1;margin:4px 0;">&#9662;</div>` : ''}
+        <div class="npm-layer-section" style="background:${cfg.bg};border-color:${cfg.border};">
+          <span class="npm-badge" style="background:${cfg.badgeBg};color:${cfg.badgeText};">${cfg.label.toUpperCase()}</span>
+          ${cards}
+        </div>
+      `;
+    }).join('');
+
+    const overviewPage = `
+      <div id="top"></div>
+      <h1 style="text-align:center;">${escapePdfHtml(map.name) || 'Mapa de Procesos'}</h1>
+      ${map.description ? `<p style="text-align:center;font-size:10px;color:#64748b;margin-bottom:10px;">${escapePdfHtml(map.description)}</p>` : ''}
+      <table style="width:100%;margin-bottom:10px;border-collapse:collapse;"><tr>
+        <td style="width:50%;text-align:center;font-size:9px;color:#1d4ed8;background:#eff6ff;border-radius:8px;padding:6px;border:none;">ENTRADAS GENERALES<br/><strong>${pdfOrNotDefined(map.inputLabel)}</strong></td>
+        <td style="width:50%;text-align:center;font-size:9px;color:#15803d;background:#f0fdf4;border-radius:8px;padding:6px;border:none;">SALIDAS GENERALES<br/><strong>${pdfOrNotDefined(map.outputLabel)}</strong></td>
+      </tr></table>
+      ${overviewSections}
+    `;
+
+    // ── Índice de procesos ──
+    const indexRows = macros.map(p => `
+      <tr>
+        <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;"><a href="#macro-${p.id}" style="color:#1e40af;text-decoration:none;font-weight:700;">${escapePdfHtml(p.name)}</a></td>
+        <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:center;">${LAYER_PDF_COLORS[p.layer].label}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:center;">${subsOf(p.id).length}</td>
+      </tr>
+    `).join('');
+    const indexPage = `
+      <div class="page-break"></div>
+      <div class="npm-nav"><a href="#top">⌂ Mapa General</a></div>
+      <h2>Índice de Procesos</h2>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <th style="text-align:left;padding:5px 8px;">Macroproceso</th>
+          <th style="padding:5px 8px;">Capa</th>
+          <th style="padding:5px 8px;">Subprocesos</th>
+        </tr></thead>
+        <tbody>${indexRows || `<tr><td colspan="3" style="padding:8px;text-align:center;color:#94a3b8;">Sin macroprocesos registrados</td></tr>`}</tbody>
+      </table>
+    `;
+
+    // ── Páginas de macroproceso + subprocesos ──
+    const macroAndSubPages = macros.map(macro => {
+      const cfg = LAYER_PDF_COLORS[macro.layer];
+      const subs = subsOf(macro.id);
+      const subCards = subs.length === 0
+        ? `<p class="npm-empty">Este macroproceso no tiene subprocesos registrados.</p>`
+        : `<div class="npm-grid">${subs.map(s => `
+            <div>
+              <a class="npm-card" href="#sub-${s.id}" style="border-color:${cfg.border};">
+                <div style="font-size:11px;font-weight:700;color:#1e293b;">${escapePdfHtml(s.name)}</div>
+                <div style="font-size:9px;color:#94a3b8;margin-top:2px;">${ownerLabel(s.owner) ? escapePdfHtml(ownerLabel(s.owner)) : 'Sin responsable'}</div>
+                <div class="npm-stats">
+                  <div class="npm-stat" style="background:#ecfdf5;color:#047857;">${docCountLocal(s)}<br/>Docs</div>
+                  <div class="npm-stat" style="background:#fff7ed;color:#c2410c;">${riskCountLocal(s)}<br/>Riesgos</div>
+                  <div class="npm-stat" style="background:#eff6ff;color:#1d4ed8;">${kpiCountLocal(s)}<br/>KPI</div>
+                </div>
+              </a>
+            </div>
+          `).join('')}</div>`;
+
+      const macroPage = `
+        <div class="page-break" id="macro-${macro.id}"></div>
+        <div class="npm-nav"><a href="#top">⌂ Mapa General</a></div>
+        <div class="npm-breadcrumb">Mapa General &gt; ${cfg.label} &gt; ${escapePdfHtml(macro.name)}</div>
+        <h1>${escapePdfHtml(macro.name)}</h1>
+        <table class="npm-info-table" style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+          <tr><td class="label">Código</td><td>${pdfOrNotDefined(macro.code)}</td><td class="label">Capa</td><td>${cfg.label}</td></tr>
+          <tr><td class="label">Estado</td><td>${macro.status === 'active' ? 'Activo' : 'Inactivo'}</td><td class="label">Sede</td><td>${pdfOrNotDefined((macro.sites || [])[0])}</td></tr>
+          <tr><td class="label">Responsable</td><td>${ownerLabel(macro.owner) ? escapePdfHtml(ownerLabel(macro.owner)) : 'No definido'}</td><td class="label">Indicador principal</td><td>${pdfOrNotDefined(mainIndicatorLocal(macro))}</td></tr>
+          <tr><td class="label">Subprocesos</td><td>${subs.length}</td><td class="label">Docs / Riesgos / KPI</td><td>${docCountLocal(macro)} / ${riskCountLocal(macro)} / ${kpiCountLocal(macro)}</td></tr>
+        </table>
+        ${macro.objective ? `<div class="npm-section-title">Objetivo</div><p style="font-size:10px;">${escapePdfHtml(macro.objective)}</p>` : ''}
+        <div class="npm-section-title">Subprocesos</div>
+        ${subCards}
+      `;
+
+      const subPages = subs.map(s => {
+        const allRisks = [...(s.processRisks || []).map(r => riskLabelLocal(r.riskId)), ...toBulletsLocal(s.risks)];
+        const allKpis = [...(s.processIndicators || []).map(r => indicatorLabelLocal(r.indicatorId)), ...toBulletsLocal(s.indicators)];
+        const allDocs = [...(s.processDocuments || []).map(r => docLabelLocal(r.documentId)), ...toBulletsLocal(s.documents)];
+        const clientsInternal = (s.clientsInternal || []).map(processNameLocal);
+        const suppliersInternal = (s.suppliersInternal || []).map(processNameLocal);
+        const listOrEmpty = (items: string[]) => items.length
+          ? `<ul class="npm-list">${items.map(x => `<li>${escapePdfHtml(x)}</li>`).join('')}</ul>`
+          : `<p class="npm-empty">Sin registros asociados</p>`;
+
+        return `
+          <div class="page-break" id="sub-${s.id}"></div>
+          <div class="npm-nav"><a href="#macro-${macro.id}">← ${escapePdfHtml(macro.name)}</a> &nbsp;|&nbsp; <a href="#top">⌂ Mapa General</a></div>
+          <div class="npm-breadcrumb">Mapa General &gt; ${cfg.label} &gt; <a href="#macro-${macro.id}">${escapePdfHtml(macro.name)}</a> &gt; ${escapePdfHtml(s.name)}</div>
+          <h1>${escapePdfHtml(s.name).toUpperCase()}</h1>
+          <table class="npm-info-table" style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+            <tr><td class="label">Código</td><td>${pdfOrNotDefined(s.code)}</td><td class="label">Macroproceso</td><td><a href="#macro-${macro.id}">${escapePdfHtml(macro.name)}</a></td></tr>
+            <tr><td class="label">Tipo</td><td>Subproceso</td><td class="label">Sede</td><td>${pdfOrNotDefined((s.sites || [])[0])}</td></tr>
+            <tr><td class="label">Responsable</td><td>${ownerLabel(s.owner) ? escapePdfHtml(ownerLabel(s.owner)) : 'No definido'}</td><td class="label">Estado</td><td>${s.status === 'active' ? 'Activo' : 'Inactivo'}</td></tr>
+          </table>
+
+          <div class="npm-section-title">Objetivo</div>
+          <p style="font-size:10px;">${pdfOrNotDefined(s.objective)}</p>
+
+          <div class="npm-section-title">Entradas</div>
+          ${listOrEmpty(toBulletsLocal(s.inputs))}
+
+          <div class="npm-section-title">Actividades</div>
+          ${(s.activities || []).length
+            ? `<ol class="npm-activities">${(s.activities || []).map(a => `<li><strong>${escapePdfHtml(a.name)}</strong>${a.description ? ' — ' + escapePdfHtml(a.description) : ''}${a.responsible ? ` <em>(${escapePdfHtml(a.responsible)})</em>` : ''}</li>`).join('')}</ol>`
+            : `<p class="npm-empty">Sin registros asociados</p>`}
+
+          <div class="npm-section-title">Salidas</div>
+          ${listOrEmpty(toBulletsLocal(s.outputs))}
+
+          <div class="npm-section-title">Clientes internos</div>
+          ${listOrEmpty(clientsInternal)}
+
+          <div class="npm-section-title">Proveedores internos</div>
+          ${listOrEmpty(suppliersInternal)}
+
+          <div class="npm-section-title">Riesgos</div>
+          ${listOrEmpty(allRisks)}
+
+          <div class="npm-section-title">KPI / Indicadores</div>
+          ${listOrEmpty(allKpis)}
+
+          <div class="npm-section-title">Documentos asociados</div>
+          ${listOrEmpty(allDocs)}
+
+          <div class="npm-section-title">Requisitos normativos</div>
+          <p class="npm-empty">Sin registros asociados</p>
+
+          <div class="npm-nav" style="margin-top:14px;"><a href="#macro-${macro.id}">← ${escapePdfHtml(macro.name)}</a> &nbsp;|&nbsp; <a href="#top">⌂ Mapa General</a></div>
+        `;
+      }).join('');
+
+      return macroPage + subPages;
+    }).join('');
+
+    return styles + overviewPage + indexPage + macroAndSubPages;
+  }
+
+  async function exportNavigablePdf(exportType: 'CONTROLLED' | 'INFORMATIVE') {
+    if (!selected) return;
+    if (!docOutput?.outputKey) {
+      setError('Asigná primero un código documental al mapa (botón "Asignar código") antes de exportar el PDF navegable.');
+      return;
+    }
+    setExportingNavPdf(true);
+    setError('');
+    try {
+      const bodyHtml = buildNavigablePdfHtml(selected);
+      const token = localStorage.getItem('accessToken');
+      const tenantId = localStorage.getItem('tenantId');
+      const csrf = localStorage.getItem('csrfToken');
+
+      const res = await fetch('/api/doc-export/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
+          ...(csrf ? { 'x-csrf-token': csrf } : {}),
+        },
+        body: JSON.stringify({
+          outputKey: docOutput.outputKey,
+          exportType,
+          bodyHtml,
+          title: `Mapa de Procesos — ${selected.name}`,
+          orientation: 'landscape',
+          pageSize: 'A3',
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Error al exportar' }));
+        throw new Error(err.error || 'Error al exportar');
+      }
+
+      const blob = await res.blob();
+      const contentDisp = res.headers.get('Content-Disposition') || '';
+      const match = contentDisp.match(/filename="?(.+?)"?$/);
+      const fileName = match ? match[1] : `mapa_procesos_navegable_${Date.now()}.pdf`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo generar el PDF navegable');
+    } finally {
+      setExportingNavPdf(false);
     }
   }
 
@@ -983,8 +1267,11 @@ export default function MapaProcesosContent() {
                     <button onClick={() => setShowDiagram(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50">
                       <Eye className="h-3.5 w-3.5" /> Ver como diagrama
                     </button>
-                    <button onClick={exportPdf} disabled={!selected || exportingPdf} title="Exportar mapa como PDF" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-40">
+                    <button onClick={exportPdf} disabled={!selected || exportingPdf} title="Exportar mapa como PDF (captura visual estática)" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-40">
                       {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} {exportingPdf ? 'Generando...' : 'Exportar PDF'}
+                    </button>
+                    <button onClick={() => exportNavigablePdf('CONTROLLED')} disabled={!selected || exportingNavPdf} title="PDF Controlado navegable: mapa general → macroprocesos → subprocesos con enlaces internos" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 disabled:opacity-40">
+                      {exportingNavPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Network className="h-3.5 w-3.5" />} {exportingNavPdf ? 'Generando...' : 'PDF Navegable'}
                     </button>
                     <button onClick={exportMap} disabled={!selected} title="Exportar este mapa como plantilla .sgi360.json" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-40">
                       <Download className="h-3.5 w-3.5" /> Exportar
