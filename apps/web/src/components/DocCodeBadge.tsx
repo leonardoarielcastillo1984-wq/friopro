@@ -49,7 +49,7 @@ export default function DocCodeBadge({
     loadDef();
   }, [outputKey]);
 
-  async function loadDef() {
+  async function loadDef(): Promise<OutputDef | null> {
     setLoadingDef(true);
     setErr('');
     try {
@@ -61,6 +61,7 @@ export default function DocCodeBadge({
         : null;
       if (found) {
         setDef(found);
+        return found;
       } else {
         // Auto-create the output definition for this matrix
         const created = await apiFetch<OutputDef>('/doc-export/outputs', {
@@ -75,41 +76,46 @@ export default function DocCodeBadge({
         });
         if (created && created.id) {
           setDef(created);
+          return created;
         } else {
           setErr('No se pudo crear la definición documental');
+          return null;
         }
       }
     } catch (e: any) {
       setErr(e?.message || 'Error al cargar definición documental');
+      return null;
     } finally {
       setLoadingDef(false);
     }
   }
 
   async function handleButtonClick() {
-    if (!def) {
-      await loadDef();
-      // After reload, if def is now available, open modal directly
-      if (def) {
-        openModal();
-      }
-      return;
+    let current = def;
+    if (!current) {
+      current = await loadDef();
     }
-    openModal();
+    if (current) {
+      openModalWith(current);
+    }
   }
 
   async function openModal() {
     if (!def) return;
+    openModalWith(def);
+  }
+
+  async function openModalWith(d: OutputDef) {
     setShowModal(true);
     setErr('');
-    setNewCode(def.documentCode || '');
+    setNewCode(d.documentCode || '');
     setSuggestingCode(true);
     try {
       const res = await apiFetch<{ suggestedCode: string; hasRule: boolean }>(
-        `/doc-export/outputs/${def.id}/suggest-code`
+        `/doc-export/outputs/${d.id}/suggest-code`
       );
       if (res && res.suggestedCode) {
-        if (!def.documentCode) setNewCode(res.suggestedCode);
+        if (!d.documentCode) setNewCode(res.suggestedCode);
         setHasRule(res.hasRule || false);
       }
     } catch (e: any) {
