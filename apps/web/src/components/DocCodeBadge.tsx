@@ -53,20 +53,32 @@ export default function DocCodeBadge({
     setLoadingDef(true);
     setErr('');
     try {
-      const results = await apiFetch<OutputDef[]>(
+      // First, try to find by module filter
+      let results = await apiFetch<OutputDef[]>(
         `/doc-export/outputs?module=${encodeURIComponent(module)}`
       );
       if (!Array.isArray(results)) {
         console.warn('[DocCodeBadge] GET /doc-export/outputs returned non-array:', results);
+        results = [];
       }
-      const found = Array.isArray(results) && results.length > 0
-        ? results.find((r) => r.outputKey === outputKey)
-        : null;
+      let found = results.find((r) => r.outputKey === outputKey) || null;
+
+      // If not found by module, try fetching all and search by outputKey
+      // (the output may exist under a different module name in the DB)
+      if (!found) {
+        const allResults = await apiFetch<OutputDef[]>('/doc-export/outputs');
+        if (Array.isArray(allResults)) {
+          found = allResults.find((r) => r.outputKey === outputKey) || null;
+        }
+      }
+
       if (found) {
         setDef(found);
         return found;
-      } else {
-        // Auto-create the output definition for this matrix
+      }
+
+      // Not found anywhere — auto-create
+      try {
         const created = await apiFetch<OutputDef>('/doc-export/outputs', {
           method: 'POST',
           json: {
@@ -80,10 +92,22 @@ export default function DocCodeBadge({
         if (created && created.id) {
           setDef(created);
           return created;
-        } else {
-          setErr('No se pudo crear la definición documental');
-          return null;
         }
+        setErr('No se pudo crear la definición documental');
+        return null;
+      } catch (postErr: any) {
+        // 409 = already exists — fetch it from the full list
+        if (postErr?.message?.includes('409') || postErr?.message?.includes('ya está en uso')) {
+          const allResults = await apiFetch<OutputDef[]>('/doc-export/outputs');
+          if (Array.isArray(allResults)) {
+            const existing = allResults.find((r) => r.outputKey === outputKey);
+            if (existing) {
+              setDef(existing);
+              return existing;
+            }
+          }
+        }
+        throw postErr;
       }
     } catch (e: any) {
       setErr(e?.message || 'Error al cargar definición documental');
