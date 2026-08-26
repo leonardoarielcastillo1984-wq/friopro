@@ -89,13 +89,13 @@ export default function DocCodeBadge({
   async function handleButtonClick() {
     if (!def) {
       await loadDef();
+      // After reload, if def is now available, open modal directly
+      if (def) {
+        openModal();
+      }
       return;
     }
-    if (!def.documentCode) {
-      openModal();
-    } else {
-      openModal();
-    }
+    openModal();
   }
 
   async function openModal() {
@@ -176,11 +176,11 @@ export default function DocCodeBadge({
       ) : (
         <button
           onClick={handleButtonClick}
-          title={def ? 'Asignar código documental a este módulo' : 'Clic para reintentar — ' + (err || 'cargando...')}
+          title="Asignar código documental a este módulo"
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
         >
           <Hash className="h-3 w-3" />
-          {def ? 'Asignar código' : (err ? 'Reintentar' : 'Asignar código')}
+          Asignar código
         </button>
       )}
 
