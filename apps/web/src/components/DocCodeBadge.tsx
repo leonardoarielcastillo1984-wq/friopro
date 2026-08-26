@@ -56,6 +56,9 @@ export default function DocCodeBadge({
       const results = await apiFetch<OutputDef[]>(
         `/doc-export/outputs?module=${encodeURIComponent(module)}`
       );
+      if (!Array.isArray(results)) {
+        console.warn('[DocCodeBadge] GET /doc-export/outputs returned non-array:', results);
+      }
       const found = Array.isArray(results) && results.length > 0
         ? results.find((r) => r.outputKey === outputKey)
         : null;
@@ -182,12 +185,17 @@ export default function DocCodeBadge({
       ) : (
         <button
           onClick={handleButtonClick}
-          title="Asignar código documental a este módulo"
+          title={err ? 'Error: ' + err + ' — clic para reintentar' : 'Asignar código documental a este módulo'}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
         >
           <Hash className="h-3 w-3" />
           Asignar código
         </button>
+      )}
+
+      {/* Error inline (visible sin modal) */}
+      {err && !showModal && (
+        <span className="text-[10px] text-red-500 ml-1" title={err}>⚠</span>
       )}
 
       {showModal && def && (
