@@ -2321,129 +2321,164 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const { context } = req.query as any;
+      const ctx = (context || '').toLowerCase();
       const db = app.prisma as any;
 
-      // Debug: check available models
-      console.log('[ContextualKPIs] Available db models:', Object.keys(db).filter(k => !k.startsWith('_')).slice(0, 20));
-      
-      // Gather data in parallel
-      const [vehicles, ncrs, projects, employees, capas, recentActions] = await Promise.allSettled([
-        db.vehiculo?.findMany({ where: { tenantId }, select: { status: true } }),
-        (db.nonConformityReport || db.ncr || db.nonConformity)?.findMany({ where: { tenantId }, select: { status: true, severity: true, createdAt: true }, take: 100, orderBy: { createdAt: 'desc' } }),
-        db.project360?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true, progress: true } }),
-        db.employee?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true } }),
-        (db.capa || db.correctiveAction)?.findMany({ where: { tenantId }, select: { status: true, dueDate: true }, take: 50 }),
-        db.notification?.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 10, select: { title: true, type: true, createdAt: true, metadata: true } }),
-      ]);
+      // Determine which modules are relevant based on the query context
+      const wantAudits = /audit|auditor|iso|hallazgo|plan.*accion|accion.*correct|compliance|norma/.test(ctx);
+      const wantFleet = /flota|vehic|camion|transporte|dominio|patente/.test(ctx);
+      const wantProjects = /proyect|avance|cronograma|hito/.test(ctx);
+      const wantHR = /empleado|personal|rrhh|capacit|competen|dotacion/.test(ctx);
+      const wantQuality = /ncr|no conform|capa|calidad|defecto|reclamo/.test(ctx);
+      const wantRisks = /riesgo|amenaza|vulnerab|impacto|probab/.test(ctx);
+      // If no specific context, show all (general dashboard)
+      const showAll = !ctx || (!wantAudits && !wantFleet && !wantProjects && !wantHR && !wantQuality && !wantRisks);
 
-      console.log('[ContextualKPIs] vehicles result:', vehicles);
-      console.log('[ContextualKPIs] db.vehiculo exists:', !!db.vehiculo);
-
-      const vList = vehicles.status === 'fulfilled' ? (vehicles.value || []) : [];
-      console.log('[ContextualKPIs] vList length:', vList.length);
-      const nList = ncrs.status === 'fulfilled' ? ncrs.value || [] : [];
-      const pList = projects.status === 'fulfilled' ? projects.value || [] : [];
-      const eList = employees.status === 'fulfilled' ? employees.value || [] : [];
-      const cList = capas.status === 'fulfilled' ? capas.value || [] : [];
-      const aList = recentActions.status === 'fulfilled' ? recentActions.value || [] : [];
-
-      // Calculate gauges
       const gauges: any[] = [];
       const kpis: any[] = [];
+      const activities: any[] = [];
 
-      // Fleet availability — status can be 'ACTIVO' or 'OPERATIVO'
-      if (vList.length > 0) {
-        const operative = vList.filter((v: any) => 
-          v.status === 'ACTIVO' || v.status === 'OPERATIVO'
-        ).length;
-        const availability = Math.round((operative / vList.length) * 100);
-        gauges.push({ value: availability, max: 100, label: 'Disponibilidad Flota', color: availability < 75 ? 'risk' : 'good' });
-        kpis.push({ title: 'Vehículos Operativos', value: `${operative}/${vList.length}`, trend: availability >= 85 ? 'up' : 'down', trendValue: `${availability}%`, icon: 'truck', color: '#f59e0b' });
+      // ── AUDITS ──────────────────────────────────────
+      if (wantAudits || showAll) {
+        try {
+          const [audits, findings, actionPlans] = await Promise.all([
+            db.$queryRaw`
+              SELECT status, type FROM audits
+              WHERE "tenantId" = ${tenantId}::uuid AND "deletedAt" IS NULL
+            `,
+            db.$queryRaw`
+              SELECT f.severity, f.status FROM audit_findings f
+              JOIN audits a ON a.id = f."auditId"
+              WHERE a."tenantId" = ${tenantId}::uuid AND f."deletedAt" IS NULL
+            `,
+            db.$queryRaw`
+              SELECT status, "plannedEndDate", "progressPercent" FROM action_plans
+              WHERE "tenantId" = ${tenantId}::uuid AND "deletedAt" IS NULL
+            `,
+          ]);
+
+          const auditList = audits || [];
+          const findingList = findings || [];
+          const planList = actionPlans || [];
+
+          if (auditList.length > 0) {
+            const completed = auditList.filter((a: any) => a.status === 'COMPLETED').length;
+            const scheduled = auditList.filter((a: any) => a.status === 'SCHEDULED').length;
+            const inProgress = auditList.filter((a: any) => a.status === 'IN_PROGRESS').length;
+            const completionRate = Math.round((completed / auditList.length) * 100);
+            gauges.push({ value: completionRate, max: 100, label: 'Auditorías Completadas', color: 'good' });
+            kpis.push({ title: 'Auditorías Total', value: auditList.length, trend: 'stable', icon: 'file', color: '#8b5cf6' });
+            kpis.push({ title: 'Programadas', value: scheduled, trend: 'up', trendValue: 'Pendiente', icon: 'file', color: '#3b82f6' });
+            kpis.push({ title: 'Completadas', value: completed, trend: 'up', icon: 'file', color: '#22c55e' });
+          }
+
+          if (findingList.length > 0) {
+            const open = findingList.filter((f: any) => f.status !== 'CLOSED').length;
+            const critical = findingList.filter((f: any) => f.severity === 'CRITICAL' || f.severity === 'HIGH').length;
+            const openRate = Math.round((open / findingList.length) * 100);
+            gauges.push({ value: openRate, max: 100, label: 'Hallazgos Abiertos', color: 'risk' });
+            kpis.push({ title: 'Hallazgos Total', value: findingList.length, trend: 'stable', icon: 'alert', color: '#f59e0b' });
+            kpis.push({ title: 'Hallazgos Críticos', value: critical, trend: critical > 0 ? 'down' : 'stable', trendValue: critical > 0 ? 'Atención' : 'OK', icon: 'shield', color: '#ef4444' });
+          }
+
+          if (planList.length > 0) {
+            const openPlans = planList.filter((p: any) => !['CLOSED', 'EFFECTIVE', 'NOT_EFFECTIVE', 'CANCELLED'].includes(p.status)).length;
+            const now = Date.now();
+            const overdue = planList.filter((p: any) =>
+              p.plannedEndDate && !['CLOSED', 'EFFECTIVE', 'NOT_EFFECTIVE', 'CANCELLED'].includes(p.status) &&
+              new Date(p.plannedEndDate).getTime() < now
+            ).length;
+            const avgProgress = planList.length > 0
+              ? Math.round(planList.reduce((s: number, p: any) => s + (p.progressPercent || 0), 0) / planList.length)
+              : 0;
+            gauges.push({ value: avgProgress, max: 100, label: 'Avance Planes', color: 'good' });
+            kpis.push({ title: 'Planes de Acción', value: planList.length, trend: 'stable', icon: 'zap', color: '#eab308' });
+            kpis.push({ title: 'Planes Atrasados', value: overdue, trend: overdue > 0 ? 'down' : 'stable', trendValue: overdue > 0 ? 'Crítico' : 'OK', icon: 'alert', color: '#ef4444' });
+          }
+        } catch (e) {
+          console.error('[ContextualKPIs] Audit data error:', e);
+        }
       }
 
-      // Quality NCR rate
-      if (nList.length > 0) {
-        const open = nList.filter((n: any) => n.status !== 'CLOSED').length;
-        const openRate = Math.round((open / Math.max(nList.length, 1)) * 100);
-        gauges.push({ value: openRate, max: 100, label: 'NCRs Abiertas', color: 'risk' });
-        kpis.push({ title: 'NCRs Abiertas', value: open, trend: open > 5 ? 'up' : 'stable', trendValue: open > 5 ? 'Alto' : 'Normal', icon: 'shield', color: '#ef4444' });
+      // ── FLEET ───────────────────────────────────────
+      if (wantFleet || showAll) {
+        try {
+          const vList = await db.vehiculo?.findMany({ where: { tenantId }, select: { status: true } }) || [];
+          if (vList.length > 0) {
+            const operative = vList.filter((v: any) => v.status === 'ACTIVO' || v.status === 'OPERATIVO').length;
+            const availability = Math.round((operative / vList.length) * 100);
+            gauges.push({ value: availability, max: 100, label: 'Disponibilidad Flota', color: availability < 75 ? 'risk' : 'good' });
+            kpis.push({ title: 'Vehículos Operativos', value: `${operative}/${vList.length}`, trend: availability >= 85 ? 'up' : 'down', trendValue: `${availability}%`, icon: 'truck', color: '#f59e0b' });
+          }
+        } catch {}
       }
 
-      // Project progress
-      if (pList.length > 0) {
-        const active = pList.filter((p: any) => !['COMPLETED', 'CANCELLED'].includes(p.status));
-        const avgProg = active.length > 0 ? Math.round(active.reduce((s: number, p: any) => s + (p.progress || 0), 0) / active.length) : 0;
-        gauges.push({ value: avgProg, max: 100, label: 'Progreso Proyectos', color: 'good' });
-        kpis.push({ title: 'Proyectos Activos', value: active.length, trend: avgProg >= 50 ? 'up' : 'down', trendValue: `${avgProg}%`, icon: 'kanban', color: '#06b6d4' });
+      // ── QUALITY / NCR ───────────────────────────────
+      if (wantQuality || showAll) {
+        try {
+          const ncrModel = db.nonConformityReport || db.ncr || db.nonConformity;
+          const nList = ncrModel ? await ncrModel.findMany({ where: { tenantId }, select: { status: true, severity: true, createdAt: true }, take: 100, orderBy: { createdAt: 'desc' } }) : [];
+          if (nList.length > 0) {
+            const open = nList.filter((n: any) => n.status !== 'CLOSED').length;
+            const openRate = Math.round((open / Math.max(nList.length, 1)) * 100);
+            gauges.push({ value: openRate, max: 100, label: 'NCRs Abiertas', color: 'risk' });
+            kpis.push({ title: 'NCRs Abiertas', value: open, trend: open > 5 ? 'up' : 'stable', trendValue: open > 5 ? 'Alto' : 'Normal', icon: 'shield', color: '#ef4444' });
+          }
+        } catch {}
       }
 
-      // CAPAs overdue
-      if (cList.length > 0) {
-        const overdue = cList.filter((c: any) => c.dueDate && new Date(c.dueDate) < new Date() && c.status !== 'CLOSED').length;
-        kpis.push({ title: 'CAPAs Vencidas', value: overdue, trend: overdue > 0 ? 'down' : 'stable', trendValue: overdue > 0 ? 'Atención' : 'OK', icon: 'zap', color: '#eab308' });
+      // ── PROJECTS ────────────────────────────────────
+      if (wantProjects || showAll) {
+        try {
+          const pList = await db.project360?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true, progress: true } }) || [];
+          if (pList.length > 0) {
+            const active = pList.filter((p: any) => !['COMPLETED', 'CANCELLED'].includes(p.status));
+            const avgProg = active.length > 0 ? Math.round(active.reduce((s: number, p: any) => s + (p.progress || 0), 0) / active.length) : 0;
+            gauges.push({ value: avgProg, max: 100, label: 'Progreso Proyectos', color: 'good' });
+            kpis.push({ title: 'Proyectos Activos', value: active.length, trend: avgProg >= 50 ? 'up' : 'down', trendValue: `${avgProg}%`, icon: 'kanban', color: '#06b6d4' });
+          }
+        } catch {}
       }
 
-      // HR headcount
-      if (eList.length > 0) {
-        const active = eList.filter((e: any) => e.status === 'ACTIVO').length;
-        kpis.push({ title: 'Dotación Activa', value: active, trend: 'stable', icon: 'users', color: '#ec4899' });
+      // ── HR ──────────────────────────────────────────
+      if (wantHR || showAll) {
+        try {
+          const eList = await db.employee?.findMany({ where: { tenantId, deletedAt: null }, select: { status: true } }) || [];
+          if (eList.length > 0) {
+            const active = eList.filter((e: any) => e.status === 'ACTIVO').length;
+            kpis.push({ title: 'Dotación Activa', value: active, trend: 'stable', icon: 'users', color: '#ec4899' });
+          }
+        } catch {}
       }
 
-      // Activity feed from notifications
-      const activities: any[] = aList.map((n: any) => {
-        const elapsed = Date.now() - new Date(n.createdAt).getTime();
-        const mins = Math.floor(elapsed / 60000);
-        let time = '';
-        if (mins < 60) time = `Hace ${mins} min`;
-        else if (mins < 1440) time = `Hace ${Math.floor(mins / 60)} h`;
-        else time = `Hace ${Math.floor(mins / 1440)} d`;
-
-        let type = 'activity';
-        const title = n.title || 'Actividad';
-        if (title.toLowerCase().includes('ncr')) type = 'ncr';
-        else if (title.toLowerCase().includes('audit')) type = 'audit';
-        else if (title.toLowerCase().includes('capa')) type = 'capa';
-        else if (title.toLowerCase().includes('flota') || title.toLowerCase().includes('vehículo')) type = 'fleet';
-        else if (title.toLowerCase().includes('proyecto')) type = 'project';
-        else if (title.toLowerCase().includes('alerta') || title.toLowerCase().includes('alert')) type = 'alert';
-
-        return { title, time, type, severity: n.metadata?.severity };
-      });
-
-      // If no notifications, generate activity from recent NCRs
-      if (activities.length === 0 && nList.length > 0) {
-        const recent = nList.slice(0, 5);
-        recent.forEach((n: any) => {
+      // ── ACTIVITY FEED ───────────────────────────────
+      try {
+        const aList = await db.notification?.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 8, select: { title: true, type: true, createdAt: true, metadata: true } }) || [];
+        aList.forEach((n: any) => {
           const elapsed = Date.now() - new Date(n.createdAt).getTime();
           const mins = Math.floor(elapsed / 60000);
           let time = '';
           if (mins < 60) time = `Hace ${mins} min`;
           else if (mins < 1440) time = `Hace ${Math.floor(mins / 60)} h`;
           else time = `Hace ${Math.floor(mins / 1440)} d`;
-          activities.push({ title: `NCR ${n.status === 'CLOSED' ? 'cerrada' : 'abierta'}`, time, type: 'ncr', severity: n.severity?.toLowerCase() });
+
+          let type = 'activity';
+          const title = n.title || 'Actividad';
+          const tl = title.toLowerCase();
+          if (tl.includes('ncr')) type = 'ncr';
+          else if (tl.includes('audit')) type = 'audit';
+          else if (tl.includes('capa')) type = 'capa';
+          else if (tl.includes('flota') || tl.includes('vehículo')) type = 'fleet';
+          else if (tl.includes('proyecto')) type = 'project';
+          else if (tl.includes('alerta') || tl.includes('alert')) type = 'alert';
+
+          activities.push({ title, time, type, severity: n.metadata?.severity });
         });
-      }
-
-      console.log('[ContextualKPIs] Final gauges:', gauges.length, 'kpis:', kpis.length);
-
-      const vehicleStatusCounts = vList.reduce((acc: any, v: any) => {
-        acc[v.status] = (acc[v.status] || 0) + 1;
-        return acc;
-      }, {});
+      } catch {}
 
       return reply.send({
         success: true,
-        data: { 
-          gauges, 
-          kpis, 
-          activities,
-          debug: {  // <-- moved inside data (no underscore)
-            vehicleCount: vList.length,
-            vehicleStatusCounts,
-            tenantId,
-            vListSample: vList.slice(0, 3), // first 3 vehicles for inspection
-          }
-        },
+        data: { gauges, kpis, activities },
       });
     } catch (error: any) {
       return reply.code(500).send({ success: false, error: error.message });
