@@ -2317,7 +2317,11 @@ export async function commandCenterRoutes(app: FastifyInstance) {
 
   app.get('/contextual-kpis', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      let tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) {
+        const headerTid = req.headers['x-tenant-id'] as string | undefined;
+        if (headerTid) tenantId = headerTid;
+      }
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const { context } = req.query as any;
