@@ -947,12 +947,12 @@ export class AIOrchestrator {
             try {
               // 1. Resumen de auditorías
               const audits = await this.prisma.$queryRaw<any[]>`
-                SELECT a.title, a.status, a.type, a."plannedDate", a."completedDate",
-                       a.scope, a.summary
+                SELECT a.title, a.status, a.type, a."plannedStartDate", a."actualEndDate",
+                       a.scope, a.area, a.process
                 FROM audits a
                 WHERE a."tenantId" = ${tenantId}::uuid
                   AND a."deletedAt" IS NULL
-                ORDER BY a."plannedDate" DESC NULLS LAST
+                ORDER BY a."plannedStartDate" DESC NULLS LAST
                 LIMIT 20
               `;
               if (audits.length > 0) {
@@ -960,7 +960,7 @@ export class AIOrchestrator {
                 audits.forEach((a: any) => { byStatus[a.status] = (byStatus[a.status] || 0) + 1; });
                 const statusStr = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ');
                 const recent = audits.slice(0, 5).map((a: any) =>
-                  `• ${a.title} (${a.type}, ${a.status}, ${a.plannedDate ? new Date(a.plannedDate).toLocaleDateString('es-AR') : 'sin fecha'})${a.scope ? ` — Alcance: ${a.scope}` : ''}`
+                  `• ${a.title} (${a.type}, ${a.status}, ${a.plannedStartDate ? new Date(a.plannedStartDate).toLocaleDateString('es-AR') : 'sin fecha'})${a.scope ? ` — Alcance: ${a.scope}` : ''}`
                 ).join('\n');
                 dataSections.push(`Auditorías — Total: ${audits.length} (${statusStr})\n${recent}`);
               }
