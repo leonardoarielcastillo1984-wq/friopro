@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { apiFetch } from '@/lib/api';
+import { getTenantId } from '@/lib/api';
 import {
   TrendingUp, TrendingDown, AlertTriangle, Activity, Shield,
   Truck, Users, Kanban, FileText, Clock, Zap, RefreshCw,
   ArrowUpRight, ArrowDownRight, Minus, Eye
 } from 'lucide-react';
-import SparkLine from './SparkLine';
 
 // ── Circular Gauge Component ─────────────────────────────────
 function CircularGauge({ value, max = 100, label, color, size = 80, suffix = '%' }: {
@@ -144,20 +143,30 @@ export default function ContextualKPIPanel({ lastQuery }: { lastQuery?: string }
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch('/command-center/contextual-kpis' + (lastQuery ? `?context=${encodeURIComponent(lastQuery)}` : '')) as any;
-      console.log('[ContextualKPIPanel] API response:', res);
-      console.log('[ContextualKPIPanel] Debug info:', res?._debug);
+      const tid = getTenantId();
+      const headers: Record<string, string> = {};
+      if (tid) headers['x-tenant-id'] = tid;
+      if (typeof window !== 'undefined') {
+        const token = window.localStorage.getItem('accessToken');
+        if (token) headers['authorization'] = `Bearer ${token}`;
+      }
+
+      const url = '/api/command-center/contextual-kpis' + (lastQuery ? `?context=${encodeURIComponent(lastQuery)}` : '');
+      const res = await fetch(url, { headers, credentials: 'include' });
+      const text = await res.text();
       
-      if (res?.success && res?.data) {
-        setData(res.data);
-        console.log('[ContextualKPIPanel] Data set:', res.data);
-        console.log('[ContextualKPIPanel] Gauges:', res.data.gauges);
-        console.log('[ContextualKPIPanel] KPIs:', res.data.kpis);
-      } else if (res?.data) {
-        // Fallback for different response structure
-        setData(res.data);
+      if (!res.ok) {
+        console.warn('[ContextualKPIPanel] HTTP', res.status, text.substring(0, 200));
+        setData(null);
+        return;
+      }
+
+      const json = text ? JSON.parse(text) : null;
+      if (json?.success && json?.data) {
+        setData(json.data);
+      } else if (json?.data) {
+        setData(json.data);
       } else {
-        console.warn('[ContextualKPIPanel] No data in response');
         setData(null);
       }
     } catch (err) {
