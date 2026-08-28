@@ -2328,11 +2328,17 @@ export async function commandCenterRoutes(app: FastifyInstance) {
       const wantAudits = /audit|auditor|iso|hallazgo|plan.*accion|accion.*correct|compliance|norma/.test(ctx);
       const wantFleet = /flota|vehic|camion|transporte|dominio|patente/.test(ctx);
       const wantProjects = /proyect|avance|cronograma|hito/.test(ctx);
-      const wantHR = /empleado|personal|rrhh|capacit|competen|dotacion/.test(ctx);
+      const wantHR = /empleado|personal|rrhh|dotacion/.test(ctx);
       const wantQuality = /ncr|no conform|capa|calidad|defecto|reclamo/.test(ctx);
       const wantRisks = /riesgo|amenaza|vulnerab|impacto|probab/.test(ctx);
+      const wantDocs = /document|procedimient|manual|instructivo|registro|revision/.test(ctx);
+      const wantTrainings = /capacit|curso|entrenam|formacion/.test(ctx);
+      const wantObjectives = /objetivo|meta|iniciativ|estrateg/.test(ctx);
+      const wantChanges = /cambio|modific|actualiz/.test(ctx);
+      const wantProcesses = /proceso|mapa.*proceso|macroproceso|subproceso/.test(ctx);
+      const wantIndicators = /indicador|kpi|metrica|medicion/.test(ctx);
       // If no specific context, show all (general dashboard)
-      const showAll = !ctx || (!wantAudits && !wantFleet && !wantProjects && !wantHR && !wantQuality && !wantRisks);
+      const showAll = !ctx || (!wantAudits && !wantFleet && !wantProjects && !wantHR && !wantQuality && !wantRisks && !wantDocs && !wantTrainings && !wantObjectives && !wantChanges && !wantProcesses && !wantIndicators);
 
       const gauges: any[] = [];
       const kpis: any[] = [];
@@ -2447,6 +2453,137 @@ export async function commandCenterRoutes(app: FastifyInstance) {
           if (eList.length > 0) {
             const active = eList.filter((e: any) => e.status === 'ACTIVO').length;
             kpis.push({ title: 'Dotación Activa', value: active, trend: 'stable', icon: 'users', color: '#ec4899' });
+          }
+        } catch {}
+      }
+
+      // ── DOCUMENTS ───────────────────────────────────
+      if (wantDocs || showAll) {
+        try {
+          const docs = await db.$queryRaw`
+            SELECT status, "nextReviewDate" FROM "Document"
+            WHERE "tenantId" = ${tenantId}::uuid AND "deletedAt" IS NULL
+          `;
+          const docList = docs as any[];
+          if (docList.length > 0) {
+            const approved = docList.filter((d: any) => d.status === 'APPROVED' || d.status === 'PUBLISHED').length;
+            const draft = docList.filter((d: any) => d.status === 'DRAFT').length;
+            const now = new Date();
+            const overdue = docList.filter((d: any) => d.nextReviewDate && new Date(d.nextReviewDate) < now).length;
+            const approvalRate = Math.round((approved / docList.length) * 100);
+            gauges.push({ value: approvalRate, max: 100, label: 'Docs Aprobados', color: 'good' });
+            kpis.push({ title: 'Documentos Total', value: docList.length, trend: 'stable', icon: 'file', color: '#3b82f6' });
+            if (overdue > 0) kpis.push({ title: 'Revisión Vencida', value: overdue, trend: 'down', trendValue: 'Atención', icon: 'alert', color: '#ef4444' });
+          }
+        } catch {}
+      }
+
+      // ── TRAININGS ───────────────────────────────────
+      if (wantTrainings || showAll) {
+        try {
+          const trainings = await db.$queryRaw`
+            SELECT status FROM "SgiTraining"
+            WHERE "tenantId" = ${tenantId}::uuid
+          `;
+          const tList = trainings as any[];
+          if (tList.length > 0) {
+            const scheduled = tList.filter((t: any) => t.status === 'SCHEDULED').length;
+            const completed = tList.filter((t: any) => t.status === 'COMPLETED').length;
+            const inProgress = tList.filter((t: any) => t.status === 'IN_PROGRESS').length;
+            kpis.push({ title: 'Capacitaciones', value: tList.length, trend: 'stable', icon: 'activity', color: '#8b5cf6' });
+            kpis.push({ title: 'Programadas', value: scheduled, trend: 'up', icon: 'activity', color: '#3b82f6' });
+          }
+        } catch {}
+      }
+
+      // ── OBJECTIVES ──────────────────────────────────
+      if (wantObjectives || showAll) {
+        try {
+          const objectives = await db.$queryRaw`
+            SELECT status, "progressPercent", "targetDate" FROM sgi_objectives
+            WHERE "tenantId" = ${tenantId}::uuid AND "deletedAt" IS NULL
+          `;
+          const oList = objectives as any[];
+          if (oList.length > 0) {
+            const completed = oList.filter((o: any) => o.status === 'COMPLETED').length;
+            const inProgress = oList.filter((o: any) => o.status === 'IN_PROGRESS' || o.status === 'ACTIVE').length;
+            const now = Date.now();
+            const overdue = oList.filter((o: any) =>
+              o.targetDate && !['COMPLETED', 'CANCELLED'].includes(o.status) &&
+              new Date(o.targetDate).getTime() < now
+            ).length;
+            const avgProgress = Math.round(oList.reduce((s: number, o: any) => s + (o.progressPercent || 0), 0) / oList.length);
+            gauges.push({ value: avgProgress, max: 100, label: 'Avance Objetivos', color: 'good' });
+            kpis.push({ title: 'Objetivos', value: oList.length, trend: 'stable', icon: 'trending', color: '#06b6d4' });
+            if (overdue > 0) kpis.push({ title: 'Objetivos Atrasados', value: overdue, trend: 'down', trendValue: 'Crítico', icon: 'alert', color: '#ef4444' });
+          }
+        } catch {}
+      }
+
+      // ── CHANGES ─────────────────────────────────────
+      if (wantChanges || showAll) {
+        try {
+          const changes = await db.$queryRaw`
+            SELECT status, priority FROM gestion_cambio_documento
+            WHERE "tenantId" = ${tenantId}::uuid
+          `;
+          const cList = changes as any[];
+          if (cList.length > 0) {
+            const open = cList.filter((c: any) => !['IMPLEMENTED', 'REJECTED', 'CANCELLED'].includes(c.status)).length;
+            const high = cList.filter((c: any) => c.priority === 'HIGH' || c.priority === 'CRITICAL').length;
+            kpis.push({ title: 'Gestión de Cambios', value: cList.length, trend: 'stable', icon: 'activity', color: '#f59e0b' });
+            if (open > 0) kpis.push({ title: 'Cambios Pendientes', value: open, trend: 'up', icon: 'zap', color: '#eab308' });
+          }
+        } catch {}
+      }
+
+      // ── PROCESSES ───────────────────────────────────
+      if (wantProcesses || showAll) {
+        try {
+          const processes = await db.$queryRaw`
+            SELECT p.layer, p.status FROM processes p
+            JOIN process_maps pm ON pm.id = p."processMapId"
+            WHERE pm."tenantId" = ${tenantId}::uuid AND p."deletedAt" IS NULL AND p."parentId" IS NULL
+          `;
+          const pList = processes as any[];
+          if (pList.length > 0) {
+            kpis.push({ title: 'Macroprocesos', value: pList.length, trend: 'stable', icon: 'kanban', color: '#8b5cf6' });
+          }
+        } catch {}
+      }
+
+      // ── INDICATORS ──────────────────────────────────
+      if (wantIndicators || showAll) {
+        try {
+          const indicators = await db.$queryRaw`
+            SELECT "currentValue", "targetValue", status FROM seh_indicators
+            WHERE "tenantId" = ${tenantId}::uuid AND "deletedAt" IS NULL
+          `;
+          const iList = indicators as any[];
+          if (iList.length > 0) {
+            const onTarget = iList.filter((i: any) =>
+              i.targetValue && i.currentValue != null &&
+              i.targetValue > 0 && (i.currentValue / i.targetValue) >= 1
+            ).length;
+            const onTargetRate = Math.round((onTarget / iList.length) * 100);
+            gauges.push({ value: onTargetRate, max: 100, label: 'Indicadores en Meta', color: 'good' });
+            kpis.push({ title: 'Indicadores', value: iList.length, trend: 'stable', icon: 'trending', color: '#22c55e' });
+            kpis.push({ title: 'En Meta', value: onTarget, trend: onTargetRate >= 70 ? 'up' : 'down', trendValue: `${onTargetRate}%`, icon: 'trending', color: '#22c55e' });
+          }
+        } catch {}
+      }
+
+      // ── RISKS ───────────────────────────────────────
+      if (wantRisks || showAll) {
+        try {
+          const risks = await db.risk?.findMany({ where: { tenantId }, select: { level: true, status: true }, take: 100 }) || [];
+          if (risks.length > 0) {
+            const high = risks.filter((r: any) => r.level === 'HIGH' || r.level === 'CRITICAL').length;
+            const open = risks.filter((r: any) => r.status !== 'CLOSED' && r.status !== 'MITIGATED').length;
+            const highRate = Math.round((high / risks.length) * 100);
+            gauges.push({ value: highRate, max: 100, label: 'Riesgos Altos', color: 'risk' });
+            kpis.push({ title: 'Riesgos Totales', value: risks.length, trend: 'stable', icon: 'shield', color: '#f59e0b' });
+            if (high > 0) kpis.push({ title: 'Riesgos Altos', value: high, trend: 'down', trendValue: 'Atención', icon: 'alert', color: '#ef4444' });
           }
         } catch {}
       }
