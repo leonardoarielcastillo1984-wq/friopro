@@ -945,20 +945,82 @@ export class AIOrchestrator {
 
           case 'audits': {
             try {
+              // 1. Resumen de auditorías
+              const audits = await this.prisma.$queryRaw<any[]>`
+                SELECT a.title, a.status, a.type, a."plannedDate", a."completedDate",
+                       a.scope, a.summary
+                FROM audits a
+                WHERE a."tenantId" = ${tenantId}::uuid
+                  AND a."deletedAt" IS NULL
+                ORDER BY a."plannedDate" DESC NULLS LAST
+                LIMIT 20
+              `;
+              if (audits.length > 0) {
+                const byStatus: Record<string, number> = {};
+                audits.forEach((a: any) => { byStatus[a.status] = (byStatus[a.status] || 0) + 1; });
+                const statusStr = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ');
+                const recent = audits.slice(0, 5).map((a: any) =>
+                  `• ${a.title} (${a.type}, ${a.status}, ${a.plannedDate ? new Date(a.plannedDate).toLocaleDateString('es-AR') : 'sin fecha'})${a.scope ? ` — Alcance: ${a.scope}` : ''}`
+                ).join('\n');
+                dataSections.push(`Auditorías — Total: ${audits.length} (${statusStr})\n${recent}`);
+              }
+
+              // 2. Hallazgos de auditoría
               const findings = await this.prisma.$queryRaw<any[]>`
-                SELECT f.title, f.severity, f.status, f.description
+                SELECT f.description, f.severity, f.status, f.type, f.area, f.process,
+                       f.clause, f."detectedAt"
                 FROM audit_findings f
                 JOIN audits a ON a.id = f."auditId"
                 WHERE a."tenantId" = ${tenantId}::uuid
-                  AND f.status != 'CLOSED'
+                  AND f."deletedAt" IS NULL
                 ORDER BY f."createdAt" DESC
-                LIMIT 20
+                LIMIT 30
               `;
               if (findings.length > 0) {
                 const openFindings = findings.filter((f: any) => f.status !== 'CLOSED').length;
-                dataSections.push(`Auditorías — Hallazgos abiertos: ${openFindings}. Ejemplos: ${findings.slice(0,5).map((f: any) => `${f.title} (${f.severity})`).join(', ')}`);
+                const closedFindings = findings.filter((f: any) => f.status === 'CLOSED').length;
+                const bySeverity: Record<string, number> = {};
+                findings.forEach((f: any) => { bySeverity[f.severity] = (bySeverity[f.severity] || 0) + 1; });
+                const sevStr = Object.entries(bySeverity).map(([s, c]) => `${s}: ${c}`).join(', ');
+                const examples = findings.slice(0, 8).map((f: any) =>
+                  `• [${f.severity}/${f.status}] ${f.description?.substring(0, 100) || 'sin descripción'}${f.area ? ` — Área: ${f.area}` : ''}${f.clause ? ` — Cláusula: ${f.clause}` : ''}`
+                ).join('\n');
+                dataSections.push(`Hallazgos de auditoría — Total: ${findings.length} (Abiertos: ${openFindings}, Cerrados: ${closedFindings}, ${sevStr})\n${examples}`);
               }
-            } catch {}
+
+              // 3. Planes de acción
+              const actionPlans = await this.prisma.$queryRaw<any[]>`
+                SELECT ap.code, ap.status, ap.severity, ap."findingDescription",
+                       ap."plannedEndDate", ap."actualEndDate", ap."progressPercent",
+                       ap."executorNameText", ap.area, ap.process
+                FROM action_plans ap
+                WHERE ap."tenantId" = ${tenantId}::uuid
+                  AND ap."deletedAt" IS NULL
+                ORDER BY ap."openedAt" DESC
+                LIMIT 30
+              `;
+              if (actionPlans.length > 0) {
+                const openPlans = actionPlans.filter((p: any) => !['CLOSED', 'EFFECTIVE', 'NOT_EFFECTIVE', 'CANCELLED'].includes(p.status)).length;
+                const byStatus: Record<string, number> = {};
+                actionPlans.forEach((p: any) => { byStatus[p.status] = (byStatus[p.status] || 0) + 1; });
+                const statusStr = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ');
+                const overdue = actionPlans.filter((p: any) =>
+                  p.plannedEndDate && !p.actualEndDate &&
+                  !['CLOSED', 'EFFECTIVE', 'NOT_EFFECTIVE', 'CANCELLED'].includes(p.status) &&
+                  new Date(p.plannedEndDate).getTime() < Date.now()
+                ).length;
+                const examples = actionPlans.slice(0, 8).map((p: any) =>
+                  `• ${p.code || 'sin código'} (${p.status}, ${p.severity || 'N/A'})${p.findingDescription ? ` — ${p.findingDescription.substring(0, 80)}` : ''}${p.plannedEndDate ? ` — Vence: ${new Date(p.plannedEndDate).toLocaleDateString('es-AR')}` : ''}${p.progressPercent != null ? ` — ${p.progressPercent}%` : ''}`
+                ).join('\n');
+                dataSections.push(`Planes de acción — Total: ${actionPlans.length} (Abiertos: ${openPlans}, Atrasados: ${overdue}, ${statusStr})\n${examples}`);
+              }
+
+              if (audits.length === 0 && findings.length === 0 && actionPlans.length === 0) {
+                dataSections.push('Auditorías — Sin datos de auditorías, hallazgos ni planes de acción en el sistema.');
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching audit context:', e);
+            }
             break;
           }
         }
