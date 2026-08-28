@@ -823,7 +823,7 @@ export class AIOrchestrator {
     
     try {
       // Cargar todos los módulos en paralelo siempre
-      const allModules = ['project360', 'risks', 'hr', 'flota360', 'quality', 'inspections', 'audits'];
+      const allModules = ['project360', 'risks', 'hr', 'flota360', 'quality', 'ncr', 'inspections', 'audits', 'documents', 'trainings', 'objectives', 'changes', 'processes', 'indicators'];
       for (const module of allModules) {
         switch (module) {
           case 'project360':
@@ -1020,6 +1020,168 @@ export class AIOrchestrator {
               }
             } catch (e) {
               console.error('[AI Orchestrator] Error fetching audit context:', e);
+            }
+            break;
+          }
+
+          case 'documents': {
+            try {
+              const docs = await this.prisma.$queryRaw<any[]>`
+                SELECT d.title, d.status, d."documentCode", d.type, d."version",
+                       d."nextReviewDate", d."approvedAt"
+                FROM "Document" d
+                WHERE d."tenantId" = ${tenantId}::uuid
+                  AND d."deletedAt" IS NULL
+                ORDER BY d."updatedAt" DESC
+                LIMIT 20
+              `;
+              if (docs.length > 0) {
+                const byStatus: Record<string, number> = {};
+                docs.forEach((d: any) => { byStatus[d.status] = (byStatus[d.status] || 0) + 1; });
+                const statusStr = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ');
+                const now = new Date();
+                const overdue = docs.filter((d: any) => d.nextReviewDate && new Date(d.nextReviewDate) < now).length;
+                const examples = docs.slice(0, 8).map((d: any) =>
+                  `• ${d.title} (${d.documentCode || 'sin código'}, ${d.status}, v${d.version || '1'})${d.nextReviewDate ? ` — Próx. revisión: ${new Date(d.nextReviewDate).toLocaleDateString('es-AR')}` : ''}`
+                ).join('\n');
+                dataSections.push(`Documentos — Total: ${docs.length} (${statusStr})${overdue > 0 ? `, ${overdue} con revisión vencida` : ''}\n${examples}`);
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching documents context:', e);
+            }
+            break;
+          }
+
+          case 'trainings': {
+            try {
+              const trainings = await this.prisma.$queryRaw<any[]>`
+                SELECT t.title, t.status, t."startDate", t."endDate",
+                       t."trainingType", t.mode
+                FROM "SgiTraining" t
+                WHERE t."tenantId" = ${tenantId}::uuid
+                ORDER BY t."startDate" DESC NULLS LAST
+                LIMIT 20
+              `;
+              if (trainings.length > 0) {
+                const byStatus: Record<string, number> = {};
+                trainings.forEach((t: any) => { byStatus[t.status] = (byStatus[t.status] || 0) + 1; });
+                const statusStr = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ');
+                const examples = trainings.slice(0, 8).map((t: any) =>
+                  `• ${t.title} (${t.status}, ${t.trainingType || 'N/A'})${t.startDate ? ` — Inicio: ${new Date(t.startDate).toLocaleDateString('es-AR')}` : ''}`
+                ).join('\n');
+                dataSections.push(`Capacitaciones — Total: ${trainings.length} (${statusStr})\n${examples}`);
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching trainings context:', e);
+            }
+            break;
+          }
+
+          case 'objectives': {
+            try {
+              const objectives = await this.prisma.$queryRaw<any[]>`
+                SELECT o.title, o.status, o."progressPercent", o."targetDate",
+                       o."ownerName", o.area, o."priority"
+                FROM sgi_objectives o
+                WHERE o."tenantId" = ${tenantId}::uuid
+                  AND o."deletedAt" IS NULL
+                ORDER BY o."targetDate" DESC NULLS LAST
+                LIMIT 20
+              `;
+              if (objectives.length > 0) {
+                const byStatus: Record<string, number> = {};
+                objectives.forEach((o: any) => { byStatus[o.status] = (byStatus[o.status] || 0) + 1; });
+                const statusStr = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ');
+                const now = Date.now();
+                const overdue = objectives.filter((o: any) =>
+                  o.targetDate && !['COMPLETED', 'CANCELLED'].includes(o.status) &&
+                  new Date(o.targetDate).getTime() < now
+                ).length;
+                const examples = objectives.slice(0, 8).map((o: any) =>
+                  `• ${o.title} (${o.status}, ${o.progressPercent || 0}%)${o.targetDate ? ` — Meta: ${new Date(o.targetDate).toLocaleDateString('es-AR')}` : ''}${o.ownerName ? ` — Resp: ${o.ownerName}` : ''}`
+                ).join('\n');
+                dataSections.push(`Objetivos — Total: ${objectives.length} (${statusStr})${overdue > 0 ? `, ${overdue} atrasados` : ''}\n${examples}`);
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching objectives context:', e);
+            }
+            break;
+          }
+
+          case 'changes': {
+            try {
+              const changes = await this.prisma.$queryRaw<any[]>`
+                SELECT gc.title, gc.status, gc."changeType", gc.priority,
+                       gc."requestedBy", gc."implementedBy", gc."targetDate"
+                FROM gestion_cambio_documento gc
+                WHERE gc."tenantId" = ${tenantId}::uuid
+                ORDER BY gc."createdAt" DESC
+                LIMIT 15
+              `;
+              if (changes.length > 0) {
+                const byStatus: Record<string, number> = {};
+                changes.forEach((c: any) => { byStatus[c.status] = (byStatus[c.status] || 0) + 1; });
+                const statusStr = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ');
+                const examples = changes.slice(0, 6).map((c: any) =>
+                  `• ${c.title} (${c.status}, ${c.changeType || 'N/A'}, prioridad ${c.priority || 'N/A'})`
+                ).join('\n');
+                dataSections.push(`Gestión de Cambios — Total: ${changes.length} (${statusStr})\n${examples}`);
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching changes context:', e);
+            }
+            break;
+          }
+
+          case 'processes': {
+            try {
+              const processes = await this.prisma.$queryRaw<any[]>`
+                SELECT p.name, p.layer, p."responsibleName", p.status
+                FROM processes p
+                JOIN process_maps pm ON pm.id = p."processMapId"
+                WHERE pm."tenantId" = ${tenantId}::uuid
+                  AND p."deletedAt" IS NULL
+                  AND p."parentId" IS NULL
+                ORDER BY p.layer, p."order"
+                LIMIT 20
+              `;
+              if (processes.length > 0) {
+                const byLayer: Record<string, number> = {};
+                processes.forEach((p: any) => { byLayer[p.layer] = (byLayer[p.layer] || 0) + 1; });
+                const layerStr = Object.entries(byLayer).map(([l, c]) => `${l}: ${c}`).join(', ');
+                const examples = processes.slice(0, 10).map((p: any) =>
+                  `• ${p.name} (${p.layer}, ${p.status || 'N/A'})${p.responsibleName ? ` — Resp: ${p.responsibleName}` : ''}`
+                ).join('\n');
+                dataSections.push(`Mapa de Procesos — Macroprocesos: ${processes.length} (${layerStr})\n${examples}`);
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching processes context:', e);
+            }
+            break;
+          }
+
+          case 'indicators': {
+            try {
+              const indicators = await this.prisma.$queryRaw<any[]>`
+                SELECT i.name, i.unit, i."targetValue", i."currentValue",
+                       i.frequency, i.status, i.area
+                FROM seh_indicators i
+                WHERE i."tenantId" = ${tenantId}::uuid
+                  AND i."deletedAt" IS NULL
+                ORDER BY i."updatedAt" DESC
+                LIMIT 20
+              `;
+              if (indicators.length > 0) {
+                const examples = indicators.slice(0, 10).map((i: any) => {
+                  const target = i.targetValue != null ? `/${i.targetValue}` : '';
+                  const pct = (i.targetValue && i.currentValue != null && i.targetValue > 0)
+                    ? Math.round((i.currentValue / i.targetValue) * 100) : null;
+                  return `• ${i.name} (${i.unit || 'N/A'}): ${i.currentValue ?? 'N/A'}${target}${pct != null ? ` (${pct}%)` : ''}${i.area ? ` — ${i.area}` : ''}`;
+                }).join('\n');
+                dataSections.push(`Indicadores — Total: ${indicators.length}\n${examples}`);
+              }
+            } catch (e) {
+              console.error('[AI Orchestrator] Error fetching indicators context:', e);
             }
             break;
           }
