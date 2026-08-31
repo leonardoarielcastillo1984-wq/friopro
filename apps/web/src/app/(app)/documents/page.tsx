@@ -763,6 +763,8 @@ export default function DocumentsPage() {
               <label className="block text-sm font-medium text-neutral-700 mb-1">Próxima revisión</label>
               <input
                 type="date"
+                min="1900-01-01"
+                max="2200-12-31"
                 className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                 value={uploadNextReviewDate}
                 onChange={(e) => setUploadNextReviewDate(e.target.value)}

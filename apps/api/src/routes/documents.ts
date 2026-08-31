@@ -11,6 +11,23 @@ import { requiresTenantContext, getEffectiveTenantId } from '../utils/tenant-byp
 import { checkStorageQuota, incrementStorageUsed, decrementStorageUsed } from '../services/storage-usage.js';
 import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
+// Fechas de <input type="date"> pueden llegar corruptas por bugs del navegador
+// (ej: "12027-02-03" con un dígito extra en el año). Prisma rechaza esos valores
+// con un error críptico al hacer document.create(). Validamos rango razonable.
+function safeParseDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const match = /^(\d{1,6})-(\d{2})-(\d{2})/.exec(value);
+  if (match) {
+    const year = parseInt(match[1], 10);
+    if (year < 1900 || year > 2200) return null;
+  }
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return null;
+  const y = date.getUTCFullYear();
+  if (y < 1900 || y > 2200) return null;
+  return date;
+}
+
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
@@ -236,8 +253,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           normativeId: body.normativeId,
           process: body.process,
           ownerId: body.ownerId,
-          reviewDate: body.reviewDate ? new Date(body.reviewDate) : null,
-          nextReviewDate: body.nextReviewDate ? new Date(body.nextReviewDate) : null,
+          reviewDate: safeParseDate(body.reviewDate),
+          nextReviewDate: safeParseDate(body.nextReviewDate),
           reviewStatus: (body.reviewStatus as any) ?? 'APPROVED',
           status: 'DRAFT',
           version: 1,
@@ -309,8 +326,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
             : (body.normativeId !== undefined ? body.normativeId : existing.normativeId),
           process: body.process !== undefined ? body.process : existing.process,
           ownerId: validOwnerId,
-          reviewDate: body.reviewDate !== undefined ? (body.reviewDate ? new Date(body.reviewDate) : null) : existing.reviewDate,
-          nextReviewDate: body.nextReviewDate !== undefined ? (body.nextReviewDate ? new Date(body.nextReviewDate) : null) : existing.nextReviewDate,
+          reviewDate: body.reviewDate !== undefined ? safeParseDate(body.reviewDate) : existing.reviewDate,
+          nextReviewDate: body.nextReviewDate !== undefined ? safeParseDate(body.nextReviewDate) : existing.nextReviewDate,
           reviewStatus: (body.reviewStatus as any) ?? existing.reviewStatus,
           documentQualityStatus: (body.documentQualityStatus as any) ?? existing.documentQualityStatus,
           updatedById: req.auth?.userId ?? null,
@@ -401,7 +418,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           normativeIds: body.normativeIds ?? [],
           process: body.process ?? null,
           ownerId: body.ownerId ?? null,
-          nextReviewDate: body.nextReviewDate ? new Date(body.nextReviewDate) : null,
+          nextReviewDate: safeParseDate(body.nextReviewDate),
           documentCode: body.documentCode ?? null,
           typeConfigId: body.typeConfigId ?? null,
           reviewStatus: 'APPROVED',
@@ -537,6 +554,16 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const documentCode = (data.fields?.documentCode as any)?.value || null;
     const typeConfigId = (data.fields?.typeConfigId as any)?.value || null;
 
+    // Validar fechas: un año corrupto (ej: bug del navegador en <input type="date">)
+    // debe devolver un mensaje claro, no un error de Prisma. El archivo ya se guardó
+    // en disco y se contabilizó en la cuota — hay que revertir ambas cosas si falla.
+    if ((reviewDate && !safeParseDate(reviewDate)) || (nextReviewDate && !safeParseDate(nextReviewDate))) {
+      try { await fs.unlink(filePath); } catch { /* ok si ya no existe */ }
+      try { await decrementStorageUsed((app as any).prisma, tenantId, fileBuffer.length); } catch { /* no bloquear */ }
+      const badField = (reviewDate && !safeParseDate(reviewDate)) ? 'revisión' : 'próxima revisión';
+      return reply.code(400).send({ error: `La fecha de ${badField} no es válida. Verificala e intentá nuevamente.` });
+    }
+
     // Validar ownerId - si no existe en PlatformUser, usar null
     if (ownerId) {
       const ownerExists = await (app.prisma as any).platformUser.findUnique({
@@ -562,8 +589,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           normativeIds: normativeIds.length > 0 ? normativeIds : (normativeId ? [normativeId] : []),
           process: docProcess,
           ownerId,
-          reviewDate: reviewDate ? new Date(reviewDate) : null,
-          nextReviewDate: nextReviewDate ? new Date(nextReviewDate) : null,
+          reviewDate: safeParseDate(reviewDate),
+          nextReviewDate: safeParseDate(nextReviewDate),
           documentCode: documentCode || null,
           typeConfigId: typeConfigId || null,
           reviewStatus: 'APPROVED',
@@ -867,7 +894,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
       // Actualizar fechas de revisión en el documento
       const now = new Date();
-      const nextDate = body.nextReviewDate ? new Date(body.nextReviewDate) : (doc.nextReviewDate ? new Date(doc.nextReviewDate) : null);
+      const nextDate = body.nextReviewDate ? safeParseDate(body.nextReviewDate) : (doc.nextReviewDate ? new Date(doc.nextReviewDate) : null);
       await tx.document.update({
         where: { id },
         data: {
@@ -1827,7 +1854,7 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
         ...(data.approvedAt !== undefined && { approvedAt: data.approvedAt ? new Date(data.approvedAt) : null }),
         ...(data.approvedById !== undefined && { approvedById: data.approvedById }),
         ...(data.relatedDocumentId !== undefined && { relatedDocumentId: data.relatedDocumentId }),
-        ...(data.nextReviewDate !== undefined && { nextReviewDate: data.nextReviewDate ? new Date(data.nextReviewDate) : null }),
+        ...(data.nextReviewDate !== undefined && { nextReviewDate: safeParseDate(data.nextReviewDate) }),
         ...(data.process !== undefined && { process: data.process }),
         ...(data.status !== undefined && { status: data.status as any }),
         ...(data.systemModuleUrl !== undefined && { systemModuleUrl: data.systemModuleUrl || null }),
