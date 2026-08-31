@@ -428,8 +428,11 @@ function CreateAccessModal({ onClose, onCreated }: { onClose: () => void; onCrea
             <input placeholder="Área" value={area} onChange={(e) => setArea(e.target.value)}
               className="px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-          <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)}
-            className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Vencimiento del link (opcional — si se deja vacío, el link NO expira nunca)</label>
+            <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)}
+              className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
           <div className="flex flex-wrap gap-3">
             <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={canEdit} onChange={(e) => setCanEdit(e.target.checked)} /> Editar</label>
             <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={canAttachEvidence} onChange={(e) => setCanAttachEvidence(e.target.checked)} /> Evidencias</label>

@@ -147,7 +147,7 @@ export default function SolicitarActualizacionModal({
 
           <div>
             <label className="text-sm font-medium text-gray-700 flex items-center gap-1 mb-1">
-              <Calendar className="w-3.5 h-3.5 text-gray-400" /> Vencimiento (opcional)
+              <Calendar className="w-3.5 h-3.5 text-gray-400" /> Vencimiento del link (opcional — si se deja vacío, el link NO expira nunca)
             </label>
             <input
               type="date"
