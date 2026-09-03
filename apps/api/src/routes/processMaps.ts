@@ -587,6 +587,52 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(204).send();
   });
 
+  // ── POST /:id/sync-risks — Vincula automáticamente riesgos existentes a los procesos ──
+  // El módulo de Riesgos guarda el "Departamento/Proceso" como texto libre (Risk.process),
+  // independiente de la relación real ProcessRisk que usan las tarjetas del mapa. Este
+  // endpoint crea esas relaciones cuando el nombre coincide (case-insensitive), para que
+  // los riesgos ya cargados aparezcan en el mapa sin tener que vincularlos uno por uno.
+  app.post('/:id/sync-risks', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const result = await app.runWithDbContext(req, async (tx: any) => {
+      const processes = await tx.process.findMany({
+        where: { processMapId: req.params.id, tenantId, deletedAt: null },
+        select: { id: true, name: true },
+      });
+      const risks = await tx.risk.findMany({
+        where: { tenantId, deletedAt: null, process: { not: null } },
+        select: { id: true, title: true, process: true },
+      });
+      const existingLinks = await tx.processRisk.findMany({
+        where: { processId: { in: processes.map((p: any) => p.id) } },
+        select: { processId: true, riskId: true },
+      });
+      const alreadyLinked = new Set(existingLinks.map((l: any) => `${l.processId}::${l.riskId}`));
+
+      const norm = (s: string) => s.trim().toLowerCase();
+      const processByName = new Map<string, string>();
+      for (const p of processes) processByName.set(norm(p.name), p.id);
+
+      const toCreate: { processId: string; riskId: string }[] = [];
+      const unmatched: { riskId: string; title: string; process: string }[] = [];
+      for (const r of risks) {
+        if (!r.process) continue;
+        const processId = processByName.get(norm(r.process));
+        if (!processId) { unmatched.push({ riskId: r.id, title: r.title, process: r.process }); continue; }
+        if (alreadyLinked.has(`${processId}::${r.id}`)) continue;
+        toCreate.push({ processId, riskId: r.id });
+      }
+
+      if (toCreate.length) await tx.processRisk.createMany({ data: toCreate, skipDuplicates: true });
+
+      return { linked: toCreate.length, unmatched };
+    });
+
+    return reply.send(result);
+  });
+
   // ── Integración con Salidas Documentales ──────────────────────
 
   // GET /process-maps/:id/document-output — obtiene la salida documental vinculada al mapa

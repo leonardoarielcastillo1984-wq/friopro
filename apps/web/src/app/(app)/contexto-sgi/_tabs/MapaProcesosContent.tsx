@@ -14,7 +14,7 @@ import {
   ChevronRight, ArrowLeft, Network, LayoutGrid, ListTree, Table2, Workflow,
   LogIn, LogOut, UserCircle2, Info, GripVertical, ClipboardList, ArrowLeftRight,
   Send, Inbox, Download, Upload, FileJson, FileDown, Hash, Sparkles, X as XIcon,
-  ChevronDown, SlidersHorizontal
+  ChevronDown, SlidersHorizontal, RefreshCw
 } from 'lucide-react';
 
 interface Process {
@@ -313,6 +313,7 @@ export default function MapaProcesosContent() {
   const [subDragOverId, setSubDragOverId] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingNavPdf, setExportingNavPdf] = useState(false);
+  const [syncingRisks, setSyncingRisks] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const mapPanelRef = useRef<HTMLDivElement>(null);
@@ -448,6 +449,35 @@ export default function MapaProcesosContent() {
       setTimeout(() => setError(''), 3000);
     } finally {
       setAssigningCode(false);
+    }
+  }
+
+  // ── Sincronizar riesgos por nombre de proceso/departamento ──────────
+  // El módulo de Riesgos guarda el departamento/proceso como texto libre, separado
+  // de la relación real que usan las tarjetas del mapa. Esto vincula automáticamente
+  // los riesgos existentes cuyo texto coincide con el nombre de un proceso del mapa.
+  async function syncRisks() {
+    if (!selected) return;
+    setSyncingRisks(true);
+    try {
+      const res = await apiFetch<{ linked: number; unmatched: { title: string; process: string }[] }>(
+        `/process-maps/${selected.id}/sync-risks`,
+        { method: 'POST' }
+      );
+      await load();
+      if (res.unmatched.length > 0) {
+        const uniqueProcesses = [...new Set(res.unmatched.map(u => u.process))];
+        alert(
+          `Se vincularon ${res.linked} riesgo(s) a sus procesos.\n\n` +
+          `${res.unmatched.length} riesgo(s) no se pudieron vincular porque su departamento/proceso ("${uniqueProcesses.join('", "')}") no coincide exactamente con el nombre de ningún proceso de este mapa. Vinculalos manualmente desde la pestaña "Riesgos" del proceso correspondiente.`
+        );
+      } else {
+        alert(`Se vincularon ${res.linked} riesgo(s) a sus procesos correctamente.`);
+      }
+    } catch (err: any) {
+      alert('Error al sincronizar riesgos: ' + (err?.message || 'desconocido'));
+    } finally {
+      setSyncingRisks(false);
     }
   }
 
@@ -1318,6 +1348,16 @@ export default function MapaProcesosContent() {
                           </button>
                           <button onClick={() => { exportMap(); setShowToolsMenu(false); }} disabled={!selected} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-40">
                             <Download className="h-4 w-4 text-neutral-400" /> Exportar como plantilla (.json)
+                          </button>
+
+                          <div className="border-t border-neutral-100 my-1.5" />
+                          <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Riesgos</p>
+                          <button onClick={() => { setShowToolsMenu(false); syncRisks(); }} disabled={!selected || syncingRisks} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-orange-50 disabled:opacity-40">
+                            {syncingRisks ? <Loader2 className="h-4 w-4 text-orange-500 animate-spin" /> : <RefreshCw className="h-4 w-4 text-orange-500" />}
+                            <div>
+                              <div className="font-medium">{syncingRisks ? 'Sincronizando...' : 'Sincronizar riesgos'}</div>
+                              <div className="text-[10px] text-neutral-400">Vincula riesgos existentes por nombre de departamento/proceso</div>
+                            </div>
                           </button>
 
                           <div className="border-t border-neutral-100 my-1.5" />
