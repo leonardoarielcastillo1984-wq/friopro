@@ -452,30 +452,35 @@ export default function MapaProcesosContent() {
     }
   }
 
-  // ── Sincronizar riesgos por nombre de proceso/departamento ──────────
-  // El módulo de Riesgos guarda el departamento/proceso como texto libre, separado
-  // de la relación real que usan las tarjetas del mapa. Esto vincula automáticamente
-  // los riesgos existentes cuyo texto coincide con el nombre de un proceso del mapa.
+  // ── Sincronizar riesgos, documentos e indicadores por nombre de proceso/departamento ──
+  // Los módulos de Riesgos, Documentos e Indicadores guardan el departamento/proceso como
+  // texto libre, separado de las relaciones reales que usan las tarjetas del mapa. Esto
+  // vincula automáticamente lo existente cuyo texto coincide con el nombre de un proceso.
   async function syncRisks() {
     if (!selected) return;
     setSyncingRisks(true);
     try {
-      const res = await apiFetch<{ linked: number; unmatched: { title: string; process: string }[] }>(
+      type SyncGroup = { linked: number; unmatched: { title: string; process: string }[] };
+      const res = await apiFetch<{ risks: SyncGroup; documents: SyncGroup; indicators: SyncGroup }>(
         `/process-maps/${selected.id}/sync-risks`,
         { method: 'POST' }
       );
       await load();
-      if (res.unmatched.length > 0) {
-        const uniqueProcesses = [...new Set(res.unmatched.map(u => u.process))];
-        alert(
-          `Se vincularon ${res.linked} riesgo(s) a sus procesos.\n\n` +
-          `${res.unmatched.length} riesgo(s) no se pudieron vincular porque su departamento/proceso ("${uniqueProcesses.join('", "')}") no coincide exactamente con el nombre de ningún proceso de este mapa. Vinculalos manualmente desde la pestaña "Riesgos" del proceso correspondiente.`
-        );
-      } else {
-        alert(`Se vincularon ${res.linked} riesgo(s) a sus procesos correctamente.`);
+      const groups: { label: string; g: SyncGroup }[] = [
+        { label: 'riesgo(s)', g: res.risks },
+        { label: 'documento(s)', g: res.documents },
+        { label: 'indicador(es)', g: res.indicators },
+      ];
+      const linkedLines = groups.map(({ label, g }) => `${g.linked} ${label}`).join(', ');
+      const allUnmatched = groups.flatMap(({ label, g }) => g.unmatched.map(u => ({ label, ...u })));
+      let msg = `Se vincularon: ${linkedLines}.`;
+      if (allUnmatched.length > 0) {
+        const uniqueProcesses = [...new Set(allUnmatched.map(u => u.process))];
+        msg += `\n\n${allUnmatched.length} elemento(s) no se pudieron vincular porque su departamento/proceso ("${uniqueProcesses.join('", "')}") no coincide exactamente con el nombre de ningún proceso de este mapa. Vinculalos manualmente desde el proceso correspondiente.`;
       }
+      alert(msg);
     } catch (err: any) {
-      alert('Error al sincronizar riesgos: ' + (err?.message || 'desconocido'));
+      alert('Error al sincronizar: ' + (err?.message || 'desconocido'));
     } finally {
       setSyncingRisks(false);
     }
@@ -1351,12 +1356,12 @@ export default function MapaProcesosContent() {
                           </button>
 
                           <div className="border-t border-neutral-100 my-1.5" />
-                          <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Riesgos</p>
+                          <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Riesgos / Documentos / KPI</p>
                           <button onClick={() => { setShowToolsMenu(false); syncRisks(); }} disabled={!selected || syncingRisks} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-orange-50 disabled:opacity-40">
                             {syncingRisks ? <Loader2 className="h-4 w-4 text-orange-500 animate-spin" /> : <RefreshCw className="h-4 w-4 text-orange-500" />}
                             <div>
-                              <div className="font-medium">{syncingRisks ? 'Sincronizando...' : 'Sincronizar riesgos'}</div>
-                              <div className="text-[10px] text-neutral-400">Vincula riesgos existentes por nombre de departamento/proceso</div>
+                              <div className="font-medium">{syncingRisks ? 'Sincronizando...' : 'Sincronizar riesgos / docs / KPI'}</div>
+                              <div className="text-[10px] text-neutral-400">Vincula lo existente por nombre de departamento/proceso</div>
                             </div>
                           </button>
 

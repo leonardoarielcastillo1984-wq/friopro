@@ -587,11 +587,12 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(204).send();
   });
 
-  // ── POST /:id/sync-risks — Vincula automáticamente riesgos existentes a los procesos ──
-  // El módulo de Riesgos guarda el "Departamento/Proceso" como texto libre (Risk.process),
-  // independiente de la relación real ProcessRisk que usan las tarjetas del mapa. Este
-  // endpoint crea esas relaciones cuando el nombre coincide (case-insensitive), para que
-  // los riesgos ya cargados aparezcan en el mapa sin tener que vincularlos uno por uno.
+  // ── POST /:id/sync-risks — Vincula automáticamente riesgos, documentos e indicadores ──
+  // Los módulos de Riesgos, Documentos e Indicadores guardan el "Departamento/Proceso"
+  // como texto libre (Risk.process / Document.process / Indicator.process), independiente
+  // de las relaciones reales (ProcessRisk / ProcessDocument / ProcessIndicator) que usan
+  // las tarjetas del mapa. Este endpoint crea esas relaciones cuando el nombre coincide
+  // (case-insensitive), para que lo ya cargado aparezca en el mapa sin vincularlo a mano.
   app.post('/:id/sync-risks', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
@@ -601,33 +602,41 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
         where: { processMapId: req.params.id, tenantId, deletedAt: null },
         select: { id: true, name: true },
       });
-      const risks = await tx.risk.findMany({
-        where: { tenantId, deletedAt: null, process: { not: null } },
-        select: { id: true, title: true, process: true },
-      });
-      const existingLinks = await tx.processRisk.findMany({
-        where: { processId: { in: processes.map((p: any) => p.id) } },
-        select: { processId: true, riskId: true },
-      });
-      const alreadyLinked = new Set(existingLinks.map((l: any) => `${l.processId}::${l.riskId}`));
-
       const norm = (s: string) => s.trim().toLowerCase();
       const processByName = new Map<string, string>();
       for (const p of processes) processByName.set(norm(p.name), p.id);
+      const processIds = processes.map((p: any) => p.id);
 
-      const toCreate: { processId: string; riskId: string }[] = [];
-      const unmatched: { riskId: string; title: string; process: string }[] = [];
-      for (const r of risks) {
-        if (!r.process) continue;
-        const processId = processByName.get(norm(r.process));
-        if (!processId) { unmatched.push({ riskId: r.id, title: r.title, process: r.process }); continue; }
-        if (alreadyLinked.has(`${processId}::${r.id}`)) continue;
-        toCreate.push({ processId, riskId: r.id });
+      // Sincroniza una entidad (risk | document | indicator) contra sus procesos vinculados.
+      async function syncEntity(entityModel: string, linkModel: string, entityIdField: string, titleField: string) {
+        const items = await tx[entityModel].findMany({
+          where: { tenantId, deletedAt: null, process: { not: null } },
+          select: { id: true, [titleField]: true, process: true },
+        });
+        const existingLinks = await tx[linkModel].findMany({
+          where: { processId: { in: processIds } },
+          select: { processId: true, [entityIdField]: true },
+        });
+        const alreadyLinked = new Set(existingLinks.map((l: any) => `${l.processId}::${l[entityIdField]}`));
+
+        const toCreate: any[] = [];
+        const unmatched: { title: string; process: string }[] = [];
+        for (const item of items) {
+          if (!item.process) continue;
+          const processId = processByName.get(norm(item.process));
+          if (!processId) { unmatched.push({ title: item[titleField], process: item.process }); continue; }
+          if (alreadyLinked.has(`${processId}::${item.id}`)) continue;
+          toCreate.push({ processId, [entityIdField]: item.id });
+        }
+        if (toCreate.length) await tx[linkModel].createMany({ data: toCreate, skipDuplicates: true });
+        return { linked: toCreate.length, unmatched };
       }
 
-      if (toCreate.length) await tx.processRisk.createMany({ data: toCreate, skipDuplicates: true });
+      const risks = await syncEntity('risk', 'processRisk', 'riskId', 'title');
+      const documents = await syncEntity('document', 'processDocument', 'documentId', 'title');
+      const indicators = await syncEntity('indicator', 'processIndicator', 'indicatorId', 'name');
 
-      return { linked: toCreate.length, unmatched };
+      return { risks, documents, indicators };
     });
 
     return reply.send(result);
