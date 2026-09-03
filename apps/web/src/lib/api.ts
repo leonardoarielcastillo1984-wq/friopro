@@ -218,6 +218,25 @@ async function rawFetch<T>(
   }
 }
 
+// Construye un mensaje de error legible a partir de la respuesta de la API.
+// Cuando el backend devuelve `details` (errores de validación Zod), agrega
+// el campo y el motivo puntual en vez de mostrar solo "Validation failed".
+function buildErrorMessage(data: any, status: number): string {
+  const baseMsg = (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string')
+    ? (data as any).error
+    : `HTTP ${status}`;
+
+  const details = data && typeof data === 'object' ? (data as any).details : null;
+  if (Array.isArray(details) && details.length) {
+    const fieldMsgs = details.map((d: any) => {
+      const field = Array.isArray(d?.path) && d.path.length ? d.path.join('.') : null;
+      return field ? `${field}: ${d?.message ?? 'inválido'}` : (d?.message ?? 'inválido');
+    });
+    return `${baseMsg} (${fieldMsgs.join('; ')})`;
+  }
+  return baseMsg;
+}
+
 export async function apiFetch<T>(
   path: string,
   init: RequestInit & { json?: unknown } = {}
@@ -287,9 +306,7 @@ export async function apiFetch<T>(
       return {} as T;
     }
 
-    const msg = (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string')
-      ? (data as any).error
-      : `HTTP ${res.status}`;
+    const msg = buildErrorMessage(data, res.status);
 
     // If CSRF token expired or server restarted, refresh CSRF and retry once.
     const isStateChanging = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
@@ -307,10 +324,7 @@ export async function apiFetch<T>(
         }
 
         if (!retryRes.ok) {
-          const retryMsg = (retryData && typeof retryData === 'object' && 'error' in retryData && typeof retryData.error === 'string')
-            ? (retryData as any).error
-            : `HTTP ${retryRes.status}`;
-          throw new Error(retryMsg);
+          throw new Error(buildErrorMessage(retryData, retryRes.status));
         }
 
         return retryData as T;
