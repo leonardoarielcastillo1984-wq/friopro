@@ -250,6 +250,12 @@ export type RiskStats = {
   byCategory: { category: string; count: number }[];
   matrix: { probability: number; impact: number; level: number }[];
   trends?: { month: string; identified: number; closed: number; critical: number }[];
+  treatmentCompliance?: {
+    totalActions: number;
+    completedActions: number;
+    percent: number | null;
+    risksWithPlan: number;
+  };
 };
 
 // ── Módulo de Indicadores (KPI) ──

@@ -92,7 +92,7 @@ function calculateYTD(measurements: any[], year?: number): { ytdValue: number | 
 
 function calculateCompliance(value: number | null, target: number | null): number | null {
   if (value === null || target === null || target === 0) return null;
-  return Math.min(Math.max((value / target) * 100, 0), 999);
+  return Math.min(Math.max((value / target) * 100, 0), 100);
 }
 
 function calculateVariation(current: number, previous: number | null): number | null {
@@ -328,7 +328,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY']),
       direction: z.enum(['HIGHER_BETTER', 'LOWER_BETTER']).optional().or(z.literal('')).transform(v => v === '' ? undefined : v),
       hasTarget: z.boolean().optional(),
-      tolerancePercent: z.number().int().min(0).max(50).nullish(),
+      tolerancePercent: z.number().int().min(0).max(100).nullish(),
       monthlyTargets: z.record(z.string(), z.number()).optional(),
       formula: z.string().optional(),
       dataSource: z.string().optional(),
@@ -451,6 +451,175 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(201).send(res);
   });
 
+  // POST /indicadores/:id/sync-risk-treatment — Autocompletar medición desde el % de cumplimiento
+  // del plan de tratamiento de riesgos (acciones completadas / acciones totales)
+  app.post('/:id/sync-risk-treatment', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const schema = z.object({ period: z.string().min(1).optional() });
+    const body = schema.parse(req.body ?? {});
+
+    const now = new Date();
+    const period = body.period ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const res = await app.runWithDbContext(req, async (tx: any) => {
+      const indicator = await tx.indicator.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!indicator) throw new Error('Recurso no encontrado');
+
+      const actions = await tx.riskTreatmentAction.findMany({
+        where: { tenantId, deletedAt: null, risk: { deletedAt: null } },
+        select: { completed: true },
+      });
+      const totalActions = actions.length;
+      if (totalActions === 0) {
+        throw Object.assign(new Error('No hay acciones de plan de tratamiento registradas en Riesgos'), { statusCode: 422 });
+      }
+      const completedActions = actions.filter((a: any) => a.completed).length;
+      const value = Math.round((completedActions / totalActions) * 100);
+
+      const measurement = await tx.indicatorMeasurement.upsert({
+        where: { indicatorId_period: { indicatorId: indicator.id, period } },
+        update: { value, notes: `Auto: ${completedActions}/${totalActions} acciones completadas`, measuredAt: now },
+        create: { indicatorId: indicator.id, value, period, notes: `Auto: ${completedActions}/${totalActions} acciones completadas` },
+      });
+
+      const status = computeIndicatorStatus({
+        value,
+        targetValue: indicator.targetValue,
+        warningValue: indicator.warningValue,
+        criticalValue: indicator.criticalValue,
+        direction: indicator.direction,
+        hasTarget: indicator.hasTarget ?? true,
+        tolerancePercent: indicator.tolerancePercent ?? 5,
+      });
+
+      const updated = await tx.indicator.update({
+        where: { id: indicator.id },
+        data: {
+          currentValue: value,
+          status: status as any,
+          lastMeasuredAt: now,
+          updatedById: req.auth?.userId ?? null,
+        },
+        include: {
+          owner: { select: { id: true, email: true } },
+          measurements: { orderBy: { measuredAt: 'desc' }, take: 24 },
+          riskLinks: { include: { risk: { select: { id: true, code: true, title: true, probability: true, impact: true, riskLevel: true } } } },
+        },
+      });
+
+      return { measurement, indicator: updated, totalActions, completedActions };
+    });
+
+    return reply.send(res);
+  });
+
+  // PATCH /indicadores/:id/measurements/:measId — Editar medición
+  app.patch('/:id/measurements/:measId', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id, measId } = z.object({ id: z.string().uuid(), measId: z.string().uuid() }).parse(req.params);
+    const schema = z.object({
+      value: z.number(),
+      period: z.string().min(1),
+      notes: z.string().optional(),
+    });
+    const body = schema.parse(req.body);
+
+    const res = await app.runWithDbContext(req, async (tx: any) => {
+      const indicator = await tx.indicator.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!indicator) throw new Error('Recurso no encontrado');
+
+      const existing = await tx.indicatorMeasurement.findFirst({ where: { id: measId, indicatorId: id } });
+      if (!existing) throw new Error('Medición no encontrada');
+
+      const measurement = await tx.indicatorMeasurement.update({
+        where: { id: measId },
+        data: { value: body.value, period: body.period, notes: body.notes ?? null, measuredAt: new Date() },
+      });
+
+      const status = computeIndicatorStatus({
+        value: body.value,
+        targetValue: indicator.targetValue,
+        warningValue: indicator.warningValue,
+        criticalValue: indicator.criticalValue,
+        direction: indicator.direction,
+        hasTarget: indicator.hasTarget ?? true,
+        tolerancePercent: indicator.tolerancePercent ?? 5,
+      });
+
+      const updated = await tx.indicator.update({
+        where: { id: indicator.id },
+        data: {
+          currentValue: body.value,
+          status: status as any,
+          updatedById: req.auth?.userId ?? null,
+        },
+        include: {
+          owner: { select: { id: true, email: true } },
+          measurements: { orderBy: { measuredAt: 'desc' }, take: 100 },
+          riskLinks: { include: { risk: { select: { id: true, code: true, title: true, probability: true, impact: true, riskLevel: true } } } },
+        },
+      });
+
+      return { measurement, indicator: updated };
+    });
+
+    return reply.send(res);
+  });
+
+  // DELETE /indicadores/:id/measurements/:measId — Eliminar medición
+  app.delete('/:id/measurements/:measId', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id, measId } = z.object({ id: z.string().uuid(), measId: z.string().uuid() }).parse(req.params);
+
+    await app.runWithDbContext(req, async (tx: any) => {
+      const indicator = await tx.indicator.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!indicator) throw new Error('Recurso no encontrado');
+
+      const existing = await tx.indicatorMeasurement.findFirst({ where: { id: measId, indicatorId: id } });
+      if (!existing) throw new Error('Medición no encontrada');
+
+      await tx.indicatorMeasurement.delete({ where: { id: measId } });
+
+      const lastMeas = await tx.indicatorMeasurement.findFirst({
+        where: { indicatorId: id },
+        orderBy: { measuredAt: 'desc' },
+      });
+
+      if (lastMeas) {
+        const status = computeIndicatorStatus({
+          value: lastMeas.value,
+          targetValue: indicator.targetValue,
+          warningValue: indicator.warningValue,
+          criticalValue: indicator.criticalValue,
+          direction: indicator.direction,
+          hasTarget: indicator.hasTarget ?? true,
+          tolerancePercent: indicator.tolerancePercent ?? 5,
+        });
+        await tx.indicator.update({
+          where: { id: indicator.id },
+          data: { currentValue: lastMeas.value, status: status as any, updatedById: req.auth?.userId ?? null },
+        });
+      } else {
+        await tx.indicator.update({
+          where: { id: indicator.id },
+          data: { currentValue: null, status: 'NO_DATA' as any, updatedById: req.auth?.userId ?? null },
+        });
+      }
+    });
+
+    return reply.send({ ok: true });
+  });
+
   // POST /indicadores/:id/risk-links — Vincular riesgo a indicador
   app.post('/:id/risk-links', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, FEATURE_KEY);
@@ -535,7 +704,7 @@ export const indicadoresRoutes: FastifyPluginAsync = async (app) => {
       direction: z.enum(['HIGHER_BETTER', 'LOWER_BETTER']).optional().or(z.literal('')).transform(v => v === '' ? undefined : v),
       isActive: z.boolean().optional(),
       hasTarget: z.boolean().optional(),
-      tolerancePercent: z.number().int().min(0).max(50).nullish(),
+      tolerancePercent: z.number().int().min(0).max(100).nullish(),
       monthlyTargets: z.record(z.string(), z.number()).optional(),
       formula: z.string().optional(),
       dataSource: z.string().optional(),

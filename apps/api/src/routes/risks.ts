@@ -234,6 +234,21 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    const treatmentActions = await app.runWithDbContext(req, async (tx: any) =>
+      tx.riskTreatmentAction.findMany({
+        where: { tenantId, deletedAt: null, risk: { deletedAt: null } },
+        select: { completed: true, riskId: true },
+      })
+    );
+    const totalActions = treatmentActions.length;
+    const completedActions = treatmentActions.filter((a: any) => a.completed).length;
+    const treatmentCompliance = {
+      totalActions,
+      completedActions,
+      percent: totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : null,
+      risksWithPlan: new Set(treatmentActions.map((a: any) => a.riskId)).size,
+    };
+
     const stats = {
       total: risks.length,
       critical: risks.filter((r: any) => r.riskLevel >= 20).length,
@@ -251,6 +266,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
         level: r.riskLevel,
       })),
       trends: Array.from(trendsMap.values()),
+      treatmentCompliance,
     };
 
     return reply.send({ stats });
@@ -274,12 +290,22 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
         include: {
           owner: { select: { id: true, email: true } },
           createdBy: { select: { id: true, email: true } },
+          treatmentActions: {
+            where: { deletedAt: null },
+            orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+          },
         },
       });
     });
 
     if (!risk) return reply.code(404).send({ error: 'Risk not found' });
-    return reply.send({ risk });
+
+    const actions = (risk as any).treatmentActions ?? [];
+    const total = actions.length;
+    const completed = actions.filter((a: any) => a.completed).length;
+    const treatmentProgress = { total, completed, percent: total > 0 ? Math.round((completed / total) * 100) : null };
+
+    return reply.send({ risk: { ...risk, treatmentProgress } });
   });
 
   // POST /risks — Crear
@@ -566,5 +592,143 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
 
     if (!deleted) return reply.code(404).send({ error: 'Risk not found' });
     return reply.send({ ok: true });
+  });
+
+  // ── Plan de tratamiento estructurado (checklist de acciones) ──────────────
+
+  const treatmentActionSchema = z.object({
+    description: z.string().min(2),
+    responsible: z.string().nullable().optional(),
+    dueDate: z.string().nullable().optional(),
+    order: z.number().int().optional(),
+  });
+
+  const treatmentActionUpdateSchema = z.object({
+    description: z.string().min(2).optional(),
+    responsible: z.string().nullable().optional(),
+    dueDate: z.string().nullable().optional(),
+    order: z.number().int().optional(),
+    completed: z.boolean().optional(),
+  });
+
+  // GET /risks/:id/treatment-actions — Listar acciones
+  app.get('/:id/treatment-actions', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const actions = await app.runWithDbContext(req, async (tx: any) => {
+      const risk = await tx.risk.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!risk) throw Object.assign(new Error('Riesgo no encontrado'), { statusCode: 404 });
+      return tx.riskTreatmentAction.findMany({
+        where: { riskId: id, deletedAt: null },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+      });
+    });
+
+    const total = actions.length;
+    const completed = actions.filter((a: any) => a.completed).length;
+    return reply.send({ actions, progress: { total, completed, percent: total > 0 ? Math.round((completed / total) * 100) : null } });
+  });
+
+  // POST /risks/:id/treatment-actions — Crear acción
+  app.post('/:id/treatment-actions', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const body = treatmentActionSchema.parse(req.body);
+
+    const action = await app.runWithDbContext(req, async (tx: any) => {
+      const risk = await tx.risk.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!risk) throw Object.assign(new Error('Riesgo no encontrado'), { statusCode: 404 });
+
+      const maxOrder = await tx.riskTreatmentAction.aggregate({
+        where: { riskId: id, deletedAt: null },
+        _max: { order: true },
+      });
+
+      return tx.riskTreatmentAction.create({
+        data: {
+          tenantId,
+          riskId: id,
+          description: body.description,
+          responsible: body.responsible ?? null,
+          dueDate: body.dueDate ? new Date(body.dueDate) : null,
+          order: body.order ?? ((maxOrder._max.order ?? -1) + 1),
+          createdById: req.auth?.userId ?? null,
+        },
+      });
+    });
+
+    return reply.code(201).send({ action });
+  });
+
+  // PATCH /risks/:id/treatment-actions/:actionId — Editar / marcar completada
+  app.patch('/:id/treatment-actions/:actionId', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id, actionId } = z.object({ id: z.string().uuid(), actionId: z.string().uuid() }).parse(req.params);
+    const body = treatmentActionUpdateSchema.parse(req.body);
+
+    const action = await app.runWithDbContext(req, async (tx: any) => {
+      const existing = await tx.riskTreatmentAction.findFirst({ where: { id: actionId, riskId: id, tenantId, deletedAt: null } });
+      if (!existing) throw Object.assign(new Error('Acción no encontrada'), { statusCode: 404 });
+
+      return tx.riskTreatmentAction.update({
+        where: { id: actionId },
+        data: {
+          description: body.description ?? undefined,
+          responsible: body.responsible === undefined ? undefined : body.responsible,
+          dueDate: body.dueDate === undefined ? undefined : (body.dueDate ? new Date(body.dueDate) : null),
+          order: body.order ?? undefined,
+          completed: body.completed ?? undefined,
+          completedAt: body.completed === undefined ? undefined : (body.completed ? new Date() : null),
+        },
+      });
+    });
+
+    return reply.send({ action });
+  });
+
+  // DELETE /risks/:id/treatment-actions/:actionId — Eliminar acción
+  app.delete('/:id/treatment-actions/:actionId', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id, actionId } = z.object({ id: z.string().uuid(), actionId: z.string().uuid() }).parse(req.params);
+
+    await app.runWithDbContext(req, async (tx: any) => {
+      const existing = await tx.riskTreatmentAction.findFirst({ where: { id: actionId, riskId: id, tenantId, deletedAt: null } });
+      if (!existing) throw Object.assign(new Error('Acción no encontrada'), { statusCode: 404 });
+      await tx.riskTreatmentAction.update({ where: { id: actionId }, data: { deletedAt: new Date() } });
+    });
+
+    return reply.send({ ok: true });
+  });
+
+  // GET /risks/treatment-compliance — % de cumplimiento agregado (para alimentar indicadores)
+  app.get('/treatment-compliance', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const actions = await app.runWithDbContext(req, async (tx: any) =>
+      tx.riskTreatmentAction.findMany({
+        where: { tenantId, deletedAt: null, risk: { deletedAt: null } },
+        select: { completed: true, riskId: true },
+      })
+    );
+
+    const totalActions = actions.length;
+    const completedActions = actions.filter((a: any) => a.completed).length;
+    const riskIds = new Set(actions.map((a: any) => a.riskId));
+    const percent = totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : null;
+
+    return reply.send({
+      compliance: { totalActions, completedActions, percent, risksWithPlan: riskIds.size },
+    });
   });
 };

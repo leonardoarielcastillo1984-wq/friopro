@@ -9,7 +9,7 @@ import {
   Shield, Plus, X, Search, AlertCircle, CheckCircle2, AlertTriangle, TrendingUp, 
   LayoutGrid, Table2, Download, Upload, FileSpreadsheet, Bell,
   Filter, ChevronDown, BarChart3, PieChart, Activity, Target,
-  ArrowDown, ArrowUp, Minus, Clock, RefreshCw, FileText
+  ArrowDown, ArrowUp, Minus, Clock, RefreshCw, FileText, ClipboardCheck
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -575,6 +575,32 @@ export default function RiesgosPage() {
               <div className="rounded-lg bg-green-100 p-1.5"><CheckCircle2 className="h-4 w-4 text-green-600" /></div>
               <div><div className="text-xl font-bold text-green-700">{stats.low}</div><div className="text-xs text-green-600">Bajos (1-4)</div></div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Treatment Compliance */}
+      {stats?.treatmentCompliance && stats.treatmentCompliance.totalActions > 0 && (
+        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-brand-50 p-1.5"><ClipboardCheck className="h-4 w-4 text-brand-600" /></div>
+              <div>
+                <div className="text-sm font-semibold text-neutral-800">Cumplimiento del tratamiento de riesgos</div>
+                <div className="text-xs text-neutral-500">
+                  {stats.treatmentCompliance.completedActions} de {stats.treatmentCompliance.totalActions} acciones completadas · {stats.treatmentCompliance.risksWithPlan} riesgos con plan
+                </div>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-brand-700">
+              {stats.treatmentCompliance.percent !== null ? `${stats.treatmentCompliance.percent}%` : '—'}
+            </div>
+          </div>
+          <div className="h-2.5 w-full rounded-full bg-neutral-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-brand-600 transition-all duration-500"
+              style={{ width: `${stats.treatmentCompliance.percent ?? 0}%` }}
+            />
           </div>
         </div>
       )}

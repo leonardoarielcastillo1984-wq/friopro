@@ -6,7 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import staticPlugin from '@fastify/static';
 import path from 'path';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 
 import { prismaPlugin } from './plugins/prisma.js';
@@ -173,6 +173,68 @@ import { documentExportRoutes } from './routes/document-export.js';
 import { actionPlanRoutes } from './routes/action-plan.js';
 import { portalAccionRoutes } from './routes/portal-accion.js';
 
+// ── Mapa de errores de Zod en español ──
+// Traduce los mensajes de validación de Zod para que el usuario vea errores
+// en castellano en lugar de los mensajes en inglés por defecto.
+z.setErrorMap((issue, ctx) => {
+  const messageMap: Record<string, string> = {
+    invalid_type: 'Tipo inválido',
+    too_small: 'El valor debe ser mayor o igual a',
+    too_big: 'El valor debe ser menor o igual a',
+    invalid_string: 'Formato inválido',
+    invalid_enum_value: 'Opción inválida',
+    invalid_union: 'Valor inválido',
+    invalid_union_discriminator: 'Valor inválido',
+    invalid_date: 'Fecha inválida',
+    invalid_literal: 'Valor inválido',
+    not_finite: 'El valor debe ser un número finito',
+    required: 'Este campo es obligatorio',
+    unrecognized_keys: 'Campo no reconocido',
+  };
+
+  if (issue.code === 'invalid_type') {
+    if (issue.expected === 'string') return { message: 'Debe ser texto' };
+    if (issue.expected === 'number') return { message: 'Debe ser un número' };
+    if (issue.expected === 'boolean') return { message: 'Debe ser verdadero o falso' };
+    if (issue.expected === 'date') return { message: 'Debe ser una fecha' };
+    if (issue.expected === 'array') return { message: 'Debe ser una lista' };
+    if (issue.expected === 'object') return { message: 'Debe ser un objeto' };
+    return { message: `Se esperaba ${issue.expected}` };
+  }
+
+  if (issue.code === 'too_small') {
+    const min = (issue as any).minimum;
+    const inclusive = (issue as any).inclusive;
+    const suffix = inclusive !== false ? ` ${min}` : ` (mayor a ${min})`;
+    return { message: `${messageMap['too_small']}${suffix}` };
+  }
+
+  if (issue.code === 'too_big') {
+    const max = (issue as any).maximum;
+    const inclusive = (issue as any).inclusive;
+    const suffix = inclusive !== false ? ` ${max}` : ` (menor a ${max})`;
+    return { message: `${messageMap['too_big']}${suffix}` };
+  }
+
+  if (issue.code === 'invalid_string') {
+    const validation = (issue as any).validation;
+    if (validation === 'email') return { message: 'Debe ser un email válido' };
+    if (validation === 'url') return { message: 'Debe ser una URL válida' };
+    if (validation === 'uuid') return { message: 'Debe ser un UUID válido' };
+    if (validation === 'regex') return { message: 'Formato inválido' };
+    if (validation === 'datetime') return { message: 'Debe ser una fecha y hora válida' };
+    return { message: 'Formato inválido' };
+  }
+
+  if (issue.code === 'invalid_enum_value') {
+    const options = (issue as any).options;
+    return { message: `Opción inválida. Valores permitidos: ${options.join(', ')}` };
+  }
+
+  const msg = messageMap[issue.code] ?? ctx.defaultError;
+  return { message: msg };
+});
+
 export async function buildApp() {
   const app = Fastify({
     logger: true,
@@ -280,6 +342,7 @@ export async function buildApp() {
   // Global error handler
   app.setErrorHandler((error: any, request, reply) => {
     if (error instanceof ZodError) {
+      request.log.error({ url: request.url, method: request.method, zodErrors: error.errors }, 'Zod validation failed');
       return reply.code(400).send({
         error: 'Validation failed',
         details: error.errors,

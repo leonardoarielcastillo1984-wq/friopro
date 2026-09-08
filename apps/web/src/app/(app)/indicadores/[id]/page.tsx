@@ -8,7 +8,7 @@ import IndicatorErrorBoundary from '@/components/indicator-error-boundary';
 import {
   ArrowLeft, Edit3, Trash2, AlertCircle, BarChart3,
   TrendingUp, TrendingDown, Minus, Target, User,
-  Calendar, Plus, Sparkles, Loader2,
+  Calendar, Plus, Sparkles, Loader2, RefreshCw,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -37,10 +37,24 @@ export default function IndicatorDetailPage() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    category: '',
+    process: '',
+    standard: '',
     targetValue: 0,
+    yearTargetValue: 0,
     unit: '',
     frequency: 'MONTHLY',
+    direction: 'HIGHER_BETTER',
+    tolerancePercent: 5,
+    formula: '',
+    dataSource: '',
   });
+  const [editingMeasId, setEditingMeasId] = useState<string | null>(null);
+  const [editMeasValue, setEditMeasValue] = useState('');
+  const [editMeasPeriod, setEditMeasPeriod] = useState('');
+  const [editMeasNotes, setEditMeasNotes] = useState('');
   const [showMeasForm, setShowMeasForm] = useState(false);
   const [measValue, setMeasValue] = useState('');
   const [measPeriod, setMeasPeriod] = useState(() => {
@@ -48,6 +62,7 @@ export default function IndicatorDetailPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [measSaving, setMeasSaving] = useState(false);
+  const [syncingRisk, setSyncingRisk] = useState(false);
   const [showNcr, setShowNcr] = useState(false);
   const [ncrSaving, setNcrSaving] = useState(false);
   const [riskQuery, setRiskQuery] = useState('');
@@ -166,9 +181,19 @@ export default function IndicatorDetailPage() {
       
       setIndicator(res.indicator);
       setEditForm({
+        name: res.indicator.name || '',
+        description: res.indicator.description || '',
+        category: res.indicator.category || '',
+        process: res.indicator.process || '',
+        standard: res.indicator.standard || '',
         targetValue: res.indicator.targetValue ?? 0,
-        unit: res.indicator.unit,
-        frequency: res.indicator.frequency,
+        yearTargetValue: res.indicator.yearTargetValue ?? 0,
+        unit: res.indicator.unit || '',
+        frequency: res.indicator.frequency || 'MONTHLY',
+        direction: res.indicator.direction || 'HIGHER_BETTER',
+        tolerancePercent: res.indicator.tolerancePercent ?? 5,
+        formula: res.indicator.formula || '',
+        dataSource: res.indicator.dataSource || '',
       });
     } catch (err: any) {
       console.error('Error loading indicator:', err);
@@ -230,7 +255,21 @@ export default function IndicatorDetailPage() {
     try {
       const res = await apiFetch<{ indicator: Indicator }>(`/indicators/${id}`, {
         method: 'PATCH',
-        json: editForm,
+        json: {
+          name: editForm.name || undefined,
+          description: editForm.description || undefined,
+          category: editForm.category || undefined,
+          process: editForm.process || undefined,
+          standard: editForm.standard || undefined,
+          targetValue: editForm.targetValue || null,
+          yearTargetValue: editForm.yearTargetValue || null,
+          unit: editForm.unit || undefined,
+          frequency: editForm.frequency || undefined,
+          direction: editForm.direction || undefined,
+          tolerancePercent: editForm.tolerancePercent || null,
+          formula: editForm.formula || undefined,
+          dataSource: editForm.dataSource || undefined,
+        },
       });
       setIndicator(res.indicator);
       setEditing(false);
@@ -238,6 +277,57 @@ export default function IndicatorDetailPage() {
       setError(err?.message ?? 'Error al guardar');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleEditMeasurement(measId: string) {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{ indicator: Indicator }>(`/indicators/${id}/measurements/${measId}`, {
+        method: 'PATCH',
+        json: { value: parseFloat(editMeasValue), period: editMeasPeriod, notes: editMeasNotes || undefined },
+      });
+      setIndicator(res.indicator);
+      setEditingMeasId(null);
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al editar medición');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteMeasurement(measId: string) {
+    if (!confirm('¿Eliminar esta medición?')) return;
+    try {
+      await apiFetch(`/indicators/${id}/measurements/${measId}`, { method: 'DELETE' });
+      await loadIndicator();
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al eliminar medición');
+    }
+  }
+
+  function startEditMeasurement(m: any) {
+    setEditingMeasId(m.id);
+    setEditMeasValue(String(m.value));
+    setEditMeasPeriod(m.period);
+    setEditMeasNotes(m.notes || '');
+  }
+
+  async function handleSyncFromRiskTreatment() {
+    setSyncingRisk(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{ totalActions: number; completedActions: number }>(`/indicators/${id}/sync-risk-treatment`, {
+        method: 'POST',
+        json: {},
+      });
+      await loadIndicator();
+      alert(`Sincronizado: ${res.completedActions}/${res.totalActions} acciones del plan de tratamiento completadas.`);
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al sincronizar desde Riesgos');
+    } finally {
+      setSyncingRisk(false);
     }
   }
 
@@ -346,6 +436,9 @@ export default function IndicatorDetailPage() {
           <ArrowLeft className="h-4 w-4" /> Indicadores
         </button>
         <div className="flex items-center gap-2">
+          <button onClick={handleSyncFromRiskTreatment} disabled={syncingRisk} title="Calcula el valor a partir de las acciones completadas del Plan de tratamiento en Riesgos" className="flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50">
+            {syncingRisk ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sincronizar desde Riesgos
+          </button>
           <button onClick={() => setShowMeasForm(!showMeasForm)} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">
             <Plus className="h-4 w-4" /> Medición
           </button>
@@ -679,20 +772,71 @@ export default function IndicatorDetailPage() {
       {editing && (
         <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-4">
           <h2 className="font-semibold text-neutral-900">Editar indicador</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Nombre</label>
+              <input className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Categoría</label>
+              <input className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción</label>
+            <textarea className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm h-16 resize-none" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Proceso / Área</label>
+              <input className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.process} onChange={(e) => setEditForm({ ...editForm, process: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Estándar</label>
+              <input className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.standard} onChange={(e) => setEditForm({ ...editForm, standard: e.target.value })} />
+            </div>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Meta</label>
               <input type="number" step="any" className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.targetValue} onChange={(e) => setEditForm({ ...editForm, targetValue: Number(e.target.value) })} />
             </div>
             <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Meta Anual (YTD)</label>
+              <input type="number" step="any" className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.yearTargetValue} onChange={(e) => setEditForm({ ...editForm, yearTargetValue: Number(e.target.value) })} />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Unidad</label>
               <input className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.unit} onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })} />
             </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Frecuencia</label>
               <select className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.frequency} onChange={(e) => setEditForm({ ...editForm, frequency: e.target.value })}>
                 {Object.entries(FREQ_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Dirección</label>
+              <select className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.direction} onChange={(e) => setEditForm({ ...editForm, direction: e.target.value })}>
+                <option value="HIGHER_BETTER">Mayor es mejor</option>
+                <option value="LOWER_BETTER">Menor es mejor</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Tolerancia %</label>
+              <input type="number" min={0} max={100} className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.tolerancePercent} onChange={(e) => setEditForm({ ...editForm, tolerancePercent: Number(e.target.value) })} />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Fórmula</label>
+              <input className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.formula} onChange={(e) => setEditForm({ ...editForm, formula: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Fuente de datos</label>
+              <input className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.dataSource} onChange={(e) => setEditForm({ ...editForm, dataSource: e.target.value })} />
             </div>
           </div>
           <div className="flex gap-2">
@@ -719,7 +863,7 @@ export default function IndicatorDetailPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[480px]">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="border-b border-neutral-100 bg-neutral-50/50">
                 <th className="px-5 py-2.5 text-left font-medium text-neutral-600">Período</th>
@@ -727,11 +871,39 @@ export default function IndicatorDetailPage() {
                 <th className="px-5 py-2.5 text-right font-medium text-neutral-600">vs Meta</th>
                 <th className="px-5 py-2.5 text-left font-medium text-neutral-600">Notas</th>
                 <th className="px-5 py-2.5 text-right font-medium text-neutral-600">Fecha</th>
+                <th className="px-5 py-2.5 text-right font-medium text-neutral-600">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {measurements.map(m => {
                 const vsMeta = enriched?.target ? ((m.value / enriched.target) * 100) : (indicator.targetValue ? ((m.value / indicator.targetValue) * 100) : null);
+                if (editingMeasId === m.id) {
+                  return (
+                    <tr key={m.id} className="bg-blue-50/50">
+                      <td className="px-5 py-3">
+                        <input type="month" className="w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm" value={editMeasPeriod} onChange={(e) => setEditMeasPeriod(e.target.value)} />
+                      </td>
+                      <td className="px-5 py-3">
+                        <input type="number" step="any" className="w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm text-right" value={editMeasValue} onChange={(e) => setEditMeasValue(e.target.value)} autoFocus />
+                      </td>
+                      <td className="px-5 py-3 text-right text-neutral-400">—</td>
+                      <td className="px-5 py-3">
+                        <input className="w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm" placeholder="Notas..." value={editMeasNotes} onChange={(e) => setEditMeasNotes(e.target.value)} />
+                      </td>
+                      <td className="px-5 py-3 text-right text-neutral-400 text-xs">—</td>
+                      <td className="px-5 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => handleEditMeasurement(m.id)} disabled={saving} className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+                            {saving ? '...' : 'Guardar'}
+                          </button>
+                          <button onClick={() => setEditingMeasId(null)} className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-600 hover:bg-neutral-50">
+                            Cancelar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
                 return (
                   <tr key={m.id} className="hover:bg-neutral-50/50">
                     <td className="px-5 py-3 font-mono text-neutral-800">{m.period}</td>
@@ -746,6 +918,16 @@ export default function IndicatorDetailPage() {
                     <td className="px-5 py-3 text-left text-neutral-500 text-xs max-w-[200px] truncate">{m.notes || '—'}</td>
                     <td className="px-5 py-3 text-right text-neutral-400 text-xs">
                       {new Date(m.measuredAt).toLocaleDateString('es-AR')}
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => startEditMeasurement(m)} className="p-1.5 text-neutral-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Editar medición">
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleDeleteMeasurement(m.id)} className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Eliminar medición">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

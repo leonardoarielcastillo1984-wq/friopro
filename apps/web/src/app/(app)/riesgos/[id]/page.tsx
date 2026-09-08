@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import type { Risk } from '@/lib/types';
 import {
   ArrowLeft, Shield, Edit3, Trash2, AlertCircle, AlertTriangle,
-  Target, TrendingDown, Calendar, User,
+  Target, TrendingDown, Calendar, User, Plus, Check, X, Loader2, Pencil,
 } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -34,6 +34,16 @@ function getRiskLabel(level: number): string {
   return 'Bajo';
 }
 
+type TreatmentAction = {
+  id: string;
+  description: string;
+  responsible?: string | null;
+  dueDate?: string | null;
+  completed: boolean;
+  completedAt?: string | null;
+  order: number;
+};
+
 type RiskDetail = Risk & {
   treatmentPlan?: string | null;
   controls?: string | null;
@@ -41,6 +51,8 @@ type RiskDetail = Risk & {
   residualImpact?: number | null;
   owner?: { id: string; email: string } | null;
   createdBy?: { id: string; email: string } | null;
+  treatmentActions?: TreatmentAction[];
+  treatmentProgress?: { total: number; completed: number; percent: number | null };
 };
 
 export default function RiskDetailPage() {
@@ -70,6 +82,16 @@ export default function RiskDetailPage() {
     residualImpact: 1,
   });
 
+  const [newActionDesc, setNewActionDesc] = useState('');
+  const [newActionResp, setNewActionResp] = useState('');
+  const [newActionDue, setNewActionDue] = useState('');
+  const [addingAction, setAddingAction] = useState(false);
+  const [actionSaving, setActionSaving] = useState<string | null>(null);
+  const [editingActionId, setEditingActionId] = useState<string | null>(null);
+  const [editActionDesc, setEditActionDesc] = useState('');
+  const [editActionResp, setEditActionResp] = useState('');
+  const [editActionDue, setEditActionDue] = useState('');
+
   useEffect(() => { loadRisk(); }, [id]);
 
   async function loadRisk() {
@@ -96,6 +118,84 @@ export default function RiskDetailPage() {
       if (err?.message === 'Unauthorized') router.push('/login');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleAddAction() {
+    if (!newActionDesc.trim()) return;
+    setAddingAction(true);
+    try {
+      await apiFetch(`/risks/${id}/treatment-actions`, {
+        method: 'POST',
+        json: {
+          description: newActionDesc.trim(),
+          responsible: newActionResp.trim() || undefined,
+          dueDate: newActionDue || undefined,
+        },
+      });
+      setNewActionDesc('');
+      setNewActionResp('');
+      setNewActionDue('');
+      await loadRisk();
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al agregar acción');
+    } finally {
+      setAddingAction(false);
+    }
+  }
+
+  async function handleToggleAction(action: TreatmentAction) {
+    setActionSaving(action.id);
+    try {
+      await apiFetch(`/risks/${id}/treatment-actions/${action.id}`, {
+        method: 'PATCH',
+        json: { completed: !action.completed },
+      });
+      await loadRisk();
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al actualizar acción');
+    } finally {
+      setActionSaving(null);
+    }
+  }
+
+  function startEditAction(action: TreatmentAction) {
+    setEditingActionId(action.id);
+    setEditActionDesc(action.description);
+    setEditActionResp(action.responsible || '');
+    setEditActionDue(action.dueDate ? action.dueDate.slice(0, 10) : '');
+  }
+
+  async function handleSaveEditAction(actionId: string) {
+    setActionSaving(actionId);
+    try {
+      await apiFetch(`/risks/${id}/treatment-actions/${actionId}`, {
+        method: 'PATCH',
+        json: {
+          description: editActionDesc.trim(),
+          responsible: editActionResp.trim() || null,
+          dueDate: editActionDue || null,
+        },
+      });
+      setEditingActionId(null);
+      await loadRisk();
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al guardar acción');
+    } finally {
+      setActionSaving(null);
+    }
+  }
+
+  async function handleDeleteAction(actionId: string) {
+    if (!confirm('¿Eliminar esta acción del plan de tratamiento?')) return;
+    setActionSaving(actionId);
+    try {
+      await apiFetch(`/risks/${id}/treatment-actions/${actionId}`, { method: 'DELETE' });
+      await loadRisk();
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al eliminar acción');
+    } finally {
+      setActionSaving(null);
     }
   }
 
@@ -333,17 +433,113 @@ export default function RiskDetailPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl border border-neutral-200 p-6">
-            <h2 className="font-semibold text-neutral-900 mb-3 flex items-center gap-2">
+        <>
+        {/* Plan de tratamiento — checklist estructurado */}
+        <div className="bg-white rounded-xl border border-neutral-200 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-neutral-900 flex items-center gap-2">
               <Target className="h-4 w-4 text-brand-500" /> Plan de tratamiento
             </h2>
-            {risk.treatmentPlan ? (
-              <p className="text-sm text-neutral-700 whitespace-pre-wrap">{risk.treatmentPlan}</p>
-            ) : (
-              <p className="text-sm text-neutral-400 italic">Sin plan de tratamiento registrado</p>
+            {risk.treatmentProgress && risk.treatmentProgress.total > 0 && (
+              <span className="text-sm font-semibold text-neutral-700">
+                {risk.treatmentProgress.completed}/{risk.treatmentProgress.total} · {risk.treatmentProgress.percent}%
+              </span>
             )}
           </div>
+
+          {risk.treatmentProgress && risk.treatmentProgress.total > 0 && (
+            <div className="mb-4 h-2 w-full rounded-full bg-neutral-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full ${risk.treatmentProgress.percent === 100 ? 'bg-green-500' : 'bg-brand-500'}`}
+                style={{ width: `${risk.treatmentProgress.percent ?? 0}%` }}
+              />
+            </div>
+          )}
+
+          {risk.treatmentPlan && (
+            <p className="text-sm text-neutral-500 italic mb-4 whitespace-pre-wrap border-l-2 border-neutral-200 pl-3">
+              {risk.treatmentPlan}
+            </p>
+          )}
+
+          <div className="space-y-2 mb-4">
+            {(risk.treatmentActions ?? []).length === 0 ? (
+              <p className="text-sm text-neutral-400 italic">Sin acciones registradas — agregá la primera acción del plan de tratamiento</p>
+            ) : (
+              risk.treatmentActions!.map((a) => (
+                <div key={a.id} className="flex items-start gap-2 rounded-lg border border-neutral-100 p-2.5 hover:bg-neutral-50/60">
+                  {editingActionId === a.id ? (
+                    <div className="flex-1 space-y-2">
+                      <input className="w-full rounded-lg border border-neutral-300 px-2.5 py-1.5 text-sm" value={editActionDesc} onChange={(e) => setEditActionDesc(e.target.value)} />
+                      <div className="flex gap-2">
+                        <input className="flex-1 rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs" placeholder="Responsable" value={editActionResp} onChange={(e) => setEditActionResp(e.target.value)} />
+                        <input type="date" className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs" value={editActionDue} onChange={(e) => setEditActionDue(e.target.value)} />
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleSaveEditAction(a.id)} disabled={actionSaving === a.id} className="rounded-lg bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+                          {actionSaving === a.id ? 'Guardando...' : 'Guardar'}
+                        </button>
+                        <button onClick={() => setEditingActionId(null)} className="text-xs text-neutral-500 hover:text-neutral-700 px-2">Cancelar</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleToggleAction(a)}
+                        disabled={actionSaving === a.id}
+                        className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 transition-colors ${a.completed ? 'bg-green-500 border-green-500' : 'border-neutral-300 hover:border-brand-400'}`}
+                      >
+                        {actionSaving === a.id ? <Loader2 className="h-3 w-3 animate-spin text-neutral-400" /> : a.completed && <Check className="h-3 w-3 text-white" />}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm ${a.completed ? 'text-neutral-400 line-through' : 'text-neutral-800'}`}>{a.description}</p>
+                        {(a.responsible || a.dueDate) && (
+                          <div className="mt-0.5 flex items-center gap-3 text-xs text-neutral-400">
+                            {a.responsible && <span className="flex items-center gap-1"><User className="h-3 w-3" /> {a.responsible}</span>}
+                            {a.dueDate && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(a.dueDate).toLocaleDateString('es-AR')}</span>}
+                          </div>
+                        )}
+                      </div>
+                      <button onClick={() => startEditAction(a)} className="p-1 text-neutral-400 hover:text-blue-600 rounded-lg hover:bg-blue-50">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => handleDeleteAction(a.id)} disabled={actionSaving === a.id} className="p-1 text-neutral-400 hover:text-red-600 rounded-lg hover:bg-red-50">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 border-t border-neutral-100 pt-3">
+            <input
+              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="Nueva acción del plan de tratamiento..."
+              value={newActionDesc}
+              onChange={(e) => setNewActionDesc(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddAction(); }}
+            />
+            <input
+              className="sm:w-40 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="Responsable"
+              value={newActionResp}
+              onChange={(e) => setNewActionResp(e.target.value)}
+            />
+            <input
+              type="date"
+              className="sm:w-36 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              value={newActionDue}
+              onChange={(e) => setNewActionDue(e.target.value)}
+            />
+            <button onClick={handleAddAction} disabled={addingAction || !newActionDesc.trim()} className="flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+              <Plus className="h-4 w-4" /> Agregar
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl border border-neutral-200 p-6">
             <h2 className="font-semibold text-neutral-900 mb-3 flex items-center gap-2">
               <Shield className="h-4 w-4 text-indigo-500" /> Controles existentes
@@ -355,6 +551,7 @@ export default function RiskDetailPage() {
             )}
           </div>
         </div>
+        </>
       )}
     </div>
   );

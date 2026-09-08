@@ -99,6 +99,8 @@ export default function IndicadoresPage() {
     name: '', code: '', description: '', category: 'Calidad',
     process: '', standard: '', currentValue: '', targetValue: '',
     minValue: '', maxValue: '', unit: '', frequency: 'MONTHLY' as string,
+    formula: '', dataSource: '', direction: 'HIGHER_BETTER' as string,
+    tolerancePercent: '5', yearTargetValue: '',
   });
 
   const fetchData = () => {
@@ -141,16 +143,16 @@ export default function IndicadoresPage() {
           targetValue: form.targetValue ? Number(form.targetValue) : null,
           minValue: form.minValue ? Number(form.minValue) : null,
           maxValue: form.maxValue ? Number(form.maxValue) : null,
-          yearTargetValue: (form as any).yearTargetValue ? Number((form as any).yearTargetValue) : null,
-          tolerancePercent: (form as any).tolerancePercent ? Number((form as any).tolerancePercent) : null,
+          yearTargetValue: form.yearTargetValue ? Number(form.yearTargetValue) : null,
+          tolerancePercent: form.tolerancePercent ? Number(form.tolerancePercent) : null,
           monthlyTargets: (form as any).monthlyTargets ? (form as any).monthlyTargets.map(Number) : undefined,
-          formula: (form as any).formula || undefined,
-          dataSource: (form as any).dataSource || undefined,
+          formula: form.formula || undefined,
+          dataSource: form.dataSource || undefined,
           area: (form as any).area || undefined,
         },
       });
       setShowForm(false);
-      setForm({ name: '', code: '', description: '', category: 'Calidad', process: '', standard: '', currentValue: '', targetValue: '', minValue: '', maxValue: '', unit: '', frequency: 'MONTHLY' as string });
+      setForm({ name: '', code: '', description: '', category: 'Calidad', process: '', standard: '', currentValue: '', targetValue: '', minValue: '', maxValue: '', unit: '', frequency: 'MONTHLY' as string, formula: '', dataSource: '', direction: 'HIGHER_BETTER' as string, tolerancePercent: '5', yearTargetValue: '' });
       fetchData();
     } catch (e: any) {
       setError(e.message);
@@ -164,23 +166,23 @@ export default function IndicadoresPage() {
     setCreating(true);
     try {
       await apiFetch(`/indicators/${editingId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         json: {
           ...form,
           currentValue: form.currentValue ? Number(form.currentValue) : null,
           targetValue: form.targetValue ? Number(form.targetValue) : null,
           minValue: form.minValue ? Number(form.minValue) : null,
           maxValue: form.maxValue ? Number(form.maxValue) : null,
-          yearTargetValue: (form as any).yearTargetValue ? Number((form as any).yearTargetValue) : null,
-          tolerancePercent: (form as any).tolerancePercent ? Number((form as any).tolerancePercent) : null,
+          yearTargetValue: form.yearTargetValue ? Number(form.yearTargetValue) : null,
+          tolerancePercent: form.tolerancePercent ? Number(form.tolerancePercent) : null,
           monthlyTargets: (form as any).monthlyTargets || undefined,
-          formula: (form as any).formula || undefined,
-          dataSource: (form as any).dataSource || undefined,
+          formula: form.formula || undefined,
+          dataSource: form.dataSource || undefined,
           area: (form as any).area || undefined,
         },
       });
       setEditingId(null);
-      setForm({ name: '', code: '', description: '', category: 'Calidad', process: '', standard: '', currentValue: '', targetValue: '', minValue: '', maxValue: '', unit: '', frequency: 'MONTHLY' as string });
+      setForm({ name: '', code: '', description: '', category: 'Calidad', process: '', standard: '', currentValue: '', targetValue: '', minValue: '', maxValue: '', unit: '', frequency: 'MONTHLY' as string, formula: '', dataSource: '', direction: 'HIGHER_BETTER' as string, tolerancePercent: '5', yearTargetValue: '' });
       fetchData();
     } catch (e: any) {
       setError(e.message);
@@ -467,7 +469,7 @@ export default function IndicadoresPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => router.push(`/indicadores/${ind.id}`)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Ver detalle"><Eye className="h-4 w-4" /></button>
-                        <button onClick={() => { setEditingId(ind.id); setForm({ name: ind.name, code: ind.code, description: ind.description || '', category: ind.category, process: ind.process || '', standard: ind.standard || '', currentValue: ind.currentValue?.toString() || '', targetValue: ind.targetValue?.toString() || '', minValue: ind.minValue?.toString() || '', maxValue: ind.maxValue?.toString() || '', unit: ind.unit, frequency: ind.frequency }); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Editar"><Edit3 className="h-4 w-4" /></button>
+                        <button onClick={() => { setEditingId(ind.id); setForm({ name: ind.name, code: ind.code, description: ind.description || '', category: ind.category, process: ind.process || '', standard: ind.standard || '', currentValue: ind.currentValue?.toString() || '', targetValue: ind.targetValue?.toString() || '', minValue: ind.minValue?.toString() || '', maxValue: ind.maxValue?.toString() || '', unit: ind.unit, frequency: ind.frequency, formula: ind.formula || '', dataSource: ind.dataSource || '', direction: ind.direction || 'HIGHER_BETTER', tolerancePercent: ind.tolerancePercent?.toString() || '5', yearTargetValue: ind.yearTargetValue?.toString() || '' }); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Editar"><Edit3 className="h-4 w-4" /></button>
                         <button onClick={() => { setMeasuringId(ind.id); setMeasValue(''); }} className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg" title="Registrar medición"><Plus className="h-4 w-4" /></button>
                         <button onClick={() => handleDelete(ind.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Eliminar"><Trash2 className="h-4 w-4" /></button>
                       </div>
@@ -513,19 +515,19 @@ export default function IndicadoresPage() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <input type="number" step="any" placeholder="Meta" value={form.targetValue} onChange={e => setForm({ ...form, targetValue: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-                <input type="number" step="any" placeholder="Meta Anual (YTD)" value={(form as any).yearTargetValue || ''} onChange={e => setForm({ ...form, yearTargetValue: e.target.value } as any)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                <input type="number" step="any" placeholder="Meta Anual (YTD)" value={form.yearTargetValue} onChange={e => setForm({ ...form, yearTargetValue: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
                 <input placeholder="Unidad" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <select value={(form as any).direction || 'HIGHER_BETTER'} onChange={e => setForm({ ...form, direction: e.target.value } as any)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                <select value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value })} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
                   <option value="HIGHER_BETTER">Mayor es mejor</option>
                   <option value="LOWER_BETTER">Menor es mejor</option>
                 </select>
-                <input type="number" placeholder="Tolerancia %" value={(form as any).tolerancePercent || 5} onChange={e => setForm({ ...form, tolerancePercent: Number(e.target.value) } as any)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                <input type="number" min={0} max={100} placeholder="Tolerancia %" value={form.tolerancePercent} onChange={e => setForm({ ...form, tolerancePercent: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <input placeholder="Fórmula" value={(form as any).formula || ''} onChange={e => setForm({ ...form, formula: e.target.value } as any)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-                <input placeholder="Fuente de datos" value={(form as any).dataSource || ''} onChange={e => setForm({ ...form, dataSource: e.target.value } as any)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                <input placeholder="Fórmula" value={form.formula} onChange={e => setForm({ ...form, formula: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                <input placeholder="Fuente de datos" value={form.dataSource} onChange={e => setForm({ ...form, dataSource: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               </div>
             </div>
             <div className="flex gap-3 mt-6">
