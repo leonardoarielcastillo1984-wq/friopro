@@ -605,10 +605,11 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         });
       }
     }
+    const processesWithIssues = new Set(processIssues.map((i) => i.id));
     const processesModule: ModuleReadiness = {
       key: 'mapa-procesos', label: 'Mapa de Procesos', href: '/contexto-sgi',
-      total: (raw.processes as any[]).length, pending: processIssues.length,
-      score: scoreFrom((raw.processes as any[]).length, processIssues.length),
+      total: (raw.processes as any[]).length, pending: processesWithIssues.size,
+      score: scoreFrom((raw.processes as any[]).length, processesWithIssues.size),
       issues: processIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
