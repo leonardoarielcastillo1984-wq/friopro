@@ -1,5 +1,6 @@
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Panel de Preparación para Auditoría
@@ -1054,5 +1055,63 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       totalPending,
       modules,
     });
+  });
+
+  // ── Asistente IA para completar pendientes ──────────────────────────
+  app.post('/assist', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const body = req.body as { moduleKey?: string; moduleLabel?: string; issues?: Array<{ id: string; title: string; detail: string; severity: string }> };
+
+    if (!body.issues || !Array.isArray(body.issues) || body.issues.length === 0) {
+      return reply.code(400).send({ error: 'Se requieren issues para analizar' });
+    }
+
+    const moduleLabel = body.moduleLabel || body.moduleKey || 'SGI';
+    const issuesToAnalyze = body.issues.slice(0, 10);
+
+    try {
+      const llm = createGroqOnlyLLMProvider(
+        (req as any).tenant, app.prisma, tenantId,
+        (req as any).auth?.userId ?? null,
+        'audit-readiness-assist',
+      );
+
+      const issuesText = issuesToAnalyze.map((iss, i) =>
+        `${i + 1}. [${iss.severity}] ${iss.title}: ${iss.detail}`
+      ).join('\n');
+
+      const prompt = `Eres un asistente experto en sistemas de gestión ISO 9001. El usuario tiene los siguientes pendientes en el módulo "${moduleLabel}":
+
+${issuesText}
+
+Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) para resolverlo. Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
+{
+  "suggestions": [
+    { "id": "<id del issue>", "action": "<acción sugerida>", "priority": "ALTA|MEDIA|BAJA" }
+  ]
+}`;
+
+      const response = await llm.chat([{ role: 'user', content: prompt }]);
+      const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return reply.code(500).send({ error: 'La IA no devolvió un formato válido' });
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const suggestions = Array.isArray(parsed.suggestions)
+        ? parsed.suggestions.map((s: any) => ({
+            id: String(s.id || ''),
+            action: String(s.action || ''),
+            priority: ['ALTA', 'MEDIA', 'BAJA'].includes(s.priority) ? s.priority : 'MEDIA',
+          }))
+        : [];
+
+      return reply.send({ moduleLabel, suggestions });
+    } catch (err: any) {
+      console.error('Error en audit-readiness/assist:', err.message);
+      return reply.code(500).send({ error: 'Error al procesar con IA', details: err.message });
+    }
   });
 };

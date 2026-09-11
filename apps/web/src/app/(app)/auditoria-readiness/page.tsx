@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api';
 import {
   ListChecks, AlertTriangle, AlertCircle, Info, RefreshCw,
   CheckCircle2, ChevronRight, Loader2, ShieldAlert,
+  Sparkles, X, Send, ArrowRight,
 } from 'lucide-react';
 
 type Severity = 'HIGH' | 'MEDIUM' | 'LOW';
@@ -53,6 +54,10 @@ function scoreBarColor(score: number): string {
   return 'bg-red-500';
 }
 
+type AISuggestion = { id: string; action: string; priority: string };
+
+type ChatMessage = { role: 'user' | 'assistant'; content: string; suggestions?: AISuggestion[] };
+
 export default function AuditoriaReadinessPage() {
   const router = useRouter();
   const [data, setData] = useState<SummaryResponse | null>(null);
@@ -60,6 +65,10 @@ export default function AuditoriaReadinessPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatModule, setChatModule] = useState<ModuleReadiness | null>(null);
 
   useEffect(() => { load(); }, []);
 
@@ -77,6 +86,29 @@ export default function AuditoriaReadinessPage() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }
+
+  async function assistModule(m: ModuleReadiness) {
+    if (m.issues.length === 0) return;
+    setChatModule(m);
+    setChatOpen(true);
+    setChatMessages([{ role: 'user', content: `Analizar pendientes de "${m.label}"` }]);
+    setChatLoading(true);
+    try {
+      const res = await apiFetch<{ moduleLabel: string; suggestions: AISuggestion[] }>('/audit-readiness/assist', {
+        method: 'POST',
+        body: JSON.stringify({ moduleKey: m.key, moduleLabel: m.label, issues: m.issues }),
+      });
+      setChatMessages((prev) => [...prev, {
+        role: 'assistant',
+        content: `Encontré ${res.suggestions.length} sugerencia(s) para "${m.label}":`,
+        suggestions: res.suggestions,
+      }]);
+    } catch (err: any) {
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err?.message ?? 'No se pudo procesar'}` }]);
+    } finally {
+      setChatLoading(false);
     }
   }
 
@@ -191,20 +223,96 @@ export default function AuditoriaReadinessPage() {
                         );
                       })
                     )}
-                    {m.href && (
-                      <button
-                        onClick={() => router.push(m.href)}
-                        className="w-full text-center text-xs text-brand-600 hover:text-brand-700 font-medium py-1.5"
-                      >
-                        Ir al módulo →
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 pt-1">
+                      {m.href && (
+                        <button
+                          onClick={() => router.push(m.href)}
+                          className="text-xs text-brand-600 hover:text-brand-700 font-medium py-1.5"
+                        >
+                          Ir al módulo →
+                        </button>
+                      )}
+                      {m.pending > 0 && (
+                        <button
+                          onClick={() => assistModule(m)}
+                          className="ml-auto flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" /> Asistir con IA
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
             ))}
           </div>
         </>
+      )}
+
+      {/* Chat flotante IA */}
+      {chatOpen && (
+        <div className="fixed bottom-4 right-4 z-50 w-[400px] max-w-[calc(100vw-2rem)] rounded-xl border border-neutral-200 bg-white shadow-2xl flex flex-col" style={{ maxHeight: '70vh' }}>
+          <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-brand-600" />
+              <span className="font-semibold text-sm text-neutral-900">Asistente IA</span>
+              {chatModule && <span className="text-xs text-neutral-400">· {chatModule.label}</span>}
+            </div>
+            <button onClick={() => setChatOpen(false)} className="text-neutral-400 hover:text-neutral-600">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {chatMessages.map((msg, i) => (
+              <div key={i} className={msg.role === 'user' ? 'text-right' : ''}>
+                <div className={`inline-block rounded-lg px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-brand-600 text-white' : 'bg-neutral-100 text-neutral-800'}`}>
+                  {msg.content}
+                </div>
+                {msg.suggestions && msg.suggestions.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {msg.suggestions.map((sug, j) => (
+                      <div key={j} className="rounded-lg border border-neutral-200 p-2.5 bg-white">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${sug.priority === 'ALTA' ? 'bg-red-100 text-red-700' : sug.priority === 'MEDIA' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{sug.priority}</span>
+                        </div>
+                        <p className="text-xs text-neutral-700">{sug.action}</p>
+                        {chatModule?.href && (
+                          <button
+                            onClick={() => router.push(chatModule.href)}
+                            className="mt-1.5 flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 font-medium"
+                          >
+                            Ir a resolver <ArrowRight className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="flex items-center gap-2 text-sm text-neutral-400">
+                <Loader2 className="h-4 w-4 animate-spin" /> Analizando pendientes...
+              </div>
+            )}
+          </div>
+          <div className="border-t border-neutral-100 px-4 py-2 text-xs text-neutral-400">
+            La IA sugiere acciones — vos decidís y aplicás. No guarda nada automáticamente.
+          </div>
+        </div>
+      )}
+
+      {/* Botón flotante para abrir chat */}
+      {!chatOpen && data && data.totalPending > 0 && (
+        <button
+          onClick={() => {
+            const firstPending = data.modules.find((m) => m.pending > 0);
+            if (firstPending) assistModule(firstPending);
+          }}
+          className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full bg-brand-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-brand-700"
+        >
+          <Sparkles className="h-4 w-4" /> Asistir con IA
+        </button>
       )}
     </div>
   );
