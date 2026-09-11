@@ -45,7 +45,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     const findingStaleThreshold = new Date(now.getTime() - 30 * DAY_MS);
 
     const raw = await app.runWithDbContext(req, async (tx: any) => {
-      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms] = await Promise.all([
+      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos] = await Promise.all([
         tx.sgiObjective.findMany({
           where: { tenantId, deletedAt: null },
           select: { id: true, code: true, title: true, status: true, progress: true, endDate: true, updatedAt: true },
@@ -109,7 +109,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         }).catch(() => []),
         tx.process.findMany({
           where: { tenantId, deletedAt: null, parentId: null },
-          select: { id: true, code: true, name: true, owner: true, processIndicators: { select: { id: true } }, processDocuments: { select: { id: true } }, processRisks: { select: { id: true } } },
+          select: { id: true, code: true, name: true, owner: true, inputs: true, outputs: true, processIndicators: { select: { id: true } }, processDocuments: { select: { id: true } }, processRisks: { select: { id: true } } },
         }).catch(() => []),
         tx.drillScenario.findMany({
           where: { tenantId, deletedAt: null },
@@ -149,8 +149,20 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           where: { tenantId, deletedAt: null, status: 'ENVIADO' },
           select: { id: true, title: true, sentAt: true, sentCount: true },
         }).catch(() => []),
+        tx.position.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, name: true, code: true, responsibilities: true, employees: { select: { id: true, firstName: true, lastName: true, supervisorId: true } } },
+        }).catch(() => []),
+        tx.employee.findMany({
+          where: { tenantId, status: 'ACTIVE' },
+          select: { id: true, firstName: true, lastName: true, positionId: true, supervisorId: true },
+        }).catch(() => []),
+        tx.inspeccionHallazgo.findMany({
+          where: { tenantId, estado: { in: ['ABIERTO', 'EN_PROCESO'] } },
+          select: { id: true, descripcion: true, tipo: true, severidad: true, estado: true, fechaLimite: true, createdAt: true },
+        }).catch(() => []),
       ]);
-      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms };
+      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos };
     });
 
     // ── 1. Objetivos SGI ──────────────────────────────────────────────────
@@ -884,7 +896,112 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       issues: complianceIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
-    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule, suppliersModule, processesModule, drillsModule, infraModule, competencyModule, policyModule, scopeModule, commModule, satisfactionModule, complianceModule];
+    // ── 21. Organigrama y Roles (5.3) ──────────────────────────────────
+    const orgIssues: ReadinessIssue[] = [];
+    const allPositions = raw.positions as any[];
+    const allEmployees = raw.employees as any[];
+    if (allPositions.length === 0) {
+      orgIssues.push({
+        id: 'no-positions', title: 'Cargos y Responsabilidades',
+        detail: 'No hay cargos definidos en el organigrama', severity: 'HIGH',
+        href: '/rrhh',
+      });
+    } else {
+      for (const p of allPositions) {
+        const noResponsibilities = (p.responsibilities ?? []).length === 0;
+        const noEmployees = (p.employees ?? []).length === 0;
+        if (noResponsibilities) {
+          orgIssues.push({
+            id: p.id, title: p.name,
+            detail: 'Cargo sin responsabilidades definidas', severity: 'MEDIUM',
+            href: '/rrhh',
+          });
+        }
+        if (noEmployees) {
+          orgIssues.push({
+            id: p.id, title: p.name,
+            detail: 'Cargo sin personal asignado', severity: 'LOW',
+            href: '/rrhh',
+          });
+        }
+      }
+    }
+    const employeesWithoutPosition = allEmployees.filter((e) => !e.positionId);
+    if (employeesWithoutPosition.length > 0) {
+      orgIssues.push({
+        id: 'no-position-emp', title: `${employeesWithoutPosition.length} empleados sin cargo`,
+        detail: 'Empleados activos sin cargo asignado en el organigrama', severity: 'MEDIUM',
+        href: '/rrhh',
+      });
+    }
+    const employeesWithoutSupervisor = allEmployees.filter((e) => !e.supervisorId);
+    if (employeesWithoutSupervisor.length > 0 && allEmployees.length > 1) {
+      orgIssues.push({
+        id: 'no-supervisor', title: `${employeesWithoutSupervisor.length} empleados sin supervisor`,
+        detail: 'Empleados sin supervisor definido en la jerarquía', severity: 'LOW',
+        href: '/rrhh',
+      });
+    }
+    const orgModule: ModuleReadiness = {
+      key: 'organigrama-roles', label: 'Organigrama y Roles', href: '/rrhh',
+      total: Math.max(1, allPositions.length), pending: orgIssues.length,
+      score: scoreFrom(Math.max(1, allPositions.length), orgIssues.length),
+      issues: orgIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 22. Requisitos del Cliente (8.2) ───────────────────────────────
+    const reqIssues: ReadinessIssue[] = [];
+    for (const p of raw.processes as any[]) {
+      const noInputs = !p.inputs || (typeof p.inputs === 'string' && !p.inputs.trim());
+      const noOutputs = !p.outputs || (typeof p.outputs === 'string' && !p.outputs.trim());
+      if (noInputs && noOutputs) {
+        reqIssues.push({
+          id: p.id, title: `${p.code ?? ''} ${p.name}`.trim(),
+          detail: 'Proceso sin entradas ni salidas definidas', severity: 'MEDIUM',
+          href: '/contexto-sgi',
+        });
+      }
+    }
+    const reqModule: ModuleReadiness = {
+      key: 'requisitos-cliente', label: 'Requisitos del Cliente', href: '/contexto-sgi',
+      total: Math.max(1, (raw.processes as any[]).length), pending: reqIssues.length,
+      score: scoreFrom(Math.max(1, (raw.processes as any[]).length), reqIssues.length),
+      issues: reqIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 23. Inspecciones (8.5/8.6) ──────────────────────────────────────
+    const inspIssues: ReadinessIssue[] = [];
+    for (const h of raw.inspeccionHallazgos as any[]) {
+      const overdue = h.fechaLimite && new Date(h.fechaLimite).getTime() < now.getTime();
+      const stale = !h.fechaLimite && new Date(h.createdAt).getTime() < findingStaleThreshold.getTime();
+      if (overdue) {
+        inspIssues.push({
+          id: h.id, title: h.descripcion.slice(0, 60),
+          detail: `Hallazgo de inspección vencido (${h.severidad})`, severity: h.severidad === 'CRITICO' ? 'HIGH' : 'MEDIUM',
+          href: '/infraestructura',
+        });
+      } else if (stale) {
+        inspIssues.push({
+          id: h.id, title: h.descripcion.slice(0, 60),
+          detail: `Hallazgo abierto sin fecha límite (${h.severidad})`, severity: 'LOW',
+          href: '/infraestructura',
+        });
+      } else {
+        inspIssues.push({
+          id: h.id, title: h.descripcion.slice(0, 60),
+          detail: `Hallazgo ${h.estado.toLowerCase()} (${h.severidad})`, severity: 'LOW',
+          href: '/infraestructura',
+        });
+      }
+    }
+    const inspModule: ModuleReadiness = {
+      key: 'inspecciones', label: 'Inspecciones y Liberación', href: '/infraestructura',
+      total: Math.max(1, (raw.inspeccionHallazgos as any[]).length), pending: inspIssues.length,
+      score: scoreFrom(Math.max(1, (raw.inspeccionHallazgos as any[]).length), inspIssues.length),
+      issues: inspIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule, suppliersModule, processesModule, drillsModule, infraModule, competencyModule, policyModule, scopeModule, commModule, satisfactionModule, complianceModule, orgModule, reqModule, inspModule];
     const overallScore = Math.round(modules.reduce((acc, m) => acc + m.score, 0) / modules.length);
     const totalPending = modules.reduce((acc, m) => acc + m.pending, 0);
 
