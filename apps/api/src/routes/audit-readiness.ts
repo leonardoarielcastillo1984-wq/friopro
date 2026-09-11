@@ -45,7 +45,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     const findingStaleThreshold = new Date(now.getTime() - 30 * DAY_MS);
 
     const raw = await app.runWithDbContext(req, async (tx: any) => {
-      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies] = await Promise.all([
+      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms] = await Promise.all([
         tx.sgiObjective.findMany({
           where: { tenantId, deletedAt: null },
           select: { id: true, code: true, title: true, status: true, progress: true, endDate: true, updatedAt: true },
@@ -129,8 +129,28 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         tx.employeeCompetency.findMany({
           select: { id: true, employeeId: true, competencyId: true, currentLevel: true, employee: { select: { firstName: true, lastName: true, positionId: true } } },
         }).catch(() => []),
+        tx.policy.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, name: true, content: true, scope: true, active: true, signedPdfUrl: true, updatedAt: true },
+        }).catch(() => []),
+        tx.processMap.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, name: true, scope: true },
+        }).catch(() => []),
+        tx.survey.findMany({
+          where: { tenantId, isActive: true, type: { in: ['SATISFACTION', 'NPS'] } },
+          select: { id: true, code: true, title: true, type: true, startDate: true, endDate: true, responses: { select: { id: true } } },
+        }).catch(() => []),
+        tx.normativeStandard.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, name: true, code: true, version: true, status: true, totalClauses: true },
+        }).catch(() => []),
+        tx.climaComms.findMany({
+          where: { tenantId, deletedAt: null, status: 'ENVIADO' },
+          select: { id: true, title: true, sentAt: true, sentCount: true },
+        }).catch(() => []),
       ]);
-      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies };
+      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms };
     });
 
     // ── 1. Objetivos SGI ──────────────────────────────────────────────────
@@ -698,7 +718,173 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       issues: competencyIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
-    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule, suppliersModule, processesModule, drillsModule, infraModule, competencyModule];
+    // ── 16. Política de Calidad (5.2) ────────────────────────────────────
+    const policyIssues: ReadinessIssue[] = [];
+    const activePolicies = (raw.policies as any[]).filter((p) => p.active);
+    if (activePolicies.length === 0) {
+      policyIssues.push({
+        id: 'no-policy', title: 'Política de Calidad',
+        detail: 'No existe política de calidad definida y activa', severity: 'HIGH',
+        href: '/contexto-sgi',
+      });
+    } else {
+      for (const p of activePolicies) {
+        if (!p.content) {
+          policyIssues.push({
+            id: p.id, title: p.name,
+            detail: 'Política sin contenido definido', severity: 'HIGH',
+            href: '/contexto-sgi',
+          });
+        }
+        if (!p.signedPdfUrl) {
+          policyIssues.push({
+            id: p.id, title: p.name,
+            detail: 'Política sin PDF firmado', severity: 'MEDIUM',
+            href: '/contexto-sgi',
+          });
+        }
+        const policyAge = (now.getTime() - new Date(p.updatedAt).getTime()) / DAY_MS;
+        if (policyAge > 365) {
+          policyIssues.push({
+            id: p.id, title: p.name,
+            detail: `Política sin revisar hace ${Math.round(policyAge / 30)} meses`, severity: 'MEDIUM',
+            href: '/contexto-sgi',
+          });
+        }
+      }
+    }
+    const policyModule: ModuleReadiness = {
+      key: 'politica-calidad', label: 'Política de Calidad', href: '/contexto-sgi',
+      total: Math.max(1, activePolicies.length), pending: policyIssues.length,
+      score: scoreFrom(Math.max(1, activePolicies.length), policyIssues.length),
+      issues: policyIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 17. Alcance del SGC (4.3) ────────────────────────────────────────
+    const scopeIssues: ReadinessIssue[] = [];
+    const scopeCtx = raw.orgContext as any;
+    const maps = raw.processMaps as any[];
+    if (maps.length === 0) {
+      scopeIssues.push({
+        id: 'no-map', title: 'Mapa de Procesos',
+        detail: 'No existe mapa de procesos definido', severity: 'HIGH',
+        href: '/contexto-sgi',
+      });
+    } else {
+      for (const m of maps) {
+        if (!m.scope) {
+          scopeIssues.push({
+            id: m.id, title: m.name,
+            detail: 'Mapa de procesos sin alcance definido', severity: 'MEDIUM',
+            href: '/contexto-sgi',
+          });
+        }
+      }
+    }
+    if (scopeCtx && (!scopeCtx.mission || !scopeCtx.vision)) {
+      scopeIssues.push({
+        id: 'no-mv', title: 'Misión y Visión',
+        detail: scopeCtx.mission ? 'Sin visión definida' : 'Sin misión definida', severity: 'LOW',
+        href: '/contexto-sgi',
+      });
+    }
+    const scopeModule: ModuleReadiness = {
+      key: 'alcance-sgc', label: 'Alcance del SGC', href: '/contexto-sgi',
+      total: Math.max(1, maps.length), pending: scopeIssues.length,
+      score: scoreFrom(Math.max(1, maps.length), scopeIssues.length),
+      issues: scopeIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 18. Comunicación (7.4) ──────────────────────────────────────────
+    const commIssues: ReadinessIssue[] = [];
+    const sentComms = raw.comms as any[];
+    if (sentComms.length === 0) {
+      commIssues.push({
+        id: 'no-comms', title: 'Comunicaciones internas',
+        detail: 'No hay comunicaciones internas enviadas', severity: 'MEDIUM',
+        href: '/clima',
+      });
+    } else {
+      const lastComm = sentComms[0];
+      const daysSinceLastComm = (now.getTime() - new Date(lastComm.sentAt).getTime()) / DAY_MS;
+      if (daysSinceLastComm > 90) {
+        commIssues.push({
+          id: 'stale-comms', title: 'Comunicaciones internas',
+          detail: `Sin comunicaciones en ${Math.round(daysSinceLastComm / 30)} meses`, severity: 'LOW',
+          href: '/clima',
+        });
+      }
+    }
+    const commModule: ModuleReadiness = {
+      key: 'comunicacion', label: 'Comunicación', href: '/clima',
+      total: Math.max(1, sentComms.length), pending: commIssues.length,
+      score: scoreFrom(Math.max(1, sentComms.length), commIssues.length),
+      issues: commIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 19. Satisfacción del Cliente (9.1.2) ────────────────────────────
+    const satisfactionIssues: ReadinessIssue[] = [];
+    const surveys = raw.surveys as any[];
+    if (surveys.length === 0) {
+      satisfactionIssues.push({
+        id: 'no-surveys', title: 'Satisfacción del Cliente',
+        detail: 'No existen encuestas de satisfacción activas', severity: 'HIGH',
+        href: '/encuestas',
+      });
+    } else {
+      for (const s of surveys) {
+        const responseCount = (s.responses ?? []).length;
+        if (responseCount === 0) {
+          satisfactionIssues.push({
+            id: s.id, title: s.title,
+            detail: 'Encuesta sin respuestas recibidas', severity: 'MEDIUM',
+            href: '/encuestas',
+          });
+        }
+      }
+    }
+    const satisfactionModule: ModuleReadiness = {
+      key: 'satisfaccion-cliente', label: 'Satisfacción del Cliente', href: '/encuestas',
+      total: Math.max(1, surveys.length), pending: satisfactionIssues.length,
+      score: scoreFrom(Math.max(1, surveys.length), satisfactionIssues.length),
+      issues: satisfactionIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 20. Cumplimiento Normativo (9.1.1) ──────────────────────────────
+    const complianceIssues: ReadinessIssue[] = [];
+    const norms = raw.normativeStandards as any[];
+    if (norms.length === 0) {
+      complianceIssues.push({
+        id: 'no-norms', title: 'Normas y Requisitos Legales',
+        detail: 'No hay normas cargadas en el sistema', severity: 'HIGH',
+        href: '/contexto-sgi',
+      });
+    } else {
+      for (const n of norms) {
+        if (n.status !== 'COMPLETED' && n.status !== 'PROCESSED') {
+          complianceIssues.push({
+            id: n.id, title: n.name,
+            detail: 'Norma cargada pero no procesada', severity: 'MEDIUM',
+            href: '/contexto-sgi',
+          });
+        }
+        if (n.totalClauses === 0) {
+          complianceIssues.push({
+            id: n.id, title: n.name,
+            detail: 'Norma sin cláusulas extraídas', severity: 'MEDIUM',
+            href: '/contexto-sgi',
+          });
+        }
+      }
+    }
+    const complianceModule: ModuleReadiness = {
+      key: 'cumplimiento-normativo', label: 'Cumplimiento Normativo', href: '/contexto-sgi',
+      total: Math.max(1, norms.length), pending: complianceIssues.length,
+      score: scoreFrom(Math.max(1, norms.length), complianceIssues.length),
+      issues: complianceIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule, suppliersModule, processesModule, drillsModule, infraModule, competencyModule, policyModule, scopeModule, commModule, satisfactionModule, complianceModule];
     const overallScore = Math.round(modules.reduce((acc, m) => acc + m.score, 0) / modules.length);
     const totalPending = modules.reduce((acc, m) => acc + m.pending, 0);
 
