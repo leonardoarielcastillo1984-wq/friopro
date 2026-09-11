@@ -291,10 +291,11 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         });
       }
     }
+    const risksWithIssues = new Set(riskIssues.map((i) => i.id));
     const risksModule: ModuleReadiness = {
       key: 'riesgos', label: 'Riesgos', href: '/riesgos',
-      total: raw.risks.length, pending: riskIssues.length,
-      score: scoreFrom(raw.risks.length, riskIssues.length),
+      total: raw.risks.length, pending: risksWithIssues.size,
+      score: scoreFrom(raw.risks.length, risksWithIssues.size),
       issues: riskIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
@@ -771,10 +772,11 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         }
       }
     }
+    const policiesWithIssues = new Set(policyIssues.map((i) => i.id));
     const policyModule: ModuleReadiness = {
       key: 'politica-calidad', label: 'Política de Calidad', href: '/objetivos/politicas',
-      total: Math.max(1, activePolicies.length), pending: policyIssues.length,
-      score: scoreFrom(Math.max(1, activePolicies.length), policyIssues.length),
+      total: Math.max(1, activePolicies.length), pending: policiesWithIssues.size,
+      score: scoreFrom(Math.max(1, activePolicies.length), policiesWithIssues.size),
       issues: policyIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
@@ -895,10 +897,11 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         }
       }
     }
+    const normsWithIssues = new Set(complianceIssues.map((i) => i.id));
     const complianceModule: ModuleReadiness = {
       key: 'cumplimiento-normativo', label: 'Cumplimiento Normativo', href: '/normativos',
-      total: Math.max(1, norms.length), pending: complianceIssues.length,
-      score: scoreFrom(Math.max(1, norms.length), complianceIssues.length),
+      total: Math.max(1, norms.length), pending: normsWithIssues.size,
+      score: scoreFrom(Math.max(1, norms.length), normsWithIssues.size),
       issues: complianceIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
@@ -948,10 +951,11 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         href: '/rrhh',
       });
     }
+    const orgWithIssues = new Set(orgIssues.map((i) => i.id));
     const orgModule: ModuleReadiness = {
       key: 'organigrama-roles', label: 'Organigrama y Roles', href: '/rrhh',
-      total: Math.max(1, allPositions.length), pending: orgIssues.length,
-      score: scoreFrom(Math.max(1, allPositions.length), orgIssues.length),
+      total: Math.max(1, allPositions.length), pending: orgWithIssues.size,
+      score: scoreFrom(Math.max(1, allPositions.length), orgWithIssues.size),
       issues: orgIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
