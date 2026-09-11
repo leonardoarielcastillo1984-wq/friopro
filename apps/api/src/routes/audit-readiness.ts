@@ -77,7 +77,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           select: { id: true, code: true, title: true, status: true, scheduledDate: true, completedDate: true },
         }),
         tx.auditFinding.findMany({
-          where: { tenantId, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+          where: { tenantId, deletedAt: null, status: { in: ['OPEN', 'IN_ANALYSIS', 'IN_ACTION', 'REOPENED'] } },
           select: { id: true, code: true, description: true, detectedAt: true, severity: true },
         }),
       ]);

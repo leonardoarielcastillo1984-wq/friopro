@@ -68,6 +68,9 @@ export default function AuditoriaReadinessPage() {
     setError(null);
     try {
       const res = await apiFetch<SummaryResponse>('/audit-readiness/summary');
+      if (!res || !Array.isArray(res.modules)) {
+        throw new Error('No se pudo cargar el panel de preparación');
+      }
       setData(res);
     } catch (err: any) {
       setError(err?.message ?? 'Error al cargar el panel de preparación');
