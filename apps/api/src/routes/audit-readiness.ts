@@ -45,7 +45,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     const findingStaleThreshold = new Date(now.getTime() - 30 * DAY_MS);
 
     const raw = await app.runWithDbContext(req, async (tx: any) => {
-      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings] = await Promise.all([
+      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders] = await Promise.all([
         tx.sgiObjective.findMany({
           where: { tenantId, deletedAt: null },
           select: { id: true, code: true, title: true, status: true, progress: true, endDate: true, updatedAt: true },
@@ -80,8 +80,31 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           where: { tenantId, deletedAt: null, status: { in: ['OPEN', 'IN_ANALYSIS', 'IN_ACTION', 'REOPENED'] } },
           select: { id: true, code: true, description: true, detectedAt: true, severity: true },
         }),
+        tx.audit.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, code: true, title: true, status: true, type: true, plannedStartDate: true, actualStartDate: true, actualEndDate: true },
+        }).catch(() => []),
+        tx.auditProgram.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, year: true, name: true, status: true },
+        }).catch(() => []),
+        tx.managementReview.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, title: true, status: true, periodStart: true, periodEnd: true, generatedAt: true },
+        }).catch(() => []),
+        tx.indicator.findMany({
+          where: { tenantId, isActive: true },
+          select: { id: true, code: true, name: true, status: true, lastMeasuredAt: true, nextDueAt: true, currentValue: true, targetValue: true, ownerId: true },
+        }).catch(() => []),
+        tx.organizationContext.findFirst({
+          where: { tenantId, year: now.getFullYear() },
+        }).catch(() => null),
+        tx.stakeholder.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, name: true, type: true, complianceStatus: true, complianceLevel: true, lastEvaluationDate: true },
+        }).catch(() => []),
       ]);
-      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings };
+      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders };
     });
 
     // ── 1. Objetivos SGI ──────────────────────────────────────────────────
@@ -90,12 +113,29 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     for (const o of activeObjectives) {
       const delayed = o.endDate && new Date(o.endDate).getTime() < now.getTime();
       const stale = new Date(o.updatedAt).getTime() < staleThreshold.getTime();
-      if (delayed || stale) {
+      const noProgress = (o.progress ?? 0) === 0;
+      if (delayed) {
         objectiveIssues.push({
           id: o.id,
           title: `${o.code ?? ''} ${o.title}`.trim(),
-          detail: delayed ? `Vencido (progreso ${o.progress}%)` : `Sin actualización hace 45+ días (progreso ${o.progress}%)`,
-          severity: delayed ? 'HIGH' : 'MEDIUM',
+          detail: `Vencido (progreso ${o.progress}%)`,
+          severity: 'HIGH',
+          href: '/objetivos',
+        });
+      } else if (stale) {
+        objectiveIssues.push({
+          id: o.id,
+          title: `${o.code ?? ''} ${o.title}`.trim(),
+          detail: `Sin actualización hace 45+ días (progreso ${o.progress}%)`,
+          severity: 'MEDIUM',
+          href: '/objetivos',
+        });
+      } else if (noProgress) {
+        objectiveIssues.push({
+          id: o.id,
+          title: `${o.code ?? ''} ${o.title}`.trim(),
+          detail: 'Sin avance (0%)',
+          severity: 'MEDIUM',
           href: '/objetivos',
         });
       }
@@ -148,6 +188,11 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           id: n.id, title: `${n.code} — ${n.title}`, detail: 'Vencida', severity: 'HIGH',
           href: '/calidad',
         });
+      } else {
+        ncrIssues.push({
+          id: n.id, title: `${n.code} — ${n.title}`, detail: 'Abierta sin cerrar', severity: 'LOW',
+          href: '/calidad',
+        });
       }
     }
     const ncrModule: ModuleReadiness = {
@@ -196,11 +241,20 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       const expired = d.nextReviewDate && new Date(d.nextReviewDate).getTime() < now.getTime();
       const dueSoon = d.nextReviewDate && !expired && (new Date(d.nextReviewDate).getTime() - now.getTime()) / DAY_MS <= 15;
       const noOwner = !d.ownerId;
-      if (expired || noOwner) {
+      const notEffective = d.status === 'DRAFT' || d.status === 'REVIEW';
+      if (expired) {
         docIssues.push({
-          id: d.id, title: d.title,
-          detail: expired ? 'Revisión vencida' : 'Sin responsable asignado',
-          severity: expired ? 'HIGH' : 'MEDIUM',
+          id: d.id, title: d.title, detail: 'Revisión vencida', severity: 'HIGH',
+          href: `/documents/${d.id}`,
+        });
+      } else if (noOwner) {
+        docIssues.push({
+          id: d.id, title: d.title, detail: 'Sin responsable asignado', severity: 'MEDIUM',
+          href: `/documents/${d.id}`,
+        });
+      } else if (notEffective) {
+        docIssues.push({
+          id: d.id, title: d.title, detail: d.status === 'DRAFT' ? 'En borrador (no efectivo)' : 'En revisión (no efectivo)', severity: 'MEDIUM',
           href: `/documents/${d.id}`,
         });
       } else if (dueSoon) {
@@ -245,6 +299,11 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           id: f.id, title: `${f.code} — ${f.description.slice(0, 60)}`, detail: 'Abierto hace 30+ días sin cerrar', severity: f.severity === 'MAJOR' || f.severity === 'CRITICAL' ? 'HIGH' : 'MEDIUM',
           href: `/auditoria`,
         });
+      } else {
+        findingIssues.push({
+          id: f.id, title: `${f.code} — ${f.description.slice(0, 60)}`, detail: 'Abierto sin cerrar', severity: 'LOW',
+          href: `/auditoria`,
+        });
       }
     }
     const findingsModule: ModuleReadiness = {
@@ -254,7 +313,169 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       issues: findingIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
-    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule];
+    // ── 7. Auditorías Internas ────────────────────────────────────────────
+    const auditIssues: ReadinessIssue[] = [];
+    const currentYear = now.getFullYear();
+    const hasProgramThisYear = (raw.auditPrograms as any[]).some((p) => p.year === currentYear);
+    if (!hasProgramThisYear) {
+      auditIssues.push({
+        id: 'no-program', title: `Programa de auditorías ${currentYear}`,
+        detail: 'No existe programa de auditorías internas para el año actual', severity: 'HIGH',
+        href: '/auditoria',
+      });
+    }
+    for (const a of raw.audits as any[]) {
+      if (a.status === 'DRAFT' || a.status === 'PLANNED') {
+        const hasNoDates = !a.plannedStartDate;
+        auditIssues.push({
+          id: a.id, title: `${a.code} — ${a.title}`,
+          detail: hasNoDates ? 'Auditoría sin fechas planificadas' : 'Planificada sin ejecutar',
+          severity: hasNoDates ? 'MEDIUM' : 'LOW',
+          href: '/auditoria',
+        });
+      } else if (a.status === 'IN_PROGRESS' || a.status === 'PENDING_REPORT') {
+        const startedAt = a.actualStartDate ? new Date(a.actualStartDate) : new Date(a.plannedStartDate ?? now);
+        const daysSinceStart = (now.getTime() - startedAt.getTime()) / DAY_MS;
+        if (daysSinceStart > 30) {
+          auditIssues.push({
+            id: a.id, title: `${a.code} — ${a.title}`,
+            detail: daysSinceStart > 60 ? `En curso hace ${Math.round(daysSinceStart)} días sin cerrar` : 'Pendiente de reporte/cierre',
+            severity: daysSinceStart > 60 ? 'HIGH' : 'MEDIUM',
+            href: '/auditoria',
+          });
+        }
+      }
+    }
+    const auditsModule: ModuleReadiness = {
+      key: 'auditorias-internas', label: 'Auditorías Internas', href: '/auditoria',
+      total: (raw.audits as any[]).length, pending: auditIssues.length,
+      score: scoreFrom(Math.max(1, (raw.audits as any[]).length + 1), auditIssues.length),
+      issues: auditIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 8. Revisión por la Dirección ──────────────────────────────────────
+    const reviewIssues: ReadinessIssue[] = [];
+    const reviews = raw.mgmtReviews as any[];
+    const reviewThisYear = reviews.filter((r) => new Date(r.periodEnd).getFullYear() === currentYear || new Date(r.periodStart).getFullYear() === currentYear);
+    if (reviewThisYear.length === 0) {
+      reviewIssues.push({
+        id: 'no-review', title: `Revisión por la Dirección ${currentYear}`,
+        detail: 'No existe revisión por la dirección para el período actual', severity: 'HIGH',
+        href: '/contexto-sgi',
+      });
+    } else {
+      for (const r of reviewThisYear) {
+        if (r.status === 'DRAFT') {
+          reviewIssues.push({
+            id: r.id, title: r.title,
+            detail: 'Revisión en borrador (no finalizada)', severity: 'MEDIUM',
+            href: '/contexto-sgi',
+          });
+        }
+      }
+    }
+    const mgmtReviewModule: ModuleReadiness = {
+      key: 'revision-direccion', label: 'Revisión por la Dirección', href: '/contexto-sgi',
+      total: Math.max(1, reviewThisYear.length), pending: reviewIssues.length,
+      score: scoreFrom(Math.max(1, reviewThisYear.length), reviewIssues.length),
+      issues: reviewIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 9. Indicadores ────────────────────────────────────────────────────
+    const indicatorIssues: ReadinessIssue[] = [];
+    for (const ind of raw.indicators as any[]) {
+      const noData = ind.status === 'NO_DATA' || !ind.lastMeasuredAt;
+      const offTarget = ind.status === 'OFF_TARGET';
+      const staleMeasurement = ind.lastMeasuredAt && new Date(ind.lastMeasuredAt).getTime() < staleThreshold.getTime();
+      const overdueNext = ind.nextDueAt && new Date(ind.nextDueAt).getTime() < now.getTime();
+      const noOwner = !ind.ownerId;
+      if (noData) {
+        indicatorIssues.push({
+          id: ind.id, title: `${ind.code} — ${ind.name}`,
+          detail: 'Sin mediciones registradas', severity: 'HIGH',
+          href: '/indicadores',
+        });
+      } else if (offTarget) {
+        indicatorIssues.push({
+          id: ind.id, title: `${ind.code} — ${ind.name}`,
+          detail: `Fuera de meta (actual: ${ind.currentValue}, meta: ${ind.targetValue})`, severity: 'MEDIUM',
+          href: '/indicadores',
+        });
+      } else if (overdueNext) {
+        indicatorIssues.push({
+          id: ind.id, title: `${ind.code} — ${ind.name}`,
+          detail: 'Medición vencida', severity: 'MEDIUM',
+          href: '/indicadores',
+        });
+      } else if (staleMeasurement) {
+        indicatorIssues.push({
+          id: ind.id, title: `${ind.code} — ${ind.name}`,
+          detail: 'Sin medición hace 45+ días', severity: 'LOW',
+          href: '/indicadores',
+        });
+      } else if (noOwner) {
+        indicatorIssues.push({
+          id: ind.id, title: `${ind.code} — ${ind.name}`,
+          detail: 'Sin responsable asignado', severity: 'LOW',
+          href: '/indicadores',
+        });
+      }
+    }
+    const indicatorsModule: ModuleReadiness = {
+      key: 'indicadores', label: 'Indicadores', href: '/indicadores',
+      total: (raw.indicators as any[]).length, pending: indicatorIssues.length,
+      score: scoreFrom((raw.indicators as any[]).length, indicatorIssues.length),
+      issues: indicatorIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 10. Contexto y Partes Interesadas ─────────────────────────────────
+    const contextIssues: ReadinessIssue[] = [];
+    const ctx = raw.orgContext as any;
+    if (!ctx) {
+      contextIssues.push({
+        id: 'no-context', title: `Análisis FODA ${currentYear}`,
+        detail: 'No existe análisis de contexto (FODA/PESTEL) para el año actual', severity: 'HIGH',
+        href: '/contexto-sgi',
+      });
+    } else {
+      const hasFoda = ctx.strengths || ctx.weaknesses || ctx.opportunities || ctx.threats;
+      if (!hasFoda) {
+        contextIssues.push({
+          id: 'incomplete-foda', title: `Análisis FODA ${currentYear}`,
+          detail: 'FODA incompleto (sin fortalezas/debilidades/oportunidades/amenazas)', severity: 'MEDIUM',
+          href: '/contexto-sgi',
+        });
+      }
+    }
+    for (const s of raw.stakeholders as any[]) {
+      if (!s.complianceStatus) {
+        contextIssues.push({
+          id: s.id, title: s.name,
+          detail: 'Parte interesada sin evaluación de cumplimiento', severity: 'MEDIUM',
+          href: '/contexto-sgi',
+        });
+      } else if (s.complianceStatus === 'NON_COMPLIANT') {
+        contextIssues.push({
+          id: s.id, title: s.name,
+          detail: 'Parte interesada no conforme', severity: 'HIGH',
+          href: '/contexto-sgi',
+        });
+      } else if (s.complianceStatus === 'PARTIAL') {
+        contextIssues.push({
+          id: s.id, title: s.name,
+          detail: 'Parte interesada con cumplimiento parcial', severity: 'LOW',
+          href: '/contexto-sgi',
+        });
+      }
+    }
+    const contextModule: ModuleReadiness = {
+      key: 'contexto', label: 'Contexto y Partes Interesadas', href: '/contexto-sgi',
+      total: 1 + (raw.stakeholders as any[]).length, pending: contextIssues.length,
+      score: scoreFrom(1 + (raw.stakeholders as any[]).length, contextIssues.length),
+      issues: contextIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule];
     const overallScore = Math.round(modules.reduce((acc, m) => acc + m.score, 0) / modules.length);
     const totalPending = modules.reduce((acc, m) => acc + m.pending, 0);
 
