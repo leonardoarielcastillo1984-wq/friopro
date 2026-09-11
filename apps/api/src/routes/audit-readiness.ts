@@ -1114,4 +1114,208 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
       return reply.code(500).send({ error: 'Error al procesar con IA', details: err.message });
     }
   });
+
+  // ── Ejecutar acción IA (Level 3) ────────────────────────────────────
+  app.post('/execute', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const body = req.body as {
+      moduleKey: string;
+      issueId: string;
+      action: 'assign_responsible' | 'send_reminder' | 'create_draft_action' | 'mark_in_review' | 'update_date' | 'suggest_close';
+      actionData?: { responsibleId?: string; newDate?: string; actionTitle?: string; actionDescription?: string };
+    };
+
+    if (!body.moduleKey || !body.issueId || !body.action) {
+      return reply.code(400).send({ error: 'Faltan parámetros: moduleKey, issueId, action' });
+    }
+
+    const userId = (req as any).auth?.userId ?? null;
+    const now = new Date();
+
+    try {
+      const result = await app.runWithDbContext(req, async (tx: any) => {
+        switch (body.action) {
+
+          // ── Asignar responsable automático ──
+          case 'assign_responsible': {
+            const { responsibleId } = body.actionData ?? {};
+            if (!responsibleId) return reply.code(400).send({ error: 'Falta responsibleId' });
+
+            const modelMap: Record<string, string> = {
+              'riesgos': 'risk',
+              'documentos': 'document',
+              'indicadores': 'indicator',
+              'gestion-cambios': 'gestionCambio',
+            };
+            const modelName = modelMap[body.moduleKey];
+            if (!modelName) return reply.code(400).send({ error: `No se puede asignar responsable en módulo ${body.moduleKey}` });
+
+            const record = await tx[modelName].updateMany({
+              where: { id: body.issueId, tenantId },
+              data: { ownerId: responsibleId, updatedAt: now },
+            });
+            if (record.count === 0) return reply.code(404).send({ error: 'Registro no encontrado' });
+
+            await tx.notification.create({
+              data: {
+                tenantId, userId: responsibleId,
+                type: 'SYSTEM_ALERT',
+                title: 'Responsabilidad asignada',
+                message: `Se te asignó como responsable de un item en ${body.moduleKey}`,
+                read: false, createdAt: now,
+              },
+            }).catch(() => {});
+
+            return { success: true, message: 'Responsable asignado correctamente' };
+          }
+
+          // ── Enviar recordatorio ──
+          case 'send_reminder': {
+            const modelMap: Record<string, string> = {
+              'objetivos': 'sgiObjective',
+              'planes-accion': 'actionPlan',
+              'ncr': 'nonConformity',
+              'riesgos': 'risk',
+              'documentos': 'document',
+              'capacitaciones': 'sgiTraining',
+              'gestion-cambios': 'gestionCambio',
+            };
+            const modelName = modelMap[body.moduleKey];
+            if (!modelName) return reply.code(400).send({ error: `No se puede enviar recordatorio desde ${body.moduleKey}` });
+
+            const record = await tx[modelName].findUnique({
+              where: { id: body.issueId },
+              select: { ownerId: true, responsibleId: true, code: true, title: true },
+            }).catch(() => null);
+
+            if (!record) return reply.code(404).send({ error: 'Registro no encontrado' });
+
+            const targetUserId = record.ownerId || record.responsibleId;
+            if (!targetUserId) return reply.code(400).send({ error: 'El registro no tiene responsable para enviar recordatorio' });
+
+            await tx.notification.create({
+              data: {
+                tenantId, userId: targetUserId,
+                type: 'SYSTEM_ALERT',
+                title: 'Recordatorio de pendiente',
+                message: `Recordatorio: el item ${record.code || record.title || body.issueId} en ${body.moduleKey} tiene un pendiente que requiere tu atención.`,
+                read: false, createdAt: now,
+              },
+            });
+
+            return { success: true, message: 'Recordatorio enviado al responsable' };
+          }
+
+          // ── Crear plan de acción en borrador ──
+          case 'create_draft_action': {
+            const { actionTitle, actionDescription } = body.actionData ?? {};
+            if (!actionTitle) return reply.code(400).send({ error: 'Falta actionTitle' });
+
+            const code = `CAPA-${now.getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+
+            const plan = await tx.actionPlan.create({
+              data: {
+                tenantId,
+                code,
+                findingDescription: actionDescription || actionTitle,
+                status: 'DRAFT',
+                openedAt: now,
+                plannedEndDate: new Date(now.getTime() + 30 * DAY_MS),
+                source: 'AI_ASSISTANT',
+                sourceIssueId: body.issueId,
+                sourceModule: body.moduleKey,
+                createdBy: userId,
+              },
+            }).catch((err: any) => {
+              // Fallback without extra fields if they don't exist
+              return tx.actionPlan.create({
+                data: {
+                  tenantId,
+                  code,
+                  findingDescription: actionDescription || actionTitle,
+                  status: 'DRAFT',
+                  openedAt: now,
+                  plannedEndDate: new Date(now.getTime() + 30 * DAY_MS),
+                },
+              });
+            });
+
+            return { success: true, message: `Plan de acción creado en borrador: ${code}`, planId: plan.id };
+          }
+
+          // ── Marcar como "en revisión" ──
+          case 'mark_in_review': {
+            if (body.moduleKey === 'documentos') {
+              const record = await tx.document.updateMany({
+                where: { id: body.issueId, tenantId, status: 'DRAFT' },
+                data: { status: 'REVIEW', updatedAt: now },
+              });
+              if (record.count === 0) return reply.code(404).send({ error: 'Documento no encontrado o no está en borrador' });
+              return { success: true, message: 'Documento marcado para revisión' };
+            }
+            return reply.code(400).send({ error: 'mark_in_review solo aplica a documentos' });
+          }
+
+          // ── Actualizar fecha prevista ──
+          case 'update_date': {
+            const { newDate } = body.actionData ?? {};
+            if (!newDate) return reply.code(400).send({ error: 'Falta newDate' });
+
+            const dateFieldMap: Record<string, { model: string; field: string }> = {
+              'objetivos': { model: 'sgiObjective', field: 'endDate' },
+              'planes-accion': { model: 'actionPlan', field: 'plannedEndDate' },
+              'ncr': { model: 'nonConformity', field: 'dueDate' },
+              'capacitaciones': { model: 'sgiTraining', field: 'scheduledDate' },
+              'gestion-cambios': { model: 'gestionCambio', field: 'fechaPrevista' },
+            };
+            const cfg = dateFieldMap[body.moduleKey];
+            if (!cfg) return reply.code(400).send({ error: `No se puede actualizar fecha en ${body.moduleKey}` });
+
+            const record = await tx[cfg.model].updateMany({
+              where: { id: body.issueId, tenantId },
+              data: { [cfg.field]: new Date(newDate) },
+            });
+            if (record.count === 0) return reply.code(404).send({ error: 'Registro no encontrado' });
+
+            return { success: true, message: 'Fecha actualizada correctamente' };
+          }
+
+          // ── Sugerir cierre (marca para revisión humana) ──
+          case 'suggest_close': {
+            const modelMap: Record<string, string> = {
+              'planes-accion': 'actionPlan',
+              'ncr': 'nonConformity',
+              'hallazgos': 'auditFinding',
+              'inspecciones': 'inspeccionHallazgo',
+            };
+            const modelName = modelMap[body.moduleKey];
+            if (!modelName) return reply.code(400).send({ error: `No se puede sugerir cierre en ${body.moduleKey}` });
+
+            // Create a notification for the quality manager
+            await tx.notification.create({
+              data: {
+                tenantId,
+                type: 'SYSTEM_ALERT',
+                title: 'Sugerencia de cierre (IA)',
+                message: `La IA sugiere cerrar el item ${body.issueId} del módulo ${body.moduleKey}. Revisá y confirmá el cierre manualmente.`,
+                read: false, createdAt: now,
+              },
+            }).catch(() => {});
+
+            return { success: true, message: 'Sugerencia de cierre enviada al responsable de calidad' };
+          }
+
+          default:
+            return reply.code(400).send({ error: `Acción no soportada: ${body.action}` });
+        }
+      });
+
+      return reply.send(result);
+    } catch (err: any) {
+      console.error('Error en audit-readiness/execute:', err.message);
+      return reply.code(500).send({ error: 'Error al ejecutar acción', details: err.message });
+    }
+  });
 };

@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import {
   ListChecks, AlertTriangle, AlertCircle, Info, RefreshCw,
   CheckCircle2, ChevronRight, Loader2, ShieldAlert,
-  Sparkles, X, Send, ArrowRight,
+  Sparkles, X, Send, ArrowRight, Zap, Check,
 } from 'lucide-react';
 
 type Severity = 'HIGH' | 'MEDIUM' | 'LOW';
@@ -56,7 +56,35 @@ function scoreBarColor(score: number): string {
 
 type AISuggestion = { id: string; action: string; priority: string };
 
-type ChatMessage = { role: 'user' | 'assistant'; content: string; suggestions?: AISuggestion[] };
+type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  suggestions?: AISuggestion[];
+  executed?: Record<string, boolean>;
+  executing?: Record<string, boolean>;
+};
+
+const ACTION_MAP: Record<string, string[]> = {
+  'riesgos': ['assign_responsible', 'send_reminder', 'create_draft_action'],
+  'documentos': ['assign_responsible', 'mark_in_review', 'send_reminder'],
+  'indicadores': ['assign_responsible', 'send_reminder'],
+  'gestion-cambios': ['assign_responsible', 'update_date', 'send_reminder'],
+  'objetivos': ['update_date', 'send_reminder', 'create_draft_action'],
+  'planes-accion': ['update_date', 'suggest_close', 'send_reminder'],
+  'ncr': ['update_date', 'suggest_close', 'send_reminder'],
+  'capacitaciones': ['update_date', 'send_reminder'],
+  'hallazgos': ['suggest_close', 'send_reminder'],
+  'inspecciones': ['suggest_close', 'send_reminder'],
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  assign_responsible: 'Asignar responsable',
+  send_reminder: 'Enviar recordatorio',
+  create_draft_action: 'Crear plan (borrador)',
+  mark_in_review: 'Marcar en revisión',
+  update_date: 'Actualizar fecha',
+  suggest_close: 'Sugerir cierre',
+};
 
 export default function AuditoriaReadinessPage() {
   const router = useRouter();
@@ -69,6 +97,31 @@ export default function AuditoriaReadinessPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatModule, setChatModule] = useState<ModuleReadiness | null>(null);
+  const [executingId, setExecutingId] = useState<string | null>(null);
+
+  async function executeAction(suggestionId: string, action: string, moduleKey: string) {
+    const issueId = suggestionId;
+    setExecutingId(issueId + action);
+    try {
+      const res = await apiFetch<{ success: boolean; message: string }>('/audit-readiness/execute', {
+        method: 'POST',
+        json: { moduleKey, issueId, action },
+      });
+      setChatMessages((prev) => prev.map((m) => {
+        if (!m.suggestions) return m;
+        return {
+          ...m,
+          executed: { ...m.executed, [issueId + action]: true },
+        };
+      }));
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: res.message || 'Acción ejecutada' }]);
+      load(true);
+    } catch (err: any) {
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err?.message ?? 'No se pudo ejecutar'}` }]);
+    } finally {
+      setExecutingId(null);
+    }
+  }
 
   useEffect(() => { load(); }, []);
 
@@ -270,22 +323,54 @@ export default function AuditoriaReadinessPage() {
                 </div>
                 {msg.suggestions && msg.suggestions.length > 0 && (
                   <div className="mt-2 space-y-2">
-                    {msg.suggestions.map((sug, j) => (
-                      <div key={j} className="rounded-lg border border-neutral-200 p-2.5 bg-white">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${sug.priority === 'ALTA' ? 'bg-red-100 text-red-700' : sug.priority === 'MEDIA' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{sug.priority}</span>
+                    {msg.suggestions.map((sug, j) => {
+                      const actions = chatModule ? (ACTION_MAP[chatModule.key] || ['send_reminder']) : ['send_reminder'];
+                      return (
+                        <div key={j} className="rounded-lg border border-neutral-200 p-2.5 bg-white">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${sug.priority === 'ALTA' ? 'bg-red-100 text-red-700' : sug.priority === 'MEDIA' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{sug.priority}</span>
+                          </div>
+                          <p className="text-xs text-neutral-700 mb-2">{sug.action}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {actions.map((act) => {
+                              const execKey = sug.id + act;
+                              const isExecuted = msg.executed?.[execKey];
+                              const isExecuting = executingId === execKey;
+                              return (
+                                <button
+                                  key={act}
+                                  onClick={() => !isExecuted && !isExecuting && executeAction(sug.id, act, chatModule!.key)}
+                                  disabled={isExecuted || isExecuting}
+                                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+                                    isExecuted
+                                      ? 'bg-green-100 text-green-700 cursor-default'
+                                      : isExecuting
+                                      ? 'bg-neutral-100 text-neutral-400'
+                                      : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
+                                  }`}
+                                >
+                                  {isExecuted ? (
+                                    <><Check className="h-3 w-3" /> Hecho</>
+                                  ) : isExecuting ? (
+                                    <><Loader2 className="h-3 w-3 animate-spin" /> ...</>
+                                  ) : (
+                                    <><Zap className="h-3 w-3" /> {ACTION_LABELS[act]}</>
+                                  )}
+                                </button>
+                              );
+                            })}
+                            {chatModule?.href && (
+                              <button
+                                onClick={() => router.push(chatModule.href)}
+                                className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-neutral-500 hover:text-neutral-700"
+                              >
+                                Ir <ArrowRight className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-xs text-neutral-700">{sug.action}</p>
-                        {chatModule?.href && (
-                          <button
-                            onClick={() => router.push(chatModule.href)}
-                            className="mt-1.5 flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 font-medium"
-                          >
-                            Ir a resolver <ArrowRight className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -297,7 +382,7 @@ export default function AuditoriaReadinessPage() {
             )}
           </div>
           <div className="border-t border-neutral-100 px-4 py-2 text-xs text-neutral-400">
-            La IA sugiere acciones — vos decidís y aplicás. No guarda nada automáticamente.
+            La IA ejecuta acciones seguras (recordatorios, borradores, asignaciones). Cierres definitivos requieren tu confirmación manual.
           </div>
         </div>
       )}
