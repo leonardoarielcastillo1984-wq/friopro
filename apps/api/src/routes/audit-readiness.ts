@@ -166,8 +166,12 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           where: { tenantId, deletedAt: null, status: { notIn: ['CERRADO', 'RECHAZADO'] } },
           select: { id: true, code: true, titulo: true, status: true, nivelGlobal: true, fechaPrevista: true, responsableId: true, createdAt: true },
         }).catch(() => []),
+        (tx as any).vehiculo?.findMany({
+          where: { tenantId },
+          select: { id: true, dominio: true, marca: true, modelo: true, status: true, currentOdometer: true, maintenanceAssetId: true, vencimientos: { select: { id: true, tipo: true, fechaVto: true, renovado: true } } },
+        }).catch(() => []) ?? [],
       ]);
-      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios };
+      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios, vehiculos };
     });
 
     // ── 1. Objetivos SGI ──────────────────────────────────────────────────
@@ -1050,7 +1054,69 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       issues: cambioIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
-    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule, suppliersModule, processesModule, drillsModule, infraModule, competencyModule, policyModule, scopeModule, commModule, satisfactionModule, complianceModule, orgModule, reqModule, inspModule, cambioModule];
+    // ── 26. Flota y Vehículos (7.1.3) ──────────────────────────────────
+    const flotaIssues: ReadinessIssue[] = [];
+    const vehiculos = (raw.vehiculos ?? []) as any[];
+    if (vehiculos.length === 0) {
+      flotaIssues.push({
+        id: 'no-flota', title: 'Flota de Vehículos',
+        detail: 'No hay vehículos cargados en el sistema', severity: 'LOW',
+        href: '/flota',
+      });
+    } else {
+      for (const v of vehiculos) {
+        if (v.status === 'EN_TALLER') {
+          flotaIssues.push({
+            id: v.id, title: `${v.dominio} — ${v.marca ?? ''} ${v.modelo ?? ''}`.trim(),
+            detail: 'Vehículo en taller (no operativo)', severity: 'HIGH',
+            href: '/flota',
+          });
+        }
+        if (v.status === 'INACTIVO' || v.status === 'BAJA') {
+          flotaIssues.push({
+            id: v.id, title: `${v.dominio} — ${v.marca ?? ''} ${v.modelo ?? ''}`.trim(),
+            detail: 'Vehículo inactivo/dado de baja', severity: 'LOW',
+            href: '/flota',
+          });
+        }
+        const vencimientos = (v.vencimientos ?? []).filter((venc: any) => !venc.renovado);
+        const docsVencidos = vencimientos.filter((venc: any) => new Date(venc.fechaVto) < now);
+        const docsPorVencer = vencimientos.filter((venc: any) => {
+          const dias = Math.ceil((new Date(venc.fechaVto).getTime() - now.getTime()) / DAY_MS);
+          return dias >= 0 && dias <= 30;
+        });
+        if (docsVencidos.length > 0) {
+          flotaIssues.push({
+            id: `${v.id}-docs-venc`, title: `${v.dominio}`,
+            detail: `${docsVencidos.length} documento(s) vencido(s): ${docsVencidos.map((d: any) => d.tipo).join(', ')}`, severity: 'HIGH',
+            href: '/flota',
+          });
+        }
+        if (docsPorVencer.length > 0) {
+          flotaIssues.push({
+            id: `${v.id}-docs-por-vencer`, title: `${v.dominio}`,
+            detail: `${docsPorVencer.length} documento(s) por vencer (≤30 días): ${docsPorVencer.map((d: any) => d.tipo).join(', ')}`, severity: 'MEDIUM',
+            href: '/flota',
+          });
+        }
+        if (!v.maintenanceAssetId) {
+          flotaIssues.push({
+            id: `${v.id}-no-asset`, title: `${v.dominio}`,
+            detail: 'Sin activo de mantenimiento vinculado', severity: 'LOW',
+            href: '/flota',
+          });
+        }
+      }
+    }
+    const flotaWithIssues = new Set(flotaIssues.map((i) => i.id));
+    const flotaModule: ModuleReadiness = {
+      key: 'flota', label: 'Flota y Vehículos', href: '/flota',
+      total: vehiculos.length, pending: flotaWithIssues.size,
+      score: scoreFrom(Math.max(1, vehiculos.length), flotaWithIssues.size),
+      issues: flotaIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule, suppliersModule, processesModule, drillsModule, infraModule, competencyModule, policyModule, scopeModule, commModule, satisfactionModule, complianceModule, orgModule, reqModule, inspModule, cambioModule, flotaModule];
     const overallScore = Math.round(modules.reduce((acc, m) => acc + m.score, 0) / modules.length);
     const totalPending = modules.reduce((acc, m) => acc + m.pending, 0);
 
