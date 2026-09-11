@@ -424,7 +424,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       reviewIssues.push({
         id: 'no-review', title: `Revisión por la Dirección ${currentYear}`,
         detail: 'No existe revisión por la dirección para el período actual', severity: 'HIGH',
-        href: '/contexto-sgi',
+        href: '/reportes/informe-direccion',
       });
     } else {
       for (const r of reviewThisYear) {
@@ -432,13 +432,13 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           reviewIssues.push({
             id: r.id, title: r.title,
             detail: 'Revisión en borrador (no finalizada)', severity: 'MEDIUM',
-            href: '/contexto-sgi',
+            href: '/reportes/informe-direccion',
           });
         }
       }
     }
     const mgmtReviewModule: ModuleReadiness = {
-      key: 'revision-direccion', label: 'Revisión por la Dirección', href: '/contexto-sgi',
+      key: 'revision-direccion', label: 'Revisión por la Dirección', href: '/reportes/informe-direccion',
       total: Math.max(1, reviewThisYear.length), pending: reviewIssues.length,
       score: scoreFrom(Math.max(1, reviewThisYear.length), reviewIssues.length),
       issues: reviewIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
@@ -874,7 +874,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       complianceIssues.push({
         id: 'no-norms', title: 'Normas y Requisitos Legales',
         detail: 'No hay normas cargadas en el sistema', severity: 'HIGH',
-        href: '/contexto-sgi',
+        href: '/normativos',
       });
     } else {
       for (const n of norms) {
@@ -882,20 +882,20 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           complianceIssues.push({
             id: n.id, title: n.name,
             detail: 'Norma cargada pero no procesada', severity: 'MEDIUM',
-            href: '/contexto-sgi',
+            href: '/normativos',
           });
         }
         if (n.totalClauses === 0) {
           complianceIssues.push({
             id: n.id, title: n.name,
             detail: 'Norma sin cláusulas extraídas', severity: 'MEDIUM',
-            href: '/contexto-sgi',
+            href: '/normativos',
           });
         }
       }
     }
     const complianceModule: ModuleReadiness = {
-      key: 'cumplimiento-normativo', label: 'Cumplimiento Normativo', href: '/contexto-sgi',
+      key: 'cumplimiento-normativo', label: 'Cumplimiento Normativo', href: '/normativos',
       total: Math.max(1, norms.length), pending: complianceIssues.length,
       score: scoreFrom(Math.max(1, norms.length), complianceIssues.length),
       issues: complianceIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
