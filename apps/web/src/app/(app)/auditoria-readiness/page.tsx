@@ -309,7 +309,7 @@ export default function AuditoriaReadinessPage() {
             const firstPending = data.modules.find((m) => m.pending > 0);
             if (firstPending) assistModule(firstPending);
           }}
-          className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full bg-brand-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-brand-700"
+          className="fixed bottom-[68px] right-4 z-50 flex items-center gap-2 rounded-full bg-brand-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-brand-700"
         >
           <Sparkles className="h-4 w-4" /> Asistir con IA
         </button>
