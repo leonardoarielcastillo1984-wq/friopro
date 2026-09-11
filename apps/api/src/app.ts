@@ -39,6 +39,7 @@ import hrRoutes from './routes/hr.js';
 import { adminRoutes } from './routes/admin.js';
 import { reportRoutes } from './routes/reports.js';
 import { riskRoutes } from './routes/risks.js';
+import { auditReadinessRoutes } from './routes/audit-readiness.js';
 import { exportRoutes } from './routes/export.js';
 import { integrationRoutes } from './routes/integrations.js';
 import { objectivesRoutes } from './routes/objectives.js';
@@ -447,6 +448,7 @@ export async function buildApp() {
   await app.register(adminRoutes, { prefix: '/admin' });
   await app.register(reportRoutes, { prefix: '/reports' });
   await app.register(riskRoutes, { prefix: '/risks' });
+  await app.register(auditReadinessRoutes, { prefix: '/audit-readiness' });
   await app.register(exportRoutes, { prefix: '/export' });
   await app.register(integrationRoutes, { prefix: '/integrations' });
   await app.register(settingsRoutes, { prefix: '/settings' });

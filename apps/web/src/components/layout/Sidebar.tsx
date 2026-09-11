@@ -40,12 +40,14 @@ import {
   Eye,
   Pencil,
   Brain,
+  ListChecks,
 } from 'lucide-react';
 
 const mainNav = [
   // 1. Visión general
   { label: 'Inicio', icon: LayoutDashboard, href: '/dashboard' },
   { label: 'Command Center', icon: Brain, href: '/command-center' },
+  { label: 'Preparación de Auditoría', icon: ListChecks, href: '/auditoria-readiness' },
   { label: 'Documentos', icon: FileText, href: '/documents' },
 
   // 2. Personas y base de datos
@@ -95,6 +97,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/dashboard': 'BASIC',
   '/panel': 'BASIC',
   '/command-center': 'BASIC',
+  '/auditoria-readiness': 'BASIC',
   '/documents': 'BASIC',
   '/contexto-sgi': 'BASIC',
   '/objetivos': 'BASIC',

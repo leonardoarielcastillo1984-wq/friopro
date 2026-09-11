@@ -16,6 +16,10 @@ export const MODULE_DESCRIPTIONS: Record<string, ModuleInfo> = {
     title: 'Command Center',
     description: 'Centro de comando con métricas en tiempo real, estado del SGI y alertas consolidadas.',
   },
+  '/auditoria-readiness': {
+    title: 'Preparación de Auditoría',
+    description: 'Detecta automáticamente lo pendiente en cada módulo (vencidos, sin evidencia, sin responsable) para preparar la próxima auditoría.',
+  },
   '/documents': {
     title: 'Documentos',
     description: 'Gestión documental: control de versiones, codificación, revisiones y aprobaciones.',
