@@ -64,7 +64,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         tx.risk.findMany({
           where: { tenantId, deletedAt: null, status: { not: 'CLOSED' } },
           select: {
-            id: true, code: true, title: true, riskLevel: true,
+            id: true, code: true, title: true, riskLevel: true, ownerId: true,
             treatmentActions: { where: { deletedAt: null }, select: { id: true, completed: true } },
           },
         }),
@@ -122,6 +122,14 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           severity: overdue ? 'HIGH' : 'MEDIUM',
           href: '/calidad',
         });
+      } else {
+        planIssues.push({
+          id: p.id,
+          title: `${p.code ?? 'Plan sin código'}`,
+          detail: 'Plan abierto sin cerrar',
+          severity: 'LOW',
+          href: '/calidad',
+        });
       }
     }
     const actionPlansModule: ModuleReadiness = {
@@ -156,6 +164,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       const hasNoPlan = actions.length === 0;
       const incomplete = actions.length > 0 && actions.some((a: any) => !a.completed);
       const isCriticalOrHigh = r.riskLevel >= 12;
+      const noOwner = !r.ownerId;
       if (isCriticalOrHigh && hasNoPlan) {
         riskIssues.push({
           id: r.id, title: `${r.code} — ${r.title}`, detail: 'Riesgo crítico/alto sin plan de tratamiento', severity: 'HIGH',
@@ -167,11 +176,17 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           href: `/riesgos/${r.id}`,
         });
       }
+      if (noOwner) {
+        riskIssues.push({
+          id: r.id, title: `${r.code} — ${r.title}`, detail: 'Sin responsable asignado', severity: isCriticalOrHigh ? 'HIGH' : 'MEDIUM',
+          href: `/riesgos/${r.id}`,
+        });
+      }
     }
     const risksModule: ModuleReadiness = {
       key: 'riesgos', label: 'Riesgos', href: '/riesgos',
-      total: raw.risks.filter((r: any) => r.riskLevel >= 12).length, pending: riskIssues.length,
-      score: scoreFrom(raw.risks.filter((r: any) => r.riskLevel >= 12).length, riskIssues.length),
+      total: raw.risks.length, pending: riskIssues.length,
+      score: scoreFrom(raw.risks.length, riskIssues.length),
       issues: riskIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
