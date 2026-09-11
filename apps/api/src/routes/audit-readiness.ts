@@ -45,7 +45,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     const findingStaleThreshold = new Date(now.getTime() - 30 * DAY_MS);
 
     const raw = await app.runWithDbContext(req, async (tx: any) => {
-      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos] = await Promise.all([
+      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios] = await Promise.all([
         tx.sgiObjective.findMany({
           where: { tenantId, deletedAt: null },
           select: { id: true, code: true, title: true, status: true, progress: true, endDate: true, updatedAt: true },
@@ -161,8 +161,12 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           where: { tenantId, estado: { in: ['ABIERTO', 'EN_PROCESO'] } },
           select: { id: true, descripcion: true, tipo: true, severidad: true, estado: true, fechaLimite: true, createdAt: true },
         }).catch(() => []),
+        tx.gestionCambio.findMany({
+          where: { tenantId, deletedAt: null, status: { notIn: ['CERRADO', 'RECHAZADO'] } },
+          select: { id: true, code: true, titulo: true, status: true, nivelGlobal: true, fechaPrevista: true, responsableId: true, createdAt: true },
+        }).catch(() => []),
       ]);
-      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos };
+      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios };
     });
 
     // ── 1. Objetivos SGI ──────────────────────────────────────────────────
@@ -1001,7 +1005,46 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       issues: inspIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
-    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule, suppliersModule, processesModule, drillsModule, infraModule, competencyModule, policyModule, scopeModule, commModule, satisfactionModule, complianceModule, orgModule, reqModule, inspModule];
+    // ── 24. Gestión de Cambios (6.3) ───────────────────────────────────
+    const cambioIssues: ReadinessIssue[] = [];
+    for (const c of raw.cambios as any[]) {
+      const overdue = c.fechaPrevista && new Date(c.fechaPrevista).getTime() < now.getTime();
+      const noResponsible = !c.responsableId;
+      const stale = new Date(c.createdAt).getTime() < staleThreshold.getTime();
+      if (overdue && c.status !== 'IMPLEMENTADO') {
+        cambioIssues.push({
+          id: c.id, title: `${c.code} — ${c.titulo}`,
+          detail: `Cambio vencido (estado: ${c.status})`, severity: 'HIGH',
+          href: '/calidad',
+        });
+      } else if (noResponsible && c.status !== 'SOLICITADO') {
+        cambioIssues.push({
+          id: c.id, title: `${c.code} — ${c.titulo}`,
+          detail: 'Cambio sin responsable asignado', severity: 'MEDIUM',
+          href: '/calidad',
+        });
+      } else if (stale && c.status === 'SOLICITADO') {
+        cambioIssues.push({
+          id: c.id, title: `${c.code} — ${c.titulo}`,
+          detail: 'Solicitud de cambio sin revisar (>45 días)', severity: 'MEDIUM',
+          href: '/calidad',
+        });
+      } else if (c.nivelGlobal === 'CRITICO' && c.status !== 'APROBADO' && c.status !== 'IMPLEMENTADO') {
+        cambioIssues.push({
+          id: c.id, title: `${c.code} — ${c.titulo}`,
+          detail: 'Cambio crítico sin aprobar', severity: 'MEDIUM',
+          href: '/calidad',
+        });
+      }
+    }
+    const cambioModule: ModuleReadiness = {
+      key: 'gestion-cambios', label: 'Gestión de Cambios', href: '/calidad',
+      total: Math.max(1, (raw.cambios as any[]).length), pending: cambioIssues.length,
+      score: scoreFrom(Math.max(1, (raw.cambios as any[]).length), cambioIssues.length),
+      issues: cambioIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule, suppliersModule, processesModule, drillsModule, infraModule, competencyModule, policyModule, scopeModule, commModule, satisfactionModule, complianceModule, orgModule, reqModule, inspModule, cambioModule];
     const overallScore = Math.round(modules.reduce((acc, m) => acc + m.score, 0) / modules.length);
     const totalPending = modules.reduce((acc, m) => acc + m.pending, 0);
 
