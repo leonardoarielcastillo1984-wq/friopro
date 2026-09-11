@@ -98,7 +98,7 @@ export default function AuditoriaReadinessPage() {
     try {
       const res = await apiFetch<{ moduleLabel: string; suggestions: AISuggestion[] }>('/audit-readiness/assist', {
         method: 'POST',
-        body: JSON.stringify({ moduleKey: m.key, moduleLabel: m.label, issues: m.issues }),
+        json: { moduleKey: m.key, moduleLabel: m.label, issues: m.issues },
       });
       setChatMessages((prev) => [...prev, {
         role: 'assistant',
