@@ -592,27 +592,27 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         processIssues.push({
           id: p.id, title: `${p.code ?? ''} ${p.name}`.trim(),
           detail: 'Sin responsable de proceso', severity: 'MEDIUM',
-          href: '/contexto-sgi',
+          href: '/contexto-sgi?tab=mapa',
         });
       }
       if (noIndicators) {
         processIssues.push({
           id: p.id, title: `${p.code ?? ''} ${p.name}`.trim(),
           detail: 'Sin indicadores vinculados', severity: 'LOW',
-          href: '/contexto-sgi',
+          href: '/contexto-sgi?tab=mapa',
         });
       }
       if (noDocuments) {
         processIssues.push({
           id: p.id, title: `${p.code ?? ''} ${p.name}`.trim(),
           detail: 'Sin documentos vinculados', severity: 'LOW',
-          href: '/contexto-sgi',
+          href: '/contexto-sgi?tab=mapa',
         });
       }
     }
     const processesWithIssues = new Set(processIssues.map((i) => i.id));
     const processesModule: ModuleReadiness = {
-      key: 'mapa-procesos', label: 'Mapa de Procesos', href: '/contexto-sgi',
+      key: 'mapa-procesos', label: 'Mapa de Procesos', href: '/contexto-sgi?tab=mapa',
       total: (raw.processes as any[]).length, pending: processesWithIssues.size,
       score: scoreFrom((raw.processes as any[]).length, processesWithIssues.size),
       issues: processIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
