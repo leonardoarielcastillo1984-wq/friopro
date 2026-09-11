@@ -1389,4 +1389,172 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
       return reply.code(500).send({ error: 'Error al ejecutar acción', details: err.message });
     }
   });
+
+  // ── Auto-fix masivo para Mapa de Procesos ───────────────────────────
+  app.post('/auto-fix', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const body = req.body as { moduleKey: string };
+    if (!body.moduleKey) return reply.code(400).send({ error: 'Falta moduleKey' });
+
+    if (body.moduleKey !== 'mapa-procesos') {
+      return reply.code(400).send({ error: 'Auto-fix solo disponible para mapa-procesos' });
+    }
+
+    try {
+      const result = await app.runWithDbContext(req, async (tx: any) => {
+        const norm = (s: string) => s.trim().toLowerCase();
+
+        // 1. Obtener todos los mapas de procesos del tenant
+        const maps = await tx.processMap.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true },
+        });
+        if (maps.length === 0) return { ownersAssigned: 0, indicatorsLinked: 0, documentsLinked: 0, risksLinked: 0, details: ['No hay mapas de procesos'] };
+
+        const mapIds = maps.map((m: any) => m.id);
+
+        // 2. Obtener todos los procesos (macroprocesos y subprocesos)
+        const processes = await tx.process.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, name: true, owner: true, departmentId: true, processMapId: true },
+        });
+        const processByName = new Map<string, string>();
+        for (const p of processes) processByName.set(norm(p.name), p.id);
+        const allProcessIds = processes.map((p: any) => p.id);
+
+        // 3. Sincronizar indicadores, documentos y riesgos por coincidencia de nombre
+        async function syncEntity(entityModel: string, linkModel: string, entityIdField: string, titleField: string) {
+          const items = await tx[entityModel].findMany({
+            where: { tenantId, deletedAt: null, process: { not: null } },
+            select: { id: true, [titleField]: true, process: true },
+          }).catch(() => []);
+
+          const existingLinks = await tx[linkModel].findMany({
+            where: { processId: { in: allProcessIds } },
+            select: { processId: true, [entityIdField]: true },
+          }).catch(() => []);
+
+          const alreadyLinked = new Set(existingLinks.map((l: any) => `${l.processId}::${l[entityIdField]}`));
+          const toCreate: any[] = [];
+
+          for (const item of items) {
+            if (!item.process) continue;
+            const processId = processByName.get(norm(item.process));
+            if (!processId) continue;
+            if (alreadyLinked.has(`${processId}::${item.id}`)) continue;
+            toCreate.push({ processId, [entityIdField]: item.id });
+          }
+
+          if (toCreate.length) await tx[linkModel].createMany({ data: toCreate, skipDuplicates: true }).catch(() => {});
+          return toCreate.length;
+        }
+
+        const indicatorsLinked = await syncEntity('indicator', 'processIndicator', 'indicatorId', 'name');
+        const documentsLinked = await syncEntity('document', 'processDocument', 'documentId', 'title');
+        const risksLinked = await syncEntity('risk', 'processRisk', 'riskId', 'title');
+
+        // 4. Auto-asignar responsables
+        //    a) Por departamento: si el proceso tiene departmentId, buscar el MANAGER del depto
+        //    b) Por departamento: si no hay manager, el primer miembro del depto
+        //    c) Fallback: procesos que ya tienen owner en el mismo departamento
+        const processesWithoutOwner = processes.filter((p: any) => !p.owner || p.owner.trim() === '');
+        if (processesWithoutOwner.length === 0) {
+          return { ownersAssigned: 0, indicatorsLinked, documentsLinked, risksLinked, details: ['Todos los procesos ya tienen responsable'] };
+        }
+
+        // Obtener miembros de departamentos con rol MANAGER
+        const deptIds = [...new Set(processesWithoutOwner.map((p: any) => p.departmentId).filter(Boolean))] as string[];
+        const deptManagers = new Map<string, string>();
+        const deptMembers = new Map<string, string>();
+
+        if (deptIds.length > 0) {
+          const members = await tx.departmentMember.findMany({
+            where: { departmentId: { in: deptIds } },
+            select: { departmentId: true, userId: true, role: true },
+          }).catch(() => []);
+
+          for (const m of members) {
+            if (m.role === 'MANAGER' && !deptManagers.has(m.departmentId)) {
+              deptManagers.set(m.departmentId, m.userId);
+            }
+            if (!deptMembers.has(m.departmentId)) {
+              deptMembers.set(m.departmentId, m.userId);
+            }
+          }
+        }
+
+        // También buscar empleados por departamento (Employee.departmentId)
+        const deptEmployees = new Map<string, string>();
+        if (deptIds.length > 0) {
+          const employees = await tx.employee.findMany({
+            where: { tenantId, departmentId: { in: deptIds }, status: 'ACTIVE' },
+            select: { id: true, departmentId: true, firstName: true, lastName: true },
+          }).catch(() => []);
+
+          for (const emp of employees) {
+            if (!deptEmployees.has(emp.departmentId)) {
+              deptEmployees.set(emp.departmentId, emp.id);
+            }
+          }
+        }
+
+        // Procesos que ya tienen owner, agrupados por departamento para fallback
+        const ownerByDept = new Map<string, string>();
+        for (const p of processes) {
+          if (p.owner && p.departmentId && !ownerByDept.has(p.departmentId)) {
+            ownerByDept.set(p.departmentId, p.owner);
+          }
+        }
+
+        let ownersAssigned = 0;
+        const details: string[] = [];
+
+        for (const p of processesWithoutOwner) {
+          let assignedId: string | null = null;
+          let source = '';
+
+          // a) Manager del departamento
+          if (p.departmentId && deptManagers.has(p.departmentId)) {
+            assignedId = deptManagers.get(p.departmentId)!;
+            source = 'manager del departamento';
+          }
+          // b) Primer miembro del departamento
+          else if (p.departmentId && deptMembers.has(p.departmentId)) {
+            assignedId = deptMembers.get(p.departmentId)!;
+            source = 'miembro del departamento';
+          }
+          // c) Empleado del departamento
+          else if (p.departmentId && deptEmployees.has(p.departmentId)) {
+            assignedId = deptEmployees.get(p.departmentId)!;
+            source = 'empleado del departamento';
+          }
+          // d) Mismo responsable que otro proceso del mismo departamento
+          else if (p.departmentId && ownerByDept.has(p.departmentId)) {
+            assignedId = ownerByDept.get(p.departmentId)!;
+            source = 'mismo responsable que otro proceso del departamento';
+          }
+
+          if (assignedId) {
+            await tx.process.update({
+              where: { id: p.id },
+              data: { owner: assignedId },
+            }).catch(() => {});
+            ownersAssigned++;
+            details.push(`${p.name}: ${source}`);
+          } else {
+            details.push(`${p.name}: sin asignar (sin departamento o sin miembros)`);
+          }
+        }
+
+        return { ownersAssigned, indicatorsLinked, documentsLinked, risksLinked, details };
+      });
+
+      return reply.send({ success: true, ...result });
+    } catch (err: any) {
+      console.error('Error en audit-readiness/auto-fix:', err.message);
+      return reply.code(500).send({ error: 'Error en auto-fix', details: err.message });
+    }
+  });
 };

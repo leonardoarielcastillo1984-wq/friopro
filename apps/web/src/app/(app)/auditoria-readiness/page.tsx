@@ -98,6 +98,8 @@ export default function AuditoriaReadinessPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatModule, setChatModule] = useState<ModuleReadiness | null>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
+  const [autoFixing, setAutoFixing] = useState<string | null>(null);
+  const [autoFixResult, setAutoFixResult] = useState<string | null>(null);
 
   async function executeAction(suggestionId: string, action: string, moduleKey: string) {
     const issueId = suggestionId;
@@ -285,6 +287,31 @@ export default function AuditoriaReadinessPage() {
                           Ir al módulo →
                         </button>
                       )}
+                      {m.key === 'mapa-procesos' && m.pending > 0 && (
+                        <button
+                          onClick={async () => {
+                            setAutoFixing(m.key);
+                            setAutoFixResult(null);
+                            try {
+                              const res = await apiFetch<{ success: boolean; ownersAssigned: number; indicatorsLinked: number; documentsLinked: number; risksLinked: number; details: string[] }>('/audit-readiness/auto-fix', {
+                                method: 'POST',
+                                json: { moduleKey: m.key },
+                              });
+                              const msg = `Responsables: ${res.ownersAssigned} | Indicadores: ${res.indicatorsLinked} | Documentos: ${res.documentsLinked} | Riesgos: ${res.risksLinked}`;
+                              setAutoFixResult(msg);
+                              load(true);
+                            } catch (err: any) {
+                              setAutoFixResult(`Error: ${err?.message ?? 'No se pudo ejecutar'}`);
+                            } finally {
+                              setAutoFixing(null);
+                            }
+                          }}
+                          disabled={autoFixing === m.key}
+                          className="flex items-center gap-1 rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {autoFixing === m.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />} Auto-fix
+                        </button>
+                      )}
                       {m.pending > 0 && (
                         <button
                           onClick={() => assistModule(m)}
@@ -294,6 +321,9 @@ export default function AuditoriaReadinessPage() {
                         </button>
                       )}
                     </div>
+                    {autoFixResult && m.key === 'mapa-procesos' && (
+                      <div className="text-xs text-neutral-600 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5 mt-1">{autoFixResult}</div>
+                    )}
                   </div>
                 )}
               </div>
