@@ -45,7 +45,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     const findingStaleThreshold = new Date(now.getTime() - 30 * DAY_MS);
 
     const raw = await app.runWithDbContext(req, async (tx: any) => {
-      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders] = await Promise.all([
+      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies] = await Promise.all([
         tx.sgiObjective.findMany({
           where: { tenantId, deletedAt: null },
           select: { id: true, code: true, title: true, status: true, progress: true, endDate: true, updatedAt: true },
@@ -103,8 +103,34 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           where: { tenantId, deletedAt: null },
           select: { id: true, name: true, type: true, complianceStatus: true, complianceLevel: true, lastEvaluationDate: true },
         }).catch(() => []),
+        tx.supplier.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, code: true, name: true, status: true, isCritical: true, evaluationScore: true, lastEvaluationDate: true, nextEvaluationDate: true },
+        }).catch(() => []),
+        tx.process.findMany({
+          where: { tenantId, deletedAt: null, parentId: null },
+          select: { id: true, code: true, name: true, owner: true, processIndicators: { select: { id: true } }, processDocuments: { select: { id: true } }, processRisks: { select: { id: true } } },
+        }).catch(() => []),
+        tx.drillScenario.findMany({
+          where: { tenantId, deletedAt: null },
+          select: { id: true, name: true, type: true, status: true, scheduledDate: true, executionDate: true },
+        }).catch(() => []),
+        tx.maintenancePlan.findMany({
+          where: { tenantId, status: 'ACTIVE' },
+          select: { id: true, code: true, title: true, nextExecutionDate: true, lastExecutionDate: true },
+        }).catch(() => []),
+        tx.measuringEquipment.findMany({
+          where: { tenantId, deletedAt: null, status: 'ACTIVE' },
+          select: { id: true, code: true, name: true, nextCalibrationDate: true, lastCalibrationDate: true },
+        }).catch(() => []),
+        tx.positionCompetency.findMany({
+          select: { id: true, positionId: true, competencyId: true, requiredLevel: true },
+        }).catch(() => []),
+        tx.employeeCompetency.findMany({
+          select: { id: true, employeeId: true, competencyId: true, currentLevel: true, employee: { select: { firstName: true, lastName: true, positionId: true } } },
+        }).catch(() => []),
       ]);
-      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders };
+      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies };
     });
 
     // ── 1. Objetivos SGI ──────────────────────────────────────────────────
@@ -475,7 +501,204 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       issues: contextIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
-    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule];
+    // ── 11. Proveedores (8.4) ────────────────────────────────────────────
+    const supplierIssues: ReadinessIssue[] = [];
+    for (const s of raw.suppliers as any[]) {
+      const noEvaluation = !s.lastEvaluationDate;
+      const overdue = s.nextEvaluationDate && new Date(s.nextEvaluationDate).getTime() < now.getTime();
+      const lowScore = s.evaluationScore != null && s.evaluationScore < 60 && s.status === 'APPROVED';
+      if (s.isCritical && noEvaluation) {
+        supplierIssues.push({
+          id: s.id, title: `${s.code} — ${s.name}`,
+          detail: 'Proveedor crítico sin evaluación', severity: 'HIGH',
+          href: '/proveedores',
+        });
+      } else if (overdue) {
+        supplierIssues.push({
+          id: s.id, title: `${s.code} — ${s.name}`,
+          detail: 'Evaluación vencida', severity: 'HIGH',
+          href: '/proveedores',
+        });
+      } else if (lowScore) {
+        supplierIssues.push({
+          id: s.id, title: `${s.code} — ${s.name}`,
+          detail: `Aprobado con score bajo (${s.evaluationScore})`, severity: 'MEDIUM',
+          href: '/proveedores',
+        });
+      } else if (noEvaluation) {
+        supplierIssues.push({
+          id: s.id, title: `${s.code} — ${s.name}`,
+          detail: 'Sin evaluación', severity: 'LOW',
+          href: '/proveedores',
+        });
+      }
+    }
+    const suppliersModule: ModuleReadiness = {
+      key: 'proveedores', label: 'Proveedores', href: '/proveedores',
+      total: (raw.suppliers as any[]).length, pending: supplierIssues.length,
+      score: scoreFrom((raw.suppliers as any[]).length, supplierIssues.length),
+      issues: supplierIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 12. Mapa de Procesos (4.4) ───────────────────────────────────────
+    const processIssues: ReadinessIssue[] = [];
+    for (const p of raw.processes as any[]) {
+      const noOwner = !p.owner;
+      const noIndicators = (p.processIndicators ?? []).length === 0;
+      const noDocuments = (p.processDocuments ?? []).length === 0;
+      if (noOwner) {
+        processIssues.push({
+          id: p.id, title: `${p.code ?? ''} ${p.name}`.trim(),
+          detail: 'Sin responsable de proceso', severity: 'MEDIUM',
+          href: '/contexto-sgi',
+        });
+      }
+      if (noIndicators) {
+        processIssues.push({
+          id: p.id, title: `${p.code ?? ''} ${p.name}`.trim(),
+          detail: 'Sin indicadores vinculados', severity: 'LOW',
+          href: '/contexto-sgi',
+        });
+      }
+      if (noDocuments) {
+        processIssues.push({
+          id: p.id, title: `${p.code ?? ''} ${p.name}`.trim(),
+          detail: 'Sin documentos vinculados', severity: 'LOW',
+          href: '/contexto-sgi',
+        });
+      }
+    }
+    const processesModule: ModuleReadiness = {
+      key: 'mapa-procesos', label: 'Mapa de Procesos', href: '/contexto-sgi',
+      total: (raw.processes as any[]).length, pending: processIssues.length,
+      score: scoreFrom((raw.processes as any[]).length, processIssues.length),
+      issues: processIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 13. Simulacros (8.2 ISO 14001/45001) ──────────────────────────────
+    const drillIssues: ReadinessIssue[] = [];
+    for (const d of raw.drillScenarios as any[]) {
+      const plannedNotExecuted = d.status === 'PLANNED' && d.scheduledDate && new Date(d.scheduledDate).getTime() < now.getTime();
+      const neverExecuted = !d.executionDate && d.status !== 'CANCELLED';
+      if (plannedNotExecuted) {
+        drillIssues.push({
+          id: d.id, title: d.name,
+          detail: 'Simulacro programado sin ejecutar (fecha vencida)', severity: 'HIGH',
+          href: '/simulacros',
+        });
+      } else if (neverExecuted) {
+        drillIssues.push({
+          id: d.id, title: d.name,
+          detail: 'Escenario sin ejecutar', severity: 'LOW',
+          href: '/simulacros',
+        });
+      }
+    }
+    const drillsModule: ModuleReadiness = {
+      key: 'simulacros', label: 'Simulacros y Emergencias', href: '/simulacros',
+      total: (raw.drillScenarios as any[]).length, pending: drillIssues.length,
+      score: scoreFrom((raw.drillScenarios as any[]).length, drillIssues.length),
+      issues: drillIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 14. Infraestructura (7.1.3) ──────────────────────────────────────
+    const infraIssues: ReadinessIssue[] = [];
+    for (const m of raw.maintenancePlans as any[]) {
+      const overdue = m.nextExecutionDate && new Date(m.nextExecutionDate).getTime() < now.getTime();
+      if (overdue) {
+        infraIssues.push({
+          id: m.id, title: `${m.code} — ${m.title}`,
+          detail: 'Mantenimiento preventivo vencido', severity: 'HIGH',
+          href: '/infraestructura',
+        });
+      }
+    }
+    for (const eq of raw.measuringEquipment as any[]) {
+      const overdue = eq.nextCalibrationDate && new Date(eq.nextCalibrationDate).getTime() < now.getTime();
+      const noCalibration = !eq.lastCalibrationDate;
+      if (overdue) {
+        infraIssues.push({
+          id: eq.id, title: `${eq.code} — ${eq.name}`,
+          detail: 'Calibración vencida', severity: 'HIGH',
+          href: '/infraestructura',
+        });
+      } else if (noCalibration) {
+        infraIssues.push({
+          id: eq.id, title: `${eq.code} — ${eq.name}`,
+          detail: 'Sin calibración registrada', severity: 'MEDIUM',
+          href: '/infraestructura',
+        });
+      }
+    }
+    const infraModule: ModuleReadiness = {
+      key: 'infraestructura', label: 'Infraestructura', href: '/infraestructura',
+      total: (raw.maintenancePlans as any[]).length + (raw.measuringEquipment as any[]).length,
+      pending: infraIssues.length,
+      score: scoreFrom((raw.maintenancePlans as any[]).length + (raw.measuringEquipment as any[]).length, infraIssues.length),
+      issues: infraIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    // ── 15. Competencias (7.2) ───────────────────────────────────────────
+    const competencyIssues: ReadinessIssue[] = [];
+    const posComps = raw.positionCompetencies as any[];
+    const empComps = raw.employeeCompetencies as any[];
+    // Build map: positionId -> competencyId -> requiredLevel
+    const posCompMap = new Map<string, Map<string, number>>();
+    for (const pc of posComps) {
+      if (!posCompMap.has(pc.positionId)) posCompMap.set(pc.positionId, new Map());
+      posCompMap.get(pc.positionId)!.set(pc.competencyId, pc.requiredLevel);
+    }
+    // Build map: employeeId+competencyId -> currentLevel
+    const empCompMap = new Map<string, number>();
+    for (const ec of empComps) {
+      empCompMap.set(`${ec.employeeId}_${ec.competencyId}`, ec.currentLevel);
+    }
+    // Check gaps
+    const seenGaps = new Set<string>();
+    for (const ec of empComps) {
+      const posId = ec.employee?.positionId;
+      if (!posId) continue;
+      const compMap = posCompMap.get(posId);
+      if (!compMap) continue;
+      const required = compMap.get(ec.competencyId);
+      if (required != null && ec.currentLevel < required) {
+        const empName = `${ec.employee?.firstName ?? ''} ${ec.employee?.lastName ?? ''}`.trim();
+        const gapKey = `${ec.employeeId}_${ec.competencyId}`;
+        if (!seenGaps.has(gapKey)) {
+          seenGaps.add(gapKey);
+          competencyIssues.push({
+            id: gapKey, title: empName,
+            detail: `Brecha de competencia (actual: ${ec.currentLevel}, requerido: ${required})`, severity: 'MEDIUM',
+            href: '/rrhh/matriz-polivalencia',
+          });
+        }
+      }
+    }
+    // Positions without any competencies defined
+    const positionsWithComps = new Set(posComps.map((pc: any) => pc.positionId));
+    for (const ec of empComps) {
+      const posId = ec.employee?.positionId;
+      if (posId && !positionsWithComps.has(posId)) {
+        const empName = `${ec.employee?.firstName ?? ''} ${ec.employee?.lastName ?? ''}`.trim();
+        const gapKey = `pos_${posId}`;
+        if (!seenGaps.has(gapKey)) {
+          seenGaps.add(gapKey);
+          competencyIssues.push({
+            id: gapKey, title: empName,
+            detail: 'Cargo sin competencias definidas', severity: 'LOW',
+            href: '/rrhh/matriz-polivalencia',
+          });
+        }
+      }
+    }
+    const competencyModule: ModuleReadiness = {
+      key: 'competencias', label: 'Competencias', href: '/rrhh/matriz-polivalencia',
+      total: empComps.length, pending: competencyIssues.length,
+      score: scoreFrom(Math.max(1, empComps.length), competencyIssues.length),
+      issues: competencyIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
+    };
+
+    const modules = [objectivesModule, actionPlansModule, ncrModule, risksModule, documentsModule, trainingsModule, findingsModule, auditsModule, mgmtReviewModule, indicatorsModule, contextModule, suppliersModule, processesModule, drillsModule, infraModule, competencyModule];
     const overallScore = Math.round(modules.reduce((acc, m) => acc + m.score, 0) / modules.length);
     const totalPending = modules.reduce((acc, m) => acc + m.pending, 0);
 
