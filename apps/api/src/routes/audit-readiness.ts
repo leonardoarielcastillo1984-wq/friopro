@@ -742,7 +742,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       policyIssues.push({
         id: 'no-policy', title: 'Política de Calidad',
         detail: 'No existe política de calidad definida y activa', severity: 'HIGH',
-        href: '/contexto-sgi',
+        href: '/objetivos/politicas',
       });
     } else {
       for (const p of activePolicies) {
@@ -750,14 +750,14 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           policyIssues.push({
             id: p.id, title: p.name,
             detail: 'Política sin contenido definido', severity: 'HIGH',
-            href: '/contexto-sgi',
+            href: '/objetivos/politicas',
           });
         }
         if (!p.signedPdfUrl) {
           policyIssues.push({
             id: p.id, title: p.name,
             detail: 'Política sin PDF firmado', severity: 'MEDIUM',
-            href: '/contexto-sgi',
+            href: '/objetivos/politicas',
           });
         }
         const policyAge = (now.getTime() - new Date(p.updatedAt).getTime()) / DAY_MS;
@@ -765,13 +765,13 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           policyIssues.push({
             id: p.id, title: p.name,
             detail: `Política sin revisar hace ${Math.round(policyAge / 30)} meses`, severity: 'MEDIUM',
-            href: '/contexto-sgi',
+            href: '/objetivos/politicas',
           });
         }
       }
     }
     const policyModule: ModuleReadiness = {
-      key: 'politica-calidad', label: 'Política de Calidad', href: '/contexto-sgi',
+      key: 'politica-calidad', label: 'Política de Calidad', href: '/objetivos/politicas',
       total: Math.max(1, activePolicies.length), pending: policyIssues.length,
       score: scoreFrom(Math.max(1, activePolicies.length), policyIssues.length),
       issues: policyIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
