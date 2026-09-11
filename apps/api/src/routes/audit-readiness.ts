@@ -46,7 +46,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     const findingStaleThreshold = new Date(now.getTime() - 30 * DAY_MS);
 
     const raw = await app.runWithDbContext(req, async (tx: any) => {
-      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios] = await Promise.all([
+      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios, vehiculos] = await Promise.all([
         tx.sgiObjective.findMany({
           where: { tenantId, deletedAt: null },
           select: { id: true, code: true, title: true, status: true, progress: true, endDate: true, updatedAt: true },
