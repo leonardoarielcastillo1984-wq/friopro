@@ -1496,7 +1496,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           const items = await tx[cfg.model].findMany({
             where: { tenantId, deletedAt: null, ...cfg.extraWhere },
             select: { id: true, [cfg.nameField]: true, [cfg.ownerField]: true, ...(body.moduleKey === 'indicadores' ? { status: true, lastMeasuredAt: true, code: true } : {}) },
-          }).catch(() => []);
+          });
 
           // Owner más común del módulo
           const ownerCounts = new Map<string, number>();
@@ -1525,7 +1525,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
               await tx[cfg.model].update({
                 where: { id: item.id },
                 data: { [cfg.ownerField]: mostCommonOwner },
-              }).catch(() => {});
+              });
               ownersAssigned++;
               details.push(`${item[cfg.nameField]}: owner asignado (más común del módulo)`);
             } else {
@@ -1905,7 +1905,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
         const emp = await app.prisma.employee.findUnique({
           where: { id: body.ownerId },
           select: { firstName: true, lastName: true },
-        }).catch(() => null);
+        });
         if (emp) {
           ownerValue = `${emp.firstName} ${emp.lastName}`.trim();
         }
@@ -1914,12 +1914,12 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
         const emp = await app.prisma.employee.findUnique({
           where: { id: body.ownerId },
           select: { email: true, firstName: true, lastName: true },
-        }).catch(() => null);
+        });
         if (emp?.email) {
           const platformUser = await app.prisma.platformUser.findUnique({
             where: { email: emp.email },
             select: { id: true },
-          }).catch(() => null);
+          });
           if (platformUser) {
             ownerValue = platformUser.id;
           } else {
@@ -1932,15 +1932,11 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
                 lastName: emp.lastName,
                 isActive: false,
               },
-            }).catch(() => null);
-            if (newUser) {
-              ownerValue = newUser.id;
-            } else {
-              return reply.code(500).send({ error: 'No se pudo crear el usuario' });
-            }
+            });
+            ownerValue = newUser.id;
           }
         } else {
-          return reply.code(400).send({ error: 'Empleado no encontrado' });
+          return reply.code(400).send({ error: 'Empleado no encontrado o sin email' });
         }
       }
 
@@ -1950,6 +1946,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
       });
       return reply.send({ success: true, message: 'Responsable asignado' });
     } catch (err: any) {
+      console.error('Error en auto-fix/assign:', body.moduleKey, body.itemId, err.message);
       return reply.code(500).send({ error: 'Error al asignar', details: err.message });
     }
   });
