@@ -1841,49 +1841,61 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
 
     // ── Organigrama-roles: asignar cargo o supervisor ──
     if (body.moduleKey === 'organigrama-roles') {
+      console.log('[auto-fix/assign] ORG-ROLES DEBUG:', { moduleKey: body.moduleKey, itemId: body.itemId, ownerId: body.ownerId, assignType: body.assignType });
       try {
         if (body.assignType === 'no-position') {
           // ownerId es un positionId
+          console.log('[auto-fix/assign] ORG no-position: updating employee', body.itemId, 'with positionId', body.ownerId);
           await app.prisma.employee.update({
             where: { id: body.itemId },
             data: { positionId: body.ownerId },
           });
+          console.log('[auto-fix/assign] ORG no-position: OK');
           return reply.send({ success: true, message: 'Cargo asignado' });
         } else if (body.assignType === 'no-employees') {
           // itemId es positionId, ownerId es employeeId o "none" para marcar vacante
           if (body.ownerId === 'none') {
+            console.log('[auto-fix/assign] ORG no-employees VACANT: updating position', body.itemId);
             await app.prisma.position.update({
               where: { id: body.itemId },
               data: { level: 'VACANT' },
             });
+            console.log('[auto-fix/assign] ORG no-employees VACANT: OK');
             return reply.send({ success: true, message: 'Cargo marcado como vacante' });
           }
-          await app.prisma.employee.update({
+          console.log('[auto-fix/assign] ORG no-employees: updating employee', body.ownerId, 'with positionId', body.itemId);
+          const updateResult = await app.prisma.employee.update({
             where: { id: body.ownerId },
             data: { positionId: body.itemId },
           });
+          console.log('[auto-fix/assign] ORG no-employees: OK, employee positionId =', updateResult?.positionId);
           return reply.send({ success: true, message: 'Personal asignado al cargo' });
         } else if (body.assignType === 'no-supervisor') {
           // ownerId es un employeeId (supervisor) o "none" para marcar sin supervisor
           if (body.ownerId === 'none') {
+            console.log('[auto-fix/assign] ORG no-supervisor NONE: updating employee', body.itemId);
             await app.prisma.employee.update({
               where: { id: body.itemId },
               data: { supervisorId: null, orgLevel: 0 },
             });
+            console.log('[auto-fix/assign] ORG no-supervisor NONE: OK');
             return reply.send({ success: true, message: 'Marcado sin supervisor' });
           }
           if (body.ownerId === body.itemId) {
             return reply.code(400).send({ error: 'No puede ser su propio supervisor' });
           }
+          console.log('[auto-fix/assign] ORG no-supervisor: updating employee', body.itemId, 'with supervisorId', body.ownerId);
           await app.prisma.employee.update({
             where: { id: body.itemId },
             data: { supervisorId: body.ownerId },
           });
+          console.log('[auto-fix/assign] ORG no-supervisor: OK');
           return reply.send({ success: true, message: 'Supervisor asignado' });
         }
+        console.log('[auto-fix/assign] ORG: unsupported assignType', body.assignType);
         return reply.code(400).send({ error: 'Tipo de asignación no soportado para organigrama-roles' });
       } catch (err: any) {
-        console.error('Error en auto-fix/assign organigrama-roles:', err.message);
+        console.error('[auto-fix/assign] ORG ERROR:', err.message, err.stack);
         return reply.code(500).send({ error: 'Error al asignar', details: err.message });
       }
     }
