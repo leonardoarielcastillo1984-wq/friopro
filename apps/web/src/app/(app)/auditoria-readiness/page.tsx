@@ -345,7 +345,7 @@ export default function AuditoriaReadinessPage() {
                           <AlertCircle className="h-3.5 w-3.5" />
                           {pendingItems.length} item(s) sin responsable — elegí uno para cada:
                         </div>
-                        <div className="max-h-60 overflow-y-auto space-y-2">
+                        <div className="space-y-2">
                           {pendingItems.map((item) => (
                             <div key={item.id} className={`flex items-center gap-2 bg-white rounded-lg border px-2 py-1.5 transition-all ${justAssigned.has(item.id) ? 'border-green-400 bg-green-50' : 'border-neutral-200'}`}>
                               <span className="text-xs text-neutral-700 flex-1 truncate" title={item.name}>{item.name}</span>
