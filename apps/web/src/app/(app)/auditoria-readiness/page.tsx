@@ -101,7 +101,7 @@ export default function AuditoriaReadinessPage() {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [autoFixing, setAutoFixing] = useState<string | null>(null);
   const [autoFixResult, setAutoFixResult] = useState<string | null>(null);
-  const [pendingItems, setPendingItems] = useState<{ id: string; name: string; suggestedOwner?: string; type?: 'no-owner' | 'no-measurement' | 'no-position' | 'no-supervisor' | 'no-responsibilities' }[]>([]);
+  const [pendingItems, setPendingItems] = useState<{ id: string; name: string; suggestedOwner?: string; type?: 'no-owner' | 'no-measurement' | 'no-position' | 'no-supervisor' | 'no-responsibilities' | 'no-employees' }[]>([]);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
   const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
   const [assigningId, setAssigningId] = useState<string | null>(null);
@@ -366,6 +366,9 @@ export default function AuditoriaReadinessPage() {
                           {pendingItems.filter(i => i.type === 'no-supervisor').length > 0 && (
                             <span className="text-orange-700">{pendingItems.filter(i => i.type === 'no-supervisor').length} sin supervisor ·</span>
                           )}
+                          {pendingItems.filter(i => i.type === 'no-employees').length > 0 && (
+                            <span className="text-teal-700">{pendingItems.filter(i => i.type === 'no-employees').length} cargos sin personal ·</span>
+                          )}
                           {pendingItems.filter(i => i.type === 'no-responsibilities').length > 0 && (
                             <span className="text-red-700">{pendingItems.filter(i => i.type === 'no-responsibilities').length} cargos sin responsabilidades</span>
                           )}
@@ -385,6 +388,43 @@ export default function AuditoriaReadinessPage() {
                                 >
                                   <ArrowRight className="h-3 w-3" /> Cargar medición
                                 </a>
+                              ) : item.type === 'no-employees' ? (
+                                <>
+                                  <div className="w-48">
+                                    <EmployeeCombobox
+                                      value={pendingAssignments[item.id] ?? ''}
+                                      onChange={(id) => setPendingAssignments(prev => ({ ...prev, [item.id]: id }))}
+                                      placeholder="Seleccionar empleado..."
+                                    />
+                                  </div>
+                                  <button
+                                    onClick={async () => {
+                                      const ownerId = pendingAssignments[item.id];
+                                      if (!ownerId) return;
+                                      setAssigningId(item.id);
+                                      try {
+                                        await apiFetch('/audit-readiness/auto-fix/assign', {
+                                          method: 'POST',
+                                          json: { moduleKey: m.key, itemId: item.id, ownerId, assignType: 'no-employees' },
+                                        });
+                                        setJustAssigned(prev => new Set(prev).add(item.id));
+                                        load(true);
+                                        setTimeout(() => {
+                                          setPendingItems(prev => prev.filter(p => p.id !== item.id));
+                                          setJustAssigned(prev => { const n = new Set(prev); n.delete(item.id); return n; });
+                                        }, 800);
+                                      } catch (err: any) {
+                                        setAutoFixResult(`Error al asignar: ${err?.message ?? 'desconocido'}`);
+                                      } finally {
+                                        setAssigningId(null);
+                                      }
+                                    }}
+                                    disabled={!pendingAssignments[item.id] || assigningId === item.id}
+                                    className="flex items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                                  >
+                                    {assigningId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Asignar
+                                  </button>
+                                </>
                               ) : item.type === 'no-responsibilities' ? (
                                 <a
                                   href={`/rrhh`}

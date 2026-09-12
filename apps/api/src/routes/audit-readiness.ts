@@ -1455,6 +1455,18 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
             }
           }
 
+          // Cargos sin personal asignado
+          for (const pos of positions) {
+            const hasEmployees = pos.employees && pos.employees.length > 0;
+            if (!hasEmployees) {
+              pendingItems.push({
+                id: pos.id,
+                name: pos.name,
+                type: 'no-employees',
+              });
+            }
+          }
+
           // Cargos sin responsabilidades (solo link, no se puede auto-fixear)
           for (const pos of positions) {
             const hasResp = pos.responsibilities && (Array.isArray(pos.responsibilities) ? pos.responsibilities.length > 0 : Object.keys(pos.responsibilities ?? {}).length > 0);
@@ -1836,6 +1848,13 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
             data: { positionId: body.ownerId },
           }).catch(() => null);
           return reply.send({ success: true, message: 'Cargo asignado' });
+        } else if (body.assignType === 'no-employees') {
+          // itemId es positionId, ownerId es employeeId — asignar el empleado al cargo
+          await app.prisma.employee.update({
+            where: { id: body.ownerId },
+            data: { positionId: body.itemId },
+          }).catch(() => null);
+          return reply.send({ success: true, message: 'Personal asignado al cargo' });
         } else if (body.assignType === 'no-supervisor') {
           // ownerId es un employeeId (supervisor) o "none" para marcar sin supervisor
           if (body.ownerId === 'none') {
