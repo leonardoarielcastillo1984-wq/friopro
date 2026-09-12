@@ -105,6 +105,7 @@ export default function AuditoriaReadinessPage() {
   const [pendingModule, setPendingModule] = useState<string | null>(null);
   const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [justAssigned, setJustAssigned] = useState<Set<string>>(new Set());
 
   async function executeAction(suggestionId: string, action: string, moduleKey: string) {
     const issueId = suggestionId;
@@ -346,38 +347,50 @@ export default function AuditoriaReadinessPage() {
                         </div>
                         <div className="max-h-60 overflow-y-auto space-y-2">
                           {pendingItems.map((item) => (
-                            <div key={item.id} className="flex items-center gap-2 bg-white rounded-lg border border-neutral-200 px-2 py-1.5">
+                            <div key={item.id} className={`flex items-center gap-2 bg-white rounded-lg border px-2 py-1.5 transition-all ${justAssigned.has(item.id) ? 'border-green-400 bg-green-50' : 'border-neutral-200'}`}>
                               <span className="text-xs text-neutral-700 flex-1 truncate" title={item.name}>{item.name}</span>
-                              <div className="w-48">
-                                <EmployeeCombobox
-                                  value={pendingAssignments[item.id] ?? item.suggestedOwner ?? ''}
-                                  onChange={(id) => setPendingAssignments(prev => ({ ...prev, [item.id]: id }))}
-                                  placeholder="Seleccionar..."
-                                />
-                              </div>
-                              <button
-                                onClick={async () => {
-                                  const ownerId = pendingAssignments[item.id] ?? item.suggestedOwner;
-                                  if (!ownerId) return;
-                                  setAssigningId(item.id);
-                                  try {
-                                    await apiFetch('/audit-readiness/auto-fix/assign', {
-                                      method: 'POST',
-                                      json: { moduleKey: m.key, itemId: item.id, ownerId },
-                                    });
-                                    setPendingItems(prev => prev.filter(p => p.id !== item.id));
-                                    load(true);
-                                  } catch (err: any) {
-                                    console.error('Error assigning:', err);
-                                  } finally {
-                                    setAssigningId(null);
-                                  }
-                                }}
-                                disabled={!pendingAssignments[item.id] && !item.suggestedOwner}
-                                className="flex items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-                              >
-                                {assigningId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Asignar
-                              </button>
+                              {justAssigned.has(item.id) ? (
+                                <span className="flex items-center gap-1 text-xs font-medium text-green-600">
+                                  <CheckCircle2 className="h-3.5 w-3.5" /> Asignado
+                                </span>
+                              ) : (
+                                <>
+                                  <div className="w-48">
+                                    <EmployeeCombobox
+                                      value={pendingAssignments[item.id] ?? item.suggestedOwner ?? ''}
+                                      onChange={(id) => setPendingAssignments(prev => ({ ...prev, [item.id]: id }))}
+                                      placeholder="Seleccionar..."
+                                    />
+                                  </div>
+                                  <button
+                                    onClick={async () => {
+                                      const ownerId = pendingAssignments[item.id] ?? item.suggestedOwner;
+                                      if (!ownerId) return;
+                                      setAssigningId(item.id);
+                                      try {
+                                        await apiFetch('/audit-readiness/auto-fix/assign', {
+                                          method: 'POST',
+                                          json: { moduleKey: m.key, itemId: item.id, ownerId },
+                                        });
+                                        setJustAssigned(prev => new Set(prev).add(item.id));
+                                        setTimeout(() => {
+                                          setPendingItems(prev => prev.filter(p => p.id !== item.id));
+                                          setJustAssigned(prev => { const n = new Set(prev); n.delete(item.id); return n; });
+                                        }, 600);
+                                        load(true);
+                                      } catch (err: any) {
+                                        console.error('Error assigning:', err);
+                                      } finally {
+                                        setAssigningId(null);
+                                      }
+                                    }}
+                                    disabled={!pendingAssignments[item.id] && !item.suggestedOwner}
+                                    className="flex items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                                  >
+                                    {assigningId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Asignar
+                                  </button>
+                                </>
+                              )}
                             </div>
                           ))}
                         </div>
