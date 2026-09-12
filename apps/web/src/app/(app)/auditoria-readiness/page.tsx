@@ -287,7 +287,7 @@ export default function AuditoriaReadinessPage() {
                           Ir al módulo →
                         </button>
                       )}
-                      {m.key === 'mapa-procesos' && m.pending > 0 && (
+                      {['mapa-procesos', 'riesgos', 'documentos', 'indicadores'].includes(m.key) && m.pending > 0 && (
                         <button
                           onClick={async () => {
                             setAutoFixing(m.key);
@@ -297,7 +297,9 @@ export default function AuditoriaReadinessPage() {
                                 method: 'POST',
                                 json: { moduleKey: m.key },
                               });
-                              const msg = `Responsables: ${res.ownersAssigned} | Indicadores: ${res.indicatorsLinked} | Documentos: ${res.documentsLinked} | Riesgos: ${res.risksLinked}`;
+                              const msg = m.key === 'mapa-procesos'
+                                ? `Responsables: ${res.ownersAssigned} | Indicadores: ${res.indicatorsLinked} | Documentos: ${res.documentsLinked} | Riesgos: ${res.risksLinked}`
+                                : `Responsables asignados: ${res.ownersAssigned}`;
                               setAutoFixResult(msg);
                               load(true);
                             } catch (err: any) {
@@ -321,7 +323,7 @@ export default function AuditoriaReadinessPage() {
                         </button>
                       )}
                     </div>
-                    {autoFixResult && m.key === 'mapa-procesos' && (
+                    {autoFixResult && ['mapa-procesos', 'riesgos', 'documentos', 'indicadores'].includes(m.key) && (
                       <div className="text-xs text-neutral-600 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5 mt-1">{autoFixResult}</div>
                     )}
                   </div>

@@ -1401,12 +1401,68 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
     const body = req.body as { moduleKey: string };
     if (!body.moduleKey) return reply.code(400).send({ error: 'Falta moduleKey' });
 
-    if (body.moduleKey !== 'mapa-procesos') {
-      return reply.code(400).send({ error: 'Auto-fix solo disponible para mapa-procesos' });
+    const supportedModules = ['mapa-procesos', 'riesgos', 'documentos', 'indicadores'];
+    if (!supportedModules.includes(body.moduleKey)) {
+      return reply.code(400).send({ error: `Auto-fix disponible para: ${supportedModules.join(', ')}` });
     }
 
     try {
       const result = await app.runWithDbContext(req, async (tx: any) => {
+
+        // ── Auto-fix para riesgos, documentos, indicadores (solo asignar owner) ──
+        if (body.moduleKey !== 'mapa-procesos') {
+          const moduleConfig: Record<string, { model: string; ownerField: string; nameField: string; extraWhere?: any }> = {
+            'riesgos':    { model: 'risk',      ownerField: 'ownerId', nameField: 'title', extraWhere: { status: { not: 'CLOSED' } } },
+            'documentos': { model: 'document',  ownerField: 'ownerId', nameField: 'title', extraWhere: { status: { not: 'OBSOLETE' } } },
+            'indicadores': { model: 'indicator', ownerField: 'ownerId', nameField: 'name', extraWhere: { isActive: true } },
+          };
+          const cfg = moduleConfig[body.moduleKey];
+          if (!cfg) return { ownersAssigned: 0, details: ['Módulo no soportado'] };
+
+          const items = await tx[cfg.model].findMany({
+            where: { tenantId, deletedAt: null, ...cfg.extraWhere },
+            select: { id: true, [cfg.nameField]: true, [cfg.ownerField]: true },
+          }).catch(() => []);
+
+          // Owner más común del módulo
+          const ownerCounts = new Map<string, number>();
+          for (const item of items) {
+            const oid = item[cfg.ownerField];
+            if (oid && oid.trim() !== '') {
+              ownerCounts.set(oid, (ownerCounts.get(oid) ?? 0) + 1);
+            }
+          }
+          let mostCommonOwner: string | null = null;
+          let maxCount = 0;
+          for (const [oid, count] of ownerCounts) {
+            if (count > maxCount) { maxCount = count; mostCommonOwner = oid; }
+          }
+
+          const withoutOwner = items.filter((item: any) => {
+            const oid = item[cfg.ownerField];
+            return !oid || oid.trim() === '';
+          });
+
+          let ownersAssigned = 0;
+          const details: string[] = [];
+
+          for (const item of withoutOwner) {
+            if (mostCommonOwner) {
+              await tx[cfg.model].update({
+                where: { id: item.id },
+                data: { [cfg.ownerField]: mostCommonOwner },
+              }).catch(() => {});
+              ownersAssigned++;
+              details.push(`${item[cfg.nameField]}: owner asignado (más común del módulo)`);
+            } else {
+              details.push(`${item[cfg.nameField]}: sin owner disponible para copiar`);
+            }
+          }
+
+          return { ownersAssigned, indicatorsLinked: 0, documentsLinked: 0, risksLinked: 0, details: details.slice(0, 20) };
+        }
+
+        // ── Auto-fix para mapa-procesos (lógica completa) ──
         const norm = (s: string) => s.trim().toLowerCase()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // sin acentos
 
