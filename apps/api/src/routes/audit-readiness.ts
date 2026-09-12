@@ -1900,12 +1900,15 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
     try {
       let ownerValue = body.ownerId;
 
+      console.log('[auto-fix/assign] DEBUG:', { moduleKey: body.moduleKey, itemId: body.itemId, ownerId: body.ownerId, cfg: { model: cfg.model, ownerField: cfg.ownerField, isText: cfg.isText } });
+
       if (cfg.isText) {
         // Process.owner es texto libre: guardar el nombre del empleado
         const emp = await app.prisma.employee.findUnique({
           where: { id: body.ownerId },
           select: { firstName: true, lastName: true },
         });
+        console.log('[auto-fix/assign] employee found (text):', emp);
         if (emp) {
           ownerValue = `${emp.firstName} ${emp.lastName}`.trim();
         }
@@ -1915,11 +1918,13 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           where: { id: body.ownerId },
           select: { email: true, firstName: true, lastName: true },
         });
+        console.log('[auto-fix/assign] employee found:', emp ? { email: emp.email, name: `${emp.firstName} ${emp.lastName}` } : null);
         if (emp?.email) {
           const platformUser = await app.prisma.platformUser.findUnique({
             where: { email: emp.email },
             select: { id: true },
           });
+          console.log('[auto-fix/assign] platformUser found:', platformUser);
           if (platformUser) {
             ownerValue = platformUser.id;
           } else {
@@ -1933,6 +1938,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
                 isActive: false,
               },
             });
+            console.log('[auto-fix/assign] platformUser created:', { id: newUser.id, email: newUser.email });
             ownerValue = newUser.id;
           }
         } else {
@@ -1940,10 +1946,12 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
         }
       }
 
-      await (app.prisma as any)[cfg.model].update({
+      console.log('[auto-fix/assign] updating:', { model: cfg.model, itemId: body.itemId, ownerField: cfg.ownerField, ownerValue });
+      const updateResult = await (app.prisma as any)[cfg.model].update({
         where: { id: body.itemId },
         data: { [cfg.ownerField]: ownerValue },
       });
+      console.log('[auto-fix/assign] update result:', { id: updateResult?.id, ownerId: updateResult?.ownerId, owner: updateResult?.owner });
       return reply.send({ success: true, message: 'Responsable asignado' });
     } catch (err: any) {
       console.error('Error en auto-fix/assign:', body.moduleKey, body.itemId, err.message);
