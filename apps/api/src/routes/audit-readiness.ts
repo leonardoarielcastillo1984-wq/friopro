@@ -152,7 +152,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         }).catch(() => []),
         tx.position.findMany({
           where: { tenantId, deletedAt: null },
-          select: { id: true, name: true, code: true, level: true, responsibilities: true, employees: { select: { id: true, firstName: true, lastName: true, supervisorId: true } } },
+          select: { id: true, name: true, code: true, level: true, responsibilities: true, employees: { select: { id: true, firstName: true, lastName: true, supervisorId: true } }, additionalEmployees: { select: { employeeId: true } } },
         }).catch(() => []),
         tx.employee.findMany({
           where: { tenantId, status: 'ACTIVE' },
@@ -922,7 +922,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     } else {
       for (const p of allPositions) {
         const noResponsibilities = (p.responsibilities ?? []).length === 0;
-        const noEmployees = (p.employees ?? []).length === 0;
+        const noEmployees = (p.employees ?? []).length === 0 && (p.additionalEmployees ?? []).length === 0;
         if (noResponsibilities) {
           orgIssues.push({
             id: p.id, title: p.name,
@@ -1413,7 +1413,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
         if (body.moduleKey === 'organigrama-roles') {
           const positions = await tx.position.findMany({
             where: { tenantId, deletedAt: null },
-            select: { id: true, name: true, responsibilities: true, level: true, employees: { select: { id: true } } },
+            select: { id: true, name: true, responsibilities: true, level: true, employees: { select: { id: true } }, additionalEmployees: { select: { employeeId: true } } },
           }).catch(() => []);
 
           const employees = await tx.employee.findMany({
@@ -1458,7 +1458,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           // Cargos sin personal asignado (excluir los marcados como VACANT)
           for (const pos of positions) {
             if (pos.level === 'VACANT') continue;
-            const hasEmployees = pos.employees && pos.employees.length > 0;
+            const hasEmployees = (pos.employees && pos.employees.length > 0) || (pos.additionalEmployees && pos.additionalEmployees.length > 0);
             if (!hasEmployees) {
               pendingItems.push({
                 id: pos.id,
@@ -1863,12 +1863,13 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
             console.log('[auto-fix/assign] ORG no-employees VACANT: OK');
             return reply.send({ success: true, message: 'Cargo marcado como vacante' });
           }
-          console.log('[auto-fix/assign] ORG no-employees: updating employee', body.ownerId, 'with positionId', body.itemId);
-          const updateResult = await app.prisma.employee.update({
-            where: { id: body.ownerId },
-            data: { positionId: body.itemId },
+          console.log('[auto-fix/assign] ORG no-employees: creating EmployeePosition for employee', body.ownerId, 'position', body.itemId);
+          await app.prisma.employeePosition.upsert({
+            where: { employeeId_positionId: { employeeId: body.ownerId, positionId: body.itemId } },
+            create: { employeeId: body.ownerId, positionId: body.itemId },
+            update: {},
           });
-          console.log('[auto-fix/assign] ORG no-employees: OK, employee positionId =', updateResult?.positionId);
+          console.log('[auto-fix/assign] ORG no-employees: OK, EmployeePosition created');
           return reply.send({ success: true, message: 'Personal asignado al cargo' });
         } else if (body.assignType === 'no-supervisor') {
           // ownerId es un employeeId (supervisor) o "none" para marcar sin supervisor

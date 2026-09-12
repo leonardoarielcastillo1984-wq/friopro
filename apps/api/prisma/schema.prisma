@@ -1707,6 +1707,9 @@ model Employee {
   positionId String?   @db.Uuid
   position   Position? @relation(fields: [positionId], references: [id])
 
+  // Cargos adicionales (un empleado puede asumir múltiples funciones)
+  additionalPositions EmployeePosition[] @relation("EmployeeAdditionalPositions")
+
   supervisorId String?    @db.Uuid
   supervisor   Employee?  @relation("EmployeeHierarchy", fields: [supervisorId], references: [id])
   subordinates Employee[] @relation("EmployeeHierarchy")
@@ -1860,6 +1863,7 @@ model Position {
 
   // Relations
   employees            Employee[]
+  additionalEmployees  EmployeePosition[]   @relation("PositionAdditionalEmployees")
   reportsToEmployees   Employee[]           @relation("EmployeeReportsToPosition")
   positionCompetencies PositionCompetency[]
   objectivesResponsible SgiObjective[]      @relation("ObjectiveResponsiblePosition")
@@ -1878,6 +1882,21 @@ model Position {
 
   @@unique([tenantId, name])
   @@index([tenantId])
+}
+
+// ── Tabla intermedia: un empleado puede tener múltiples cargos ──
+model EmployeePosition {
+  id        String   @id @default(uuid()) @db.Uuid
+  employeeId String  @db.Uuid
+  positionId String  @db.Uuid
+  employee  Employee @relation("EmployeeAdditionalPositions", fields: [employeeId], references: [id], onDelete: Cascade)
+  position  Position @relation("PositionAdditionalEmployees", fields: [positionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@unique([employeeId, positionId])
+  @@index([employeeId])
+  @@index([positionId])
 }
 
 model Competency {
