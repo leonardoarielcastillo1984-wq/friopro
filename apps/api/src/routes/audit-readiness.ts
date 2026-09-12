@@ -1411,15 +1411,18 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
 
         // ── Auto-fix para organigrama-roles ──
         if (body.moduleKey === 'organigrama-roles') {
+          console.log('[auto-fix] ORG-ROLES: starting...');
           const positions = await tx.position.findMany({
             where: { tenantId, deletedAt: null },
             select: { id: true, name: true, responsibilities: true, level: true, employees: { select: { id: true } }, additionalEmployees: { select: { employeeId: true } } },
-          }).catch(() => []);
+          }).catch((e: any) => { console.error('[auto-fix] ORG positions error:', e.message); return []; });
 
           const employees = await tx.employee.findMany({
             where: { tenantId, status: 'ACTIVE' },
             select: { id: true, firstName: true, lastName: true, positionId: true, supervisorId: true, orgLevel: true },
-          }).catch(() => []);
+          }).catch((e: any) => { console.error('[auto-fix] ORG employees error:', e.message); return []; });
+
+          console.log('[auto-fix] ORG-ROLES: positions:', positions.length, 'employees:', employees.length);
 
           const pendingItems: any[] = [];
           const details: string[] = [];
@@ -1479,6 +1482,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
             }
           }
 
+          console.log('[auto-fix] ORG-ROLES: pendingItems count:', pendingItems.length, 'types:', pendingItems.map(p => p.type));
           return { ownersAssigned: 0, indicatorsLinked: 0, documentsLinked: 0, risksLinked: 0, details: details.slice(0, 20), pendingItems };
         }
 
