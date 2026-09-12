@@ -1025,30 +1025,30 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         cambioIssues.push({
           id: c.id, title: `${c.code} — ${c.titulo}`,
           detail: `Cambio vencido (estado: ${c.status})`, severity: 'HIGH',
-          href: '/calidad',
+          href: '/calidad?tab=cambios',
         });
       } else if (noResponsible && c.status !== 'SOLICITADO') {
         cambioIssues.push({
           id: c.id, title: `${c.code} — ${c.titulo}`,
           detail: 'Cambio sin responsable asignado', severity: 'MEDIUM',
-          href: '/calidad',
+          href: '/calidad?tab=cambios',
         });
       } else if (stale && c.status === 'SOLICITADO') {
         cambioIssues.push({
           id: c.id, title: `${c.code} — ${c.titulo}`,
           detail: 'Solicitud de cambio sin revisar (>45 días)', severity: 'MEDIUM',
-          href: '/calidad',
+          href: '/calidad?tab=cambios',
         });
       } else if (c.nivelGlobal === 'CRITICO' && c.status !== 'APROBADO' && c.status !== 'IMPLEMENTADO') {
         cambioIssues.push({
           id: c.id, title: `${c.code} — ${c.titulo}`,
           detail: 'Cambio crítico sin aprobar', severity: 'MEDIUM',
-          href: '/calidad',
+          href: '/calidad?tab=cambios',
         });
       }
     }
     const cambioModule: ModuleReadiness = {
-      key: 'gestion-cambios', label: 'Gestión de Cambios', href: '/calidad',
+      key: 'gestion-cambios', label: 'Gestión de Cambios', href: '/calidad?tab=cambios',
       total: Math.max(1, (raw.cambios as any[]).length), pending: cambioIssues.length,
       score: scoreFrom(Math.max(1, (raw.cambios as any[]).length), cambioIssues.length),
       issues: cambioIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
