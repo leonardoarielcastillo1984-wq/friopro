@@ -1421,7 +1421,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
 
           const items = await tx[cfg.model].findMany({
             where: { tenantId, deletedAt: null, ...cfg.extraWhere },
-            select: { id: true, [cfg.nameField]: true, [cfg.ownerField]: true },
+            select: { id: true, [cfg.nameField]: true, [cfg.ownerField]: true, ...(body.moduleKey === 'indicadores' ? { status: true, lastMeasuredAt: true, code: true } : {}) },
           }).catch(() => []);
 
           // Owner más común del módulo
@@ -1463,7 +1463,27 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           const pendingItems = withoutOwner.map((item: any) => ({
             id: item.id,
             name: item[cfg.nameField],
+            type: 'no-owner' as const,
           }));
+
+          // Para indicadores: también detectar los que no tienen mediciones
+          if (body.moduleKey === 'indicadores') {
+            const noMeasurements = items.filter((item: any) =>
+              item.status === 'NO_DATA' || !item.lastMeasuredAt
+            );
+            for (const ind of noMeasurements) {
+              if (!pendingItems.find((p: any) => p.id === ind.id)) {
+                pendingItems.push({
+                  id: ind.id,
+                  name: `${ind.code} — ${ind.name}`,
+                  type: 'no-measurement' as const,
+                });
+              }
+            }
+            if (noMeasurements.length > 0) {
+              details.push(`${noMeasurements.length} indicador(es) sin mediciones — requieren carga manual`);
+            }
+          }
 
           return { ownersAssigned, indicatorsLinked: 0, documentsLinked: 0, risksLinked: 0, details: details.slice(0, 20), pendingItems };
         }

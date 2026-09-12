@@ -101,7 +101,7 @@ export default function AuditoriaReadinessPage() {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [autoFixing, setAutoFixing] = useState<string | null>(null);
   const [autoFixResult, setAutoFixResult] = useState<string | null>(null);
-  const [pendingItems, setPendingItems] = useState<{ id: string; name: string; suggestedOwner?: string }[]>([]);
+  const [pendingItems, setPendingItems] = useState<{ id: string; name: string; suggestedOwner?: string; type?: 'no-owner' | 'no-measurement' }[]>([]);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
   const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
   const [assigningId, setAssigningId] = useState<string | null>(null);
@@ -343,7 +343,12 @@ export default function AuditoriaReadinessPage() {
                       <div className="mt-2 space-y-2 border border-amber-200 bg-amber-50 rounded-lg p-2.5">
                         <div className="text-xs font-medium text-amber-800 flex items-center gap-1">
                           <AlertCircle className="h-3.5 w-3.5" />
-                          {pendingItems.length} item(s) sin responsable — elegí uno para cada:
+                          {pendingItems.filter(i => i.type !== 'no-measurement').length} item(s) sin responsable — elegí uno para cada:
+                          {pendingItems.some(i => i.type === 'no-measurement') && (
+                            <span className="ml-2 text-blue-700">
+                              · {pendingItems.filter(i => i.type === 'no-measurement').length} sin mediciones
+                            </span>
+                          )}
                         </div>
                         <div className="space-y-2">
                           {pendingItems.map((item) => (
@@ -353,6 +358,13 @@ export default function AuditoriaReadinessPage() {
                                 <span className="flex items-center gap-1 text-xs font-medium text-green-600">
                                   <CheckCircle2 className="h-3.5 w-3.5" /> Asignado
                                 </span>
+                              ) : item.type === 'no-measurement' ? (
+                                <a
+                                  href={`/indicadores?id=${item.id}`}
+                                  className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                                >
+                                  <ArrowRight className="h-3 w-3" /> Cargar medición
+                                </a>
                               ) : (
                                 <>
                                   <div className="w-48">
@@ -394,14 +406,14 @@ export default function AuditoriaReadinessPage() {
                             </div>
                           ))}
                         </div>
-                        {pendingItems.length > 1 && (
+                        {pendingItems.filter(i => i.type !== 'no-measurement').length > 1 && (
                           <button
                             onClick={async () => {
                               const ownerId = pendingAssignments[pendingItems[0].id] ?? pendingItems[0].suggestedOwner;
                               if (!ownerId) return;
                               setAssigningId('all');
                               try {
-                                await Promise.all(pendingItems.map(item =>
+                                await Promise.all(pendingItems.filter(i => i.type !== 'no-measurement').map(item =>
                                   apiFetch('/audit-readiness/auto-fix/assign', {
                                     method: 'POST',
                                     json: { moduleKey: m.key, itemId: item.id, ownerId: pendingAssignments[item.id] ?? item.suggestedOwner ?? ownerId },
