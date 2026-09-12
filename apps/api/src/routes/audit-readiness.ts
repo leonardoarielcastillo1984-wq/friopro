@@ -1442,13 +1442,12 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           if (employees.length > 1) {
             const empWithoutSupervisor = employees.filter((e: any) => !e.supervisorId && e.orgLevel !== 0);
             for (const emp of empWithoutSupervisor) {
-              if (!pendingItems.find(p => p.id === emp.id)) {
-                pendingItems.push({
-                  id: emp.id,
-                  name: `${emp.firstName} ${emp.lastName}`.trim(),
-                  type: 'no-supervisor',
-                });
-              }
+              pendingItems.push({
+                id: `${emp.id}__no-supervisor`,
+                name: `${emp.firstName} ${emp.lastName}`.trim(),
+                type: 'no-supervisor',
+                employeeId: emp.id,
+              });
             }
             if (empWithoutSupervisor.length > 0) {
               details.push(`${empWithoutSupervisor.length} empleado(s) sin supervisor — asignar manualmente`);
@@ -1872,22 +1871,24 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           console.log('[auto-fix/assign] ORG no-employees: OK, EmployeePosition created');
           return reply.send({ success: true, message: 'Personal asignado al cargo' });
         } else if (body.assignType === 'no-supervisor') {
+          // itemId puede tener sufijo __no-supervisor o ser un employeeId directo
+          const employeeId = body.itemId.includes('__no-supervisor') ? body.itemId.split('__no-supervisor')[0] : body.itemId;
           // ownerId es un employeeId (supervisor) o "none" para marcar sin supervisor
           if (body.ownerId === 'none') {
-            console.log('[auto-fix/assign] ORG no-supervisor NONE: updating employee', body.itemId);
+            console.log('[auto-fix/assign] ORG no-supervisor NONE: updating employee', employeeId);
             await app.prisma.employee.update({
-              where: { id: body.itemId },
+              where: { id: employeeId },
               data: { supervisorId: null, orgLevel: 0 },
             });
             console.log('[auto-fix/assign] ORG no-supervisor NONE: OK');
             return reply.send({ success: true, message: 'Marcado sin supervisor' });
           }
-          if (body.ownerId === body.itemId) {
+          if (body.ownerId === employeeId) {
             return reply.code(400).send({ error: 'No puede ser su propio supervisor' });
           }
-          console.log('[auto-fix/assign] ORG no-supervisor: updating employee', body.itemId, 'with supervisorId', body.ownerId);
+          console.log('[auto-fix/assign] ORG no-supervisor: updating employee', employeeId, 'with supervisorId', body.ownerId);
           await app.prisma.employee.update({
-            where: { id: body.itemId },
+            where: { id: employeeId },
             data: { supervisorId: body.ownerId },
           });
           console.log('[auto-fix/assign] ORG no-supervisor: OK');
