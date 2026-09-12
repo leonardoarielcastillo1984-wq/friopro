@@ -152,7 +152,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         }).catch(() => []),
         tx.position.findMany({
           where: { tenantId, deletedAt: null },
-          select: { id: true, name: true, code: true, responsibilities: true, employees: { select: { id: true, firstName: true, lastName: true, supervisorId: true } } },
+          select: { id: true, name: true, code: true, level: true, responsibilities: true, employees: { select: { id: true, firstName: true, lastName: true, supervisorId: true } } },
         }).catch(() => []),
         tx.employee.findMany({
           where: { tenantId, status: 'ACTIVE' },
@@ -930,7 +930,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
             href: '/rrhh',
           });
         }
-        if (noEmployees) {
+        if (noEmployees && p.level !== 'VACANT') {
           orgIssues.push({
             id: p.id, title: p.name,
             detail: 'Cargo sin personal asignado', severity: 'LOW',
@@ -1413,7 +1413,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
         if (body.moduleKey === 'organigrama-roles') {
           const positions = await tx.position.findMany({
             where: { tenantId, deletedAt: null },
-            select: { id: true, name: true, responsibilities: true, employees: { select: { id: true } } },
+            select: { id: true, name: true, responsibilities: true, level: true, employees: { select: { id: true } } },
           }).catch(() => []);
 
           const employees = await tx.employee.findMany({
@@ -1455,8 +1455,9 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
             }
           }
 
-          // Cargos sin personal asignado
+          // Cargos sin personal asignado (excluir los marcados como VACANT)
           for (const pos of positions) {
+            if (pos.level === 'VACANT') continue;
             const hasEmployees = pos.employees && pos.employees.length > 0;
             if (!hasEmployees) {
               pendingItems.push({
@@ -1849,7 +1850,14 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           }).catch(() => null);
           return reply.send({ success: true, message: 'Cargo asignado' });
         } else if (body.assignType === 'no-employees') {
-          // itemId es positionId, ownerId es employeeId — asignar el empleado al cargo
+          // itemId es positionId, ownerId es employeeId o "none" para marcar vacante
+          if (body.ownerId === 'none') {
+            await app.prisma.position.update({
+              where: { id: body.itemId },
+              data: { level: 'VACANT' },
+            }).catch(() => null);
+            return reply.send({ success: true, message: 'Cargo marcado como vacante' });
+          }
           await app.prisma.employee.update({
             where: { id: body.ownerId },
             data: { positionId: body.itemId },

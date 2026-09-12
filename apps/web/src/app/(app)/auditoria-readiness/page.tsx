@@ -424,6 +424,31 @@ export default function AuditoriaReadinessPage() {
                                   >
                                     {assigningId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Asignar
                                   </button>
+                                  <button
+                                    onClick={async () => {
+                                      setAssigningId(item.id);
+                                      try {
+                                        await apiFetch('/audit-readiness/auto-fix/assign', {
+                                          method: 'POST',
+                                          json: { moduleKey: m.key, itemId: item.id, ownerId: 'none', assignType: 'no-employees' },
+                                        });
+                                        setJustAssigned(prev => new Set(prev).add(item.id));
+                                        load(true);
+                                        setTimeout(() => {
+                                          setPendingItems(prev => prev.filter(p => p.id !== item.id));
+                                          setJustAssigned(prev => { const n = new Set(prev); n.delete(item.id); return n; });
+                                        }, 800);
+                                      } catch (err: any) {
+                                        setAutoFixResult(`Error al asignar: ${err?.message ?? 'desconocido'}`);
+                                      } finally {
+                                        setAssigningId(null);
+                                      }
+                                    }}
+                                    disabled={assigningId === item.id}
+                                    className="flex items-center gap-1 rounded-lg bg-neutral-500 px-2 py-1 text-xs font-medium text-white hover:bg-neutral-600 disabled:opacity-50"
+                                  >
+                                    Sin asignar
+                                  </button>
                                 </>
                               ) : item.type === 'no-responsibilities' ? (
                                 <a
