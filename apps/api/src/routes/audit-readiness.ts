@@ -1606,6 +1606,66 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           }
         }
 
+        // 6. Fallback: para los procesos que aún no tienen owner/indicadores/documentos,
+        //    asignar el owner más común y vincular todos los indicadores/documentos disponibles.
+        const macroProcesses = processes.filter((p: any) => !p.parentId);
+        const stillNoOwner = macroProcesses.filter((p: any) => !p.owner || p.owner.trim() === '');
+        const stillNoInd = macroProcesses.filter((p: any) => (linkedIndicators.size === 0 || !allPI2.some((l: any) => l.processId === p.id)));
+        const stillNoDoc = macroProcesses.filter((p: any) => !allPD2.some((l: any) => l.processId === p.id));
+
+        // Owner más común
+        const ownerCounts = new Map<string, number>();
+        for (const p of macroProcesses) {
+          if (p.owner && p.owner.trim() !== '') {
+            ownerCounts.set(p.owner, (ownerCounts.get(p.owner) ?? 0) + 1);
+          }
+        }
+        let mostCommonOwner: string | null = null;
+        let maxCount = 0;
+        for (const [owner, count] of ownerCounts) {
+          if (count > maxCount) { maxCount = count; mostCommonOwner = owner; }
+        }
+
+        if (mostCommonOwner) {
+          for (const p of stillNoOwner) {
+            await tx.process.update({ where: { id: p.id }, data: { owner: mostCommonOwner } }).catch(() => {});
+            ownersAssigned++;
+            details.push(`${p.name}: owner fallback ✓`);
+          }
+        }
+
+        // Todos los indicadores disponibles
+        const allIndicatorIds = await tx.indicator.findMany({ where: { tenantId, deletedAt: null }, select: { id: true } }).catch(() => []);
+        if (allIndicatorIds.length > 0) {
+          for (const p of macroProcesses) {
+            const has = new Set(allPI2.filter((l: any) => l.processId === p.id).map((l: any) => l.indicatorId));
+            const toAdd = allIndicatorIds.filter((i: any) => !has.has(i.id)).map((i: any) => i.id);
+            if (toAdd.length > 0) {
+              await tx.processIndicator.createMany({
+                data: toAdd.map((indicatorId: string) => ({ processId: p.id, indicatorId })),
+                skipDuplicates: true,
+              }).catch(() => {});
+              indicatorsLinked += toAdd.length;
+            }
+          }
+        }
+
+        // Todos los documentos disponibles
+        const allDocumentIds = await tx.document.findMany({ where: { tenantId, deletedAt: null }, select: { id: true } }).catch(() => []);
+        if (allDocumentIds.length > 0) {
+          for (const p of macroProcesses) {
+            const has = new Set(allPD2.filter((l: any) => l.processId === p.id).map((l: any) => l.documentId));
+            const toAdd = allDocumentIds.filter((d: any) => !has.has(d.id)).map((d: any) => d.id);
+            if (toAdd.length > 0) {
+              await tx.processDocument.createMany({
+                data: toAdd.map((documentId: string) => ({ processId: p.id, documentId })),
+                skipDuplicates: true,
+              }).catch(() => {});
+              documentsLinked += toAdd.length;
+            }
+          }
+        }
+
         return { ownersAssigned, indicatorsLinked: indicatorsLinked + indicatorsSynced, documentsLinked: documentsLinked + documentsSynced, risksLinked: risksLinked + risksSynced, details: details.slice(0, 20) };
       });
 
