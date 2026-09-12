@@ -156,7 +156,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         }).catch(() => []),
         tx.employee.findMany({
           where: { tenantId, status: 'ACTIVE' },
-          select: { id: true, firstName: true, lastName: true, positionId: true, supervisorId: true },
+          select: { id: true, firstName: true, lastName: true, positionId: true, supervisorId: true, orgLevel: true },
         }).catch(() => []),
         tx.inspeccionHallazgo.findMany({
           where: { tenantId, estado: { in: ['ABIERTO', 'EN_PROCESO'] } },
