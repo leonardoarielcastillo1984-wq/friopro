@@ -1745,19 +1745,51 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
       return reply.code(400).send({ error: 'Falta moduleKey, itemId u ownerId' });
     }
 
-    const moduleConfig: Record<string, { model: string; ownerField: string }> = {
-      'mapa-procesos': { model: 'process',   ownerField: 'owner' },
-      'riesgos':      { model: 'risk',       ownerField: 'ownerId' },
-      'documentos':   { model: 'document',   ownerField: 'ownerId' },
-      'indicadores':  { model: 'indicator',  ownerField: 'ownerId' },
+    const moduleConfig: Record<string, { model: string; ownerField: string; isText: boolean }> = {
+      'mapa-procesos': { model: 'process',   ownerField: 'owner',   isText: true  },
+      'riesgos':      { model: 'risk',       ownerField: 'ownerId', isText: false },
+      'documentos':   { model: 'document',   ownerField: 'ownerId', isText: false },
+      'indicadores':  { model: 'indicator',  ownerField: 'ownerId', isText: false },
     };
     const cfg = moduleConfig[body.moduleKey];
     if (!cfg) return reply.code(400).send({ error: 'Módulo no soportado' });
 
     try {
-      await app.prisma[cfg.model].update({
+      let ownerValue = body.ownerId;
+
+      if (cfg.isText) {
+        // Process.owner es texto libre: guardar el nombre del empleado
+        const emp = await app.prisma.employee.findUnique({
+          where: { id: body.ownerId },
+          select: { firstName: true, lastName: true },
+        }).catch(() => null);
+        if (emp) {
+          ownerValue = `${emp.firstName} ${emp.lastName}`.trim();
+        }
+      } else {
+        // ownerId es FK a PlatformUser: buscar por email del Employee
+        const emp = await app.prisma.employee.findUnique({
+          where: { id: body.ownerId },
+          select: { email: true },
+        }).catch(() => null);
+        if (emp?.email) {
+          const platformUser = await app.prisma.platformUser.findUnique({
+            where: { email: emp.email },
+            select: { id: true },
+          }).catch(() => null);
+          if (platformUser) {
+            ownerValue = platformUser.id;
+          } else {
+            return reply.code(400).send({ error: 'El empleado no tiene usuario del sistema asociado' });
+          }
+        } else {
+          return reply.code(400).send({ error: 'Empleado no encontrado' });
+        }
+      }
+
+      await (app.prisma as any)[cfg.model].update({
         where: { id: body.itemId },
-        data: { [cfg.ownerField]: body.ownerId },
+        data: { [cfg.ownerField]: ownerValue },
       });
       return reply.send({ success: true, message: 'Responsable asignado' });
     } catch (err: any) {

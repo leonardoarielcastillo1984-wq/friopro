@@ -373,18 +373,18 @@ export default function AuditoriaReadinessPage() {
                                           json: { moduleKey: m.key, itemId: item.id, ownerId },
                                         });
                                         setJustAssigned(prev => new Set(prev).add(item.id));
+                                        load(true);
                                         setTimeout(() => {
                                           setPendingItems(prev => prev.filter(p => p.id !== item.id));
                                           setJustAssigned(prev => { const n = new Set(prev); n.delete(item.id); return n; });
-                                        }, 600);
-                                        load(true);
+                                        }, 800);
                                       } catch (err: any) {
-                                        console.error('Error assigning:', err);
+                                        setAutoFixResult(`Error al asignar: ${err?.message ?? 'desconocido'}`);
                                       } finally {
                                         setAssigningId(null);
                                       }
                                     }}
-                                    disabled={!pendingAssignments[item.id] && !item.suggestedOwner}
+                                    disabled={(!pendingAssignments[item.id] && !item.suggestedOwner) || assigningId === item.id}
                                     className="flex items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
                                   >
                                     {assigningId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Asignar
