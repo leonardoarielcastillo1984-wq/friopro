@@ -101,11 +101,12 @@ export default function AuditoriaReadinessPage() {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [autoFixing, setAutoFixing] = useState<string | null>(null);
   const [autoFixResult, setAutoFixResult] = useState<string | null>(null);
-  const [pendingItems, setPendingItems] = useState<{ id: string; name: string; suggestedOwner?: string; type?: 'no-owner' | 'no-measurement' }[]>([]);
+  const [pendingItems, setPendingItems] = useState<{ id: string; name: string; suggestedOwner?: string; type?: 'no-owner' | 'no-measurement' | 'no-position' | 'no-supervisor' | 'no-responsibilities' }[]>([]);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
   const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [justAssigned, setJustAssigned] = useState<Set<string>>(new Set());
+  const [positions, setPositions] = useState<{ id: string; name: string }[]>([]);
 
   async function executeAction(suggestionId: string, action: string, moduleKey: string) {
     const issueId = suggestionId;
@@ -293,7 +294,7 @@ export default function AuditoriaReadinessPage() {
                           Ir al módulo →
                         </button>
                       )}
-                      {['mapa-procesos', 'riesgos', 'documentos', 'indicadores'].includes(m.key) && m.pending > 0 && (
+                      {['mapa-procesos', 'riesgos', 'documentos', 'indicadores', 'organigrama-roles'].includes(m.key) && m.pending > 0 && (
                         <button
                           onClick={async () => {
                             setAutoFixing(m.key);
@@ -305,14 +306,24 @@ export default function AuditoriaReadinessPage() {
                                 method: 'POST',
                                 json: { moduleKey: m.key },
                               });
-                              const msg = m.key === 'mapa-procesos'
-                                ? `Responsables: ${res.ownersAssigned} | Indicadores: ${res.indicatorsLinked} | Documentos: ${res.documentsLinked} | Riesgos: ${res.risksLinked}`
-                                : `Responsables asignados: ${res.ownersAssigned}`;
+                              let msg: string;
+                              if (m.key === 'mapa-procesos') {
+                                msg = `Responsables: ${res.ownersAssigned} | Indicadores: ${res.indicatorsLinked} | Documentos: ${res.documentsLinked} | Riesgos: ${res.risksLinked}`;
+                              } else if (m.key === 'organigrama-roles') {
+                                msg = res.details?.join(' · ') ?? 'Análisis completado';
+                              } else {
+                                msg = `Responsables asignados: ${res.ownersAssigned}`;
+                              }
                               setAutoFixResult(msg);
                               if (res.pendingItems && res.pendingItems.length > 0) {
                                 setPendingItems(res.pendingItems);
                                 setPendingModule(m.key);
                                 setPendingAssignments({});
+                                if (m.key === 'organigrama-roles') {
+                                  apiFetch<{ positions: { id: string; name: string }[] }>('/hr/positions')
+                                    .then(r => setPositions(r?.positions || []))
+                                    .catch(() => {});
+                                }
                               }
                               load(true);
                             } catch (err: any) {
@@ -336,18 +347,27 @@ export default function AuditoriaReadinessPage() {
                         </button>
                       )}
                     </div>
-                    {autoFixResult && ['mapa-procesos', 'riesgos', 'documentos', 'indicadores'].includes(m.key) && (
+                    {autoFixResult && ['mapa-procesos', 'riesgos', 'documentos', 'indicadores', 'organigrama-roles'].includes(m.key) && (
                       <div className="text-xs text-neutral-600 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5 mt-1">{autoFixResult}</div>
                     )}
                     {pendingItems.length > 0 && pendingModule === m.key && (
                       <div className="mt-2 space-y-2 border border-amber-200 bg-amber-50 rounded-lg p-2.5">
-                        <div className="text-xs font-medium text-amber-800 flex items-center gap-1">
+                        <div className="text-xs font-medium text-amber-800 flex items-center gap-1 flex-wrap">
                           <AlertCircle className="h-3.5 w-3.5" />
-                          {pendingItems.filter(i => i.type !== 'no-measurement').length} item(s) sin responsable — elegí uno para cada:
-                          {pendingItems.some(i => i.type === 'no-measurement') && (
-                            <span className="ml-2 text-blue-700">
-                              · {pendingItems.filter(i => i.type === 'no-measurement').length} sin mediciones
-                            </span>
+                          {pendingItems.filter(i => i.type === 'no-owner' || !i.type).length > 0 && (
+                            <span>{pendingItems.filter(i => i.type === 'no-owner' || !i.type).length} sin responsable ·</span>
+                          )}
+                          {pendingItems.filter(i => i.type === 'no-measurement').length > 0 && (
+                            <span className="text-blue-700">{pendingItems.filter(i => i.type === 'no-measurement').length} sin mediciones ·</span>
+                          )}
+                          {pendingItems.filter(i => i.type === 'no-position').length > 0 && (
+                            <span className="text-purple-700">{pendingItems.filter(i => i.type === 'no-position').length} sin cargo ·</span>
+                          )}
+                          {pendingItems.filter(i => i.type === 'no-supervisor').length > 0 && (
+                            <span className="text-orange-700">{pendingItems.filter(i => i.type === 'no-supervisor').length} sin supervisor ·</span>
+                          )}
+                          {pendingItems.filter(i => i.type === 'no-responsibilities').length > 0 && (
+                            <span className="text-red-700">{pendingItems.filter(i => i.type === 'no-responsibilities').length} cargos sin responsabilidades</span>
                           )}
                         </div>
                         <div className="space-y-2">
@@ -365,6 +385,90 @@ export default function AuditoriaReadinessPage() {
                                 >
                                   <ArrowRight className="h-3 w-3" /> Cargar medición
                                 </a>
+                              ) : item.type === 'no-responsibilities' ? (
+                                <a
+                                  href={`/rrhh`}
+                                  className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
+                                >
+                                  <ArrowRight className="h-3 w-3" /> Definir responsabilidades
+                                </a>
+                              ) : item.type === 'no-position' ? (
+                                <>
+                                  <select
+                                    value={pendingAssignments[item.id] ?? ''}
+                                    onChange={(e) => setPendingAssignments(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                    className="w-48 text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white"
+                                  >
+                                    <option value="">Seleccionar cargo...</option>
+                                    {positions.map(pos => (
+                                      <option key={pos.id} value={pos.id}>{pos.name}</option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    onClick={async () => {
+                                      const ownerId = pendingAssignments[item.id];
+                                      if (!ownerId) return;
+                                      setAssigningId(item.id);
+                                      try {
+                                        await apiFetch('/audit-readiness/auto-fix/assign', {
+                                          method: 'POST',
+                                          json: { moduleKey: m.key, itemId: item.id, ownerId, assignType: 'no-position' },
+                                        });
+                                        setJustAssigned(prev => new Set(prev).add(item.id));
+                                        load(true);
+                                        setTimeout(() => {
+                                          setPendingItems(prev => prev.filter(p => p.id !== item.id));
+                                          setJustAssigned(prev => { const n = new Set(prev); n.delete(item.id); return n; });
+                                        }, 800);
+                                      } catch (err: any) {
+                                        setAutoFixResult(`Error al asignar: ${err?.message ?? 'desconocido'}`);
+                                      } finally {
+                                        setAssigningId(null);
+                                      }
+                                    }}
+                                    disabled={!pendingAssignments[item.id] || assigningId === item.id}
+                                    className="flex items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                                  >
+                                    {assigningId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Asignar
+                                  </button>
+                                </>
+                              ) : item.type === 'no-supervisor' ? (
+                                <>
+                                  <div className="w-48">
+                                    <EmployeeCombobox
+                                      value={pendingAssignments[item.id] ?? ''}
+                                      onChange={(id) => setPendingAssignments(prev => ({ ...prev, [item.id]: id }))}
+                                      placeholder="Seleccionar supervisor..."
+                                    />
+                                  </div>
+                                  <button
+                                    onClick={async () => {
+                                      const ownerId = pendingAssignments[item.id];
+                                      if (!ownerId) return;
+                                      setAssigningId(item.id);
+                                      try {
+                                        await apiFetch('/audit-readiness/auto-fix/assign', {
+                                          method: 'POST',
+                                          json: { moduleKey: m.key, itemId: item.id, ownerId, assignType: 'no-supervisor' },
+                                        });
+                                        setJustAssigned(prev => new Set(prev).add(item.id));
+                                        load(true);
+                                        setTimeout(() => {
+                                          setPendingItems(prev => prev.filter(p => p.id !== item.id));
+                                          setJustAssigned(prev => { const n = new Set(prev); n.delete(item.id); return n; });
+                                        }, 800);
+                                      } catch (err: any) {
+                                        setAutoFixResult(`Error al asignar: ${err?.message ?? 'desconocido'}`);
+                                      } finally {
+                                        setAssigningId(null);
+                                      }
+                                    }}
+                                    disabled={!pendingAssignments[item.id] || assigningId === item.id}
+                                    className="flex items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                                  >
+                                    {assigningId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Asignar
+                                  </button>
+                                </>
                               ) : (
                                 <>
                                   <div className="w-48">
@@ -406,20 +510,21 @@ export default function AuditoriaReadinessPage() {
                             </div>
                           ))}
                         </div>
-                        {pendingItems.filter(i => i.type !== 'no-measurement').length > 1 && (
+                        {pendingItems.filter(i => !i.type || i.type === 'no-owner').length > 1 && (
                           <button
                             onClick={async () => {
-                              const ownerId = pendingAssignments[pendingItems[0].id] ?? pendingItems[0].suggestedOwner;
+                              const batchItems = pendingItems.filter(i => !i.type || i.type === 'no-owner');
+                              const ownerId = pendingAssignments[batchItems[0].id] ?? batchItems[0].suggestedOwner;
                               if (!ownerId) return;
                               setAssigningId('all');
                               try {
-                                await Promise.all(pendingItems.filter(i => i.type !== 'no-measurement').map(item =>
+                                await Promise.all(batchItems.map(item =>
                                   apiFetch('/audit-readiness/auto-fix/assign', {
                                     method: 'POST',
                                     json: { moduleKey: m.key, itemId: item.id, ownerId: pendingAssignments[item.id] ?? item.suggestedOwner ?? ownerId },
                                   })
                                 ));
-                                setPendingItems([]);
+                                setPendingItems(prev => prev.filter(p => p.type && p.type !== 'no-owner'));
                                 load(true);
                               } catch (err: any) {
                                 console.error('Error assigning all:', err);

@@ -1401,13 +1401,73 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
     const body = req.body as { moduleKey: string };
     if (!body.moduleKey) return reply.code(400).send({ error: 'Falta moduleKey' });
 
-    const supportedModules = ['mapa-procesos', 'riesgos', 'documentos', 'indicadores'];
+    const supportedModules = ['mapa-procesos', 'riesgos', 'documentos', 'indicadores', 'organigrama-roles'];
     if (!supportedModules.includes(body.moduleKey)) {
       return reply.code(400).send({ error: `Auto-fix disponible para: ${supportedModules.join(', ')}` });
     }
 
     try {
       const result = await app.runWithDbContext(req, async (tx: any) => {
+
+        // ── Auto-fix para organigrama-roles ──
+        if (body.moduleKey === 'organigrama-roles') {
+          const positions = await tx.position.findMany({
+            where: { tenantId, deletedAt: null },
+            select: { id: true, name: true, responsibilities: true, employees: { select: { id: true } } },
+          }).catch(() => []);
+
+          const employees = await tx.employee.findMany({
+            where: { tenantId, status: 'ACTIVE' },
+            select: { id: true, firstName: true, lastName: true, positionId: true, supervisorId: true },
+          }).catch(() => []);
+
+          const pendingItems: any[] = [];
+          const details: string[] = [];
+
+          // Empleados sin cargo
+          const empWithoutPosition = employees.filter((e: any) => !e.positionId);
+          for (const emp of empWithoutPosition) {
+            pendingItems.push({
+              id: emp.id,
+              name: `${emp.firstName} ${emp.lastName}`.trim(),
+              type: 'no-position',
+            });
+          }
+          if (empWithoutPosition.length > 0) {
+            details.push(`${empWithoutPosition.length} empleado(s) sin cargo — asignar manualmente`);
+          }
+
+          // Empleados sin supervisor (solo si hay más de 1 empleado)
+          if (employees.length > 1) {
+            const empWithoutSupervisor = employees.filter((e: any) => !e.supervisorId);
+            for (const emp of empWithoutSupervisor) {
+              if (!pendingItems.find(p => p.id === emp.id)) {
+                pendingItems.push({
+                  id: emp.id,
+                  name: `${emp.firstName} ${emp.lastName}`.trim(),
+                  type: 'no-supervisor',
+                });
+              }
+            }
+            if (empWithoutSupervisor.length > 0) {
+              details.push(`${empWithoutSupervisor.length} empleado(s) sin supervisor — asignar manualmente`);
+            }
+          }
+
+          // Cargos sin responsabilidades (solo link, no se puede auto-fixear)
+          for (const pos of positions) {
+            const hasResp = pos.responsibilities && (Array.isArray(pos.responsibilities) ? pos.responsibilities.length > 0 : Object.keys(pos.responsibilities ?? {}).length > 0);
+            if (!hasResp) {
+              pendingItems.push({
+                id: pos.id,
+                name: pos.name,
+                type: 'no-responsibilities',
+              });
+            }
+          }
+
+          return { ownersAssigned: 0, indicatorsLinked: 0, documentsLinked: 0, risksLinked: 0, details: details.slice(0, 20), pendingItems };
+        }
 
         // ── Auto-fix para riesgos, documentos, indicadores (solo asignar owner) ──
         if (body.moduleKey !== 'mapa-procesos') {
@@ -1760,9 +1820,36 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
-    const body = req.body as { moduleKey: string; itemId: string; ownerId: string };
+    const body = req.body as { moduleKey: string; itemId: string; ownerId: string; assignType?: string };
     if (!body.moduleKey || !body.itemId || !body.ownerId) {
       return reply.code(400).send({ error: 'Falta moduleKey, itemId u ownerId' });
+    }
+
+    // ── Organigrama-roles: asignar cargo o supervisor ──
+    if (body.moduleKey === 'organigrama-roles') {
+      try {
+        if (body.assignType === 'no-position') {
+          // ownerId es un positionId
+          await app.prisma.employee.update({
+            where: { id: body.itemId },
+            data: { positionId: body.ownerId },
+          }).catch(() => null);
+          return reply.send({ success: true, message: 'Cargo asignado' });
+        } else if (body.assignType === 'no-supervisor') {
+          // ownerId es un employeeId (supervisor)
+          if (body.ownerId === body.itemId) {
+            return reply.code(400).send({ error: 'No puede ser su propio supervisor' });
+          }
+          await app.prisma.employee.update({
+            where: { id: body.itemId },
+            data: { supervisorId: body.ownerId },
+          }).catch(() => null);
+          return reply.send({ success: true, message: 'Supervisor asignado' });
+        }
+        return reply.code(400).send({ error: 'Tipo de asignación no soportado para organigrama-roles' });
+      } catch (err: any) {
+        return reply.code(500).send({ error: 'Error al asignar', details: err.message });
+      }
     }
 
     const moduleConfig: Record<string, { model: string; ownerField: string; isText: boolean }> = {
