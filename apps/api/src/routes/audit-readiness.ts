@@ -1770,7 +1770,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
         // ownerId es FK a PlatformUser: buscar por email del Employee
         const emp = await app.prisma.employee.findUnique({
           where: { id: body.ownerId },
-          select: { email: true },
+          select: { email: true, firstName: true, lastName: true },
         }).catch(() => null);
         if (emp?.email) {
           const platformUser = await app.prisma.platformUser.findUnique({
@@ -1780,7 +1780,21 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           if (platformUser) {
             ownerValue = platformUser.id;
           } else {
-            return reply.code(400).send({ error: 'El empleado no tiene usuario del sistema asociado' });
+            // Auto-crear PlatformUser para que la FK se cumpla
+            const newUser = await app.prisma.platformUser.create({
+              data: {
+                email: emp.email,
+                passwordHash: '!',
+                firstName: emp.firstName,
+                lastName: emp.lastName,
+                isActive: false,
+              },
+            }).catch(() => null);
+            if (newUser) {
+              ownerValue = newUser.id;
+            } else {
+              return reply.code(500).send({ error: 'No se pudo crear el usuario' });
+            }
           }
         } else {
           return reply.code(400).send({ error: 'Empleado no encontrado' });
