@@ -1847,7 +1847,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           await app.prisma.employee.update({
             where: { id: body.itemId },
             data: { positionId: body.ownerId },
-          }).catch(() => null);
+          });
           return reply.send({ success: true, message: 'Cargo asignado' });
         } else if (body.assignType === 'no-employees') {
           // itemId es positionId, ownerId es employeeId o "none" para marcar vacante
@@ -1855,13 +1855,13 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
             await app.prisma.position.update({
               where: { id: body.itemId },
               data: { level: 'VACANT' },
-            }).catch(() => null);
+            });
             return reply.send({ success: true, message: 'Cargo marcado como vacante' });
           }
           await app.prisma.employee.update({
             where: { id: body.ownerId },
             data: { positionId: body.itemId },
-          }).catch(() => null);
+          });
           return reply.send({ success: true, message: 'Personal asignado al cargo' });
         } else if (body.assignType === 'no-supervisor') {
           // ownerId es un employeeId (supervisor) o "none" para marcar sin supervisor
@@ -1869,7 +1869,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
             await app.prisma.employee.update({
               where: { id: body.itemId },
               data: { supervisorId: null, orgLevel: 0 },
-            }).catch(() => null);
+            });
             return reply.send({ success: true, message: 'Marcado sin supervisor' });
           }
           if (body.ownerId === body.itemId) {
@@ -1878,11 +1878,12 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           await app.prisma.employee.update({
             where: { id: body.itemId },
             data: { supervisorId: body.ownerId },
-          }).catch(() => null);
+          });
           return reply.send({ success: true, message: 'Supervisor asignado' });
         }
         return reply.code(400).send({ error: 'Tipo de asignación no soportado para organigrama-roles' });
       } catch (err: any) {
+        console.error('Error en auto-fix/assign organigrama-roles:', err.message);
         return reply.code(500).send({ error: 'Error al asignar', details: err.message });
       }
     }
