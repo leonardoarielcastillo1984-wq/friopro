@@ -947,7 +947,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         href: '/rrhh',
       });
     }
-    const employeesWithoutSupervisor = allEmployees.filter((e) => !e.supervisorId);
+    const employeesWithoutSupervisor = allEmployees.filter((e) => !e.supervisorId && (e as any).orgLevel !== 0);
     if (employeesWithoutSupervisor.length > 0 && allEmployees.length > 1) {
       orgIssues.push({
         id: 'no-supervisor', title: `${employeesWithoutSupervisor.length} empleados sin supervisor`,
@@ -1418,7 +1418,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
 
           const employees = await tx.employee.findMany({
             where: { tenantId, status: 'ACTIVE' },
-            select: { id: true, firstName: true, lastName: true, positionId: true, supervisorId: true },
+            select: { id: true, firstName: true, lastName: true, positionId: true, supervisorId: true, orgLevel: true },
           }).catch(() => []);
 
           const pendingItems: any[] = [];
@@ -1438,8 +1438,9 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           }
 
           // Empleados sin supervisor (solo si hay más de 1 empleado)
+          // Excluir los que tienen orgLevel === 0 (marcado como nivel máximo / sin supervisor a propósito)
           if (employees.length > 1) {
-            const empWithoutSupervisor = employees.filter((e: any) => !e.supervisorId);
+            const empWithoutSupervisor = employees.filter((e: any) => !e.supervisorId && e.orgLevel !== 0);
             for (const emp of empWithoutSupervisor) {
               if (!pendingItems.find(p => p.id === emp.id)) {
                 pendingItems.push({
@@ -1836,7 +1837,14 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           }).catch(() => null);
           return reply.send({ success: true, message: 'Cargo asignado' });
         } else if (body.assignType === 'no-supervisor') {
-          // ownerId es un employeeId (supervisor)
+          // ownerId es un employeeId (supervisor) o "none" para marcar sin supervisor
+          if (body.ownerId === 'none') {
+            await app.prisma.employee.update({
+              where: { id: body.itemId },
+              data: { supervisorId: null, orgLevel: 0 },
+            }).catch(() => null);
+            return reply.send({ success: true, message: 'Marcado sin supervisor' });
+          }
           if (body.ownerId === body.itemId) {
             return reply.code(400).send({ error: 'No puede ser su propio supervisor' });
           }
