@@ -8,6 +8,7 @@ import {
   CheckCircle2, ChevronRight, Loader2, ShieldAlert,
   Sparkles, X, Send, ArrowRight, Zap, Check,
 } from 'lucide-react';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 
 type Severity = 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -100,6 +101,10 @@ export default function AuditoriaReadinessPage() {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [autoFixing, setAutoFixing] = useState<string | null>(null);
   const [autoFixResult, setAutoFixResult] = useState<string | null>(null);
+  const [pendingItems, setPendingItems] = useState<{ id: string; name: string; suggestedOwner?: string }[]>([]);
+  const [pendingModule, setPendingModule] = useState<string | null>(null);
+  const [pendingAssignments, setPendingAssignments] = useState<Record<string, string>>({});
+  const [assigningId, setAssigningId] = useState<string | null>(null);
 
   async function executeAction(suggestionId: string, action: string, moduleKey: string) {
     const issueId = suggestionId;
@@ -292,8 +297,10 @@ export default function AuditoriaReadinessPage() {
                           onClick={async () => {
                             setAutoFixing(m.key);
                             setAutoFixResult(null);
+                            setPendingItems([]);
+                            setPendingModule(null);
                             try {
-                              const res = await apiFetch<{ success: boolean; ownersAssigned: number; indicatorsLinked: number; documentsLinked: number; risksLinked: number; details: string[] }>('/audit-readiness/auto-fix', {
+                              const res = await apiFetch<{ success: boolean; ownersAssigned: number; indicatorsLinked: number; documentsLinked: number; risksLinked: number; details: string[]; pendingItems?: { id: string; name: string; suggestedOwner?: string }[] }>('/audit-readiness/auto-fix', {
                                 method: 'POST',
                                 json: { moduleKey: m.key },
                               });
@@ -301,6 +308,11 @@ export default function AuditoriaReadinessPage() {
                                 ? `Responsables: ${res.ownersAssigned} | Indicadores: ${res.indicatorsLinked} | Documentos: ${res.documentsLinked} | Riesgos: ${res.risksLinked}`
                                 : `Responsables asignados: ${res.ownersAssigned}`;
                               setAutoFixResult(msg);
+                              if (res.pendingItems && res.pendingItems.length > 0) {
+                                setPendingItems(res.pendingItems);
+                                setPendingModule(m.key);
+                                setPendingAssignments({});
+                              }
                               load(true);
                             } catch (err: any) {
                               setAutoFixResult(`Error: ${err?.message ?? 'No se pudo ejecutar'}`);
@@ -325,6 +337,78 @@ export default function AuditoriaReadinessPage() {
                     </div>
                     {autoFixResult && ['mapa-procesos', 'riesgos', 'documentos', 'indicadores'].includes(m.key) && (
                       <div className="text-xs text-neutral-600 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5 mt-1">{autoFixResult}</div>
+                    )}
+                    {pendingItems.length > 0 && pendingModule === m.key && (
+                      <div className="mt-2 space-y-2 border border-amber-200 bg-amber-50 rounded-lg p-2.5">
+                        <div className="text-xs font-medium text-amber-800 flex items-center gap-1">
+                          <AlertCircle className="h-3.5 w-3.5" />
+                          {pendingItems.length} item(s) sin responsable — elegí uno para cada:
+                        </div>
+                        <div className="max-h-60 overflow-y-auto space-y-2">
+                          {pendingItems.map((item) => (
+                            <div key={item.id} className="flex items-center gap-2 bg-white rounded-lg border border-neutral-200 px-2 py-1.5">
+                              <span className="text-xs text-neutral-700 flex-1 truncate" title={item.name}>{item.name}</span>
+                              <div className="w-48">
+                                <EmployeeCombobox
+                                  value={pendingAssignments[item.id] ?? item.suggestedOwner ?? ''}
+                                  onChange={(id) => setPendingAssignments(prev => ({ ...prev, [item.id]: id }))}
+                                  placeholder="Seleccionar..."
+                                />
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  const ownerId = pendingAssignments[item.id] ?? item.suggestedOwner;
+                                  if (!ownerId) return;
+                                  setAssigningId(item.id);
+                                  try {
+                                    await apiFetch('/audit-readiness/auto-fix/assign', {
+                                      method: 'POST',
+                                      json: { moduleKey: m.key, itemId: item.id, ownerId },
+                                    });
+                                    setPendingItems(prev => prev.filter(p => p.id !== item.id));
+                                    load(true);
+                                  } catch (err: any) {
+                                    console.error('Error assigning:', err);
+                                  } finally {
+                                    setAssigningId(null);
+                                  }
+                                }}
+                                disabled={!pendingAssignments[item.id] && !item.suggestedOwner}
+                                className="flex items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                              >
+                                {assigningId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Asignar
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        {pendingItems.length > 1 && (
+                          <button
+                            onClick={async () => {
+                              const ownerId = pendingAssignments[pendingItems[0].id] ?? pendingItems[0].suggestedOwner;
+                              if (!ownerId) return;
+                              setAssigningId('all');
+                              try {
+                                await Promise.all(pendingItems.map(item =>
+                                  apiFetch('/audit-readiness/auto-fix/assign', {
+                                    method: 'POST',
+                                    json: { moduleKey: m.key, itemId: item.id, ownerId: pendingAssignments[item.id] ?? item.suggestedOwner ?? ownerId },
+                                  })
+                                ));
+                                setPendingItems([]);
+                                load(true);
+                              } catch (err: any) {
+                                console.error('Error assigning all:', err);
+                              } finally {
+                                setAssigningId(null);
+                              }
+                            }}
+                            disabled={assigningId !== null}
+                            className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+                          >
+                            {assigningId === 'all' ? <Loader2 className="h-3 w-3 animate-spin inline" /> : null} Asignar el mismo a todos
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

@@ -1459,7 +1459,13 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
             }
           }
 
-          return { ownersAssigned, indicatorsLinked: 0, documentsLinked: 0, risksLinked: 0, details: details.slice(0, 20) };
+          // Items que aún no se pudieron resolver (no había ningún owner en el módulo)
+          const pendingItems = withoutOwner.map((item: any) => ({
+            id: item.id,
+            name: item[cfg.nameField],
+          }));
+
+          return { ownersAssigned, indicatorsLinked: 0, documentsLinked: 0, risksLinked: 0, details: details.slice(0, 20), pendingItems };
         }
 
         // ── Auto-fix para mapa-procesos (lógica completa) ──
@@ -1663,13 +1669,11 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
         }
 
         // 6. Fallback: para los procesos que aún no tienen owner/indicadores/documentos,
-        //    asignar el owner más común y vincular todos los indicadores/documentos disponibles.
+        //    vincular todos los indicadores/documentos disponibles automáticamente,
+        //    pero devolver los que no tienen owner para que el usuario elija.
         const macroProcesses = processes.filter((p: any) => !p.parentId);
-        const stillNoOwner = macroProcesses.filter((p: any) => !p.owner || p.owner.trim() === '');
-        const stillNoInd = macroProcesses.filter((p: any) => (linkedIndicators.size === 0 || !allPI2.some((l: any) => l.processId === p.id)));
-        const stillNoDoc = macroProcesses.filter((p: any) => !allPD2.some((l: any) => l.processId === p.id));
 
-        // Owner más común
+        // Owner más común (para sugerir)
         const ownerCounts = new Map<string, number>();
         for (const p of macroProcesses) {
           if (p.owner && p.owner.trim() !== '') {
@@ -1682,13 +1686,12 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           if (count > maxCount) { maxCount = count; mostCommonOwner = owner; }
         }
 
-        if (mostCommonOwner) {
-          for (const p of stillNoOwner) {
-            await tx.process.update({ where: { id: p.id }, data: { owner: mostCommonOwner } }).catch(() => {});
-            ownersAssigned++;
-            details.push(`${p.name}: owner fallback ✓`);
-          }
-        }
+        const stillNoOwner = macroProcesses.filter((p: any) => !p.owner || p.owner.trim() === '');
+        const pendingItems = stillNoOwner.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          suggestedOwner: mostCommonOwner,
+        }));
 
         // Todos los indicadores disponibles
         const allIndicatorIds = await tx.indicator.findMany({ where: { tenantId, deletedAt: null }, select: { id: true } }).catch(() => []);
@@ -1722,13 +1725,43 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
           }
         }
 
-        return { ownersAssigned, indicatorsLinked: indicatorsLinked + indicatorsSynced, documentsLinked: documentsLinked + documentsSynced, risksLinked: risksLinked + risksSynced, details: details.slice(0, 20) };
+        return { ownersAssigned, indicatorsLinked: indicatorsLinked + indicatorsSynced, documentsLinked: documentsLinked + documentsSynced, risksLinked: risksLinked + risksSynced, details: details.slice(0, 20), pendingItems };
       });
 
       return reply.send({ success: true, ...result });
     } catch (err: any) {
       console.error('Error en audit-readiness/auto-fix:', err.message);
       return reply.code(500).send({ error: 'Error en auto-fix', details: err.message });
+    }
+  });
+
+  // ── Asignar responsable individual (después de auto-fix) ────────────
+  app.post('/auto-fix/assign', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const body = req.body as { moduleKey: string; itemId: string; ownerId: string };
+    if (!body.moduleKey || !body.itemId || !body.ownerId) {
+      return reply.code(400).send({ error: 'Falta moduleKey, itemId u ownerId' });
+    }
+
+    const moduleConfig: Record<string, { model: string; ownerField: string }> = {
+      'mapa-procesos': { model: 'process',   ownerField: 'owner' },
+      'riesgos':      { model: 'risk',       ownerField: 'ownerId' },
+      'documentos':   { model: 'document',   ownerField: 'ownerId' },
+      'indicadores':  { model: 'indicator',  ownerField: 'ownerId' },
+    };
+    const cfg = moduleConfig[body.moduleKey];
+    if (!cfg) return reply.code(400).send({ error: 'Módulo no soportado' });
+
+    try {
+      await app.prisma[cfg.model].update({
+        where: { id: body.itemId },
+        data: { [cfg.ownerField]: body.ownerId },
+      });
+      return reply.send({ success: true, message: 'Responsable asignado' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Error al asignar', details: err.message });
     }
   });
 };
