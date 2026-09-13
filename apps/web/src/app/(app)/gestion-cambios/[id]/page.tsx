@@ -595,7 +595,14 @@ function PlanificacionTab({ cambio, members, id, load }: { cambio: any; members:
 
 function RiesgosTab({ cambio, id, load }: { cambio: any; id: string; load: () => void }) {
   const [saving, setSaving] = useState(false);
-  const [riesgos, setRiesgos] = useState<{ riskId?: string; riskType: string }[]>(cambio.riesgos || []);
+  const [riesgos, setRiesgos] = useState<{ riskId?: string; riskType: string; description?: string }[]>(cambio.riesgos || []);
+  const [availableRisks, setAvailableRisks] = useState<{ id: string; code: string; title: string }[]>([]);
+
+  useEffect(() => {
+    apiFetch<{ risks: any[] }>('/risks')
+      .then(r => setAvailableRisks((r?.risks || []).map((rk: any) => ({ id: rk.id, code: rk.code || '', title: rk.title || '' }))))
+      .catch(() => {});
+  }, []);
 
   const saveRiesgos = async () => {
     setSaving(true);
@@ -604,37 +611,61 @@ function RiesgosTab({ cambio, id, load }: { cambio: any; id: string; load: () =>
       await load();
     } catch (e: any) {
       alert('Error al guardar riesgos: ' + e.message);
-    } finally { setSaving(false); }
+    } finally { setSaving(false);
+    }
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">Riesgos vinculados</h3>
-      <div className="space-y-2 mb-4">
-        {riesgos.map((r, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <select value={r.riskType} onChange={e => {
-              const newRiesgos = [...riesgos];
-              newRiesgos[i] = { ...r, riskType: e.target.value };
-              setRiesgos(newRiesgos);
-            }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="RISK">Riesgo</option>
-              <option value="OPPORTUNITY">Oportunidad</option>
-            </select>
-            <button onClick={() => setRiesgos(riesgos.filter((_, j) => j !== i))} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
-              <AlertTriangle className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
+    <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800 flex items-start gap-2">
+        <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <span>Identificá los riesgos asociados a este cambio. Podés vincular un riesgo existente del registro de riesgos o describir uno nuevo.</span>
       </div>
-      <button onClick={() => setRiesgos([...riesgos, { riskType: 'RISK' }])} className="text-sm text-blue-600 hover:underline mb-4">
-        + Agregar riesgo
-      </button>
-      <div className="mt-4 flex justify-end">
-        <button onClick={saveRiesgos} disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar riesgos
+      <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">Riesgos vinculados</h3>
+        <div className="space-y-3 mb-4">
+          {riesgos.map((r, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <select value={r.riskType} onChange={e => {
+                const newRiesgos = [...riesgos];
+                newRiesgos[i] = { ...r, riskType: e.target.value };
+                setRiesgos(newRiesgos);
+              }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-32">
+                <option value="RISK">Riesgo</option>
+                <option value="OPPORTUNITY">Oportunidad</option>
+              </select>
+              <select value={r.riskId || ''} onChange={e => {
+                const newRiesgos = [...riesgos];
+                newRiesgos[i] = { ...r, riskId: e.target.value || undefined, description: e.target.value ? availableRisks.find(rk => rk.id === e.target.value)?.title || '' : r.description };
+                setRiesgos(newRiesgos);
+              }} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">— Sin vincular / Descripción manual —</option>
+                {availableRisks.map(rk => (
+                  <option key={rk.id} value={rk.id}>{rk.code} — {rk.title}</option>
+                ))}
+              </select>
+              {!r.riskId && (
+                <input value={r.description || ''} onChange={e => {
+                  const newRiesgos = [...riesgos];
+                  newRiesgos[i] = { ...r, description: e.target.value };
+                  setRiesgos(newRiesgos);
+                }} placeholder="Describir el riesgo..." className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              )}
+              <button onClick={() => setRiesgos(riesgos.filter((_, j) => j !== i))} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                <AlertTriangle className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => setRiesgos([...riesgos, { riskType: 'RISK', description: '' }])} className="text-sm text-blue-600 hover:underline mb-4">
+          + Agregar riesgo
         </button>
+        <div className="mt-4 flex justify-end">
+          <button onClick={saveRiesgos} disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar riesgos
+          </button>
+        </div>
       </div>
     </div>
   );
