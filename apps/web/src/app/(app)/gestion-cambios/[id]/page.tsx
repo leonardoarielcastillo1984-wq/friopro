@@ -674,6 +674,13 @@ function RiesgosTab({ cambio, id, load }: { cambio: any; id: string; load: () =>
 function DocumentosTab({ cambio, id, load }: { cambio: any; id: string; load: () => void }) {
   const [saving, setSaving] = useState(false);
   const [documentos, setDocumentos] = useState<{ documentId?: string; estadoFrente: string }[]>(cambio.documentos || []);
+  const [availableDocs, setAvailableDocs] = useState<{ id: string; title: string; code?: string }[]>([]);
+
+  useEffect(() => {
+    apiFetch<{ documents: any[] }>('/documents')
+      .then(r => setAvailableDocs((r?.documents || []).map((d: any) => ({ id: d.id, title: d.title || '', code: d.code || '' }))))
+      .catch(() => {});
+  }, []);
 
   const saveDocumentos = async () => {
     setSaving(true);
@@ -686,35 +693,52 @@ function DocumentosTab({ cambio, id, load }: { cambio: any; id: string; load: ()
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">Documentos vinculados</h3>
-      <div className="space-y-2 mb-4">
-        {documentos.map((d, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <select value={d.estadoFrente} onChange={e => {
-              const newDocumentos = [...documentos];
-              newDocumentos[i] = { ...d, estadoFrente: e.target.value };
-              setDocumentos(newDocumentos);
-            }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="PENDIENTE">Pendiente</option>
-              <option value="EN_REVISION">En Revisión</option>
-              <option value="ACTUALIZADO">Actualizado</option>
-              <option value="OBSOLETO">Obsoleto</option>
-            </select>
-            <button onClick={() => setDocumentos(documentos.filter((_, j) => j !== i))} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
-              <AlertTriangle className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
+    <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800 flex items-start gap-2">
+        <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <span>Vinculá los documentos que se ven afectados por este cambio y definí su estado frente al mismo.</span>
       </div>
-      <button onClick={() => setDocumentos([...documentos, { estadoFrente: 'PENDIENTE' }])} className="text-sm text-blue-600 hover:underline mb-4">
-        + Agregar documento
-      </button>
-      <div className="mt-4 flex justify-end">
-        <button onClick={saveDocumentos} disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar documentos
+      <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">Documentos vinculados</h3>
+        <div className="space-y-3 mb-4">
+          {documentos.map((d, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <select value={d.documentId || ''} onChange={e => {
+                const newDocumentos = [...documentos];
+                newDocumentos[i] = { ...d, documentId: e.target.value || undefined };
+                setDocumentos(newDocumentos);
+              }} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">— Seleccionar documento —</option>
+                {availableDocs.map(doc => (
+                  <option key={doc.id} value={doc.id}>{doc.code ? `${doc.code} — ` : ''}{doc.title}</option>
+                ))}
+              </select>
+              <select value={d.estadoFrente} onChange={e => {
+                const newDocumentos = [...documentos];
+                newDocumentos[i] = { ...d, estadoFrente: e.target.value };
+                setDocumentos(newDocumentos);
+              }} className="w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="PENDIENTE">Pendiente</option>
+                <option value="NO_REQUIERE">No requiere</option>
+                <option value="EN_ACTUALIZACION">En actualización</option>
+                <option value="ACTUALIZADO">Actualizado</option>
+                <option value="VERIFICADO">Verificado</option>
+              </select>
+              <button onClick={() => setDocumentos(documentos.filter((_, j) => j !== i))} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                <AlertTriangle className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => setDocumentos([...documentos, { estadoFrente: 'PENDIENTE' }])} className="text-sm text-blue-600 hover:underline mb-4">
+          + Agregar documento
         </button>
+        <div className="mt-4 flex justify-end">
+          <button onClick={saveDocumentos} disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar documentos
+          </button>
+        </div>
       </div>
     </div>
   );
