@@ -31,6 +31,11 @@ export function InlineCell({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement | HTMLSelectElement>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -60,11 +65,17 @@ export function InlineCell({
     setError(false);
     try {
       await onSave(draft);
-      setEditing(false);
+      // Deferir el paso de edicion -> display al siguiente tick: si el guardado
+      // dispara un reorder/filtrado de la lista padre (p.ej. columna ordenada),
+      // separar ambas mutaciones del DOM en commits distintos evita un error
+      // de insertBefore en React al mover y desmontar el mismo nodo a la vez.
+      setTimeout(() => {
+        if (mountedRef.current) setEditing(false);
+      }, 0);
     } catch {
-      setError(true);
+      if (mountedRef.current) setError(true);
     }
-    setSaving(false);
+    if (mountedRef.current) setSaving(false);
   }, [draft, value, onSave]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

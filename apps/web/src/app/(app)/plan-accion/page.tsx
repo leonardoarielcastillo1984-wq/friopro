@@ -522,7 +522,14 @@ function PlanAccionPageInner() {
     setSaveStatus(s => ({ ...s, [id]: 'saving' }));
     try {
       const res = await apiFetch<{ plan: ActionPlan }>(`/action-plans/${id}`, { method: 'PATCH', json: patch });
-      setPlans(prev => prev.map(p => p.id === id ? { ...p, ...res.plan } : p));
+      // Deferir la actualizacion de "plans" a su propio tick: si el nuevo
+      // valor hace que la fila cambie de orden (columna ordenada) o quede
+      // fuera de un filtro activo, esta mutacion estructural de la lista no
+      // debe coincidir en el mismo commit de React con el blur/cierre del
+      // campo que se estaba editando (evita el error de insertBefore).
+      setTimeout(() => {
+        setPlans(prev => prev.map(p => p.id === id ? { ...p, ...res.plan } : p));
+      }, 0);
       setSaveStatus(s => ({ ...s, [id]: 'saved' }));
       void reloadStats();
       if (saveTimers.current[id]) clearTimeout(saveTimers.current[id]);
