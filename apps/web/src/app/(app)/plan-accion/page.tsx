@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import {
   Plus, Search, X, Eye, FileText, Loader2, ChevronDown, ChevronUp,
   Columns3, Check, AlertCircle, Clock, History, Sparkles, Filter, Send,
-  ExternalLink, Trash2,
+  ExternalLink, Trash2, Hash,
 } from 'lucide-react';
 import ExportButton from '@/components/ExportButton';
 import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
@@ -399,6 +399,7 @@ function PlanAccionPageInner() {
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saving'|'saved'|'error'>>({});
   const [saveErrorMsg, setSaveErrorMsg] = useState<Record<string, string>>({});
+  const [assigningCode, setAssigningCode] = useState<string | null>(null);
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
   const [openFilterCol, setOpenFilterCol] = useState<string|null>(null);
   const saveTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -576,6 +577,19 @@ function PlanAccionPageInner() {
     }
   }, [reloadStats]);
 
+  const handleAssignCode = useCallback(async (id: string) => {
+    setAssigningCode(id);
+    try {
+      const res = await apiFetch<{ plan: ActionPlan }>(`/action-plans/${id}/assign-code`, { method: 'POST' });
+      setPlans(prev => prev.map(p => p.id === id ? { ...p, ...res.plan } : p));
+      void reloadStats();
+    } catch (e: any) {
+      alert(e.message || 'Error al asignar código');
+    } finally {
+      setAssigningCode(null);
+    }
+  }, [reloadStats]);
+
   async function aiFill(planId: string, field: string) {
     const key = `${planId}-${field}`;
     setAiLoading(s => ({ ...s, [key]: true }));
@@ -683,6 +697,21 @@ function PlanAccionPageInner() {
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-4 h-4" /> Solicitar actualización
+          </button>
+          <button
+            onClick={async () => {
+              const ids = selected.filter(id => !plans.find(p => p.id === id)?.code);
+              if (ids.length === 0) return;
+              try {
+                const res = await apiFetch<{ plans: ActionPlan[]; assigned: number }>('/action-plans/assign-code-bulk', { method: 'POST', json: { ids } });
+                setPlans(prev => prev.map(p => res.plans.find(r => r.id === p.id) ?? p));
+                void reloadStats();
+              } catch (e: any) { alert(e.message || 'Error al asignar códigos'); }
+            }}
+            disabled={selected.length === 0 || !selected.some(id => !plans.find(p => p.id === id)?.code)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <Hash className="w-4 h-4" /> Asignar códigos
           </button>
           <button
             onClick={() => setShowPortalAdmin(v => !v)}
@@ -940,6 +969,16 @@ function PlanAccionPageInner() {
                               {col.key === 'updatedAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.updatedAt)}</span>}
                               {col.key === 'actions' && (
                                 <div className="flex items-center gap-1">
+                                  {!plan.code && (
+                                    <button
+                                      onClick={() => handleAssignCode(plan.id)}
+                                      disabled={assigningCode === plan.id}
+                                      className="p-1 rounded hover:bg-amber-100 text-amber-600 disabled:opacity-50"
+                                      title="Asignar código (PAC-AAAA-NNNN)"
+                                    >
+                                      {assigningCode === plan.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Hash className="w-3.5 h-3.5" />}
+                                    </button>
+                                  )}
                                   <button onClick={() => setSelectedPlan(plan)} className="p-1 rounded hover:bg-blue-100 text-blue-600" title="Ver resumen">
                                     <Eye className="w-3.5 h-3.5" />
                                   </button>
