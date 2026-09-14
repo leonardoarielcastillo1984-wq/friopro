@@ -391,6 +391,56 @@ export default function PlanAccionPage() {
   const [openFilterCol, setOpenFilterCol] = useState<string|null>(null);
   const saveTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
+  // ── Column width / row height resizing (estilo Excel) ──────────────────────
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() =>
+    Object.fromEntries(COLUMNS.map(c => [c.key, c.width]))
+  );
+  const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
+  const colResizeRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+  const rowResizeRef = useRef<{ id: string; startY: number; startHeight: number } | null>(null);
+
+  const onColResizeMove = useCallback((e: MouseEvent) => {
+    const r = colResizeRef.current;
+    if (!r) return;
+    const next = Math.max(40, r.startWidth + (e.clientX - r.startX));
+    setColWidths(prev => ({ ...prev, [r.key]: next }));
+  }, []);
+  const onColResizeUp = useCallback(() => {
+    colResizeRef.current = null;
+    document.removeEventListener('mousemove', onColResizeMove);
+    document.removeEventListener('mouseup', onColResizeUp);
+    document.body.style.cursor = '';
+  }, [onColResizeMove]);
+  const startColResize = useCallback((e: React.MouseEvent, key: string) => {
+    e.preventDefault(); e.stopPropagation();
+    colResizeRef.current = { key, startX: e.clientX, startWidth: colWidths[key] ?? 100 };
+    document.body.style.cursor = 'col-resize';
+    document.addEventListener('mousemove', onColResizeMove);
+    document.addEventListener('mouseup', onColResizeUp);
+  }, [colWidths, onColResizeMove, onColResizeUp]);
+
+  const onRowResizeMove = useCallback((e: MouseEvent) => {
+    const r = rowResizeRef.current;
+    if (!r) return;
+    const next = Math.max(28, r.startHeight + (e.clientY - r.startY));
+    setRowHeights(prev => ({ ...prev, [r.id]: next }));
+  }, []);
+  const onRowResizeUp = useCallback(() => {
+    rowResizeRef.current = null;
+    document.removeEventListener('mousemove', onRowResizeMove);
+    document.removeEventListener('mouseup', onRowResizeUp);
+    document.body.style.cursor = '';
+  }, [onRowResizeMove]);
+  const startRowResize = useCallback((e: React.MouseEvent, id: string) => {
+    e.preventDefault(); e.stopPropagation();
+    const trEl = (e.currentTarget as HTMLElement).closest('tr');
+    const startHeight = rowHeights[id] ?? (trEl ? trEl.getBoundingClientRect().height : 32);
+    rowResizeRef.current = { id, startY: e.clientY, startHeight };
+    document.body.style.cursor = 'row-resize';
+    document.addEventListener('mousemove', onRowResizeMove);
+    document.addEventListener('mouseup', onRowResizeUp);
+  }, [rowHeights, onRowResizeMove, onRowResizeUp]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -714,14 +764,15 @@ export default function PlanAccionPage() {
                       const groupCols = visibleCols.filter(c => c.group === col.group);
                       const groupStartIdx = visibleCols.findIndex(c => c.group === col.group);
                       const isGroupStart = visibleCols[groupStartIdx]?.key === col.key;
+                      const w = colWidths[col.key] ?? col.width;
                       const stickyStyle = col.sticky ? { position: 'sticky' as const, left: off, zIndex: 25 } : {};
-                      if (col.sticky) off += col.width;
+                      if (col.sticky) off += w;
                       if (!isGroupStart) {
-                        return <th key={`gh-${col.key}`} style={{ ...stickyStyle, minWidth: col.width, width: col.width }} className={`border-b border-neutral-200 ${GROUP_COLORS[col.group]}`} />;
+                        return <th key={`gh-${col.key}`} style={{ ...stickyStyle, minWidth: w, width: w }} className={`border-b border-neutral-200 ${GROUP_COLORS[col.group]}`} />;
                       }
                       return (
                         <th key={`gh-${col.key}`} colSpan={groupCols.length}
-                          style={{ ...stickyStyle, minWidth: groupCols.reduce((a, c) => a + c.width, 0), zIndex: 25 }}
+                          style={{ ...stickyStyle, minWidth: groupCols.reduce((a, c) => a + (colWidths[c.key] ?? c.width), 0), zIndex: 25 }}
                           className={`border-b border-r border-neutral-200 ${GROUP_COLORS[col.group]} px-2 py-1 text-[10px] font-bold text-neutral-500 uppercase tracking-wide text-left`}>
                           {GROUP_LABELS[col.group]}
                         </th>
@@ -734,15 +785,16 @@ export default function PlanAccionPage() {
                   {(() => {
                     let off = 0;
                     return visibleCols.map(col => {
+                      const w = colWidths[col.key] ?? col.width;
                       const stickyStyle = col.sticky ? { position: 'sticky' as const, left: off, zIndex: 26, background: 'white' as const } : {};
-                      if (col.sticky) off += col.width;
+                      if (col.sticky) off += w;
                       const canSort = !NO_SORT.includes(col.key);
                       const canFilter = FILTERABLE_COLS.includes(col.key);
                       const hasFilter = colFilters[col.key] && colFilters[col.key].size > 0;
                       const uniqueVals = openFilterCol === col.key ? getUniqueValues(col.key) : [];
                       return (
                         <th key={col.key}
-                          style={{ ...stickyStyle, minWidth: col.width, width: col.width }}
+                          style={{ ...stickyStyle, minWidth: w, width: w }}
                           className={`border-b border-r border-neutral-200 px-2 py-2 text-left font-medium text-neutral-700 bg-neutral-50 ${col.sticky ? 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]' : ''} relative`}>
                           <div className="flex items-center gap-1">
                             <span className="truncate cursor-pointer" onClick={() => canSort && toggleSort(col.key)}>
@@ -786,6 +838,13 @@ export default function PlanAccionPage() {
                               </div>
                             </div>
                           )}
+                          {/* Handle de resize de columna (estilo Excel: arrastrar para agrandar/achicar ancho) */}
+                          <div
+                            onMouseDown={(e) => startColResize(e, col.key)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-blue-400/50 z-30 select-none"
+                            title="Arrastrar para cambiar ancho de columna"
+                          />
                         </th>
                       );
                     });
@@ -798,18 +857,24 @@ export default function PlanAccionPage() {
                   const stCfg = STATUS_CFG[plan.status] ?? STATUS_CFG.DRAFT;
                   const rowSaveStatus = saveStatus[plan.id];
                   const isReadOnly = ['CLOSED','CANCELLED'].includes(plan.status);
+                  const rowH = rowHeights[plan.id];
                   return (
                     <tr key={plan.id} className={`hover:bg-blue-50/30 transition-colors ${rowIdx % 2 === 1 ? 'bg-neutral-50/30' : ''} ${rowSaveStatus === 'error' ? 'ring-1 ring-inset ring-red-200' : ''}`}>
                       {(() => {
                         let off = 0;
                         return visibleCols.map(col => {
+                          const w = colWidths[col.key] ?? col.width;
                           const stickyStyle = col.sticky ? { position: 'sticky' as const, left: off, zIndex: 10, background: rowIdx % 2 === 1 ? '#fafafa' as const : 'white' as const } : {};
-                          if (col.sticky) off += col.width;
+                          if (col.sticky) off += w;
                           const groupBg = col.group === 'analisis' ? 'bg-blue-50/10' : col.group === 'ejecucion' ? 'bg-amber-50/10' : col.group === 'verificacion' ? 'bg-green-50/10' : '';
                           return (
                             <td key={col.key}
-                              style={{ ...stickyStyle, minWidth: col.width, width: col.width }}
-                              className={`border-r border-neutral-100 px-1.5 py-1.5 align-top ${col.sticky ? 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]' : ''} ${groupBg}`}>
+                              style={{ ...stickyStyle, minWidth: w, width: w, height: rowH, overflow: rowH ? 'hidden' : undefined }}
+                              className={`border-r border-neutral-100 px-1.5 py-1.5 align-top relative ${col.sticky ? 'shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]' : ''} ${groupBg}`}>
+                              <div
+                                className={rowH ? 'h-full overflow-y-auto pr-0.5' : ''}
+                                style={rowH ? { maxHeight: rowH - 12 } : undefined}
+                              >
                               {col.key === 'checkbox' && (
                                 <div className="flex items-center justify-center">
                                   <input type="checkbox" checked={selected.includes(plan.id)} onChange={() => toggleSelect(plan.id)} className="rounded border-neutral-300" />
@@ -908,6 +973,15 @@ export default function PlanAccionPage() {
                                   editable={!isReadOnly}
                                   displayValue={`${plan.progressPercent}%`}
                                   onSave={(v) => handleCellSave(plan, 'progressPercent', v)}
+                                />
+                              )}
+                              </div>
+                              {/* Handle de resize de fila (estilo Excel: arrastrar para agrandar/achicar alto) */}
+                              {col.key === 'sequenceNumber' && (
+                                <div
+                                  onMouseDown={(e) => startRowResize(e, plan.id)}
+                                  className="absolute bottom-0 left-0 right-0 h-1.5 cursor-row-resize hover:bg-blue-400/50 z-20 select-none"
+                                  title="Arrastrar para cambiar alto de fila"
                                 />
                               )}
                             </td>
