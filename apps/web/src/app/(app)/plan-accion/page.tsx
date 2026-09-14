@@ -740,22 +740,24 @@ function PlanAccionPageInner() {
       </div>
 
       {/* Save status indicators */}
-      {Object.entries(saveStatus).length > 0 && (
-        <div className="flex items-center gap-3 text-xs">
-          {Object.entries(saveStatus).map(([id, status]) => {
-            const plan = plans.find(p => p.id === id);
-            if (!plan) return null;
-            return (
-              <span key={id} className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${status === 'saving' ? 'bg-blue-50 text-blue-700' : status === 'saved' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                {status === 'saving' && <Loader2 className="w-3 h-3 animate-spin" />}
-                {status === 'saved' && <Check className="w-3 h-3" />}
-                {status === 'error' && <AlertCircle className="w-3 h-3" />}
-                {plan.code ?? 'sin codigo'}: {status === 'saving' ? 'guardando...' : status === 'saved' ? 'guardado' : 'error'}
-              </span>
-            );
-          })}
-        </div>
-      )}
+      {/* Contenedor siempre montado (nunca aparece/desaparece como bloque) y
+          orden estable segun el array `plans` (no segun el orden de inserccion
+          de claves de `saveStatus`, que puede cambiar si una fila se borra y
+          se re-agrega en menos de 2s) — evita un reorder/insert inesperado
+          en el DOM justo cuando se esta guardando otra celda. */}
+      <div className="flex items-center gap-3 text-xs empty:hidden">
+        {plans.filter(p => saveStatus[p.id]).map(plan => {
+          const status = saveStatus[plan.id];
+          return (
+            <span key={plan.id} className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${status === 'saving' ? 'bg-blue-50 text-blue-700' : status === 'saved' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              {status === 'saving' && <Loader2 className="w-3 h-3 animate-spin" />}
+              {status === 'saved' && <Check className="w-3 h-3" />}
+              {status === 'error' && <AlertCircle className="w-3 h-3" />}
+              {plan.code ?? 'sin codigo'}: {status === 'saving' ? 'guardando...' : status === 'saved' ? 'guardado' : 'error'}
+            </span>
+          );
+        })}
+      </div>
 
       {/* Matrix table */}
       {loading ? (
@@ -769,7 +771,7 @@ function PlanAccionPageInner() {
       ) : (
         <div className="rounded-xl border border-neutral-200 overflow-hidden" onClick={() => openFilterCol && setOpenFilterCol(null)}>
           <div className="overflow-x-auto" style={{ maxHeight: '70vh' }}>
-            <table className="border-collapse text-xs">
+            <table translate="no" className="notranslate border-collapse text-xs">
               <thead className="sticky top-0 z-20">
                 {/* Group header row */}
                 <tr>

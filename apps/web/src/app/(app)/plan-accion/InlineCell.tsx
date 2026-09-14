@@ -105,7 +105,7 @@ export function InlineCell({
 
   if (editing) {
     return (
-      <div className={`relative w-full h-full ${type === 'textarea' ? 'flex' : 'inline-flex items-center gap-1'}`}>
+      <div translate="no" className={`relative w-full h-full notranslate ${type === 'textarea' ? 'flex' : 'inline-flex items-center gap-1'}`}>
         {type === 'textarea' ? (
           <textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -113,6 +113,10 @@ export function InlineCell({
             onChange={e => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={() => void save()}
+            translate="no"
+            data-gramm="false"
+            data-gramm_editor="false"
+            data-enable-grammarly="false"
             className="w-full h-full min-h-[48px] text-xs border border-blue-400 rounded px-1.5 py-1 focus:outline-none focus:border-blue-600 resize-none bg-white"
           />
         ) : type === 'select' ? (
@@ -137,6 +141,10 @@ export function InlineCell({
             onChange={e => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={() => void save()}
+            translate="no"
+            data-gramm="false"
+            data-gramm_editor="false"
+            data-enable-grammarly="false"
             className="text-xs border border-blue-400 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-600 bg-white w-full"
           />
         )}
