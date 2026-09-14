@@ -241,8 +241,13 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     }
     const actionPlansModule: ModuleReadiness = {
       key: 'planes-accion', label: 'Planes de acción', href: '/calidad',
-      total: openPlans.length, pending: planIssues.length,
-      score: scoreFrom(openPlans.length, planIssues.length),
+      // `total` cuenta TODOS los planes (incluidos los ya cerrados) para que
+      // el contador "X de Y" refleje el progreso real al cerrar planes; antes
+      // usaba openPlans.length, que siempre era igual a `pending` (todo plan
+      // abierto se marca como pendiente), haciendo que "X de X" nunca bajara
+      // aunque se cerraran planes.
+      total: raw.actionPlans.length, pending: planIssues.length,
+      score: scoreFrom(raw.actionPlans.length, planIssues.length),
       issues: planIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),
     };
 
