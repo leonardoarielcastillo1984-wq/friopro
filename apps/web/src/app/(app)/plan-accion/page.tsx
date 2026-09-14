@@ -13,6 +13,7 @@ import { buildTableHtml, buildFullDocument } from '@/lib/pdf-content';
 import { InlineCell, type SelectOption } from './InlineCell';
 import SolicitarActualizacionModal from './SolicitarActualizacionModal';
 import PortalAdminPanel from './PortalAdminPanel';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -369,6 +370,14 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PlanAccionPage() {
+  return (
+    <ErrorBoundary fallbackMessage="Ocurrió un problema en la tabla de Plan de Acción">
+      <PlanAccionPageInner />
+    </ErrorBoundary>
+  );
+}
+
+function PlanAccionPageInner() {
   const [plans, setPlans] = useState<ActionPlan[]>([]);
   const [stats, setStats] = useState<APStats|null>(null);
   const [loading, setLoading] = useState(true);

@@ -70,10 +70,14 @@ export function InlineCell({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && type !== 'textarea') {
       e.preventDefault();
-      void save();
+      // Blur primero (dispara onBlur -> save) en vez de guardar con el input
+      // todavia enfocado: si la fila se reordena (columna ordenada) mientras
+      // el nodo enfocado se mueve en el DOM, React puede lanzar un error de
+      // insertBefore. Blurear antes evita esa condicion de carrera.
+      (e.currentTarget as HTMLElement).blur();
     } else if (e.key === 'Enter' && type === 'textarea' && e.ctrlKey) {
       e.preventDefault();
-      void save();
+      (e.currentTarget as HTMLElement).blur();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       cancel();
