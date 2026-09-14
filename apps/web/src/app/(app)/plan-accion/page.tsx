@@ -910,7 +910,15 @@ function PlanAccionPageInner() {
                                   onSave={(v) => patchPlan(plan.id, { ncrCode: v })}
                                 />
                               )}
-                              {col.key === 'executorName' && <span className="text-xs text-neutral-600 truncate" title={userName(plan.executor, plan.executorNameText)}>{userName(plan.executor, plan.executorNameText)}</span>}
+                              {col.key === 'executorName' && (
+                                <InlineCell
+                                  value={plan.executorNameText ?? ''}
+                                  type="text"
+                                  editable={!isReadOnly}
+                                  displayValue={userName(plan.executor, plan.executorNameText)}
+                                  onSave={(v) => patchPlan(plan.id, { executorNameText: v || null })}
+                                />
+                              )}
                               {col.key === 'createdAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.createdAt)}</span>}
                               {col.key === 'updatedAt' && <span className="text-xs text-neutral-400 whitespace-nowrap">{fmt(plan.updatedAt)}</span>}
                               {col.key === 'actions' && (

@@ -26,6 +26,7 @@ const createSchema = z.object({
   plannedAction: z.string().nullable().optional(),
   expectedResult: z.string().nullable().optional(),
   executorId: uuidOrNull,
+  executorNameText: z.string().nullable().optional(),
   supervisorId: uuidOrNull,
   requiredResources: z.string().nullable().optional(),
   plannedStartDate: z.string().optional().nullable(),
