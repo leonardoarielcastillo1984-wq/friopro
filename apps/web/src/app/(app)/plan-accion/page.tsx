@@ -976,14 +976,12 @@ export default function PlanAccionPage() {
                                 />
                               )}
                               </div>
-                              {/* Handle de resize de fila (estilo Excel: arrastrar para agrandar/achicar alto) */}
-                              {col.key === 'sequenceNumber' && (
-                                <div
-                                  onMouseDown={(e) => startRowResize(e, plan.id)}
-                                  className="absolute bottom-0 left-0 right-0 h-1.5 cursor-row-resize hover:bg-blue-400/50 z-20 select-none"
-                                  title="Arrastrar para cambiar alto de fila"
-                                />
-                              )}
+                              {/* Handle de resize de fila (estilo Excel: arrastrar para agrandar/achicar alto) - se repite en cada columna para cubrir todo el ancho de la fila */}
+                              <div
+                                onMouseDown={(e) => startRowResize(e, plan.id)}
+                                className="absolute -bottom-0.5 left-0 right-0 h-2 cursor-row-resize hover:bg-blue-400/50 z-20 select-none"
+                                title="Arrastrar para cambiar alto de fila"
+                              />
                             </td>
                           );
                         });
