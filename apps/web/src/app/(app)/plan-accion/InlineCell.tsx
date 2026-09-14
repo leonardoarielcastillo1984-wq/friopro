@@ -90,7 +90,7 @@ export function InlineCell({
 
   if (editing) {
     return (
-      <div className="relative inline-flex items-center gap-1 w-full">
+      <div className={`relative w-full h-full ${type === 'textarea' ? 'flex' : 'inline-flex items-center gap-1'}`}>
         {type === 'textarea' ? (
           <textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -98,8 +98,7 @@ export function InlineCell({
             onChange={e => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={() => void save()}
-            rows={2}
-            className="w-full text-xs border border-blue-400 rounded px-1.5 py-1 focus:outline-none focus:border-blue-600 resize-none bg-white"
+            className="w-full h-full min-h-[48px] text-xs border border-blue-400 rounded px-1.5 py-1 focus:outline-none focus:border-blue-600 resize-none bg-white"
           />
         ) : type === 'select' ? (
           <select
@@ -126,8 +125,8 @@ export function InlineCell({
             className="text-xs border border-blue-400 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-600 bg-white w-full"
           />
         )}
-        {saving && <Loader2 className="w-3 h-3 animate-spin text-blue-500 shrink-0" />}
-        {error && <AlertCircle className="w-3 h-3 text-red-500 shrink-0" />}
+        {saving && <Loader2 className={`w-3 h-3 animate-spin text-blue-500 shrink-0 ${type === 'textarea' ? 'absolute top-1 right-1 bg-white/80 rounded' : ''}`} />}
+        {error && <AlertCircle className={`w-3 h-3 text-red-500 shrink-0 ${type === 'textarea' ? 'absolute top-1 right-1 bg-white/80 rounded' : ''}`} />}
       </div>
     );
   }
