@@ -923,8 +923,8 @@ export default function PlanAccionPage() {
                               )}
                               {/* Editable cells (text, textarea, date, number) */}
                               {col.editable && col.field && !['status','type','origin','analysisMethod','effectiveness','progressPercent','ncrCode'].includes(col.key) && (
-                                <div className="flex items-start gap-1">
-                                  <div className="flex-1 min-w-0">
+                                <div className="flex items-start gap-1 h-full">
+                                  <div className="flex-1 min-w-0 h-full">
                                     <InlineCell
                                       value={col.cellType === 'date' ? toDateInput(plan[col.field as keyof ActionPlan] as string) : plan[col.field as keyof ActionPlan] as any}
                                       type={col.cellType as any}
