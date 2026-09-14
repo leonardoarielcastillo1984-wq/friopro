@@ -14,6 +14,7 @@ import { InlineCell, type SelectOption } from './InlineCell';
 import SolicitarActualizacionModal from './SolicitarActualizacionModal';
 import PortalAdminPanel from './PortalAdminPanel';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { useAuth } from '@/lib/auth-context';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -378,6 +379,7 @@ export default function PlanAccionPage() {
 }
 
 function PlanAccionPageInner() {
+  const { user } = useAuth();
   const [plans, setPlans] = useState<ActionPlan[]>([]);
   const [stats, setStats] = useState<APStats|null>(null);
   const [loading, setLoading] = useState(true);
@@ -396,6 +398,7 @@ function PlanAccionPageInner() {
   const [sortKey, setSortKey] = useState<string|null>(null);
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saving'|'saved'|'error'>>({});
+  const [saveErrorMsg, setSaveErrorMsg] = useState<Record<string, string>>({});
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
   const [openFilterCol, setOpenFilterCol] = useState<string|null>(null);
   const saveTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -531,13 +534,16 @@ function PlanAccionPageInner() {
         setPlans(prev => prev.map(p => p.id === id ? { ...p, ...res.plan } : p));
       }, 0);
       setSaveStatus(s => ({ ...s, [id]: 'saved' }));
+      setSaveErrorMsg(s => { if (!(id in s)) return s; const ns = { ...s }; delete ns[id]; return ns; });
       void reloadStats();
       if (saveTimers.current[id]) clearTimeout(saveTimers.current[id]);
       saveTimers.current[id] = setTimeout(() => {
         setSaveStatus(s => { const ns = { ...s }; delete ns[id]; return ns; });
       }, 2000);
-    } catch {
+    } catch (e: any) {
       setSaveStatus(s => ({ ...s, [id]: 'error' }));
+      setSaveErrorMsg(s => ({ ...s, [id]: e?.message || 'Error desconocido' }));
+      throw e;
     }
   }, [reloadStats]);
 
@@ -550,8 +556,15 @@ function PlanAccionPageInner() {
     } else {
       patch[field] = value || null;
     }
+    // El backend exige una aprobacion de cierre registrada para pasar a
+    // CLOSED. No hay un flujo de aprobacion separado en la UI todavia, asi
+    // que quien cambia el estado a Cerrado queda registrado como quien
+    // aprueba el cierre (auto-aprobacion), evitando el error 422 al cerrar.
+    if (field === 'status' && value === 'CLOSED' && !plan.approvedCloseBy && user?.id) {
+      patch.approvedCloseById = user.id;
+    }
     return patchPlan(plan.id, patch);
-  }, [patchPlan]);
+  }, [patchPlan, user?.id]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -749,11 +762,15 @@ function PlanAccionPageInner() {
         {plans.filter(p => saveStatus[p.id]).map(plan => {
           const status = saveStatus[plan.id];
           return (
-            <span key={plan.id} className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${status === 'saving' ? 'bg-blue-50 text-blue-700' : status === 'saved' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+            <span
+              key={plan.id}
+              title={status === 'error' ? (saveErrorMsg[plan.id] ?? 'Error desconocido') : undefined}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${status === 'saving' ? 'bg-blue-50 text-blue-700' : status === 'saved' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}
+            >
               {status === 'saving' && <Loader2 className="w-3 h-3 animate-spin" />}
               {status === 'saved' && <Check className="w-3 h-3" />}
               {status === 'error' && <AlertCircle className="w-3 h-3" />}
-              {plan.code ?? 'sin codigo'}: {status === 'saving' ? 'guardando...' : status === 'saved' ? 'guardado' : 'error'}
+              {plan.code ?? 'sin codigo'}: {status === 'saving' ? 'guardando...' : status === 'saved' ? 'guardado' : (saveErrorMsg[plan.id] ?? 'error')}
             </span>
           );
         })}
