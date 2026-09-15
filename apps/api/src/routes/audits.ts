@@ -946,10 +946,20 @@ INSTRUCCIONES:
       const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
-      const item = await app.runWithDbContext(req, async (tx) => {
-        return tx.auditChecklistItem.delete({
-          where: { id: req.params.id },
-        });
+      await app.runWithDbContext(req, async (tx) => {
+        const existing = await tx.auditChecklistItem.findUnique({ where: { id: req.params.id } });
+        if (!existing) return;
+
+        const audit = await tx.audit.findUnique({ where: { id: existing.auditId, tenantId } });
+        if (audit) {
+          const code = `NC-${audit.code}-${existing.order + 1}`;
+          await tx.auditFinding.updateMany({
+            where: { tenantId, auditId: audit.id, code, deletedAt: null },
+            data: { deletedAt: new Date() },
+          });
+        }
+
+        await tx.auditChecklistItem.delete({ where: { id: req.params.id } });
       });
 
       return reply.send({ success: true });
