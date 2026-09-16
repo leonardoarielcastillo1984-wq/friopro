@@ -10342,6 +10342,4 @@ model NonConformityAttachment {
 
   @@index([ncrId])
   @@map("ncr_attachments")
-} @@index([ncrId])
-  @@map("ncr_attachments")
 }
