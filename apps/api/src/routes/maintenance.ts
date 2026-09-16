@@ -11,11 +11,14 @@ const createWorkOrderSchema = z.object({
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
   status: z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'ON_HOLD']).default('PENDING'),
   assetId: z.string(),
+  planId: z.string().optional().nullable(),
   technicianId: z.string().optional(),
   scheduledDate: z.string().datetime(),
   estimatedDuration: z.number().default(0),
   laborCost: z.number().default(0),
-  partsCost: z.number().default(0)
+  partsCost: z.number().default(0),
+  finalOdometer: z.number().optional(),
+  repuestos: z.array(z.object({ sparePartId: z.string(), quantity: z.number().int().positive() })).optional(),
 });
 
 const createTechnicianSchema = z.object({
@@ -91,7 +94,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
 
     const workOrders = await getPrisma(request).workOrder.findMany({
       where,
-      include: { asset: true, technician: true },
+      include: { asset: true, technician: true, plan: { select: { id: true, code: true, title: true } } },
       orderBy: { createdAt: 'desc' }
     });
 
@@ -108,8 +111,9 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       const validatedData = createWorkOrderSchema.parse(request.body);
       
       const code = `OT-${Date.now().toString().slice(-6)}`;
-      
-      const workOrder = await getPrisma(request).workOrder.create({
+      const esCompletadaAlCrear = validatedData.status === 'COMPLETED';
+
+      let workOrder = await getPrisma(request).workOrder.create({
         data: {
           code,
           title: validatedData.title,
@@ -118,8 +122,10 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
           priority: validatedData.priority,
           status: validatedData.status,
           assetId: validatedData.assetId,
+          planId: validatedData.planId || null,
           technicianId: validatedData.technicianId,
           scheduledDate: new Date(validatedData.scheduledDate),
+          completedAt: esCompletadaAlCrear ? new Date() : undefined,
           estimatedDuration: validatedData.estimatedDuration,
           laborCost: validatedData.laborCost,
           partsCost: validatedData.partsCost,
@@ -128,6 +134,57 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
         },
         include: { asset: true, technician: true }
       });
+
+      // Asignar repuestos seleccionados a la OT
+      if (validatedData.repuestos && validatedData.repuestos.length > 0) {
+        for (const r of validatedData.repuestos) {
+          const parte = await getPrisma(request).maintenanceSparePart.findFirst({
+            where: { id: r.sparePartId, tenantId: request.db.tenantId },
+          });
+          if (!parte) continue;
+          await (getPrisma(request) as any).workOrderSparePart.create({
+            data: {
+              tenantId: request.db.tenantId,
+              workOrderId: workOrder.id,
+              sparePartId: parte.id,
+              quantity: r.quantity,
+              unitCost: parte.unitCost,
+            },
+          });
+        }
+      }
+
+      // Actividad puntual creada directamente como completada: descontar stock y avanzar plan ya mismo
+      if (esCompletadaAlCrear) {
+        try {
+          const repuestosAsignados = await (getPrisma(request) as any).workOrderSparePart.findMany({
+            where: { workOrderId: workOrder.id, tenantId: request.db.tenantId, stockDeducted: false },
+          });
+          let partsCostTotal = 0;
+          for (const r of repuestosAsignados) {
+            await getPrisma(request).maintenanceSparePart.update({
+              where: { id: r.sparePartId },
+              data: { currentStock: { decrement: r.quantity } },
+            });
+            await (getPrisma(request) as any).workOrderSparePart.update({
+              where: { id: r.id },
+              data: { stockDeducted: true },
+            });
+            partsCostTotal += r.quantity * r.unitCost;
+          }
+          if (partsCostTotal > 0) {
+            const nuevoPartsCost = (workOrder.partsCost || 0) + partsCostTotal;
+            workOrder = await getPrisma(request).workOrder.update({
+              where: { id: workOrder.id },
+              data: { partsCost: nuevoPartsCost, totalCost: (workOrder.laborCost || 0) + nuevoPartsCost },
+              include: { asset: true, technician: true },
+            });
+          }
+          if (workOrder.planId) {
+            await avanzarPlanPorOT(getPrisma(request), request.db.tenantId, workOrder.planId, workOrder.id, workOrder.completedAt || new Date(), validatedData.finalOdometer, `Actividad puntual registrada vía OT ${workOrder.code}`);
+          }
+        } catch (e: any) { console.error('[maintenance] error al completar OT puntual:', e); }
+      }
 
       if (workOrder.technician?.email) {
         notifyWorkOrderAssigned(getPrisma(request), {
@@ -173,12 +230,14 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: 'Orden de trabajo no encontrada' });
       }
 
+      const seCompletaAhora = ordenActual.status !== 'COMPLETED' && updateData.status === 'COMPLETED';
+
       const workOrder = await getPrisma(request).workOrder.update({
         where: { id, tenantId: request.db.tenantId },
         data: {
           ...updateData,
           scheduledDate: updateData.scheduledDate ? new Date(updateData.scheduledDate) : undefined,
-          completedDate: updateData.completedDate ? new Date(updateData.completedDate) : undefined,
+          completedAt: seCompletaAhora ? new Date() : (updateData.completedDate ? new Date(updateData.completedDate) : undefined),
           totalCost: (updateData.laborCost || 0) + (updateData.partsCost || 0)
         },
         include: { asset: true, technician: true }
@@ -232,6 +291,19 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
             });
           }
         } catch (e: any) { console.error('[maintenance] stock deduction error:', e); }
+      }
+
+      // Si la OT está vinculada a un plan preventivo, avanzarlo y dejar registro de ejecución
+      if (seCompleto && workOrder.planId) {
+        await avanzarPlanPorOT(
+          getPrisma(request),
+          request.db.tenantId,
+          workOrder.planId,
+          workOrder.id,
+          workOrder.completedAt || new Date(),
+          updateData.finalOdometer || updateData.odometro || null,
+          `Completada vía OT ${workOrder.code}`
+        );
       }
 
       if (seCompleto && workOrder.assetId) {
@@ -685,6 +757,47 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     }
   });
 
+  // POST /maintenance/plans/:id/create-work-order - Generar OT planificada desde un plan
+  app.post('/plans/:id/create-work-order', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.db?.tenantId) {
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    }
+    const { id } = request.params as { id: string };
+
+    try {
+      const plan = await getPrisma(request).maintenancePlan.findFirst({
+        where: { id, tenantId: request.db.tenantId },
+        include: { asset: true },
+      });
+      if (!plan) return reply.code(404).send({ error: 'Plan no encontrado' });
+      if (!plan.assetId) return reply.code(400).send({ error: 'El plan no tiene un activo asignado' });
+
+      const code = `OT-${Date.now().toString().slice(-6)}`;
+      const scheduledDate = plan.nextExecutionDate ? new Date(plan.nextExecutionDate) : new Date();
+
+      const workOrder = await getPrisma(request).workOrder.create({
+        data: {
+          code,
+          title: plan.title,
+          description: plan.description || `Generada automáticamente desde el plan ${plan.code}`,
+          type: plan.type || 'PREVENTIVE',
+          priority: 'MEDIUM',
+          status: 'PENDING',
+          assetId: plan.assetId,
+          planId: plan.id,
+          scheduledDate,
+          tenantId: request.db.tenantId,
+        },
+        include: { asset: true, technician: true },
+      });
+
+      return reply.code(201).send({ workOrder });
+    } catch (error: any) {
+      console.error('Error creando OT desde plan:', error);
+      return reply.code(500).send({ error: 'Error al generar la orden de trabajo desde el plan.' });
+    }
+  });
+
   // PUT /maintenance/plans/:id - Actualizar plan
   app.put('/plans/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
@@ -1120,6 +1233,35 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       },
     });
   });
+}
+
+// Función auxiliar: al completar una OT vinculada a un plan, avanza el plan y deja registro de ejecución
+async function avanzarPlanPorOT(prisma: any, tenantId: string, planId: string, workOrderId: string, executedAt: Date, finalOdometer?: number | null, notes?: string) {
+  try {
+    const plan = await prisma.maintenancePlan.findFirst({ where: { id: planId, tenantId } });
+    if (!plan) return;
+
+    const data: any = { lastExecutionDate: executedAt, totalExecutions: { increment: 1 } };
+    if (plan.frequencyUnit === 'KM') {
+      if (finalOdometer != null) data.lastOdometerExecution = finalOdometer;
+    } else if (plan.nextExecutionDate) {
+      const next = new Date(plan.nextExecutionDate);
+      switch (plan.frequencyUnit) {
+        case 'DAYS': next.setDate(next.getDate() + plan.frequencyValue); break;
+        case 'WEEKS': next.setDate(next.getDate() + plan.frequencyValue * 7); break;
+        case 'MONTHS': next.setMonth(next.getMonth() + plan.frequencyValue); break;
+        case 'YEARS': next.setFullYear(next.getFullYear() + plan.frequencyValue); break;
+      }
+      data.nextExecutionDate = next;
+    }
+
+    await prisma.maintenancePlan.update({ where: { id: planId }, data });
+    await prisma.maintenancePlanExecution.create({
+      data: { planId, workOrderId, executedAt, notes: notes || null },
+    });
+  } catch (e: any) {
+    console.error('[maintenance] avanzarPlanPorOT error:', e);
+  }
 }
 
 // Función auxiliar para verificar planes por KM después de completar una OT

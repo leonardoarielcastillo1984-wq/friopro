@@ -540,6 +540,7 @@ export default function MantenimientoPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'orders' | 'plans' | 'technicians' | 'parts' | 'assets' | 'calendar' | 'kpis' | 'intervenciones' | 'flota-dashboard' | 'flota-vehiculos' | 'flota-neumaticos' | 'flota-conductores' | 'flota-vencimientos' | 'flota-combustible'>('orders');
+  const [ordersView, setOrdersView] = useState<'pendientes' | 'historial'>('pendientes');
 
   // ── Estado Flota ──────────────────────────────────────────────
   const [flotaVehiculos, setFlotaVehiculos] = useState<any[]>([]);
@@ -574,6 +575,10 @@ export default function MantenimientoPage() {
   const [selectedVehComb, setSelectedVehComb] = useState<any>(null);
   const [combustibleReg, setCombustibleReg] = useState<any[]>([]);
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
+  const [orderRepuestos, setOrderRepuestos] = useState<Record<string, number>>({});
+  const [orderRepuestoSel, setOrderRepuestoSel] = useState('');
+  const [orderRepuestoQty, setOrderRepuestoQty] = useState('1');
+  const [orderYaRealizada, setOrderYaRealizada] = useState(false);
   const [showViewOrderModal, setShowViewOrderModal] = useState(false);
   const [showEditOrderModal, setShowEditOrderModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -889,6 +894,19 @@ export default function MantenimientoPage() {
     }
   };
 
+  const handleGenerarOTDesdePlan = async (planId: string) => {
+    try {
+      const response = await apiFetch(`/maintenance/plans/${planId}/create-work-order`, {
+        method: 'POST'
+      }) as any;
+      setWorkOrders([response.workOrder, ...workOrders]);
+      alert(`Orden de trabajo ${response.workOrder.code} generada y programada correctamente.`);
+    } catch (error) {
+      console.error('Error generando OT desde plan:', error);
+      alert('No se pudo generar la orden de trabajo desde el plan.');
+    }
+  };
+
   const handleExecutePlan = async (planId: string) => {
     try {
       const response = await apiFetch(`/maintenance/plans/${planId}/execute`, {
@@ -1191,6 +1209,10 @@ export default function MantenimientoPage() {
     return true;
   });
 
+  const ordenesPendientes = filteredWorkOrders.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED');
+  const ordenesHistorial = filteredWorkOrders.filter(o => o.status === 'COMPLETED' || o.status === 'CANCELLED');
+  const ordenesAMostrar = ordersView === 'pendientes' ? ordenesPendientes : ordenesHistorial;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1370,18 +1392,35 @@ export default function MantenimientoPage() {
         <div className="p-4">
           {activeTab === 'orders' && (
             <div className="space-y-4">
-              {filteredWorkOrders.length === 0 ? (
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+                <button
+                  onClick={() => setOrdersView('pendientes')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${ordersView === 'pendientes' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                >
+                  Pendientes ({ordenesPendientes.length})
+                </button>
+                <button
+                  onClick={() => setOrdersView('historial')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${ordersView === 'historial' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                >
+                  Historial ({ordenesHistorial.length})
+                </button>
+              </div>
+
+              {ordenesAMostrar.length === 0 ? (
                 <div className="text-center py-12">
                   <Wrench className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No hay órdenes de trabajo</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    {ordersView === 'pendientes' ? 'No hay órdenes pendientes' : 'Sin historial todavía'}
+                  </h3>
                   <p className="text-gray-600">
                     {searchQuery || filterType !== 'all' || filterStatus !== 'all' || filterPriority !== 'all'
                       ? 'No se encontraron órdenes con los filtros seleccionados'
-                      : 'Comienza creando tu primera orden de trabajo'}
+                      : ordersView === 'pendientes' ? 'Comienza creando tu primera orden de trabajo' : 'Las órdenes completadas o canceladas aparecerán acá'}
                   </p>
                 </div>
               ) : (
-                filteredWorkOrders.map(order => (
+                ordenesAMostrar.map(order => (
                   <div key={order.id} className="bg-gray-50 rounded-lg p-4 hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -1399,6 +1438,11 @@ export default function MantenimientoPage() {
                           {order.origen === 'INSPECCION' && (
                             <span className="px-2 py-1 rounded text-xs font-medium bg-violet-100 text-violet-700">
                               🔍 Inspección
+                            </span>
+                          )}
+                          {(order as any).plan && (
+                            <span className="px-2 py-1 rounded text-xs font-medium bg-indigo-100 text-indigo-700" title={`Generada desde el plan ${(order as any).plan.code}`}>
+                              📅 {(order as any).plan.title}
                             </span>
                           )}
                           {isOverdue(order) && (
@@ -1478,6 +1522,7 @@ export default function MantenimientoPage() {
               <PlanesMatrix
                 assets={assets || []}
                 plans={maintenancePlans || []}
+                workOrders={workOrders || []}
                 selectedAssetId={planFiltroAsset}
                 onSelectAsset={setPlanFiltroAsset}
               />
@@ -1556,28 +1601,39 @@ export default function MantenimientoPage() {
                         </div>
                       </div>
                       
-                      <div className="mt-4 pt-3 border-t border-gray-200 flex gap-2">
-                        <button 
-                          onClick={() => { setSelectedPlan(plan); setShowEditPlanModal(true); }}
-                          className="flex-1 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                      <div className="mt-4 pt-3 border-t border-gray-200 space-y-2">
+                        <button
+                          onClick={() => handleGenerarOTDesdePlan(plan.id)}
+                          disabled={!plan.assetId}
+                          title={!plan.assetId ? 'El plan necesita un activo asignado' : 'Genera una OT pendiente programada según este plan'}
+                          className="w-full px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          Editar
+                          Generar Orden de Trabajo
                         </button>
-                        <button 
-                          onClick={() => handleExecutePlan(plan.id)}
-                          className="flex-1 px-3 py-1.5 text-sm bg-green-50 text-green-700 rounded hover:bg-green-100"
-                        >
-                          Ejecutar Ahora
-                        </button>
-                        <button 
-                          onClick={() => handleDeletePlan(plan.id)}
-                          className="px-3 py-1.5 text-sm bg-red-50 text-red-700 rounded hover:bg-red-100"
-                          title="Eliminar"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => { setSelectedPlan(plan); setShowEditPlanModal(true); }}
+                            className="flex-1 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                          >
+                            Editar
+                          </button>
+                          <button 
+                            onClick={() => handleExecutePlan(plan.id)}
+                            title="Marca el plan como ejecutado sin generar una OT (registro rápido)"
+                            className="flex-1 px-3 py-1.5 text-sm bg-green-50 text-green-700 rounded hover:bg-green-100"
+                          >
+                            Ejecutar Ahora
+                          </button>
+                          <button 
+                            onClick={() => handleDeletePlan(plan.id)}
+                            className="px-3 py-1.5 text-sm bg-red-50 text-red-700 rounded hover:bg-red-100"
+                            title="Eliminar"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -2928,10 +2984,76 @@ export default function MantenimientoPage() {
                   ))}
                 </select>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Repuestos a utilizar (opcional)</label>
+                <div className="flex gap-2">
+                  <select
+                    value={orderRepuestoSel}
+                    onChange={e => setOrderRepuestoSel(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Seleccionar repuesto…</option>
+                    {spareParts?.filter(p => p && p.id && !(p.id in orderRepuestos)).map(p => (
+                      <option key={p.id} value={p.id} disabled={p.currentStock <= 0}>
+                        {p.name} ({p.code}) — stock: {p.currentStock}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number" min={1} value={orderRepuestoQty}
+                    onChange={e => setOrderRepuestoQty(e.target.value)}
+                    className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-center"
+                  />
+                  <button
+                    type="button"
+                    disabled={!orderRepuestoSel}
+                    onClick={() => {
+                      const parte = spareParts.find(p => p.id === orderRepuestoSel);
+                      if (!parte) return;
+                      const cant = Math.max(1, Math.min(parte.currentStock, parseInt(orderRepuestoQty) || 1));
+                      setOrderRepuestos(prev => ({ ...prev, [orderRepuestoSel]: cant }));
+                      setOrderRepuestoSel('');
+                      setOrderRepuestoQty('1');
+                    }}
+                    className="px-4 bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-40"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+                {Object.keys(orderRepuestos).length > 0 && (
+                  <div className="mt-2 border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    {Object.entries(orderRepuestos).map(([pid, qty]) => {
+                      const p = spareParts.find(x => x.id === pid);
+                      if (!p) return null;
+                      return (
+                        <div key={pid} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                          <span className="text-gray-700">{p.name}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="font-medium">x{qty}</span>
+                            <button type="button" onClick={() => setOrderRepuestos(prev => { const c = { ...prev }; delete c[pid]; return c; })} className="text-gray-400 hover:text-red-600">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <label className="flex items-start gap-2 text-sm text-gray-700 bg-amber-50 border border-amber-200 rounded-lg p-3 cursor-pointer">
+                <input type="checkbox" checked={orderYaRealizada} onChange={e => setOrderYaRealizada(e.target.checked)} className="mt-0.5" />
+                <span>
+                  <span className="font-medium">Actividad puntual ya realizada</span>
+                  <br />
+                  <span className="text-xs text-gray-500">Marcá esto si la tarea ya se hizo (no estaba planificada) y querés registrarla directamente como completada, con sus repuestos y costos.</span>
+                </span>
+              </label>
             </div>
             <div className="p-6 border-t border-gray-200 flex gap-3">
               <button
-                onClick={() => setShowCreateOrderModal(false)}
+                onClick={() => { setShowCreateOrderModal(false); setOrderRepuestos({}); setOrderYaRealizada(false); }}
                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
               >
                 Cancelar
@@ -2952,16 +3074,20 @@ export default function MantenimientoPage() {
                       description,
                       type,
                       priority,
+                      status: orderYaRealizada ? 'COMPLETED' : 'PENDING',
                       assetId,
                       scheduledDate: new Date(scheduledDate).toISOString(),
                       technicianId: technicianId || undefined,
-                      estimatedHours: 2
+                      estimatedDuration: 2,
+                      repuestos: Object.entries(orderRepuestos).map(([sparePartId, quantity]) => ({ sparePartId, quantity })),
                     });
+                    setOrderRepuestos({});
+                    setOrderYaRealizada(false);
                   }
                 }}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
-                Crear Orden
+                {orderYaRealizada ? 'Registrar Actividad' : 'Crear Orden'}
               </button>
             </div>
           </div>

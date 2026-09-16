@@ -8,11 +8,12 @@ const MESES_ADELANTE = 8;
 
 const MES_LABEL = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
-type CellStatus = 'REALIZADO' | 'VENCIDO' | 'PLANIFICADO' | '';
+type CellStatus = 'REALIZADO' | 'VENCIDO' | 'PLANIFICADO' | 'CANCELADO' | '';
 
 interface Props {
   assets: any[];
   plans: any[];
+  workOrders?: any[];
   selectedAssetId: string | null;
   onSelectAsset: (assetId: string | null) => void;
 }
@@ -21,12 +22,13 @@ function monthKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}`;
 }
 
-export default function PlanesMatrix({ assets, plans, selectedAssetId, onSelectAsset }: Props) {
+export default function PlanesMatrix({ assets, plans, workOrders = [], selectedAssetId, onSelectAsset }: Props) {
   const [intervenciones, setIntervenciones] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState('');
   const [categoria, setCategoria] = useState('all');
   const [soloConPlan, setSoloConPlan] = useState(false);
+  const [detalleModal, setDetalleModal] = useState<{ asset: any; mesLabel: string; detalle: string[] } | null>(null);
 
   useEffect(() => {
     apiFetch('/maintenance-interventions?limit=500')
@@ -86,6 +88,16 @@ export default function PlanesMatrix({ assets, plans, selectedAssetId, onSelectA
     }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [assets, categoria, search, soloConPlan, planesPorAsset]);
 
+  const otsPorAsset = useMemo(() => {
+    const map = new Map<string, any[]>();
+    (workOrders || []).forEach(o => {
+      if (!o.planId || !o.assetId) return;
+      if (!map.has(o.assetId)) map.set(o.assetId, []);
+      map.get(o.assetId)!.push(o);
+    });
+    return map;
+  }, [workOrders]);
+
   const calcularCelda = (assetId: string, mes: Date): { status: CellStatus; detalle: string[] } => {
     const key = monthKey(mes);
     const detalle: string[] = [];
@@ -97,12 +109,25 @@ export default function PlanesMatrix({ assets, plans, selectedAssetId, onSelectA
       realizadas.forEach(r => detalle.push(`Realizado: ${r.plan?.title || (r.tiposLabel || []).join(', ')}`));
     }
 
+    (otsPorAsset.get(assetId) || []).forEach(o => {
+      if (o.status === 'COMPLETED' && o.completedAt && monthKey(new Date(o.completedAt)) === key) {
+        status = 'REALIZADO';
+        detalle.push(`Realizado (OT ${o.code}): ${o.title}`);
+      } else if (o.status === 'CANCELLED' && o.scheduledDate && monthKey(new Date(o.scheduledDate)) === key) {
+        if (status !== 'REALIZADO') status = 'CANCELADO';
+        detalle.push(`Cancelado (OT ${o.code}): ${o.title}`);
+      } else if (o.scheduledDate && monthKey(new Date(o.scheduledDate)) === key && status !== 'REALIZADO' && status !== 'CANCELADO') {
+        status = 'PLANIFICADO';
+        detalle.push(`OT programada: ${o.title} (${o.code})`);
+      }
+    });
+
     const planesAsset = (planesPorAsset.get(assetId) || []).filter(p => p.status === 'ACTIVE' && p.frequencyUnit !== 'KM' && p.nextExecutionDate);
     planesAsset.forEach(p => {
       const pk = monthKey(new Date(p.nextExecutionDate));
       if (pk === key) {
         const esPasado = key < mesActualKey;
-        if (status !== 'REALIZADO') status = esPasado ? 'VENCIDO' : 'PLANIFICADO';
+        if (status !== 'REALIZADO' && status !== 'CANCELADO') status = esPasado ? 'VENCIDO' : 'PLANIFICADO';
         detalle.push(`${esPasado ? 'Vencido' : 'Planificado'}: ${p.title}`);
       }
     });
@@ -125,7 +150,8 @@ export default function PlanesMatrix({ assets, plans, selectedAssetId, onSelectA
   const CELL_STYLE: Record<CellStatus, string> = {
     REALIZADO: 'bg-green-500',
     VENCIDO: 'bg-red-500',
-    PLANIFICADO: 'bg-blue-400',
+    CANCELADO: 'bg-red-500',
+    PLANIFICADO: 'bg-sky-400',
     '': 'bg-gray-100',
   };
 
@@ -165,8 +191,8 @@ export default function PlanesMatrix({ assets, plans, selectedAssetId, onSelectA
         )}
         <div className="flex items-center gap-3 text-xs text-gray-500 ml-auto">
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-500 inline-block" /> Realizado</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" /> Planificado</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-500 inline-block" /> Vencido</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-400 inline-block" /> Planificado</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-500 inline-block" /> Vencido / Cancelado</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gray-100 border border-gray-200 inline-block" /> Sin actividad</span>
         </div>
       </div>
@@ -207,7 +233,8 @@ export default function PlanesMatrix({ assets, plans, selectedAssetId, onSelectA
                       <td key={key} className="px-2 py-2 text-center">
                         <div
                           title={detalle.join('\n') || undefined}
-                          className={`w-6 h-6 mx-auto rounded ${CELL_STYLE[status]} ${detalle.length ? 'cursor-help' : ''}`}
+                          onClick={() => detalle.length && setDetalleModal({ asset, mesLabel: `${MES_LABEL[m.getMonth()]} ${m.getFullYear()}`, detalle })}
+                          className={`w-6 h-6 mx-auto rounded ${CELL_STYLE[status]} ${detalle.length ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-400' : ''}`}
                         />
                       </td>
                     );
@@ -239,6 +266,24 @@ export default function PlanesMatrix({ assets, plans, selectedAssetId, onSelectA
         </table>
       </div>
       {!loaded && <p className="text-xs text-gray-400 mt-2">Cargando historial de cumplimiento…</p>}
+
+      {detalleModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setDetalleModal(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5" onClick={e => e.stopPropagation()}>
+            <p className="font-semibold text-gray-900">{detalleModal.asset.name}</p>
+            <p className="text-xs text-gray-400 mb-3">{detalleModal.mesLabel}</p>
+            <ul className="space-y-1.5">
+              {detalleModal.detalle.map((d, i) => (
+                <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 mt-1.5 flex-shrink-0" />
+                  {d}
+                </li>
+              ))}
+            </ul>
+            <button onClick={() => setDetalleModal(null)} className="mt-4 w-full px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">Cerrar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
