@@ -196,6 +196,83 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
     return reply.send({ intervenciones });
   });
 
+  // ── EDITAR intervención (autenticado) ───────────────────────────────────────
+  app.put('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+
+    const existing = await (app.prisma as any).maintenanceIntervention.findFirst({ where: { id, tenantId } });
+    if (!existing) return reply.code(404).send({ error: 'Intervención no encontrada' });
+
+    const schema = z.object({
+      tipoIds: z.array(z.string().uuid()).min(1).optional(),
+      descripcion: z.string().max(2000).optional().nullable(),
+      odometro: z.number().positive().optional().nullable(),
+      performedAt: z.string().optional(),
+      performedByName: z.string().min(1).max(200).optional(),
+      performedByEmail: z.string().email().optional().nullable().or(z.literal('')).transform(v => v || null),
+      performedByPhone: z.string().max(50).optional().nullable(),
+      planId: z.string().uuid().optional().nullable(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const data: any = {};
+
+    if (body.data.tipoIds) {
+      const tiposSel = await (app.prisma as any).maintenanceInterventionType.findMany({
+        where: { id: { in: body.data.tipoIds }, tenantId },
+        select: { name: true },
+      });
+      if (tiposSel.length === 0) return reply.code(400).send({ error: 'Tipos de intervención inválidos' });
+      data.tiposLabel = tiposSel.map((t: any) => t.name);
+    }
+    if (body.data.descripcion !== undefined) data.descripcion = body.data.descripcion || null;
+    if (body.data.odometro !== undefined) data.odometro = body.data.odometro;
+    if (body.data.performedAt) data.performedAt = new Date(body.data.performedAt);
+    if (body.data.performedByName) data.performedByName = body.data.performedByName;
+    if (body.data.performedByEmail !== undefined) data.performedByEmail = body.data.performedByEmail || null;
+    if (body.data.performedByPhone !== undefined) data.performedByPhone = body.data.performedByPhone || null;
+
+    if (body.data.planId !== undefined) {
+      if (body.data.planId) {
+        const plan = await (app.prisma as any).maintenancePlan.findFirst({
+          where: { id: body.data.planId, assetId: existing.maintenanceAssetId, tenantId },
+        });
+        if (!plan) return reply.code(400).send({ error: 'Plan inválido para este activo' });
+        data.planId = plan.id;
+        data.cumplioPreventivo = true;
+      } else {
+        data.planId = null;
+        data.cumplioPreventivo = false;
+      }
+    }
+
+    const updated = await (app.prisma as any).maintenanceIntervention.update({
+      where: { id },
+      data,
+      include: {
+        maintenanceAsset: { select: { id: true, name: true, code: true } },
+        plan: { select: { id: true, title: true, code: true } },
+      },
+    });
+    return reply.send({ intervencion: updated });
+  });
+
+  // ── ELIMINAR intervención (autenticado) ─────────────────────────────────────
+  app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+
+    const existing = await (app.prisma as any).maintenanceIntervention.findFirst({ where: { id, tenantId } });
+    if (!existing) return reply.code(404).send({ error: 'Intervención no encontrada' });
+
+    await (app.prisma as any).maintenanceIntervention.delete({ where: { id } });
+    return reply.send({ ok: true });
+  });
+
   // ── RUTA PÚBLICA GET: ficha del activo + preventivos pendientes ─────────────
   app.get('/public/:token', async (req: FastifyRequest, reply: FastifyReply) => {
     const { token } = req.params as any;

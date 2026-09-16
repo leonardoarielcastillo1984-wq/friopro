@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
 import {
   QrCode, Plus, Trash2, Printer, ExternalLink, Copy, Check,
-  Wrench, History, ListChecks, Tag, X
+  Wrench, History, ListChecks, Tag, X, Pencil
 } from 'lucide-react';
 
 const CATEGORIAS = ['MOTOR', 'FRENOS', 'NEUMATICOS', 'SUSPENSION', 'TRANSMISION', 'FLUIDOS', 'ELECTRICO', 'CARROCERIA', 'GENERAL'];
@@ -17,6 +17,7 @@ export default function IntervencionesQR({ assets }: { assets: any[] }) {
   const [qrs, setQrs] = useState<any[]>([]);
   const [tipos, setTipos] = useState<any[]>([]);
   const [intervenciones, setIntervenciones] = useState<any[]>([]);
+  const [planes, setPlanes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewQR, setShowNewQR] = useState(false);
   const [showNewTipo, setShowNewTipo] = useState(false);
@@ -24,18 +25,24 @@ export default function IntervencionesQR({ assets }: { assets: any[] }) {
   const [saving, setSaving] = useState(false);
   const [qrForm, setQrForm] = useState({ maintenanceAssetId: '', titulo: '', instrucciones: '' });
   const [tipoForm, setTipoForm] = useState({ name: '', category: 'GENERAL', defaultKmInterval: '', defaultDaysInterval: '', description: '' });
+  const [editInt, setEditInt] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState<{ tipoIds: Set<string>; descripcion: string; odometro: string; performedAt: string; performedByName: string; performedByEmail: string; performedByPhone: string; planId: string }>({
+    tipoIds: new Set(), descripcion: '', odometro: '', performedAt: '', performedByName: '', performedByEmail: '', performedByPhone: '', planId: '',
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [q, t, i] = await Promise.all([
+      const [q, t, i, p] = await Promise.all([
         apiFetch('/maintenance-interventions/qrs') as any,
         apiFetch('/maintenance-interventions/types') as any,
         apiFetch('/maintenance-interventions?limit=50') as any,
+        apiFetch('/maintenance/plans') as any,
       ]);
       setQrs(q.qrs || []);
       setTipos(t.types || []);
       setIntervenciones(i.intervenciones || []);
+      setPlanes(p.plans || []);
     } finally { setLoading(false); }
   }, []);
 
@@ -85,6 +92,64 @@ export default function IntervencionesQR({ assets }: { assets: any[] }) {
     if (!confirm('¿Quitar esta tarea del catálogo?')) return;
     await apiFetch(`/maintenance-interventions/types/${id}`, { method: 'DELETE' });
     load();
+  };
+
+  const abrirEdicion = (i: any) => {
+    const tipoIds = new Set(
+      tipos.filter((t: any) => (i.tiposLabel || []).includes(t.name)).map((t: any) => t.id)
+    );
+    setEditForm({
+      tipoIds,
+      descripcion: i.descripcion || '',
+      odometro: i.odometro != null ? String(i.odometro) : '',
+      performedAt: new Date(i.performedAt).toISOString().slice(0, 10),
+      performedByName: i.performedByName || '',
+      performedByEmail: i.performedByEmail || '',
+      performedByPhone: i.performedByPhone || '',
+      planId: i.planId || '',
+    });
+    setEditInt(i);
+  };
+
+  const toggleEditTipo = (id: string) => {
+    setEditForm(prev => {
+      const next = new Set(prev.tipoIds);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return { ...prev, tipoIds: next };
+    });
+  };
+
+  const guardarEdicion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editInt) return;
+    if (editForm.tipoIds.size === 0) { alert('Seleccioná al menos una tarea'); return; }
+    setSaving(true);
+    try {
+      await apiFetch(`/maintenance-interventions/${editInt.id}`, {
+        method: 'PUT',
+        json: {
+          tipoIds: Array.from(editForm.tipoIds),
+          descripcion: editForm.descripcion || null,
+          odometro: editForm.odometro ? parseFloat(editForm.odometro) : null,
+          performedAt: editForm.performedAt ? new Date(editForm.performedAt + 'T12:00:00').toISOString() : undefined,
+          performedByName: editForm.performedByName,
+          performedByEmail: editForm.performedByEmail || null,
+          performedByPhone: editForm.performedByPhone || null,
+          planId: editForm.planId || null,
+        },
+      });
+      setEditInt(null);
+      load();
+    } catch (err: any) { alert(err?.message || 'Error guardando cambios'); }
+    finally { setSaving(false); }
+  };
+
+  const eliminarIntervencion = async (id: string) => {
+    if (!confirm('¿Eliminar esta intervención del historial? Esta acción no se puede deshacer.')) return;
+    try {
+      await apiFetch(`/maintenance-interventions/${id}`, { method: 'DELETE' });
+      load();
+    } catch (err: any) { alert(err?.message || 'Error eliminando intervención'); }
   };
 
   const copiarLink = (url: string, id: string) => {
@@ -279,6 +344,7 @@ ${qr.activoCodigo ? `<p class="codigo">Código: ${qr.activoCodigo}</p>` : ''}
                         <th className="text-left px-4 py-2.5 font-medium">Realizada por</th>
                         <th className="text-right px-4 py-2.5 font-medium">Odómetro</th>
                         <th className="text-center px-4 py-2.5 font-medium">Preventivo</th>
+                        <th className="text-right px-4 py-2.5 font-medium">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -299,6 +365,16 @@ ${qr.activoCodigo ? `<p class="codigo">Código: ${qr.activoCodigo}</p>` : ''}
                             {i.cumplioPreventivo
                               ? <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full"><Check className="w-3 h-3" />{i.plan?.title || 'Sí'}</span>
                               : <span className="text-xs text-gray-300">—</span>}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => abrirEdicion(i)} title="Editar" className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => eliminarIntervencion(i.id)} title="Eliminar" className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -386,6 +462,87 @@ ${qr.activoCodigo ? `<p class="codigo">Código: ${qr.activoCodigo}</p>` : ''}
                 <button type="button" onClick={() => setShowNewTipo(false)} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
                 <button type="submit" disabled={saving} className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                   {saving ? 'Guardando…' : 'Crear tarea'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar intervención */}
+      {editInt && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setEditInt(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Editar intervención</h3>
+            <p className="text-xs text-gray-400 mb-4">{editInt.maintenanceAsset?.name}{editInt.maintenanceAsset?.code ? ` · ${editInt.maintenanceAsset.code}` : ''}</p>
+            <form onSubmit={guardarEdicion} className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1.5">Tareas realizadas *</label>
+                {Object.entries(tiposPorCat).map(([cat, items]) => (
+                  <div key={cat} className="mb-2">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">{CAT_LABEL[cat] || cat}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(items as any[]).map((t: any) => {
+                        const sel = editForm.tipoIds.has(t.id);
+                        return (
+                          <button key={t.id} type="button" onClick={() => toggleEditTipo(t.id)}
+                            className={`px-2.5 py-1 rounded-full text-xs border ${sel ? 'border-blue-600 bg-blue-50 text-blue-700 font-medium' : 'border-gray-200 text-gray-600'}`}>
+                            {t.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Fecha</label>
+                  <input type="date" value={editForm.performedAt} onChange={e => setEditForm({ ...editForm, performedAt: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Odómetro (km)</label>
+                  <input type="number" min="0" value={editForm.odometro} onChange={e => setEditForm({ ...editForm, odometro: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Realizada por *</label>
+                <input required value={editForm.performedByName} onChange={e => setEditForm({ ...editForm, performedByName: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Email (opcional)</label>
+                  <input type="email" value={editForm.performedByEmail} onChange={e => setEditForm({ ...editForm, performedByEmail: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Teléfono (opcional)</label>
+                  <input value={editForm.performedByPhone} onChange={e => setEditForm({ ...editForm, performedByPhone: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Observaciones</label>
+                <textarea value={editForm.descripcion} onChange={e => setEditForm({ ...editForm, descripcion: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[60px] resize-vertical" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">¿Cumplió un preventivo planificado?</label>
+                <select value={editForm.planId} onChange={e => setEditForm({ ...editForm, planId: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <option value="">No aplica</option>
+                  {planes.filter((p: any) => p.assetId === editInt.maintenanceAssetId).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.title}{p.code ? ` (${p.code})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setEditInt(null)} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
+                <button type="submit" disabled={saving} className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  {saving ? 'Guardando…' : 'Guardar cambios'}
                 </button>
               </div>
             </form>
