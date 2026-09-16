@@ -34,6 +34,8 @@ export default function MantenimientoQRPage() {
   const [selPlan, setSelPlan] = useState<string>('');
   const [showHistorial, setShowHistorial] = useState(false);
   const [selRepuestos, setSelRepuestos] = useState<Record<string, number>>({});
+  const [repuestoAAgregar, setRepuestoAAgregar] = useState('');
+  const [cantidadAAgregar, setCantidadAAgregar] = useState('1');
 
   useEffect(() => {
     fetch(`${API_BASE}/maintenance-interventions/public/${token}`)
@@ -145,12 +147,22 @@ export default function MantenimientoQRPage() {
   const ultimas: Ultima[] = data.ultimasIntervenciones ?? [];
   const repuestosDisponibles: Repuesto[] = data.repuestosDisponibles ?? [];
 
-  const cambiarCantidadRepuesto = (id: string, delta: number, maxStock: number) => {
+  const repuestosNoAgregados = repuestosDisponibles.filter(r => !(r.id in selRepuestos));
+
+  const agregarRepuesto = () => {
+    if (!repuestoAAgregar) return;
+    const parte = repuestosDisponibles.find(r => r.id === repuestoAAgregar);
+    if (!parte) return;
+    const cant = Math.max(1, Math.min(parte.currentStock, parseInt(cantidadAAgregar) || 1));
+    setSelRepuestos(prev => ({ ...prev, [repuestoAAgregar]: cant }));
+    setRepuestoAAgregar('');
+    setCantidadAAgregar('1');
+  };
+
+  const quitarRepuesto = (id: string) => {
     setSelRepuestos(prev => {
-      const actual = prev[id] || 0;
-      const next = Math.max(0, Math.min(maxStock, actual + delta));
       const copy = { ...prev };
-      if (next === 0) delete copy[id]; else copy[id] = next;
+      delete copy[id];
       return copy;
     });
   };
@@ -258,30 +270,53 @@ export default function MantenimientoQRPage() {
                 <Package size={16} color={primary} />
                 <h4 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111827' }}>Repuestos utilizados (opcional)</h4>
               </div>
-              <div style={{ border: '1px solid #F3F4F6', borderRadius: 10, overflow: 'hidden' }}>
-                {repuestosDisponibles.map(r => {
-                  const qty = selRepuestos[r.id] || 0;
-                  return (
-                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderTop: '1px solid #F3F4F6' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</p>
-                        <p style={{ margin: 0, fontSize: 11, color: '#9CA3AF' }}>{r.code} · stock: {r.currentStock}</p>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <button type="button" onClick={() => cambiarCantidadRepuesto(r.id, -1, r.currentStock)}
-                          style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #D1D5DB', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Minus size={12} />
-                        </button>
-                        <span style={{ width: 22, textAlign: 'center', fontSize: 13, fontWeight: 600 }}>{qty}</span>
-                        <button type="button" onClick={() => cambiarCantidadRepuesto(r.id, 1, r.currentStock)} disabled={qty >= r.currentStock}
-                          style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #D1D5DB', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: qty >= r.currentStock ? 'not-allowed' : 'pointer', opacity: qty >= r.currentStock ? 0.4 : 1 }}>
-                          <Plus size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select
+                  value={repuestoAAgregar}
+                  onChange={e => setRepuestoAAgregar(e.target.value)}
+                  style={{ ...S.input, flex: 1 }}
+                >
+                  <option value="">Seleccionar repuesto…</option>
+                  {repuestosNoAgregados.map(r => (
+                    <option key={r.id} value={r.id} disabled={r.currentStock <= 0}>
+                      {r.name} ({r.code}) — stock: {r.currentStock}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number" min={1}
+                  value={cantidadAAgregar}
+                  onChange={e => setCantidadAAgregar(e.target.value)}
+                  style={{ ...S.input, width: 64, textAlign: 'center' }}
+                />
+                <button type="button" onClick={agregarRepuesto} disabled={!repuestoAAgregar}
+                  style={{ ...S.btn, background: primary, padding: '0 16px', opacity: !repuestoAAgregar ? 0.5 : 1 }}>
+                  <Plus size={16} />
+                </button>
               </div>
+
+              {Object.keys(selRepuestos).length > 0 && (
+                <div style={{ border: '1px solid #F3F4F6', borderRadius: 10, overflow: 'hidden', marginTop: 10 }}>
+                  {Object.entries(selRepuestos).map(([id, qty]) => {
+                    const r = repuestosDisponibles.find(x => x.id === id);
+                    if (!r) return null;
+                    return (
+                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderTop: '1px solid #F3F4F6' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#111827' }}>{r.name}</p>
+                          <p style={{ margin: 0, fontSize: 11, color: '#9CA3AF' }}>{r.code}</p>
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>x{qty}</span>
+                        <button type="button" onClick={() => quitarRepuesto(id)}
+                          style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#9CA3AF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <Minus size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
