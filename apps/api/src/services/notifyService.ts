@@ -178,6 +178,50 @@ export async function notifyAuditScheduled(
   }
 }
 
+// ── Orden de trabajo asignada a un técnico ────────────────────────────────────
+
+export async function notifyWorkOrderAssigned(
+  prisma: PrismaClient,
+  { tenantId, technicianEmail, technicianName, otCode, otTitle, otId, assetName, priority, scheduledDate }: {
+    tenantId: string; technicianEmail: string | null | undefined; technicianName?: string | null;
+    otCode: string; otTitle: string; otId: string; assetName?: string | null;
+    priority?: string | null; scheduledDate?: Date | null;
+  }
+) {
+  if (!technicianEmail) return;
+  try {
+    const link = `${APP_URL}/mantenimiento?tab=orders`;
+    const priorityLabel: Record<string, string> = {
+      LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', CRITICAL: 'Crítica',
+    };
+    const priorityColor: Record<string, string> = {
+      LOW: '#16A34A', MEDIUM: '#D97706', HIGH: '#EA580C', CRITICAL: '#DC2626',
+    };
+    const color = (priority && priorityColor[priority]) || '#2563EB';
+    const title = `Nueva orden de trabajo asignada: ${otCode}`;
+    const dateStr = scheduledDate
+      ? scheduledDate.toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
+      : null;
+    const message =
+      `Se te asignó la orden de trabajo <strong>${otCode}</strong> — "${otTitle}"` +
+      `${assetName ? ` para el activo <strong>${assetName}</strong>` : ''}.` +
+      `${priority ? ` Prioridad: <strong>${priorityLabel[priority] || priority}</strong>.` : ''}` +
+      `${dateStr ? ` Fecha programada: ${dateStr}.` : ''}`;
+    const branding = await getCompanyBranding(prisma, tenantId);
+    const fromName = branding.companyName || 'SGI 360';
+
+    await sendEmail({
+      from: `${fromName} <soporte@logismart.ar>`,
+      to: technicianEmail,
+      subject: `${fromName} — ${title}`,
+      html: buildEmailHtml(title, message, 'Ver órdenes de trabajo', link, color, branding),
+      text: `${title}\n\n${message.replace(/<[^>]+>/g, '')}\n\n${link}`,
+    });
+  } catch (e) {
+    console.error('[notifyService] notifyWorkOrderAssigned error:', e);
+  }
+}
+
 // ── Inspección: nuevo hallazgo ────────────────────────────────────────────────
 
 async function getInspeccionAlertEmails(prisma: PrismaClient, tenantId: string, tipo: 'alertaHallazgo' | 'alertaOT'): Promise<string[]> {

@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
+import { notifyWorkOrderAssigned } from '../services/notifyService.js';
 
 // Schemas de validación
 const createWorkOrderSchema = z.object({
@@ -128,6 +129,20 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
         include: { asset: true, technician: true }
       });
 
+      if (workOrder.technician?.email) {
+        notifyWorkOrderAssigned(getPrisma(request), {
+          tenantId: request.db.tenantId,
+          technicianEmail: workOrder.technician.email,
+          technicianName: workOrder.technician.name,
+          otCode: workOrder.code,
+          otTitle: workOrder.title,
+          otId: workOrder.id,
+          assetName: workOrder.asset?.name,
+          priority: workOrder.priority,
+          scheduledDate: workOrder.scheduledDate,
+        }).catch((e: any) => console.error('[maintenance] notifyWorkOrderAssigned error:', e));
+      }
+
       return reply.code(201).send({ workOrder });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -168,6 +183,22 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
         },
         include: { asset: true, technician: true }
       });
+
+      // Si se reasignó a un técnico distinto (o se asignó por primera vez), notificarle
+      const seReasigno = updateData.technicianId && updateData.technicianId !== ordenActual.technicianId;
+      if (seReasigno && workOrder.technician?.email) {
+        notifyWorkOrderAssigned(getPrisma(request), {
+          tenantId: request.db.tenantId,
+          technicianEmail: workOrder.technician.email,
+          technicianName: workOrder.technician.name,
+          otCode: workOrder.code,
+          otTitle: workOrder.title,
+          otId: workOrder.id,
+          assetName: workOrder.asset?.name,
+          priority: workOrder.priority,
+          scheduledDate: workOrder.scheduledDate,
+        }).catch((e: any) => console.error('[maintenance] notifyWorkOrderAssigned error:', e));
+      }
 
       // ═══════════════════════════════════════════════════════════════
       // INTEGRACIÓN OT ↔ FLOTA
