@@ -358,6 +358,11 @@ ${qr.activoCodigo ? `<p class="codigo">Código: ${qr.activoCodigo}</p>` : ''}
                           <td className="px-4 py-2.5 text-gray-600">
                             {(i.tiposLabel || []).join(', ')}
                             {i.descripcion && <p className="text-xs text-gray-400 truncate max-w-[240px]">{i.descripcion}</p>}
+                            {i.repuestos?.length > 0 && (
+                              <p className="text-xs text-blue-500 truncate max-w-[240px]">
+                                Repuestos: {i.repuestos.map((r: any) => `${r.sparePart?.name} x${r.quantity}`).join(', ')}
+                              </p>
+                            )}
                           </td>
                           <td className="px-4 py-2.5 text-gray-600">{i.performedByName}</td>
                           <td className="px-4 py-2.5 text-right text-gray-600">{i.odometro ? `${Number(i.odometro).toLocaleString('es-AR')} km` : '—'}</td>

@@ -189,6 +189,7 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       include: {
         maintenanceAsset: { select: { id: true, name: true, code: true } },
         plan: { select: { id: true, title: true, code: true } },
+        repuestos: { include: { sparePart: { select: { id: true, code: true, name: true } } } },
       },
       orderBy: { performedAt: 'desc' },
       take: q.limit ? parseInt(q.limit) : 100,
@@ -266,8 +267,21 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
 
-    const existing = await (app.prisma as any).maintenanceIntervention.findFirst({ where: { id, tenantId } });
+    const existing = await (app.prisma as any).maintenanceIntervention.findFirst({
+      where: { id, tenantId },
+      include: { repuestos: true },
+    });
     if (!existing) return reply.code(404).send({ error: 'Intervención no encontrada' });
+
+    // Restaurar stock de repuestos consumidos por esta intervención
+    for (const r of existing.repuestos || []) {
+      try {
+        await (app.prisma as any).maintenanceSparePart.update({
+          where: { id: r.sparePartId },
+          data: { currentStock: { increment: r.quantity } },
+        });
+      } catch (e: any) { console.error('[intervenciones] error restaurando stock:', e); }
+    }
 
     await (app.prisma as any).maintenanceIntervention.delete({ where: { id } });
     return reply.send({ ok: true });
@@ -288,7 +302,7 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
     const asset = qr.maintenanceAsset;
     const kmActual = asset.currentOdometer ?? null;
 
-    const [settings, tipos, planes, ultimas] = await Promise.all([
+    const [settings, tipos, planes, ultimas, repuestos] = await Promise.all([
       (app.prisma as any).companySettings.findUnique({
         where: { tenantId: qr.tenantId }, select: { logoUrl: true, primaryColor: true },
       }).catch(() => null),
@@ -305,6 +319,11 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
         orderBy: { performedAt: 'desc' },
         take: 10,
         select: { id: true, tiposLabel: true, descripcion: true, odometro: true, performedAt: true, performedByName: true, cumplioPreventivo: true },
+      }),
+      (app.prisma as any).maintenanceSparePart.findMany({
+        where: { tenantId: qr.tenantId },
+        orderBy: { name: 'asc' },
+        select: { id: true, code: true, name: true, currentStock: true, unitCost: true },
       }),
     ]);
 
@@ -339,6 +358,7 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       tipos,
       preventivos,
       ultimasIntervenciones: ultimas,
+      repuestosDisponibles: repuestos,
     });
   });
 
@@ -361,6 +381,7 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       performedAt: z.string().optional(),
       planId: z.string().uuid().optional().nullable(),
       fotos: z.array(z.object({ url: z.string() })).optional(),
+      repuestos: z.array(z.object({ sparePartId: z.string().uuid(), quantity: z.number().int().positive() })).optional(),
     });
     const body = schema.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
@@ -407,6 +428,35 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       where: { id: qr.id },
       data: { useCount: { increment: 1 }, lastUsedAt: new Date() },
     });
+
+    // Repuestos consumidos: crear registro y descontar stock
+    let repuestosCosto = 0;
+    if (body.data.repuestos && body.data.repuestos.length > 0) {
+      const partesSel = await (app.prisma as any).maintenanceSparePart.findMany({
+        where: { id: { in: body.data.repuestos.map(r => r.sparePartId) }, tenantId: qr.tenantId },
+      });
+      const partesMap = new Map(partesSel.map((p: any) => [p.id, p]));
+      for (const r of body.data.repuestos) {
+        const parte: any = partesMap.get(r.sparePartId);
+        if (!parte) continue;
+        try {
+          await (app.prisma as any).maintenanceInterventionSparePart.create({
+            data: {
+              tenantId: qr.tenantId,
+              interventionId: intervencion.id,
+              sparePartId: parte.id,
+              quantity: r.quantity,
+              unitCost: parte.unitCost,
+            },
+          });
+          await (app.prisma as any).maintenanceSparePart.update({
+            where: { id: parte.id },
+            data: { currentStock: { decrement: r.quantity } },
+          });
+          repuestosCosto += r.quantity * parte.unitCost;
+        } catch (e: any) { console.error('[intervenciones] repuesto stock error:', e); }
+      }
+    }
 
     // Actualizar activo: odómetro + última fecha de mantenimiento
     try {
@@ -482,6 +532,7 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       intervencionId: intervencion.id,
       cumplioPreventivo: !!plan,
       planTitle: plan?.title ?? null,
+      repuestosCosto,
       mensaje: plan
         ? `Intervención registrada. Se marcó como cumplido el preventivo "${plan.title}".`
         : 'Intervención registrada correctamente en la ficha del activo.',

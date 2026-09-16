@@ -413,6 +413,7 @@ model Tenant {
   maintenanceInterventionTypes MaintenanceInterventionType[]
   maintenanceInterventionQRs   MaintenanceInterventionQR[]
   maintenanceInterventions     MaintenanceIntervention[]
+  maintenanceInterventionSpareParts MaintenanceInterventionSparePart[]
   workOrderSpareParts      WorkOrderSparePart[]
   workOrders               WorkOrder[]
   maintenanceCosts         MaintenanceCost[]
@@ -3429,6 +3430,7 @@ model MaintenanceSparePart {
   updatedAt DateTime @updatedAt @db.Timestamptz
 
   workOrderUsage WorkOrderSparePart[]
+  interventionUsage MaintenanceInterventionSparePart[]
 
   @@index([tenantId])
   @@index([code])
@@ -3658,12 +3660,37 @@ model MaintenanceIntervention {
   workOrderId String?    @db.Uuid
   workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
 
+  repuestos MaintenanceInterventionSparePart[]
+
   createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([tenantId])
   @@index([maintenanceAssetId])
   @@index([qrId])
   @@map("maintenance_interventions")
+}
+
+// Repuestos consumidos en una intervención registrada por QR (descuenta stock al registrarse)
+model MaintenanceInterventionSparePart {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  interventionId String                  @db.Uuid
+  intervention   MaintenanceIntervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+
+  sparePartId String               @db.Uuid
+  sparePart   MaintenanceSparePart @relation(fields: [sparePartId], references: [id], onDelete: Cascade)
+
+  quantity Int   @default(1)
+  unitCost Float @default(0) // snapshot del costo unitario al momento de consumirse
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([interventionId])
+  @@index([sparePartId])
+  @@map("maintenance_intervention_spare_parts")
 }
 
 model CompanyRegistration {

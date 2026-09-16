@@ -1,13 +1,14 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { CheckCircle2, AlertCircle, Wrench, Gauge, CalendarClock, History, Send, ChevronDown } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Wrench, Gauge, CalendarClock, History, Send, ChevronDown, Package, Minus, Plus } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
 
 type Tipo = { id: string; name: string; category: string };
 type Preventivo = { id: string; code: string; title: string; type: string; estado: 'VENCIDO' | 'PROXIMO' | 'AL_DIA'; detalle: string };
 type Ultima = { id: string; tiposLabel: string[]; descripcion?: string; odometro?: number; performedAt: string; performedByName: string; cumplioPreventivo: boolean };
+type Repuesto = { id: string; code: string; name: string; currentStock: number; unitCost: number };
 
 const ESTADO_STYLE: Record<string, { bg: string; color: string; label: string }> = {
   VENCIDO: { bg: '#FEE2E2', color: '#DC2626', label: 'Vencido' },
@@ -32,6 +33,7 @@ export default function MantenimientoQRPage() {
   const [selTipos, setSelTipos] = useState<Set<string>>(new Set());
   const [selPlan, setSelPlan] = useState<string>('');
   const [showHistorial, setShowHistorial] = useState(false);
+  const [selRepuestos, setSelRepuestos] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetch(`${API_BASE}/maintenance-interventions/public/${token}`)
@@ -87,6 +89,9 @@ export default function MantenimientoQRPage() {
           odometro: km ? parseFloat(km) : undefined,
           performedAt: fecha ? new Date(fecha + 'T12:00:00').toISOString() : undefined,
           planId: selPlan || null,
+          repuestos: Object.entries(selRepuestos)
+            .filter(([, qty]) => qty > 0)
+            .map(([sparePartId, quantity]) => ({ sparePartId, quantity })),
         }),
       });
       const d = await res.json();
@@ -94,6 +99,7 @@ export default function MantenimientoQRPage() {
       localStorage.setItem('mant_qr_nombre', nombre.trim());
       if (email.trim()) localStorage.setItem('mant_qr_email', email.trim());
       if (phone.trim()) localStorage.setItem('mant_qr_phone', phone.trim());
+      setSelRepuestos({});
       setResultado(d);
       setPaso('ok');
     } catch {
@@ -137,6 +143,17 @@ export default function MantenimientoQRPage() {
   const preventivos: Preventivo[] = data.preventivos ?? [];
   const pendientes = preventivos.filter(p => p.estado !== 'AL_DIA');
   const ultimas: Ultima[] = data.ultimasIntervenciones ?? [];
+  const repuestosDisponibles: Repuesto[] = data.repuestosDisponibles ?? [];
+
+  const cambiarCantidadRepuesto = (id: string, delta: number, maxStock: number) => {
+    setSelRepuestos(prev => {
+      const actual = prev[id] || 0;
+      const next = Math.max(0, Math.min(maxStock, actual + delta));
+      const copy = { ...prev };
+      if (next === 0) delete copy[id]; else copy[id] = next;
+      return copy;
+    });
+  };
 
   return (
     <div style={S.page}>
@@ -232,8 +249,41 @@ export default function MantenimientoQRPage() {
                 <input style={S.input} type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
               </div>
             </div>
-            <textarea style={{ ...S.input, minHeight: 70, resize: 'vertical' }} placeholder="Observaciones (repuestos usados, detalles…)" value={descripcion} onChange={e => setDescripcion(e.target.value)} />
+            <textarea style={{ ...S.input, minHeight: 70, resize: 'vertical' }} placeholder="Observaciones (detalles adicionales…)" value={descripcion} onChange={e => setDescripcion(e.target.value)} />
           </div>
+
+          {repuestosDisponibles.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Package size={16} color={primary} />
+                <h4 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111827' }}>Repuestos utilizados (opcional)</h4>
+              </div>
+              <div style={{ border: '1px solid #F3F4F6', borderRadius: 10, overflow: 'hidden' }}>
+                {repuestosDisponibles.map(r => {
+                  const qty = selRepuestos[r.id] || 0;
+                  return (
+                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderTop: '1px solid #F3F4F6' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</p>
+                        <p style={{ margin: 0, fontSize: 11, color: '#9CA3AF' }}>{r.code} · stock: {r.currentStock}</p>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button type="button" onClick={() => cambiarCantidadRepuesto(r.id, -1, r.currentStock)}
+                          style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #D1D5DB', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <Minus size={12} />
+                        </button>
+                        <span style={{ width: 22, textAlign: 'center', fontSize: 13, fontWeight: 600 }}>{qty}</span>
+                        <button type="button" onClick={() => cambiarCantidadRepuesto(r.id, 1, r.currentStock)} disabled={qty >= r.currentStock}
+                          style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #D1D5DB', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: qty >= r.currentStock ? 'not-allowed' : 'pointer', opacity: qty >= r.currentStock ? 0.4 : 1 }}>
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {paso === 'error' && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 10 }}>{error}</p>}
 
