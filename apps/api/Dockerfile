@@ -22,6 +22,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 RUN apt-get update && apt-get install -y \
     openssl \
+    curl \
     antiword \
     libreoffice-writer \
     libreoffice-common \

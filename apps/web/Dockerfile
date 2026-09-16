@@ -1,4 +1,5 @@
 FROM node:20-alpine
+RUN apk add --no-cache curl
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
