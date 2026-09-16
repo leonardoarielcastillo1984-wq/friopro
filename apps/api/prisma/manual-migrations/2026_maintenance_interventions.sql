@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS "maintenance_intervention_types" (
   "id"                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId"            UUID NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "tenantId"            UUID NOT NULL REFERENCES "Tenant"("id") ON DELETE CASCADE,
   "name"                TEXT NOT NULL,
   "category"            TEXT NOT NULL DEFAULT 'GENERAL',
   "description"         TEXT,
@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS "maintenance_intervention_types_tenantId_idx"
 
 CREATE TABLE IF NOT EXISTS "maintenance_intervention_qrs" (
   "id"                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId"           UUID NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "tenantId"           UUID NOT NULL REFERENCES "Tenant"("id") ON DELETE CASCADE,
   "token"              TEXT NOT NULL UNIQUE,
   "isActive"           BOOLEAN NOT NULL DEFAULT true,
   "maintenanceAssetId" UUID NOT NULL REFERENCES "maintenance_assets"("id") ON DELETE CASCADE,
@@ -38,7 +38,7 @@ CREATE INDEX IF NOT EXISTS "maintenance_intervention_qrs_token_idx"
 
 CREATE TABLE IF NOT EXISTS "maintenance_interventions" (
   "id"                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId"           UUID NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "tenantId"           UUID NOT NULL REFERENCES "Tenant"("id") ON DELETE CASCADE,
   "qrId"               UUID REFERENCES "maintenance_intervention_qrs"("id") ON DELETE SET NULL,
   "maintenanceAssetId" UUID NOT NULL REFERENCES "maintenance_assets"("id") ON DELETE CASCADE,
   "tiposLabel"         TEXT[] NOT NULL DEFAULT '{}',
@@ -72,7 +72,7 @@ ALTER TABLE "work_orders"
 -- Repuestos asignados a OTs (descuento automático de stock al completar)
 CREATE TABLE IF NOT EXISTS "work_order_spare_parts" (
   "id"            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId"      UUID NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "tenantId"      UUID NOT NULL REFERENCES "Tenant"("id") ON DELETE CASCADE,
   "workOrderId"   UUID NOT NULL REFERENCES "work_orders"("id") ON DELETE CASCADE,
   "sparePartId"   UUID NOT NULL REFERENCES "maintenance_spare_parts"("id") ON DELETE CASCADE,
   "quantity"      INTEGER NOT NULL DEFAULT 1,
