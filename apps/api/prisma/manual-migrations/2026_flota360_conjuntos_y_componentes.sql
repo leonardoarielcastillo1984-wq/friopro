@@ -7,7 +7,7 @@
 
 CREATE TABLE IF NOT EXISTS "flota_conjuntos_operativos" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId" UUID NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "tenantId" UUID NOT NULL REFERENCES "Tenant"("id") ON DELETE CASCADE,
   "tractorId" UUID NOT NULL REFERENCES "flota_vehiculos"("id") ON DELETE CASCADE,
   "semiId" UUID NOT NULL REFERENCES "flota_vehiculos"("id") ON DELETE CASCADE,
   "estado" TEXT NOT NULL DEFAULT 'ACOPLADO',
@@ -27,7 +27,7 @@ CREATE INDEX IF NOT EXISTS "flota_conjuntos_operativos_estado_idx" ON "flota_con
 
 CREATE TABLE IF NOT EXISTS "flota_conjunto_eventos" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId" UUID NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "tenantId" UUID NOT NULL REFERENCES "Tenant"("id") ON DELETE CASCADE,
   "conjuntoId" UUID NOT NULL REFERENCES "flota_conjuntos_operativos"("id") ON DELETE CASCADE,
   "tipo" TEXT NOT NULL DEFAULT 'ACOPLE',
   "fecha" TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS "flota_conjunto_eventos_conjuntoId_idx" ON "flota_con
 
 CREATE TABLE IF NOT EXISTS "maintenance_component_rules" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId" UUID NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "tenantId" UUID NOT NULL REFERENCES "Tenant"("id") ON DELETE CASCADE,
   "nombre" TEXT NOT NULL,
   "categoria" TEXT NOT NULL DEFAULT 'GENERAL',
   "tipoActivoAplicable" TEXT NOT NULL DEFAULT 'TODOS',
