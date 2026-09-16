@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import IntervencionesQR from './IntervencionesQR';
 import WorkOrderParts from './WorkOrderParts';
+import PlanesMatrix from './PlanesMatrix';
 
 // CalendarView Component
 const CalendarView = ({ workOrders, maintenancePlans }: { workOrders: any[], maintenancePlans: any[] }) => {
@@ -586,6 +587,7 @@ export default function MantenimientoPage() {
   const [showCreatePlanModal, setShowCreatePlanModal] = useState(false);
   const [showEditPlanModal, setShowEditPlanModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [planFiltroAsset, setPlanFiltroAsset] = useState<string | null>(null);
   const [showEditAssetModal, setShowEditAssetModal] = useState(false);
   const [showMaintenanceCostsModal, setShowMaintenanceCostsModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
@@ -1460,7 +1462,10 @@ export default function MantenimientoPage() {
           {activeTab === 'plans' && (
             <div>
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Planes de Mantenimiento ({maintenancePlans?.length || 0})</h3>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Cronograma de Mantenimiento</h3>
+                  <p className="text-sm text-gray-500">Vista general de todos los activos y sus intervalos planificados</p>
+                </div>
                 <button 
                   onClick={() => setShowCreatePlanModal(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -1469,7 +1474,25 @@ export default function MantenimientoPage() {
                   Nuevo Plan
                 </button>
               </div>
-              
+
+              <PlanesMatrix
+                assets={assets || []}
+                plans={maintenancePlans || []}
+                selectedAssetId={planFiltroAsset}
+                onSelectAsset={setPlanFiltroAsset}
+              />
+
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-gray-700">
+                  Planes {planFiltroAsset ? `de ${assets.find(a => a.id === planFiltroAsset)?.name || ''}` : `(${maintenancePlans?.length || 0})`}
+                </h4>
+                {planFiltroAsset && (
+                  <button onClick={() => setPlanFiltroAsset(null)} className="text-xs text-blue-600 hover:underline">
+                    Ver todos los planes
+                  </button>
+                )}
+              </div>
+
               {(maintenancePlans?.length || 0) === 0 ? (
                 <div className="text-center py-12 bg-gray-50 rounded-lg">
                   <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -1484,7 +1507,7 @@ export default function MantenimientoPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {maintenancePlans?.filter(p => p && p.id).map(plan => (
+                  {maintenancePlans?.filter(p => p && p.id && (!planFiltroAsset || p.assetId === planFiltroAsset)).map(plan => (
                     <div key={plan.id} className="bg-white p-4 rounded-lg border border-gray-200">
                       <div className="flex items-start justify-between mb-3">
                         <div>
@@ -2765,7 +2788,7 @@ export default function MantenimientoPage() {
             </div>
             <div className="p-6 border-t border-gray-200 flex gap-3">
               <button 
-                onClick={() => {
+                onClick={async () => {
                   const title = (document.getElementById('editOrderTitle') as HTMLInputElement)?.value;
                   const description = (document.getElementById('editOrderDescription') as HTMLTextAreaElement)?.value;
                   const status = (document.getElementById('editOrderStatus') as HTMLSelectElement)?.value;
@@ -2776,28 +2799,30 @@ export default function MantenimientoPage() {
                   const estimatedDuration = parseInt((document.getElementById('editOrderDuration') as HTMLInputElement)?.value || '0');
                   const laborCost = parseFloat((document.getElementById('editOrderLaborCost') as HTMLInputElement)?.value || '0');
                   const partsCost = parseFloat((document.getElementById('editOrderPartsCost') as HTMLInputElement)?.value || '0');
-                  
-                  const updatedOrder = {
-                    ...selectedOrder,
-                    title,
-                    description,
-                    status,
-                    priority,
-                    assetId,
-                    technicianId,
-                    scheduledDate: scheduledDate ? new Date(scheduledDate).toISOString() : selectedOrder.scheduledDate,
-                    estimatedDuration,
-                    cost: {
-                      labor: laborCost,
-                      parts: partsCost,
-                      total: laborCost + partsCost
-                    }
-                  };
-                  
-                  setWorkOrders(workOrders.map(o => o.id === selectedOrder.id ? updatedOrder : o));
-                  setShowEditOrderModal(false);
-                  setSelectedOrder(null);
-                  alert('Orden actualizada correctamente');
+
+                  try {
+                    const response = await apiFetch(`/maintenance/work-orders/${selectedOrder.id}`, {
+                      method: 'PUT',
+                      json: {
+                        title,
+                        description,
+                        status,
+                        priority,
+                        assetId: assetId || null,
+                        technicianId: technicianId || null,
+                        scheduledDate: scheduledDate ? new Date(scheduledDate).toISOString() : selectedOrder.scheduledDate,
+                        estimatedDuration,
+                        laborCost,
+                        partsCost,
+                      }
+                    }) as any;
+                    setWorkOrders(workOrders.map(o => o.id === selectedOrder.id ? response.workOrder : o));
+                    setShowEditOrderModal(false);
+                    setSelectedOrder(null);
+                  } catch (error) {
+                    console.error('Error updating work order:', error);
+                    alert('Error al actualizar la orden de trabajo. Los cambios no se guardaron.');
+                  }
                 }}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
