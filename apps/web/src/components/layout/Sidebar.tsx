@@ -79,6 +79,7 @@ const mainNav = [
 
   // 8. Infraestructura
   { label: 'Infraestructura', icon: Package, href: '/infraestructura' },
+  { label: 'Flota 360', icon: Truck, href: '/flota-360' },
 
   // 9. Admin
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
@@ -106,6 +107,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/indicadores': 'BASIC',
   '/cumplimiento': 'PROFESSIONAL',
   '/infraestructura': 'PROFESSIONAL',
+  '/flota-360': 'PROFESSIONAL',
   '/proyectos': 'PROFESSIONAL',
   '/capacitaciones': 'PROFESSIONAL',
   '/clientes': 'PROFESSIONAL',

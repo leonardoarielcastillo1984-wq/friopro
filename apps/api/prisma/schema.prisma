@@ -465,6 +465,11 @@ model Tenant {
   vehiculoHistorialMantenimiento VehiculoHistorialMantenimiento[]
   garantiasVehiculo     GarantiaVehiculo[]
 
+  // Flota 360 — Conjuntos Operativos y Planes por Componente (aditivo, no reemplaza nada de Flota360)
+  conjuntosOperativos       ConjuntoOperativo[]
+  conjuntoOperativoEventos  ConjuntoOperativoEvento[]
+  maintenanceComponentRules MaintenanceComponentRule[]
+
   // Digital Twin Relations
   assetDigitalTwins     AssetDigitalTwin[]
   assetHealthPredictions AssetHealthPrediction[]
@@ -7341,12 +7346,147 @@ model Vehiculo {
   historialMantenimiento VehiculoHistorialMantenimiento[]
   garantias          GarantiaVehiculo[]
 
+  // Flota 360 — Conjuntos Operativos (tractor+semi). Semi = Vehiculo con tipo='SEMI'.
+  conjuntosComoTractor ConjuntoOperativo[] @relation("ConjuntoTractor")
+  conjuntosComoSemi    ConjuntoOperativo[] @relation("ConjuntoSemi")
+
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
   @@index([tenantId])
   @@index([dominio])
   @@map("flota_vehiculos")
+}
+
+// ─────────────────────────────────────────────
+// FLOTA 360 — CONJUNTOS OPERATIVOS (tractor + semi acoplados temporalmente)
+// Aditivo: no modifica Vehiculo, VencimientoDocumento, Neumatico ni ninguna tabla existente.
+// ─────────────────────────────────────────────
+model ConjuntoOperativo {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tractorId String   @db.Uuid
+  tractor   Vehiculo @relation("ConjuntoTractor", fields: [tractorId], references: [id], onDelete: Cascade)
+
+  semiId String   @db.Uuid
+  semi   Vehiculo @relation("ConjuntoSemi", fields: [semiId], references: [id], onDelete: Cascade)
+
+  estado String @default("ACOPLADO") // ACOPLADO, DESACOPLADO
+
+  fechaAcople    DateTime  @default(now())
+  fechaDesacople DateTime?
+  ubicacion      String?
+  viajeId        String?
+  notas          String?
+
+  eventos ConjuntoOperativoEvento[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tractorId])
+  @@index([semiId])
+  @@index([estado])
+  @@map("flota_conjuntos_operativos")
+}
+
+// Historial de acople/desacople de un conjunto operativo
+model ConjuntoOperativoEvento {
+  id         String            @id @default(uuid()) @db.Uuid
+  tenantId   String            @db.Uuid
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conjuntoId String            @db.Uuid
+  conjunto   ConjuntoOperativo @relation(fields: [conjuntoId], references: [id], onDelete: Cascade)
+
+  tipo      String   @default("ACOPLE") // ACOPLE, DESACOPLE
+  fecha     DateTime @default(now())
+  ubicacion String?
+  viajeId   String?
+  notas     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([conjuntoId])
+  @@map("flota_conjunto_eventos")
+}
+
+// ─────────────────────────────────────────────
+// FLOTA 360 — CATÁLOGO DE COMPONENTES Y REGLAS DE SERVICIO ("Planes y frecuencias")
+// Cada regla, al aplicarse a un activo, sincroniza (crea/actualiza) un MaintenancePlan real
+// del motor EXISTENTE de mantenimiento. No duplica lógica de vencimiento ni de OT.
+// Aditivo: no modifica MaintenancePlan, WorkOrder ni ninguna tabla existente.
+// ─────────────────────────────────────────────
+model MaintenanceComponentRule {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nombre    String
+  categoria String  @default("GENERAL") // MOTOR, FRENOS, NEUMATICOS, SUSPENSION, LUBRICACION, DOCUMENTACION, GENERAL
+  tipoActivoAplicable String @default("TODOS") // TRACTOR, CAMION, UTILITARIO, SEMI, CONJUNTO, TODOS
+
+  frecuenciaKm   Float?
+  frecuenciaDias Int?
+  horasMotor     Float?
+  ciclos         Int?
+  condicionObservada Boolean @default(false)
+
+  kmAnticipacion   Float?
+  diasAnticipacion Int?
+
+  criticidad        String @default("MEDIA") // BAJA, MEDIA, ALTA
+  duracionEstimada  Float? // horas
+
+  accionVencimiento String @default("ALERTA") // ALERTA, SUGERENCIA_OT, GENERAR_OT
+
+  checklistPlantillaId String? @db.Uuid // referencia opcional a InspeccionPlantilla existente (sin FK dura para no acoplar módulos)
+
+  isActive Boolean @default(true)
+
+  repuestosRequeridos MaintenanceComponentRuleSparePart[]
+  aplicaciones        MaintenanceComponentRuleAsset[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("maintenance_component_rules")
+}
+
+model MaintenanceComponentRuleSparePart {
+  id     String                   @id @default(uuid()) @db.Uuid
+  ruleId String                   @db.Uuid
+  rule   MaintenanceComponentRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  sparePartId String @db.Uuid
+  cantidad    Int    @default(1)
+
+  @@index([ruleId])
+  @@map("maintenance_component_rule_spare_parts")
+}
+
+// Aplicación de una regla a un activo puntual. Sincroniza un MaintenancePlan del motor existente.
+model MaintenanceComponentRuleAsset {
+  id     String                   @id @default(uuid()) @db.Uuid
+  ruleId String                   @db.Uuid
+  rule   MaintenanceComponentRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  assetId String @db.Uuid // MaintenanceAsset.id (vehículo, semi o cualquier activo)
+
+  generatedPlanId String? @db.Uuid // MaintenancePlan.id sincronizado por esta aplicación
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([ruleId])
+  @@index([assetId])
+  @@unique([ruleId, assetId])
+  @@map("maintenance_component_rule_assets")
 }
 
 model Conductor {

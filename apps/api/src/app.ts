@@ -138,6 +138,7 @@ import { calibrationsRoutes } from './routes/calibrations.js';
 import { hazardsRoutes } from './routes/hazards.js';
 import { aspectsRoutes } from './routes/aspects.js';
 import flotaRoutes from './routes/flota.js';
+import fleetOpsRoutes from './routes/fleet-ops.js';
 import garantiasRoutes from './routes/garantias.js';
 import digitalTwinRoutes from './routes/digital-twin.js';
 import { seh360AuthPlugin } from "./plugins/seh360Auth.js";
@@ -475,6 +476,7 @@ export async function buildApp() {
   await app.register(inspeccionesRoutes, { prefix: '/inspecciones' });
   await app.register(maintenanceInterventionsRoutes, { prefix: '/maintenance-interventions' });
   await app.register(flotaRoutes, { prefix: '/flota' });
+  await app.register(fleetOpsRoutes, { prefix: '/fleet-ops' });
 await app.register(garantiasRoutes, { prefix: '/garantias' });
 await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
   await app.register(registerCompanyRoutes); // Registro de empresas
