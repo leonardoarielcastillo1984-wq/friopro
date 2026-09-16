@@ -3,20 +3,20 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Wrench, Truck, Link2, ClipboardList, CalendarClock,
-  ScanLine, Package, Circle, Fuel, Users, FileWarning, DollarSign, FileBarChart,
+  LayoutDashboard, Wrench, Truck, Container, Link2, CalendarClock,
+  ScanLine, PackageSearch, Disc, Fuel, Users, FileWarning, DollarSign, FileBarChart,
 } from 'lucide-react';
 
 const NAV = [
   { href: '/flota-360', label: 'Centro de trabajo', icon: LayoutDashboard, exact: true },
   { href: '/flota-360/vehiculos', label: 'Vehículos', icon: Truck },
-  { href: '/flota-360/semis', label: 'Semis', icon: Truck },
+  { href: '/flota-360/semis', label: 'Semis', icon: Container },
   { href: '/flota-360/conjuntos', label: 'Conjuntos operativos', icon: Link2 },
   { href: '/flota-360/ordenes', label: 'Órdenes de trabajo', icon: Wrench },
   { href: '/flota-360/planes', label: 'Planes y frecuencias', icon: CalendarClock },
   { href: '/flota-360/inspecciones', label: 'Inspecciones QR', icon: ScanLine },
-  { href: '/flota-360/repuestos', label: 'Repuestos e inventario', icon: Package },
-  { href: '/flota-360/neumaticos', label: 'Neumáticos', icon: Circle },
+  { href: '/flota-360/repuestos', label: 'Repuestos e inventario', icon: PackageSearch },
+  { href: '/flota-360/neumaticos', label: 'Neumáticos', icon: Disc },
   { href: '/flota-360/combustible', label: 'Combustible', icon: Fuel },
   { href: '/flota-360/conductores', label: 'Conductores', icon: Users },
   { href: '/flota-360/documentacion', label: 'Documentación', icon: FileWarning },

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { Plus, X, Truck } from 'lucide-react';
+import { Plus, X, Truck, Container } from 'lucide-react';
 
 type Vehiculo = {
   id: string; dominio: string; tipo: string; marca?: string; modelo?: string; anio?: number;
@@ -96,7 +96,10 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
             {filtrados.map((v) => (
               <tr key={v.id} className="hover:bg-neutral-50">
                 <td className="px-3 py-2 font-medium text-neutral-800 flex items-center gap-2">
-                  <Truck className="h-3.5 w-3.5 text-neutral-400" /> {v.dominio}
+                  {v.tipo === 'SEMI'
+                    ? <Container className="h-3.5 w-3.5 text-neutral-400" />
+                    : <Truck className="h-3.5 w-3.5 text-neutral-400" />}
+                  {v.dominio}
                 </td>
                 <td className="px-3 py-2 text-neutral-600">{v.tipo}</td>
                 <td className="px-3 py-2 text-neutral-600">{[v.marca, v.modelo].filter(Boolean).join(' ') || '—'}</td>

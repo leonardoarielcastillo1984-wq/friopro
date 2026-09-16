@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Circle } from 'lucide-react';
+import { Disc } from 'lucide-react';
 
 type Neumatico = {
   id: string; codigo: string; marca: string | null; medida: string | null; status: string;
@@ -61,7 +61,7 @@ export default function NeumaticosPage() {
             {!loading && neumaticos.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-400">Sin neumáticos registrados</td></tr>}
             {neumaticos.map((n) => (
               <tr key={n.id} className="hover:bg-neutral-50">
-                <td className="px-3 py-2 font-medium text-neutral-800 flex items-center gap-1.5"><Circle className="h-3.5 w-3.5 text-neutral-400" />{n.codigo}</td>
+                <td className="px-3 py-2 font-medium text-neutral-800 flex items-center gap-1.5"><Disc className="h-3.5 w-3.5 text-neutral-400" />{n.codigo}</td>
                 <td className="px-3 py-2 text-neutral-600">{[n.marca, n.medida].filter(Boolean).join(' · ') || '—'}</td>
                 <td className="px-3 py-2 text-neutral-600">{n.condicion}</td>
                 <td className={`px-3 py-2 ${n.profBanda != null && n.profBanda < 3 ? 'text-red-600 font-medium' : 'text-neutral-600'}`}>{n.profBanda != null ? `${n.profBanda} mm` : '—'}</td>

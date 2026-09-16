@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
-import { Link2, Unlink, Plus, X, Truck } from 'lucide-react';
+import { Link2, Unlink, Plus, X, Truck, Container } from 'lucide-react';
 
 type Vehiculo = { id: string; dominio: string; tipo: string; status: string };
 type Conjunto = {
@@ -95,7 +95,7 @@ export default function ConjuntosPage() {
                     <Truck className="h-3.5 w-3.5 text-neutral-400" />{c.tractor.dominio}
                   </Link>
                 </td>
-                <td className="px-3 py-2 text-neutral-700">{c.semi.dominio}</td>
+                <td className="px-3 py-2 text-neutral-700 flex items-center gap-1.5"><Container className="h-3.5 w-3.5 text-neutral-400" />{c.semi.dominio}</td>
                 <td className="px-3 py-2">
                   <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${c.estado === 'ACOPLADO' ? 'bg-blue-50 text-blue-700' : 'bg-neutral-100 text-neutral-600'}`}>
                     <Link2 className="h-3 w-3" /> {c.estado}

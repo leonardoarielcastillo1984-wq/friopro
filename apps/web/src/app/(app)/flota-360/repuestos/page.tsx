@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Package, AlertTriangle } from 'lucide-react';
+import { PackageSearch, AlertTriangle } from 'lucide-react';
 
 type Parte = {
   id: string; code: string; name: string; category: string | null;
@@ -63,7 +63,7 @@ export default function RepuestosPage() {
             {!loading && filtradas.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-neutral-400">Sin repuestos</td></tr>}
             {filtradas.map((p) => (
               <tr key={p.id} className="hover:bg-neutral-50">
-                <td className="px-3 py-2 font-medium text-neutral-800 flex items-center gap-1.5"><Package className="h-3.5 w-3.5 text-neutral-400" />{p.code}</td>
+                <td className="px-3 py-2 font-medium text-neutral-800 flex items-center gap-1.5"><PackageSearch className="h-3.5 w-3.5 text-neutral-400" />{p.code}</td>
                 <td className="px-3 py-2 text-neutral-700">{p.name}</td>
                 <td className="px-3 py-2 text-neutral-600">{p.category || '—'}</td>
                 <td className="px-3 py-2">
