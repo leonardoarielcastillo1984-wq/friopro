@@ -31,6 +31,7 @@ function shouldSkip(req: FastifyRequest) {
   if (url.startsWith('/hr')) return true;
   if (url.startsWith('/clima')) return true; // Clima y Cultura routes
   if (url.startsWith('/inspecciones/public')) return true; // Inspecciones QR públicas (sin auth)
+  if (url.startsWith('/maintenance-interventions/public')) return true; // Intervenciones QR públicas (sin auth)
   if (url.startsWith('/inspecciones/feedback-qr/')) return true; // Feedback QR público (sin auth)
   if (url.startsWith('/portal-accion/public/')) return true; // Portal externo usa token en URL, no cookies
   if (url.startsWith('/inspecciones/feedback/')) return true; // Feedback por token (sin auth)

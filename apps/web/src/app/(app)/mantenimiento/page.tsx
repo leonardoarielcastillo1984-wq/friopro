@@ -7,8 +7,10 @@ import {
   Wrench, Calendar, Users, AlertTriangle, CheckCircle, Clock, TrendingUp,
   Filter, Search, Plus, Eye, Edit, Trash2, FileText, BarChart3, Settings,
   Download, Upload, RefreshCw, Zap, Shield, HardDrive, WrenchIcon, X,
-  ChevronLeft, ChevronRight, Truck, Circle, Fuel, MapPin
+  ChevronLeft, ChevronRight, Truck, Circle, Fuel, MapPin, QrCode
 } from 'lucide-react';
+import IntervencionesQR from './IntervencionesQR';
+import WorkOrderParts from './WorkOrderParts';
 
 // CalendarView Component
 const CalendarView = ({ workOrders, maintenancePlans }: { workOrders: any[], maintenancePlans: any[] }) => {
@@ -536,7 +538,7 @@ export default function MantenimientoPage() {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'plans' | 'technicians' | 'parts' | 'assets' | 'calendar' | 'kpis' | 'flota-dashboard' | 'flota-vehiculos' | 'flota-neumaticos' | 'flota-conductores' | 'flota-vencimientos' | 'flota-combustible'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'plans' | 'technicians' | 'parts' | 'assets' | 'calendar' | 'kpis' | 'intervenciones' | 'flota-dashboard' | 'flota-vehiculos' | 'flota-neumaticos' | 'flota-conductores' | 'flota-vencimientos' | 'flota-combustible'>('orders');
 
   // ── Estado Flota ──────────────────────────────────────────────
   const [flotaVehiculos, setFlotaVehiculos] = useState<any[]>([]);
@@ -1278,6 +1280,7 @@ export default function MantenimientoPage() {
               { id: 'parts', label: 'Repuestos', icon: <HardDrive className="w-3.5 h-3.5" /> },
               { id: 'technicians', label: 'Técnicos', icon: <Users className="w-3.5 h-3.5" /> },
               { id: 'calendar', label: 'Calendario', icon: <Calendar className="w-3.5 h-3.5" /> },
+              { id: 'intervenciones', label: 'Intervenciones QR', icon: <QrCode className="w-3.5 h-3.5" /> },
               { id: 'kpis', label: 'KPIs', icon: <TrendingUp className="w-3.5 h-3.5" /> },
             ] as any[]).map(t => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
@@ -1805,6 +1808,12 @@ export default function MantenimientoPage() {
           {activeTab === 'kpis' && (
             <div className="p-4">
               <AdvancedKPIs workOrders={workOrders} assets={assets} />
+            </div>
+          )}
+
+          {activeTab === 'intervenciones' && (
+            <div className="p-4">
+              <IntervencionesQR assets={assets} />
             </div>
           )}
 
@@ -2601,6 +2610,8 @@ export default function MantenimientoPage() {
                   </div>
                 </div>
               )}
+
+              <WorkOrderParts workOrderId={selectedOrder.id} readOnly={selectedOrder.status === 'COMPLETED' || selectedOrder.status === 'CANCELLED'} />
             </div>
             <div className="p-6 border-t border-gray-200 flex gap-3">
               <button 

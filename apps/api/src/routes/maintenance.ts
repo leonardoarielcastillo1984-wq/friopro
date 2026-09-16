@@ -204,7 +204,36 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       // INTEGRACIÓN OT ↔ FLOTA
       // ═══════════════════════════════════════════════════════════════
       const seCompleto = ordenActual.status !== 'COMPLETED' && updateData.status === 'COMPLETED';
-      
+
+      // Descontar stock de repuestos asignados a la OT
+      if (seCompleto) {
+        try {
+          const repuestos = await (getPrisma(request) as any).workOrderSparePart.findMany({
+            where: { workOrderId: id, tenantId: request.db.tenantId, stockDeducted: false },
+          });
+          if (repuestos.length > 0) {
+            let partsCostTotal = 0;
+            for (const r of repuestos) {
+              await getPrisma(request).maintenanceSparePart.update({
+                where: { id: r.sparePartId },
+                data: { currentStock: { decrement: r.quantity } },
+              });
+              await (getPrisma(request) as any).workOrderSparePart.update({
+                where: { id: r.id },
+                data: { stockDeducted: true },
+              });
+              partsCostTotal += r.quantity * r.unitCost;
+            }
+            // Actualizar partsCost/totalCost de la OT con lo consumido
+            const nuevoPartsCost = (workOrder.partsCost || 0) + partsCostTotal;
+            await getPrisma(request).workOrder.update({
+              where: { id },
+              data: { partsCost: nuevoPartsCost, totalCost: (workOrder.laborCost || 0) + nuevoPartsCost },
+            });
+          }
+        } catch (e: any) { console.error('[maintenance] stock deduction error:', e); }
+      }
+
       if (seCompleto && workOrder.assetId) {
         // Verificar si el asset está vinculado a un vehículo
         const vehiculo = await getPrisma(request).vehiculo.findFirst({
@@ -246,6 +275,85 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       console.error('Error updating work order:', error);
       return reply.code(500).send({ error: 'Error al actualizar la orden de trabajo.' });
     }
+  });
+
+  // GET /maintenance/work-orders/:id/parts - Repuestos asignados a la OT
+  app.get('/work-orders/:id/parts', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.db?.tenantId) {
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    }
+    const { id } = request.params as { id: string };
+    const parts = await (getPrisma(request) as any).workOrderSparePart.findMany({
+      where: { workOrderId: id, tenantId: request.db.tenantId },
+      include: { sparePart: { select: { id: true, code: true, name: true, currentStock: true, unitCost: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    return reply.send({ parts });
+  });
+
+  // POST /maintenance/work-orders/:id/parts - Asignar repuesto a la OT
+  app.post('/work-orders/:id/parts', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.db?.tenantId) {
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    }
+    const { id } = request.params as { id: string };
+    const schema = z.object({
+      sparePartId: z.string().uuid(),
+      quantity: z.number().int().positive().default(1),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Datos inválidos' });
+
+    const ot = await getPrisma(request).workOrder.findFirst({ where: { id, tenantId: request.db.tenantId } });
+    if (!ot) return reply.code(404).send({ error: 'Orden de trabajo no encontrada' });
+    if (ot.status === 'COMPLETED' || ot.status === 'CANCELLED') {
+      return reply.code(400).send({ error: 'No se pueden asignar repuestos a una OT cerrada' });
+    }
+
+    const part = await getPrisma(request).maintenanceSparePart.findFirst({
+      where: { id: parsed.data.sparePartId, tenantId: request.db.tenantId },
+    });
+    if (!part) return reply.code(404).send({ error: 'Repuesto no encontrado' });
+
+    // Si ya está asignado, sumar cantidad
+    const existing = await (getPrisma(request) as any).workOrderSparePart.findFirst({
+      where: { workOrderId: id, sparePartId: part.id, tenantId: request.db.tenantId },
+    });
+    if (existing) {
+      const updated = await (getPrisma(request) as any).workOrderSparePart.update({
+        where: { id: existing.id },
+        data: { quantity: existing.quantity + parsed.data.quantity },
+      });
+      return reply.send({ part: updated });
+    }
+
+    const entry = await (getPrisma(request) as any).workOrderSparePart.create({
+      data: {
+        tenantId: request.db.tenantId,
+        workOrderId: id,
+        sparePartId: part.id,
+        quantity: parsed.data.quantity,
+        unitCost: part.unitCost,
+      },
+    });
+    return reply.code(201).send({ part: entry });
+  });
+
+  // DELETE /maintenance/work-orders/:id/parts/:entryId - Quitar repuesto de la OT
+  app.delete('/work-orders/:id/parts/:entryId', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.db?.tenantId) {
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    }
+    const { entryId } = request.params as { entryId: string };
+    const entry = await (getPrisma(request) as any).workOrderSparePart.findFirst({
+      where: { id: entryId, tenantId: request.db.tenantId },
+    });
+    if (!entry) return reply.code(404).send({ error: 'Repuesto no encontrado en la OT' });
+    if (entry.stockDeducted) {
+      return reply.code(400).send({ error: 'El stock ya fue descontado, no se puede quitar' });
+    }
+    await (getPrisma(request) as any).workOrderSparePart.delete({ where: { id: entryId } });
+    return reply.send({ ok: true });
   });
 
   // DELETE /maintenance/work-orders/:id

@@ -346,6 +346,158 @@ export async function notifyInspeccionOT(
   }
 }
 
+// ── Intervención QR registrada ────────────────────────────────────────────────
+
+export async function notifyIntervencionRegistrada(
+  prisma: PrismaClient,
+  { tenantId, activoNombre, tiposLabel, performedByName, cumplioPreventivo, planTitle, intervencionId }: {
+    tenantId: string; activoNombre: string; tiposLabel: string[]; performedByName: string;
+    cumplioPreventivo: boolean; planTitle?: string | null; intervencionId: string;
+  }
+) {
+  try {
+    const memberships = await (prisma as any).tenantMembership.findMany({
+      where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null, status: 'ACTIVE' },
+      select: { user: { select: { id: true, email: true } } },
+    });
+    const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
+    if (!admins.length) return;
+
+    const link = `${APP_URL}/infraestructura?tab=mantenimiento`;
+    const title = `Intervención registrada: ${activoNombre}`;
+    const tareas = tiposLabel.join(', ');
+    const message =
+      `<strong>${performedByName}</strong> registró una intervención en <strong>${activoNombre}</strong>: ${tareas}.` +
+      (cumplioPreventivo && planTitle
+        ? ` Se marcó como cumplido el preventivo "<strong>${planTitle}</strong>".`
+        : '');
+    const branding = await getCompanyBranding(prisma, tenantId);
+    const color = cumplioPreventivo ? '#16A34A' : '#2563EB';
+
+    for (const admin of admins) {
+      await createNotification(prisma, {
+        tenantId, userId: admin.id, type: 'INTERVENCION_QR',
+        title, message: message.replace(/<[^>]+>/g, ''), link,
+        entityType: 'maintenance_intervention', entityId: intervencionId,
+      });
+      if (admin.email) {
+        const fromName = branding.companyName || 'SGI 360';
+        await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
+          to: admin.email,
+          subject: `${fromName} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver mantenimiento', link, color, branding),
+          text: `${title}\n\nActivo: ${activoNombre}\nTareas: ${tareas}\nRealizada por: ${performedByName}\n\n${link}`,
+        }).catch(e => console.error('[notifyService] Email intervención:', e));
+      }
+    }
+  } catch (e) {
+    console.error('[notifyService] notifyIntervencionRegistrada error:', e);
+  }
+}
+
+// ── Recordatorio de mantenimiento preventivo ──────────────────────────────────
+
+export async function notifyPreventiveReminder(
+  prisma: PrismaClient,
+  { tenantId, planes }: {
+    tenantId: string;
+    planes: Array<{ planId: string; title: string; code: string; assetName?: string | null; estado: 'VENCIDO' | 'PROXIMO'; detalle: string }>;
+  }
+) {
+  try {
+    if (!planes.length) return;
+    const memberships = await (prisma as any).tenantMembership.findMany({
+      where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null, status: 'ACTIVE' },
+      select: { user: { select: { id: true, email: true } } },
+    });
+    const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
+    if (!admins.length) return;
+
+    const link = `${APP_URL}/mantenimiento?tab=plans`;
+    const vencidos = planes.filter(p => p.estado === 'VENCIDO');
+    const title = vencidos.length
+      ? `${vencidos.length} mantenimiento${vencidos.length > 1 ? 's' : ''} preventivo${vencidos.length > 1 ? 's' : ''} vencido${vencidos.length > 1 ? 's' : ''}`
+      : `${planes.length} mantenimiento${planes.length > 1 ? 's' : ''} preventivo${planes.length > 1 ? 's' : ''} próximo${planes.length > 1 ? 's' : ''} a vencer`;
+
+    const items = planes.map(p =>
+      `<li style="margin-bottom:6px;"><strong>${p.title}</strong>${p.assetName ? ` — ${p.assetName}` : ''} <span style="color:${p.estado === 'VENCIDO' ? '#DC2626' : '#D97706'};font-weight:600;">[${p.estado === 'VENCIDO' ? 'Vencido' : 'Próximo'}]</span><br/><span style="color:#6B7280;font-size:12px;">${p.detalle}</span></li>`
+    ).join('');
+    const message = `Los siguientes planes de mantenimiento preventivo requieren atención:<ul style="padding-left:18px;margin:12px 0;">${items}</ul>`;
+
+    const branding = await getCompanyBranding(prisma, tenantId);
+    const color = vencidos.length ? '#DC2626' : '#D97706';
+
+    for (const admin of admins) {
+      await createNotification(prisma, {
+        tenantId, userId: admin.id, type: 'PREVENTIVE_REMINDER',
+        title, message: message.replace(/<[^>]+>/g, ' '), link, entityType: 'maintenance_plan', entityId: planes[0].planId,
+      });
+      if (admin.email) {
+        const fromName = branding.companyName || 'SGI 360';
+        await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
+          to: admin.email,
+          subject: `${fromName} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver planes de mantenimiento', link, color, branding),
+          text: `${title}\n\n${planes.map(p => `- ${p.title}${p.assetName ? ` (${p.assetName})` : ''}: ${p.detalle}`).join('\n')}\n\n${link}`,
+        }).catch(e => console.error('[notifyService] Email preventivo:', e));
+      }
+    }
+  } catch (e) {
+    console.error('[notifyService] notifyPreventiveReminder error:', e);
+  }
+}
+
+// ── Escalado de OTs vencidas ──────────────────────────────────────────────────
+
+export async function notifyOtsEscalated(
+  prisma: PrismaClient,
+  { tenantId, ots }: {
+    tenantId: string;
+    ots: Array<{ otId: string; code: string; title: string; assetName?: string | null; diasVencida: number; nuevaPrioridad: string }>;
+  }
+) {
+  try {
+    if (!ots.length) return;
+    const memberships = await (prisma as any).tenantMembership.findMany({
+      where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null, status: 'ACTIVE' },
+      select: { user: { select: { id: true, email: true } } },
+    });
+    const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
+    if (!admins.length) return;
+
+    const link = `${APP_URL}/mantenimiento?tab=orders`;
+    const title = `${ots.length} orden${ots.length > 1 ? 'es' : ''} de trabajo vencida${ots.length > 1 ? 's' : ''} escalada${ots.length > 1 ? 's' : ''}`;
+    const prioLabel: Record<string, string> = { LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', CRITICAL: 'Crítica' };
+    const items = ots.map(o =>
+      `<li style="margin-bottom:6px;"><strong>${o.code}</strong> — ${o.title}${o.assetName ? ` (${o.assetName})` : ''}<br/><span style="color:#6B7280;font-size:12px;">Vencida hace ${o.diasVencida} día${o.diasVencida !== 1 ? 's' : ''} · prioridad elevada a <strong>${prioLabel[o.nuevaPrioridad] || o.nuevaPrioridad}</strong></span></li>`
+    ).join('');
+    const message = `Las siguientes órdenes de trabajo superaron su fecha programada y fueron escaladas automáticamente:<ul style="padding-left:18px;margin:12px 0;">${items}</ul>`;
+
+    const branding = await getCompanyBranding(prisma, tenantId);
+
+    for (const admin of admins) {
+      await createNotification(prisma, {
+        tenantId, userId: admin.id, type: 'OT_ESCALATED',
+        title, message: message.replace(/<[^>]+>/g, ' '), link, entityType: 'work_order', entityId: ots[0].otId,
+      });
+      if (admin.email) {
+        const fromName = branding.companyName || 'SGI 360';
+        await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
+          to: admin.email,
+          subject: `${fromName} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver órdenes de trabajo', link, '#DC2626', branding),
+          text: `${title}\n\n${ots.map(o => `- ${o.code}: ${o.title} (vencida hace ${o.diasVencida} días)`).join('\n')}\n\n${link}`,
+        }).catch(e => console.error('[notifyService] Email escalado OT:', e));
+      }
+    }
+  } catch (e) {
+    console.error('[notifyService] notifyOtsEscalated error:', e);
+  }
+}
+
 // ── HTML template ─────────────────────────────────────────────────────────────
 
 function buildEmailHtml(

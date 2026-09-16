@@ -410,6 +410,10 @@ model Tenant {
   maintenanceTechnicians   MaintenanceTechnician[]
   maintenancePlans         MaintenancePlan[]
   maintenanceSpareParts    MaintenanceSparePart[]
+  maintenanceInterventionTypes MaintenanceInterventionType[]
+  maintenanceInterventionQRs   MaintenanceInterventionQR[]
+  maintenanceInterventions     MaintenanceIntervention[]
+  workOrderSpareParts      WorkOrderSparePart[]
   workOrders               WorkOrder[]
   maintenanceCosts         MaintenanceCost[]
   actionItems              ActionItem[]
@@ -3329,6 +3333,8 @@ model MaintenanceAsset {
   digitalTwin   AssetDigitalTwin? @relation(name: "AssetToTwin")
   predictions   AssetHealthPrediction[]
   telemetry     AssetTelemetry[]
+  interventionQRs MaintenanceInterventionQR[]
+  interventions   MaintenanceIntervention[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -3387,10 +3393,13 @@ model MaintenancePlan {
   lastExecutionDate DateTime?
   totalExecutions   Int       @default(0)
 
+  lastReminderSentAt DateTime? // throttling de recordatorios por vencimiento
+
   createdAt                 DateTime                   @default(now()) @db.Timestamptz
   updatedAt                 DateTime                   @updatedAt @db.Timestamptz
   equipments                Equipment[]
   maintenancePlanExecutions MaintenancePlanExecution[]
+  interventions             MaintenanceIntervention[]
 
   @@index([tenantId])
   @@index([assetId])
@@ -3418,6 +3427,8 @@ model MaintenanceSparePart {
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
+
+  workOrderUsage WorkOrderSparePart[]
 
   @@index([tenantId])
   @@index([code])
@@ -3473,6 +3484,8 @@ model WorkOrder {
   signatures                Signature[]
   vehiculoHistorial         VehiculoHistorialMantenimiento[]
   healthPredictions         AssetHealthPrediction[]
+  interventions             MaintenanceIntervention[]
+  sparePartsUsed            WorkOrderSparePart[]
 
   @@index([tenantId])
   @@index([assetId])
@@ -3480,6 +3493,31 @@ model WorkOrder {
   @@index([origen])
   @@index([status])
   @@map("work_orders")
+}
+
+// Repuestos asignados a una orden de trabajo (se descuentan del stock al completarla)
+model WorkOrderSparePart {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  workOrderId String    @db.Uuid
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  sparePartId String               @db.Uuid
+  sparePart   MaintenanceSparePart @relation(fields: [sparePartId], references: [id], onDelete: Cascade)
+
+  quantity Int   @default(1)
+  unitCost Float @default(0) // snapshot del costo unitario al asignar
+
+  stockDeducted Boolean @default(false) // true cuando se descontó del stock al completar la OT
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([workOrderId])
+  @@index([sparePartId])
+  @@map("work_order_spare_parts")
 }
 
 model MaintenanceCost {
@@ -3531,6 +3569,101 @@ model VehiculoHistorialMantenimiento {
   @@index([vehiculoId])
   @@index([workOrderId])
   @@map("vehiculo_historial_mantenimiento")
+}
+
+// ─────────────────────────────────────────────
+// REGISTRO DE INTERVENCIONES POR QR (bitácora de mantenimiento)
+// ─────────────────────────────────────────────
+
+// Catálogo configurable de tareas típicas de mantenimiento (cambio de aceite, frenos, etc.)
+model MaintenanceInterventionType {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  category    String  @default("GENERAL") // MOTOR, FRENOS, NEUMATICOS, SUSPENSION, ELECTRICO, FLUIDOS, CARROCERIA, TRANSMISION, GENERAL
+  description String?
+
+  defaultKmInterval   Int? // sugerencia de intervalo preventivo en km
+  defaultDaysInterval Int? // sugerencia de intervalo preventivo en días
+
+  isBuiltIn Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("maintenance_intervention_types")
+}
+
+// QR fijo por activo/vehículo para registrar intervenciones ya realizadas
+model MaintenanceInterventionQR {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  token    String  @unique
+  isActive Boolean @default(true)
+
+  maintenanceAssetId String           @db.Uuid
+  maintenanceAsset   MaintenanceAsset @relation(fields: [maintenanceAssetId], references: [id], onDelete: Cascade)
+
+  activoNombre String
+  activoCodigo String?
+
+  titulo        String?
+  instrucciones String?
+
+  useCount    Int       @default(0)
+  lastUsedAt  DateTime?
+  generatedAt DateTime  @default(now()) @db.Timestamptz
+
+  intervenciones MaintenanceIntervention[]
+
+  @@index([tenantId])
+  @@index([token])
+  @@map("maintenance_intervention_qrs")
+}
+
+// Registro concreto de una intervención realizada (cambio de aceite, arreglo de espejo, etc.)
+model MaintenanceIntervention {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  qrId String?                    @db.Uuid
+  qr   MaintenanceInterventionQR? @relation(fields: [qrId], references: [id], onDelete: SetNull)
+
+  maintenanceAssetId String           @db.Uuid
+  maintenanceAsset   MaintenanceAsset @relation(fields: [maintenanceAssetId], references: [id], onDelete: Cascade)
+
+  tiposLabel  String[] @default([]) // snapshot de nombres de los tipos de intervención seleccionados
+  descripcion String?
+
+  odometro    Float?
+  performedAt DateTime @default(now())
+
+  performedByName  String
+  performedByEmail String?
+  performedByPhone String?
+
+  fotos Json? // [{url}]
+
+  planId            String?          @db.Uuid
+  plan              MaintenancePlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  cumplioPreventivo Boolean          @default(false)
+
+  workOrderId String?    @db.Uuid
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([maintenanceAssetId])
+  @@index([qrId])
+  @@map("maintenance_interventions")
 }
 
 model CompanyRegistration {
@@ -10208,5 +10341,7 @@ model NonConformityAttachment {
   createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([ncrId])
+  @@map("ncr_attachments")
+} @@index([ncrId])
   @@map("ncr_attachments")
 }

@@ -105,6 +105,7 @@ import { registerCustomerRoutes } from './routes/customers.js';
 import { registerSurveyRoutes } from './routes/surveys.js';
 import { climaCulturaRoutes } from './routes/clima-cultura.js';
 import { inspeccionesRoutes } from './routes/inspecciones.js';
+import { maintenanceInterventionsRoutes } from './routes/maintenance-interventions.js';
 import { climaCanalRoutes } from './routes/clima-canal.js';
 import { climaRoutes } from './routes/clima.js';
 import { licenseRoutes } from './routes/license.js';
@@ -126,6 +127,7 @@ import { demoRoutes } from './routes/demo.js';
 import { startNormativeWorker, startAuditWorker, recoverStuckNormatives } from './jobs/queue.js';
 import { startEmailWorker } from './jobs/emailQueue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
+import { startMaintenanceRemindersJob } from './jobs/maintenanceRemindersJob.js';
 import {
   actionsRoutes, stakeholdersRoutes, stakeholderActionRoutes,
   incidentsRoutes,
@@ -308,6 +310,7 @@ export async function buildApp() {
 
   await app.register(prismaPlugin);
   startStorageReconcileJob((app as any).prisma);
+  startMaintenanceRemindersJob((app as any).prisma);
   await app.register(authPlugin);
   await app.register(seh360AuthPlugin);
   await app.register(audit360AuthPlugin);
@@ -470,6 +473,7 @@ export async function buildApp() {
   await app.register(climaCulturaRoutes, { prefix: '/clima' });
   await app.register(climaCanalRoutes, { prefix: '/clima' });
   await app.register(inspeccionesRoutes, { prefix: '/inspecciones' });
+  await app.register(maintenanceInterventionsRoutes, { prefix: '/maintenance-interventions' });
   await app.register(flotaRoutes, { prefix: '/flota' });
 await app.register(garantiasRoutes, { prefix: '/garantias' });
 await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
