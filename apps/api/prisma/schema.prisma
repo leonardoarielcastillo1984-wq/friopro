@@ -2138,6 +2138,7 @@ model CompanySettings {
   // Flota 360 — variables del análisis de reemplazo (gemelo digital)
   // { vidaUtilAnios, depreciacionAnualPct, umbralReemplazarPct, umbralEvaluarPct, tendenciaVigilarPct, acumuladoVigilarPct }
   flotaReemplazoConfig Json?
+  flotaOpsConfig       Json?
 
   // RRHH Configuration (stored as JSON arrays)
   hrPositionCategories Json? // [{id, name, description, level}]

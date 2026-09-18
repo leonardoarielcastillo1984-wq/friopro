@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import XLSX from 'xlsx';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -166,6 +167,312 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     }
 
     return reply.send({ estadoOperativo: vehiculo.estadoOperativo, status: vehiculo.status, historial, ultimoCiclo });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // CONFIG OPERATIVA — alerta de estadía prolongada + presupuesto
+  // mensual. Guardada en CompanySettings.flotaOpsConfig / flotaPresupuestoMensual.
+  // ─────────────────────────────────────────────────────────────
+  const OPS_DEFAULTS = { diasAlertaEstadia: 5 };
+
+  app.get('/config-ops', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const settings = await prisma().companySettings.findUnique({ where: { tenantId }, select: { flotaOpsConfig: true, flotaPresupuestoMensual: true } }).catch(() => null);
+    return reply.send({
+      config: { ...OPS_DEFAULTS, ...((settings?.flotaOpsConfig as any) || {}) },
+      presupuestoMensual: settings?.flotaPresupuestoMensual ?? null,
+    });
+  });
+
+  app.put('/config-ops', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      diasAlertaEstadia: z.number().min(1).max(90).optional(),
+      presupuestoMensual: z.number().min(0).optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const { presupuestoMensual, ...opsCfg } = body.data;
+    const userId = (req as any).auth?.userId ?? null;
+    const settings = await prisma().companySettings.upsert({
+      where: { tenantId },
+      update: {
+        ...(Object.keys(opsCfg).length ? { flotaOpsConfig: opsCfg } : {}),
+        ...(presupuestoMensual !== undefined ? { flotaPresupuestoMensual: presupuestoMensual } : {}),
+        ...(userId ? { updatedById: userId } : {}),
+      },
+      create: {
+        tenantId, companyName: 'Mi Empresa',
+        flotaOpsConfig: opsCfg,
+        flotaPresupuestoMensual: presupuestoMensual ?? null,
+        updatedById: userId ?? tenantId,
+      },
+    });
+    return reply.send({
+      config: { ...OPS_DEFAULTS, ...((settings.flotaOpsConfig as any) || {}) },
+      presupuestoMensual: settings.flotaPresupuestoMensual ?? null,
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // TABLERO DE DISPONIBILIDAD — KPIs de flota, tiempos por estadío
+  // (turnos de 9hs), alertas de estadía prolongada, cumplimiento
+  // preventivo y presupuesto vs. gasto real del mes.
+  // ─────────────────────────────────────────────────────────────
+  async function calcularTiemposPorEstadio(tenantId: string, desde: Date, hasta: Date) {
+    const [vehiculos, eventosPeriodo, eventosPrevios] = await Promise.all([
+      prisma().vehiculo.findMany({
+        where: { tenantId },
+        select: { id: true, dominio: true, tipo: true, estadoOperativo: true, status: true, maintenanceAssetId: true, currentOdometer: true },
+      }),
+      prisma().vehiculoEstadoEvento.findMany({
+        where: { tenantId, createdAt: { gte: desde, lte: hasta } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma().vehiculoEstadoEvento.findMany({
+        where: { tenantId, createdAt: { lt: desde } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    // Estado de cada vehículo al inicio del período (último evento previo)
+    const estadoInicial = new Map<string, string>();
+    for (const e of eventosPrevios) {
+      if (!estadoInicial.has(e.vehiculoId)) estadoInicial.set(e.vehiculoId, e.estado);
+    }
+
+    const eventosPorVeh = new Map<string, any[]>();
+    for (const e of eventosPeriodo) {
+      const arr = eventosPorVeh.get(e.vehiculoId) || [];
+      arr.push(e);
+      eventosPorVeh.set(e.vehiculoId, arr);
+    }
+
+    const desdeMs = desde.getTime();
+    const hastaMs = hasta.getTime();
+
+    const porUnidad = vehiculos.map((v: any) => {
+      const evs = eventosPorVeh.get(v.id) || [];
+      let cursor = desdeMs;
+      let estado = estadoInicial.get(v.id) ?? v.estadoOperativo ?? 'OPERATIVO';
+      let horasOperativo = 0, horasTaller = 0, horasReparacion = 0, ciclos = 0;
+
+      const acumular = (est: string, ms: number) => {
+        const h = Math.max(0, ms) / 3600000;
+        if (est === 'EN_TALLER') horasTaller += h;
+        else if (est === 'EN_REPARACION') horasReparacion += h;
+        else horasOperativo += h;
+      };
+
+      for (const e of evs) {
+        const t = new Date(e.createdAt).getTime();
+        acumular(estado, t - cursor);
+        if (estado === 'OPERATIVO' && e.estado !== 'OPERATIVO') ciclos++;
+        estado = e.estado;
+        cursor = t;
+      }
+      acumular(estado, hastaMs - cursor);
+
+      const horasNoDisp = horasTaller + horasReparacion;
+      return {
+        vehiculoId: v.id,
+        dominio: v.dominio,
+        tipo: v.tipo,
+        estadoActual: v.estadoOperativo ?? 'OPERATIVO',
+        horasOperativo: Math.round(horasOperativo * 10) / 10,
+        horasTaller: Math.round(horasTaller * 10) / 10,
+        horasReparacion: Math.round(horasReparacion * 10) / 10,
+        horasNoDisponible: Math.round(horasNoDisp * 10) / 10,
+        turnosNoDisponible: Math.round((horasNoDisp / HORAS_TURNO) * 10) / 10,
+        turnosReparacion: Math.round((horasReparacion / HORAS_TURNO) * 10) / 10,
+        ciclos,
+      };
+    });
+
+    return { vehiculos, porUnidad, eventosPeriodo };
+  }
+
+  app.get('/disponibilidad', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { dias = '30' } = req.query as any;
+    const diasNum = Math.min(365, Math.max(1, parseInt(dias) || 30));
+    const hasta = new Date();
+    const desde = new Date(hasta.getTime() - diasNum * 86400000);
+
+    const [{ vehiculos, porUnidad }, settings, planes, ruleAssets] = await Promise.all([
+      calcularTiemposPorEstadio(tenantId, desde, hasta),
+      prisma().companySettings.findUnique({ where: { tenantId }, select: { flotaOpsConfig: true, flotaPresupuestoMensual: true } }).catch(() => null),
+      prisma().maintenancePlan.findMany({ where: { tenantId, status: 'ACTIVE', assetId: { not: null } } }),
+      prisma().maintenanceComponentRuleAsset.findMany({
+        where: { rule: { tenantId } },
+        include: { rule: { select: { kmAnticipacion: true, diasAnticipacion: true } } },
+      }),
+    ]);
+
+    const opsCfg = { ...OPS_DEFAULTS, ...((settings?.flotaOpsConfig as any) || {}) };
+
+    // ── KPIs de flota ──
+    const total = vehiculos.length;
+    const enTaller = vehiculos.filter((v: any) => v.estadoOperativo === 'EN_TALLER').length;
+    const enReparacion = vehiculos.filter((v: any) => v.estadoOperativo === 'EN_REPARACION').length;
+    const operativos = total - enTaller - enReparacion;
+
+    // ── Alertas de estadía prolongada ──
+    // Último evento de cada vehículo actualmente no operativo
+    const ultimosEventos = await prisma().vehiculoEstadoEvento.findMany({
+      where: { tenantId, estado: { in: ['EN_TALLER', 'EN_REPARACION'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const ultimoPorVeh = new Map<string, any>();
+    for (const e of ultimosEventos) {
+      if (!ultimoPorVeh.has(e.vehiculoId)) ultimoPorVeh.set(e.vehiculoId, e);
+    }
+    const alertasEstadia = vehiculos
+      .filter((v: any) => v.estadoOperativo === 'EN_TALLER' || v.estadoOperativo === 'EN_REPARACION')
+      .map((v: any) => {
+        const ult = ultimoPorVeh.get(v.id);
+        const desdeEstadia = ult ? new Date(ult.createdAt).getTime() : null;
+        const horas = desdeEstadia ? (Date.now() - desdeEstadia) / 3600000 : null;
+        const diasEstadia = horas != null ? horas / 24 : null;
+        return {
+          vehiculoId: v.id, dominio: v.dominio, tipo: v.tipo,
+          estadoOperativo: v.estadoOperativo,
+          desde: ult?.createdAt ?? null,
+          horas: horas != null ? Math.round(horas * 10) / 10 : null,
+          dias: diasEstadia != null ? Math.round(diasEstadia * 10) / 10 : null,
+          turnos: horas != null ? Math.round((horas / HORAS_TURNO) * 10) / 10 : null,
+          excede: diasEstadia != null && diasEstadia > opsCfg.diasAlertaEstadia,
+        };
+      })
+      .filter((a: any) => a.excede)
+      .sort((a: any, b: any) => (b.dias ?? 0) - (a.dias ?? 0));
+
+    // ── Ranking de estadía (horas no disponible en el período) ──
+    const ranking = [...porUnidad]
+      .sort((a, b) => b.horasNoDisponible - a.horasNoDisponible)
+      .slice(0, 15);
+
+    // ── Cumplimiento preventivo ──
+    const vehByAsset = new Map<string, any>(vehiculos.filter((v: any) => v.maintenanceAssetId).map((v: any) => [v.maintenanceAssetId, v]));
+    const rulePorPlan = new Map<string, any>(ruleAssets.filter((ra: any) => ra.generatedPlanId).map((ra: any) => [ra.generatedPlanId, ra]));
+    const now = Date.now();
+    const cumplPorVeh = new Map<string, { total: number; alDia: number; vencidos: number }>();
+    let flotaTotal = 0, flotaAlDia = 0, flotaVencidos = 0;
+
+    for (const p of planes) {
+      const veh = vehByAsset.get(p.assetId);
+      if (!veh) continue;
+      const esKm = p.frequencyUnit === 'KM' && p.triggerKm;
+      let kmRestantes: number | null = null;
+      if (esKm) {
+        const base = p.lastOdometerExecution ?? veh.currentOdometer ?? 0;
+        kmRestantes = veh.currentOdometer != null ? Math.round(base + p.triggerKm - veh.currentOdometer) : null;
+      }
+      let diasRestantes: number | null = null;
+      if (p.nextExecutionDate) diasRestantes = Math.ceil((new Date(p.nextExecutionDate).getTime() - now) / 86400000);
+      const vencido = (kmRestantes != null && kmRestantes <= 0) || (diasRestantes != null && diasRestantes <= 0);
+
+      const acc = cumplPorVeh.get(veh.id) || { total: 0, alDia: 0, vencidos: 0 };
+      acc.total++;
+      flotaTotal++;
+      if (vencido) { acc.vencidos++; flotaVencidos++; } else { acc.alDia++; flotaAlDia++; }
+      cumplPorVeh.set(veh.id, acc);
+    }
+
+    const cumplimientoPorUnidad = vehiculos
+      .filter((v: any) => cumplPorVeh.has(v.id))
+      .map((v: any) => {
+        const c = cumplPorVeh.get(v.id)!;
+        return { vehiculoId: v.id, dominio: v.dominio, ...c, pct: c.total > 0 ? Math.round((c.alDia / c.total) * 100) : 100 };
+      })
+      .sort((a: any, b: any) => a.pct - b.pct);
+
+    // ── Presupuesto vs. gasto real del mes en curso ──
+    const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
+    const assetIds = vehiculos.map((v: any) => v.maintenanceAssetId).filter(Boolean);
+    const [combMes, otsMes, neumMes] = await Promise.all([
+      prisma().registroCombustible.aggregate({ where: { tenantId, fecha: { gte: inicioMes } }, _sum: { costoTotal: true } }).catch(() => ({ _sum: { costoTotal: 0 } })),
+      assetIds.length
+        ? prisma().workOrder.aggregate({ where: { tenantId, assetId: { in: assetIds }, status: 'COMPLETED', completedAt: { gte: inicioMes } }, _sum: { totalCost: true } }).catch(() => ({ _sum: { totalCost: 0 } }))
+        : { _sum: { totalCost: 0 } },
+      prisma().neumaticoPosicion.findMany({ where: { tenantId, activo: false, desmontadoAt: { gte: inicioMes } }, select: { neumatico: { select: { precioCompra: true } } } }).catch(() => []),
+    ]);
+    const gastoCombustible = combMes._sum.costoTotal || 0;
+    const gastoMantenimiento = otsMes._sum.totalCost || 0;
+    const gastoNeumaticos = neumMes.reduce((a: number, p: any) => a + (p.neumatico?.precioCompra || 0), 0);
+    const gastoMes = gastoCombustible + gastoMantenimiento + gastoNeumaticos;
+    const presupuestoMensual = settings?.flotaPresupuestoMensual ?? null;
+
+    return reply.send({
+      periodo: { desde, hasta, dias: diasNum },
+      flota: {
+        total, operativos, enTaller, enReparacion,
+        pctDisponible: total > 0 ? Math.round((operativos / total) * 1000) / 10 : 100,
+      },
+      alertasEstadia,
+      diasAlertaEstadia: opsCfg.diasAlertaEstadia,
+      rankingEstadia: ranking,
+      cumplimientoPreventivo: {
+        flota: { total: flotaTotal, alDia: flotaAlDia, vencidos: flotaVencidos, pct: flotaTotal > 0 ? Math.round((flotaAlDia / flotaTotal) * 100) : 100 },
+        porUnidad: cumplimientoPorUnidad,
+      },
+      presupuesto: {
+        mensual: presupuestoMensual,
+        gastoMes: Math.round(gastoMes),
+        pct: presupuestoMensual && presupuestoMensual > 0 ? Math.round((gastoMes / presupuestoMensual) * 100) : null,
+        desglose: { combustible: Math.round(gastoCombustible), mantenimiento: Math.round(gastoMantenimiento), neumaticos: Math.round(gastoNeumaticos) },
+      },
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // EXPORT TIEMPOS DE TALLER — xlsx por unidad y período (para dirección)
+  // ─────────────────────────────────────────────────────────────
+  app.get('/tiempos-taller/export', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { dias = '30' } = req.query as any;
+    const diasNum = Math.min(365, Math.max(1, parseInt(dias) || 30));
+    const hasta = new Date();
+    const desde = new Date(hasta.getTime() - diasNum * 86400000);
+
+    const { porUnidad, eventosPeriodo } = await calcularTiemposPorEstadio(tenantId, desde, hasta);
+    const domPorVeh = new Map<string, string>(porUnidad.map((u: any) => [u.vehiculoId, u.dominio]));
+
+    const resumenRows = [...porUnidad]
+      .sort((a, b) => b.horasNoDisponible - a.horasNoDisponible)
+      .map((u) => ({
+        'Dominio': u.dominio,
+        'Tipo': u.tipo,
+        'Estado actual': u.estadoActual === 'EN_TALLER' ? 'En taller' : u.estadoActual === 'EN_REPARACION' ? 'En reparación' : 'Operativo',
+        'Horas en taller': u.horasTaller,
+        'Horas en reparación': u.horasReparacion,
+        'Horas no disponible': u.horasNoDisponible,
+        'Turnos no disponible (9hs)': u.turnosNoDisponible,
+        'Turnos reparación (9hs)': u.turnosReparacion,
+        'Ingresos a taller': u.ciclos,
+      }));
+
+    const eventosRows = eventosPeriodo.map((e: any) => ({
+      'Dominio': domPorVeh.get(e.vehiculoId) || e.vehiculoId,
+      'Estado': e.estado === 'EN_TALLER' ? 'En taller' : e.estado === 'EN_REPARACION' ? 'En reparación' : 'Operativo',
+      'Desde': new Date(e.createdAt).toLocaleString('es-AR'),
+      'Origen': e.origen === 'QR_MECANICO' ? 'QR Mecánico' : 'Sistema',
+      'Registrado por': e.createdByName || '',
+      'Notas': e.notas || '',
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenRows), 'RESUMEN');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(eventosRows), 'EVENTOS');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    reply.header('Content-Disposition', `attachment; filename=tiempos-taller-${diasNum}d.xlsx`);
+    return reply.send(buf);
   });
 
   // ─────────────────────────────────────────────────────────────

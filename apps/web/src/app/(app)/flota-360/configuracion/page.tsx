@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { Settings, Users, PackageSearch, ScanLine, ArrowRight, Database, CheckCircle2, TrendingUp } from 'lucide-react';
+import { Settings, Users, PackageSearch, ScanLine, ArrowRight, Database, CheckCircle2, TrendingUp, Activity } from 'lucide-react';
 
 const REEMPLAZO_CAMPOS: { key: string; label: string; ayuda: string; suffix: string }[] = [
   { key: 'vidaUtilAnios', label: 'Vida útil de referencia', ayuda: 'Años para prorratear el costo de una unidad nueva', suffix: 'años' },
@@ -42,6 +42,9 @@ export default function ConfiguracionFlotaPage() {
   const [reemplazo, setReemplazo] = useState<Record<string, string>>({});
   const [reemplazoSaving, setReemplazoSaving] = useState(false);
   const [reemplazoMsg, setReemplazoMsg] = useState<string | null>(null);
+  const [ops, setOps] = useState<{ diasAlertaEstadia: string; presupuestoMensual: string }>({ diasAlertaEstadia: '', presupuestoMensual: '' });
+  const [opsSaving, setOpsSaving] = useState(false);
+  const [opsMsg, setOpsMsg] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<{ config: Record<string, number> }>('/fleet-ops/config-reemplazo')
@@ -51,7 +54,32 @@ export default function ConfiguracionFlotaPage() {
         setReemplazo(cfg);
       })
       .catch(() => {});
+    apiFetch<{ config: { diasAlertaEstadia?: number }; presupuestoMensual: number | null }>('/fleet-ops/config-ops')
+      .then((res) => {
+        setOps({
+          diasAlertaEstadia: res.config?.diasAlertaEstadia != null ? String(res.config.diasAlertaEstadia) : '',
+          presupuestoMensual: res.presupuestoMensual != null ? String(res.presupuestoMensual) : '',
+        });
+      })
+      .catch(() => {});
   }, []);
+
+  const guardarOps = async () => {
+    setOpsSaving(true);
+    setOpsMsg(null);
+    try {
+      const body: Record<string, number | null> = {};
+      if (ops.diasAlertaEstadia !== '') body.diasAlertaEstadia = Number(ops.diasAlertaEstadia);
+      if (ops.presupuestoMensual !== '') body.presupuestoMensual = Number(ops.presupuestoMensual);
+      else body.presupuestoMensual = null;
+      await apiFetch('/fleet-ops/config-ops', { method: 'PUT', json: body });
+      setOpsMsg('Configuración guardada.');
+    } catch (e: any) {
+      setOpsMsg(e?.message || 'No se pudo guardar');
+    } finally {
+      setOpsSaving(false);
+    }
+  };
 
   const guardarReemplazo = async () => {
     setReemplazoSaving(true);
@@ -117,6 +145,49 @@ export default function ConfiguracionFlotaPage() {
             </Link>
           );
         })}
+      </div>
+
+      {/* Operación y disponibilidad */}
+      <div className="rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Activity className="h-4 w-4 text-blue-600" />
+          <h2 className="text-sm font-semibold text-neutral-800">Operación y disponibilidad</h2>
+        </div>
+        <p className="text-xs text-neutral-500 mb-4">
+          Parámetros del tablero de disponibilidad: alertas de estadía prolongada y presupuesto mensual de la flota.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Alerta de estadía prolongada <span className="text-neutral-400">(días)</span></label>
+            <input
+              type="number"
+              value={ops.diasAlertaEstadia}
+              onChange={(e) => setOps({ ...ops, diasAlertaEstadia: e.target.value })}
+              className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm"
+            />
+            <p className="text-[11px] text-neutral-400 mt-0.5">Avisar cuando una unidad supera estos días en taller sin volver a operativo</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Presupuesto mensual de flota <span className="text-neutral-400">($)</span></label>
+            <input
+              type="number"
+              value={ops.presupuestoMensual}
+              onChange={(e) => setOps({ ...ops, presupuestoMensual: e.target.value })}
+              className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm"
+            />
+            <p className="text-[11px] text-neutral-400 mt-0.5">Se compara contra el gasto real del mes (combustible + mantenimiento + neumáticos)</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={guardarOps}
+            disabled={opsSaving}
+            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {opsSaving ? 'Guardando…' : 'Guardar configuración'}
+          </button>
+          {opsMsg && <p className="text-xs text-neutral-600">{opsMsg}</p>}
+        </div>
       </div>
 
       {/* Variables del análisis de reemplazo */}

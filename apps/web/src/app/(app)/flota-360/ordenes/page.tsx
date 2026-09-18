@@ -41,6 +41,22 @@ function fmtFecha(d: string | null | undefined) {
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// Sugerir cambio de estadío operativo de la unidad (con confirmación, nunca forzado)
+const ESTADO_OP_LABEL: Record<string, string> = { OPERATIVO: 'Operativo', EN_TALLER: 'En taller', EN_REPARACION: 'En reparación' };
+async function sugerirEstado(vehiculo: any, estadoSugerido: string, workOrderId?: string | null) {
+  if (!vehiculo?.id) return;
+  const actual = vehiculo.estadoOperativo ?? 'OPERATIVO';
+  if (actual === estadoSugerido) return;
+  if (!window.confirm(`¿Marcar la unidad ${vehiculo.dominio} como "${ESTADO_OP_LABEL[estadoSugerido]}"?`)) return;
+  try {
+    await apiFetch(`/fleet-ops/vehiculos/${vehiculo.id}/estado`, {
+      method: 'POST',
+      json: { estado: estadoSugerido, workOrderId: workOrderId || undefined },
+    });
+    vehiculo.estadoOperativo = estadoSugerido;
+  } catch { /* el cambio de estadío es opcional */ }
+}
+
 export default function OrdenesPage() {
   return (
     <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Cargando…</div>}>
@@ -157,6 +173,11 @@ function OrdenesPageInner() {
             notas: factura.notas || undefined,
           },
         }).catch(() => {});
+      }
+
+      // OT creada → sugerir pasar la unidad a En taller (si está operativa)
+      if (veh && (veh.estadoOperativo ?? 'OPERATIVO') === 'OPERATIVO') {
+        await sugerirEstado(veh, 'EN_TALLER', workOrderId);
       }
 
       setShowModal(false);
@@ -405,6 +426,15 @@ function DetalleOT({ orden, tecnicos, vehiculo, onClose, onChanged }: {
     setError(null);
     try {
       await apiFetch(`/maintenance/work-orders/${orden.id}`, { method: 'PUT', json: data });
+      // Sugerir cambio de estadío según la transición de la OT
+      if (vehiculo?.id) {
+        const actual = vehiculo.estadoOperativo ?? 'OPERATIVO';
+        if (data.status === 'IN_PROGRESS' && actual !== 'EN_REPARACION') {
+          await sugerirEstado(vehiculo, 'EN_REPARACION', orden.id);
+        } else if (data.status === 'COMPLETED' && actual !== 'OPERATIVO') {
+          await sugerirEstado(vehiculo, 'OPERATIVO', orden.id);
+        }
+      }
       onChanged();
       onClose();
     } catch (e: any) {
