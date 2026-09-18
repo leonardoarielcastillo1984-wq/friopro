@@ -17,6 +17,65 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
   const prisma = () => app.prisma as any;
 
   // ─────────────────────────────────────────────────────────────
+  // SYNC AUTOMÁTICO REGLA→GRUPO: aplica cada regla activa a todos los
+  // vehículos de su tipoActivoAplicable que aún no la tengan aplicada
+  // (incluye vehículos dados de alta después). Crea el MaintenancePlan
+  // real por vehículo, igual que POST /component-rules/:id/aplicar.
+  // Segura ante llamadas concurrentes: la aplicación se crea primero y
+  // tiene constraint único (ruleId, assetId) — un duplicado concurrente
+  // falla antes de crear el plan.
+  // ─────────────────────────────────────────────────────────────
+  async function syncReglasConFlota(tenantId: string) {
+    const [reglas, vehiculos, aplicaciones] = await Promise.all([
+      prisma().maintenanceComponentRule.findMany({ where: { tenantId, isActive: true } }),
+      prisma().vehiculo.findMany({ where: { tenantId, maintenanceAssetId: { not: null } }, select: { id: true, tipo: true, maintenanceAssetId: true } }),
+      prisma().maintenanceComponentRuleAsset.findMany({ where: { rule: { tenantId } }, select: { ruleId: true, assetId: true } }),
+    ]);
+    if (reglas.length === 0 || vehiculos.length === 0) return;
+
+    const aplicados = new Set(aplicaciones.map((a: any) => `${a.ruleId}:${a.assetId}`));
+    const assetIds = [...new Set(vehiculos.map((v: any) => v.maintenanceAssetId))];
+    const assets = await prisma().maintenanceAsset.findMany({ where: { id: { in: assetIds as string[] }, tenantId }, select: { id: true, code: true } });
+    const assetCode = new Map<string, string>(assets.map((a: any) => [a.id, a.code]));
+
+    for (const rule of reglas) {
+      const targets = vehiculos.filter((v: any) =>
+        (rule.tipoActivoAplicable === 'TODOS' || v.tipo === rule.tipoActivoAplicable) &&
+        !aplicados.has(`${rule.id}:${v.maintenanceAssetId}`)
+      );
+      for (const v of targets) {
+        try {
+          const code = assetCode.get(v.maintenanceAssetId);
+          if (!code) continue;
+          // Primero la aplicación (constraint único ruleId+assetId frena duplicados concurrentes)
+          const aplicacion = await prisma().maintenanceComponentRuleAsset.create({
+            data: { ruleId: rule.id, assetId: v.maintenanceAssetId, isActive: true },
+          });
+          const plan = await prisma().maintenancePlan.create({
+            data: {
+              tenantId,
+              code: `CR-${rule.id.slice(0, 6)}-${code}`.toUpperCase(),
+              title: rule.nombre,
+              description: `Generado automáticamente desde catálogo de componentes (Flota 360): ${rule.nombre}`,
+              type: 'PREVENTIVE', status: 'ACTIVE', assetId: v.maintenanceAssetId,
+              frequencyValue: rule.frecuenciaDias || 30,
+              frequencyUnit: rule.frecuenciaKm ? 'KM' : 'DAYS',
+              triggerKm: rule.frecuenciaKm || null,
+            },
+          });
+          await prisma().maintenanceComponentRuleAsset.update({
+            where: { id: aplicacion.id },
+            data: { generatedPlanId: plan.id },
+          });
+          aplicados.add(`${rule.id}:${v.maintenanceAssetId}`);
+        } catch {
+          // Duplicado concurrente o dato inválido: se reintenta en la próxima carga
+        }
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // CENTRO DE TRABAJO — vista operacional del día (solo lectura, agrega datos existentes)
   // ─────────────────────────────────────────────────────────────
   app.get('/centro-de-trabajo', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -561,6 +620,9 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { tipo, estado, vehiculoId } = req.query as any;
 
+    // Auto-aplicar reglas a los vehículos de su grupo (tipoActivoAplicable)
+    try { await syncReglasConFlota(tenantId); } catch (e: any) { req.log?.warn({ err: e?.message }, '[fleet-ops] syncReglasConFlota falló'); }
+
     const [plans, vehiculos, ruleAssets, tecnicos] = await Promise.all([
       prisma().maintenancePlan.findMany({
         where: { tenantId, assetId: { not: null } },
@@ -637,6 +699,9 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { tipo, soloAlertas } = req.query as any;
+
+    // Auto-aplicar reglas a los vehículos de su grupo antes de evaluar alertas
+    try { await syncReglasConFlota(tenantId); } catch (e: any) { req.log?.warn({ err: e?.message }, '[fleet-ops] syncReglasConFlota falló'); }
 
     const [plans, vehiculos, ruleAssets] = await Promise.all([
       prisma().maintenancePlan.findMany({

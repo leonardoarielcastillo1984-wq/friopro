@@ -594,7 +594,7 @@ export default function PlanesFrecuenciasClient() {
                       ))}
                     </td>
                     <td className="px-2.5 py-2 text-right whitespace-nowrap">
-                      <button onClick={() => setApplyRule(r)} className="inline-flex items-center gap-1 text-blue-600 hover:underline mr-2"><Zap className="h-3 w-3" /> Aplicar a activos</button>
+                      <button onClick={() => { setApplyRule(r); setApplyAssetVehs(vehiculos.filter((v) => v.maintenanceAssetId && (r.tipoActivoAplicable === 'TODOS' || v.tipo === r.tipoActivoAplicable)).map((v) => v.id)); }} className="inline-flex items-center gap-1 text-blue-600 hover:underline mr-2"><Zap className="h-3 w-3" /> Aplicar a activos</button>
                       <button onClick={() => abrirEditar(r)} className="inline-flex items-center gap-1 text-neutral-500 hover:underline mr-2"><Pencil className="h-3 w-3" /> Editar</button>
                       <button onClick={() => eliminarRegla(r)} className="inline-flex items-center gap-1 text-red-500 hover:underline"><Trash2 className="h-3 w-3" /> Eliminar</button>
                     </td>
