@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import type { Risk } from '@/lib/types';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import {
   ArrowLeft, Shield, Edit3, Trash2, AlertCircle, AlertTriangle,
   Target, TrendingDown, Calendar, User, Plus, Check, X, Loader2, Pencil,
@@ -80,6 +81,7 @@ export default function RiskDetailPage() {
     controls: '',
     residualProb: 1,
     residualImpact: 1,
+    responsible: '',
   });
 
   const [newActionDesc, setNewActionDesc] = useState('');
@@ -112,6 +114,7 @@ export default function RiskDetailPage() {
         controls: res.risk.controls || '',
         residualProb: res.risk.residualProb || 1,
         residualImpact: res.risk.residualImpact || 1,
+        responsible: (res.risk as any).responsible || '',
       });
     } catch (err: any) {
       setError(err?.message ?? 'Error al cargar riesgo');
@@ -288,7 +291,7 @@ export default function RiskDetailPage() {
             <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-neutral-400">
               {risk.standard && <span className="flex items-center gap-1"><Shield className="h-3 w-3" /> {risk.standard}</span>}
               <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(risk.createdAt).toLocaleDateString('es-AR')}</span>
-              {risk.owner && <span className="flex items-center gap-1"><User className="h-3 w-3" /> {risk.owner.email}</span>}
+              {(risk.owner || (risk as any).responsible) && <span className="flex items-center gap-1"><User className="h-3 w-3" /> {risk.owner?.email || (risk as any).responsible}</span>}
             </div>
           </div>
         </div>
@@ -385,6 +388,15 @@ export default function RiskDetailPage() {
               <select className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
                 {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Responsable</label>
+              <EmployeeCombobox
+                value={editForm.responsible || ''}
+                onChange={(id) => setEditForm({ ...editForm, responsible: id })}
+                placeholder="Buscar responsable..."
+                allowFreeText
+              />
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-neutral-700 mb-1">Norma relacionada</label>
