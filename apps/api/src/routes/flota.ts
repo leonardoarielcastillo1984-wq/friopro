@@ -170,7 +170,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
 
     // ── Datos operativos adicionales (aditivos): última inspección QR, próximo servicio planificado, costo/km ──
     const esSemi = vehiculo.tipo === 'SEMI';
-    const [ultimaInspeccion, planesActivos, costos6m, kmRecorridos6m] = await Promise.all([
+    const [ultimaInspeccion, planesActivos, costos6m, kmRecorridos6m, historialOTs] = await Promise.all([
       (app.prisma as any).inspeccion.findFirst({
         where: {
           tenantId,
@@ -210,6 +210,15 @@ export default async function flotaRoutes(app: FastifyInstance) {
         }
         return null;
       })().catch(() => null),
+      // Historial de OTs completadas (24m) para el análisis de reemplazo
+      (async () => {
+        if (!vehiculo.maintenanceAssetId) return [];
+        const hace24m = new Date(); hace24m.setMonth(hace24m.getMonth() - 24);
+        return (app.prisma as any).workOrder.findMany({
+          where: { tenantId, assetId: vehiculo.maintenanceAssetId, status: 'COMPLETED', completedAt: { gte: hace24m } },
+          select: { completedAt: true, totalCost: true, type: true },
+        });
+      })().catch(() => []),
     ]);
 
     // Próximo servicio planificado real (de MaintenancePlan, no inventado)
@@ -234,6 +243,91 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const diasEnTaller = vehiculo.status === 'EN_TALLER'
       ? Math.max(0, Math.floor((now.getTime() - new Date(vehiculo.updatedAt).getTime()) / 86400000))
       : null;
+
+    // ── ANÁLISIS DE REEMPLAZO (económico, determinístico) ──
+    // Historial de costos 24m → tendencia + proyección 12m (regresión lineal).
+    // Regla: si el mantenimiento proyectado supera el costo anual de capital de
+    // una unidad nueva (valorAdquisicion / 10 años), conviene reemplazar.
+    const reemplazo = (() => {
+      const edadAnios = vehiculo.anio ? now.getFullYear() - vehiculo.anio : null;
+      const MESES = 24;
+      const buckets = new Array<number>(MESES).fill(0);
+      for (const wo of historialOTs) {
+        if (!wo.completedAt) continue;
+        const m = Math.floor((now.getTime() - new Date(wo.completedAt).getTime()) / (30.44 * 86400000));
+        if (m >= 0 && m < MESES) buckets[MESES - 1 - m] += wo.totalCost || 0;
+      }
+      const costoAcumulado = historialOTs.reduce((a: number, w: any) => a + (w.totalCost || 0), 0);
+      const ultimos6 = buckets.slice(-6).reduce((a, b) => a + b, 0);
+      const previos6 = buckets.slice(-12, -6).reduce((a, b) => a + b, 0);
+      const tendenciaPct = previos6 > 0 ? Math.round(((ultimos6 - previos6) / previos6) * 100) : (ultimos6 > 0 ? 100 : 0);
+      const costoAnualUltimos12m = buckets.slice(-12).reduce((a, b) => a + b, 0);
+
+      // Regresión lineal sobre buckets mensuales → proyección próximos 12 meses
+      const n = MESES;
+      const sumX = (n * (n - 1)) / 2;
+      const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+      const sumY = buckets.reduce((a, b) => a + b, 0);
+      const sumXY = buckets.reduce((a, y, x) => a + x * y, 0);
+      const denom = n * sumX2 - sumX * sumX;
+      const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+      const intercept = (sumY - slope * sumX) / n;
+      let proyeccion12m = 0;
+      for (let x = n; x < n + 12; x++) proyeccion12m += Math.max(0, intercept + slope * x);
+
+      const valorResidual = vehiculo.valorAdquisicion && edadAnios != null
+        ? Math.round(vehiculo.valorAdquisicion * Math.pow(0.9, edadAnios))
+        : null;
+      const costoCapitalAnualNueva = vehiculo.valorAdquisicion ? vehiculo.valorAdquisicion / 10 : null;
+      const ratioProyVsCapital = costoCapitalAnualNueva ? proyeccion12m / costoCapitalAnualNueva : null;
+      const ratioAcumVsAdq = vehiculo.valorAdquisicion ? costoAcumulado / vehiculo.valorAdquisicion : null;
+
+      const motivos: string[] = [];
+      let recomendacion = 'MANTENER';
+      if (ratioProyVsCapital != null && ratioProyVsCapital >= 1) {
+        recomendacion = 'REEMPLAZAR';
+        motivos.push(`El mantenimiento proyectado a 12 meses ($${Math.round(proyeccion12m).toLocaleString('es-AR')}) supera el costo anual de una unidad nueva`);
+      } else if (ratioProyVsCapital != null && ratioProyVsCapital >= 0.6) {
+        recomendacion = 'EVALUAR_REEMPLAZO';
+        motivos.push(`El mantenimiento proyectado equivale al ${Math.round(ratioProyVsCapital * 100)}% del costo anual de una unidad nueva`);
+      } else if (tendenciaPct > 50) {
+        recomendacion = 'VIGILAR';
+        motivos.push(`El costo de mantenimiento creció ${tendenciaPct}% respecto al semestre anterior`);
+      }
+      if (ratioAcumVsAdq != null && ratioAcumVsAdq >= 0.7) {
+        if (recomendacion === 'MANTENER') recomendacion = 'VIGILAR';
+        motivos.push(`El gasto acumulado en reparaciones equivale al ${Math.round(ratioAcumVsAdq * 100)}% del valor de adquisición`);
+      }
+      if (edadAnios != null && edadAnios >= 10) motivos.push(`Unidad con ${edadAnios} años de antigüedad`);
+      if (historialOTs.length < 3) motivos.push('Poco historial de costos — la recomendación mejora con más datos');
+      if (vehiculo.valorAdquisicion == null) motivos.push('Sin valor de adquisición cargado — la comparación económica es limitada');
+
+      // Meses estimados hasta que el costo mensual proyectado cruce el umbral
+      let mesesEstimados: number | null = null;
+      if (costoCapitalAnualNueva && slope > 0) {
+        const umbralMensual = costoCapitalAnualNueva / 12;
+        for (let x = n; x < n + 120; x++) {
+          if (Math.max(0, intercept + slope * x) >= umbralMensual) { mesesEstimados = x - n + 1; break; }
+        }
+      }
+      const kmMes = kmRecorridos6m && kmRecorridos6m > 0 ? kmRecorridos6m / 6 : null;
+      const kmEstimados = mesesEstimados != null && kmMes ? Math.round(km + mesesEstimados * kmMes) : null;
+
+      return {
+        recomendacion, motivos,
+        edadAnios, kmActual: km,
+        costoAcumulado: Math.round(costoAcumulado),
+        costoAnualUltimos12m: Math.round(costoAnualUltimos12m),
+        tendenciaPct,
+        proyeccion12m: Math.round(proyeccion12m),
+        valorResidual,
+        costoCapitalAnualNueva: costoCapitalAnualNueva ? Math.round(costoCapitalAnualNueva) : null,
+        ratioProyVsCapital: ratioProyVsCapital != null ? Math.round(ratioProyVsCapital * 100) / 100 : null,
+        mesesEstimadosReemplazo: mesesEstimados,
+        kmEstimadosReemplazo: kmEstimados,
+        kmPorMes: kmMes ? Math.round(kmMes) : null,
+      };
+    })();
 
     // Componentes específicos de semi: sin motor/combustible propio; agrega suspensión, ejes y acople
     // derivados de hallazgos QR recientes y estado de neumáticos (sin inventar métricas).
@@ -283,6 +377,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
         costos6m: Math.round(costos6m),
         diasEnTaller,
         otAbiertas: workOrders.filter((wo: any) => !['COMPLETED','CANCELLED'].includes(wo.status)).length,
+        reemplazo,
         calculadoEn: now.toISOString(),
       }
     });

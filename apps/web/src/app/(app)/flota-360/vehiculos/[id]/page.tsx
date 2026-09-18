@@ -261,6 +261,64 @@ export default function VehiculoFichaPage() {
         </section>
       </div>
 
+      {/* Análisis de reemplazo — evaluación económica del desgaste */}
+      {twinData?.reemplazo && (() => {
+        const r = twinData.reemplazo;
+        const REC: Record<string, { label: string; cls: string; bar: string }> = {
+          MANTENER: { label: 'Mantener unidad', cls: 'bg-green-100 text-green-700', bar: 'border-green-200 bg-green-50/40' },
+          VIGILAR: { label: 'Vigilar costos', cls: 'bg-amber-100 text-amber-700', bar: 'border-amber-200 bg-amber-50/40' },
+          EVALUAR_REEMPLAZO: { label: 'Evaluar reemplazo', cls: 'bg-orange-100 text-orange-700', bar: 'border-orange-200 bg-orange-50/40' },
+          REEMPLAZAR: { label: 'Reemplazo recomendado', cls: 'bg-red-100 text-red-700', bar: 'border-red-200 bg-red-50/40' },
+        };
+        const rec = REC[r.recomendacion] || REC.MANTENER;
+        return (
+          <div className={`rounded-lg border p-4 ${rec.bar}`}>
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-blue-600" />
+                <h3 className="text-sm font-semibold text-neutral-800">Análisis de reemplazo</h3>
+              </div>
+              <span className={`text-[11px] font-semibold rounded-full px-2.5 py-1 ${rec.cls}`}>{rec.label}</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+              <div>
+                <p className="text-[11px] text-neutral-500 uppercase font-medium">Costo últimos 12m</p>
+                <p className="text-lg font-bold text-neutral-900">${(r.costoAnualUltimos12m ?? 0).toLocaleString('es-AR')}</p>
+                {r.tendenciaPct != null && r.tendenciaPct !== 0 && (
+                  <p className={`text-[11px] ${r.tendenciaPct > 0 ? 'text-red-600' : 'text-green-600'}`}>{r.tendenciaPct > 0 ? '+' : ''}{r.tendenciaPct}% vs semestre anterior</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] text-neutral-500 uppercase font-medium">Proyección 12m</p>
+                <p className="text-lg font-bold text-neutral-900">${(r.proyeccion12m ?? 0).toLocaleString('es-AR')}</p>
+                {r.ratioProyVsCapital != null && <p className="text-[11px] text-neutral-400">{Math.round(r.ratioProyVsCapital * 100)}% del costo anual de una unidad nueva</p>}
+              </div>
+              <div>
+                <p className="text-[11px] text-neutral-500 uppercase font-medium">Acumulado reparaciones</p>
+                <p className="text-lg font-bold text-neutral-900">${(r.costoAcumulado ?? 0).toLocaleString('es-AR')}</p>
+                {r.valorResidual != null && <p className="text-[11px] text-neutral-400">Valor residual est. ${r.valorResidual.toLocaleString('es-AR')}</p>}
+              </div>
+              <div>
+                <p className="text-[11px] text-neutral-500 uppercase font-medium">Reemplazo estimado</p>
+                <p className="text-lg font-bold text-neutral-900">
+                  {r.mesesEstimadosReemplazo != null ? `~${r.mesesEstimadosReemplazo} meses` : 'Sin fecha límite'}
+                </p>
+                {r.kmEstimadosReemplazo != null && <p className="text-[11px] text-neutral-400">≈ {r.kmEstimadosReemplazo.toLocaleString('es-AR')} km</p>}
+              </div>
+            </div>
+            {r.motivos?.length > 0 && (
+              <ul className="space-y-1">
+                {r.motivos.map((m: string, i: number) => (
+                  <li key={i} className="flex items-start gap-1.5 text-xs text-neutral-600">
+                    <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0 text-amber-500" /> {m}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Detalle complementario de indicadores */}
       {Object.keys(componentes).length > 0 && (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
