@@ -1281,21 +1281,42 @@ INSTRUCCIONES:
       const tenantId = await getEffectiveTenantId(req, app.prisma);
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
-      const actions = await app.runWithDbContext(req, async (tx) => {
+      const result = await app.runWithDbContext(req, async (tx) => {
         const finding = await tx.auditFinding.findFirst({
           where: { id: req.params.id, tenantId, deletedAt: null },
-          select: { id: true },
+          select: { id: true, ncrId: true },
         });
         if (!finding) return null;
 
-        return tx.auditFindingAction.findMany({
-          where: { findingId: req.params.id },
-          orderBy: { createdAt: 'desc' },
-        });
+        const [actions, linkedPlans] = await Promise.all([
+          tx.auditFindingAction.findMany({
+            where: { findingId: req.params.id },
+            orderBy: { createdAt: 'desc' },
+          }),
+          // Planes de acción cargados en /calidad vinculados a la NC del hallazgo
+          finding.ncrId
+            ? tx.actionPlan.findMany({
+                where: { tenantId, ncrId: finding.ncrId, deletedAt: null },
+                select: {
+                  id: true, code: true, status: true, type: true,
+                  findingDescription: true, immediateCorrection: true,
+                  rootCauseAnalysis: true, validatedRootCause: true,
+                  plannedAction: true, expectedResult: true, preventiveAction: true,
+                  plannedEndDate: true, actualEndDate: true, closedAt: true,
+                  progressPercent: true, effectiveness: true,
+                  executorNameText: true,
+                  executor: { select: { name: true } },
+                },
+                orderBy: { openedAt: 'desc' },
+              }).catch(() => [])
+            : Promise.resolve([]),
+        ]);
+
+        return { actions, linkedPlans };
       });
 
-      if (!actions) return reply.code(404).send({ error: 'Finding not found' });
-      return reply.send({ actions });
+      if (!result) return reply.code(404).send({ error: 'Finding not found' });
+      return reply.send(result);
     },
   );
 

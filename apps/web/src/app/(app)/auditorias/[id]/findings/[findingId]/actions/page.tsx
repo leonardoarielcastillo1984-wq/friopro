@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ChevronLeft, Plus, Save, CheckCircle, Clock, X } from 'lucide-react';
+import { ChevronLeft, Plus, Save, CheckCircle, Clock, X, ClipboardList, ExternalLink } from 'lucide-react';
 
 type Action = {
   id: string;
@@ -28,6 +28,39 @@ type Finding = {
   status: string;
 };
 
+type LinkedPlan = {
+  id: string;
+  code: string | null;
+  status: string;
+  type: string;
+  findingDescription: string | null;
+  immediateCorrection: string | null;
+  rootCauseAnalysis: string | null;
+  validatedRootCause: string | null;
+  plannedAction: string | null;
+  expectedResult: string | null;
+  preventiveAction: string | null;
+  plannedEndDate: string | null;
+  actualEndDate: string | null;
+  closedAt: string | null;
+  progressPercent: number;
+  effectiveness: string;
+  executorNameText: string | null;
+  executor: { name: string } | null;
+};
+
+const PLAN_STATUS: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: 'Borrador', color: 'bg-gray-100 text-gray-700' },
+  OPEN: { label: 'Abierto', color: 'bg-yellow-100 text-yellow-800' },
+  IN_PROGRESS: { label: 'En progreso', color: 'bg-blue-100 text-blue-800' },
+  PENDING_EVIDENCE: { label: 'Pend. evidencia', color: 'bg-amber-100 text-amber-800' },
+  PENDING_EFFECTIVENESS: { label: 'Pend. eficacia', color: 'bg-purple-100 text-purple-800' },
+  CLOSED: { label: 'Cerrado', color: 'bg-green-100 text-green-800' },
+  EFFECTIVE: { label: 'Eficaz', color: 'bg-green-100 text-green-800' },
+  NOT_EFFECTIVE: { label: 'No eficaz', color: 'bg-red-100 text-red-800' },
+  CANCELLED: { label: 'Cancelado', color: 'bg-gray-100 text-gray-500' },
+};
+
 const ACTION_TYPES = [
   { value: 'CORRECTIVE', label: 'Correctiva' },
   { value: 'PREVENTIVE', label: 'Preventiva' },
@@ -48,6 +81,7 @@ export default function ActionsPage() {
 
   const [finding, setFinding] = useState<Finding | null>(null);
   const [actions, setActions] = useState<Action[]>([]);
+  const [linkedPlans, setLinkedPlans] = useState<LinkedPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -73,11 +107,12 @@ export default function ActionsPage() {
       setError(null);
       const [findingRes, actionsRes] = await Promise.all([
         apiFetch(`/audit/iso-findings/${findingId}`) as Promise<{ finding: Finding }>,
-        apiFetch(`/audit/iso-findings/${findingId}/actions`) as Promise<{ actions: Action[] }>,
+        apiFetch(`/audit/iso-findings/${findingId}/actions`) as Promise<{ actions: Action[]; linkedPlans?: LinkedPlan[] }>,
       ]);
 
       if (findingRes.finding) setFinding(findingRes.finding);
       if (actionsRes.actions) setActions(actionsRes.actions);
+      if (actionsRes.linkedPlans) setLinkedPlans(actionsRes.linkedPlans);
     } catch (err) {
       console.error('Error loading actions:', err);
       setError(err instanceof Error ? err.message : 'Error loading actions');
@@ -189,6 +224,72 @@ export default function ActionsPage() {
           Nueva Acción
         </button>
       </div>
+
+      {/* Planes de acción vinculados (cargados en /calidad vía la NC del hallazgo) */}
+      {linkedPlans.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-blue-200">
+          <div className="px-6 py-4 border-b border-blue-100 flex items-center gap-2">
+            <ClipboardList className="w-5 h-5 text-blue-600" />
+            <h2 className="text-lg font-semibold text-gray-900">
+              Plan de acción ({linkedPlans.length})
+            </h2>
+            <span className="text-xs text-gray-400">cargado en Calidad · vinculado a la NC de este hallazgo</span>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {linkedPlans.map((p) => {
+              const st = PLAN_STATUS[p.status] || { label: p.status, color: 'bg-gray-100 text-gray-700' };
+              return (
+                <div key={p.id} className="p-6">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 text-xs rounded-full ${st.color}`}>{st.label}</span>
+                      {p.code && <span className="text-sm font-medium text-gray-700">{p.code}</span>}
+                      <span className="text-sm text-gray-500">{p.progressPercent}% avance</span>
+                    </div>
+                    <Link href="/calidad" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800">
+                      Ver en Calidad <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    {p.immediateCorrection && (
+                      <p className="text-gray-700"><strong className="text-gray-900">Corrección inmediata:</strong> {p.immediateCorrection}</p>
+                    )}
+                    {(p.validatedRootCause || p.rootCauseAnalysis) && (
+                      <p className="text-gray-700"><strong className="text-gray-900">Causa raíz:</strong> {p.validatedRootCause || p.rootCauseAnalysis}</p>
+                    )}
+                    {p.plannedAction && (
+                      <p className="text-gray-700"><strong className="text-gray-900">Acción planificada:</strong> {p.plannedAction}</p>
+                    )}
+                    {p.expectedResult && (
+                      <p className="text-gray-700"><strong className="text-gray-900">Resultado esperado:</strong> {p.expectedResult}</p>
+                    )}
+                    {p.preventiveAction && (
+                      <p className="text-gray-700"><strong className="text-gray-900">Acción preventiva:</strong> {p.preventiveAction}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-sm text-gray-500 mt-3">
+                    {(p.executor?.name || p.executorNameText) && (
+                      <span><strong>Responsable:</strong> {p.executor?.name || p.executorNameText}</span>
+                    )}
+                    {p.plannedEndDate && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        <strong>Fin planificado:</strong> {new Date(p.plannedEndDate).toLocaleDateString()}
+                      </span>
+                    )}
+                    {p.closedAt && (
+                      <span className="flex items-center gap-1">
+                        <CheckCircle className="w-4 h-4" />
+                        <strong>Cerrado:</strong> {new Date(p.closedAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Actions List */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
