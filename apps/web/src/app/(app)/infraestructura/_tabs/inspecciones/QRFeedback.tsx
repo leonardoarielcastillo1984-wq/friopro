@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Plus, Trash2, QrCode, ExternalLink, Printer, Star, Truck, AlertTriangle } from 'lucide-react';
 
-export default function QRFeedback() {
+export default function QRFeedback({ assetScope = 'infra' }: { assetScope?: 'infra' | 'fleet' }) {
   const [qrs, setQrs] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,9 +19,10 @@ export default function QRFeedback() {
         apiFetch('/maintenance/assets') as any,
       ]);
       setQrs(q.qrs || []);
-      setAssets(a.assets || []);
+      // fleet → solo vehículos; infra → solo equipamiento (sin vehículos de flota)
+      setAssets((a.assets || []).filter((x: any) => assetScope === 'fleet' ? x.category === 'VEHICLE' : x.category !== 'VEHICLE'));
     } finally { setLoading(false); }
-  }, []);
+  }, [assetScope]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -10,7 +10,7 @@ import InspeccionesContent from './_tabs/InspeccionesContent';
 const TABS = [
   { key: 'mantenimiento', label: 'Mantenimiento', icon: Settings },
   { key: 'calibraciones', label: 'Calibraciones', icon: Ruler },
-  { key: 'inspecciones', label: 'Inspecciones Inteligentes', icon: ScanLine },
+  { key: 'inspecciones', label: 'Inspecciones QR', icon: ScanLine },
 ];
 
 export default function InfraestructuraPage() {
@@ -19,7 +19,7 @@ export default function InfraestructuraPage() {
       <div className="space-y-2">
         <div>
           <h1 className="text-2xl font-semibold text-neutral-900">Infraestructura <PageTitleHelp moduleHref="/infraestructura" /></h1>
-          <p className="mt-1 text-sm text-neutral-500">Mantenimiento de equipos, calibraciones, activos e inspecciones inteligentes — ISO §7.1</p>
+          <p className="mt-1 text-sm text-neutral-500">Mantenimiento de equipos, calibraciones y activos — ISO §7.1</p>
         </div>
         <PageTabs tabs={TABS}>
           {(active) => (

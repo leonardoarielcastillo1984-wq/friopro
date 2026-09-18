@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Upload, Building2, Palette, FileText, Save, ImageIcon, X } from 'lucide-react';
+import { Upload, Building2, Palette, FileText, Save, ImageIcon, X, Download, Archive } from 'lucide-react';
 
 type CompanySettings = {
   companyName: string;
@@ -27,8 +27,43 @@ export default function CompanySettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloadingBackup, setDownloadingBackup] = useState(false);
   const [previewLogo, setPreviewLogo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function downloadBackup() {
+    try {
+      setDownloadingBackup(true);
+      const token = localStorage.getItem('accessToken');
+      const tenantId = localStorage.getItem('tenantId');
+      const res = await fetch('/api/company/document-backup', {
+        headers: {
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
+        },
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        alert(d?.error || 'No se pudo generar el backup');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="?([^";]+)"?/)?.[1] || 'backup-documental.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading backup:', err);
+      alert('Error al descargar el backup');
+    } finally {
+      setDownloadingBackup(false);
+    }
+  }
 
   useEffect(() => {
     loadSettings();
@@ -391,6 +426,35 @@ export default function CompanySettingsPage() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Backup documental */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <Archive className="w-5 h-5" />
+            Backup documental
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Descargá todos los documentos cargados por la empresa en un único ZIP, organizado en carpetas por módulo (SGI, Flota 360, Calidad, Mantenimiento, Minutas, Proyectos, Clima, Clientes, RRHH).
+          </p>
+          <button
+            type="button"
+            onClick={downloadBackup}
+            disabled={downloadingBackup}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+          >
+            {downloadingBackup ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                Generando ZIP…
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                Descargar backup documental
+              </>
+            )}
+          </button>
         </div>
 
         {/* Save Button */}

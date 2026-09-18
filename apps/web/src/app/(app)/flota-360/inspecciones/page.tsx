@@ -1,80 +1,78 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { ScanLine, ExternalLink } from 'lucide-react';
+import { LayoutDashboard, ListChecks, ClipboardCheck, ScanLine, AlertTriangle, Bell, Star, BarChart2, Wrench, QrCode } from 'lucide-react';
+import InspeccionesDashboard from '@/app/(app)/infraestructura/_tabs/inspecciones/Dashboard';
+import InspeccionesPlantillas from '@/app/(app)/infraestructura/_tabs/inspecciones/Plantillas';
+import InspeccionesLista from '@/app/(app)/infraestructura/_tabs/inspecciones/Lista';
+import InspeccionesQRs from '@/app/(app)/infraestructura/_tabs/inspecciones/QRs';
+import InspeccionesHallazgos from '@/app/(app)/infraestructura/_tabs/inspecciones/Hallazgos';
+import InspeccionesOTs from '@/app/(app)/infraestructura/_tabs/inspecciones/OTs';
+import AlertasConfig from '@/app/(app)/infraestructura/_tabs/inspecciones/AlertasConfig';
+import QRFeedback from '@/app/(app)/infraestructura/_tabs/inspecciones/QRFeedback';
+import FeedbackStats from '@/app/(app)/infraestructura/_tabs/inspecciones/FeedbackStats';
+import IntervencionesQR from '@/app/(app)/mantenimiento/IntervencionesQR';
 
-type Inspeccion = {
-  id: string; activoNombre: string; dominioTractor: string | null; dominioSemi: string | null;
-  estado: string; puntaje: number | null; hallazgosCount: number; createdAt: string;
-  qr?: { plantilla?: { nombre: string; categoria: string } };
-};
+const TABS = [
+  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { key: 'inspecciones', label: 'Inspecciones', icon: ClipboardCheck },
+  { key: 'plantillas', label: 'Plantillas', icon: ListChecks },
+  { key: 'qrs', label: 'QR Operativos', icon: ScanLine },
+  { key: 'intervenciones', label: 'Intervenciones QR', icon: QrCode },
+  { key: 'hallazgos', label: 'Hallazgos', icon: AlertTriangle },
+  { key: 'ots', label: 'OTs de inspección', icon: Wrench },
+  { key: 'feedback-qrs', label: 'QR Feedback', icon: Star },
+  { key: 'satisfaccion', label: 'Satisfacción', icon: BarChart2 },
+  { key: 'alertas', label: 'Alertas', icon: Bell },
+] as const;
 
-const ESTADO_COLOR: Record<string, string> = {
-  COMPLETA: 'bg-green-50 text-green-700', CON_HALLAZGOS: 'bg-amber-50 text-amber-700',
-  CRITICA: 'bg-red-50 text-red-700', INCOMPLETA: 'bg-neutral-100 text-neutral-600',
-};
+type TabKey = typeof TABS[number]['key'];
 
-export default function InspeccionesQRPage() {
-  const [inspecciones, setInspecciones] = useState<Inspeccion[]>([]);
-  const [loading, setLoading] = useState(true);
+/**
+ * Inspecciones Inteligentes embebidas en Flota 360.
+ * Reutiliza los mismos componentes de Infraestructura (misma API /inspecciones,
+ * mismos datos por tenant) — la gestión de transporte vive acá.
+ */
+export default function InspeccionesPage() {
+  const [tab, setTab] = useState<TabKey>('dashboard');
+  const [assets, setAssets] = useState<any[]>([]);
 
+  // Los activos solo se necesitan para Intervenciones QR — carga lazy
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await apiFetch<{ inspecciones: Inspeccion[] }>('/inspecciones?limit=50');
-        setInspecciones(res.inspecciones || []);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    if (tab === 'intervenciones' && assets.length === 0) {
+      apiFetch<{ assets: any[] }>('/maintenance/assets')
+        .then((r) => setAssets((r.assets || []).filter((a: any) => a.category === 'VEHICLE')))
+        .catch(() => {});
+    }
+  }, [tab, assets.length]);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-neutral-900">Inspecciones QR</h1>
-          <p className="text-sm text-neutral-500">Datos del sistema de Inspecciones Inteligentes existente — flujo, tokens y checklists intactos</p>
-        </div>
-        <Link href="/infraestructura?tab=inspecciones" className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
-          <ExternalLink className="h-4 w-4" /> Gestionar plantillas y QRs
-        </Link>
+      <div>
+        <h1 className="text-xl font-semibold text-neutral-900">Inspecciones Inteligentes</h1>
+        <p className="text-sm text-neutral-500">Checklists QR de la flota — plantillas, QRs operativos, hallazgos y OTs generadas</p>
       </div>
 
-      <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
-            <tr>
-              <th className="text-left font-medium px-3 py-2">Fecha</th>
-              <th className="text-left font-medium px-3 py-2">Activo / Dominio</th>
-              <th className="text-left font-medium px-3 py-2">Plantilla</th>
-              <th className="text-left font-medium px-3 py-2">Estado</th>
-              <th className="text-left font-medium px-3 py-2">Hallazgos</th>
-              <th className="text-left font-medium px-3 py-2">Puntaje</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-100">
-            {loading && <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-400">Cargando…</td></tr>}
-            {!loading && inspecciones.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-400">Sin inspecciones registradas</td></tr>}
-            {inspecciones.map((i) => (
-              <tr key={i.id} className="hover:bg-neutral-50">
-                <td className="px-3 py-2 text-neutral-600">{new Date(i.createdAt).toLocaleDateString('es-AR')}</td>
-                <td className="px-3 py-2 text-neutral-800 font-medium flex items-center gap-1.5">
-                  <ScanLine className="h-3.5 w-3.5 text-neutral-400" />
-                  {i.activoNombre}{i.dominioTractor ? ` · ${i.dominioTractor}` : ''}{i.dominioSemi ? ` + ${i.dominioSemi}` : ''}
-                </td>
-                <td className="px-3 py-2 text-neutral-600">{i.qr?.plantilla?.nombre || '—'}</td>
-                <td className="px-3 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${ESTADO_COLOR[i.estado] || 'bg-neutral-100'}`}>{i.estado}</span></td>
-                <td className="px-3 py-2 text-neutral-600">{i.hallazgosCount}</td>
-                <td className="px-3 py-2 text-neutral-600">{i.puntaje != null ? `${Math.round(i.puntaje)}%` : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="flex gap-1 bg-neutral-100 p-1 rounded-xl flex-wrap">
+        {TABS.map(({ key, label, icon: Icon }) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${tab === key ? 'bg-white shadow text-neutral-900' : 'text-neutral-500 hover:text-neutral-700'}`}>
+            <Icon className="w-3.5 h-3.5" />{label}
+          </button>
+        ))}
       </div>
+
+      {tab === 'dashboard' && <InspeccionesDashboard />}
+      {tab === 'inspecciones' && <InspeccionesLista />}
+      {tab === 'plantillas' && <InspeccionesPlantillas />}
+      {tab === 'qrs' && <InspeccionesQRs assetScope="fleet" />}
+      {tab === 'intervenciones' && <IntervencionesQR assets={assets} />}
+      {tab === 'hallazgos' && <InspeccionesHallazgos />}
+      {tab === 'ots' && <InspeccionesOTs />}
+      {tab === 'feedback-qrs' && <QRFeedback assetScope="fleet" />}
+      {tab === 'satisfaccion' && <FeedbackStats />}
+      {tab === 'alertas' && <AlertasConfig />}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Plus, Trash2, X, QrCode, ExternalLink, Printer, Link2, Link2Off, Pencil } from 'lucide-react';
 
-export default function InspeccionesQRs() {
+export default function InspeccionesQRs({ assetScope = 'infra' }: { assetScope?: 'infra' | 'fleet' }) {
   const [qrs, setQrs] = useState<any[]>([]);
   const [plantillas, setPlantillas] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
@@ -19,9 +19,11 @@ export default function InspeccionesQRs() {
     setLoading(true);
     try {
       const [q, p, a] = await Promise.all([apiFetch('/inspecciones/qrs') as any, apiFetch('/inspecciones/plantillas') as any, apiFetch('/maintenance/assets') as any]);
-      setQrs(q.qrs || []); setPlantillas(p.plantillas || []); setAssets(a.assets || []);
+      setQrs(q.qrs || []); setPlantillas(p.plantillas || []);
+      // fleet → solo vehículos; infra → solo equipamiento (sin vehículos de flota)
+      setAssets((a.assets || []).filter((x: any) => assetScope === 'fleet' ? x.category === 'VEHICLE' : x.category !== 'VEHICLE'));
     } finally { setLoading(false); }
-  }, []);
+  }, [assetScope]);
 
   useEffect(() => { load(); }, [load]);
 

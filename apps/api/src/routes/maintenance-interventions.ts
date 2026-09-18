@@ -8,6 +8,13 @@ const generateToken = () => crypto.randomBytes(20).toString('hex');
 
 // ── Catálogo built-in de tareas típicas de mantenimiento vehicular ────────────
 const BUILT_IN_TYPES: Array<{ name: string; category: string; km?: number; days?: number }> = [
+  // Emergencias en ruta (reportadas por el conductor vía QR) — generan OT urgente automática
+  { name: 'Auxilio mecánico en ruta', category: 'EMERGENCIA' },
+  { name: 'Grúa / remolque solicitado', category: 'EMERGENCIA' },
+  { name: 'Carga de aceite / fluido en ruta', category: 'EMERGENCIA' },
+  { name: 'Pinchadura / cambio de rueda en ruta', category: 'EMERGENCIA' },
+  { name: 'Falla eléctrica en ruta', category: 'EMERGENCIA' },
+  { name: 'Otro imprevisto en ruta', category: 'EMERGENCIA' },
   { name: 'Cambio de aceite y filtro', category: 'MOTOR', km: 10000 },
   { name: 'Cambio de filtro de aire', category: 'MOTOR', km: 20000 },
   { name: 'Cambio de filtro de combustible', category: 'MOTOR', km: 20000 },
@@ -40,10 +47,13 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
 
-    // Auto-seed del catálogo built-in la primera vez
-    if (types.length === 0) {
+    // Seed idempotente del catálogo built-in: agrega los que falten por nombre
+    // (cubre tenants nuevos y tenants existentes cuando se suman tipos nuevos)
+    const existentes = new Set(types.map((t: any) => t.name));
+    const faltantes = BUILT_IN_TYPES.filter(t => !existentes.has(t.name));
+    if (faltantes.length > 0) {
       await (app.prisma as any).maintenanceInterventionType.createMany({
-        data: BUILT_IN_TYPES.map(t => ({
+        data: faltantes.map(t => ({
           tenantId,
           name: t.name,
           category: t.category,
@@ -389,7 +399,7 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
     // Resolver nombres de tipos seleccionados (snapshot)
     const tiposSel = await (app.prisma as any).maintenanceInterventionType.findMany({
       where: { id: { in: body.data.tipoIds }, tenantId: qr.tenantId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, category: true },
     });
     const tiposLabel = tiposSel.map((t: any) => t.name);
     if (tiposLabel.length === 0) return reply.code(400).send({ error: 'Tipos de intervención inválidos' });
@@ -516,6 +526,36 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       }
     } catch (e: any) { console.error('[intervenciones] vehiculo historial error:', e); }
 
+    // Emergencia en ruta: si algún tipo seleccionado es EMERGENCIA, generar OT urgente automática
+    let otEmergencia: any = null;
+    if (tiposSel.some((t: any) => t.category === 'EMERGENCIA')) {
+      try {
+        otEmergencia = await (app.prisma as any).workOrder.create({
+          data: {
+            tenantId: qr.tenantId,
+            code: `OT-${Date.now().toString().slice(-6)}`,
+            title: `EMERGENCIA EN RUTA — ${tiposLabel.join(' + ')}`,
+            description: [
+              `Reportado por ${body.data.performedByName} vía QR en ruta.`,
+              body.data.performedByPhone ? `Tel: ${body.data.performedByPhone}` : null,
+              km ? `Odómetro: ${Math.round(km).toLocaleString('es-AR')} km` : null,
+              body.data.descripcion ? `Detalle: ${body.data.descripcion}` : null,
+            ].filter(Boolean).join('\n'),
+            type: 'EMERGENCY',
+            priority: 'CRITICAL',
+            status: 'PENDING',
+            assetId: asset.id,
+            origen: 'EMERGENCIA_RUTA',
+            scheduledDate: new Date(),
+          },
+        });
+        await (app.prisma as any).maintenanceIntervention.update({
+          where: { id: intervencion.id },
+          data: { workOrderId: otEmergencia.id },
+        });
+      } catch (e: any) { console.error('[intervenciones] OT emergencia error:', e); }
+    }
+
     // Notificar a admins
     notifyIntervencionRegistrada(app.prisma, {
       tenantId: qr.tenantId,
@@ -532,6 +572,7 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       intervencionId: intervencion.id,
       cumplioPreventivo: !!plan,
       planTitle: plan?.title ?? null,
+      otEmergencia: otEmergencia?.code ?? null,
       repuestosCosto,
       mensaje: plan
         ? `Intervención registrada. Se marcó como cumplido el preventivo "${plan.title}".`

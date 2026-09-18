@@ -605,31 +605,35 @@ export default function EmployeesPage() {
     }
   };
 
+  // Lista de módulos — debe coincidir con las keys del sidebar (href sin '/').
+  // El sidebar verifica perms[moduleKey] con moduleKey = href.replace(/^\//, '').
   const modules = [
     { key: 'dashboard', label: 'Inicio', icon: '🏠' },
     { key: 'command-center', label: 'Command Center', icon: '🧠' },
-    { key: 'calendario', label: 'Calendario', icon: '📅' },
-    { key: 'project360', label: 'Proyectos', icon: '📊' },
-    { key: 'contexto-sgi', label: 'Contexto del SGI', icon: '🧭' },
-    { key: 'objetivos', label: 'Objetivos SGI', icon: '🎯' },
-    { key: 'objetivos-politicas', label: 'Políticas SGI', icon: '📜' },
+    { key: 'auditoria-readiness', label: 'Preparación de Auditoría', icon: '🗂️' },
+    { key: 'documents', label: 'Documentos', icon: '📄' },
     { key: 'rrhh', label: 'RRHH', icon: '👥' },
     { key: 'capacitaciones', label: 'Capacitaciones', icon: '🎓' },
     { key: 'clientes', label: 'Clientes', icon: '🎧' },
     { key: 'proveedores', label: 'Proveedores', icon: '🚚' },
-    { key: 'cumplimiento', label: 'Cumplimiento', icon: '📚' },
-    { key: 'documents', label: 'Documentos', icon: '📄' },
-    { key: 'seguridad', label: 'Seguridad & Ambiente', icon: '🛡️' },
-    { key: 'indicadores', label: 'Indicadores', icon: '📈' },
-    { key: 'calidad', label: 'Calidad / Mejora', icon: '✅' },
+    { key: 'cumplimiento', label: 'Normativos', icon: '📚' },
+    { key: 'contexto-sgi', label: 'Contexto del SGI', icon: '🧭' },
+    { key: 'objetivos', label: 'Objetivos SGI', icon: '🎯' },
+    { key: 'objetivos/politicas', label: 'Políticas SGI', icon: '📜' },
+    { key: 'calidad', label: 'No Conformidades y Plan de acción', icon: '✅' },
     { key: 'auditoria', label: 'Auditorías', icon: '🤖' },
     { key: 'revision-direccion', label: 'Revisión por la Dirección', icon: '📋' },
+    { key: 'seguridad', label: 'Seguridad & Ambiente', icon: '🛡️' },
+    { key: 'indicadores', label: 'Indicadores', icon: '📈' },
+    { key: 'proyectos', label: 'Proyectos', icon: '📊' },
+    { key: 'calendario', label: 'Calendario', icon: '📅' },
     { key: 'infraestructura', label: 'Infraestructura', icon: '📦' },
+    { key: 'flota-360', label: 'Flota 360', icon: '🚛' },
     { key: 'reportes', label: 'Reportes', icon: '📊' },
     { key: 'modo-de-uso', label: 'Centro de Ayuda', icon: '❓' },
     { key: 'notificaciones', label: 'Notificaciones', icon: '🔔' },
     { key: 'configuracion', label: 'Configuración', icon: '⚙️' },
-    { key: 'configuracion-empresa', label: 'Configuración de la empresa', icon: '🏢' },
+    { key: 'configuracion/empresa', label: 'Configuración de la empresa', icon: '🏢' },
   ];
 
   const handleCreatePosition = async (event: React.FormEvent<HTMLFormElement>) => {

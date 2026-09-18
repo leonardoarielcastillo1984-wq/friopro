@@ -78,19 +78,47 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     return (request as any).db?.prisma || app.prisma;
   };
 
+  // ── Separación Flota360 vs Infraestructura ─────────────────────────────
+  // Una OT es "de flota" cuando su assetId es el maintenanceAssetId de un
+  // Vehiculo, o cuando el asset tiene category='VEHICLE'. El resto es infra.
+  const getFleetAssetIds = async (request: FastifyRequest): Promise<string[]> => {
+    const tenantId = request.db?.tenantId;
+    if (!tenantId) return [];
+    const rows = await getPrisma(request).vehiculo.findMany({
+      where: { tenantId, maintenanceAssetId: { not: null } },
+      select: { maintenanceAssetId: true },
+    }).catch(() => []);
+    return rows.map((r: any) => r.maintenanceAssetId).filter(Boolean);
+  };
+
+  // Filtro Prisma que matchea OTs de flota
+  const fleetWhere = (vehAssetIds: string[]) => ({
+    OR: [
+      { assetId: { in: vehAssetIds } },
+      { asset: { category: 'VEHICLE' } },
+    ],
+  });
+
   // GET /maintenance/work-orders - Listar órdenes de trabajo
   app.get('/work-orders', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
-    const { status, type, priority, technician } = request.query as any;
-    
+    const { status, type, priority, technician, scope } = request.query as any;
+
     const where: any = { tenantId: request.db.tenantId };
     if (status) where.status = status;
     if (type) where.type = type;
     if (priority) where.priority = priority;
     if (technician) where.technicianId = technician;
+
+    // scope=fleet → solo OTs de vehículos; scope=infra → excluye OTs de vehículos
+    if (scope === 'fleet' || scope === 'infra') {
+      const vehAssetIds = await getFleetAssetIds(request);
+      const fleet = fleetWhere(vehAssetIds);
+      where.AND = [...(where.AND || []), scope === 'fleet' ? fleet : { NOT: fleet }];
+    }
 
     const workOrders = await getPrisma(request).workOrder.findMany({
       where,
@@ -307,9 +335,9 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
       }
 
       if (seCompleto && workOrder.assetId) {
-        // Verificar si el asset está vinculado a un vehículo
+        // Verificar si el asset está vinculado a un vehículo (assetId = maintenanceAssetId)
         const vehiculo = await getPrisma(request).vehiculo.findFirst({
-          where: { id: workOrder.assetId, tenantId: request.db.tenantId },
+          where: { maintenanceAssetId: workOrder.assetId, tenantId: request.db.tenantId },
         });
         
         if (vehiculo) {
@@ -340,6 +368,35 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
             }
           });
         }
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // AUTO-ESTADO DEL VEHÍCULO SEGÚN CICLO DE LA OT
+      // ═══════════════════════════════════════════════════════════════
+      if (workOrder.assetId && updateData.status && updateData.status !== ordenActual.status) {
+        try {
+          const veh = await getPrisma(request).vehiculo.findFirst({
+            where: { maintenanceAssetId: workOrder.assetId, tenantId: request.db.tenantId },
+            select: { id: true, status: true },
+          });
+          if (veh) {
+            if (updateData.status === 'IN_PROGRESS' && veh.status === 'ACTIVO') {
+              await getPrisma(request).vehiculo.update({ where: { id: veh.id }, data: { status: 'EN_TALLER' } });
+            } else if ((updateData.status === 'COMPLETED' || updateData.status === 'CANCELLED') && veh.status === 'EN_TALLER') {
+              const abiertas = await getPrisma(request).workOrder.count({
+                where: {
+                  tenantId: request.db.tenantId,
+                  assetId: workOrder.assetId,
+                  status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] },
+                  id: { not: id },
+                },
+              });
+              if (abiertas === 0) {
+                await getPrisma(request).vehiculo.update({ where: { id: veh.id }, data: { status: 'ACTIVO' } });
+              }
+            }
+          }
+        } catch (e: any) { console.error('[maintenance] auto-estado vehiculo error:', e); }
       }
 
       return reply.send({ workOrder });
@@ -1062,6 +1119,10 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
 
     const tenantId = request.db.tenantId;
 
+    // Las OTs de flota no cuentan en las stats de infraestructura
+    const vehAssetIds = await getFleetAssetIds(request);
+    const noFlota = { NOT: fleetWhere(vehAssetIds) };
+
     const [
       totalAssets,
       activeAssets,
@@ -1079,11 +1140,11 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     ] = await Promise.all([
       getPrisma(request).maintenanceAsset.count({ where: { tenantId } }),
       getPrisma(request).maintenanceAsset.count({ where: { tenantId, status: 'ACTIVE' } }),
-      getPrisma(request).workOrder.count({ where: { tenantId } }),
-      getPrisma(request).workOrder.count({ where: { tenantId, status: 'PENDING' } }),
-      getPrisma(request).workOrder.count({ where: { tenantId, status: 'IN_PROGRESS' } }),
-      getPrisma(request).workOrder.count({ where: { tenantId, status: 'COMPLETED' } }),
-      getPrisma(request).workOrder.count({ where: { tenantId, status: 'PENDING', scheduledDate: { lt: new Date() } } }),
+      getPrisma(request).workOrder.count({ where: { tenantId, ...noFlota } }),
+      getPrisma(request).workOrder.count({ where: { tenantId, status: 'PENDING', ...noFlota } }),
+      getPrisma(request).workOrder.count({ where: { tenantId, status: 'IN_PROGRESS', ...noFlota } }),
+      getPrisma(request).workOrder.count({ where: { tenantId, status: 'COMPLETED', ...noFlota } }),
+      getPrisma(request).workOrder.count({ where: { tenantId, status: 'PENDING', scheduledDate: { lt: new Date() }, ...noFlota } }),
       getPrisma(request).maintenanceTechnician.count({ where: { tenantId } }),
       getPrisma(request).maintenanceTechnician.count({ where: { tenantId, isActive: true } }),
       getPrisma(request).maintenanceSparePart.count({ where: { tenantId } }),
@@ -1144,10 +1205,15 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     const whereBase: any = { tenantId };
     if (assetId) whereBase.assetId = assetId;
 
+    // El calendario de infraestructura no muestra OTs de flota
+    const vehAssetIds = await getFleetAssetIds(request);
+    const noFlota = { NOT: fleetWhere(vehAssetIds) };
+
     // Obtener órdenes de trabajo en el período
     const workOrders = await getPrisma(request).workOrder.findMany({
       where: {
         ...whereBase,
+        ...noFlota,
         OR: [
           { scheduledDate: { gte: fechaDesde, lte: fechaHasta } },
           { completedDate: { gte: fechaDesde, lte: fechaHasta } },
@@ -1267,8 +1333,11 @@ async function avanzarPlanPorOT(prisma: any, tenantId: string, planId: string, w
 // Función auxiliar para verificar planes por KM después de completar una OT
 async function verificarPlanesKmDespuesDeOt(prisma: any, tenantId: string, vehiculoId: string, odometer: number) {
   try {
+    // plan.assetId referencia maintenanceAsset.id — resolver desde el vehículo
+    const veh = await prisma.vehiculo.findFirst({ where: { id: vehiculoId, tenantId }, select: { maintenanceAssetId: true } });
+    if (!veh?.maintenanceAssetId) return;
     const planes = await prisma.maintenancePlan.findMany({
-      where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM', assetId: vehiculoId },
+      where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM', assetId: veh.maintenanceAssetId },
       select: { id: true, triggerKm: true, lastOdometerExecution: true },
     });
     

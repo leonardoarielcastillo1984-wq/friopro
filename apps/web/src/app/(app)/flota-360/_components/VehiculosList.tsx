@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { VehicleArt } from './FleetVisual';
 import { apiFetch } from '@/lib/api';
 import { Plus, X, Truck, Container } from 'lucide-react';
 
@@ -18,8 +19,10 @@ const STATUS_COLOR: Record<string, string> = {
 export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [vista, setVista] = useState<'visual' | 'tabla'>('visual');
+  const [busqueda, setBusqueda] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState<any>({ dominio: '', tipo: modo === 'semis' ? 'SEMI' : 'CAMION', marca: '', modelo: '', anio: '' });
+  const [form, setForm] = useState<any>({ dominio: '', tipo: modo === 'semis' ? 'SEMI' : 'CAMION', marca: '', modelo: '', anio: '', currentOdometer: '', valorAdquisicion: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +38,7 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
 
   useEffect(() => { load(); }, []);
 
-  const filtrados = vehiculos.filter((v) => (modo === 'semis' ? v.tipo === 'SEMI' : v.tipo !== 'SEMI'));
+  const filtrados = vehiculos.filter((v) => (modo === 'semis' ? v.tipo === 'SEMI' : v.tipo !== 'SEMI') && `${v.dominio} ${v.marca || ''} ${v.modelo || ''}`.toLowerCase().includes(busqueda.toLowerCase()));
 
   const guardar = async () => {
     if (!form.dominio) { setError('El dominio es obligatorio'); return; }
@@ -50,10 +53,12 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
           marca: form.marca || undefined,
           modelo: form.modelo || undefined,
           anio: form.anio ? Number(form.anio) : undefined,
+          currentOdometer: form.currentOdometer !== '' && form.currentOdometer != null ? Number(form.currentOdometer) : undefined,
+          valorAdquisicion: form.valorAdquisicion !== '' && form.valorAdquisicion != null ? Number(form.valorAdquisicion) : undefined,
         },
       });
       setShowModal(false);
-      setForm({ dominio: '', tipo: modo === 'semis' ? 'SEMI' : 'CAMION', marca: '', modelo: '', anio: '' });
+      setForm({ dominio: '', tipo: modo === 'semis' ? 'SEMI' : 'CAMION', marca: '', modelo: '', anio: '', currentOdometer: '', valorAdquisicion: '' });
       load();
     } catch (e: any) {
       setError(e?.message || 'No se pudo crear');
@@ -76,7 +81,16 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
         </button>
       </div>
 
-      <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+      <div className="flex justify-between gap-3 flex-wrap"><input aria-label="Buscar unidades" value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar dominio, marca o modelo…" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm w-72" /><div className="flex gap-1 rounded-lg bg-slate-100 p-1">{(['visual', 'tabla'] as const).map(view => <button key={view} onClick={() => setVista(view)} aria-pressed={vista === view} className={`rounded-md px-4 py-1 text-xs ${vista === view ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500'}`}>{view === 'visual' ? 'Vista visual' : 'Tabla'}</button>)}</div></div>
+      {vista === 'visual' ? <div className="fleet-asset-grid">
+        {loading && <p>Cargando unidades…</p>}
+        {!loading && !filtrados.length && <p className="text-sm text-slate-500">Sin unidades para esta búsqueda.</p>}
+        {filtrados.map(v => <Link key={v.id} href={`/flota-360/vehiculos/${v.id}`} className="fleet-panel hover:border-blue-300 transition-colors">
+          <div className="flex items-center justify-between p-4"><strong className="text-lg">{v.dominio}</strong><span className={`rounded-full px-2 py-1 text-[10px] ${STATUS_COLOR[v.status] || 'bg-slate-100'}`}>{v.status.replaceAll('_', ' ')}</span></div>
+          <div className="fleet-asset-art"><VehicleArt semi={v.tipo === 'SEMI'} /></div>
+          <div className="p-4"><p className="font-semibold text-sm">{[v.marca, v.modelo].filter(Boolean).join(' ') || v.tipo}</p><p className="text-xs text-slate-500 mt-1">{v.tipo} · {v.anio || 'Año sin informar'}</p><div className="flex justify-between border-t border-slate-100 mt-4 pt-3 text-xs"><span>{v.currentOdometer != null ? `${v.currentOdometer.toLocaleString('es-AR')} km` : 'Sin lectura'}</span><span className="text-blue-600 font-semibold">Ver gemelo digital →</span></div></div>
+        </Link>)}
+      </div> : <div className="rounded-lg border border-neutral-200 bg-white overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
             <tr>
@@ -114,7 +128,7 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
@@ -150,9 +164,19 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
                   <input value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">Año</label>
-                <input type="number" value={form.anio} onChange={(e) => setForm({ ...form, anio: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Año</label>
+                  <input type="number" value={form.anio} onChange={(e) => setForm({ ...form, anio: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Odómetro (km)</label>
+                  <input type="number" min={0} value={form.currentOdometer} onChange={(e) => setForm({ ...form, currentOdometer: e.target.value })} placeholder="0" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Valor adquisición ($)</label>
+                  <input type="number" min={0} step="0.01" value={form.valorAdquisicion} onChange={(e) => setForm({ ...form, valorAdquisicion: e.target.value })} placeholder="Costo de compra" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">

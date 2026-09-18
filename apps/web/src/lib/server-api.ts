@@ -7,12 +7,12 @@
  *
  * Priority:
  *  1. API_URL          — internal Docker network URL (e.g. http://api:4002)
- *  2. localhost:3002   — development fallback
+ *  2. localhost:3001   — development fallback (PORT=3001 en apps/api/.env.example)
  *
  * NEVER use NEXT_PUBLIC_API_URL in server-side code: when its value is a relative
  * path like "/api" it breaks server-to-server fetch calls.
  */
 export function getServerApiBase(): string {
-  const raw = process.env.API_URL || 'http://localhost:3002';
+  const raw = process.env.API_URL || 'http://localhost:3001';
   return raw.endsWith('/') ? raw.slice(0, -1) : raw;
 }

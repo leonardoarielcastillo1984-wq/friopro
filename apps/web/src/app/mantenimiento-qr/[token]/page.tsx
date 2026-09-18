@@ -134,6 +134,11 @@ export default function MantenimientoQRPage() {
           Preventivo cumplido: {resultado.planTitle}
         </div>
       )}
+      {resultado?.otEmergencia && (
+        <div style={{ ...S.badge, background: '#FEE2E2', color: '#DC2626', marginTop: 12 }}>
+          Se generó la OT de emergencia {resultado.otEmergencia} — la empresa ya fue notificada
+        </div>
+      )}
       <button onClick={() => { setSelTipos(new Set()); setSelPlan(''); setDescripcion(''); setPaso('form'); }}
         style={{ ...S.btn, background: primary, marginTop: 24 }}>
         Registrar otra intervención
@@ -223,19 +228,24 @@ export default function MantenimientoQRPage() {
         {/* Formulario */}
         <div style={S.card}>
           <h3 style={{ margin: '0 0 12px', fontSize: 15, color: '#111827' }}>¿Qué se le hizo al activo?</h3>
-          {Object.entries(tiposPorCategoria).map(([cat, tipos]) => (
+          {Object.entries(tiposPorCategoria)
+            .sort(([a], [b]) => (a === 'EMERGENCIA' ? -1 : b === 'EMERGENCIA' ? 1 : 0))
+            .map(([cat, tipos]) => (
             <div key={cat} style={{ marginBottom: 12 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 6px' }}>{cat}</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: cat === 'EMERGENCIA' ? '#DC2626' : '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 6px' }}>
+                {cat === 'EMERGENCIA' ? 'Emergencia en ruta — genera OT urgente' : cat}
+              </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {tipos.map(t => {
                   const sel = selTipos.has(t.id);
+                  const esEmerg = cat === 'EMERGENCIA';
                   return (
                     <button key={t.id} type="button" onClick={() => toggleTipo(t.id)}
                       style={{
                         padding: '8px 14px', borderRadius: 999, fontSize: 13, cursor: 'pointer',
-                        border: sel ? `2px solid ${primary}` : '1px solid #D1D5DB',
-                        background: sel ? `${primary}15` : '#fff',
-                        color: sel ? primary : '#374151', fontWeight: sel ? 600 : 400,
+                        border: sel ? `2px solid ${esEmerg ? '#DC2626' : primary}` : esEmerg ? '1px solid #FCA5A5' : '1px solid #D1D5DB',
+                        background: sel ? (esEmerg ? '#FEE2E2' : `${primary}15`) : esEmerg ? '#FEF2F2' : '#fff',
+                        color: sel ? (esEmerg ? '#DC2626' : primary) : esEmerg ? '#B91C1C' : '#374151', fontWeight: sel ? 600 : 400,
                       }}>
                       {t.name}
                     </button>

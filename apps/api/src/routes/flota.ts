@@ -1,6 +1,11 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
+import { notifyBandaCritica } from '../services/notifyService.js';
+import { existsSync } from 'fs';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { randomBytes } from 'crypto';
 
 export default async function flotaRoutes(app: FastifyInstance) {
 
@@ -99,13 +104,15 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const frenosSalud = Math.max(5, Math.round(100 - Math.min((kmSinceBrakes / 30000) * 100, 95)));
     const frenosKmRestantes = Math.max(0, 30000 - kmSinceBrakes);
 
-    // ── NEUMÁTICOS: basado en profundidad de banda (mínimo 1.6mm, nuevo ~8mm) ──
+    // ── NEUMÁTICOS: basado en la cubierta MÁS gastada (min profBanda, no promedio) ──
+    // Una sola cubierta crítica no debe quedar diluida en el promedio del resto.
     let neumSalud = 80;
+    let neumMinBanda: number | null = null;
     if (neumaticos.length > 0) {
       const bandas = neumaticos.map((p: any) => p.neumatico?.profBanda ?? 6).filter((b: number) => b > 0);
       if (bandas.length > 0) {
-        const promBanda = bandas.reduce((a: number, b: number) => a + b, 0) / bandas.length;
-        neumSalud = Math.max(5, Math.min(100, Math.round(((promBanda - 1.6) / (8 - 1.6)) * 100)));
+        neumMinBanda = Math.min(...bandas);
+        neumSalud = Math.max(5, Math.min(100, Math.round(((neumMinBanda - 1.6) / (8 - 1.6)) * 100)));
       }
     }
 
@@ -161,29 +168,368 @@ export default async function flotaRoutes(app: FastifyInstance) {
       if (kmDia > 0) diasProxServicio = Math.round(motorKmRestantes / kmDia);
     }
 
+    // ── Datos operativos adicionales (aditivos): última inspección QR, próximo servicio planificado, costo/km ──
+    const esSemi = vehiculo.tipo === 'SEMI';
+    const [ultimaInspeccion, planesActivos, costos6m, kmRecorridos6m] = await Promise.all([
+      (app.prisma as any).inspeccion.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            ...(vehiculo.maintenanceAssetId ? [{ qr: { maintenanceAssetId: vehiculo.maintenanceAssetId } }] : []),
+            { dominioTractor: { equals: vehiculo.dominio, mode: 'insensitive' } },
+            { dominioSemi: { equals: vehiculo.dominio, mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, createdAt: true, estado: true, puntaje: true, hallazgosCount: true },
+      }).catch(() => null),
+      vehiculo.maintenanceAssetId
+        ? (app.prisma as any).maintenancePlan.findMany({
+            where: { assetId: vehiculo.maintenanceAssetId, tenantId, status: 'ACTIVE' },
+            select: { id: true, title: true, frequencyUnit: true, triggerKm: true, lastOdometerExecution: true, nextExecutionDate: true },
+          }).catch(() => [])
+        : [],
+      (async () => {
+        const hace6m = new Date(); hace6m.setMonth(hace6m.getMonth() - 6);
+        const [comb, ots, neum] = await Promise.all([
+          (app.prisma as any).registroCombustible.aggregate({ where: { tenantId, vehiculoId: id, fecha: { gte: hace6m } }, _sum: { costoTotal: true } }),
+          vehiculo.maintenanceAssetId
+            ? (app.prisma as any).workOrder.aggregate({ where: { tenantId, assetId: vehiculo.maintenanceAssetId, status: 'COMPLETED', completedAt: { gte: hace6m } }, _sum: { totalCost: true } })
+            : { _sum: { totalCost: 0 } },
+          (app.prisma as any).neumaticoPosicion.findMany({ where: { tenantId, vehiculoId: id, activo: false, desmontadoAt: { gte: hace6m } }, select: { neumatico: { select: { precioCompra: true } } } }),
+        ]);
+        return (comb._sum.costoTotal || 0) + (ots._sum.totalCost || 0) + neum.reduce((a: number, p: any) => a + (p.neumatico?.precioCompra || 0), 0);
+      })().catch(() => 0),
+      (async () => {
+        const hace6m = new Date(); hace6m.setMonth(hace6m.getMonth() - 6);
+        const regs6m = regs.filter((r: any) => new Date(r.fecha) >= hace6m && r.odometro);
+        if (regs6m.length >= 2) {
+          const ordenados = [...regs6m].sort((a: any, b: any) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+          const diff = ordenados[ordenados.length - 1].odometro - ordenados[0].odometro;
+          return diff > 0 ? diff : null;
+        }
+        return null;
+      })().catch(() => null),
+    ]);
+
+    // Próximo servicio planificado real (de MaintenancePlan, no inventado)
+    let proximoServicio: any = null;
+    for (const p of planesActivos) {
+      if (p.frequencyUnit === 'KM' && p.triggerKm && km > 0) {
+        const base = p.lastOdometerExecution ?? km;
+        const proxKm = base + p.triggerKm;
+        const kmRest = Math.round(proxKm - km);
+        if (!proximoServicio || kmRest < (proximoServicio.kmRestantes ?? Infinity)) {
+          proximoServicio = { plan: p.title, tipo: 'KM', proximoKm: proxKm, kmRestantes: kmRest };
+        }
+      } else if (p.nextExecutionDate) {
+        const dias = Math.ceil((new Date(p.nextExecutionDate).getTime() - now.getTime()) / 86400000);
+        if (!proximoServicio || (proximoServicio.tipo === 'FECHA' && dias < proximoServicio.diasRestantes)) {
+          proximoServicio = { plan: p.title, tipo: 'FECHA', fecha: p.nextExecutionDate, diasRestantes: dias };
+        }
+      }
+    }
+
+    const costoPorKm = kmRecorridos6m && kmRecorridos6m > 0 ? Math.round((costos6m / kmRecorridos6m) * 100) / 100 : null;
+    const diasEnTaller = vehiculo.status === 'EN_TALLER'
+      ? Math.max(0, Math.floor((now.getTime() - new Date(vehiculo.updatedAt).getTime()) / 86400000))
+      : null;
+
+    // Componentes específicos de semi: sin motor/combustible propio; agrega suspensión, ejes y acople
+    // derivados de hallazgos QR recientes y estado de neumáticos (sin inventar métricas).
+    let componentes: any = {
+      motor: { salud: motorSalud, riesgo: 100 - motorSalud, kmRestantes: motorKmRestantes, label: 'Motor / Aceite' },
+      frenos: { salud: frenosSalud, riesgo: 100 - frenosSalud, kmRestantes: frenosKmRestantes, label: 'Frenos' },
+      neumaticos: { salud: neumSalud, riesgo: 100 - neumSalud, montados: neumaticos.length, bandaMinima: neumMinBanda, label: 'Neumáticos' },
+      documentacion: { salud: docSalud, riesgo: 100 - docSalud, vencidos: docsVencidos.length, porVencer: docsPorVencer.length, label: 'Documentación' },
+      combustible: { salud: combSalud, riesgo: 100 - combSalud, l100km, label: 'Eficiencia combustible' },
+    };
+
+    if (esSemi) {
+      // Hallazgos QR recientes del semi como señal de suspensión/ejes/acople
+      const hallazgosRecientes = ultimaInspeccion?.hallazgosCount ?? null;
+      const baseSemi = hallazgosRecientes == null ? null : Math.max(10, 100 - hallazgosRecientes * 20);
+      componentes = {
+        frenos: componentes.frenos,
+        suspension: { salud: baseSemi, riesgo: baseSemi != null ? 100 - baseSemi : null, label: 'Suspensión', sinDatos: baseSemi == null },
+        ejes: { salud: baseSemi, riesgo: baseSemi != null ? 100 - baseSemi : null, label: 'Ejes', sinDatos: baseSemi == null },
+        neumaticos: componentes.neumaticos,
+        documentacion: componentes.documentacion,
+        acople: { salud: baseSemi, riesgo: baseSemi != null ? 100 - baseSemi : null, label: 'Sistema de acople', sinDatos: baseSemi == null },
+      };
+    }
+
     return reply.send({
       twin: {
         vehiculoId: id,
         dominio: vehiculo.dominio,
+        tipo: vehiculo.tipo,
+        esSemi,
         healthScore,
         riskScore,
         estadoGeneral,
-        componentes: {
-          motor: { salud: motorSalud, riesgo: 100 - motorSalud, kmRestantes: motorKmRestantes, label: 'Motor / Aceite' },
-          frenos: { salud: frenosSalud, riesgo: 100 - frenosSalud, kmRestantes: frenosKmRestantes, label: 'Frenos' },
-          neumaticos: { salud: neumSalud, riesgo: 100 - neumSalud, montados: neumaticos.length, label: 'Neumáticos' },
-          documentacion: { salud: docSalud, riesgo: 100 - docSalud, vencidos: docsVencidos.length, porVencer: docsPorVencer.length, label: 'Documentación' },
-          combustible: { salud: combSalud, riesgo: 100 - combSalud, l100km, label: 'Eficiencia combustible' },
-        },
+        estadoOperativo: vehiculo.status,
+        odometro: vehiculo.currentOdometer,
+        componentes,
         alertas,
         prediccion: {
           proximoServicioKm: motorKmRestantes,
           proximoServicioDias: diasProxServicio,
           kmActuales: km,
         },
+        proximoServicio,
+        ultimaInspeccion,
+        costoPorKm,
+        costos6m: Math.round(costos6m),
+        diasEnTaller,
         otAbiertas: workOrders.filter((wo: any) => !['COMPLETED','CANCELLED'].includes(wo.status)).length,
         calculadoEn: now.toISOString(),
       }
+    });
+  });
+
+  // GET /vehiculos/:id/proyeccion?km=N — Gemelo digital: proyecta estado a +N km
+  app.get('/vehiculos/:id/proyeccion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const kmProyectar = Math.min(Math.max(Number((req.query as any).km) || 0, 1000), 500000);
+    if (!kmProyectar) return reply.code(400).send({ error: 'Parámetro km requerido (1000–500000)' });
+
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+      where: { id, tenantId },
+      include: {
+        posicionesNeumatico: {
+          where: { activo: true },
+          include: { neumatico: { include: { mediciones: { orderBy: { fecha: 'asc' } } } } },
+        },
+        vencimientos: true,
+        registrosCombustible: { orderBy: { fecha: 'desc' }, take: 20 },
+      },
+    });
+    if (!vehiculo) return reply.code(404).send({ error: 'No encontrado' });
+
+    const km = vehiculo.currentOdometer || 0;
+    const kmFinal = km + kmProyectar;
+    const now = new Date();
+
+    // Ritmo de uso: km/día estimado (misma heurística que el twin: km/365 si hay registros)
+    const regs: any[] = vehiculo.registrosCombustible || [];
+    const kmDia = regs.length >= 2 && km > 0 ? km / 365 : null;
+    const diasEstimados = kmDia ? Math.round(kmProyectar / kmDia) : null;
+    const fechaEstimada = diasEstimados != null ? new Date(now.getTime() + diasEstimados * 86400000) : null;
+
+    // ── Planes de mantenimiento por KM cargados en el activo ──
+    const planes = vehiculo.maintenanceAssetId
+      ? await (app.prisma as any).maintenancePlan.findMany({
+          where: { assetId: vehiculo.maintenanceAssetId, tenantId, status: 'ACTIVE', frequencyUnit: 'KM', triggerKm: { not: null } },
+          select: { id: true, title: true, triggerKm: true, lastOdometerExecution: true },
+        }).catch(() => [])
+      : [];
+
+    // Costo promedio histórico por plan (OTs completadas vinculadas)
+    const planIds = planes.map((p: any) => p.id);
+    const otsPorPlan = planIds.length
+      ? await (app.prisma as any).workOrder.groupBy({
+          by: ['planId'],
+          where: { tenantId, planId: { in: planIds }, status: 'COMPLETED', totalCost: { not: null } },
+          _avg: { totalCost: true }, _count: { _all: true },
+        }).catch(() => [])
+      : [];
+    const costoPlan = Object.fromEntries(otsPorPlan.map((o: any) => [o.planId, o._avg.totalCost || 0]));
+
+    // ── Programa estándar de mantenimiento por componente ──
+    // Cada item matchea con un plan real (por título o triggerKm) si existe;
+    // si no, usa la heurística km % intervalo como "km desde último service".
+    const PROGRAMA: { key: string; label: string; intervaloKm: number; match: RegExp }[] = [
+      { key: 'aceite',    label: 'Aceite y filtro de motor',        intervaloKm: 10000,  match: /aceite|motor|service/i },
+      { key: 'filtros',   label: 'Filtros (aire / combustible)',    intervaloKm: 20000,  match: /filtro/i },
+      { key: 'frenos',    label: 'Pastillas y sistema de frenos',   intervaloKm: 30000,  match: /freno|brake/i },
+      { key: 'fluidos',   label: 'Fluidos (refrigerante / hidrául.)', intervaloKm: 40000, match: /fluido|refrigerante|hidr[aá]ul/i },
+      { key: 'caja',      label: 'Aceite de caja / transmisión',    intervaloKm: 60000,  match: /caja|transmisi/i },
+      { key: 'mangueras', label: 'Mangueras y flexibles',           intervaloKm: 80000,  match: /manguera|flexible/i },
+      { key: 'embrague',  label: 'Embrague',                        intervaloKm: 120000, match: /embrague|clutch/i },
+    ];
+
+    const programa = PROGRAMA.map((item) => {
+      const plan = planes.find((p: any) => item.match.test(p.title) || p.triggerKm === item.intervaloKm);
+      const kmDesde = plan?.lastOdometerExecution != null
+        ? Math.max(0, km - plan.lastOdometerExecution)
+        : km % item.intervaloKm;
+      // Desgaste monotónico: salud si NO se hace ningún service en el rango
+      const saludActual = Math.max(5, Math.round(100 - Math.min((kmDesde / item.intervaloKm) * 100, 95)));
+      const saludProyectada = Math.max(5, Math.round(100 - Math.min(((kmDesde + kmProyectar) / item.intervaloKm) * 100, 95)));
+      // Cuántas veces vence el intervalo dentro de (km, kmFinal]
+      const veces = Math.floor((kmDesde + kmProyectar) / item.intervaloKm);
+      const primerDisparo = km + (item.intervaloKm - kmDesde);
+      const enKm: number[] = [];
+      for (let i = 0; i < veces && i < 50; i++) enKm.push(Math.round(primerDisparo + i * item.intervaloKm));
+      const costoUnit = plan ? (costoPlan[plan.id] || 0) : 0;
+      return {
+        key: item.key,
+        label: plan?.title || item.label,
+        intervaloKm: item.intervaloKm,
+        kmDesdeUltimo: Math.round(kmDesde),
+        saludActual,
+        saludProyectada,
+        veces,
+        enKm,
+        costoEstimadoUnitario: Math.round(costoUnit),
+        costoEstimadoTotal: Math.round(costoUnit * veces),
+        conPlanCargado: !!plan,
+        planId: plan?.id || null,
+        sinCostoHistorico: !costoUnit,
+      };
+    });
+
+    // Planes reales que no matchearon ningún item del programa estándar
+    const matchedPlanIds = new Set(programa.map((i) => i.planId).filter(Boolean));
+    const planesExtra = planes.filter((p: any) => !matchedPlanIds.has(p.id));
+    const serviciosExtra: any[] = [];
+    for (const p of planesExtra) {
+      const base = p.lastOdometerExecution ?? km;
+      let proxKm = base + p.triggerKm;
+      if (proxKm <= km) proxKm = km;
+      const disparos: number[] = [];
+      while (proxKm <= kmFinal && disparos.length < 50) {
+        disparos.push(Math.round(proxKm));
+        proxKm += p.triggerKm;
+      }
+      if (disparos.length > 0) {
+        serviciosExtra.push({
+          key: `plan-${p.id}`,
+          label: p.title,
+          intervaloKm: p.triggerKm,
+          kmDesdeUltimo: Math.round(Math.max(0, km - base)),
+          saludActual: null,
+          saludProyectada: null,
+          veces: disparos.length,
+          enKm: disparos,
+          costoEstimadoUnitario: Math.round(costoPlan[p.id] || 0),
+          costoEstimadoTotal: Math.round((costoPlan[p.id] || 0) * disparos.length),
+          conPlanCargado: true,
+          sinCostoHistorico: !costoPlan[p.id],
+        });
+      }
+    }
+    const servicios = [...programa.filter((i) => i.veces > 0), ...serviciosExtra];
+
+    // ── Neumáticos: desgaste proyectado por tasa individual (mm/km) ──
+    // Usa historial de mediciones si hay ≥2 con km; sino single-point; sino vida útil típica.
+    const neumaticosProj = (vehiculo.posicionesNeumatico || []).map((p: any) => {
+      const n = p.neumatico;
+      if (!n) return null;
+      const banda0 = n.profBandaOriginal ?? 8;
+      const banda = n.profBanda ?? banda0;
+      const kmAcum = n.kmAcumulados || 0;
+      let tasa: number;
+      const meds = (n.mediciones || []).filter((m: any) => m.kmAlMedir != null).sort((a: any, b: any) => a.kmAlMedir - b.kmAlMedir);
+      if (meds.length >= 2) {
+        const first = meds[0], last = meds[meds.length - 1];
+        const dKm = last.kmAlMedir - first.kmAlMedir;
+        tasa = dKm > 0 ? (first.profBanda - last.profBanda) / dKm : 0;
+      } else {
+        tasa = kmAcum > 1000 && banda0 > banda ? (banda0 - banda) / kmAcum : (banda0 - 1.6) / 60000;
+      }
+      const bandaFut = Math.max(0, banda - tasa * kmProyectar);
+      const kmRestantes = tasa > 0 ? Math.round((banda - 1.6) / tasa) : null;
+      return {
+        codigo: n.codigo,
+        posicion: `Eje ${p.eje} ${p.lado}/${p.posicion}`,
+        bandaActual: Math.round(banda * 10) / 10,
+        bandaProyectada: Math.round(bandaFut * 10) / 10,
+        kmRestantes,
+        reemplazoEnRango: kmRestantes != null && kmRestantes <= kmProyectar,
+        precioCompra: n.precioCompra || 0,
+        medicionesUsadas: meds.length,
+      };
+    }).filter(Boolean);
+    const reemplazos = neumaticosProj.filter((x: any) => x.reemplazoEnRango);
+    const costoNeumaticos = reemplazos.reduce((a: number, x: any) => a + (x.precioCompra || 0), 0);
+
+    // ── Documentación que vence dentro del horizonte estimado ──
+    const docsEnRango = fechaEstimada
+      ? (vehiculo.vencimientos || []).filter((v: any) => {
+          const f = new Date(v.fechaVto);
+          return f > now && f <= fechaEstimada;
+        }).map((v: any) => ({ tipo: v.tipo, fechaVto: v.fechaVto }))
+      : [];
+
+    // ── Costos ──
+    const hace6m = new Date(); hace6m.setMonth(hace6m.getMonth() - 6);
+    const [comb, ots] = await Promise.all([
+      (app.prisma as any).registroCombustible.aggregate({ where: { tenantId, vehiculoId: id, fecha: { gte: hace6m } }, _sum: { costoTotal: true } }).catch(() => ({ _sum: {} })),
+      vehiculo.maintenanceAssetId
+        ? (app.prisma as any).workOrder.aggregate({ where: { tenantId, assetId: vehiculo.maintenanceAssetId, status: 'COMPLETED', completedAt: { gte: hace6m } }, _sum: { totalCost: true } }).catch(() => ({ _sum: {} }))
+        : { _sum: {} },
+    ]);
+    const regs6m = regs.filter((r: any) => new Date(r.fecha) >= hace6m && r.odometro);
+    let kmRecorridos6m: number | null = null;
+    if (regs6m.length >= 2) {
+      const ord = [...regs6m].sort((a: any, b: any) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+      const diff = ord[ord.length - 1].odometro - ord[0].odometro;
+      if (diff > 0) kmRecorridos6m = diff;
+    }
+    const costos6m = (comb._sum.costoTotal || 0) + (ots._sum.totalCost || 0);
+    const costoPorKm = kmRecorridos6m && kmRecorridos6m > 0 ? costos6m / kmRecorridos6m : null;
+    const costoOperativo = costoPorKm != null ? Math.round(costoPorKm * kmProyectar) : null;
+    const costoServicios = servicios.reduce((a: number, s: any) => a + s.costoEstimadoTotal, 0);
+    const costoTotal = (costoOperativo ?? 0) + costoServicios + costoNeumaticos;
+
+    // ── Timeline de eventos ordenado por km ──
+    const timeline: any[] = [];
+    for (const s of servicios) {
+      for (const enKm of s.enKm) {
+        timeline.push({
+          km: enKm,
+          tipo: 'SERVICIO',
+          detalle: s.label,
+          costo: s.costoEstimadoUnitario || null,
+          dias: kmDia ? Math.round((enKm - km) / kmDia) : null,
+        });
+      }
+    }
+    for (const x of reemplazos) {
+      timeline.push({
+        km: km + (x.kmRestantes || 0),
+        tipo: 'NEUMATICO',
+        detalle: `Reemplazo ${x.codigo} (${x.posicion}) — banda < 1.6mm`,
+        costo: x.precioCompra || null,
+        dias: kmDia && x.kmRestantes ? Math.round(x.kmRestantes / kmDia) : null,
+      });
+    }
+    timeline.sort((a, b) => a.km - b.km);
+
+    return reply.send({
+      proyeccion: {
+        kmActual: km,
+        kmProyectar,
+        kmFinal,
+        kmDia: kmDia ? Math.round(kmDia) : null,
+        diasEstimados,
+        fechaEstimada: fechaEstimada?.toISOString() || null,
+        componentes: programa.map((i) => ({
+          key: i.key,
+          label: i.label,
+          intervaloKm: i.intervaloKm,
+          kmDesdeUltimo: i.kmDesdeUltimo,
+          saludActual: i.saludActual,
+          saludProyectada: i.saludProyectada,
+          veces: i.veces,
+          conPlanCargado: i.conPlanCargado,
+        })),
+        neumaticos: neumaticosProj,
+        servicios,
+        docsEnRango,
+        costos: {
+          operativo: costoOperativo,
+          servicios: costoServicios,
+          neumaticos: Math.round(costoNeumaticos),
+          total: Math.round(costoTotal),
+          costoPorKmUsado: costoPorKm != null ? Math.round(costoPorKm * 100) / 100 : null,
+        },
+        timeline: timeline.slice(0, 30),
+      },
     });
   });
 
@@ -236,7 +582,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
         select: {
           id: true, code: true, name: true, status: true,
           totalMaintenanceCost: true, lastMaintenanceDate: true, nextMaintenanceDate: true,
-          currentOdometer: true,
+          currentOdometer: true, purchaseDate: true, acquisitionCost: true, manufacturer: true,
         }
       });
 
@@ -258,7 +604,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
           take: 10,
           select: {
             id: true, code: true, title: true, status: true, priority: true,
-            type: true, scheduledDate: true, completedDate: true, totalCost: true,
+            type: true, scheduledDate: true, completedAt: true, totalCost: true,
           }
         });
 
@@ -328,6 +674,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       motor: z.string().optional(),
       status: z.string().optional().default('ACTIVO'),
       currentOdometer: z.number().optional(),
+      valorAdquisicion: z.number().optional().nullable(),
       conductorId: z.string().uuid().optional().nullable(),
       maintenanceAssetId: z.string().uuid().optional().nullable(),
       notas: z.string().optional(),
@@ -382,7 +729,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
               manufacturer: manufacturer || v.marca || 'Sin especificar',
               model: v.modelo || 'Sin especificar',
               serialNumber: v.chasis || v.motor || undefined,
-              acquisitionCost: acquisitionCost || 0,
+              acquisitionCost: acquisitionCost || vehiculoData.valorAdquisicion || 0,
               purchaseDate: purchaseDate ? new Date(purchaseDate) : undefined,
               currentOdometer: v.currentOdometer,
               location: 'Flota',
@@ -441,6 +788,8 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const schema = z.object({
       dominio: z.string().optional().transform(v => v ? v.toUpperCase() : v),
       tipo: z.string().optional(),
+      cantEjes: z.number().int().min(1).max(10).optional(),
+      configEjes: z.string().optional(),
       marca: z.string().optional(),
       modelo: z.string().optional(),
       anio: z.number().int().optional(),
@@ -451,6 +800,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       conductorId: z.string().uuid().optional().nullable(),
       maintenanceAssetId: z.string().uuid().optional().nullable(),
       currentOdometer: z.number().optional(),
+      valorAdquisicion: z.number().optional().nullable(),
       notas: z.string().optional(),
     }).passthrough();
     const body = schema.safeParse(req.body ?? {});
@@ -476,6 +826,21 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const updateData: any = { ...vehiculoFields };
     if (maintenanceAssetId !== undefined) updateData.maintenanceAssetId = maintenanceAssetId;
     await (app.prisma as any).vehiculo.updateMany({ where: { id, tenantId }, data: updateData });
+
+    // Sincronizar datos de adquisición al activo de mantenimiento vinculado
+    const valorAdq = (body.data as any).valorAdquisicion;
+    if (acquisitionCost !== undefined || purchaseDate !== undefined || manufacturer !== undefined || valorAdq !== undefined) {
+      const veh = await (app.prisma as any).vehiculo.findFirst({ where: { id, tenantId }, select: { maintenanceAssetId: true } });
+      const assetId = maintenanceAssetId !== undefined ? maintenanceAssetId : veh?.maintenanceAssetId;
+      if (assetId) {
+        const assetData: any = {};
+        const costo = acquisitionCost !== undefined ? acquisitionCost : valorAdq;
+        if (costo !== undefined) assetData.acquisitionCost = Number(costo) || 0;
+        if (purchaseDate !== undefined) assetData.purchaseDate = purchaseDate ? new Date(purchaseDate) : null;
+        if (manufacturer !== undefined) assetData.manufacturer = manufacturer;
+        await (app.prisma as any).maintenanceAsset.updateMany({ where: { id: assetId, tenantId }, data: assetData });
+      }
+    }
     // conductorId no está en el cliente Prisma compilado en prod → raw SQL
     if (conductorId !== undefined) {
       if (conductorId === null) {
@@ -709,9 +1074,9 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const { neumaticoId } = req.params as any;
     const schema = z.object({
       vehiculoId: z.string().uuid(),
-      eje: z.number().int().min(1),
+      eje: z.number().int().min(0), // 0 = auxilio
       lado: z.enum(['IZQ', 'DER']),
-      posicion: z.enum(['SIMPLE', 'EXT', 'INT']).default('SIMPLE'),
+      posicion: z.enum(['SIMPLE', 'EXT', 'INT', 'AUXILIO']).default('SIMPLE'),
       kmAlMontar: z.number().optional(),
       profBandaInicio: z.number().optional(),
     });
@@ -891,9 +1256,9 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const { neumaticoId } = req.params as any;
     const schema = z.object({
       vehiculoId: z.string().uuid(),
-      eje: z.number().int().min(1),
+      eje: z.number().int().min(0),
       lado: z.enum(['IZQ', 'DER']),
-      posicion: z.enum(['SIMPLE', 'EXT', 'INT']).default('SIMPLE'),
+      posicion: z.enum(['SIMPLE', 'EXT', 'INT', 'AUXILIO']).default('SIMPLE'),
       presionMedida: z.number().positive(),
       temperatura: z.number().optional(),
       observador: z.string().optional(),
@@ -1008,8 +1373,418 @@ export default async function flotaRoutes(app: FastifyInstance) {
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // MEDICIONES DE BANDA (desgaste periódico sin desmontar)
+  // ═══════════════════════════════════════════════════════════════
+
+  // POST medición de profundidad de banda — actualiza profBanda del neumático
+  app.post('/neumaticos/:neumaticoId/medicion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { neumaticoId } = req.params as any;
+    const schema = z.object({
+      profBanda: z.number().positive().max(30),
+      kmAlMedir: z.number().nonnegative().optional(),
+      presion: z.number().positive().optional(),
+      vehiculoId: z.string().uuid().optional(),
+      eje: z.number().int().min(1).optional(),
+      lado: z.enum(['IZQ', 'DER']).optional(),
+      posicion: z.enum(['SIMPLE', 'EXT', 'INT', 'AUXILIO']).optional(),
+      observador: z.string().max(200).optional(),
+      notas: z.string().max(500).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const neum = await (app.prisma as any).neumatico.findFirst({ where: { id: neumaticoId, tenantId } });
+    if (!neum) return reply.code(404).send({ error: 'Neumático no encontrado' });
+
+    const medicion = await (app.prisma as any).neumaticoMedicion.create({
+      data: { ...body.data, neumaticoId, tenantId },
+    });
+
+    // Actualizar profBanda actual del neumático + setear original si no tiene
+    const upd: any = { profBanda: body.data.profBanda };
+    if (neum.profBandaOriginal == null) upd.profBandaOriginal = neum.profBanda ?? body.data.profBanda;
+    await (app.prisma as any).neumatico.updateMany({ where: { id: neumaticoId }, data: upd });
+
+    // Si también midió presión, registrarla en el historial de presiones
+    if (body.data.presion != null && body.data.vehiculoId && body.data.eje && body.data.lado) {
+      await (app.prisma as any).neumaticoPresion.create({
+        data: {
+          tenantId, neumaticoId,
+          vehiculoId: body.data.vehiculoId, eje: body.data.eje, lado: body.data.lado,
+          posicion: body.data.posicion === 'AUXILIO' ? 'SIMPLE' : (body.data.posicion || 'SIMPLE'),
+          presionMedida: body.data.presion, observador: body.data.observador, notas: body.data.notas,
+        },
+      }).catch(() => {});
+    }
+
+    // Notificar a admins si la banda está baja (≤2.5mm) o crítica (≤1.6mm)
+    if (body.data.profBanda <= 2.5) {
+      const veh = body.data.vehiculoId
+        ? await (app.prisma as any).vehiculo.findFirst({ where: { id: body.data.vehiculoId, tenantId }, select: { dominio: true } })
+        : await (app.prisma as any).neumaticoPosicion.findFirst({
+            where: { neumaticoId, activo: true, tenantId },
+            select: { vehiculo: { select: { dominio: true } } },
+          }).then((p: any) => p?.vehiculo);
+      const posLabel = body.data.eje != null ? `Eje ${body.data.eje} ${body.data.lado || ''}/${body.data.posicion || ''}` : null;
+      notifyBandaCritica(app.prisma, {
+        tenantId,
+        vehiculoDominio: veh?.dominio || 'Sin asignar',
+        neumaticoCodigo: neum.codigo,
+        profBanda: body.data.profBanda,
+        posicion: posLabel,
+        neumaticoId,
+      }).catch(() => {});
+    }
+
+    return reply.code(201).send({ medicion });
+  });
+
+  // GET historial de mediciones de una cubierta (para curva de desgaste)
+  app.get('/neumaticos/:id/mediciones', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const mediciones = await (app.prisma as any).neumaticoMedicion.findMany({
+      where: { neumaticoId: id, tenantId },
+      orderBy: { fecha: 'asc' },
+    });
+    return reply.send({ mediciones });
+  });
+
+  // GET desgaste de cubiertas por vehículo: por posición + detección de desgaste irregular
+  app.get('/vehiculos/:id/desgaste-cubiertas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+
+    const posiciones = await (app.prisma as any).neumaticoPosicion.findMany({
+      where: { vehiculoId: id, tenantId, activo: true },
+      include: {
+        neumatico: {
+          select: {
+            id: true, codigo: true, marca: true, medida: true, condicion: true,
+            profBanda: true, profBandaOriginal: true, kmAcumulados: true, presionRecomendada: true,
+            mediciones: { orderBy: { fecha: 'desc' }, take: 10 },
+          },
+        },
+      },
+      orderBy: [{ eje: 'asc' }, { lado: 'asc' }],
+    });
+
+    // Tasa de desgaste por cubierta: usa historial de mediciones si hay ≥2, sino single-point
+    const porPosicion = posiciones.map((p: any) => {
+      const n = p.neumatico;
+      if (!n) return null;
+      const banda0 = n.profBandaOriginal ?? 8;
+      const banda = n.profBanda ?? banda0;
+      const kmAcum = n.kmAcumulados || 0;
+      let tasaMmPor1000km: number | null = null;
+      let kmRestantes: number | null = null;
+      const meds = (n.mediciones || []).filter((m: any) => m.kmAlMedir != null);
+      if (meds.length >= 2) {
+        // Regresión lineal simple sobre mediciones con km
+        const pts = meds.map((m: any) => ({ km: m.kmAlMedir, mm: m.profBanda })).sort((a: any, b: any) => a.km - b.km);
+        const first = pts[0], last = pts[pts.length - 1];
+        const dKm = last.km - first.km;
+        if (dKm > 0) tasaMmPor1000km = ((first.mm - last.mm) / dKm) * 1000;
+      }
+      if (tasaMmPor1000km == null && kmAcum > 1000 && banda0 > banda) {
+        tasaMmPor1000km = ((banda0 - banda) / kmAcum) * 1000;
+      }
+      if (tasaMmPor1000km != null && tasaMmPor1000km > 0) {
+        kmRestantes = Math.round(((banda - 1.6) / tasaMmPor1000km) * 1000);
+      }
+      return {
+        posicionId: p.id, eje: p.eje, lado: p.lado, posicion: p.posicion,
+        neumaticoId: n.id, codigo: n.codigo, marca: n.marca, medida: n.medida, condicion: n.condicion,
+        bandaActual: Math.round(banda * 10) / 10,
+        bandaOriginal: banda0,
+        desgastePct: banda0 > 1.6 ? Math.round(((banda0 - banda) / (banda0 - 1.6)) * 100) : null,
+        kmAcumulados: Math.round(kmAcum),
+        tasaMmPor1000km: tasaMmPor1000km != null ? Math.round(tasaMmPor1000km * 1000) / 1000 : null,
+        kmRestantes,
+        medicionesCount: (n.mediciones || []).length,
+      };
+    }).filter(Boolean);
+
+    // Desgaste irregular: diferencia de banda entre cubiertas del mismo eje
+    const alertasIrregular: any[] = [];
+    const porEje: Record<number, any[]> = {};
+    for (const p of porPosicion) {
+      if (!porEje[p.eje]) porEje[p.eje] = [];
+      porEje[p.eje].push(p);
+    }
+    for (const [eje, items] of Object.entries(porEje)) {
+      if (items.length < 2) continue;
+      const bandas = items.map((i: any) => i.bandaActual);
+      const max = Math.max(...bandas), min = Math.min(...bandas);
+      const diff = Math.round((max - min) * 10) / 10;
+      if (diff >= 1.5) {
+        alertasIrregular.push({
+          eje: Number(eje),
+          diferenciaMm: diff,
+          cubiertas: items.map((i: any) => ({ codigo: i.codigo, lado: i.lado, banda: i.bandaActual })),
+          mensaje: `Desgaste irregular en eje ${eje}: ${diff}mm de diferencia entre lados — posible problema de alineación o suspensión`,
+        });
+      }
+    }
+
+    return reply.send({ posiciones: porPosicion, alertasIrregular });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // FACTURAS DE GASTOS (reparaciones, repuestos, services, cubiertas)
+  // ═══════════════════════════════════════════════════════════════
+
+  // Upload de archivo de factura (PDF/foto)
+  app.post('/facturas/upload', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    try {
+      const data = await (req as any).file();
+      if (!data) return reply.code(400).send({ error: 'No se recibió archivo' });
+      const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+      if (!allowed.includes(data.mimetype)) return reply.code(400).send({ error: 'Solo PDF o imágenes' });
+      const uploadDir = join(process.env.STORAGE_LOCAL_PATH || '/app/uploads', 'flota-facturas', tenantId);
+      if (!existsSync(uploadDir)) await mkdir(uploadDir, { recursive: true });
+      const ext = (data.filename.split('.').pop() || 'pdf').toLowerCase();
+      const filename = `${Date.now()}_${randomBytes(6).toString('hex')}.${ext}`;
+      await writeFile(join(uploadDir, filename), await data.toBuffer());
+      const baseUrl = process.env.API_BASE_URL || `http://${req.headers.host || 'localhost:3000'}`;
+      return reply.send({ url: `${baseUrl}/uploads/flota-facturas/${tenantId}/${filename}`, name: data.filename, mimeType: data.mimetype });
+    } catch (e: any) {
+      console.error('[flota] factura upload error:', e);
+      return reply.code(500).send({ error: 'No se pudo subir el archivo' });
+    }
+  });
+
+  // GET facturas (filtros: vehiculoId, categoria, desde, hasta)
+  app.get('/facturas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { vehiculoId, categoria, desde, hasta } = req.query as any;
+    const facturas = await (app.prisma as any).flotaFactura.findMany({
+      where: {
+        tenantId,
+        ...(vehiculoId ? { vehiculoId } : {}),
+        ...(categoria ? { categoria } : {}),
+        ...(desde || hasta ? { fecha: { ...(desde ? { gte: new Date(desde) } : {}), ...(hasta ? { lte: new Date(hasta) } : {}) } } : {}),
+      },
+      include: { vehiculo: { select: { id: true, dominio: true, tipo: true } } },
+      orderBy: { fecha: 'desc' },
+      take: 300,
+    });
+    return reply.send({ facturas });
+  });
+
+  // GET facturas de un vehículo
+  app.get('/vehiculos/:vehiculoId/facturas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { vehiculoId } = req.params as any;
+    const facturas = await (app.prisma as any).flotaFactura.findMany({
+      where: { vehiculoId, tenantId },
+      orderBy: { fecha: 'desc' },
+    });
+    return reply.send({ facturas });
+  });
+
+  // POST crear factura
+  app.post('/facturas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      vehiculoId: z.string().uuid().optional().nullable(),
+      tipoComprobante: z.enum(['FACTURA', 'TICKET', 'NOTA_CREDITO', 'PRESUPUESTO', 'OTRO']).default('FACTURA'),
+      numero: z.string().max(50).optional(),
+      puntoVenta: z.string().max(20).optional(),
+      fecha: z.string().optional(),
+      proveedor: z.string().max(200).optional(),
+      cuitProveedor: z.string().max(20).optional(),
+      neto: z.number().nonnegative().optional(),
+      iva: z.number().nonnegative().optional(),
+      total: z.number().nonnegative(),
+      concepto: z.string().max(300).optional(),
+      categoria: z.enum(['REPARACION', 'REPUESTO', 'SERVICE', 'NEUMATICO', 'COMBUSTIBLE', 'OTRO']).default('REPARACION'),
+      workOrderId: z.string().uuid().optional().nullable(),
+      intervencionId: z.string().uuid().optional().nullable(),
+      neumaticoId: z.string().uuid().optional().nullable(),
+      sparePartId: z.string().uuid().optional().nullable(),
+      fileUrl: z.string().optional(),
+      fileName: z.string().optional(),
+      mimeType: z.string().optional(),
+      notas: z.string().max(500).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    if (body.data.vehiculoId) {
+      const v = await (app.prisma as any).vehiculo.findFirst({ where: { id: body.data.vehiculoId, tenantId } });
+      if (!v) return reply.code(400).send({ error: 'Vehículo inválido' });
+    }
+
+    const user = (req as any).user;
+    const factura = await (app.prisma as any).flotaFactura.create({
+      data: {
+        ...body.data,
+        tenantId,
+        fecha: body.data.fecha ? new Date(body.data.fecha) : new Date(),
+        uploadedById: user?.id || null,
+        uploadedByNombre: user?.name || user?.email || null,
+      },
+    });
+    return reply.code(201).send({ factura });
+  });
+
+  // DELETE factura
+  app.delete('/facturas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    await (app.prisma as any).flotaFactura.deleteMany({ where: { id, tenantId } });
+    return reply.send({ ok: true });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // MULTAS DE TRÁNSITO
+  // ═══════════════════════════════════════════════════════════════
+
+  // Upload de acta/boleta de multa
+  app.post('/multas/upload', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    try {
+      const data = await (req as any).file();
+      if (!data) return reply.code(400).send({ error: 'No se recibió archivo' });
+      const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+      if (!allowed.includes(data.mimetype)) return reply.code(400).send({ error: 'Solo PDF o imágenes' });
+      const uploadDir = join(process.env.STORAGE_LOCAL_PATH || '/app/uploads', 'flota-multas', tenantId);
+      if (!existsSync(uploadDir)) await mkdir(uploadDir, { recursive: true });
+      const ext = (data.filename.split('.').pop() || 'pdf').toLowerCase();
+      const filename = `${Date.now()}_${randomBytes(6).toString('hex')}.${ext}`;
+      await writeFile(join(uploadDir, filename), await data.toBuffer());
+      const baseUrl = process.env.API_BASE_URL || `http://${req.headers.host || 'localhost:3000'}`;
+      return reply.send({ url: `${baseUrl}/uploads/flota-multas/${tenantId}/${filename}`, name: data.filename, mimeType: data.mimetype });
+    } catch (e: any) {
+      console.error('[flota] multa upload error:', e);
+      return reply.code(500).send({ error: 'No se pudo subir el archivo' });
+    }
+  });
+
+  // GET multas (filtros: estado, vehiculoId, conductorId)
+  app.get('/multas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { estado, vehiculoId, conductorId } = req.query as any;
+    const multas = await (app.prisma as any).flotaMulta.findMany({
+      where: {
+        tenantId,
+        ...(estado ? { estado } : {}),
+        ...(vehiculoId ? { vehiculoId } : {}),
+        ...(conductorId ? { conductorId } : {}),
+      },
+      include: {
+        vehiculo: { select: { id: true, dominio: true, tipo: true } },
+        conductor: { select: { id: true, nombre: true } },
+      },
+      orderBy: { fecha: 'desc' },
+      take: 300,
+    });
+    return reply.send({ multas });
+  });
+
+  // POST crear multa
+  app.post('/multas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      vehiculoId: z.string().uuid(),
+      conductorId: z.string().uuid().optional().nullable(),
+      tipo: z.enum(['TRANSITO', 'ESTACIONAMIENTO', 'DOCUMENTACION', 'EXCESO_VELOCIDAD', 'OTRO']).default('TRANSITO'),
+      descripcion: z.string().max(500).optional(),
+      actaNumero: z.string().max(100).optional(),
+      lugar: z.string().max(300).optional(),
+      fecha: z.string().optional(),
+      monto: z.number().nonnegative(),
+      fechaVtoPago: z.string().optional(),
+      responsablePago: z.enum(['EMPRESA', 'CONDUCTOR']).optional().nullable(),
+      incidenteId: z.string().uuid().optional().nullable(),
+      fileUrl: z.string().optional(),
+      fileName: z.string().optional(),
+      notas: z.string().max(500).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const v = await (app.prisma as any).vehiculo.findFirst({ where: { id: body.data.vehiculoId, tenantId } });
+    if (!v) return reply.code(400).send({ error: 'Vehículo inválido' });
+
+    const multa = await (app.prisma as any).flotaMulta.create({
+      data: {
+        ...body.data,
+        tenantId,
+        fecha: body.data.fecha ? new Date(body.data.fecha) : new Date(),
+        fechaVtoPago: body.data.fechaVtoPago ? new Date(body.data.fechaVtoPago) : null,
+      },
+    });
+    return reply.code(201).send({ multa });
+  });
+
+  // PATCH multa (cambiar estado, marcar pagada)
+  app.patch('/multas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      estado: z.enum(['PENDIENTE', 'PAGADA', 'EN_DISPUTA', 'ANULADA']).optional(),
+      responsablePago: z.enum(['EMPRESA', 'CONDUCTOR']).optional().nullable(),
+      notas: z.string().max(500).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const upd: any = { ...body.data };
+    if (body.data.estado === 'PAGADA') upd.pagadaAt = new Date();
+    const updated = await (app.prisma as any).flotaMulta.updateMany({ where: { id, tenantId }, data: upd });
+    if (!updated.count) return reply.code(404).send({ error: 'No encontrada' });
+    return reply.send({ ok: true });
+  });
+
+  // DELETE multa
+  app.delete('/multas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    await (app.prisma as any).flotaMulta.deleteMany({ where: { id, tenantId } });
+    return reply.send({ ok: true });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // COMBUSTIBLE
   // ═══════════════════════════════════════════════════════════════
+
+  // GET /combustible — últimas cargas de toda la flota (para la página de combustible)
+  app.get('/combustible', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const registros = await (app.prisma as any).registroCombustible.findMany({
+      where: { tenantId },
+      include: {
+        vehiculo: { select: { id: true, dominio: true, tipo: true } },
+      },
+      orderBy: { fecha: 'desc' },
+      take: 100,
+    });
+    // conductorId es campo plano (sin relación) — resolver nombres aparte
+    const conductorIds = [...new Set(registros.map((r: any) => r.conductorId).filter(Boolean))];
+    const conductores = conductorIds.length
+      ? await (app.prisma as any).conductor.findMany({ where: { id: { in: conductorIds } }, select: { id: true, nombre: true } })
+      : [];
+    const porId = new Map(conductores.map((c: any) => [c.id, c.nombre]));
+    for (const r of registros) r.conductorNombre = r.conductorId ? porId.get(r.conductorId) || null : null;
+    return reply.send({ registros });
+  });
 
   app.get('/vehiculos/:vehiculoId/combustible', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -1177,7 +1952,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       }),
       (app.prisma as any).registroCombustible.findMany({
         where: { tenantId, fecha: { gte: inicioMes } },
-        select: { vehiculoId: true, litros: true, costoTotal: true, rendimiento: true },
+        select: { vehiculoId: true, litros: true, costoTotal: true, rendimiento: true, litrosUrea: true, costoUrea: true },
       }),
       (app.prisma as any).registroCombustible.findMany({
         where: { tenantId, fecha: { gte: inicioMesAnterior, lte: finMesAnterior } },
@@ -1207,20 +1982,25 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const disponibilidadPct = totalVeh > 0 ? Math.round((activosCount / totalVeh) * 100) : 0;
 
     // Combustible
-    const litrosMes = combustibleMes.reduce((s: number, r: any) => s + r.litros, 0);
+    const litrosMes = combustibleMes.reduce((s: number, r: any) => s + (r.litros || 0), 0);
     const costoCombuMes = combustibleMes.reduce((s: number, r: any) => s + (r.costoTotal || 0), 0);
-    const litrosMesAnt = combustibleMesAnt.reduce((s: number, r: any) => s + r.litros, 0);
+    const litrosMesAnt = combustibleMesAnt.reduce((s: number, r: any) => s + (r.litros || 0), 0);
     const costoCombuMesAnt = combustibleMesAnt.reduce((s: number, r: any) => s + (r.costoTotal || 0), 0);
     const rendimientos = combustibleMes.filter((r: any) => r.rendimiento != null).map((r: any) => r.rendimiento);
     const promedioKmL = rendimientos.length > 0 ? Math.round((rendimientos.reduce((s: number, r: number) => s + r, 0) / rendimientos.length) * 100) / 100 : null;
     // L/100km: inverso de km/L * 100
     const l100km = promedioKmL && promedioKmL > 0 ? Math.round((100 / promedioKmL) * 100) / 100 : null;
 
+    // Urea (AdBlue): litros, costo y ratio urea/diesel (~5-7% es normal; fuera de rango = posible problema SCR)
+    const litrosUreaMes = combustibleMes.reduce((s: number, r: any) => s + (r.litrosUrea || 0), 0);
+    const costoUreaMes = combustibleMes.reduce((s: number, r: any) => s + (r.costoUrea || 0), 0);
+    const ratioUreaDiesel = litrosMes > 0 ? Math.round((litrosUreaMes / litrosMes) * 1000) / 10 : null; // % con 1 decimal
+
     // Consumo por vehículo este mes
     const consumoPorVeh: Record<string, { litros: number; costo: number }> = {};
     for (const r of combustibleMes as any[]) {
       if (!consumoPorVeh[r.vehiculoId]) consumoPorVeh[r.vehiculoId] = { litros: 0, costo: 0 };
-      consumoPorVeh[r.vehiculoId].litros += r.litros;
+      consumoPorVeh[r.vehiculoId].litros += r.litros || 0;
       consumoPorVeh[r.vehiculoId].costo += r.costoTotal || 0;
     }
     const topConsumidores = vehiculos
@@ -1297,6 +2077,12 @@ export default async function flotaRoutes(app: FastifyInstance) {
           variacionLitros: litrosMesAnt > 0 ? Math.round(((litrosMes - litrosMesAnt) / litrosMesAnt) * 100) : null,
           promedioKmL,
           l100km,
+          urea: {
+            litrosMes: Math.round(litrosUreaMes * 10) / 10,
+            costoMes: Math.round(costoUreaMes),
+            ratioDieselPct: ratioUreaDiesel,
+            fueraDeRango: ratioUreaDiesel != null && (ratioUreaDiesel < 3 || ratioUreaDiesel > 9),
+          },
         },
         topConsumidores,
         neumaticos: {
@@ -1455,7 +2241,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     // Obtener todos los vehículos activos
     const vehiculos = await (app.prisma as any).vehiculo.findMany({
       where: { tenantId, status: 'ACTIVO' },
-      select: { id: true, dominio: true, tipo: true, currentOdometer: true, marca: true, modelo: true },
+      select: { id: true, dominio: true, tipo: true, currentOdometer: true, marca: true, modelo: true, maintenanceAssetId: true },
     });
 
     const resultados = await Promise.all((vehiculos as any[]).map(async (v: any) => {
@@ -1465,33 +2251,40 @@ export default async function flotaRoutes(app: FastifyInstance) {
         _sum: { costoTotal: true, litros: true },
       });
 
-      // 2. Costo de mantenimiento (OTs)
-      const mantenimientoAgg = await (app.prisma as any).workOrder.aggregate({
-        where: {
-          tenantId,
-          assetId: v.id,
-          status: 'COMPLETED',
-          completedDate: { gte: fechaDesde, lte: fechaHasta },
-        },
-        _sum: { totalCost: true, laborCost: true, partsCost: true },
-        _count: true,
-      });
+      // 2. Costo de mantenimiento (OTs) — el vínculo es vía maintenanceAssetId y la fecha real es completedAt
+      const mantenimientoAgg = v.maintenanceAssetId
+        ? await (app.prisma as any).workOrder.aggregate({
+            where: {
+              tenantId,
+              assetId: v.maintenanceAssetId,
+              status: 'COMPLETED',
+              completedAt: { gte: fechaDesde, lte: fechaHasta },
+            },
+            _sum: { totalCost: true, laborCost: true, partsCost: true },
+            _count: true,
+          })
+        : { _sum: { totalCost: 0, laborCost: 0, partsCost: 0 }, _count: 0 };
 
-      // 3. Costo de neumáticos (desmontajes en el período)
-      const neumaticosAgg = await (app.prisma as any).neumaticoPosicion.aggregate({
+      // 3. Costo de neumáticos (desmontajes en el período) — precioCompra + recaps reales
+      const posicionesDesmontadas = await (app.prisma as any).neumaticoPosicion.findMany({
         where: {
           vehiculoId: v.id,
           tenantId,
           desmontadoAt: { gte: fechaDesde, lte: fechaHasta },
           activo: false,
         },
-        _count: true,
+        select: { neumatico: { select: { precioCompra: true, recaps: { select: { costo: true } } } } },
       });
+      const costoNeumaticos = posicionesDesmontadas.reduce((s: number, p: any) => {
+        const n = p.neumatico;
+        if (!n) return s;
+        const recaps = (n.recaps || []).reduce((a: number, r: any) => a + (r.costo || 0), 0);
+        return s + (n.precioCompra || 0) + recaps;
+      }, 0);
 
       // Calcular totales
       const costoCombustible = combustibleAgg._sum?.costoTotal || 0;
       const costoMantenimiento = mantenimientoAgg._sum?.totalCost || 0;
-      const costoNeumaticos = (neumaticosAgg._count || 0) * 50000; // Estimado $50.000 por neumático desmontado
 
       const costoTotal = costoCombustible + costoMantenimiento + costoNeumaticos;
       const kmRecorridos = v.currentOdometer || 0;
@@ -1572,13 +2365,290 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ vehiculo, historial, mantenimientoPorTipo });
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // PANEL — Scorecard de conductores, KPIs de flota y vista ejecutiva
+  // ═══════════════════════════════════════════════════════════════
+
+  // GET scorecard de conductores: rating 0-100 por chofer con desglose de penalizaciones
+  app.get('/conductores/scorecard', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const conductores = await (app.prisma as any).conductor.findMany({
+      where: { tenantId },
+      select: {
+        id: true, nombre: true, categoria: true, status: true,
+        licenciaVto: true, psicofisicoVto: true,
+        vehiculos: { select: { id: true, dominio: true, tipo: true } },
+        multas: { select: { id: true, monto: true, estado: true, tipo: true, createdAt: true } },
+      },
+    });
+
+    const ahora = new Date();
+    const hace6m = new Date(ahora.getFullYear(), ahora.getMonth() - 6, 1);
+    const hace30d = new Date(ahora.getTime() - 30 * 86400000);
+    const hace60d = new Date(ahora.getTime() - 60 * 86400000);
+
+    // Rendimiento de combustible por conductor (km/L) de los últimos 6 meses.
+    // El modelo no tiene kmRecorridos: se deriva de rendimiento (km/L) * litros.
+    const cargas = await (app.prisma as any).registroCombustible.findMany({
+      where: { tenantId, conductorId: { not: null }, fecha: { gte: hace6m }, litros: { not: null }, rendimiento: { not: null } },
+      select: { conductorId: true, litros: true, rendimiento: true },
+    });
+    const rendPorConductor = new Map<string, { km: number; litros: number }>();
+    for (const c of cargas) {
+      const acc = rendPorConductor.get(c.conductorId) || { km: 0, litros: 0 };
+      acc.km += (c.rendimiento || 0) * (c.litros || 0);
+      acc.litros += c.litros || 0;
+      rendPorConductor.set(c.conductorId, acc);
+    }
+    // Promedio de flota para comparar eficiencia
+    let kmTot = 0, litTot = 0;
+    rendPorConductor.forEach((v) => { kmTot += v.km; litTot += v.litros; });
+    const rendFlota = litTot > 0 ? kmTot / litTot : null;
+
+    // Incidentes por vehículo (se atribuyen al conductor asignado a la unidad)
+    const vehiculoIds = conductores.flatMap((c: any) => c.vehiculos.map((v: any) => v.id));
+    const incidentes = vehiculoIds.length
+      ? await (app.prisma as any).flotaIncidente.findMany({
+          where: { tenantId, vehiculoId: { in: vehiculoIds }, createdAt: { gte: hace6m } },
+          select: { vehiculoId: true, tipo: true, gravedad: true, createdAt: true },
+        })
+      : [];
+
+    // Presiones bajas en vehículos asignados (indicio de no controlar presión)
+    const presionesBajas = vehiculoIds.length
+      ? await (app.prisma as any).neumaticoPresion.findMany({
+          where: { tenantId, vehiculoId: { in: vehiculoIds }, fecha: { gte: hace6m } },
+          select: { vehiculoId: true, presionMedida: true, fecha: true, neumatico: { select: { presionRecomendada: true } } },
+        })
+      : [];
+
+    // Desgaste irregular de cubiertas en vehículos asignados (posible mala conducción/presión)
+    const daniosIrregulares = vehiculoIds.length
+      ? await (app.prisma as any).neumaticoDanio.findMany({
+          where: { tenantId, tipo: 'DESGASTE_IRREGULAR', createdAt: { gte: hace6m } },
+          select: { createdAt: true, severidad: true, neumatico: { select: { posiciones: { where: { activo: true }, select: { vehiculoId: true }, take: 1 } } } },
+        }).catch(() => [])
+      : [];
+
+    // Inspecciones QR hechas por el chofer (bonus por reporte proactivo)
+    const inspecciones = await (app.prisma as any).inspeccion.findMany({
+      where: { tenantId, createdAt: { gte: hace6m } },
+      select: { inspectorNombre: true, conductor: true, hallazgosCount: true, createdAt: true },
+    }).catch(() => []);
+
+    // ── Función de puntuación reutilizable (para score total y tendencia mensual) ──
+    const PESO_MULTA: Record<string, number> = { EXCESO_VELOCIDAD: 10, TRANSITO: 6, DOCUMENTACION: 4, ESTACIONAMIENTO: 2, OTRO: 5 };
+    const LABEL_MULTA: Record<string, string> = { EXCESO_VELOCIDAD: 'Exceso de velocidad', TRANSITO: 'Infracción de tránsito', DOCUMENTACION: 'Documentación', ESTACIONAMIENTO: 'Estacionamiento', OTRO: 'Otra infracción' };
+    const PESO_INC: Record<string, number> = { CRITICA: 12, ALTA: 8, MEDIA: 5, BAJA: 3 };
+
+    const puntuar = (c: any, desde: Date | null, hasta: Date | null, incluirFijos: boolean) => {
+      const vehIds = new Set(c.vehiculos.map((v: any) => v.id));
+      const enRango = (d: any) => { const t = new Date(d).getTime(); return (!desde || t >= desde.getTime()) && (!hasta || t < hasta.getTime()); };
+      const penalizaciones: { motivo: string; puntos: number; detalle: string }[] = [];
+      const bonificaciones: { motivo: string; puntos: number; detalle: string }[] = [];
+
+      // Multas por tipo (excluye anuladas/en disputa)
+      const multasValidas = c.multas.filter((m: any) => m.estado !== 'ANULADA' && m.estado !== 'EN_DISPUTA' && enRango(m.createdAt));
+      const multasPorTipo = new Map<string, number>();
+      for (const m of multasValidas) multasPorTipo.set(m.tipo, (multasPorTipo.get(m.tipo) || 0) + 1);
+      multasPorTipo.forEach((cant, tipo) => penalizaciones.push({ motivo: LABEL_MULTA[tipo] || tipo, puntos: cant * (PESO_MULTA[tipo] ?? 5), detalle: `${cant} multa${cant !== 1 ? 's' : ''}` }));
+
+      // Incidentes por gravedad
+      const inc = incidentes.filter((i: any) => vehIds.has(i.vehiculoId) && enRango(i.createdAt));
+      const incPts = inc.reduce((s: number, i: any) => s + (PESO_INC[i.gravedad] || 3), 0);
+      if (inc.length) penalizaciones.push({ motivo: 'Incidentes en ruta', puntos: incPts, detalle: `${inc.length} reportado${inc.length !== 1 ? 's' : ''}` });
+
+      // Presiones bajas (máx -10)
+      const presBajas = presionesBajas.filter((p: any) => vehIds.has(p.vehiculoId) && enRango(p.fecha) && p.neumatico?.presionRecomendada && p.presionMedida < p.neumatico.presionRecomendada * 0.85);
+      if (presBajas.length) penalizaciones.push({ motivo: 'Presión baja sin corregir', puntos: Math.min(presBajas.length * 2, 10), detalle: `${presBajas.length} registro${presBajas.length !== 1 ? 's' : ''} <85% de lo recomendado` });
+
+      // Desgaste irregular de cubiertas (-4 c/u, máx -12)
+      const danios = daniosIrregulares.filter((d: any) => enRango(d.createdAt) && d.neumatico?.posiciones?.[0] && vehIds.has(d.neumatico.posiciones[0].vehiculoId));
+      if (danios.length) penalizaciones.push({ motivo: 'Desgaste irregular de cubiertas', puntos: Math.min(danios.length * 4, 12), detalle: `${danios.length} caso${danios.length !== 1 ? 's' : ''} en sus unidades` });
+
+      // Bonus: inspecciones QR hechas por el chofer (reporte proactivo)
+      const nombreNorm = (c.nombre || '').trim().toLowerCase();
+      const insps = inspecciones.filter((i: any) => enRango(i.createdAt) && nombreNorm && ((i.inspectorNombre || '').trim().toLowerCase() === nombreNorm || (i.conductor || '').trim().toLowerCase() === nombreNorm));
+      const conHallazgos = insps.filter((i: any) => (i.hallazgosCount || 0) > 0).length;
+      if (insps.length) bonificaciones.push({ motivo: 'Checklists pre-viaje realizados', puntos: Math.min(insps.length, 4), detalle: `${insps.length} inspección${insps.length !== 1 ? 'es' : ''}` });
+      if (conHallazgos) bonificaciones.push({ motivo: 'Hallazgos reportados proactivamente', puntos: Math.min(conHallazgos, 4), detalle: `${conHallazgos} inspección${conHallazgos !== 1 ? 'es' : ''} con hallazgos` });
+
+      // Factores "fijos" solo en el score total (no en ventanas mensuales)
+      let kmL: number | null = null;
+      let kmRecorridos = 0;
+      if (incluirFijos) {
+        const rend = rendPorConductor.get(c.id);
+        kmL = rend && rend.litros > 0 ? rend.km / rend.litros : null;
+        kmRecorridos = rend?.km || 0;
+        if (kmL != null && rendFlota != null && rendFlota > 0) {
+          const diff = (rendFlota - kmL) / rendFlota;
+          if (diff > 0.15) penalizaciones.push({ motivo: 'Consumo alto de combustible', puntos: 10, detalle: `${kmL.toFixed(2)} km/L vs ${rendFlota.toFixed(2)} promedio` });
+          else if (diff > 0.08) penalizaciones.push({ motivo: 'Consumo sobre promedio', puntos: 5, detalle: `${kmL.toFixed(2)} km/L vs ${rendFlota.toFixed(2)} promedio` });
+          else if (diff < -0.10) bonificaciones.push({ motivo: 'Eficiencia destacada', puntos: 5, detalle: `${kmL.toFixed(2)} km/L, ${Math.round(-diff * 100)}% mejor que la flota` });
+        }
+        const docsVencidos = [c.licenciaVto, c.psicofisicoVto].filter((d) => d && new Date(d) < ahora).length;
+        if (docsVencidos) penalizaciones.push({ motivo: 'Documentación vencida', puntos: docsVencidos * 6, detalle: `${docsVencidos} doc${docsVencidos !== 1 ? 's' : ''} vencida${docsVencidos !== 1 ? 's' : ''}` });
+      }
+
+      const score = Math.max(0, Math.min(100, 100 - penalizaciones.reduce((s, p) => s + p.puntos, 0) + bonificaciones.reduce((s, b) => s + b.puntos, 0)));
+      return { score, penalizaciones, bonificaciones, kmL, kmRecorridos, multasValidas, inc, presBajas, danios, insps };
+    };
+
+    const scorecard = conductores.map((c: any) => {
+      const total = puntuar(c, hace6m, null, true);
+      const mesActual = puntuar(c, hace30d, null, false);
+      const mesAnterior = puntuar(c, hace60d, hace30d, false);
+      const tendencia = mesActual.score - mesAnterior.score; // >0 mejora, <0 empeora
+
+      const score = total.score;
+      const rating = score >= 90 ? 'EXCELENTE' : score >= 75 ? 'BUENO' : score >= 60 ? 'REGULAR' : score >= 40 ? 'DEFICIENTE' : 'CRITICO';
+      const confianza = total.kmRecorridos >= 5000 ? 'ALTA' : total.kmRecorridos >= 2000 ? 'MEDIA' : 'BAJA';
+      const multasPend = c.multas.filter((m: any) => m.estado === 'PENDIENTE').length;
+
+      return {
+        id: c.id, nombre: c.nombre, categoria: c.categoria, status: c.status,
+        vehiculos: c.vehiculos.map((v: any) => v.dominio),
+        score, rating, confianza, tendencia,
+        penalizaciones: total.penalizaciones, bonificaciones: total.bonificaciones,
+        stats: {
+          multas: total.multasValidas.length, multasPendientes: multasPend,
+          incidentes: total.inc.length, presionesBajas: total.presBajas.length,
+          desgasteIrregular: total.danios.length, inspecciones: total.insps.length,
+          kmPorLitro: total.kmL != null ? Number(total.kmL.toFixed(2)) : null,
+          kmRecorridos: Math.round(total.kmRecorridos),
+        },
+      };
+    }).sort((a: any, b: any) => b.score - a.score);
+
+    return reply.send({ scorecard, rendimientoFlotaKmL: rendFlota != null ? Number(rendFlota.toFixed(2)) : null });
+  });
+
+  // GET panel de flota: KPIs + alertas activas + cumplimiento de planes
+  app.get('/panel', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const ahora = new Date();
+    const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+    const en7dias = new Date(ahora.getTime() + 7 * 86400000);
+
+    const [vehiculos, otsAbiertas, otsVencidas, planes, docsVto, multasPend, neumaticos, incidentesMes] = await Promise.all([
+      (app.prisma as any).vehiculo.findMany({ where: { tenantId }, select: { id: true, dominio: true, tipo: true, status: true, currentOdometer: true } }),
+      (app.prisma as any).workOrder.count({ where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] } } }),
+      (app.prisma as any).workOrder.count({ where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS'] }, scheduledDate: { lt: ahora } } }),
+      (app.prisma as any).maintenancePlan.findMany({ where: { tenantId, status: 'ACTIVE' }, select: { id: true, nextExecutionDate: true, lastExecutionDate: true } }),
+      (app.prisma as any).vencimientoDocumento.findMany({ where: { tenantId, renovado: false, fechaVto: { lte: en7dias } }, select: { id: true, tipo: true, fechaVto: true, vehiculo: { select: { dominio: true } } } }),
+      (app.prisma as any).flotaMulta.findMany({ where: { tenantId, estado: 'PENDIENTE' }, select: { id: true, monto: true, tipo: true, vehiculo: { select: { dominio: true } }, conductor: { select: { nombre: true } } } }),
+      (app.prisma as any).neumatico.findMany({ where: { tenantId, status: 'EN_USO', profBanda: { not: null } }, select: { id: true, codigo: true, profBanda: true, posiciones: { where: { activo: true }, select: { vehiculo: { select: { dominio: true } } }, take: 1 } } }),
+      (app.prisma as any).flotaIncidente.count({ where: { tenantId, createdAt: { gte: inicioMes } } }),
+    ]);
+
+    const activos = vehiculos.filter((v: any) => v.status === 'ACTIVO').length;
+    const enTaller = vehiculos.filter((v: any) => v.status === 'EN_TALLER').length;
+    const disponibilidad = vehiculos.length > 0 ? Math.round((activos / vehiculos.length) * 100) : null;
+
+    // Cumplimiento de planes: % con nextExecutionDate futura o sin fecha (al día)
+    const planesVencidos = planes.filter((p: any) => p.nextExecutionDate && new Date(p.nextExecutionDate) < ahora).length;
+    const cumplimientoPlanes = planes.length > 0 ? Math.round(((planes.length - planesVencidos) / planes.length) * 100) : null;
+
+    // Alertas activas consolidadas
+    const cubiertasCriticas = neumaticos.filter((n: any) => n.profBanda != null && n.profBanda <= 1.6);
+    const cubiertasBajas = neumaticos.filter((n: any) => n.profBanda != null && n.profBanda > 1.6 && n.profBanda <= 2.5);
+    const alertas = [
+      ...cubiertasCriticas.map((n: any) => ({ tipo: 'BANDA_CRITICA', severidad: 'CRITICA', titulo: `Cubierta ${n.codigo} en banda crítica`, detalle: `${n.profBanda} mm — ${n.posiciones?.[0]?.vehiculo?.dominio || 'sin asignar'}`, link: '/flota-360/neumaticos' })),
+      ...cubiertasBajas.map((n: any) => ({ tipo: 'BANDA_BAJA', severidad: 'ALTA', titulo: `Cubierta ${n.codigo} con banda baja`, detalle: `${n.profBanda} mm — ${n.posiciones?.[0]?.vehiculo?.dominio || 'sin asignar'}`, link: '/flota-360/neumaticos' })),
+      ...docsVto.map((d: any) => ({ tipo: 'DOC_VTO', severidad: new Date(d.fechaVto) < ahora ? 'CRITICA' : 'ALTA', titulo: `${d.tipo} ${new Date(d.fechaVto) < ahora ? 'vencido' : 'por vencer'}`, detalle: `${d.vehiculo?.dominio || ''} — ${new Date(d.fechaVto).toLocaleDateString('es-AR')}`, link: '/flota-360/documentacion' })),
+      ...multasPend.map((m: any) => ({ tipo: 'MULTA_PEND', severidad: 'MEDIA', titulo: `Multa pendiente $${m.monto.toLocaleString('es-AR')}`, detalle: `${m.vehiculo?.dominio || ''}${m.conductor?.nombre ? ` — ${m.conductor.nombre}` : ''}`, link: '/flota-360/documentacion' })),
+    ];
+    const ordenSev: Record<string, number> = { CRITICA: 0, ALTA: 1, MEDIA: 2, BAJA: 3 };
+    alertas.sort((a, b) => (ordenSev[a.severidad] ?? 9) - (ordenSev[b.severidad] ?? 9));
+
+    return reply.send({
+      kpis: {
+        totalUnidades: vehiculos.length, activos, enTaller, disponibilidad,
+        otsAbiertas, otsVencidas, planesActivos: planes.length, planesVencidos, cumplimientoPlanes,
+        multasPendientes: multasPend.length, montoMultasPend: multasPend.reduce((s: number, m: any) => s + m.monto, 0),
+        cubiertasCriticas: cubiertasCriticas.length, cubiertasBajas: cubiertasBajas.length,
+        incidentesMes, docsPorVencer: docsVto.length,
+      },
+      alertas,
+    });
+  });
+
+  // GET panel ejecutivo: TCO tendencia + presupuesto vs real + ranking de unidades
+  app.get('/panel-ejecutivo', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const ahora = new Date();
+    const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+    const inicioMesAnt = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
+
+    // Costo real del mes (combustible + OTs completadas + facturas + multas pagadas)
+    const [combustibleMes, otsMes, facturasMes, multasMes, settings] = await Promise.all([
+      (app.prisma as any).registroCombustible.aggregate({ where: { tenantId, fecha: { gte: inicioMes } }, _sum: { costoTotal: true } }),
+      (app.prisma as any).workOrder.aggregate({ where: { tenantId, status: 'COMPLETED', completedAt: { gte: inicioMes } }, _sum: { totalCost: true } }),
+      (app.prisma as any).flotaFactura.aggregate({ where: { tenantId, fecha: { gte: inicioMes } }, _sum: { total: true } }).catch(() => ({ _sum: { total: 0 } })),
+      (app.prisma as any).flotaMulta.aggregate({ where: { tenantId, estado: 'PAGADA', pagadaAt: { gte: inicioMes } }, _sum: { monto: true } }).catch(() => ({ _sum: { monto: 0 } })),
+      (app.prisma as any).companySettings.findUnique({ where: { tenantId }, select: { flotaPresupuestoMensual: true } }).catch(() => null),
+    ]);
+
+    const realMes = (combustibleMes._sum.costoTotal || 0) + (otsMes._sum.totalCost || 0) + (facturasMes._sum.total || 0) + (multasMes._sum.monto || 0);
+    const presupuesto = settings?.flotaPresupuestoMensual ?? null;
+    const desvioPresupuesto = presupuesto != null && presupuesto > 0 ? Math.round(((realMes - presupuesto) / presupuesto) * 100) : null;
+
+    // Ranking de unidades por costo del mes
+    const costosPorVeh = await (app.prisma as any).$queryRaw`
+      SELECT v.id, v.dominio, v.tipo,
+        COALESCE((SELECT SUM(costo_total) FROM flota_registros_combustible WHERE vehiculo_id = v.id AND fecha >= ${inicioMes}), 0) as combustible,
+        COALESCE((SELECT SUM(total) FROM flota_facturas WHERE vehiculo_id = v.id AND fecha >= ${inicioMes}), 0) as facturas
+      FROM flota_vehiculos v WHERE v.tenant_id = ${tenantId}
+      ORDER BY (combustible + facturas) DESC LIMIT 10
+    `.catch(() => []);
+
+    return reply.send({
+      mes: ahora.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }),
+      costoRealMes: Math.round(realMes),
+      desglose: {
+        combustible: Math.round(combustibleMes._sum.costoTotal || 0),
+        mantenimiento: Math.round(otsMes._sum.totalCost || 0),
+        facturas: Math.round(facturasMes._sum.total || 0),
+        multas: Math.round(multasMes._sum.monto || 0),
+      },
+      presupuesto, desvioPresupuesto,
+      rankingUnidades: costosPorVeh,
+    });
+  });
+
+  // PUT presupuesto mensual de flota
+  app.put('/config/presupuesto', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({ presupuestoMensual: z.number().nonnegative().nullable() });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+
+    const existing = await (app.prisma as any).companySettings.findUnique({ where: { tenantId }, select: { id: true } });
+    if (!existing) return reply.code(404).send({ error: 'Configuración de empresa no encontrada' });
+    await (app.prisma as any).companySettings.update({
+      where: { tenantId },
+      data: { flotaPresupuestoMensual: body.data.presupuestoMensual },
+    });
+    return reply.send({ ok: true, presupuestoMensual: body.data.presupuestoMensual });
+  });
+
   console.log('[FLOTA ROUTES] Routes registered including POST /vehiculos/:id/eliminar');
 }
 
 // Función auxiliar para verificar planes por KM (ejecutada en background)
 async function verificarPlanesPorKm(prisma: any, tenantId: string, vehiculoId: string, odometer: number) {
+  // plan.assetId referencia maintenanceAsset.id — resolver desde el vehículo
+  const veh = await prisma.vehiculo.findFirst({ where: { id: vehiculoId, tenantId }, select: { maintenanceAssetId: true } });
+  if (!veh?.maintenanceAssetId) return;
   const planes = await prisma.maintenancePlan.findMany({
-    where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM', assetId: vehiculoId },
+    where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM', assetId: veh.maintenanceAssetId },
     select: { id: true, triggerKm: true, lastOdometerExecution: true },
   });
   

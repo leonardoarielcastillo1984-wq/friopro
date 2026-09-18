@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Search, BookOpen, Play, ChevronDown, ChevronUp, Lightbulb, ListChecks,
@@ -59,12 +59,33 @@ function ScreenshotDisplay({ guideId, index, sc, onOpen }: { guideId: string; in
   );
 }
 
+/* Imagen de un paso del paso-a-paso: carga /help/{image} y se oculta si no existe */
+function StepImage({ image, alt }: { image: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/help/${image}`}
+      alt={alt}
+      className="mt-3 w-full max-w-2xl rounded-lg border border-gray-200 shadow-sm"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export default function CentroDeAyudaPage() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState<string>(guides[0].id);
   const [tab, setTab] = useState<'info' | 'pasos' | 'screenshots'>('info');
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
+
+  // Deep-link: /modo-de-uso?guide=<id> abre directo esa guía
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('guide');
+    if (id && guides.some(g => g.id === id)) setActive(id);
+  }, []);
 
   const q = query.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -298,16 +319,19 @@ export default function CentroDeAyudaPage() {
                       </div>
                       {expandedStep === i ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                     </button>
-                    {expandedStep === i && s.subSteps && (
-                      <div className="px-4 pb-3 pl-16">
-                        <ul className="space-y-1.5">
-                          {s.subSteps.map((sub, j) => (
-                            <li key={j} className="flex items-start gap-2 text-sm text-gray-700">
-                              <ListChecks className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
-                              {sub}
-                            </li>
-                          ))}
-                        </ul>
+                    {expandedStep === i && (s.subSteps || s.image) && (
+                      <div className="px-4 pb-4 pl-16">
+                        {s.subSteps && (
+                          <ul className="space-y-1.5">
+                            {s.subSteps.map((sub, j) => (
+                              <li key={j} className="flex items-start gap-2 text-sm text-gray-700">
+                                <ListChecks className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+                                {sub}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {s.image && <StepImage image={s.image} alt={s.title} />}
                       </div>
                     )}
                   </div>

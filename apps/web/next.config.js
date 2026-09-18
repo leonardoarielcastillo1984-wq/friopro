@@ -16,6 +16,11 @@ const nextConfig = {
   generateBuildId: () => 'build-' + Date.now(),
   swcMinify: true,
   trailingSlash: true,
+  // Local dev: proxy /api/* al backend (en testing/prod lo resuelve Nginx antes de llegar a Next)
+  async rewrites() {
+    const target = process.env.API_PROXY_TARGET || 'http://localhost:3001';
+    return [{ source: '/api/:path*', destination: `${target}/:path*` }];
+  },
   webpack: (config, { isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,

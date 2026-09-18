@@ -13,7 +13,7 @@ import {
 export type Difficulty = 'Fácil' | 'Medio' | 'Avanzado';
 
 export interface GuideAction { name: string; description: string; detail?: string; }
-export interface GuideStep { title: string; description: string; subSteps?: string[]; }
+export interface GuideStep { title: string; description: string; subSteps?: string[]; image?: string; }
 export interface GuideTab { key: string; label: string; }
 export interface Screenshot { label: string; caption: string; route?: string; }
 export interface ModuleGuide {
@@ -452,11 +452,76 @@ export const guides: ModuleGuide[] = [
     screenshots: [
       { label: 'Mantenimiento', caption: 'Órdenes y plan de mantenimiento', route: '/infraestructura' },
       { label: 'Calibraciones', caption: 'Equipos y programa de calibración', route: '/infraestructura?tab=calibraciones' },
-      { label: 'Inspecciones Inteligentes', caption: 'Inspecciones por QR', route: '/infraestructura?tab=inspecciones' },
+      { label: 'Inspecciones Inteligentes', caption: 'Inspecciones por QR', route: '/flota-360/inspecciones' },
     ],
     related: ['indicadores', 'seguridad'],
     tips: ['Priorizá el mantenimiento preventivo.', 'No operés equipos de medición con calibración vencida.'],
     difficulty: 'Medio', estimatedTime: '20 minutos', isoRef: 'ISO 9001 §7.1',
+  },
+
+  /* ───────── 8b. Flota 360 ───────── */
+  {
+    id: 'flota-360', title: 'Flota 360', icon: Truck, route: '/flota-360',
+    group: 'Flota 360',
+    purpose: 'Gestión integral de la flota de transporte: vehículos, conjuntos, mantenimiento, inspecciones QR, neumáticos, combustible, conductores, costos y gemelo digital. Todo está encadenado: una inspección QR genera hallazgos, los hallazgos generan OTs, las OTs actualizan la salud del vehículo y los KPIs del panel.',
+    tabs: [
+      { key: 'centro', label: 'Centro de trabajo' },
+      { key: 'flota', label: 'Flota (vehículos/semis/conjuntos)' },
+      { key: 'mantenimiento', label: 'Mantenimiento (OT/planes/QR/repuestos)' },
+      { key: 'recursos', label: 'Recursos (neumáticos/combustible/conductores/docs)' },
+      { key: 'gestion', label: 'Gestión (panel/costos/reportes/config)' },
+    ],
+    mainFeatures: [
+      'Centro de trabajo con la cola de OTs del día, vencidas, en proceso y pendientes',
+      'Registro de vehículos (tractor, camión, utilitario) y semirremolques',
+      'Conjuntos operativos: acople tractor + semi con costos consolidados',
+      'Inspecciones QR sin app: el conductor escanea y completa el checklist en el celular',
+      'Hallazgos que generan órdenes de trabajo automáticamente',
+      'Planes de mantenimiento por km o por tiempo con frecuencias',
+      'Gemelo digital del vehículo: salud, riesgo, componentes y estado operativo',
+      'Proyección de mantenimiento a un kilometraje futuro',
+      'Panel con KPIs de flota, ranking de conductores y vista ejecutiva',
+      'Costos y TCO por unidad, reportes para la dirección',
+    ],
+    actions: [
+      { name: 'Centro de trabajo', description: 'Pantalla principal: muestra las OTs de hoy, vencidas, en proceso y pendientes.', detail: 'Es la cola de trabajo diaria del taller. Cada OT indica su origen (Inspección QR, Plan, Correctivo).' },
+      { name: 'Vehículos', description: 'Flota → Vehículos: alta y ficha de cada unidad.', detail: 'Cada vehículo crea automáticamente un activo de mantenimiento vinculado.' },
+      { name: 'Conjuntos operativos', description: 'Flota → Conjuntos: acoplá un tractor con un semi.', detail: 'Consolida costos y OTs del conjunto completo.' },
+      { name: 'Inspecciones QR', description: 'Mantenimiento → Inspecciones QR: plantillas, QRs operativos, hallazgos y OTs.', detail: 'El QR vinculado a un vehículo genera OT automática al reportar un hallazgo.' },
+      { name: 'Gemelo digital', description: 'Ficha del vehículo: salud /100, riesgo, componentes y estado.', detail: 'Se alimenta de OTs, inspecciones, km y costos.' },
+      { name: 'Panel', description: 'Gestión → Panel: KPIs de flota, ranking de conductores y vista ejecutiva.', detail: 'Disponibilidad, OTs, cumplimiento de planes, multas, cubiertas y costos.' },
+    ],
+    steps: [
+      { title: '1. Cargar la flota', description: 'Flota → Vehículos → "Nuevo vehículo".', image: 'flota-360-paso-1.png', subSteps: ['Completá dominio, tipo (tractor/camión/utilitario), marca, modelo, año', 'Cargá el odómetro actual (km) — es la base de los planes por km', 'Repetí en Flota → Semis para los semirremolques', 'En Recursos → Conductores dá de alta los choferes', 'En Recursos → Documentación cargá VTV, seguros, habilitaciones y sus vencimientos'] },
+      { title: '2. Armar los conjuntos operativos', description: 'Flota → Conjuntos operativos → "Nuevo conjunto".', image: 'flota-360-paso-2.png', subSteps: ['Elegí el tractor y el semi que viajan juntos', 'El conjunto consolida costos y OTs de ambas unidades', 'Podés desacoplar cuando cambie la configuración'] },
+      { title: '3. Configurar planes de mantenimiento', description: 'Mantenimiento → Planes y frecuencias.', image: 'flota-360-paso-3.png', subSteps: ['Creá un plan por vehículo o por tipo de servicio', 'Definí la frecuencia: cada X km o cada X días', 'El sistema programa las OTs preventivas y avisa cuando vencen'] },
+      { title: '4. Generar los QR de inspección', description: 'Mantenimiento → Inspecciones QR → pestaña "QR Operativos".', image: 'flota-360-paso-4.png', subSteps: ['Creá una plantilla de checklist en "Plantillas" (ej: pre-viaje)', 'En "QR Operativos" → "Nuevo QR", elegí la plantilla', 'Vinculá el QR al vehículo (selector muestra solo unidades de flota)', 'Imprimí el cartel con el botón "Cartel" y pegalo en la unidad'] },
+      { title: '5. El conductor inspecciona con el celular', description: 'Sin instalar app: escanea el QR pegado en el vehículo.', image: 'flota-360-paso-5.png', subSteps: ['Se abre una web pública con el checklist', 'Completa ítem por ítem y marca lo que falla', 'Cada desvío se guarda como hallazgo con su severidad'] },
+      { title: '6. Los hallazgos generan OTs', description: 'Automático, sin intervención manual.', image: 'flota-360-paso-6.png', subSteps: ['Si el QR está vinculado al vehículo, el hallazgo crea una OT', 'La OT queda asociada al activo del vehículo y a su conjunto', 'Aparece en Centro de trabajo y en Mantenimiento → Órdenes'] },
+      { title: '7. Gestionar las órdenes de trabajo', description: 'Centro de trabajo o Mantenimiento → Órdenes de trabajo.', image: 'flota-360-paso-7.png', subSteps: ['Asigná técnico, prioridad y fecha programada', 'Cambiá el estado: Pendiente → En proceso → Completada', 'Cargá repuestos usados y costo de la intervención', 'Al completar, se actualiza la salud del vehículo y el próximo servicio'] },
+      { title: '8. Registrar recursos día a día', description: 'Recursos: combustible, neumáticos, conductores.', image: 'flota-360-paso-8.png', subSteps: ['Combustible: registrá cada carga (litros, km, estación) — alimenta el rendimiento km/L', 'Neumáticos: posiciones, presiones, recaps y rotaciones por unidad', 'Conductores: asignaciones, licencias y desempeño'] },
+      { title: '9. Consultar el gemelo digital', description: 'Flota → Vehículos → abrí la ficha de una unidad.', image: 'flota-360-paso-9.png', subSteps: ['Vas a ver el gemelo visual con el estado de cada componente', 'Salud /100 y riesgo /100 calculados de OTs, inspecciones y km', 'Estado operativo: km, OTs abiertas, última inspección QR', 'Costos del activo de los últimos 6 meses'] },
+      { title: '10. Proyectar mantenimiento', description: 'En la ficha del vehículo, sección de proyección.', image: 'flota-360-paso-10.png', subSteps: ['Ingresá un kilometraje futuro (ej: +20.000 km)', 'El sistema estima qué servicios y componentes van a requerir atención', 'Usalo para planificar paradas y presupuesto'] },
+      { title: '11. Leer los KPIs del panel', description: 'Gestión → Panel.', image: 'flota-360-paso-11.png', subSteps: ['Pestaña Flota: disponibilidad, OTs abiertas/vencidas, cumplimiento de planes, multas, cubiertas críticas, docs por vencer', 'Pestaña Ranking de conductores: score por desempeño, multas, incidentes y rendimiento', 'Pestaña Ejecutivo: costo real del mes, desglose (combustible/mantenimiento/facturas/multas) y desvío de presupuesto'] },
+      { title: '12. Costos, TCO y reportes', description: 'Gestión → Costos y TCO / Reportes.', image: 'flota-360-paso-12.png', subSteps: ['Costos y TCO: costo por km y costo total de propiedad por unidad', 'Reportes: exportá informes para la dirección y auditorías', 'Configuración: presupuesto mensual y parámetros del módulo'] },
+    ],
+    screenshots: [
+      { label: 'Centro de trabajo', caption: 'Cola diaria de OTs: hoy, vencidas, en proceso y pendientes', route: '/flota-360' },
+      { label: 'Vehículos', caption: 'Registro y fichas de la flota', route: '/flota-360/vehiculos' },
+      { label: 'Ficha del vehículo', caption: 'Gemelo digital, salud, proyección y costos', route: '/flota-360/vehiculos' },
+      { label: 'Inspecciones QR', caption: 'Plantillas, QRs operativos, hallazgos y OTs', route: '/flota-360/inspecciones' },
+      { label: 'Órdenes de trabajo', caption: 'OTs de la flota (preventivas, correctivas, de inspección)', route: '/flota-360/ordenes' },
+      { label: 'Panel', caption: 'KPIs de flota, ranking de conductores y vista ejecutiva', route: '/flota-360/panel' },
+    ],
+    related: ['infraestructura', 'indicadores', 'reportes'],
+    tips: [
+      'El flujo es correlativo: inspección QR → hallazgo → OT → completar → actualiza salud y KPIs. No saltees el QR, es la puerta de entrada del mantenimiento.',
+      'Mantené el odómetro actualizado: los planes por km y las proyecciones dependen de esa lectura.',
+      'Vinculá siempre el QR al vehículo para que el hallazgo genere la OT automáticamente; sin vínculo, el QR queda para fleteros/terceros.',
+      'Las OTs de flota solo se ven acá — no aparecen en Infraestructura (que es para equipamiento, no camiones).',
+      'Revisá el Centro de trabajo cada mañana: es la cola priorizada del taller.',
+    ],
+    difficulty: 'Medio', estimatedTime: '30 minutos', isoRef: 'ISO 9001 §7.1',
   },
 
   /* ───────── 9. Administración y otros ───────── */

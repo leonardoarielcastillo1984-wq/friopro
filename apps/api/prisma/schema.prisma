@@ -469,6 +469,18 @@ model Tenant {
   conjuntosOperativos       ConjuntoOperativo[]
   conjuntoOperativoEventos  ConjuntoOperativoEvento[]
   maintenanceComponentRules MaintenanceComponentRule[]
+  maintenanceSparePartMovements MaintenanceSparePartMovement[]
+
+  // Flota 360 — Hub del chofer (QR público)
+  flotaIncidentes    FlotaIncidente[]
+  flotaDocumentos    FlotaDocumento[]
+  servicioRegistros  ServicioRegistro[]
+  flotaControlesPreServicio FlotaControlPreServicio[]
+
+  // Flota 360 — Mediciones de banda, facturas y multas
+  neumaticoMediciones NeumaticoMedicion[]
+  flotaFacturas       FlotaFactura[]
+  flotaMultas         FlotaMulta[]
 
   // Digital Twin Relations
   assetDigitalTwins     AssetDigitalTwin[]
@@ -2120,6 +2132,9 @@ model CompanySettings {
   // Inspecciones — alertas
   inspeccionAlertEmails Json? // [{ email, nombre, alertaHallazgo, alertaOT }]
 
+  // Flota 360 — presupuesto mensual de costos operativos (para comparar vs. real)
+  flotaPresupuestoMensual Float?
+
   // RRHH Configuration (stored as JSON arrays)
   hrPositionCategories Json? // [{id, name, description, level}]
   hrContractTypes      Json? // [{id, name, description, duration}]
@@ -3364,6 +3379,7 @@ model MaintenanceTechnician {
 
   isActive           Boolean @default(true)
   availabilityStatus String  @default("AVAILABLE") // AVAILABLE, BUSY, OFF
+  dailyCapacityHours Float   @default(8) // capacidad diaria de referencia para carga de taller
 
   workOrders WorkOrder[]
 
@@ -3437,6 +3453,7 @@ model MaintenanceSparePart {
 
   workOrderUsage WorkOrderSparePart[]
   interventionUsage MaintenanceInterventionSparePart[]
+  movimientos    MaintenanceSparePartMovement[]
 
   @@index([tenantId])
   @@index([code])
@@ -7329,6 +7346,9 @@ model Vehiculo {
   // Odómetro
   currentOdometer Float?  // km actuales (se actualiza con cada registro)
 
+  // Valorización
+  valorAdquisicion Float? // costo de compra del vehículo (para TCO / valorización)
+
   // Estado
   status  String @default("ACTIVO") // ACTIVO, EN_TALLER, INACTIVO, BAJA
   notas   String?
@@ -7349,6 +7369,16 @@ model Vehiculo {
   // Flota 360 — Conjuntos Operativos (tractor+semi). Semi = Vehiculo con tipo='SEMI'.
   conjuntosComoTractor ConjuntoOperativo[] @relation("ConjuntoTractor")
   conjuntosComoSemi    ConjuntoOperativo[] @relation("ConjuntoSemi")
+
+  // Flota 360 — Hub del chofer (QR público)
+  incidentes        FlotaIncidente[]
+  documentosChofer  FlotaDocumento[]
+  servicioRegistros ServicioRegistro[]
+  controlesPreServicio FlotaControlPreServicio[]
+
+  // Flota 360 — Facturas de gastos y multas
+  facturas FlotaFactura[]
+  multas   FlotaMulta[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -7479,6 +7509,16 @@ model MaintenanceComponentRuleAsset {
 
   generatedPlanId String? @db.Uuid // MaintenancePlan.id sincronizado por esta aplicación
 
+  // Excepción de frecuencia por activo (opcional). Si está seteada, prevalece sobre la regla general.
+  frecuenciaKmOverride   Float?
+  frecuenciaDiasOverride Int?
+
+  // Configuración puntual de la aplicación (opcional, aditiva)
+  tecnicoSugeridoId         String?   @db.Uuid // MaintenanceTechnician.id sugerido para las OT generadas
+  accionVencimientoOverride String?             // ALERTA, SUGERENCIA_OT, GENERAR_OT — prevalece sobre la regla
+  kmBase                    Float?              // odómetro de referencia para el primer cálculo
+  proximaEjecucion          DateTime? @db.Timestamptz // fecha objetivo inicial elegida al aplicar
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -7487,6 +7527,27 @@ model MaintenanceComponentRuleAsset {
   @@index([assetId])
   @@unique([ruleId, assetId])
   @@map("maintenance_component_rule_assets")
+}
+
+// Movimiento manual de stock de un repuesto (ajuste con motivo obligatorio).
+// Aditivo: no reemplaza el descuento automático vía WorkOrderSparePart al completar una OT.
+model MaintenanceSparePartMovement {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  sparePartId String               @db.Uuid
+  sparePart   MaintenanceSparePart @relation(fields: [sparePartId], references: [id], onDelete: Cascade)
+
+  delta  Int    // positivo = ingreso, negativo = egreso
+  motivo String
+  userId String? @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([sparePartId])
+  @@map("maintenance_spare_part_movements")
 }
 
 model Conductor {
@@ -7503,14 +7564,17 @@ model Conductor {
   // Licencia
   nroLicencia      String?
   licenciaVto      DateTime?
+  licenciaFileUrl  String?  // archivo de la licencia (PDF/imagen)
 
   // Psicofísico
   psicofisicoVto   DateTime?
+  psicofisicoFileUrl String? // archivo del psicofísico (PDF/imagen)
 
   status  String @default("ACTIVO") // ACTIVO, INACTIVO, SUSPENDIDO
   notas   String?
 
   vehiculos Vehiculo[]
+  multas    FlotaMulta[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -7580,6 +7644,7 @@ model Neumatico {
   presiones  NeumaticoPresion[]
   danios     NeumaticoDanio[]
   recaps     NeumaticoRecap[]
+  mediciones NeumaticoMedicion[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -7738,7 +7803,7 @@ model RegistroCombustible {
   conductorId String? @db.Uuid
 
   fecha      DateTime @default(now())
-  litros     Float
+  litros     Float?   // nullable: el chofer puede reportar solo el monto ($) sin litros
   precioPorLitro Float?
   costoTotal Float?
   odometro   Float?   // km al momento de cargar
@@ -7758,6 +7823,156 @@ model RegistroCombustible {
   @@index([tenantId])
   @@index([vehiculoId])
   @@map("flota_combustible")
+}
+
+// ─────────────────────────────────────────────
+// FLOTA 360 — HUB DEL CHOFER (QR público por unidad)
+// Aditivo: incidentes/eventos en ruta, documentos para el chofer, registros de servicio/bitácora.
+// ─────────────────────────────────────────────
+
+// Evento/incidente reportado por el chofer en ruta (accidente, lesión, robo, carga, control, etc.)
+model FlotaIncidente {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  tipo        String  // ACCIDENTE_TRANSITO, LESION_PERSONAL, ROBO_HURTO, PROBLEMA_CARGA, CONTROL_TRANSITO, DEMORA, OTRO
+  gravedad    String  @default("MEDIA") // BAJA, MEDIA, ALTA, CRITICA
+  descripcion String?
+
+  // Personas / terceros
+  hayLesionados         Boolean @default(false)
+  lesionadosDetalle     String?
+  tercerosInvolucrados  String?
+
+  // Ubicación (GPS del celular al reportar)
+  lat            Float?
+  lng            Float?
+  ubicacionTexto String?
+
+  odometro Float?
+
+  fotos Json? // [{ url }]
+
+  reportadoPorNombre   String
+  reportadoPorTelefono String?
+
+  estado String @default("ABIERTO") // ABIERTO, EN_SEGUIMIENTO, CERRADO
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@map("flota_incidentes")
+}
+
+// Documento visible para el chofer en el hub QR (PDF de seguridad, comunicados, doc de la unidad)
+model FlotaDocumento {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // null = documento general para todos los choferes; con valor = específico de la unidad
+  vehiculoId String?   @db.Uuid
+  vehiculo   Vehiculo? @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  titulo    String
+  categoria String @default("GENERAL") // SEGURIDAD_HIGIENE, COMUNICADO, DOCUMENTO_UNIDAD, GENERAL
+  fileUrl   String
+  fileName  String?
+  mimeType  String?
+
+  uploadedById     String? @db.Uuid
+  uploadedByNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@map("flota_documentos")
+}
+
+// Registro de servicio del chofer: toma de servicio, fin de servicio, nota de bitácora
+model ServicioRegistro {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  tipo     String // INICIO_SERVICIO, FIN_SERVICIO, BITACORA
+  odometro Float?
+  notas    String?
+
+  lat Float?
+  lng Float?
+
+  fotos Json? // [{ url }] — evidencia en notas de bitácora
+
+  // Jornada y descanso (calculados automáticamente)
+  horasTrabajadas      Float?   // en FIN_SERVICIO: horas desde el INICIO correspondiente
+  horasDescanso        Float?   // en INICIO_SERVICIO: horas desde el último FIN del chofer
+  descansoInsuficiente Boolean @default(false) // true si descansó <12h antes de tomar servicio
+  jornadaExcesiva      Boolean @default(false) // true si la jornada superó 12h
+  odometroSospechoso   Boolean @default(false) // true si el odómetro saltó >2000km vs. el anterior
+
+  // Viaje (opcional, en INICIO_SERVICIO)
+  origen  String?
+  destino String?
+  carga   String?
+
+  // Chofer identificado (scalar, sin relación — patrón aditivo)
+  conductorId String? @db.Uuid
+
+  reportadoPorNombre   String
+  reportadoPorTelefono String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@map("flota_servicio_registros")
+}
+
+// Control de aptitud pre-servicio del chofer (fit-for-duty) — registrado desde el hub QR
+// al tomar servicio. Requisito típico de ISO 39001 / políticas de seguridad vial.
+model FlotaControlPreServicio {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  // Mediciones de aptitud
+  presionSistolica  Int?   // mmHg — ej: 120
+  presionDiastolica Int?   // mmHg — ej: 80
+  alcoholemia       Float? // g/L en sangre — 0.0 esperado
+  temperatura       Float? // °C corporal
+  horasDescanso     Float? // horas de sueño/descanso declaradas previas al servicio
+  nivelFatiga       Int?   // escala Karolinska 1-9 (1=alerta, 9=muy somnoliento)
+  tomaMedicamentos  Boolean @default(false) // medicamentos que pueden afectar la conducción
+  medicamentosDetalle String?
+
+  // Resultado calculado al registrar
+  apto    Boolean @default(true)
+  motivos String? // razones de no aptitud, separadas por "; "
+
+  observaciones String?
+
+  reportadoPorNombre   String
+  reportadoPorTelefono String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@index([createdAt])
+  @@map("flota_controles_pre_servicio")
 }
 
 model OTRepuesto {
@@ -10514,4 +10729,133 @@ model NonConformityAttachment {
 
   @@index([ncrId])
   @@map("ncr_attachments")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FLOTA 360 — MEDICIONES DE BANDA, FACTURAS Y MULTAS (aditivo)
+// ═══════════════════════════════════════════════════════════════
+
+// Medición periódica de profundidad de banda de una cubierta (sin desmontar).
+// Permite construir la curva de desgaste real (mm vs km) y detectar desgaste irregular.
+model NeumaticoMedicion {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  neumaticoId String    @db.Uuid
+  neumatico   Neumatico @relation(fields: [neumaticoId], references: [id], onDelete: Cascade)
+
+  // Contexto: dónde estaba montada al medir (opcional)
+  vehiculoId String? @db.Uuid
+  eje        Int?
+  lado       String?
+  posicion   String?
+
+  profBanda  Float  // mm medidos
+  kmAlMedir  Float? // odómetro del vehículo al momento de medir
+  presion    Float? // PSI si se midió en la misma pasada
+  observador String?
+  fecha      DateTime @default(now()) @db.Timestamptz
+  notas      String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([neumaticoId])
+  @@index([vehiculoId])
+  @@map("flota_neumatico_mediciones")
+}
+
+// Factura/comprobante de un gasto puntual de flota: reparación, compra de repuesto,
+// service, cubierta, etc. Opcionalmente vinculada al origen del gasto.
+model FlotaFactura {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // null = gasto general de flota no asociado a una unidad puntual
+  vehiculoId String?   @db.Uuid
+  vehiculo   Vehiculo? @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  // Datos del comprobante
+  tipoComprobante String   @default("FACTURA") // FACTURA, TICKET, NOTA_CREDITO, PRESUPUESTO, OTRO
+  numero          String?
+  puntoVenta      String?
+  fecha           DateTime @default(now()) @db.Timestamptz
+  proveedor       String?
+  cuitProveedor   String?
+
+  neto  Float?
+  iva   Float?
+  total Float
+
+  concepto  String? // descripción del gasto
+  categoria String  @default("REPARACION") // REPARACION, REPUESTO, SERVICE, NEUMATICO, COMBUSTIBLE, OTRO
+
+  // Vínculos opcionales al origen del gasto (scalars, sin FK dura para no acoplar)
+  workOrderId    String? @db.Uuid
+  intervencionId String? @db.Uuid
+  neumaticoId    String? @db.Uuid
+  sparePartId    String? @db.Uuid
+
+  // Archivo de la factura (PDF/foto)
+  fileUrl  String?
+  fileName String?
+  mimeType String?
+
+  notas String?
+
+  uploadedById     String? @db.Uuid
+  uploadedByNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@index([fecha])
+  @@index([categoria])
+  @@map("flota_facturas")
+}
+
+// Multa de tránsito / infracción de una unidad, con estado de pago y responsable.
+model FlotaMulta {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  conductorId String?    @db.Uuid
+  conductor   Conductor? @relation(fields: [conductorId], references: [id], onDelete: SetNull)
+
+  tipo        String @default("TRANSITO") // TRANSITO, ESTACIONAMIENTO, DOCUMENTACION, EXCESO_VELOCIDAD, OTRO
+  descripcion String?
+  actaNumero  String? // nro de acta/boleta/cédula
+  lugar       String?
+  fecha       DateTime @default(now()) @db.Timestamptz
+
+  monto        Float
+  fechaVtoPago DateTime? @db.Timestamptz
+
+  estado          String  @default("PENDIENTE") // PENDIENTE, PAGADA, EN_DISPUTA, ANULADA
+  pagadaAt        DateTime? @db.Timestamptz
+  responsablePago String? // EMPRESA, CONDUCTOR
+
+  // Vínculo opcional con el incidente CONTROL_TRANSITO reportado por el chofer
+  incidenteId String? @db.Uuid
+
+  fileUrl  String? // foto/PDF del acta
+  fileName String?
+
+  notas String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@index([conductorId])
+  @@index([estado])
+  @@map("flota_multas")
 }

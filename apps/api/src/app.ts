@@ -49,6 +49,7 @@ import { minutasRoutes } from './routes/minutas.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
 import { commandCenterRoutes } from './routes/command-center.js';
 import { registerCompanySettingsRoutes } from './routes/company-settings.js';
+import { documentBackupRoutes } from './routes/document-backup.js';
 import { registerLandingSettingsRoutes } from './routes/landing-settings.js';
 import project360Routes from './routes/project360.js';
 import project360BaseRoutes from './routes/project360-base.js';
@@ -139,6 +140,7 @@ import { hazardsRoutes } from './routes/hazards.js';
 import { aspectsRoutes } from './routes/aspects.js';
 import flotaRoutes from './routes/flota.js';
 import fleetOpsRoutes from './routes/fleet-ops.js';
+import { driverHubRoutes } from './routes/driver-hub.js';
 import garantiasRoutes from './routes/garantias.js';
 import digitalTwinRoutes from './routes/digital-twin.js';
 import { seh360AuthPlugin } from "./plugins/seh360Auth.js";
@@ -384,6 +386,9 @@ export async function buildApp() {
   await app.register(healthRoutes);
   await app.register(readyRoutes);
   await app.register(authRoutes, { prefix: '/auth' });
+  // Alias /api/auth/*: los route handlers de Next (apps/web/src/app/api/auth/*) llaman
+  // a {API_URL}/api/auth/* — en prod Nginx strippea /api, en local pegan directo a la API.
+  await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(documentRoutes, { prefix: '/documents' });
   await app.register(clauseMappingRoutes, { prefix: '/documents' });
   await app.register(departmentRoutes, { prefix: '/departments' });
@@ -459,6 +464,7 @@ export async function buildApp() {
   await app.register(intelligenceRoutes, { prefix: '/intelligence' });
   await app.register(commandCenterRoutes, { prefix: '/command-center' });
   await app.register(registerCompanySettingsRoutes);
+  await app.register(documentBackupRoutes);
   await app.register(registerLandingSettingsRoutes);
   await app.register(emergencyRoutes, { prefix: '/emergency' });
   await app.register(registerCustomerRoutes, { prefix: '/customers' });
@@ -477,6 +483,7 @@ export async function buildApp() {
   await app.register(maintenanceInterventionsRoutes, { prefix: '/maintenance-interventions' });
   await app.register(flotaRoutes, { prefix: '/flota' });
   await app.register(fleetOpsRoutes, { prefix: '/fleet-ops' });
+  await app.register(driverHubRoutes, { prefix: '/driver-hub' });
 await app.register(garantiasRoutes, { prefix: '/garantias' });
 await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
   await app.register(registerCompanyRoutes); // Registro de empresas

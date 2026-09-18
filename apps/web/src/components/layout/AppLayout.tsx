@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { getTenantId } from '@/lib/api';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
@@ -25,10 +25,15 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const tenantId = getTenantId();
+
+  // Flota 360 tiene su propia navegación azul marino: el sidebar global se oculta en desktop
+  // dentro del módulo para no mostrar dos menús laterales simultáneamente.
+  const isFlota360 = pathname?.startsWith('/flota-360') ?? false;
 
   useEffect(() => {
     setIsImpersonating(!!getImpersonationState()?.isImpersonating);
@@ -92,23 +97,26 @@ export default function AppLayout({ children }: AppLayoutProps) {
         />
       )}
 
-      {/* Sidebar */}
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      {/* Sidebar global — oculto en desktop dentro de Flota 360 (el módulo tiene su propia nav).
+          En mobile sigue disponible vía botón de menú para no perder acceso al resto del SGI. */}
+      <div className={isFlota360 ? 'lg:hidden' : ''}>
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      </div>
 
       {/* Banners — con margen para no solapar el sidebar en desktop */}
-      <div className="lg:ml-[260px]">
+      <div className={isFlota360 ? '' : 'lg:ml-[260px]'}>
         {!isSuperAdmin && <DemoBanner status={demoStatus} />}
         <LicenseBanner position="top" />
       </div>
 
       {/* Main content area */}
-      <div className="lg:ml-[260px]">
+      <div className={isFlota360 ? '' : 'lg:ml-[260px]'}>
         {/* Topbar */}
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
         {/* Page content */}
         <main className="p-4 sm:p-6">
-          <BackButton />
+          {!isFlota360 && <BackButton />}
           {children}
         </main>
       </div>

@@ -498,6 +498,152 @@ export async function notifyOtsEscalated(
   }
 }
 
+// ── Incidente en ruta reportado por el chofer (hub QR) ───────────────────────
+
+export async function notifyIncidenteReportado(
+  prisma: PrismaClient,
+  { tenantId, vehiculoDominio, tipoLabel, gravedad, reportadoPorNombre, hayLesionados, ubicacionTexto, incidenteId }: {
+    tenantId: string; vehiculoDominio: string; tipoLabel: string; gravedad: string;
+    reportadoPorNombre: string; hayLesionados: boolean; ubicacionTexto?: string | null; incidenteId: string;
+  }
+) {
+  try {
+    const memberships = await (prisma as any).tenantMembership.findMany({
+      where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null, status: 'ACTIVE' },
+      select: { user: { select: { id: true, email: true } } },
+    });
+    const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
+    if (!admins.length) return;
+
+    const link = `${APP_URL}/flota-360/documentacion?tab=incidentes`;
+    const gravLabel: Record<string, string> = { BAJA: 'Baja', MEDIA: 'Media', ALTA: 'Alta', CRITICA: 'Crítica' };
+    const title = `Incidente en ruta: ${tipoLabel} — ${vehiculoDominio}`;
+    const message =
+      `<strong>${reportadoPorNombre}</strong> reportó un incidente en <strong>${vehiculoDominio}</strong>: ${tipoLabel}.` +
+      ` Gravedad: <strong>${gravLabel[gravedad] || gravedad}</strong>.` +
+      (hayLesionados ? ' <strong>Hay lesionados.</strong>' : '') +
+      (ubicacionTexto ? ` Ubicación: ${ubicacionTexto}.` : '');
+    const branding = await getCompanyBranding(prisma, tenantId);
+    const color = gravedad === 'CRITICA' || gravedad === 'ALTA' ? '#DC2626' : '#D97706';
+
+    for (const admin of admins) {
+      await createNotification(prisma, {
+        tenantId, userId: admin.id, type: 'INCIDENTE_RUTA',
+        title, message: message.replace(/<[^>]+>/g, ''), link,
+        entityType: 'flota_incidente', entityId: incidenteId,
+      });
+      if (admin.email) {
+        const fromName = branding.companyName || 'SGI 360';
+        await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
+          to: admin.email,
+          subject: `${fromName} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver incidentes', link, color, branding),
+          text: `${title}\n\nVehículo: ${vehiculoDominio}\nTipo: ${tipoLabel}\nGravedad: ${gravLabel[gravedad] || gravedad}\nReportado por: ${reportadoPorNombre}${hayLesionados ? '\nHAY LESIONADOS' : ''}\n\n${link}`,
+        }).catch(e => console.error('[notifyService] Email incidente:', e));
+      }
+    }
+  } catch (e) {
+    console.error('[notifyService] notifyIncidenteReportado error:', e);
+  }
+}
+
+// ── Alerta de seguridad vial desde el hub del chofer ────────────────────────
+// Cubre: control pre-servicio NO APTO, descanso <12h al iniciar, jornada >12h al cerrar.
+
+export async function notifyFlotaAlerta(
+  prisma: PrismaClient,
+  { tenantId, vehiculoDominio, titulo, detalle, reportadoPorNombre, link, entityType, entityId }: {
+    tenantId: string; vehiculoDominio: string; titulo: string; detalle: string;
+    reportadoPorNombre: string; link: string; entityType: string; entityId: string;
+  }
+) {
+  try {
+    const memberships = await (prisma as any).tenantMembership.findMany({
+      where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null, status: 'ACTIVE' },
+      select: { user: { select: { id: true, email: true } } },
+    });
+    const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
+    if (!admins.length) return;
+
+    const fullLink = `${APP_URL}${link}`;
+    const title = `${titulo} — ${vehiculoDominio}`;
+    const message = `<strong>${reportadoPorNombre}</strong> en <strong>${vehiculoDominio}</strong>: ${detalle}`;
+    const branding = await getCompanyBranding(prisma, tenantId);
+
+    for (const admin of admins) {
+      await createNotification(prisma, {
+        tenantId, userId: admin.id, type: 'FLOTA_ALERTA',
+        title, message: message.replace(/<[^>]+>/g, ''), link: fullLink,
+        entityType, entityId,
+      });
+      if (admin.email) {
+        const fromName = branding.companyName || 'SGI 360';
+        await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
+          to: admin.email,
+          subject: `${fromName} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver en Flota 360', fullLink, '#DC2626', branding),
+          text: `${title}\n\nVehículo: ${vehiculoDominio}\nChofer: ${reportadoPorNombre}\n${detalle}\n\n${fullLink}`,
+        }).catch(e => console.error('[notifyService] Email flota alerta:', e));
+      }
+    }
+  } catch (e) {
+    console.error('[notifyService] notifyFlotaAlerta error:', e);
+  }
+}
+
+// ── Cubierta con banda de rodamiento crítica ─────────────────────────────────
+
+export async function notifyBandaCritica(
+  prisma: PrismaClient,
+  { tenantId, vehiculoDominio, neumaticoCodigo, profBanda, posicion, neumaticoId }: {
+    tenantId: string; vehiculoDominio: string; neumaticoCodigo: string;
+    profBanda: number; posicion?: string | null; neumaticoId: string;
+  }
+) {
+  try {
+    const memberships = await (prisma as any).tenantMembership.findMany({
+      where: { tenantId, role: 'TENANT_ADMIN', deletedAt: null, status: 'ACTIVE' },
+      select: { user: { select: { id: true, email: true } } },
+    });
+    const admins = memberships.map((m: any) => m.user).filter((u: any) => u?.email);
+    if (!admins.length) return;
+
+    const link = `${APP_URL}/flota-360/neumaticos`;
+    const critica = profBanda <= 1.6;
+    const title = critica
+      ? `Cubierta en banda crítica: ${neumaticoCodigo} — ${vehiculoDominio}`
+      : `Cubierta con banda baja: ${neumaticoCodigo} — ${vehiculoDominio}`;
+    const message =
+      `La cubierta <strong>${neumaticoCodigo}</strong> del vehículo <strong>${vehiculoDominio}</strong>` +
+      `${posicion ? ` (posición ${posicion})` : ''} registró <strong>${profBanda} mm</strong> de profundidad de banda.` +
+      (critica ? ' Está por debajo del mínimo legal de 1.6 mm — reemplazar urgente.' : ' Se acerca al mínimo legal de 1.6 mm.');
+    const branding = await getCompanyBranding(prisma, tenantId);
+    const color = critica ? '#DC2626' : '#D97706';
+
+    for (const admin of admins) {
+      await createNotification(prisma, {
+        tenantId, userId: admin.id, type: 'NEUMATICO_BANDA',
+        title, message: message.replace(/<[^>]+>/g, ''), link,
+        entityType: 'neumatico', entityId: neumaticoId,
+      });
+      if (admin.email) {
+        const fromName = branding.companyName || 'SGI 360';
+        await sendEmail({
+          from: `${fromName} <soporte@logismart.ar>`,
+          to: admin.email,
+          subject: `${fromName} — ${title}`,
+          html: buildEmailHtml(title, message, 'Ver neumáticos', link, color, branding),
+          text: `${title}\n\nVehículo: ${vehiculoDominio}\nCubierta: ${neumaticoCodigo}\nBanda: ${profBanda} mm\n\n${link}`,
+        }).catch(e => console.error('[notifyService] Email banda crítica:', e));
+      }
+    }
+  } catch (e) {
+    console.error('[notifyService] notifyBandaCritica error:', e);
+  }
+}
+
 // ── HTML template ─────────────────────────────────────────────────────────────
 
 function buildEmailHtml(
