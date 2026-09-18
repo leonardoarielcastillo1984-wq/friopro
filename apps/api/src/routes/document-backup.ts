@@ -199,7 +199,7 @@ const SOURCES: Source[] = [
   // ── Mantenimiento ──
   {
     folder: 'Mantenimiento/OT adjuntos',
-    fetch: async (p, t) => (await p.workOrderFile.findMany({ where: { workOrder: { tenantId: t } }, select: { fileUrl: true, category: true } }))
+    fetch: async (p, t) => (await p.evidencePhoto.findMany({ where: { workOrder: { tenantId: t } }, select: { fileUrl: true, category: true } }))
       .map((f: any) => ({ ref: f.fileUrl, name: f.category || 'adjunto_ot' })),
   },
   {
@@ -227,7 +227,7 @@ const SOURCES: Source[] = [
   // ── Clima y cultura ──
   {
     folder: 'Clima/Comunicados',
-    fetch: async (p, t) => (await p.climaComm.findMany({ where: { tenantId: t }, select: { title: true, attachments: true } }))
+    fetch: async (p, t) => (await p.climaComms.findMany({ where: { tenantId: t }, select: { title: true, attachments: true } }))
       .flatMap((c: any) => urlsFromJson(c.attachments).map((u: string) => ({ ref: u, name: `comunicado_${c.title}` }))),
   },
   {
@@ -235,23 +235,11 @@ const SOURCES: Source[] = [
     fetch: async (p, t) => (await p.climaSuggestion.findMany({ where: { tenantId: t, attachmentUrl: { not: null } }, select: { attachmentUrl: true } }))
       .map((s: any) => ({ ref: s.attachmentUrl, name: 'adjunto_buzon' })),
   },
-  // ── Clientes ──
-  {
-    folder: 'Clientes',
-    fetch: async (p, t) => (await p.clientDocument.findMany({ where: { tenantId: t }, select: { title: true, fileUrl: true, filePath: true } }))
-      .map((d: any) => ({ ref: d.fileUrl || d.filePath, name: d.title })),
-  },
   // ── RRHH ──
   {
     folder: 'RRHH/Ausencias',
     fetch: async (p, t) => (await p.absenceAttachment.findMany({ where: { tenantId: t, deletedAt: null }, select: { fileUrl: true, fileName: true } }))
       .map((a: any) => ({ ref: a.fileUrl, name: a.fileName })),
-  },
-  // ── Importaciones PDF ──
-  {
-    folder: 'Importaciones',
-    fetch: async (p, t) => (await p.pdfImport.findMany({ where: { tenantId: t }, select: { filePath: true, originalFileName: true } }))
-      .map((d: any) => ({ ref: d.filePath, name: d.originalFileName })),
   },
 ];
 
@@ -287,8 +275,9 @@ export async function documentBackupRoutes(app: FastifyInstance) {
           const ext = (key.split('/').pop() || '').match(/\.[a-z0-9]{2,5}$/i)?.[0] || '';
           const finalName = ext && !base.toLowerCase().endsWith(ext.toLowerCase()) ? `${base}${ext}` : base;
           files.push({ name: `${src.folder}/${String(++n).padStart(2, '0')}_${finalName}`, data });
-        } catch {
+        } catch (e: any) {
           omitidos++; // archivo referenciado pero no presente en storage
+          app.log.warn({ key, err: e?.message }, '[backup] archivo no encontrado en storage');
         }
       }
     }
