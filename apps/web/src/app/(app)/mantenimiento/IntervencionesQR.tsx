@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
 import {
   QrCode, Plus, Trash2, Printer, ExternalLink, Copy, Check,
-  Wrench, History, ListChecks, Tag, X, Pencil
+  Wrench, History, ListChecks, Tag, X, Pencil, Truck
 } from 'lucide-react';
 
 const CATEGORIAS = ['MOTOR', 'FRENOS', 'NEUMATICOS', 'SUSPENSION', 'TRANSMISION', 'FLUIDOS', 'ELECTRICO', 'CARROCERIA', 'GENERAL'];
@@ -193,6 +193,45 @@ ${qr.activoCodigo ? `<p class="codigo">Código: ${qr.activoCodigo}</p>` : ''}
     if (win) { win.document.write(html); win.document.close(); }
   };
 
+  // URL del Hub del Chofer: mismo token, otra página pública (/unidad/:token)
+  const choferUrl = (qr: any) => qr.publicUrl.replace('/mantenimiento-qr/', '/unidad/');
+
+  const handleCartelChofer = (qr: any) => {
+    const url = choferUrl(qr);
+    const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(url)}&bgcolor=ffffff&color=1a1a2e&qzone=2`;
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>QR Chofer - ${qr.activoNombre}</title>
+<style>
+body{font-family:-apple-system,'Segoe UI',sans-serif;display:flex;justify-content:center;padding:20px;background:#f5f5f5}
+.poster{background:#fff;border:2px solid #1a1a2e;border-radius:16px;padding:32px;max-width:420px;text-align:center}
+.badge{display:inline-block;background:#059669;color:#fff;font-size:12px;font-weight:700;padding:4px 14px;border-radius:999px;margin-bottom:12px}
+.titulo{font-size:24px;font-weight:700;margin:0 0 4px}
+.codigo{color:#6b7280;font-size:14px;margin:0 0 16px}
+.qr-wrap{display:flex;justify-content:center;margin:16px 0}
+.steps{text-align:left;margin:16px 0;font-size:13px;color:#374151}
+.step{display:flex;align-items:center;gap:10px;padding:6px 0}
+.num{background:#059669;color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.footer{border-top:1px solid #e5e7eb;padding-top:12px;font-size:11px;color:#9ca3af}
+.print-btn{position:fixed;top:12px;right:12px;background:#059669;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px}
+@media print{.print-btn{display:none}body{background:#fff}}
+</style></head>
+<body><button class="print-btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+<div class="poster">
+<span class="badge">Hub del Chofer</span>
+<p class="titulo">${qr.activoNombre}</p>
+${qr.activoCodigo ? `<p class="codigo">Código: ${qr.activoCodigo}</p>` : ''}
+<div class="qr-wrap"><img src="${qrImgUrl}" width="220" height="220" alt="QR" style="display:block;"/></div>
+<div class="steps">
+<div class="step"><span class="num">1</span>Abrí la cámara de tu celular</div>
+<div class="step"><span class="num">2</span>Apuntá al código QR de arriba</div>
+<div class="step"><span class="num">3</span>Control pre-servicio, incidentes, combustible y bitácora</div>
+<div class="step"><span class="num">4</span>Sin app, sin login — queda registrado en la ficha</div>
+</div>
+<div class="footer"><p>Hub del chofer · SGI360</p></div>
+</div></body></html>`;
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); }
+  };
+
   const tiposPorCat = tipos.reduce((acc: Record<string, any[]>, t: any) => {
     (acc[t.category] = acc[t.category] || []).push(t);
     return acc;
@@ -269,6 +308,14 @@ ${qr.activoCodigo ? `<p class="codigo">Código: ${qr.activoCodigo}</p>` : ''}
                           </a>
                           <button onClick={() => eliminarQR(qr.id)} className="flex items-center justify-center px-2 text-xs border border-red-100 text-red-500 rounded-lg hover:bg-red-50">
                             <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => handleCartelChofer(qr)} title="Cartel QR para el chofer (control pre-servicio, incidentes, combustible, bitácora)" className="flex-1 flex items-center justify-center gap-1 text-xs border border-emerald-200 text-emerald-700 py-1.5 rounded-lg hover:bg-emerald-50">
+                            <Truck className="w-3 h-3" />Cartel chofer
+                          </button>
+                          <button onClick={() => copiarLink(choferUrl(qr), 'c-' + qr.id)} title="Copiar link del Hub del Chofer" className="flex-1 flex items-center justify-center gap-1 text-xs border border-emerald-200 text-emerald-700 py-1.5 rounded-lg hover:bg-emerald-50">
+                            {copied === 'c-' + qr.id ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}Link chofer
                           </button>
                         </div>
                       </div>
