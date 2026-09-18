@@ -149,7 +149,7 @@ export default function PlanesFrecuenciasClient() {
         apiFetch<{ dias: string[]; filas: FilaTaller[] }>('/fleet-ops/carga-taller?dias=7'),
         apiFetch<{ tipos: string[] }>('/fleet-ops/filtros'),
         apiFetch<{ planes: PlanActivo[] }>(`/fleet-ops/planes-activos?${planesParams.toString()}`),
-        apiFetch<{ technicians: any[] }>('/maintenance/technicians').catch(() => ({ technicians: [] })),
+        apiFetch<{ technicians: any[] }>('/maintenance/technicians?scope=fleet').catch(() => ({ technicians: [] })),
         apiFetch<{ parts: any[] }>('/maintenance/spare-parts').catch(() => ({ parts: [] })),
       ]);
       setRules(r.rules || []);

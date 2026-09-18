@@ -27,7 +27,8 @@ const createTechnicianSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
   specialization: z.string().optional(),
-  certification: z.string().optional()
+  certification: z.string().optional(),
+  scope: z.enum(['INFRA', 'FLEET']).optional(),
 });
 
 const createSparePartSchema = z.object({
@@ -505,13 +506,20 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
   });
 
   // GET /maintenance/technicians - Listar técnicos
+  // ?scope=infra (default) → técnicos de Infraestructura | ?scope=fleet → mecánicos de Flota 360
+  // ?scope=all → todos
   app.get('/technicians', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
       return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     }
 
+    const { scope } = request.query as any;
+    const where: any = { tenantId: request.db.tenantId };
+    if (scope === 'fleet') where.scope = 'FLEET';
+    else if (scope !== 'all') where.scope = 'INFRA';
+
     const technicians = await getPrisma(request).maintenanceTechnician.findMany({
-      where: { tenantId: request.db.tenantId },
+      where,
       orderBy: { name: 'asc' }
     });
     return reply.send({ technicians });
@@ -539,6 +547,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
           phone: validatedData.phone,
           specialization: validatedData.specialization,
           certification: validatedData.certification,
+          scope: validatedData.scope || 'INFRA',
           tenantId: request.db.tenantId
         }
       });

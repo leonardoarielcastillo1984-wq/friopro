@@ -72,7 +72,7 @@ function OrdenesPageInner() {
       const [o, v, t] = await Promise.all([
         apiFetch<{ workOrders: WorkOrder[] }>('/maintenance/work-orders?scope=fleet'),
         apiFetch<{ vehiculos: any[] }>('/flota/vehiculos'),
-        apiFetch<{ technicians: any[] }>('/maintenance/technicians'),
+        apiFetch<{ technicians: any[] }>('/maintenance/technicians?scope=fleet'),
       ]);
       setOrdenes(o.workOrders || []);
       setVehiculos(v.vehiculos || []);
@@ -336,7 +336,7 @@ function OrdenesPageInner() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">Técnico</label>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Mecánico</label>
                 <select value={form.technicianId} onChange={(e) => setForm({ ...form, technicianId: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
                   <option value="">Sin asignar</option>
                   {tecnicos.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}

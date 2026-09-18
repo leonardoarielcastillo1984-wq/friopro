@@ -3380,6 +3380,7 @@ model MaintenanceTechnician {
   isActive           Boolean @default(true)
   availabilityStatus String  @default("AVAILABLE") // AVAILABLE, BUSY, OFF
   dailyCapacityHours Float   @default(8) // capacidad diaria de referencia para carga de taller
+  scope              String  @default("INFRA") // INFRA (Infraestructura) | FLEET (Flota 360, "mecánicos")
 
   workOrders WorkOrder[]
 

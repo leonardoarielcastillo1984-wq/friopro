@@ -8,6 +8,7 @@ import {
   LayoutDashboard, Wrench, Truck, Container, Link2, CalendarClock,
   ScanLine, PackageSearch, Disc, Fuel, Users, FileWarning, DollarSign,
   FileBarChart, LayoutGrid, ArrowLeft, Settings, Menu, X, TrendingUp, BookOpen,
+  HardHat,
 } from 'lucide-react';
 
 const GROUPS: { label: string | null; items: { href: string; label: string; icon: any; exact?: boolean }[] }[] = [
@@ -29,6 +30,7 @@ const GROUPS: { label: string | null; items: { href: string; label: string; icon
     label: 'Mantenimiento',
     items: [
       { href: '/flota-360/ordenes', label: 'Órdenes de trabajo', icon: Wrench },
+      { href: '/flota-360/mecanicos', label: 'Mecánicos', icon: HardHat },
       { href: '/flota-360/planes', label: 'Planes y frecuencias', icon: CalendarClock },
       { href: '/flota-360/inspecciones', label: 'Inspecciones QR', icon: ScanLine },
       { href: '/flota-360/repuestos', label: 'Repuestos e inventario', icon: PackageSearch },
