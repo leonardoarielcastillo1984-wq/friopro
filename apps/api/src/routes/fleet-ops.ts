@@ -644,11 +644,14 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         include: { asset: { select: { id: true, code: true, name: true } } },
       }),
       prisma().vehiculo.findMany({ where: { tenantId, ...(tipo ? { tipo } : {}) }, select: { id: true, dominio: true, tipo: true, currentOdometer: true, maintenanceAssetId: true, status: true } }),
-      prisma().maintenanceComponentRuleAsset.findMany({ where: { rule: { tenantId } }, include: { rule: { select: { criticidad: true } } } }),
+      prisma().maintenanceComponentRuleAsset.findMany({
+        where: { rule: { tenantId } },
+        include: { rule: { select: { nombre: true, criticidad: true, accionVencimiento: true, kmAnticipacion: true, diasAnticipacion: true, duracionEstimada: true } } },
+      }),
     ]);
 
     const vehByAsset = new Map<string, any>(vehiculos.filter((v: any) => v.maintenanceAssetId).map((v: any) => [v.maintenanceAssetId, v]));
-    const criticidadPorPlan = new Map<string, string>(ruleAssets.filter((ra: any) => ra.generatedPlanId).map((ra: any) => [ra.generatedPlanId, ra.rule.criticidad]));
+    const ruleAssetPorPlan = new Map<string, any>(ruleAssets.filter((ra: any) => ra.generatedPlanId).map((ra: any) => [ra.generatedPlanId, ra]));
     const now = new Date();
 
     const alertas = plans.filter((p: any) => vehByAsset.has(p.assetId)).map((p: any) => {
@@ -668,13 +671,20 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         diasRestantes = Math.ceil((new Date(p.nextExecutionDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       }
 
+      // Umbrales de anticipación por regla de componente (fallback a valores por defecto)
+      const ra = ruleAssetPorPlan.get(p.id);
+      const proximoKmLimite = ra?.rule?.kmAnticipacion ?? 4000;
+      const proximoDiasLimite = ra?.rule?.diasAnticipacion ?? 15;
+      const urgenteKmLimite = Math.min(1500, proximoKmLimite);
+      const urgenteDiasLimite = Math.min(5, proximoDiasLimite);
+
       let estado: 'VENCIDO' | 'URGENTE' | 'PROXIMO' | 'OK' = 'OK';
       const vencidoKm = kmRestantes != null && kmRestantes <= 0;
       const vencidoDias = diasRestantes != null && diasRestantes <= 0;
-      const urgenteKm = kmRestantes != null && kmRestantes > 0 && kmRestantes <= 1500;
-      const urgenteDias = diasRestantes != null && diasRestantes > 0 && diasRestantes <= 5;
-      const proximoKm = kmRestantes != null && kmRestantes > 1500 && kmRestantes <= 4000;
-      const proximoDias = diasRestantes != null && diasRestantes > 5 && diasRestantes <= 15;
+      const urgenteKm = kmRestantes != null && kmRestantes > 0 && kmRestantes <= urgenteKmLimite;
+      const urgenteDias = diasRestantes != null && diasRestantes > 0 && diasRestantes <= urgenteDiasLimite;
+      const proximoKm = kmRestantes != null && kmRestantes > urgenteKmLimite && kmRestantes <= proximoKmLimite;
+      const proximoDias = diasRestantes != null && diasRestantes > urgenteDiasLimite && diasRestantes <= proximoDiasLimite;
 
       if (vencidoKm || vencidoDias) estado = 'VENCIDO';
       else if (urgenteKm || urgenteDias) estado = 'URGENTE';
@@ -691,7 +701,8 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         kmRestantes,
         diasRestantes,
         fechaEstimada: p.nextExecutionDate,
-        criticidad: criticidadPorPlan.get(p.id) || 'MEDIA',
+        criticidad: ra?.rule?.criticidad || 'MEDIA',
+        accionVencimiento: ra?.accionVencimientoOverride || ra?.rule?.accionVencimiento || null,
         estado,
       };
     })
@@ -701,6 +712,46 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       const rank: Record<string, number> = { VENCIDO: 0, URGENTE: 1, PROXIMO: 2 };
       return rank[a.estado] - rank[b.estado];
     });
+
+    // GENERAR_OT: al entrar en la ventana de anticipación, crear la OT preventiva
+    // automáticamente. Idempotente: no duplica si ya hay una OT abierta para ese plan.
+    try {
+      const candidatas = alertas.filter((a: any) => a.accionVencimiento === 'GENERAR_OT');
+      if (candidatas.length > 0) {
+        const planIds = candidatas.map((a: any) => a.planId);
+        const otsAbiertas = await prisma().workOrder.findMany({
+          where: { tenantId, planId: { in: planIds }, status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] } },
+          select: { planId: true },
+        });
+        const planesConOT = new Set(otsAbiertas.map((o: any) => o.planId));
+        const prioridadPorCriticidad: Record<string, string> = { ALTA: 'HIGH', MEDIA: 'MEDIUM', BAJA: 'LOW' };
+        let n = 0;
+        for (const a of candidatas) {
+          if (planesConOT.has(a.planId)) continue;
+          const ra = ruleAssetPorPlan.get(a.planId);
+          await prisma().workOrder.create({
+            data: {
+              code: `OT-AUTO-${Date.now().toString().slice(-6)}-${++n}`,
+              title: a.componente,
+              description: `OT generada automáticamente: "${a.componente}" entró en la ventana de anticipación (${a.estado}).`,
+              type: 'PREVENTIVE',
+              priority: prioridadPorCriticidad[a.criticidad] || 'MEDIUM',
+              status: 'PENDING',
+              assetId: a.assetId,
+              planId: a.planId,
+              technicianId: ra?.tecnicoSugeridoId || null,
+              scheduledDate: a.fechaEstimada ? new Date(a.fechaEstimada) : new Date(),
+              estimatedDuration: ra?.rule?.duracionEstimada != null ? Math.round(ra.rule.duracionEstimada) : null,
+              origen: 'MANTENIMIENTO',
+              tenantId,
+            },
+          });
+          planesConOT.add(a.planId);
+        }
+      }
+    } catch (e: any) {
+      req.log?.warn({ err: e?.message }, '[fleet-ops] auto GENERAR_OT falló');
+    }
 
     return reply.send({ alertas });
   });
