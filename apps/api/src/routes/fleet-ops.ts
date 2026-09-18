@@ -17,6 +17,49 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
   const prisma = () => app.prisma as any;
 
   // ─────────────────────────────────────────────────────────────
+  // CONFIG ANÁLISIS DE REEMPLAZO — variables del cálculo económico
+  // guardadas en CompanySettings.flotaReemplazoConfig (JSON).
+  // ─────────────────────────────────────────────────────────────
+  const REEMPLAZO_DEFAULTS = {
+    vidaUtilAnios: 10,          // años de vida útil para prorratear el costo de una unidad nueva
+    depreciacionAnualPct: 10,   // % anual de depreciación para valor residual estimado
+    umbralReemplazarPct: 100,   // proyección 12m >= X% del costo anual de una nueva → REEMPLAZAR
+    umbralEvaluarPct: 60,       // proyección 12m >= X% → EVALUAR_REEMPLAZO
+    tendenciaVigilarPct: 50,    // crecimiento de costo semestral > X% → VIGILAR
+    acumuladoVigilarPct: 70,    // acumulado reparaciones > X% del valor de adquisición → VIGILAR
+  };
+
+  app.get('/config-reemplazo', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const settings = await prisma().companySettings.findUnique({ where: { tenantId }, select: { flotaReemplazoConfig: true } }).catch(() => null);
+    return reply.send({ config: { ...REEMPLAZO_DEFAULTS, ...((settings?.flotaReemplazoConfig as any) || {}) } });
+  });
+
+  app.put('/config-reemplazo', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      vidaUtilAnios: z.number().min(1).max(40).optional(),
+      depreciacionAnualPct: z.number().min(0).max(50).optional(),
+      umbralReemplazarPct: z.number().min(10).max(300).optional(),
+      umbralEvaluarPct: z.number().min(5).max(300).optional(),
+      tendenciaVigilarPct: z.number().min(1).max(500).optional(),
+      acumuladoVigilarPct: z.number().min(5).max(300).optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const userId = (req as any).auth?.userId ?? null;
+    const settings = await prisma().companySettings.upsert({
+      where: { tenantId },
+      update: { flotaReemplazoConfig: body.data, ...(userId ? { updatedById: userId } : {}) },
+      create: { tenantId, companyName: 'Mi Empresa', flotaReemplazoConfig: body.data, updatedById: userId ?? tenantId },
+    });
+    return reply.send({ config: { ...REEMPLAZO_DEFAULTS, ...((settings.flotaReemplazoConfig as any) || {}) } });
+  });
+
+  // ─────────────────────────────────────────────────────────────
   // SYNC AUTOMÁTICO REGLA→GRUPO: aplica cada regla activa a todos los
   // vehículos de su tipoActivoAplicable que aún no la tengan aplicada
   // (incluye vehículos dados de alta después). Crea el MaintenancePlan

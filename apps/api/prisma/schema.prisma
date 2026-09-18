@@ -2135,6 +2135,10 @@ model CompanySettings {
   // Flota 360 — presupuesto mensual de costos operativos (para comparar vs. real)
   flotaPresupuestoMensual Float?
 
+  // Flota 360 — variables del análisis de reemplazo (gemelo digital)
+  // { vidaUtilAnios, depreciacionAnualPct, umbralReemplazarPct, umbralEvaluarPct, tendenciaVigilarPct, acumuladoVigilarPct }
+  flotaReemplazoConfig Json?
+
   // RRHH Configuration (stored as JSON arrays)
   hrPositionCategories Json? // [{id, name, description, level}]
   hrContractTypes      Json? // [{id, name, description, duration}]

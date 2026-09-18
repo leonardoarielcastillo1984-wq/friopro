@@ -170,7 +170,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
 
     // ── Datos operativos adicionales (aditivos): última inspección QR, próximo servicio planificado, costo/km ──
     const esSemi = vehiculo.tipo === 'SEMI';
-    const [ultimaInspeccion, planesActivos, costos6m, kmRecorridos6m, historialOTs] = await Promise.all([
+    const [ultimaInspeccion, planesActivos, costos6m, kmRecorridos6m, historialOTs, reemplazoCfg] = await Promise.all([
       (app.prisma as any).inspeccion.findFirst({
         where: {
           tenantId,
@@ -219,6 +219,8 @@ export default async function flotaRoutes(app: FastifyInstance) {
           select: { completedAt: true, totalCost: true, type: true },
         });
       })().catch(() => []),
+      // Variables configurables del análisis de reemplazo (defaults si no hay config)
+      (app.prisma as any).companySettings.findUnique({ where: { tenantId }, select: { flotaReemplazoConfig: true } }).catch(() => null),
     ]);
 
     // Próximo servicio planificado real (de MaintenancePlan, no inventado)
@@ -247,7 +249,17 @@ export default async function flotaRoutes(app: FastifyInstance) {
     // ── ANÁLISIS DE REEMPLAZO (económico, determinístico) ──
     // Historial de costos 24m → tendencia + proyección 12m (regresión lineal).
     // Regla: si el mantenimiento proyectado supera el costo anual de capital de
-    // una unidad nueva (valorAdquisicion / 10 años), conviene reemplazar.
+    // una unidad nueva (valorAdquisicion / vidaUtilAnios), conviene reemplazar.
+    // Variables configurables en /fleet-ops/config-reemplazo (defaults abajo).
+    const cfg = {
+      vidaUtilAnios: 10,
+      depreciacionAnualPct: 10,
+      umbralReemplazarPct: 100,
+      umbralEvaluarPct: 60,
+      tendenciaVigilarPct: 50,
+      acumuladoVigilarPct: 70,
+      ...((reemplazoCfg?.flotaReemplazoConfig as any) || {}),
+    };
     const reemplazo = (() => {
       const edadAnios = vehiculo.anio ? now.getFullYear() - vehiculo.anio : null;
       const MESES = 24;
@@ -276,25 +288,25 @@ export default async function flotaRoutes(app: FastifyInstance) {
       for (let x = n; x < n + 12; x++) proyeccion12m += Math.max(0, intercept + slope * x);
 
       const valorResidual = vehiculo.valorAdquisicion && edadAnios != null
-        ? Math.round(vehiculo.valorAdquisicion * Math.pow(0.9, edadAnios))
+        ? Math.round(vehiculo.valorAdquisicion * Math.pow(1 - cfg.depreciacionAnualPct / 100, edadAnios))
         : null;
-      const costoCapitalAnualNueva = vehiculo.valorAdquisicion ? vehiculo.valorAdquisicion / 10 : null;
+      const costoCapitalAnualNueva = vehiculo.valorAdquisicion ? vehiculo.valorAdquisicion / cfg.vidaUtilAnios : null;
       const ratioProyVsCapital = costoCapitalAnualNueva ? proyeccion12m / costoCapitalAnualNueva : null;
       const ratioAcumVsAdq = vehiculo.valorAdquisicion ? costoAcumulado / vehiculo.valorAdquisicion : null;
 
       const motivos: string[] = [];
       let recomendacion = 'MANTENER';
-      if (ratioProyVsCapital != null && ratioProyVsCapital >= 1) {
+      if (ratioProyVsCapital != null && ratioProyVsCapital >= cfg.umbralReemplazarPct / 100) {
         recomendacion = 'REEMPLAZAR';
         motivos.push(`El mantenimiento proyectado a 12 meses ($${Math.round(proyeccion12m).toLocaleString('es-AR')}) supera el costo anual de una unidad nueva`);
-      } else if (ratioProyVsCapital != null && ratioProyVsCapital >= 0.6) {
+      } else if (ratioProyVsCapital != null && ratioProyVsCapital >= cfg.umbralEvaluarPct / 100) {
         recomendacion = 'EVALUAR_REEMPLAZO';
         motivos.push(`El mantenimiento proyectado equivale al ${Math.round(ratioProyVsCapital * 100)}% del costo anual de una unidad nueva`);
-      } else if (tendenciaPct > 50) {
+      } else if (tendenciaPct > cfg.tendenciaVigilarPct) {
         recomendacion = 'VIGILAR';
         motivos.push(`El costo de mantenimiento creció ${tendenciaPct}% respecto al semestre anterior`);
       }
-      if (ratioAcumVsAdq != null && ratioAcumVsAdq >= 0.7) {
+      if (ratioAcumVsAdq != null && ratioAcumVsAdq >= cfg.acumuladoVigilarPct / 100) {
         if (recomendacion === 'MANTENER') recomendacion = 'VIGILAR';
         motivos.push(`El gasto acumulado en reparaciones equivale al ${Math.round(ratioAcumVsAdq * 100)}% del valor de adquisición`);
       }
