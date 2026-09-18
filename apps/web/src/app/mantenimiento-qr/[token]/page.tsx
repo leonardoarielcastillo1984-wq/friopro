@@ -36,6 +36,9 @@ export default function MantenimientoQRPage() {
   const [selRepuestos, setSelRepuestos] = useState<Record<string, number>>({});
   const [repuestoAAgregar, setRepuestoAAgregar] = useState('');
   const [cantidadAAgregar, setCantidadAAgregar] = useState('1');
+  const [estadoOp, setEstadoOp] = useState<string | null>(null);
+  const [estadoSaving, setEstadoSaving] = useState<string | null>(null);
+  const [estadoMsg, setEstadoMsg] = useState('');
 
   useEffect(() => {
     fetch(`${API_BASE}/maintenance-interventions/public/${token}`)
@@ -147,6 +150,29 @@ export default function MantenimientoQRPage() {
   );
 
   const activo = data.activo;
+  const vehiculoFlota = data.vehiculoFlota ?? null;
+  const estadoActual = estadoOp ?? vehiculoFlota?.estadoOperativo ?? null;
+
+  const cambiarEstadoOp = async (estado: string) => {
+    setEstadoSaving(estado);
+    setEstadoMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/maintenance-interventions/public/${token}/estado`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado, mecanicoNombre: nombre || undefined }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'No se pudo cambiar el estado');
+      setEstadoOp(json.estadoOperativo ?? estado);
+      setEstadoMsg(json.sinCambio ? 'La unidad ya estaba en ese estado' : 'Estado actualizado');
+    } catch (e: any) {
+      setEstadoMsg(e?.message || 'Error al cambiar el estado');
+    } finally {
+      setEstadoSaving(null);
+    }
+  };
+
   const preventivos: Preventivo[] = data.preventivos ?? [];
   const pendientes = preventivos.filter(p => p.estado !== 'AL_DIA');
   const ultimas: Ultima[] = data.ultimasIntervenciones ?? [];
@@ -196,6 +222,41 @@ export default function MantenimientoQRPage() {
           )}
           {data.qr.instrucciones && <p style={{ ...S.muted, marginTop: 8, fontStyle: 'italic' }}>{data.qr.instrucciones}</p>}
         </div>
+
+        {/* Estadío operativo de la unidad */}
+        {vehiculoFlota && (
+          <div style={S.card}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 15, color: '#111827' }}>Estadío de la unidad</h3>
+            <p style={{ ...S.muted, margin: '0 0 10px', fontSize: 12 }}>
+              Estado actual: <strong style={{ color: '#111827' }}>
+                {estadoActual === 'EN_TALLER' ? 'En taller' : estadoActual === 'EN_REPARACION' ? 'En reparación' : 'Operativo'}
+              </strong>
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {([
+                { k: 'OPERATIVO', label: 'Operativo', color: '#16A34A', bg: '#F0FDF4' },
+                { k: 'EN_TALLER', label: 'En taller', color: '#D97706', bg: '#FFFBEB' },
+                { k: 'EN_REPARACION', label: 'En reparación', color: '#2563EB', bg: '#EFF6FF' },
+              ] as const).map((e) => {
+                const activo2 = (estadoActual ?? 'OPERATIVO') === e.k;
+                return (
+                  <button key={e.k} type="button" onClick={() => cambiarEstadoOp(e.k)}
+                    disabled={estadoSaving !== null || activo2}
+                    style={{
+                      flex: 1, minWidth: 100, padding: '10px 8px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                      cursor: activo2 ? 'default' : 'pointer',
+                      border: activo2 ? `2px solid ${e.color}` : '1px solid #D1D5DB',
+                      background: activo2 ? e.bg : '#fff', color: activo2 ? e.color : '#374151',
+                      opacity: estadoSaving !== null && estadoSaving !== e.k ? 0.6 : 1,
+                    }}>
+                    {estadoSaving === e.k ? 'Guardando…' : e.label}
+                  </button>
+                );
+              })}
+            </div>
+            {estadoMsg && <p style={{ ...S.muted, fontSize: 12, marginTop: 8 }}>{estadoMsg}</p>}
+          </div>
+        )}
 
         {/* Preventivos pendientes */}
         {pendientes.length > 0 && (

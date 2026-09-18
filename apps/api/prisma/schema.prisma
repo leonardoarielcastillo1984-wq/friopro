@@ -7356,6 +7356,11 @@ model Vehiculo {
 
   // Estado
   status  String @default("ACTIVO") // ACTIVO, EN_TALLER, INACTIVO, BAJA
+  // Estado operativo fino (3 estadíos): OPERATIVO (circulando/disponible),
+  // EN_TALLER (en el taller, reparación que puede demorar días),
+  // EN_REPARACION (se le está trabajando en este momento).
+  // Se sincroniza con status: EN_TALLER/EN_REPARACION → status='EN_TALLER'.
+  estadoOperativo String @default("OPERATIVO")
   notas   String?
 
   // Relaciones
@@ -7385,12 +7390,41 @@ model Vehiculo {
   facturas FlotaFactura[]
   multas   FlotaMulta[]
 
+  // Flota 360 — Historial de estadíos operativos (OPERATIVO/EN_TALLER/EN_REPARACION)
+  estadoEventos VehiculoEstadoEvento[]
+
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
   @@index([tenantId])
   @@index([dominio])
   @@map("flota_vehiculos")
+}
+
+// ─────────────────────────────────────────────
+// FLOTA 360 — HISTORIAL DE ESTADÍOS OPERATIVOS
+// Cada cambio de estadoOperativo genera un evento; el "hasta" es el createdAt
+// del evento siguiente. Permite medir tiempo en taller / en reparación
+// (expresado en turnos de 9hs) y saber cuándo volvió a estar disponible.
+// Aditivo: no modifica ninguna tabla existente.
+// ─────────────────────────────────────────────
+model VehiculoEstadoEvento {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @db.Uuid
+  vehiculoId String @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  estado     String  // OPERATIVO | EN_TALLER | EN_REPARACION
+  origen     String  @default("SISTEMA") // SISTEMA | QR_MECANICO
+  notas      String?
+  workOrderId String? @db.Uuid // OT asociada si el cambio vino de una orden
+  createdByName String? // nombre del mecánico (QR) o usuario (sistema)
+
+  createdAt  DateTime @default(now()) @db.Timestamptz
+
+  @@index([vehiculoId, createdAt])
+  @@index([tenantId])
+  @@map("flota_vehiculo_estado_eventos")
 }
 
 // ─────────────────────────────────────────────

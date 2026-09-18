@@ -60,6 +60,115 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
   });
 
   // ─────────────────────────────────────────────────────────────
+  // ESTADÍOS OPERATIVOS — OPERATIVO | EN_TALLER | EN_REPARACION
+  // Cada cambio crea un VehiculoEstadoEvento (historial) y sincroniza
+  // vehiculo.status para compatibilidad (EN_TALLER/EN_REPARACION → 'EN_TALLER').
+  // El tiempo se mide en turnos de 9hs: horas transcurridas / 9.
+  // ─────────────────────────────────────────────────────────────
+  const ESTADOS_OPERATIVOS = ['OPERATIVO', 'EN_TALLER', 'EN_REPARACION'] as const;
+  const HORAS_TURNO = 9;
+
+  async function cambiarEstadoOperativo(opts: {
+    tenantId: string; vehiculoId: string; estado: string;
+    origen: string; notas?: string | null; workOrderId?: string | null; createdByName?: string | null;
+  }) {
+    const { tenantId, vehiculoId, estado, origen, notas, workOrderId, createdByName } = opts;
+    const vehiculo = await prisma().vehiculo.findFirst({ where: { id: vehiculoId, tenantId } });
+    if (!vehiculo) return { error: 'Vehículo no encontrado', code: 404 };
+    if (vehiculo.estadoOperativo === estado) return { vehiculo, sinCambio: true };
+
+    // Sync con status legacy: taller/reparación → EN_TALLER; operativo → ACTIVO (solo si estaba en taller)
+    let nuevoStatus = vehiculo.status;
+    if (estado === 'EN_TALLER' || estado === 'EN_REPARACION') nuevoStatus = 'EN_TALLER';
+    else if (estado === 'OPERATIVO' && vehiculo.status === 'EN_TALLER') nuevoStatus = 'ACTIVO';
+
+    const [evento, updated] = await prisma().$transaction([
+      prisma().vehiculoEstadoEvento.create({
+        data: { tenantId, vehiculoId, estado, origen, notas: notas ?? null, workOrderId: workOrderId ?? null, createdByName: createdByName ?? null },
+      }),
+      prisma().vehiculo.update({ where: { id: vehiculoId }, data: { estadoOperativo: estado, status: nuevoStatus } }),
+    ]);
+    return { vehiculo: updated, evento };
+  }
+
+  app.post('/vehiculos/:id/estado', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      estado: z.enum(ESTADOS_OPERATIVOS),
+      notas: z.string().max(500).optional(),
+      workOrderId: z.string().uuid().optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const userName = (req as any).auth?.name ?? (req as any).auth?.email ?? null;
+    const res = await cambiarEstadoOperativo({
+      tenantId, vehiculoId: id, estado: body.data.estado,
+      origen: 'SISTEMA', notas: body.data.notas, workOrderId: body.data.workOrderId, createdByName: userName,
+    });
+    if (res.error) return reply.code(res.code).send({ error: res.error });
+    return reply.send({ ok: true, estadoOperativo: res.vehiculo.estadoOperativo, status: res.vehiculo.status, sinCambio: !!res.sinCambio });
+  });
+
+  app.get('/vehiculos/:id/estado-historial', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const vehiculo = await prisma().vehiculo.findFirst({ where: { id, tenantId }, select: { id: true, estadoOperativo: true, status: true } });
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+
+    const eventos = await prisma().vehiculoEstadoEvento.findMany({
+      where: { vehiculoId: id, tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    // Duración de cada evento = tiempo hasta el evento siguiente (o ahora si es el actual)
+    const now = Date.now();
+    const historial = eventos.map((e: any, i: number) => {
+      const hasta = i === 0 ? now : new Date(eventos[i - 1].createdAt).getTime();
+      const horas = Math.max(0, (hasta - new Date(e.createdAt).getTime()) / 3600000);
+      return {
+        id: e.id, estado: e.estado, origen: e.origen, notas: e.notas,
+        createdByName: e.createdByName, workOrderId: e.workOrderId,
+        desde: e.createdAt, hasta: i === 0 ? null : eventos[i - 1].createdAt,
+        horas: Math.round(horas * 10) / 10,
+        turnos: Math.round((horas / HORAS_TURNO) * 10) / 10,
+        esActual: i === 0,
+      };
+    });
+
+    // Resumen: último ciclo de taller completo (desde que entró a taller/reparación hasta que volvió a OPERATIVO)
+    let ultimoCiclo: any = null;
+    const idxOperativo = eventos.findIndex((e: any) => e.estado === 'OPERATIVO');
+    if (idxOperativo > 0) {
+      // eventos más recientes que el último OPERATIVO = el ciclo de taller que terminó
+      const ciclo = eventos.slice(0, idxOperativo);
+      const inicio = new Date(ciclo[ciclo.length - 1].createdAt).getTime();
+      const fin = new Date(eventos[idxOperativo].createdAt).getTime();
+      const horas = (fin - inicio) / 3600000;
+      const horasReparacion = ciclo
+        .filter((e: any) => e.estado === 'EN_REPARACION')
+        .reduce((a: number, e: any, j: number) => {
+          const hasta = j === 0 ? fin : new Date(ciclo[j - 1].createdAt).getTime();
+          return a + (hasta - new Date(e.createdAt).getTime()) / 3600000;
+        }, 0);
+      ultimoCiclo = {
+        desde: ciclo[ciclo.length - 1].createdAt,
+        hasta: eventos[idxOperativo].createdAt,
+        horasTotal: Math.round(horas * 10) / 10,
+        turnosTotal: Math.round((horas / HORAS_TURNO) * 10) / 10,
+        horasReparacion: Math.round(horasReparacion * 10) / 10,
+        turnosReparacion: Math.round((horasReparacion / HORAS_TURNO) * 10) / 10,
+      };
+    }
+
+    return reply.send({ estadoOperativo: vehiculo.estadoOperativo, status: vehiculo.status, historial, ultimoCiclo });
+  });
+
+  // ─────────────────────────────────────────────────────────────
   // SYNC AUTOMÁTICO REGLA→GRUPO: aplica cada regla activa a todos los
   // vehículos de su tipoActivoAplicable que aún no la tengan aplicada
   // (incluye vehículos dados de alta después). Crea el MaintenancePlan

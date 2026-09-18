@@ -312,7 +312,11 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
     const asset = qr.maintenanceAsset;
     const kmActual = asset.currentOdometer ?? null;
 
-    const [settings, tipos, planes, ultimas, repuestos] = await Promise.all([
+    const [settings, tipos, planes, ultimas, repuestos, vehiculoFlota] = await Promise.all([
+      (app.prisma as any).vehiculo.findFirst({
+        where: { tenantId: qr.tenantId, maintenanceAssetId: asset.id },
+        select: { id: true, dominio: true, estadoOperativo: true },
+      }).catch(() => null),
       (app.prisma as any).companySettings.findUnique({
         where: { tenantId: qr.tenantId }, select: { logoUrl: true, primaryColor: true },
       }).catch(() => null),
@@ -365,11 +369,58 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
         currentOdometer: asset.currentOdometer, status: asset.status,
       },
       empresa: { nombre: qr.tenant.name, logoUrl: settings?.logoUrl ?? null, primaryColor: settings?.primaryColor ?? '#2563eb' },
+      vehiculoFlota: vehiculoFlota ?? null,
       tipos,
       preventivos,
       ultimasIntervenciones: ultimas,
       repuestosDisponibles: repuestos,
     });
+  });
+
+  // ── RUTA PÚBLICA POST: cambiar estadío operativo del vehículo (QR mecánico) ──
+  // OPERATIVO (disponible) | EN_TALLER (en el taller) | EN_REPARACION (trabajando ahora)
+  app.post('/public/:token/estado', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const qr = await (app.prisma as any).maintenanceInterventionQR.findFirst({
+      where: { token, isActive: true },
+      include: { maintenanceAsset: true },
+    });
+    if (!qr) return reply.code(404).send({ error: 'QR no encontrado o inactivo' });
+
+    const schema = z.object({
+      estado: z.enum(['OPERATIVO', 'EN_TALLER', 'EN_REPARACION']),
+      notas: z.string().max(500).optional(),
+      mecanicoNombre: z.string().max(200).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+      where: { tenantId: qr.tenantId, maintenanceAssetId: qr.maintenanceAsset.id },
+    });
+    if (!vehiculo) return reply.code(404).send({ error: 'El activo no está vinculado a un vehículo de flota' });
+    if (vehiculo.estadoOperativo === body.data.estado) {
+      return reply.send({ ok: true, sinCambio: true, estadoOperativo: vehiculo.estadoOperativo });
+    }
+
+    let nuevoStatus = vehiculo.status;
+    if (body.data.estado === 'EN_TALLER' || body.data.estado === 'EN_REPARACION') nuevoStatus = 'EN_TALLER';
+    else if (body.data.estado === 'OPERATIVO' && vehiculo.status === 'EN_TALLER') nuevoStatus = 'ACTIVO';
+
+    await (app.prisma as any).$transaction([
+      (app.prisma as any).vehiculoEstadoEvento.create({
+        data: {
+          tenantId: qr.tenantId, vehiculoId: vehiculo.id, estado: body.data.estado,
+          origen: 'QR_MECANICO', notas: body.data.notas ?? null,
+          createdByName: body.data.mecanicoNombre ?? null,
+        },
+      }),
+      (app.prisma as any).vehiculo.update({
+        where: { id: vehiculo.id },
+        data: { estadoOperativo: body.data.estado, status: nuevoStatus },
+      }),
+    ]);
+    return reply.send({ ok: true, estadoOperativo: body.data.estado, status: nuevoStatus });
   });
 
   // ── RUTA PÚBLICA POST: registrar intervención realizada ─────────────────────

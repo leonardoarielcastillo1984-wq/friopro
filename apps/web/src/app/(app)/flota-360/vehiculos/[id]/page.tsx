@@ -27,6 +27,11 @@ const ESTADO_OT_LABEL: Record<string, string> = {
 const TIPO_LABEL: Record<string, string> = {
   TRACTOR: 'Tractor', SEMI: 'Semirremolque', CAMION: 'Camión', UTILITARIO: 'Utilitario',
 };
+const ESTADO_OP: Record<string, { label: string; cls: string; dot: string }> = {
+  OPERATIVO: { label: 'Operativo', cls: 'bg-green-100 text-green-700 border-green-300', dot: 'bg-green-500' },
+  EN_TALLER: { label: 'En taller', cls: 'bg-amber-100 text-amber-700 border-amber-300', dot: 'bg-amber-500' },
+  EN_REPARACION: { label: 'En reparación', cls: 'bg-blue-100 text-blue-700 border-blue-300', dot: 'bg-blue-500' },
+};
 
 function fmtFecha(d: string | null | undefined) {
   if (!d) return '—';
@@ -66,16 +71,21 @@ export default function VehiculoFichaPage() {
   const [editForm, setEditForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [estadoOp, setEstadoOp] = useState<any>(null);
+  const [estadoSaving, setEstadoSaving] = useState<string | null>(null);
+  const [showEstadoHist, setShowEstadoHist] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [c, t] = await Promise.all([
+      const [c, t, e] = await Promise.all([
         apiFetch<any>(`/flota/vehiculos/${id}/completo`),
         apiFetch<any>(`/flota/vehiculos/${id}/twin`).catch(() => null),
+        apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-historial`).catch(() => null),
       ]);
       setCompleto(c);
       setTwin(t);
+      setEstadoOp(e);
     } finally {
       setLoading(false);
     }
@@ -136,6 +146,19 @@ export default function VehiculoFichaPage() {
       setEditError(e?.message || 'No se pudo guardar');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const cambiarEstado = async (estado: string) => {
+    setEstadoSaving(estado);
+    try {
+      await apiFetch(`/fleet-ops/vehiculos/${id}/estado`, { method: 'POST', json: { estado } });
+      const e = await apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-historial`).catch(() => null);
+      setEstadoOp(e);
+      const c = await apiFetch<any>(`/flota/vehiculos/${id}/completo`).catch(() => null);
+      if (c) setCompleto(c);
+    } finally {
+      setEstadoSaving(null);
     }
   };
 
@@ -213,6 +236,73 @@ export default function VehiculoFichaPage() {
             <Wrench className="h-3.5 w-3.5" /> Nueva OT
           </Link>
         </div>
+      </div>
+
+      {/* Estadío operativo — OPERATIVO / EN_TALLER / EN_REPARACION */}
+      <div className="rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Activity className="h-4 w-4 text-blue-600" />
+            <div>
+              <p className="text-sm font-semibold text-neutral-800">Estadío de la unidad</p>
+              <p className="text-xs text-neutral-500">
+                {estadoOp?.estadoOperativo
+                  ? <>Actual: <span className="font-medium">{ESTADO_OP[estadoOp.estadoOperativo]?.label ?? estadoOp.estadoOperativo}</span>
+                      {estadoOp.historial?.[0] && ` · hace ${estadoOp.historial[0].horas} hs (${estadoOp.historial[0].turnos} turnos)`}</>
+                  : 'Sin eventos registrados'}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {(['OPERATIVO', 'EN_TALLER', 'EN_REPARACION'] as const).map((e) => {
+              const cfg = ESTADO_OP[e];
+              const activo = estadoOp?.estadoOperativo === e || (!estadoOp?.estadoOperativo && e === 'OPERATIVO');
+              return (
+                <button
+                  key={e}
+                  onClick={() => cambiarEstado(e)}
+                  disabled={estadoSaving !== null || activo}
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
+                    activo ? cfg.cls + ' cursor-default' : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50'
+                  } disabled:opacity-60`}
+                >
+                  <span className={`h-2 w-2 rounded-full ${activo ? cfg.dot : 'bg-neutral-300'}`} />
+                  {estadoSaving === e ? 'Guardando…' : cfg.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {estadoOp?.ultimoCiclo && (
+          <p className="text-[11px] text-neutral-500 mt-2">
+            Última estadía en taller: {fmtFecha(estadoOp.ultimoCiclo.desde)} → {fmtFecha(estadoOp.ultimoCiclo.hasta)}
+            {' · '}{estadoOp.ultimoCiclo.horasTotal} hs totales ({estadoOp.ultimoCiclo.turnosTotal} turnos de 9hs)
+            {estadoOp.ultimoCiclo.horasReparacion > 0 && ` · ${estadoOp.ultimoCiclo.horasReparacion} hs en reparación efectiva (${estadoOp.ultimoCiclo.turnosReparacion} turnos)`}
+          </p>
+        )}
+        {estadoOp?.historial?.length > 0 && (
+          <>
+            <button onClick={() => setShowEstadoHist(!showEstadoHist)} className="text-xs text-blue-600 mt-2 hover:underline">
+              {showEstadoHist ? 'Ocultar historial' : `Ver historial (${estadoOp.historial.length} eventos)`}
+            </button>
+            {showEstadoHist && (
+              <div className="mt-2 border-t border-neutral-100 pt-2 space-y-1 max-h-48 overflow-y-auto">
+                {estadoOp.historial.map((h: any) => (
+                  <div key={h.id} className="flex items-center justify-between text-xs py-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-1.5 w-1.5 rounded-full ${ESTADO_OP[h.estado]?.dot ?? 'bg-neutral-300'}`} />
+                      <span className="font-medium text-neutral-700">{ESTADO_OP[h.estado]?.label ?? h.estado}</span>
+                      <span className="text-neutral-400">{fmtFecha(h.desde)} {new Date(h.desde).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+                      {h.createdByName && <span className="text-neutral-400">· {h.createdByName}</span>}
+                      {h.origen === 'QR_MECANICO' && <span className="text-[10px] text-blue-500">QR</span>}
+                    </div>
+                    <span className="text-neutral-500">{h.horas} hs · {h.turnos} turnos{h.esActual ? ' (actual)' : ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* KPIs */}
