@@ -65,7 +65,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
         tx.risk.findMany({
           where: { tenantId, deletedAt: null, status: { not: 'CLOSED' } },
           select: {
-            id: true, code: true, title: true, riskLevel: true, ownerId: true,
+            id: true, code: true, title: true, riskLevel: true, ownerId: true, responsible: true,
             treatmentActions: { where: { deletedAt: null }, select: { id: true, completed: true } },
           },
         }),
@@ -281,7 +281,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       const hasNoPlan = actions.length === 0;
       const incomplete = actions.length > 0 && actions.some((a: any) => !a.completed);
       const isCriticalOrHigh = r.riskLevel >= 12;
-      const noOwner = !r.ownerId;
+      const noOwner = !r.ownerId && !(r.responsible && r.responsible.trim() !== '');
       if (isCriticalOrHigh && hasNoPlan) {
         riskIssues.push({
           id: r.id, title: `${r.code} — ${r.title}`, detail: 'Riesgo crítico/alto sin plan de tratamiento', severity: 'HIGH',
@@ -1503,7 +1503,7 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
 
           const items = await tx[cfg.model].findMany({
             where: { tenantId, deletedAt: null, ...cfg.extraWhere },
-            select: { id: true, [cfg.nameField]: true, [cfg.ownerField]: true, ...(body.moduleKey === 'indicadores' ? { status: true, lastMeasuredAt: true, code: true } : {}) },
+            select: { id: true, [cfg.nameField]: true, [cfg.ownerField]: true, ...(body.moduleKey === 'riesgos' ? { responsible: true } : {}), ...(body.moduleKey === 'indicadores' ? { status: true, lastMeasuredAt: true, code: true } : {}) },
           });
 
           // Owner más común del módulo
@@ -1520,10 +1520,15 @@ Para cada pendiente, sugerí una acción concreta y breve (máximo 2 líneas) pa
             if (count > maxCount) { maxCount = count; mostCommonOwner = oid; }
           }
 
-          const withoutOwner = items.filter((item: any) => {
+          // Para riesgos, el campo libre "responsible" también cuenta como responsable asignado
+          const hasOwner = (item: any) => {
             const oid = item[cfg.ownerField];
-            return !oid || oid.trim() === '';
-          });
+            if (oid && oid.trim() !== '') return true;
+            if (body.moduleKey === 'riesgos' && item.responsible && String(item.responsible).trim() !== '') return true;
+            return false;
+          };
+
+          const withoutOwner = items.filter((item: any) => !hasOwner(item));
 
           let ownersAssigned = 0;
           const details: string[] = [];
