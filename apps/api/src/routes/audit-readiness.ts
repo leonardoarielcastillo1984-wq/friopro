@@ -46,7 +46,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     const findingStaleThreshold = new Date(now.getTime() - 30 * DAY_MS);
 
     const raw = await app.runWithDbContext(req, async (tx: any) => {
-      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios, vehiculos] = await Promise.all([
+      const [objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios, vehiculos, ncrPlans] = await Promise.all([
         tx.sgiObjective.findMany({
           where: { tenantId, deletedAt: null },
           select: { id: true, code: true, title: true, status: true, progress: true, endDate: true, updatedAt: true },
@@ -78,8 +78,8 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           select: { id: true, code: true, title: true, status: true, scheduledDate: true, completedDate: true },
         }),
         tx.auditFinding.findMany({
-          where: { tenantId, deletedAt: null, status: { in: ['OPEN', 'IN_ANALYSIS', 'IN_ACTION', 'REOPENED'] } },
-          select: { id: true, code: true, description: true, detectedAt: true, severity: true },
+          where: { tenantId, deletedAt: null },
+          select: { id: true, code: true, description: true, detectedAt: true, severity: true, status: true, ncrId: true },
         }),
         tx.audit.findMany({
           where: { tenantId, deletedAt: null },
@@ -170,8 +170,13 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           where: { tenantId },
           select: { id: true, dominio: true, marca: true, modelo: true, status: true, currentOdometer: true, maintenanceAssetId: true, vencimientos: { select: { id: true, tipo: true, fechaVto: true, renovado: true } } },
         }).catch(() => []) ?? [],
+        // Planes de acción vinculados a NCRs — para saber si un hallazgo ya fue gestionado
+        tx.actionPlan.findMany({
+          where: { tenantId, deletedAt: null, ncrId: { not: null } },
+          select: { ncrId: true, status: true },
+        }).catch(() => []),
       ]);
-      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios, vehiculos };
+      return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios, vehiculos, ncrPlans };
     });
 
     // ── 1. Objetivos SGI ──────────────────────────────────────────────────
@@ -364,8 +369,19 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     };
 
     // ── 6. Hallazgos de auditoría ─────────────────────────────────────────
+    // Un hallazgo abierto cuya NC tiene un plan de acción cerrado cuenta como
+    // gestionado (las acciones correctivas ya se cargaron y cerraron en Calidad).
+    const closedPlanNcrIds = new Set<string>(
+      (raw.ncrPlans as any[])
+        .filter((p: any) => ['CLOSED', 'EFFECTIVE', 'NOT_EFFECTIVE'].includes(p.status))
+        .map((p: any) => p.ncrId)
+    );
+    const openFindings = (raw.findings as any[]).filter((f: any) =>
+      ['OPEN', 'IN_ANALYSIS', 'IN_ACTION', 'REOPENED'].includes(f.status)
+    );
     const findingIssues: ReadinessIssue[] = [];
-    for (const f of raw.findings) {
+    for (const f of openFindings) {
+      if (f.ncrId && closedPlanNcrIds.has(f.ncrId)) continue; // plan cerrado → gestionado
       const stale = new Date(f.detectedAt).getTime() < findingStaleThreshold.getTime();
       if (stale) {
         findingIssues.push({
