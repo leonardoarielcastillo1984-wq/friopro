@@ -16,10 +16,10 @@ const REEMPLAZO_CAMPOS: { key: string; label: string; ayuda: string; suffix: str
 
 const ITEMS = [
   {
-    href: '/mantenimiento',
+    href: '/flota-360/mecanicos',
     icon: Users,
-    titulo: 'Técnicos y taller',
-    descripcion: 'Capacidad diaria, especializaciones y disponibilidad del equipo de mantenimiento',
+    titulo: 'Mecánicos de flota',
+    descripcion: 'Equipo de mecánicos asignable a las órdenes de trabajo de flota',
   },
   {
     href: '/flota-360/repuestos',
@@ -28,10 +28,10 @@ const ITEMS = [
     descripcion: 'Stock mínimo, ubicaciones y proveedores de repuestos',
   },
   {
-    href: '/infraestructura',
+    href: '/flota-360/inspecciones',
     icon: ScanLine,
-    titulo: 'Plantillas de inspección QR',
-    descripcion: 'Checklists y formularios usados en las inspecciones de activos',
+    titulo: 'Inspecciones QR de flota',
+    descripcion: 'Checklists y formularios usados en las inspecciones de unidades',
   },
 ];
 
