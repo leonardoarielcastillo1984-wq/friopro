@@ -2,7 +2,7 @@
 -- 100% aditivo e idempotente (CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS).
 
 -- ── Columnas nuevas en tablas existentes ──────────────────────────────────
-ALTER TABLE "CompanySettings" ADD COLUMN IF NOT EXISTS "flotaPresupuestoMensual" DOUBLE PRECISION;
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS "flotaPresupuestoMensual" DOUBLE PRECISION;
 ALTER TABLE flota_vehiculos ADD COLUMN IF NOT EXISTS "valorAdquisicion" DOUBLE PRECISION;
 ALTER TABLE flota_conductores ADD COLUMN IF NOT EXISTS "licenciaFileUrl" TEXT;
 ALTER TABLE flota_conductores ADD COLUMN IF NOT EXISTS "psicofisicoFileUrl" TEXT;
