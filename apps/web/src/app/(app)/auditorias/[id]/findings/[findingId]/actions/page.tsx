@@ -46,7 +46,7 @@ type LinkedPlan = {
   progressPercent: number;
   effectiveness: string;
   executorNameText: string | null;
-  executor: { name: string } | null;
+  executor: { firstName: string | null; lastName: string | null; email: string } | null;
 };
 
 const PLAN_STATUS: Record<string, { label: string; color: string }> = {
@@ -268,8 +268,8 @@ export default function ActionsPage() {
                     )}
                   </div>
                   <div className="flex flex-wrap gap-4 text-sm text-gray-500 mt-3">
-                    {(p.executor?.name || p.executorNameText) && (
-                      <span><strong>Responsable:</strong> {p.executor?.name || p.executorNameText}</span>
+                    {(p.executor || p.executorNameText) && (
+                      <span><strong>Responsable:</strong> {p.executor ? `${p.executor.firstName ?? ''} ${p.executor.lastName ?? ''}`.trim() || p.executor.email : p.executorNameText}</span>
                     )}
                     {p.plannedEndDate && (
                       <span className="flex items-center gap-1">

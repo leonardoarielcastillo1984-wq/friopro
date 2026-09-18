@@ -1305,7 +1305,7 @@ INSTRUCCIONES:
                   plannedEndDate: true, actualEndDate: true, closedAt: true,
                   progressPercent: true, effectiveness: true,
                   executorNameText: true,
-                  executor: { select: { name: true } },
+                  executor: { select: { firstName: true, lastName: true, email: true } },
                 },
                 orderBy: { openedAt: 'desc' },
               }).catch(() => [])
