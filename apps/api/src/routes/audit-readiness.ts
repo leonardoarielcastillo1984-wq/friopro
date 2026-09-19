@@ -158,8 +158,14 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           where: { tenantId, status: 'ACTIVE' },
           select: { id: true, firstName: true, lastName: true, positionId: true, supervisorId: true, orgLevel: true },
         }).catch(() => []),
+        // Solo hallazgos de inspecciones de Infraestructura — las de Flota 360
+        // se identifican por dominioTractor/dominioSemi/empresaTransporte.
         tx.inspeccionHallazgo.findMany({
-          where: { tenantId, estado: { in: ['ABIERTO', 'EN_PROCESO'] } },
+          where: {
+            tenantId,
+            estado: { in: ['ABIERTO', 'EN_PROCESO'] },
+            inspeccion: { dominioTractor: null, dominioSemi: null, empresaTransporte: null },
+          },
           select: { id: true, descripcion: true, tipo: true, severidad: true, estado: true, fechaLimite: true, createdAt: true },
         }).catch(() => []),
         tx.gestionCambio.findMany({
