@@ -179,6 +179,14 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       return { objectives, actionPlans, ncrs, risks, documents, trainings, findings, audits, auditPrograms, mgmtReviews, indicators, orgContext, stakeholders, suppliers, processes, drillScenarios, maintenancePlans, measuringEquipment, positionCompetencies, employeeCompetencies, policies, processMaps, surveys, normativeStandards, comms, positions, employees, inspeccionHallazgos, cambios, vehiculos, ncrPlans };
     });
 
+    // NCRs cuyo plan de acción ya está cerrado — tanto la tarjeta de NCR como
+    // la de hallazgos las cuentan como gestionadas.
+    const closedPlanNcrIds = new Set<string>(
+      (raw.ncrPlans as any[])
+        .filter((p: any) => ['CLOSED', 'EFFECTIVE', 'NOT_EFFECTIVE'].includes(p.status))
+        .map((p: any) => p.ncrId)
+    );
+
     // ── 1. Objetivos SGI ──────────────────────────────────────────────────
     const activeObjectives = raw.objectives.filter((o: any) => !['ACHIEVED', 'NOT_ACHIEVED', 'CANCELLED'].includes(o.status));
     const objectiveIssues: ReadinessIssue[] = [];
@@ -259,6 +267,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     const openNcrs = raw.ncrs.filter((n: any) => n.status !== 'CLOSED' && n.status !== 'CANCELLED');
     const ncrIssues: ReadinessIssue[] = [];
     for (const n of openNcrs) {
+      if (closedPlanNcrIds.has(n.id)) continue; // plan de acción cerrado → gestionada
       const overdue = n.dueDate && !n.closedAt && new Date(n.dueDate).getTime() < now.getTime();
       if (overdue) {
         ncrIssues.push({
@@ -371,11 +380,6 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
     // ── 6. Hallazgos de auditoría ─────────────────────────────────────────
     // Un hallazgo abierto cuya NC tiene un plan de acción cerrado cuenta como
     // gestionado (las acciones correctivas ya se cargaron y cerraron en Calidad).
-    const closedPlanNcrIds = new Set<string>(
-      (raw.ncrPlans as any[])
-        .filter((p: any) => ['CLOSED', 'EFFECTIVE', 'NOT_EFFECTIVE'].includes(p.status))
-        .map((p: any) => p.ncrId)
-    );
     const openFindings = (raw.findings as any[]).filter((f: any) =>
       ['OPEN', 'IN_ANALYSIS', 'IN_ACTION', 'REOPENED'].includes(f.status)
     );
