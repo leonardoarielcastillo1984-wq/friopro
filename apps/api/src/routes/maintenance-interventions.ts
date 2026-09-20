@@ -312,7 +312,7 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
     const asset = qr.maintenanceAsset;
     const kmActual = asset.currentOdometer ?? null;
 
-    const [settings, tipos, planes, ultimas, repuestos, vehiculoFlota] = await Promise.all([
+    const [vehiculoFlota, settings, tipos, planes, ultimas, repuestos] = await Promise.all([
       (app.prisma as any).vehiculo.findFirst({
         where: { tenantId: qr.tenantId, maintenanceAssetId: asset.id },
         select: { id: true, dominio: true, estadoOperativo: true },
