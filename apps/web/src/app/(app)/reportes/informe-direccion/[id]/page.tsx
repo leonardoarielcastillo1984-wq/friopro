@@ -1398,47 +1398,181 @@ const METRIC_DEFS: Record<string, { label: string; tone: 'bad' | 'good' | 'neutr
   incidents:            { label: 'Incidentes', tone: 'bad' },
 };
 
+// Gauges circulares para métricas con escala conocida
+const GAUGE_DEFS: Record<string, { label: string; max: number }> = {
+  averageProgress:      { label: 'Avance promedio', max: 100 },
+  compliancePercentage: { label: 'Cumplimiento', max: 100 },
+  avgNps:               { label: 'NPS promedio', max: 10 },
+  qrAvgRating:          { label: 'Calificación prom.', max: 5 },
+};
+
+// Barras de progreso "X de Y" cuando hay par numerador/denominador
+const RATIO_DEFS: Array<{ num: string; den: string; label: string }> = [
+  { num: 'closed',              den: 'total',            label: 'Acciones cerradas' },
+  { num: 'achieved',            den: 'total',            label: 'Objetivos cumplidos' },
+  { num: 'closedNcrs',          den: 'totalNcrs',        label: 'NC cerradas' },
+  { num: 'completedAudits',     den: 'totalAudits',      label: 'Auditorías completadas' },
+  { num: 'onTarget',            den: 'totalIndicators',  label: 'Indicadores en meta' },
+  { num: 'approved',            den: 'total',            label: 'Proveedores aprobados' },
+  { num: 'withControls',        den: 'total',            label: 'Aspectos con control' },
+  { num: 'completedTrainings',  den: 'totalTrainings',   label: 'Capacitaciones realizadas' },
+  { num: 'completedResponses',  den: 'surveyResponses',  label: 'Encuestas completadas' },
+  { num: 'equipmentCalibrated', den: 'totalEquipment',   label: 'Equipos calibrados' },
+];
+
+// Barras apiladas para objetos de distribución {CLAVE: número}
+const DIST_LABELS: Record<string, string> = {
+  bySeverity: 'Distribución por severidad',
+  byType: 'Distribución por tipo',
+  bySource: 'Distribución por origen',
+  severity: 'Distribución por severidad',
+};
+const DIST_KEY_COLORS: Record<string, string> = {
+  CRITICAL: '#dc2626', MAJOR: '#f59e0b', MINOR: '#3b82f6', OBSERVATION: '#6b7280',
+  FATALITY: '#7f1d1d', LOST_TIME: '#dc2626', MEDICAL: '#f59e0b', NEAR_MISS: '#3b82f6',
+  OPEN: '#dc2626', IN_PROGRESS: '#f59e0b', CLOSED: '#10b981',
+};
+const DIST_PALETTE = ['#dc2626', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#6b7280', '#ec4899'];
+
+function MiniGauge({ value, max, label }: { value: number; max: number; label: string }) {
+  const pct = Math.min(1, Math.max(0, value / max));
+  const r = 16;
+  const c = 2 * Math.PI * r;
+  const color = pct >= 0.8 ? '#10b981' : pct >= 0.5 ? '#f59e0b' : '#ef4444';
+  return (
+    <div className="flex items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2">
+      <svg width="44" height="44" viewBox="0 0 44 44" className="flex-shrink-0">
+        <circle cx="22" cy="22" r={r} fill="none" stroke="#e5e7eb" strokeWidth="5" />
+        <circle
+          cx="22" cy="22" r={r} fill="none" stroke={color} strokeWidth="5"
+          strokeDasharray={`${pct * c} ${c}`} strokeLinecap="round"
+          transform="rotate(-90 22 22)"
+        />
+        <text x="22" y="26" textAnchor="middle" fontSize="10.5" fontWeight="700" fill={color}>
+          {max === 100 ? `${Math.round(value)}%` : value}
+        </text>
+      </svg>
+      <span className="text-[11px] font-medium text-gray-600 leading-tight">{label}</span>
+    </div>
+  );
+}
+
+function RatioBar({ label, value, total }: { label: string; value: number; total: number }) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+  const color = pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="text-[11px] font-medium text-gray-600">{label}</span>
+        <span className="text-[11px] font-bold text-gray-800">{value}/{total} · {pct}%</span>
+      </div>
+      <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function DistBar({ label, data }: { label: string; data: Record<string, number> }) {
+  const entries = Object.entries(data).filter(([, v]) => v > 0);
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+  if (total === 0) return null;
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+      <div className="text-[11px] font-medium text-gray-600 mb-1">{label}</div>
+      <div className="flex h-2.5 rounded-full overflow-hidden bg-gray-200">
+        {entries.map(([k, v], i) => (
+          <div
+            key={k}
+            title={`${k}: ${v}`}
+            style={{ width: `${(v / total) * 100}%`, background: DIST_KEY_COLORS[k] || DIST_PALETTE[i % DIST_PALETTE.length] }}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+        {entries.map(([k, v], i) => (
+          <span key={k} className="text-[10px] text-gray-500 inline-flex items-center gap-1">
+            <span
+              className="w-2 h-2 rounded-full inline-block"
+              style={{ background: DIST_KEY_COLORS[k] || DIST_PALETTE[i % DIST_PALETTE.length] }}
+            />
+            {k}: {v}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SectionMetrics({ data }: { data: any }) {
   let obj = data;
   if (typeof obj === 'string') {
     try { obj = JSON.parse(obj); } catch { return null; }
   }
   if (!obj || typeof obj !== 'object') return null;
-  const entries = Object.entries(obj).filter(
-    ([k, v]) => typeof v === 'number' && METRIC_DEFS[k]
+  const num = (k: string) => (typeof obj[k] === 'number' ? (obj[k] as number) : null);
+
+  // Tarjetas: números con etiqueta, excluyendo los que se muestran como gauge
+  const cards = Object.entries(obj).filter(
+    ([k, v]) => typeof v === 'number' && METRIC_DEFS[k] && !GAUGE_DEFS[k]
   ) as Array<[string, number]>;
-  if (entries.length === 0) return null;
+
+  // Gauges
+  const gauges = Object.keys(GAUGE_DEFS).filter((k) => num(k) !== null);
+
+  // Barras de ratio
+  const ratios = RATIO_DEFS.filter(
+    (r) => num(r.num) !== null && num(r.den) !== null && (num(r.den) as number) > 0
+  );
+
+  // Barras de distribución (objetos planos de números)
+  const dists = Object.entries(obj).filter(
+    ([k, v]) =>
+      v && typeof v === 'object' && !Array.isArray(v) &&
+      Object.keys(v as object).length > 0 &&
+      Object.values(v as object).every((x) => typeof x === 'number')
+  ) as Array<[string, Record<string, number>]>;
+
+  if (cards.length === 0 && gauges.length === 0 && ratios.length === 0 && dists.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-      {entries.map(([key, value]) => {
-        const def = METRIC_DEFS[key];
-        const isAlert = def.tone === 'bad' && value > 0;
-        const isGood = def.tone === 'good' || (def.tone === 'bad' && value === 0);
-        const color = isAlert
-          ? 'border-red-200 bg-red-50'
-          : isGood
-            ? 'border-emerald-200 bg-emerald-50'
-            : 'border-blue-200 bg-blue-50';
-        const numColor = isAlert ? 'text-red-700' : isGood ? 'text-emerald-700' : 'text-blue-700';
-        const pct = def.suffix === '%' ? Math.min(100, Math.max(0, value)) : null;
-        return (
-          <div key={key} className={`rounded-lg border px-3 py-2 ${color}`}>
-            <div className={`text-xl font-bold leading-tight ${numColor}`}>
-              {value}{def.suffix || ''}
-            </div>
-            <div className="text-[11px] font-medium text-gray-600 leading-tight">{def.label}</div>
-            {pct !== null && (
-              <div className="mt-1 h-1.5 rounded-full bg-white/70 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
-                  style={{ width: `${pct}%` }}
-                />
+    <div className="space-y-3">
+      {cards.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {cards.map(([key, value]) => {
+            const def = METRIC_DEFS[key];
+            const isAlert = def.tone === 'bad' && value > 0;
+            const isGood = def.tone === 'good' || (def.tone === 'bad' && value === 0);
+            const color = isAlert
+              ? 'border-red-200 bg-red-50'
+              : isGood
+                ? 'border-emerald-200 bg-emerald-50'
+                : 'border-blue-200 bg-blue-50';
+            const numColor = isAlert ? 'text-red-700' : isGood ? 'text-emerald-700' : 'text-blue-700';
+            return (
+              <div key={key} className={`rounded-lg border px-3 py-2 ${color}`}>
+                <div className={`text-xl font-bold leading-tight ${numColor}`}>
+                  {value}{def.suffix || ''}
+                </div>
+                <div className="text-[11px] font-medium text-gray-600 leading-tight">{def.label}</div>
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
+      {(gauges.length > 0 || ratios.length > 0 || dists.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {gauges.map((k) => (
+            <MiniGauge key={k} value={num(k) as number} max={GAUGE_DEFS[k].max} label={GAUGE_DEFS[k].label} />
+          ))}
+          {ratios.map((r) => (
+            <RatioBar key={r.num} label={r.label} value={num(r.num) as number} total={num(r.den) as number} />
+          ))}
+          {dists.map(([k, v]) => (
+            <DistBar key={k} label={DIST_LABELS[k] || `Distribución — ${k.replace(/_/g, ' ')}`} data={v} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
