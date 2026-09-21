@@ -314,8 +314,8 @@ export default function InformeDireccionDetailPage() {
     router.push(`/calidad?tab=acciones`);
   }
 
-  async function aiSuggestSection(sectionKey: string): Promise<string> {
-    const res = await apiFetch(`/management-reviews/${reviewId}/ai-suggest/${sectionKey}`, {
+  async function aiSuggestSection(sectionKey: string, field: 'analysis' | 'outputs' | 'decisions' = 'analysis'): Promise<string> {
+    const res = await apiFetch(`/management-reviews/${reviewId}/ai-suggest/${sectionKey}?field=${field}`, {
       method: 'POST',
     }) as { suggestion: string; model: string };
     return res.suggestion;
@@ -532,7 +532,7 @@ export default function InformeDireccionDetailPage() {
                   onEdit={() => setEditingSection(section.key)}
                   onSave={(data) => updateSection(section.key, data)}
                   onCancel={() => setEditingSection(null)}
-                  onAiSuggest={() => aiSuggestSection(section.key)}
+                  onAiSuggest={(field) => aiSuggestSection(section.key, field)}
                   disabled={review.status === 'FINAL'}
                   saving={saving}
                 />
@@ -778,7 +778,7 @@ function SectionEditor({
   onEdit: () => void;
   onSave: (data: any) => void;
   onCancel: () => void;
-  onAiSuggest: () => Promise<string>;
+  onAiSuggest: (field: 'analysis' | 'outputs' | 'decisions') => Promise<string>;
   disabled: boolean;
   saving: boolean;
 }) {
@@ -789,6 +789,7 @@ function SectionEditor({
   });
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [aiField, setAiField] = useState<'analysis' | 'outputs' | 'decisions'>('analysis');
   const [aiError, setAiError] = useState<string | null>(null);
   const [showSystemData, setShowSystemData] = useState(false);
 
@@ -809,12 +810,19 @@ function SectionEditor({
     onSave(data);
   }
 
-  async function handleAiSuggest() {
+  const AI_FIELD_LABEL: Record<'analysis' | 'outputs' | 'decisions', string> = {
+    analysis: 'análisis',
+    outputs: 'salida requerida',
+    decisions: 'decisiones y acciones',
+  };
+
+  async function handleAiSuggest(field: 'analysis' | 'outputs' | 'decisions' = 'analysis') {
     setAiLoading(true);
     setAiError(null);
     setAiSuggestion(null);
+    setAiField(field);
     try {
-      const text = await onAiSuggest();
+      const text = await onAiSuggest(field);
       setAiSuggestion(text);
     } catch (err: any) {
       setAiError(err?.message || 'Error al conectar con la IA');
@@ -827,7 +835,9 @@ function SectionEditor({
     if (!aiSuggestion) return;
     setFormData((prev) => ({
       ...prev,
-      freeText: prev.freeText ? prev.freeText + '\n\n' + aiSuggestion : aiSuggestion,
+      [aiField === 'analysis' ? 'freeText' : aiField]: prev[aiField === 'analysis' ? 'freeText' : aiField]
+        ? prev[aiField === 'analysis' ? 'freeText' : aiField] + '\n\n' + aiSuggestion
+        : aiSuggestion,
     }));
     setAiSuggestion(null);
     if (!isEditing) onEdit();
@@ -845,7 +855,7 @@ function SectionEditor({
           {/* Botón IA */}
           {!disabled && (
             <button
-              onClick={handleAiSuggest}
+              onClick={() => handleAiSuggest('analysis')}
               disabled={aiLoading}
               title="Generar sugerencia con IA del servidor (Ollama)"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
@@ -890,7 +900,7 @@ function SectionEditor({
           <div className="border border-violet-200 bg-violet-50 rounded-xl p-5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-sm font-semibold text-violet-700">
-                <Sparkles className="w-4 h-4" /> Sugerencia de la IA
+                <Sparkles className="w-4 h-4" /> Sugerencia de la IA — {AI_FIELD_LABEL[aiField]}
               </span>
               <button onClick={() => setAiSuggestion(null)} className="text-violet-400 hover:text-violet-700">
                 <X className="w-4 h-4" />
@@ -902,10 +912,10 @@ function SectionEditor({
                 onClick={applyAiSuggestion}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700"
               >
-                <Copy className="w-3.5 h-3.5" /> Aplicar al análisis
+                <Copy className="w-3.5 h-3.5" /> Aplicar a {AI_FIELD_LABEL[aiField]}
               </button>
               <button
-                onClick={handleAiSuggest}
+                onClick={() => handleAiSuggest(aiField)}
                 disabled={aiLoading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-violet-300 text-violet-700 rounded-lg hover:bg-violet-100 disabled:opacity-50"
               >
@@ -948,7 +958,20 @@ function SectionEditor({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Salida Requerida</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">Salida Requerida</label>
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleAiSuggest('outputs')}
+                    disabled={aiLoading}
+                    title="Sugerir salida requerida con IA"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-md hover:bg-violet-100 disabled:opacity-50 transition-colors"
+                  >
+                    <Sparkles className="w-3 h-3" /> Sugerir con IA
+                  </button>
+                )}
+              </div>
               <textarea
                 value={formData.outputs}
                 onChange={(e) => setFormData({ ...formData, outputs: e.target.value })}
@@ -958,7 +981,20 @@ function SectionEditor({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Decisiones y Acciones</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">Decisiones y Acciones</label>
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleAiSuggest('decisions')}
+                    disabled={aiLoading}
+                    title="Sugerir decisiones y acciones con IA"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-md hover:bg-violet-100 disabled:opacity-50 transition-colors"
+                  >
+                    <Sparkles className="w-3 h-3" /> Sugerir con IA
+                  </button>
+                )}
+              </div>
               <textarea
                 value={formData.decisions}
                 onChange={(e) => setFormData({ ...formData, decisions: e.target.value })}

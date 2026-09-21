@@ -752,11 +752,11 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
     },
   );
 
-  // POST /management-reviews/:id/ai-suggest/:sectionKey
+  // POST /management-reviews/:id/ai-suggest/:sectionKey?field=analysis|outputs|decisions
   // Usa el LLM del servidor para generar sugerencias de texto para una sección específica
   app.post(
     '/management-reviews/:id/ai-suggest/:sectionKey',
-    async (req: FastifyRequest<{ Params: { id: string; sectionKey: string } }>, reply: FastifyReply) => {
+    async (req: FastifyRequest<{ Params: { id: string; sectionKey: string }; Querystring: { field?: string } }>, reply: FastifyReply) => {
       const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId;
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
@@ -795,10 +795,45 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
         }
 
         // Texto actual del usuario como contexto adicional
-        const currentText = sec.freeText ? `\n\nTexto actual del responsable:\n${sec.freeText}` : '';
+        const field = (req.query.field || 'analysis') as 'analysis' | 'outputs' | 'decisions';
+        const currentAnalysis = sec.freeText ? `\n\nAnálisis actual del responsable:\n${sec.freeText}` : '';
+        const currentOutputs = sec.outputs ? `\n\nSalida requerida actual:\n${sec.outputs}` : '';
+        const currentDecisions = sec.decisions ? `\n\nDecisiones y acciones actuales:\n${sec.decisions}` : '';
 
-        const prompt = `Sos un experto en sistemas de gestión integrado (SGI) con profundo conocimiento en ${normas}.
-Estás ayudando a redactar el Informe para la Dirección del período ${periodStr} para la sección "${sec.title}".
+        const baseIntro = `Sos un experto en sistemas de gestión integrado (SGI) con profundo conocimiento en ${normas}.
+Estás ayudando a redactar el Informe para la Dirección del período ${periodStr} para la sección "${sec.title}".`;
+
+        let prompt: string;
+        if (field === 'outputs') {
+          prompt = `${baseIntro}
+
+Tu tarea es redactar la SALIDA REQUERIDA de esta sección: los resultados esperados de la revisión por la dirección en términos de recursos necesarios, mejoras del sistema, objetivos nuevos o ajustados, y cambios requeridos.
+
+El texto debe:
+- Definir salidas concretas y verificables (recursos, mejoras de procesos, cambios en políticas u objetivos)
+- Relacionarse con los datos y el análisis disponibles
+- Ser específico, accionable y apropiado para la alta dirección
+- Usar lenguaje técnico ISO apropiado pero comprensible
+- Tener entre 2 y 4 párrafos o una lista breve de puntos
+${systemDataSummary}${currentAnalysis}${currentOutputs}
+
+Generá únicamente el texto de la salida requerida, sin encabezados ni formato adicional.`;
+        } else if (field === 'decisions') {
+          prompt = `${baseIntro}
+
+Tu tarea es redactar las DECISIONES Y ACCIONES que la dirección debería tomar respecto de esta sección: decisiones concretas, acciones a implementar, responsables sugeridos y plazos orientativos.
+
+El texto debe:
+- Proponer decisiones claras y acciones concretas derivadas del análisis
+- Sugerir responsables por rol/área (no nombres de personas) y plazos orientativos
+- Priorizar lo más relevante para el negocio y el cumplimiento normativo
+- Usar lenguaje técnico ISO apropiado pero comprensible
+- Tener entre 2 y 4 párrafos o una lista breve de puntos
+${systemDataSummary}${currentAnalysis}${currentOutputs}${currentDecisions}
+
+Generá únicamente el texto de las decisiones y acciones, sin encabezados ni formato adicional.`;
+        } else {
+          prompt = `${baseIntro}
 
 Tu tarea es generar un párrafo de análisis y observaciones profesional, concreto y bien redactado en español formal (Argentina), apropiado para presentar a la alta dirección.
 
@@ -809,9 +844,10 @@ El texto debe:
 - Proponer posibles decisiones o acciones concretas
 - Usar lenguaje técnico ISO apropiado pero comprensible
 - Tener entre 3 y 5 párrafos bien estructurados
-${systemDataSummary}${currentText}
+${systemDataSummary}${currentAnalysis}
 
 Generá únicamente el texto del análisis, sin encabezados ni formato adicional.`;
+        }
 
         const response = await llm.chat([{ role: 'user', content: prompt }], 800);
 
