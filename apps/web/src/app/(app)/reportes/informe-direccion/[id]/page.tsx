@@ -93,10 +93,18 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const SECTION_ICONS: Record<string, any> = {
+  previous_actions: RefreshCw,
   audit_results: FileText,
   nonconformities: AlertTriangle,
   customer_feedback: Users,
   process_performance: TrendingUp,
+  product_conformity: CheckCircle,
+  monitoring_results: TrendingUp,
+  stakeholder_communications: Users,
+  stakeholder_feedback: Users,
+  security_objectives: Target,
+  copq: FileBarChart,
+  customer_scorecards: FileBarChart,
   improvement_opportunities: Target,
   risk_management: Shield,
   environmental_aspects: Settings,

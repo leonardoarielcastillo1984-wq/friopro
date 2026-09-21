@@ -7,63 +7,83 @@ import { createLLMProvider } from '../services/llm/factory.js';
 const SECTION_TEMPLATES: Record<string, Array<{ key: string; title: string }>> = {
   // ISO 9001:2015 — Cláusula 9.3.2 (Entradas) y 9.3.3 (Salidas)
   ISO_9001: [
-    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGC (9.3.2.a)' },
-    { key: 'objectives_performance',   title: 'Desempeño de Objetivos de Calidad (9.3.2.b)' },
-    { key: 'process_performance',      title: 'Desempeño de Procesos e Indicadores KPI (9.3.2.b)' },
-    { key: 'customer_feedback',        title: 'Satisfacción del Cliente y Retroalimentación (9.3.2.c)' },
-    { key: 'nonconformities',          title: 'No Conformidades y Acciones Correctivas (9.3.2.d)' },
-    { key: 'audit_results',            title: 'Resultados de Auditorías Internas y Externas (9.3.2.e)' },
-    { key: 'supplier_performance',     title: 'Desempeño de Proveedores Externos (9.3.2.f)' },
-    { key: 'risk_management',          title: 'Gestión de Riesgos y Oportunidades (9.3.2.g)' },
-    { key: 'actions_capa',             title: 'Estado de Acciones CAPA (9.3.2.h)' },
-    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora (9.3.3)' },
-    { key: 'resources_adequacy',       title: 'Adecuación de Recursos (9.3.3)' },
+    { key: 'previous_actions',         title: 'Estado de Acciones de Revisiones Anteriores (9.3.2.a)' },
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGC (9.3.2.b)' },
+    { key: 'customer_feedback',        title: 'Satisfacción del Cliente y Retroalimentación (9.3.2.c1)' },
+    { key: 'objectives_performance',   title: 'Desempeño de Objetivos de Calidad (9.3.2.c2)' },
+    { key: 'process_performance',      title: 'Desempeño de Procesos e Indicadores KPI (9.3.2.c3)' },
+    { key: 'product_conformity',       title: 'Conformidad de Productos y Servicios (9.3.2.c3)' },
+    { key: 'nonconformities',          title: 'No Conformidades y Acciones Correctivas (9.3.2.c4)' },
+    { key: 'monitoring_results',       title: 'Resultados de Seguimiento y Medición (9.3.2.c5)' },
+    { key: 'audit_results',            title: 'Resultados de Auditorías Internas y Externas (9.3.2.c6)' },
+    { key: 'supplier_performance',     title: 'Desempeño de Proveedores Externos (9.3.2.c7)' },
+    { key: 'resources_adequacy',       title: 'Adecuación de Recursos (9.3.2.d)' },
+    { key: 'risk_management',          title: 'Eficacia de Acciones para Riesgos y Oportunidades (9.3.2.e)' },
+    { key: 'actions_capa',             title: 'Estado de Acciones CAPA' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora (9.3.2.f)' },
   ],
   // ISO 14001:2015 — Cláusula 9.3
   ISO_14001: [
-    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGA (9.3.a)' },
-    { key: 'environmental_objectives', title: 'Logro de Objetivos Ambientales (9.3.b)' },
-    { key: 'environmental_aspects',    title: 'Aspectos Ambientales Significativos (9.3.c)' },
-    { key: 'legal_compliance',         title: 'Cumplimiento de Obligaciones Legales (9.3.d)' },
-    { key: 'audit_results',            title: 'Resultados de Auditorías Ambientales (9.3.e)' },
-    { key: 'nonconformities',          title: 'No Conformidades y Acciones Correctivas (9.3.f)' },
-    { key: 'emergency_preparedness',   title: 'Preparación y Respuesta ante Emergencias (9.3.g)' },
-    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora Continua (9.3.h)' },
+    { key: 'previous_actions',         title: 'Estado de Acciones de Revisiones Anteriores (9.3.a)' },
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGA (9.3.b)' },
+    { key: 'environmental_objectives', title: 'Logro de Objetivos Ambientales (9.3.c)' },
+    { key: 'environmental_aspects',    title: 'Aspectos Ambientales Significativos (9.3.b3)' },
+    { key: 'nonconformities',          title: 'No Conformidades y Acciones Correctivas (9.3.d1)' },
+    { key: 'monitoring_results',       title: 'Resultados de Seguimiento y Medición Ambiental (9.3.d2)' },
+    { key: 'legal_compliance',         title: 'Cumplimiento de Obligaciones Legales (9.3.d3)' },
+    { key: 'audit_results',            title: 'Resultados de Auditorías Ambientales (9.3.d4)' },
+    { key: 'resources_adequacy',       title: 'Adecuación de Recursos (9.3.e)' },
+    { key: 'stakeholder_communications', title: 'Comunicaciones de Partes Interesadas y Quejas (9.3.f)' },
+    { key: 'emergency_preparedness',   title: 'Preparación y Respuesta ante Emergencias' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora Continua (9.3.g)' },
   ],
   // ISO 45001:2018 — Cláusula 9.3
   ISO_45001: [
-    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGSST (9.3.a)' },
-    { key: 'ohs_objectives',           title: 'Logro de Objetivos de SST (9.3.b)' },
-    { key: 'incident_investigation',   title: 'Incidentes, No Conformidades y Acciones Correctivas (9.3.c)' },
-    { key: 'ohs_audit_results',        title: 'Resultados de Auditorías SST (9.3.d)' },
-    { key: 'risk_assessment',          title: 'Evaluación de Peligros y Riesgos SST (9.3.e)' },
-    { key: 'worker_participation',     title: 'Participación y Consulta de los Trabajadores (9.3.f)' },
-    { key: 'legal_compliance',         title: 'Cumplimiento de Requisitos Legales SST (9.3.g)' },
-    { key: 'resources_adequacy',       title: 'Adecuación de Recursos y Competencias (9.3.h)' },
-    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora Continua SST (9.3.i)' },
+    { key: 'previous_actions',         title: 'Estado de Acciones de Revisiones Anteriores (9.3.a)' },
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGSST (9.3.b)' },
+    { key: 'ohs_objectives',           title: 'Logro de Objetivos de SST (9.3.c)' },
+    { key: 'incident_investigation',   title: 'Incidentes, No Conformidades y Acciones Correctivas (9.3.d1)' },
+    { key: 'monitoring_results',       title: 'Resultados de Seguimiento y Medición SST (9.3.d2)' },
+    { key: 'legal_compliance',         title: 'Cumplimiento de Requisitos Legales SST (9.3.d3)' },
+    { key: 'ohs_audit_results',        title: 'Resultados de Auditorías SST (9.3.d4)' },
+    { key: 'worker_participation',     title: 'Participación y Consulta de los Trabajadores (9.3.d5)' },
+    { key: 'risk_assessment',          title: 'Evaluación de Peligros y Riesgos SST (9.3.d6)' },
+    { key: 'resources_adequacy',       title: 'Adecuación de Recursos y Competencias (9.3.e)' },
+    { key: 'stakeholder_communications', title: 'Comunicaciones con Partes Interesadas (9.3.f)' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora Continua SST (9.3.g)' },
   ],
   // ISO 27001:2022 — Cláusula 9.3
   ISO_27001: [
-    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGSI (9.3.a)' },
-    { key: 'security_incidents',       title: 'Incidentes de Seguridad de la Información (9.3.b)' },
-    { key: 'risk_treatment',           title: 'Tratamiento de Riesgos de Seguridad (9.3.c)' },
-    { key: 'control_effectiveness',    title: 'Efectividad de los Controles Implementados (9.3.d)' },
-    { key: 'audit_results',            title: 'Resultados de Auditorías del SGSI (9.3.e)' },
-    { key: 'compliance_evaluation',    title: 'Evaluación de Cumplimiento Normativo (9.3.f)' },
-    { key: 'business_continuity',      title: 'Continuidad del Negocio y Disponibilidad (9.3.g)' },
-    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora (9.3.h)' },
+    { key: 'previous_actions',         title: 'Estado de Acciones de Revisiones Anteriores (9.3.a)' },
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGSI (9.3.b-c)' },
+    { key: 'security_incidents',       title: 'Incidentes y No Conformidades de Seguridad (9.3.d1)' },
+    { key: 'control_effectiveness',    title: 'Resultados de Seguimiento y Medición / Controles (9.3.d2)' },
+    { key: 'audit_results',            title: 'Resultados de Auditorías del SGSI (9.3.d3)' },
+    { key: 'security_objectives',      title: 'Cumplimiento de Objetivos de Seguridad (9.3.d4)' },
+    { key: 'stakeholder_feedback',     title: 'Retroalimentación de Partes Interesadas (9.3.e)' },
+    { key: 'risk_treatment',           title: 'Evaluación de Riesgos y Plan de Tratamiento (9.3.f)' },
+    { key: 'compliance_evaluation',    title: 'Evaluación de Cumplimiento Normativo' },
+    { key: 'business_continuity',      title: 'Continuidad del Negocio y Disponibilidad' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora (9.3.g)' },
   ],
-  // IATF 16949:2016 — Cláusula 9.3 (extiende ISO 9001)
+  // IATF 16949:2016 — Cláusula 9.3 (extiende ISO 9001 + suplemento 9.3.2.1)
   IATF_16949: [
-    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGCA (9.3.2.a)' },
-    { key: 'customer_feedback',        title: 'Satisfacción del Cliente y Desempeño de Entrega (9.3.2.b)' },
-    { key: 'process_performance',      title: 'Desempeño de Procesos y KPIs (9.3.2.c)' },
-    { key: 'nonconformities',          title: 'No Conformidades Internas y de Campo (9.3.2.d)' },
-    { key: 'audit_results',            title: 'Resultados de Auditorías (internas, de 2da y 3ra parte) (9.3.2.e)' },
-    { key: 'supplier_performance',     title: 'Desempeño de Proveedores y Cadena de Suministro (9.3.2.f)' },
-    { key: 'risk_management',          title: 'Riesgos y Oportunidades del Negocio (9.3.2.g)' },
-    { key: 'actions_capa',             title: 'Estado de Acciones CAPA Abiertas (9.3.2.h)' },
-    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora y Lecciones Aprendidas (9.3.3)' },
+    { key: 'previous_actions',         title: 'Estado de Acciones de Revisiones Anteriores (9.3.2.a)' },
+    { key: 'context_changes',          title: 'Cambios en el Contexto y el SGCA (9.3.2.b)' },
+    { key: 'customer_feedback',        title: 'Satisfacción del Cliente y Desempeño de Entrega (9.3.2.c1)' },
+    { key: 'customer_scorecards',      title: 'Scorecards de Cliente y Portales (9.3.2.1)' },
+    { key: 'objectives_performance',   title: 'Desempeño de Objetivos de Calidad (9.3.2.c2)' },
+    { key: 'process_performance',      title: 'Desempeño y Eficiencia de Procesos (9.3.2.c3)' },
+    { key: 'product_conformity',       title: 'Conformidad de Producto y Análisis de Fallas de Campo (9.3.2.1)' },
+    { key: 'nonconformities',          title: 'No Conformidades Internas y de Campo (9.3.2.c4)' },
+    { key: 'monitoring_results',       title: 'Resultados de Seguimiento y Medición (9.3.2.c5)' },
+    { key: 'audit_results',            title: 'Resultados de Auditorías (internas, de 2da y 3ra parte) (9.3.2.c6)' },
+    { key: 'supplier_performance',     title: 'Desempeño de Proveedores y Cadena de Suministro (9.3.2.c7)' },
+    { key: 'copq',                     title: 'Costo de la Mala Calidad — COPQ (9.3.2.1)' },
+    { key: 'resources_adequacy',       title: 'Adecuación de Recursos (9.3.2.d)' },
+    { key: 'risk_management',          title: 'Riesgos y Oportunidades del Negocio (9.3.2.e)' },
+    { key: 'actions_capa',             title: 'Estado de Acciones CAPA Abiertas' },
+    { key: 'improvement_opportunities',title: 'Oportunidades de Mejora y Lecciones Aprendidas (9.3.2.f)' },
   ],
 };
 
@@ -387,6 +407,135 @@ async function buildSectionSystemData(params: {
   data.worker_participation = {
     nota: 'Completar manualmente: instancias de participación realizadas, consultas respondidas, temas planteados por los trabajadores.',
     trainings: data.resources_adequacy?.completedTrainings ?? 0,
+  };
+
+  // ── ACCIONES DE REVISIONES ANTERIORES (9.3.2.a — todas las normas) ──────────
+  try {
+    const prevReview = await tx.managementReview.findFirst({
+      where: { tenantId, deletedAt: null, periodEnd: { lt: periodStart } },
+      orderBy: { periodEnd: 'desc' },
+      include: {
+        sections: {
+          where: { OR: [{ decisions: { not: null } }, { outputs: { not: null } }] },
+          select: { key: true, title: true, decisions: true, outputs: true },
+        },
+      },
+    }).catch(() => null);
+    if (prevReview) {
+      const decisions = prevReview.sections
+        .filter((s: any) => s.decisions)
+        .map((s: any) => ({ section: s.title, decisions: s.decisions }));
+      data.previous_actions = {
+        previousReviewTitle: prevReview.title,
+        previousPeriodEnd: prevReview.periodEnd,
+        previousStatus: prevReview.status,
+        decisionsFromPrevious: decisions,
+        totalDecisionPoints: decisions.length,
+        nota: 'Verificar el estado de cumplimiento de cada decisión/acción acordada en la revisión anterior.',
+      };
+    } else {
+      data.previous_actions = {
+        nota: 'No se encontraron revisiones anteriores. Si es la primera revisión por la dirección, indicarlo explícitamente.',
+      };
+    }
+  } catch { data.previous_actions = { nota: 'Completar manualmente con las acciones acordadas en la revisión anterior.' }; }
+
+  // ── RESULTADOS DE SEGUIMIENTO Y MEDICIÓN (9.3.2.c5 / d2) ────────────────────
+  try {
+    const equips = await tx.measuringEquipment.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, name: true, status: true, nextCalibrationDate: true, lastCalibrationDate: true },
+    }).catch(() => []);
+    const now3 = new Date();
+    const measurements = await tx.indicatorMeasurement.findMany({
+      where: { measuredAt: { gte: periodStart, lte: periodEnd } },
+      include: { indicator: { where: { tenantId } } },
+    }).catch(() => []);
+    const validM = measurements.filter((m: any) => m.indicator);
+    data.monitoring_results = {
+      totalEquipment: equips.length,
+      equipmentCalibrated: equips.filter((e: any) => e.lastCalibrationDate && new Date(e.lastCalibrationDate) >= periodStart && new Date(e.lastCalibrationDate) <= periodEnd).length,
+      calibrationsOverdue: equips.filter((e: any) => e.nextCalibrationDate && new Date(e.nextCalibrationDate) < now3).length,
+      totalMeasurements: validM.length,
+      indicatorsMeasured: new Set(validM.map((m: any) => m.indicator.id)).size,
+      nota: 'Completar manualmente: resultados de inspecciones de producto/servicio, ensayos y verificaciones del período.',
+    };
+  } catch { data.monitoring_results = { nota: 'Completar manualmente con resultados de seguimiento y medición del período.' }; }
+
+  // ── CONFORMIDAD DE PRODUCTOS Y SERVICIOS (9.3.2.c3) ─────────────────────────
+  try {
+    const ncrsProduct = await tx.nonConformity.findMany({
+      where: { tenantId, createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { source: true, status: true, severity: true },
+    }).catch(() => []);
+    data.product_conformity = {
+      ncrsInPeriod: ncrsProduct.length,
+      openNcrs: ncrsProduct.filter((n: any) => n.status === 'OPEN').length,
+      bySource: ncrsProduct.reduce((acc: any, n: any) => { acc[n.source || 'OTRO'] = (acc[n.source || 'OTRO'] || 0) + 1; return acc; }, {}),
+      nota: 'Completar manualmente: conformidad del producto/servicio entregado, reclamos de clientes por calidad, liberaciones y rechazos.',
+    };
+  } catch { data.product_conformity = { nota: 'Completar manualmente con datos de conformidad de productos y servicios.' }; }
+
+  // ── COMUNICACIONES DE PARTES INTERESADAS (14001 f / 45001 f / 27001 e) ──────
+  try {
+    const responses = await tx.surveyResponse.findMany({
+      where: { createdAt: { gte: periodStart, lte: periodEnd }, survey: { tenantId } },
+      select: { npsScore: true, satisfactionScore: true, isComplete: true, comments: true },
+    }).catch(() => []);
+    const feedbackQr = await tx.inspeccionFeedbackCliente.findMany({
+      where: { tenantId, createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { calificacion: true, discrepanciaDetectada: true, problemaDetectado: true },
+    }).catch(() => []);
+    const npsScores = responses.map((r: any) => r.npsScore).filter((n: any) => n != null);
+    const satScores = responses.map((r: any) => r.satisfactionScore).filter((n: any) => n != null);
+    const comms = {
+      surveyResponses: responses.length,
+      completedResponses: responses.filter((r: any) => r.isComplete).length,
+      avgNps: npsScores.length > 0 ? +(npsScores.reduce((s: number, v: number) => s + v, 0) / npsScores.length).toFixed(1) : null,
+      avgSatisfaction: satScores.length > 0 ? +(satScores.reduce((s: number, v: number) => s + v, 0) / satScores.length).toFixed(1) : null,
+      qrFeedbacks: feedbackQr.length,
+      qrAvgRating: feedbackQr.length > 0 ? +(feedbackQr.reduce((s: number, f: any) => s + f.calificacion, 0) / feedbackQr.length).toFixed(1) : null,
+      discrepanciesReported: feedbackQr.filter((f: any) => f.discrepanciaDetectada).length,
+      nota: 'Completar manualmente: quejas formales, comunicaciones regulatorias y consultas de partes interesadas recibidas.',
+    };
+    data.stakeholder_communications = comms;
+    data.stakeholder_feedback = comms;
+    // Enriquecer customer_feedback con datos reales de encuestas
+    data.customer_feedback = {
+      ...(data.customer_feedback || {}),
+      surveyResponses: comms.surveyResponses,
+      avgNps: comms.avgNps,
+      avgSatisfaction: comms.avgSatisfaction,
+      qrFeedbacks: comms.qrFeedbacks,
+      qrAvgRating: comms.qrAvgRating,
+    };
+  } catch {
+    data.stakeholder_communications = { nota: 'Completar manualmente con comunicaciones y quejas de partes interesadas.' };
+    data.stakeholder_feedback = data.stakeholder_communications;
+  }
+
+  // ── OBJETIVOS DE SEGURIDAD DE LA INFORMACIÓN (27001 d4) ─────────────────────
+  try {
+    const secObjectives = await tx.sgiObjective.findMany({
+      where: { tenantId, deletedAt: null, year: periodEnd.getFullYear(), standard: { contains: '27001' } },
+      select: { code: true, title: true, status: true, progress: true },
+    }).catch(() => []);
+    data.security_objectives = {
+      total: secObjectives.length,
+      achieved: secObjectives.filter((o: any) => o.status === 'ACHIEVED').length,
+      inProgress: secObjectives.filter((o: any) => o.status === 'IN_PROGRESS').length,
+      items: secObjectives,
+      nota: secObjectives.length === 0 ? 'No hay objetivos SGSI cargados para el año. Completar manualmente.' : undefined,
+    };
+  } catch { data.security_objectives = { nota: 'Completar manualmente con el cumplimiento de objetivos de seguridad.' }; }
+
+  // ── IATF: COPQ y scorecards (manual) ────────────────────────────────────────
+  data.copq = {
+    nota: 'Completar manualmente: costo de la mala calidad interna (retrabajos, scrap) y externa (reclamos, garantías, devoluciones) del período.',
+    ncrsRelated: data.nonconformities?.totalNcrs ?? 0,
+  };
+  data.customer_scorecards = {
+    nota: 'Completar manualmente: desempeño en scorecards de clientes, portales de proveedores, entregas a tiempo y ppm reportados por clientes.',
   };
 
   return data;
