@@ -1399,8 +1399,12 @@ const METRIC_DEFS: Record<string, { label: string; tone: 'bad' | 'good' | 'neutr
 };
 
 function SectionMetrics({ data }: { data: any }) {
-  if (!data || typeof data !== 'object') return null;
-  const entries = Object.entries(data).filter(
+  let obj = data;
+  if (typeof obj === 'string') {
+    try { obj = JSON.parse(obj); } catch { return null; }
+  }
+  if (!obj || typeof obj !== 'object') return null;
+  const entries = Object.entries(obj).filter(
     ([k, v]) => typeof v === 'number' && METRIC_DEFS[k]
   ) as Array<[string, number]>;
   if (entries.length === 0) return null;

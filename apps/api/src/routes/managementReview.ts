@@ -666,6 +666,20 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
       });
 
       if (!review) return reply.code(404).send({ error: 'Management review not found' });
+
+      // Ordenar secciones según el orden de las plantillas de la norma (no alfabético)
+      const orderMap = new Map<string, number>();
+      let idx = 0;
+      const stds = Array.isArray(review.standards) ? review.standards : [];
+      for (const std of stds) {
+        for (const t of SECTION_TEMPLATES[std as string] || []) {
+          if (!orderMap.has(t.key)) orderMap.set(t.key, idx++);
+        }
+      }
+      review.sections.sort(
+        (a: any, b: any) => (orderMap.get(a.key) ?? 999) - (orderMap.get(b.key) ?? 999)
+      );
+
       return reply.send({ review });
     },
   );
