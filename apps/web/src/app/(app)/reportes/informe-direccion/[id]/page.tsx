@@ -896,6 +896,9 @@ function SectionEditor({
       </div>
 
       <div className="p-6 space-y-5">
+        {/* Métricas visuales de la sección */}
+        <SectionMetrics data={section.systemData} />
+
         {/* Panel sugerencia IA */}
         {aiError && (
           <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
@@ -1319,6 +1322,123 @@ function InputSectionCard({
 }
 
 // Renderizador amigable de los datos del sistema
+// ── Métricas visuales por sección ────────────────────────────────────────────
+// Mapea las claves numéricas de systemData a etiquetas + tono semáforo.
+// 'bad' = rojo cuando >0 (problemas), 'good' = verde, 'neutral' = azul.
+const METRIC_DEFS: Record<string, { label: string; tone: 'bad' | 'good' | 'neutral'; suffix?: string }> = {
+  // Auditorías
+  totalAudits:          { label: 'Auditorías', tone: 'neutral' },
+  completedAudits:      { label: 'Completadas', tone: 'good' },
+  totalFindings:        { label: 'Hallazgos', tone: 'neutral' },
+  openFindings:         { label: 'Hallazgos abiertos', tone: 'bad' },
+  openAuditFindings:    { label: 'Hallazgos aud. abiertos', tone: 'bad' },
+  // No conformidades
+  totalNcrs:            { label: 'No conformidades', tone: 'neutral' },
+  openNcrs:             { label: 'NC abiertas', tone: 'bad' },
+  closedNcrs:           { label: 'NC cerradas', tone: 'good' },
+  ncrsInPeriod:         { label: 'NC del período', tone: 'bad' },
+  ncrsRelated:          { label: 'NC relacionadas', tone: 'neutral' },
+  // Acciones CAPA
+  open:                 { label: 'Abiertas', tone: 'bad' },
+  closed:               { label: 'Cerradas', tone: 'good' },
+  overdue:              { label: 'Vencidas', tone: 'bad' },
+  // Objetivos
+  total:                { label: 'Total', tone: 'neutral' },
+  achieved:             { label: 'Cumplidos', tone: 'good' },
+  inProgress:           { label: 'En curso', tone: 'neutral' },
+  notAchieved:          { label: 'No cumplidos', tone: 'bad' },
+  averageProgress:      { label: 'Avance promedio', tone: 'good', suffix: '%' },
+  // KPIs / proceso
+  totalIndicators:      { label: 'Indicadores', tone: 'neutral' },
+  onTarget:             { label: 'En meta', tone: 'good' },
+  offTarget:            { label: 'Fuera de meta', tone: 'bad' },
+  // Riesgos
+  high:                 { label: 'Riesgos altos', tone: 'bad' },
+  medium:               { label: 'Riesgos medios', tone: 'neutral' },
+  low:                  { label: 'Riesgos bajos', tone: 'good' },
+  // Aspectos ambientales
+  significant:          { label: 'Significativos', tone: 'bad' },
+  withControls:         { label: 'Con controles', tone: 'good' },
+  // Incidentes SST
+  totalIncidents:       { label: 'Incidentes', tone: 'bad' },
+  totalDaysLost:        { label: 'Días perdidos', tone: 'bad' },
+  // Proveedores
+  approved:             { label: 'Aprobados', tone: 'good' },
+  pending:              { label: 'Pendientes', tone: 'bad' },
+  approvedEvals:        { label: 'Evaluaciones aprobadas', tone: 'good' },
+  avgScore:             { label: 'Score promedio', tone: 'neutral' },
+  // Recursos / equipos / capacitación
+  totalEquipment:       { label: 'Equipos', tone: 'neutral' },
+  equipmentCalibrated:  { label: 'Calibrados en período', tone: 'good' },
+  calibrationsDueSoon:  { label: 'Calibr. próximas', tone: 'neutral' },
+  calibrationsOverdue:  { label: 'Calibr. vencidas', tone: 'bad' },
+  totalTrainings:       { label: 'Capacitaciones', tone: 'neutral' },
+  completedTrainings:   { label: 'Realizadas', tone: 'good' },
+  totalTrainingHours:   { label: 'Horas capacitación', tone: 'neutral' },
+  trainings:            { label: 'Capacitaciones', tone: 'neutral' },
+  // Legales
+  totalLegalRequirements: { label: 'Requisitos legales', tone: 'neutral' },
+  // Partes interesadas / encuestas
+  totalStakeholders:    { label: 'Partes interesadas', tone: 'neutral' },
+  internalStakeholders: { label: 'Internas', tone: 'neutral' },
+  externalStakeholders: { label: 'Externas', tone: 'neutral' },
+  surveyResponses:      { label: 'Respuestas encuesta', tone: 'neutral' },
+  completedResponses:   { label: 'Completadas', tone: 'good' },
+  avgNps:               { label: 'NPS promedio', tone: 'neutral' },
+  avgSatisfaction:      { label: 'Satisfacción prom.', tone: 'neutral' },
+  qrFeedbacks:          { label: 'Feedback QR', tone: 'neutral' },
+  qrAvgRating:          { label: 'Calificación prom.', tone: 'neutral' },
+  discrepanciesReported:{ label: 'Discrepancias', tone: 'bad' },
+  // Seguimiento y medición
+  totalMeasurements:    { label: 'Mediciones', tone: 'neutral' },
+  indicatorsMeasured:   { label: 'Indicadores medidos', tone: 'neutral' },
+  // Revisión anterior
+  totalDecisionPoints:  { label: 'Decisiones previas', tone: 'neutral' },
+  // Incidentes varios
+  incidents:            { label: 'Incidentes', tone: 'bad' },
+};
+
+function SectionMetrics({ data }: { data: any }) {
+  if (!data || typeof data !== 'object') return null;
+  const entries = Object.entries(data).filter(
+    ([k, v]) => typeof v === 'number' && METRIC_DEFS[k]
+  ) as Array<[string, number]>;
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+      {entries.map(([key, value]) => {
+        const def = METRIC_DEFS[key];
+        const isAlert = def.tone === 'bad' && value > 0;
+        const isGood = def.tone === 'good' || (def.tone === 'bad' && value === 0);
+        const color = isAlert
+          ? 'border-red-200 bg-red-50'
+          : isGood
+            ? 'border-emerald-200 bg-emerald-50'
+            : 'border-blue-200 bg-blue-50';
+        const numColor = isAlert ? 'text-red-700' : isGood ? 'text-emerald-700' : 'text-blue-700';
+        const pct = def.suffix === '%' ? Math.min(100, Math.max(0, value)) : null;
+        return (
+          <div key={key} className={`rounded-lg border px-3 py-2 ${color}`}>
+            <div className={`text-xl font-bold leading-tight ${numColor}`}>
+              {value}{def.suffix || ''}
+            </div>
+            <div className="text-[11px] font-medium text-gray-600 leading-tight">{def.label}</div>
+            {pct !== null && (
+              <div className="mt-1 h-1.5 rounded-full bg-white/70 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SectionDataViewer({ data }: { data: any }) {
   if (typeof data !== 'object' || data === null) {
     return <span className="text-sm text-gray-600">{String(data)}</span>;
