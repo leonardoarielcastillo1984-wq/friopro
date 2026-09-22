@@ -29,6 +29,7 @@ import { auditRoutes } from './routes/audit.js';
 import gestionCambiosRoutes from './routes/gestion-cambios.js';
 import { registerAuditRoutes } from './routes/audits.js';
 import { registerManagementReviewRoutes } from './routes/managementReview.js';
+import { coreToolsRoutes } from './routes/coreTools.js';
 import { ncrRoutes } from './routes/ncr.js';
 import { settingsRoutes } from './routes/settings.js';
 import { dashboardRoutes } from './routes/dashboard.js';
@@ -397,6 +398,7 @@ export async function buildApp() {
   await app.register(auditRoutes, { prefix: '/audit' });
   await app.register(registerAuditRoutes);
   await app.register(registerManagementReviewRoutes);
+  await app.register(coreToolsRoutes, { prefix: '/core-tools' });
   await app.register(ncrRoutes, { prefix: '/ncr' });
   await app.register(actionPlanRoutes, { prefix: '/action-plans' });
   await app.register(portalAccionRoutes, { prefix: '/portal-accion' });

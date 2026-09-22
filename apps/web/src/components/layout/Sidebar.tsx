@@ -41,6 +41,7 @@ import {
   Pencil,
   Brain,
   ListChecks,
+  Wrench,
 } from 'lucide-react';
 
 const mainNav = [
@@ -68,6 +69,7 @@ const mainNav = [
   { label: 'No Conformidades y Plan de acción', icon: ClipboardCheck, href: '/calidad' },
   { label: 'Auditorías', icon: BrainCircuit, href: '/auditoria' },
   { label: 'Revisión por la Dirección', icon: FileBarChart, href: '/revision-direccion' },
+  { label: 'Core Tools IATF', icon: Wrench, href: '/core-tools' },
 
   // 6. Seguridad & Ambiente
   { label: 'Seguridad & Ambiente', icon: Shield, href: '/seguridad' },
@@ -114,6 +116,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/reportes': 'PROFESSIONAL',
   '/auditoria': 'PREMIUM',
   '/revision-direccion': 'PROFESSIONAL',
+  '/core-tools': 'PROFESSIONAL',
   '/rrhh': 'PREMIUM',
   '/clima': 'PREMIUM',
 };

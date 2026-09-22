@@ -10899,3 +10899,210 @@ model FlotaMulta {
   @@index([estado])
   @@map("flota_multas")
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// CORE TOOLS — IATF 16949 (MSA, SPC, FMEA, Control Plan, APQP, PPAP, 8D, LPA)
+// ════════════════════════════════════════════════════════════════════════════
+
+// MSA — Estudios de sistemas de medición (R&R, sesgo, linealidad, estabilidad, atributos)
+model MsaStudy {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @db.Uuid
+  code            String
+  name            String
+  studyType       String    @default("GRR_CROSS") // GRR_CROSS, GRR_NESTED, BIAS, LINEARITY, STABILITY, ATTRIBUTE
+  equipmentId     String?   @db.Uuid
+  equipmentName   String?
+  characteristic  String?   // característica medida
+  partsCount      Int       @default(10)
+  operatorsCount  Int       @default(3)
+  trialsCount     Int       @default(3)
+  tolerance       Float?    // tolerancia total (USL - LSL)
+  referenceValues Json?     // sesgo/linealidad/estabilidad: [{ ref, readings: [..] }]
+  readings        Json?     // GRR: [{ part, operator, trial, value }] | atributos: [{ part, operator, trial, result, ref? }]
+  results         Json?     // resultados calculados por el motor
+  status          String    @default("DRAFT") // DRAFT, COMPLETED
+  conclusion      String?
+  aiInterpretation String?  @db.Text
+  createdById     String?   @db.Uuid
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("msa_studies")
+}
+
+// SPC — Cartas de control y capabilidad de proceso
+model SpcChart {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  code           String
+  name           String
+  process        String?
+  characteristic String
+  unit           String?
+  chartType      String    @default("XBAR_R") // XBAR_R, XBAR_S, I_MR, P, NP, C, U
+  subgroupSize   Int       @default(5)
+  usl            Float?
+  lsl            Float?
+  target         Float?
+  subgroups      Json?     // variables: [[v1..vn], ...] | I_MR: [v1, v2, ...] | atributos: [{n, defects|defectives}]
+  limits         Json?     // { cl, ucl, lcl, uclR, lclR, clR, ... }
+  capability     Json?     // { cp, cpk, pp, ppk, sigma }
+  alarms         Json?     // reglas Western Electric disparadas
+  status         String    @default("ACTIVE") // ACTIVE, ARCHIVED
+  aiInterpretation String? @db.Text
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now()) @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("spc_charts")
+}
+
+// FMEA — AIAG-VDA (DFMEA / PFMEA) con Action Priority
+model FmeaStudy {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  code      String
+  name      String
+  type      String    @default("PFMEA") // DFMEA, PFMEA
+  process   String?
+  product   String?
+  team      String?
+  status    String    @default("DRAFT") // DRAFT, ACTIVE, CLOSED
+  // items: [{ id, step, function, failureMode, effect, s, cause, o, prevention, detection, d, ap, actions, actionStatus }]
+  items     Json?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("fmea_studies")
+}
+
+// Plan de Control — vinculable a un FMEA
+model ControlPlan {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  code       String
+  name       String
+  phase      String    @default("PRODUCTION") // PROTOTYPE, PRELAUNCH, PRODUCTION
+  partNumber String?
+  process    String?
+  fmeaId     String?   @db.Uuid
+  // items: [{ id, step, characteristic, spec, method, sampleSize, frequency, controlMethod, reactionPlan, special }]
+  items      Json?
+  status     String    @default("DRAFT") // DRAFT, ACTIVE, OBSOLETE
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("control_plans")
+}
+
+// APQP — Proyecto de planificación avanzada (5 fases)
+model ApqpProject {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  code         String
+  name         String
+  customer     String?
+  partNumber   String?
+  currentPhase Int       @default(1) // 1-5
+  status       String    @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  // phases: [{ phase, name, deliverables: [{ name, status, dueDate, responsible }] }]
+  phases       Json?
+  startDate    DateTime?
+  dueDate      DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("apqp_projects")
+}
+
+// PPAP — Aprobación de piezas de producción (18 elementos, niveles 1-5)
+model PpapSubmission {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  code        String
+  partNumber  String
+  partName    String?
+  customer    String?
+  level       Int       @default(3) // 1-5
+  apqpId      String?   @db.Uuid
+  // elements: [{ n, name, status: PENDING|READY|SUBMITTED|APPROVED, notes }]
+  elements    Json?
+  status      String    @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, REJECTED
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("ppap_submissions")
+}
+
+// 8D — Reporte de resolución de problemas (vinculable a NCR)
+model EightDReport {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  code        String
+  title       String
+  ncrId       String?   @db.Uuid
+  status      String    @default("OPEN") // OPEN, CLOSED
+  // disciplines: { d1:{team}, d2:{description}, d3:{containment}, d4:{rootCause, why5:[]}, d5:{actions}, d6:{validation}, d7:{systemic}, d8:{recognition} }
+  disciplines Json?
+  aiAnalysis  String?   @db.Text
+  openedAt    DateTime  @default(now()) @db.Timestamptz
+  closedAt    DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("eight_d_reports")
+}
+
+// LPA — Auditorías de proceso por capas
+model LpaPlan {
+  id         String         @id @default(uuid()) @db.Uuid
+  tenantId   String         @db.Uuid
+  name       String
+  area       String?
+  frequency  String         @default("WEEKLY") // DAILY, WEEKLY, MONTHLY
+  // checklist: [{ question, category }]
+  checklist  Json?
+  active     Boolean        @default(true)
+  deletedAt  DateTime?
+  createdAt  DateTime       @default(now()) @db.Timestamptz
+  updatedAt  DateTime       @updatedAt @db.Timestamptz
+
+  executions LpaExecution[]
+
+  @@index([tenantId])
+  @@map("lpa_plans")
+}
+
+model LpaExecution {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  planId      String    @db.Uuid
+  plan        LpaPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  auditorName String?
+  executedAt  DateTime  @default(now()) @db.Timestamptz
+  // responses: [{ question, result: OK|NOK|NA, comment }]
+  responses   Json?
+  score       Float?
+  findings    Json?
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([planId])
+  @@map("lpa_executions")
+}
