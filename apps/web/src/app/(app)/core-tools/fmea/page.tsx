@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import {
-  AlertTriangle, Plus, ArrowLeft, Sparkles, Trash2, Loader2, Save,
+  AlertTriangle, Plus, ArrowLeft, Sparkles, Trash2, Loader2, Save, ArrowDownWideNarrow,
 } from 'lucide-react';
 
 const AP_STYLE: Record<string, string> = {
@@ -14,7 +14,8 @@ const AP_STYLE: Record<string, string> = {
 
 const EMPTY_ITEM = {
   id: '', step: '', function: '', failureMode: '', effect: '', s: 5,
-  cause: '', o: 5, prevention: '', detection: '', d: 5, ap: null, actions: '', actionStatus: 'PENDIENTE',
+  cause: '', o: 5, prevention: '', detection: '', d: 5, ap: null,
+  actions: '', actionStatus: 'PENDIENTE', s2: null, o2: null, d2: null, ap2: null,
 };
 
 export default function FmeaPage() {
@@ -26,6 +27,7 @@ export default function FmeaPage() {
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [sortMode, setSortMode] = useState<'none' | 'ap' | 's'>('none');
   const [error, setError] = useState('');
   const [form, setForm] = useState({ name: '', type: 'PFMEA', process: '', product: '', team: '' });
   const [aiStep, setAiStep] = useState('');
@@ -100,6 +102,15 @@ export default function FmeaPage() {
 
   if (selected) {
     const highAp = rows.filter((r) => r.ap === 'ALTA').length;
+    const medAp = rows.filter((r) => r.ap === 'MEDIA').length;
+    const lowAp = rows.filter((r) => r.ap === 'BAJA').length;
+    const optimized = rows.filter((r) => r.ap2 && r.ap2 !== r.ap).length;
+    const apRank: Record<string, number> = { ALTA: 0, MEDIA: 1, BAJA: 2 };
+    const sortedRows = sortMode === 'ap'
+      ? [...rows].sort((a, b) => (apRank[a.ap] ?? 3) - (apRank[b.ap] ?? 3) || (b.s ?? 0) - (a.s ?? 0))
+      : sortMode === 's'
+        ? [...rows].sort((a, b) => (b.s ?? 0) - (a.s ?? 0))
+        : rows;
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -119,9 +130,12 @@ export default function FmeaPage() {
             <h2 className="text-lg font-bold text-gray-900">{selected.code} — {selected.name}</h2>
             <p className="text-sm text-gray-500">{selected.type} · {selected.process || ''} · {selected.product || ''}</p>
           </div>
-          <div className="flex gap-2 text-xs">
+          <div className="flex flex-wrap gap-2 text-xs justify-end">
             <span className="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-600">{rows.length} items</span>
-            {highAp > 0 && <span className="rounded-full bg-red-100 px-2.5 py-1 font-bold text-red-700">{highAp} AP alta</span>}
+            {highAp > 0 && <span className="rounded-full bg-red-100 px-2.5 py-1 font-bold text-red-700">{highAp} alta</span>}
+            {medAp > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-1 font-bold text-amber-700">{medAp} media</span>}
+            {lowAp > 0 && <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-bold text-emerald-700">{lowAp} baja</span>}
+            {optimized > 0 && <span className="rounded-full bg-blue-100 px-2.5 py-1 font-bold text-blue-700">{optimized} optimizados</span>}
           </div>
         </div>
 
@@ -157,57 +171,87 @@ export default function FmeaPage() {
         )}
 
         {/* Tabla de items */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-500">Análisis de riesgo (S/O/D → AP) + optimización post-acciones (S2/O2/D2 → AP2)</span>
+          <button
+            onClick={() => setSortMode(sortMode === 'none' ? 'ap' : sortMode === 'ap' ? 's' : 'none')}
+            className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
+          >
+            <ArrowDownWideNarrow className="h-3.5 w-3.5" />
+            {sortMode === 'none' ? 'Ordenar' : sortMode === 'ap' ? 'Por AP' : 'Por Severidad'}
+          </button>
+        </div>
         <div className="rounded-xl border border-gray-200 bg-white overflow-x-auto">
-          <table className="w-full text-xs min-w-[1100px]">
+          <table className="w-full text-xs min-w-[1400px]">
             <thead>
               <tr className="bg-gray-50 text-left text-gray-500 border-b">
                 <th className="px-2 py-2">Paso</th><th className="px-2 py-2">Función</th><th className="px-2 py-2">Modo de falla</th>
                 <th className="px-2 py-2">Efecto</th><th className="px-2 py-2 w-12">S</th><th className="px-2 py-2">Causa</th>
                 <th className="px-2 py-2 w-12">O</th><th className="px-2 py-2">Prevención</th><th className="px-2 py-2">Detección</th>
-                <th className="px-2 py-2 w-12">D</th><th className="px-2 py-2 w-16">AP</th><th className="px-2 py-2 w-8"></th>
+                <th className="px-2 py-2 w-12">D</th><th className="px-2 py-2 w-16">AP</th>
+                <th className="px-2 py-2 bg-blue-50/60">Acciones</th>
+                <th className="px-2 py-2 w-12 bg-blue-50/60">S2</th><th className="px-2 py-2 w-12 bg-blue-50/60">O2</th><th className="px-2 py-2 w-12 bg-blue-50/60">D2</th>
+                <th className="px-2 py-2 w-16 bg-blue-50/60">AP2</th><th className="px-2 py-2 w-8"></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
+              {sortedRows.map((r, i) => {
+                const ri = rows.indexOf(r);
+                return (
                 <tr key={r.id || i} className="border-b border-gray-100 align-top">
                   {['step', 'function', 'failureMode', 'effect'].map((k) => (
                     <td key={k} className="px-1 py-1">
                       <textarea rows={2} className="w-full rounded border border-transparent hover:border-gray-200 px-1.5 py-1 text-xs resize-none"
-                        value={r[k] || ''} onChange={(e) => updateRow(i, k, e.target.value)} />
+                        value={r[k] || ''} onChange={(e) => updateRow(ri, k, e.target.value)} />
                     </td>
                   ))}
                   <td className="px-1 py-1">
                     <input type="number" min={1} max={10} className="w-12 rounded border border-transparent hover:border-gray-200 px-1.5 py-1 text-xs text-center font-bold"
-                      value={r.s ?? ''} onChange={(e) => updateRow(i, 's', Number(e.target.value))} />
+                      value={r.s ?? ''} onChange={(e) => updateRow(ri, 's', Number(e.target.value))} />
                   </td>
                   <td className="px-1 py-1">
                     <textarea rows={2} className="w-full rounded border border-transparent hover:border-gray-200 px-1.5 py-1 text-xs resize-none"
-                      value={r.cause || ''} onChange={(e) => updateRow(i, 'cause', e.target.value)} />
+                      value={r.cause || ''} onChange={(e) => updateRow(ri, 'cause', e.target.value)} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="number" min={1} max={10} className="w-12 rounded border border-transparent hover:border-gray-200 px-1.5 py-1 text-xs text-center font-bold"
-                      value={r.o ?? ''} onChange={(e) => updateRow(i, 'o', Number(e.target.value))} />
+                      value={r.o ?? ''} onChange={(e) => updateRow(ri, 'o', Number(e.target.value))} />
                   </td>
                   {['prevention', 'detection'].map((k) => (
                     <td key={k} className="px-1 py-1">
                       <textarea rows={2} className="w-full rounded border border-transparent hover:border-gray-200 px-1.5 py-1 text-xs resize-none"
-                        value={r[k] || ''} onChange={(e) => updateRow(i, k, e.target.value)} />
+                        value={r[k] || ''} onChange={(e) => updateRow(ri, k, e.target.value)} />
                     </td>
                   ))}
                   <td className="px-1 py-1">
                     <input type="number" min={1} max={10} className="w-12 rounded border border-transparent hover:border-gray-200 px-1.5 py-1 text-xs text-center font-bold"
-                      value={r.d ?? ''} onChange={(e) => updateRow(i, 'd', Number(e.target.value))} />
+                      value={r.d ?? ''} onChange={(e) => updateRow(ri, 'd', Number(e.target.value))} />
                   </td>
                   <td className="px-1 py-1 text-center">
                     {r.ap && <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold ${AP_STYLE[r.ap]}`}>{r.ap}</span>}
                   </td>
+                  <td className="px-1 py-1 bg-blue-50/40">
+                    <textarea rows={2} className="w-full rounded border border-transparent hover:border-blue-200 px-1.5 py-1 text-xs resize-none bg-transparent"
+                      placeholder="Acción de optimización…"
+                      value={r.actions || ''} onChange={(e) => updateRow(ri, 'actions', e.target.value)} />
+                  </td>
+                  {['s2', 'o2', 'd2'].map((k) => (
+                    <td key={k} className="px-1 py-1 bg-blue-50/40">
+                      <input type="number" min={1} max={10} className="w-12 rounded border border-transparent hover:border-blue-200 px-1.5 py-1 text-xs text-center font-bold bg-transparent"
+                        value={r[k] ?? ''} onChange={(e) => updateRow(ri, k, e.target.value ? Number(e.target.value) : null)} />
+                    </td>
+                  ))}
+                  <td className="px-1 py-1 text-center bg-blue-50/40">
+                    {r.ap2 && <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold ${AP_STYLE[r.ap2]}`}>{r.ap2}</span>}
+                  </td>
                   <td className="px-1 py-1">
-                    <button onClick={() => setRows(rows.filter((_, j) => j !== i))} className="p-1 text-gray-300 hover:text-red-500">
+                    <button onClick={() => setRows(rows.filter((x) => x !== r))} className="p-1 text-gray-300 hover:text-red-500">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           <button onClick={() => addRow()}

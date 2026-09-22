@@ -2,9 +2,44 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Layers, Plus, ArrowLeft, Trash2, Loader2, Play, CheckCircle, XCircle, Minus } from 'lucide-react';
+import { Layers, Plus, ArrowLeft, Trash2, Loader2, Play, CheckCircle, XCircle, Minus, TrendingUp, AlertTriangle } from 'lucide-react';
 
 const FREQ: Record<string, string> = { DAILY: 'Diaria', WEEKLY: 'Semanal', MONTHLY: 'Mensual' };
+const LAYERS: Record<string, string> = { LAYER_1: 'Capa 1 — Operario/turno', LAYER_2: 'Capa 2 — Supervisor', LAYER_3: 'Capa 3 — Gerencia' };
+const LAYER_SHORT: Record<string, string> = { LAYER_1: 'Capa 1', LAYER_2: 'Capa 2', LAYER_3: 'Capa 3' };
+
+// ── Gráfico de tendencia de scores ───────────────────────────────────────────
+function ScoreTrend({ executions }: { executions: any[] }) {
+  const pts = [...executions].reverse().filter((e) => e.score != null);
+  if (pts.length < 2) return null;
+  const W = 720, H = 160, PAD = 36;
+  const x = (i: number) => PAD + (i / Math.max(1, pts.length - 1)) * (W - 2 * PAD);
+  const y = (v: number) => PAD + (1 - v / 100) * (H - 2 * PAD);
+  const line = pts.map((e, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(e.score).toFixed(1)}`).join(' ');
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[480px]">
+        <rect x={PAD} y={PAD} width={W - 2 * PAD} height={H - 2 * PAD} fill="#fafafa" stroke="#e5e7eb" />
+        {[90, 70].map((v) => (
+          <g key={v}>
+            <line x1={PAD} x2={W - PAD} y1={y(v)} y2={y(v)} stroke={v === 90 ? '#10b981' : '#f59e0b'} strokeWidth="1" strokeDasharray="4 3" />
+            <text x={PAD - 4} y={y(v) + 3} fontSize="9" textAnchor="end" fill="#9ca3af">{v}%</text>
+          </g>
+        ))}
+        <path d={line} fill="none" stroke="#ec4899" strokeWidth="2" />
+        {pts.map((e, i) => (
+          <g key={i}>
+            <circle cx={x(i)} cy={y(e.score)} r={4} fill={e.score >= 90 ? '#10b981' : e.score >= 70 ? '#f59e0b' : '#ef4444'} stroke="#fff" strokeWidth="1.5" />
+            <text x={x(i)} y={H - PAD + 13} fontSize="8" textAnchor="middle" fill="#9ca3af">
+              {new Date(e.executedAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <p className="text-[10px] text-gray-400 text-center">Tendencia de score por ejecución — líneas: 90% objetivo / 70% mínimo</p>
+    </div>
+  );
+}
 
 export default function LpaPage() {
   const [plans, setPlans] = useState<any[]>([]);
@@ -16,7 +51,7 @@ export default function LpaPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ name: '', area: '', frequency: 'WEEKLY', questions: '' });
+  const [form, setForm] = useState({ name: '', area: '', frequency: 'WEEKLY', layer: 'LAYER_1', questions: '' });
 
   const load = async () => {
     setLoading(true);
@@ -36,10 +71,10 @@ export default function LpaPage() {
       const checklist = form.questions.split('\n').map((q) => q.trim()).filter(Boolean).map((q) => ({ question: q }));
       await apiFetch('/core-tools/lpa/plans', {
         method: 'POST',
-        json: { name: form.name, area: form.area || null, frequency: form.frequency, checklist },
+        json: { name: form.name, area: form.area || null, frequency: form.frequency, layer: form.layer, checklist },
       });
       setShowCreate(false);
-      setForm({ name: '', area: '', frequency: 'WEEKLY', questions: '' });
+      setForm({ name: '', area: '', frequency: 'WEEKLY', layer: 'LAYER_1', questions: '' });
       load();
     } catch (e: any) { setError(e?.message || 'Error creando'); }
   };
@@ -150,8 +185,15 @@ export default function LpaPage() {
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <h2 className="text-lg font-bold text-gray-900">{selected.name}</h2>
-          <p className="text-sm text-gray-500">{selected.area || ''} · {FREQ[selected.frequency]} · {(selected.checklist || []).length} preguntas</p>
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">{selected.name}</h2>
+              <p className="text-sm text-gray-500">{selected.area || ''} · {FREQ[selected.frequency]} · {(selected.checklist || []).length} preguntas</p>
+            </div>
+            {selected.layer && (
+              <span className="rounded-full bg-pink-100 px-3 py-1 text-xs font-bold text-pink-700">{LAYER_SHORT[selected.layer] || selected.layer}</span>
+            )}
+          </div>
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -166,8 +208,11 @@ export default function LpaPage() {
         </div>
 
         {(selected.executions || []).length > 0 && (
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <h3 className="font-semibold text-gray-800 text-sm mb-2">Últimas ejecuciones</h3>
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+            <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-1.5">
+              <TrendingUp className="h-4 w-4 text-gray-400" /> Tendencia y ejecuciones
+            </h3>
+            <ScoreTrend executions={selected.executions} />
             <div className="space-y-1.5">
               {selected.executions.map((ex: any) => (
                 <div key={ex.id} className="flex items-center justify-between text-sm">
@@ -180,6 +225,30 @@ export default function LpaPage() {
             </div>
           </div>
         )}
+
+        {/* Hallazgos de todas las ejecuciones */}
+        {(() => {
+          const findings = (selected.executions || []).flatMap((ex: any) =>
+            (ex.findings || []).map((f: any) => ({ ...f, date: ex.executedAt, auditor: ex.auditorName })));
+          return findings.length > 0 && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+              <h3 className="font-semibold text-red-800 text-sm mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4" /> Hallazgos abiertos ({findings.length})
+              </h3>
+              <div className="space-y-1.5">
+                {findings.map((f: any, i: number) => (
+                  <div key={i} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs">
+                    <div className="font-medium text-gray-800">{f.question}</div>
+                    {f.comment && <div className="text-gray-500 mt-0.5">{f.comment}</div>}
+                    <div className="text-[10px] text-gray-400 mt-0.5">
+                      {new Date(f.date).toLocaleDateString('es-AR')} · {f.auditor || 'Sin auditor'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -215,6 +284,7 @@ export default function LpaPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-gray-900 text-sm">{p.name}</span>
                     <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-pink-100 text-pink-700">{FREQ[p.frequency]}</span>
+                    {p.layer && <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-violet-100 text-violet-700">{LAYER_SHORT[p.layer] || p.layer}</span>}
                     {!p.active && <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-gray-100 text-gray-500">Inactivo</span>}
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">
@@ -267,10 +337,22 @@ export default function LpaPage() {
               value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Área / línea"
               value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} />
-            <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })}>
-              {Object.entries(FREQ).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] text-gray-500">Frecuencia</label>
+                <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })}>
+                  {Object.entries(FREQ).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] text-gray-500">Capa de auditoría</label>
+                <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={form.layer} onChange={(e) => setForm({ ...form, layer: e.target.value })}>
+                  {Object.entries(LAYERS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+            </div>
             <div>
               <label className="text-[11px] text-gray-500">Preguntas del checklist (una por línea)</label>
               <textarea rows={5} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"

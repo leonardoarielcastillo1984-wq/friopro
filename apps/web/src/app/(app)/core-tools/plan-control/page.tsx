@@ -70,6 +70,9 @@ export default function ControlPlanPage() {
   };
 
   if (selected) {
+    const specials = rows.filter((r) => r.special);
+    const noReaction = rows.filter((r) => !(r.reactionPlan || '').trim()).length;
+    const noControl = rows.filter((r) => !(r.controlMethod || '').trim()).length;
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -82,12 +85,40 @@ export default function ControlPlanPage() {
           </button>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <h2 className="text-lg font-bold text-gray-900">{selected.code} — {selected.name}</h2>
-          <p className="text-sm text-gray-500">{PHASES[selected.phase]} · {selected.partNumber || ''} · {selected.process || ''}</p>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">{selected.code} — {selected.name}</h2>
+            <p className="text-sm text-gray-500">{PHASES[selected.phase]} · {selected.partNumber || ''} · {selected.process || ''}</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs justify-end">
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-600">{rows.length} características</span>
+            {specials.length > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-1 font-bold text-amber-700">★ {specials.length} especiales</span>}
+            {noControl > 0 && <span className="rounded-full bg-red-100 px-2.5 py-1 font-bold text-red-700">{noControl} sin método de control</span>}
+            {noReaction > 0 && <span className="rounded-full bg-red-100 px-2.5 py-1 font-bold text-red-700">{noReaction} sin plan de reacción</span>}
+          </div>
         </div>
 
         {error && <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+        {/* Panel de características especiales */}
+        {specials.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <h3 className="font-semibold text-amber-900 text-sm mb-2 flex items-center gap-1.5">
+              <Star className="h-4 w-4 fill-amber-400 text-amber-400" /> Características especiales ({specials.length})
+            </h3>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {specials.map((r, i) => (
+                <div key={r.id || i} className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs">
+                  <div className="font-bold text-gray-800">{r.characteristic || '(sin nombre)'}</div>
+                  <div className="text-gray-500">
+                    {r.spec || 'sin spec'} · {r.method || 'sin método'} · {r.frequency || 'sin frecuencia'}
+                  </div>
+                  <div className="text-gray-400 mt-0.5">Control: {r.controlMethod || '—'} · Reacción: {r.reactionPlan || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="rounded-xl border border-gray-200 bg-white overflow-x-auto">
           <table className="w-full text-xs min-w-[1000px]">

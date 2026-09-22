@@ -2,18 +2,66 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Wrench, Plus, ArrowLeft, Trash2, Loader2, Save, Sparkles, CheckCircle } from 'lucide-react';
+import { Wrench, Plus, ArrowLeft, Trash2, Loader2, Save, Sparkles, CheckCircle, Link2, ShieldCheck, X } from 'lucide-react';
 
 const DISCIPLINES = [
-  { key: 'd1', title: 'D1 — Equipo', field: 'team', placeholder: 'Miembros del equipo multidisciplinario…' },
+  { key: 'd1', title: 'D1 — Equipo', field: 'team', placeholder: 'Miembros del equipo multidisciplinario…', team: true },
   { key: 'd2', title: 'D2 — Descripción del problema', field: 'description', placeholder: 'Qué, dónde, cuándo, cuánto (5W2H)…' },
   { key: 'd3', title: 'D3 — Acciones de contención', field: 'containment', placeholder: 'Acciones inmediatas para contener el problema…' },
-  { key: 'd4', title: 'D4 — Causa raíz', field: 'rootCause', placeholder: 'Causa raíz identificada…', why5: true },
+  { key: 'd4', title: 'D4 — Causa raíz', field: 'rootCause', placeholder: 'Causa raíz identificada…', why5: true, ishikawa: true },
   { key: 'd5', title: 'D5 — Acciones correctivas permanentes', field: 'actions', placeholder: 'Acciones correctivas elegidas…' },
-  { key: 'd6', title: 'D6 — Implementación y validación', field: 'validation', placeholder: 'Evidencia de implementación y efectividad…' },
+  { key: 'd6', title: 'D6 — Implementación y validación', field: 'validation', placeholder: 'Evidencia de implementación y efectividad…', effectiveness: true },
   { key: 'd7', title: 'D7 — Prevención sistémica', field: 'systemic', placeholder: 'Cambios al sistema para evitar recurrencia…' },
   { key: 'd8', title: 'D8 — Reconocimiento', field: 'recognition', placeholder: 'Reconocimiento al equipo y cierre…' },
 ];
+
+const ISHIKAWA_CATS = [
+  { key: 'manoDeObra', label: 'Mano de obra' },
+  { key: 'maquina', label: 'Máquina' },
+  { key: 'material', label: 'Material' },
+  { key: 'metodo', label: 'Método' },
+  { key: 'medicion', label: 'Medición' },
+  { key: 'medioAmbiente', label: 'Medio ambiente' },
+];
+
+// ── Diagrama Ishikawa (espina de pescado) ────────────────────────────────────
+function IshikawaDiagram({ data, problem }: { data: Record<string, string[]>; problem: string }) {
+  const W = 760, H = 300;
+  const headX = W - 130;
+  const spineY = H / 2;
+  const top = ISHIKAWA_CATS.slice(0, 3), bottom = ISHIKAWA_CATS.slice(3);
+  const bone = (cat: any, i: number, isTop: boolean) => {
+    const causes = (data?.[cat.key] || []).filter(Boolean);
+    const bx = 90 + i * 190;
+    const by = isTop ? 40 : H - 40;
+    const dir = isTop ? 1 : -1;
+    return (
+      <g key={cat.key}>
+        <line x1={bx} y1={by} x2={bx + 110} y2={spineY - dir * 8} stroke="#64748b" strokeWidth="1.5" />
+        <text x={bx - 4} y={by - dir * 8} fontSize="10" fontWeight="bold" fill="#334155" textAnchor="start">{cat.label}</text>
+        {causes.map((c, ci) => (
+          <text key={ci} x={bx + 8 + ci * 26} y={by + dir * (14 + ci * 4)} fontSize="8.5" fill="#64748b"
+            transform={`rotate(${isTop ? -32 : 32} ${bx + 8 + ci * 26} ${by + dir * (14 + ci * 4)})`}>
+            {c.length > 22 ? c.slice(0, 22) + '…' : c}
+          </text>
+        ))}
+      </g>
+    );
+  };
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <line x1={30} y1={spineY} x2={headX} y2={spineY} stroke="#334155" strokeWidth="2.5" />
+      <polygon points={`${headX},${spineY - 8} ${headX},${spineY + 8} ${headX + 14},${spineY}`} fill="#334155" />
+      <rect x={headX + 16} y={spineY - 26} width={108} height={52} rx={6} fill="#fef2f2" stroke="#fca5a5" />
+      <text x={headX + 70} y={spineY - 8} fontSize="9" fontWeight="bold" fill="#b91c1c" textAnchor="middle">PROBLEMA</text>
+      <text x={headX + 70} y={spineY + 8} fontSize="8" fill="#7f1d1d" textAnchor="middle">
+        {(problem || 'efecto').slice(0, 18)}
+      </text>
+      {top.map((c, i) => bone(c, i, true))}
+      {bottom.map((c, i) => bone(c, i, false))}
+    </svg>
+  );
+}
 
 export default function EightDPage() {
   const [items, setItems] = useState<any[]>([]);
@@ -84,6 +132,27 @@ export default function EightDPage() {
   const setD = (key: string, field: string, v: any) =>
     setDisc({ ...disc, [key]: { ...(disc[key] || {}), [field]: v } });
 
+  const setMeta = (field: string, v: any) => setDisc({ ...disc, [field]: v });
+
+  const addIshikawaCause = (cat: string) => {
+    const ish = { ...(disc.d4?.ishikawa || {}) };
+    ish[cat] = [...(ish[cat] || []), ''];
+    setD('d4', 'ishikawa', ish);
+  };
+  const setIshikawaCause = (cat: string, i: number, v: string) => {
+    const ish = { ...(disc.d4?.ishikawa || {}) };
+    const arr = [...(ish[cat] || [])]; arr[i] = v; ish[cat] = arr;
+    setD('d4', 'ishikawa', ish);
+  };
+  const removeIshikawaCause = (cat: string, i: number) => {
+    const ish = { ...(disc.d4?.ishikawa || {}) };
+    ish[cat] = (ish[cat] || []).filter((_: any, j: number) => j !== i);
+    setD('d4', 'ishikawa', ish);
+  };
+
+  const team: any[] = disc.d1?.members || [];
+  const setTeam = (members: any[]) => setD('d1', 'members', members);
+
   const completed = DISCIPLINES.filter((d) => {
     const v = disc[d.key]?.[d.field];
     return typeof v === 'string' && v.trim().length > 0;
@@ -118,6 +187,15 @@ export default function EightDPage() {
           <div>
             <h2 className="text-lg font-bold text-gray-900">{selected.code} — {selected.title}</h2>
             <p className="text-sm text-gray-500">Abierto {new Date(selected.openedAt).toLocaleDateString('es-AR')}</p>
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <Link2 className="h-3.5 w-3.5 text-gray-400" />
+              <input
+                className="rounded border border-transparent hover:border-gray-200 px-1.5 py-0.5 text-xs text-gray-600 bg-transparent w-56"
+                placeholder="Vincular NCR / reclamo (código o referencia)"
+                value={disc.ncrRef || ''}
+                onChange={(e) => setMeta('ncrRef', e.target.value)}
+              />
+            </div>
           </div>
           <div className="text-right">
             <span className={`rounded-full px-3 py-1 text-xs font-bold ${selected.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -149,6 +227,24 @@ export default function EightDPage() {
                 value={disc[d.key]?.[d.field] || ''}
                 onChange={(e) => setD(d.key, d.field, e.target.value)}
               />
+              {d.team && (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-500">Miembros del equipo</label>
+                  {team.map((m: any, i: number) => (
+                    <div key={i} className="flex gap-1.5">
+                      <input className="flex-1 rounded-lg border border-gray-200 px-2 py-1 text-xs" placeholder="Nombre"
+                        value={m.name || ''} onChange={(e) => setTeam(team.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                      <input className="w-32 rounded-lg border border-gray-200 px-2 py-1 text-xs" placeholder="Rol"
+                        value={m.role || ''} onChange={(e) => setTeam(team.map((x, j) => j === i ? { ...x, role: e.target.value } : x))} />
+                      <button onClick={() => setTeam(team.filter((_, j) => j !== i))} className="p-1 text-gray-300 hover:text-red-500">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button onClick={() => setTeam([...team, { name: '', role: '' }])}
+                    className="text-[11px] font-medium text-amber-700 hover:underline">+ Agregar miembro</button>
+                </div>
+              )}
               {d.why5 && (
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-medium text-gray-500">5 Porqués</label>
@@ -167,8 +263,56 @@ export default function EightDPage() {
                   ))}
                 </div>
               )}
+              {d.effectiveness && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-2.5 space-y-2">
+                  <label className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
+                    <ShieldCheck className="h-3.5 w-3.5" /> Verificación de efectividad
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input type="range" min={0} max={100} step={5}
+                      className="flex-1 accent-emerald-600"
+                      value={disc.d6?.effectiveness ?? 0}
+                      onChange={(e) => setD('d6', 'effectiveness', Number(e.target.value))} />
+                    <span className="text-xs font-bold text-emerald-800 w-10">{disc.d6?.effectiveness ?? 0}%</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="date" className="rounded border border-emerald-200 px-2 py-1 text-xs bg-white"
+                      value={disc.d6?.verifiedAt || ''} onChange={(e) => setD('d6', 'verifiedAt', e.target.value)} />
+                    <label className="flex items-center gap-1.5 text-xs text-emerald-800">
+                      <input type="checkbox" className="accent-emerald-600"
+                        checked={!!disc.d6?.verified} onChange={(e) => setD('d6', 'verified', e.target.checked)} />
+                      Efectividad verificada
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+        </div>
+
+        {/* Ishikawa — ancho completo debajo de D4 */}
+        <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+          <h3 className="font-semibold text-gray-800 text-sm">Diagrama de Ishikawa (6M) — D4</h3>
+          <IshikawaDiagram data={disc.d4?.ishikawa || {}} problem={disc.d2?.description || selected.title} />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {ISHIKAWA_CATS.map((cat) => (
+              <div key={cat.key} className="rounded-lg border border-gray-100 bg-gray-50/60 p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-gray-600">{cat.label}</span>
+                  <button onClick={() => addIshikawaCause(cat.key)} className="text-[10px] font-medium text-amber-700 hover:underline">+ causa</button>
+                </div>
+                {(disc.d4?.ishikawa?.[cat.key] || []).map((c: string, i: number) => (
+                  <div key={i} className="flex gap-1 mb-1">
+                    <input className="flex-1 rounded border border-gray-200 px-1.5 py-0.5 text-[11px] bg-white"
+                      value={c} onChange={(e) => setIshikawaCause(cat.key, i, e.target.value)} placeholder="Causa…" />
+                    <button onClick={() => removeIshikawaCause(cat.key, i)} className="text-gray-300 hover:text-red-500">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );

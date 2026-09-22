@@ -11075,6 +11075,7 @@ model LpaPlan {
   tenantId   String         @db.Uuid
   name       String
   area       String?
+  layer      String?        // OPERATOR, SUPERVISOR, MANAGER, EXEC — capa organizacional que audita
   frequency  String         @default("WEEKLY") // DAILY, WEEKLY, MONTHLY
   // checklist: [{ question, category }]
   checklist  Json?

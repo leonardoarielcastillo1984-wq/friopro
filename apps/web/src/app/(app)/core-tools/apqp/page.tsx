@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { FolderKanban, Plus, ArrowLeft, Trash2, Loader2, CheckCircle, Circle, ChevronRight } from 'lucide-react';
+import { FolderKanban, Plus, ArrowLeft, Trash2, Loader2, CheckCircle, Circle, ChevronRight, CalendarClock, User } from 'lucide-react';
 
 const PHASE_COLORS = ['bg-blue-500', 'bg-violet-500', 'bg-amber-500', 'bg-emerald-500', 'bg-pink-500'];
 
@@ -54,6 +54,16 @@ export default function ApqpPage() {
     setSelected(res.item);
   };
 
+  const updateDeliverable = async (pi: number, di: number, k: string, v: any) => {
+    if (!selected) return;
+    const next = phases.map((p, i) => i !== pi ? p : {
+      ...p,
+      deliverables: p.deliverables.map((d: any, j: number) => j !== di ? d : { ...d, [k]: v }),
+    });
+    setPhases(next);
+    await apiFetch<{ item: any }>(`/core-tools/apqp/${selected.id}`, { method: 'PUT', json: { phases: next } });
+  };
+
   const setPhase = async (phase: number) => {
     if (!selected) return;
     const res = await apiFetch<{ item: any }>(`/core-tools/apqp/${selected.id}`, { method: 'PUT', json: { currentPhase: phase } });
@@ -76,6 +86,13 @@ export default function ApqpPage() {
     const totalD = phases.reduce((s, p) => s + (p.deliverables?.length || 0), 0);
     const doneD = phases.reduce((s, p) => s + (p.deliverables || []).filter((d: any) => d.status === 'DONE').length, 0);
     const overall = totalD ? Math.round((doneD / totalD) * 100) : 0;
+    const today = new Date().toISOString().slice(0, 10);
+    const isOverdue = (d: any) => d.dueDate && d.dueDate < today && d.status !== 'DONE';
+    const overdueCount = phases.reduce((s, p) => s + (p.deliverables || []).filter(isOverdue).length, 0);
+    // Timeline: todos los entregables con fecha, ordenados
+    const timeline = phases.flatMap((p) => (p.deliverables || []).map((d: any) => ({ ...d, phase: p.phase, phaseName: p.name })))
+      .filter((d) => d.dueDate)
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     return (
       <div className="space-y-4">
         <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
@@ -88,7 +105,12 @@ export default function ApqpPage() {
               <h2 className="text-lg font-bold text-gray-900">{selected.code} — {selected.name}</h2>
               <p className="text-sm text-gray-500">{selected.customer || ''} · {selected.partNumber || ''}</p>
             </div>
-            <span className="text-sm font-bold text-gray-700">{overall}% completado</span>
+            <div className="flex items-center gap-2">
+              {overdueCount > 0 && (
+                <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">{overdueCount} vencidos</span>
+              )}
+              <span className="text-sm font-bold text-gray-700">{overall}% completado</span>
+            </div>
           </div>
           <div className="mt-2 h-2 rounded-full bg-gray-200 overflow-hidden">
             <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${overall}%` }} />
@@ -125,21 +147,58 @@ export default function ApqpPage() {
               </div>
               <div className="divide-y divide-gray-50">
                 {(p.deliverables || []).map((d: any, di: number) => (
-                  <button
-                    key={di}
-                    onClick={() => toggleDeliverable(pi, di)}
-                    className="w-full flex items-center gap-2.5 px-4 py-2 text-left hover:bg-gray-50"
-                  >
-                    {d.status === 'DONE'
-                      ? <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-                      : <Circle className="h-4 w-4 text-gray-300 shrink-0" />}
-                    <span className={`text-sm ${d.status === 'DONE' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{d.name}</span>
-                  </button>
+                  <div key={di} className={`flex items-center gap-2.5 px-4 py-2 ${isOverdue(d) ? 'bg-red-50/60' : ''}`}>
+                    <button onClick={() => toggleDeliverable(pi, di)} className="shrink-0">
+                      {d.status === 'DONE'
+                        ? <CheckCircle className="h-4 w-4 text-emerald-500" />
+                        : <Circle className={`h-4 w-4 ${isOverdue(d) ? 'text-red-400' : 'text-gray-300'}`} />}
+                    </button>
+                    <span className={`flex-1 text-sm ${d.status === 'DONE' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{d.name}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <User className="h-3 w-3 text-gray-300" />
+                      <input
+                        className="w-24 rounded border border-transparent hover:border-gray-200 px-1.5 py-0.5 text-[11px] bg-transparent"
+                        placeholder="Responsable"
+                        defaultValue={d.responsible || ''}
+                        onBlur={(e) => e.target.value !== (d.responsible || '') && updateDeliverable(pi, di, 'responsible', e.target.value)}
+                      />
+                      <CalendarClock className={`h-3 w-3 ${isOverdue(d) ? 'text-red-400' : 'text-gray-300'}`} />
+                      <input
+                        type="date"
+                        className={`rounded border px-1.5 py-0.5 text-[11px] bg-transparent ${isOverdue(d) ? 'border-red-300 text-red-700 font-bold' : 'border-transparent hover:border-gray-200'}`}
+                        defaultValue={d.dueDate || ''}
+                        onBlur={(e) => e.target.value !== (d.dueDate || '') && updateDeliverable(pi, di, 'dueDate', e.target.value || null)}
+                      />
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
           ))}
         </div>
+
+        {/* Timeline de entregables con fecha */}
+        {timeline.length > 0 && (
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <h3 className="font-semibold text-gray-800 text-sm mb-3 flex items-center gap-1.5">
+              <CalendarClock className="h-4 w-4 text-gray-400" /> Timeline de entregables
+            </h3>
+            <div className="relative pl-5 space-y-2 before:absolute before:left-1.5 before:top-1 before:bottom-1 before:w-px before:bg-gray-200">
+              {timeline.map((d, i) => (
+                <div key={i} className="relative flex items-center gap-3 text-xs">
+                  <span className={`absolute -left-[17px] w-3 h-3 rounded-full border-2 border-white ${
+                    d.status === 'DONE' ? 'bg-emerald-500' : isOverdue(d) ? 'bg-red-500' : 'bg-amber-400'
+                  }`} />
+                  <span className={`font-mono font-bold ${isOverdue(d) ? 'text-red-600' : 'text-gray-500'}`}>{d.dueDate}</span>
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-500">F{d.phase}</span>
+                  <span className={d.status === 'DONE' ? 'text-gray-400 line-through' : 'text-gray-700'}>{d.name}</span>
+                  {d.responsible && <span className="text-gray-400">· {d.responsible}</span>}
+                  {isOverdue(d) && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700">VENCIDO</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

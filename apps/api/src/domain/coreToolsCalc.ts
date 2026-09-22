@@ -106,6 +106,139 @@ export function computeGrrCrossed(readings: any[], tolerance?: number | null) {
   };
 }
 
+// ── Gage R&R cruzado — método ANOVA (con interacción pieza×operador) ─────────
+export function computeGrrAnova(readings: any[], tolerance?: number | null) {
+  const parts = [...new Set(readings.map((r) => String(r.part)))];
+  const ops = [...new Set(readings.map((r) => String(r.operator)))];
+  const p = parts.length;
+  const o = ops.length;
+  const t = Math.max(...readings.map((r) => Number(r.trial) || 1));
+  if (p < 2 || o < 2 || t < 2) return { error: 'Se requieren al menos 2 piezas, 2 operadores y 2 ensayos.' };
+
+  const cell = (pt: string, op: string) =>
+    readings.filter((r) => String(r.part) === pt && String(r.operator) === op).map((r) => Number(r.value));
+  const grand = mean(readings.map((r) => Number(r.value)));
+  const partMean = (pt: string) => mean(readings.filter((r) => String(r.part) === pt).map((r) => Number(r.value)));
+  const opMean = (op: string) => mean(readings.filter((r) => String(r.operator) === op).map((r) => Number(r.value)));
+  const cellMean = (pt: string, op: string) => mean(cell(pt, op));
+
+  let ssP = 0, ssO = 0, ssI = 0, ssE = 0;
+  for (const pt of parts) {
+    for (const op of ops) {
+      const cm = cellMean(pt, op);
+      ssI += t * (cm - partMean(pt) - opMean(op) + grand) ** 2;
+      for (const v of cell(pt, op)) ssE += (v - cm) ** 2;
+    }
+    ssP += o * t * (partMean(pt) - grand) ** 2;
+  }
+  for (const op of ops) ssO += p * t * (opMean(op) - grand) ** 2;
+
+  const msP = ssP / (p - 1);
+  const msO = ssO / (o - 1);
+  const msI = ssI / ((p - 1) * (o - 1));
+  const msE = ssE / (p * o * (t - 1));
+
+  // Componentes de varianza
+  const varE = msE;
+  const varI = Math.max(0, (msI - msE) / t);
+  const varO = Math.max(0, (msO - msI) / (p * t));
+  const varP = Math.max(0, (msP - msI) / (o * t));
+
+  const EV = Math.sqrt(varE);
+  const AV = Math.sqrt(varO + varI);
+  const GRR = Math.sqrt(varE + varO + varI);
+  const PV = Math.sqrt(varP);
+  const TV = Math.sqrt(GRR ** 2 + PV ** 2);
+
+  const pctGRR = TV > 0 ? (GRR / TV) * 100 : 0;
+  const ndc = GRR > 0 ? Math.floor(1.41 * (PV / GRR)) : 0;
+  const pctTol = tolerance && tolerance > 0 ? (GRR / tolerance) * 100 : null;
+
+  let verdict: string;
+  if (pctGRR < 10) verdict = 'ACEPTABLE';
+  else if (pctGRR <= 30) verdict = 'CONDICIONAL';
+  else verdict = 'NO ACEPTABLE';
+
+  return {
+    method: 'ANOVA (cruzado, con interacción)',
+    parts: p, operators: o, trials: t,
+    anova: {
+      ssPart: r4(ssP), ssOperator: r4(ssO), ssInteraction: r4(ssI), ssError: r4(ssE),
+      msPart: r4(msP), msOperator: r4(msO), msInteraction: r4(msI), msError: r4(msE),
+      varPart: r4(varP), varOperator: r4(varO), varInteraction: r4(varI), varError: r4(varE),
+    },
+    EV: r4(EV), AV: r4(AV), GRR: r4(GRR), PV: r4(PV), TV: r4(TV),
+    pctEV: r2(TV > 0 ? (EV / TV) * 100 : 0),
+    pctAV: r2(TV > 0 ? (AV / TV) * 100 : 0),
+    pctGRR: r2(pctGRR),
+    pctPV: r2(TV > 0 ? (PV / TV) * 100 : 0),
+    pctTolerance: pctTol !== null ? r2(pctTol) : null,
+    ndc,
+    verdict,
+    verdictNote:
+      verdict === 'ACEPTABLE'
+        ? 'Sistema de medición aceptable (%GRR < 10%).'
+        : verdict === 'CONDICIONAL'
+          ? 'Sistema condicionalmente aceptable (10–30%): evaluar según criticidad y costo de mejora.'
+          : 'Sistema de medición NO aceptable (%GRR > 30%): requiere acción de mejora.',
+    ndcNote: ndc >= 5 ? `ndc = ${ndc} ≥ 5: resolución adecuada.` : `ndc = ${ndc} < 5: resolución insuficiente.`,
+  };
+}
+
+// ── Gage R&R anidado (ensayo destructivo — piezas únicas por operador) ───────
+export function computeGrrNested(readings: any[], tolerance?: number | null) {
+  const ops = [...new Set(readings.map((r) => String(r.operator)))];
+  const o = ops.length;
+  const t = Math.max(...readings.map((r) => Number(r.trial) || 1));
+  if (o < 2 || t < 2) return { error: 'Se requieren al menos 2 operadores y 2 ensayos.' };
+
+  // En anidado cada celda operador×pieza es una pieza física distinta
+  const cells = new Map<string, number[]>();
+  for (const r of readings) {
+    const k = `${r.operator}||${r.part}`;
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k)!.push(Number(r.value));
+  }
+  const cellArr = [...cells.values()].filter((c) => c.length >= 2);
+  if (cellArr.length < 4) return { error: 'Se requieren al menos 4 celdas operador×pieza con 2+ ensayos.' };
+
+  const Rbar = mean(cellArr.map(range));
+  const k1 = K1[t] ?? K1[3];
+  const EV = Rbar * k1;
+
+  // Variación entre medias de celdas = PV + AV confundidos (no separables en anidado)
+  const cellMeans = cellArr.map(mean);
+  const Rcells = range(cellMeans);
+  const k3 = K3[Math.min(cellArr.length, 10)] ?? K3[10];
+  const PVcomb = Rcells * k3;
+
+  const GRR = EV; // reproducibilidad no separable
+  const TV = Math.sqrt(GRR ** 2 + PVcomb ** 2);
+  const pctGRR = TV > 0 ? (GRR / TV) * 100 : 0;
+  const pctTol = tolerance && tolerance > 0 ? (GRR / tolerance) * 100 : null;
+
+  let verdict: string;
+  if (pctGRR < 10) verdict = 'ACEPTABLE';
+  else if (pctGRR <= 30) verdict = 'CONDICIONAL';
+  else verdict = 'NO ACEPTABLE';
+
+  return {
+    method: 'Promedio y Rango (anidado — ensayo destructivo)',
+    cells: cellArr.length, operators: o, trials: t,
+    Rbar: r4(Rbar),
+    EV: r4(EV), AV: null, GRR: r4(GRR), PV: r4(PVcomb), TV: r4(TV),
+    pctEV: r2(TV > 0 ? (EV / TV) * 100 : 0),
+    pctAV: null,
+    pctGRR: r2(pctGRR),
+    pctPV: r2(TV > 0 ? (PVcomb / TV) * 100 : 0),
+    pctTolerance: pctTol !== null ? r2(pctTol) : null,
+    ndc: null,
+    verdict,
+    verdictNote: 'En diseño anidado la reproducibilidad (AV) no es separable de la variación pieza a pieza. %GRR refleja solo repetibilidad.',
+    ndcNote: '',
+  };
+}
+
 // ── Sesgo (bias) ─────────────────────────────────────────────────────────────
 // referenceValues: [{ ref: number, readings: number[] }]
 export function computeBias(referenceValues: any[], tolerance?: number | null) {
@@ -358,9 +491,26 @@ function computeCapability(xbar: number, sigmaWithin: number, sigmaOverall: numb
     cap.pp = r2((usl - lsl) / (6 * sigmaOverall));
     cap.ppk = r2(Math.min((usl - xbar) / (3 * sigmaOverall), (xbar - lsl) / (3 * sigmaOverall)));
   }
+  // PPM estimado (distribución normal, σ overall)
+  if (sigmaOverall > 0) {
+    const phi = (z: number) => 0.5 * (1 + erf(z / Math.SQRT2));
+    let ppm = 0;
+    if (usl != null) ppm += (1 - phi((usl - xbar) / sigmaOverall)) * 1e6;
+    if (lsl != null) ppm += phi((lsl - xbar) / sigmaOverall) * 1e6;
+    cap.ppm = Math.round(ppm);
+  }
   cap.verdict =
     cap.cpk != null ? (cap.cpk >= 1.67 ? 'EXCELENTE' : cap.cpk >= 1.33 ? 'CAPAZ' : cap.cpk >= 1.0 ? 'MARGINAL' : 'NO CAPAZ') : null;
   return cap;
+}
+
+// Aproximación de la función error (Abramowitz-Stegun 7.1.26)
+function erf(x: number): number {
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * ax);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-ax * ax);
+  return sign * y;
 }
 
 // Reglas Western Electric sobre la carta principal

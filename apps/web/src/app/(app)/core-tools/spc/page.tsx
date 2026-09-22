@@ -36,14 +36,35 @@ function ControlChart({ points, limits, alarms, spreadPoints }: {
       <line x1={PAD} x2={W - PAD} y1={y(v)} y2={y(v)} stroke={color} strokeWidth="1.5" strokeDasharray={dash} />
     ) : null;
 
+  // Zonas A/B/C (±1σ, ±2σ, ±3σ desde CL) — solo si hay UCL/LCL fijos
+  const sigma3 = limits.ucl != null && limits.cl != null ? (limits.ucl - limits.cl) / 3 : 0;
+  const zones = sigma3 > 0 ? [
+    { y1: limits.cl + 2 * sigma3, y2: limits.cl + 3 * sigma3, c: '#fee2e2' },
+    { y1: limits.cl + sigma3, y2: limits.cl + 2 * sigma3, c: '#fef3c7' },
+    { y1: limits.cl - sigma3, y2: limits.cl + sigma3, c: '#dcfce7' },
+    { y1: limits.cl - 2 * sigma3, y2: limits.cl - sigma3, c: '#fef3c7' },
+    { y1: limits.cl - 3 * sigma3, y2: limits.cl - 2 * sigma3, c: '#fee2e2' },
+  ] : [];
+
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px]">
           <rect x={PAD} y={PAD} width={W - 2 * PAD} height={H - 2 * PAD} fill="#fafafa" stroke="#e5e7eb" />
+          {zones.map((z, i) => (
+            <rect key={i} x={PAD} y={y(z.y2)} width={W - 2 * PAD} height={y(z.y1) - y(z.y2)} fill={z.c} fillOpacity={0.35} />
+          ))}
           {limitLine(limits.ucl, '#ef4444')}
           {limitLine(limits.cl, '#3b82f6', '0')}
           {limitLine(limits.lcl, '#ef4444')}
+          {sigma3 > 0 && (
+            <>
+              <line x1={PAD} x2={W - PAD} y1={y(limits.cl + sigma3)} y2={y(limits.cl + sigma3)} stroke="#d1d5db" strokeWidth="0.8" strokeDasharray="2 3" />
+              <line x1={PAD} x2={W - PAD} y1={y(limits.cl - sigma3)} y2={y(limits.cl - sigma3)} stroke="#d1d5db" strokeWidth="0.8" strokeDasharray="2 3" />
+              <line x1={PAD} x2={W - PAD} y1={y(limits.cl + 2 * sigma3)} y2={y(limits.cl + 2 * sigma3)} stroke="#d1d5db" strokeWidth="0.8" strokeDasharray="2 3" />
+              <line x1={PAD} x2={W - PAD} y1={y(limits.cl - 2 * sigma3)} y2={y(limits.cl - 2 * sigma3)} stroke="#d1d5db" strokeWidth="0.8" strokeDasharray="2 3" />
+            </>
+          )}
           {/* límites variables (p/u) */}
           {limits.perPoint && (
             <>
@@ -90,6 +111,91 @@ function ControlChart({ points, limits, alarms, spreadPoints }: {
       )}
     </div>
   );
+}
+
+// ── Histograma con curva normal y límites de especificación ──────────────────
+function Histogram({ values, usl, lsl, target }: { values: number[]; usl?: number | null; lsl?: number | null; target?: number | null }) {
+  if (!values.length) return null;
+  const BINS = 15;
+  const vmin = Math.min(...values), vmax = Math.max(...values);
+  const lo = lsl != null ? Math.min(vmin, lsl) : vmin;
+  const hi = usl != null ? Math.max(vmax, usl) : vmax;
+  const span = hi - lo || 1;
+  const lo2 = lo - span * 0.08, hi2 = hi + span * 0.08;
+  const binW = (hi2 - lo2) / BINS;
+  const bins = Array.from({ length: BINS }, (_, i) => ({
+    x0: lo2 + i * binW, x1: lo2 + (i + 1) * binW, n: 0,
+  }));
+  for (const v of values) {
+    const i = Math.min(BINS - 1, Math.max(0, Math.floor((v - lo2) / binW)));
+    bins[i].n++;
+  }
+  const maxN = Math.max(...bins.map((b) => b.n)) || 1;
+  const mean = values.reduce((s, v) => s + v, 0) / values.length;
+  const sd = Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / Math.max(1, values.length - 1));
+
+  const W = 720, H = 200, PAD = 40;
+  const sx = (v: number) => PAD + ((v - lo2) / (hi2 - lo2)) * (W - 2 * PAD);
+  const sy = (n: number) => H - PAD - (n / maxN) * (H - 2 * PAD);
+  // curva normal escalada a frecuencia
+  const normY = (x: number) => sd > 0 ? (values.length * binW / (sd * Math.sqrt(2 * Math.PI))) * Math.exp(-((x - mean) ** 2) / (2 * sd * sd)) : 0;
+  const curve = Array.from({ length: 60 }, (_, i) => {
+    const xv = lo2 + (i / 59) * (hi2 - lo2);
+    return `${i === 0 ? 'M' : 'L'}${sx(xv).toFixed(1)},${sy(normY(xv)).toFixed(1)}`;
+  }).join(' ');
+
+  const specLine = (v: number | null | undefined, color: string, label: string) =>
+    v != null && v >= lo2 && v <= hi2 ? (
+      <g key={label}>
+        <line x1={sx(v)} x2={sx(v)} y1={PAD} y2={H - PAD} stroke={color} strokeWidth="2" strokeDasharray="5 3" />
+        <text x={sx(v)} y={PAD - 4} fontSize="10" textAnchor="middle" fill={color} fontWeight="bold">{label}</text>
+      </g>
+    ) : null;
+
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px]">
+        <rect x={PAD} y={PAD} width={W - 2 * PAD} height={H - 2 * PAD} fill="#fafafa" stroke="#e5e7eb" />
+        {bins.map((b, i) => {
+          const out = (lsl != null && b.x1 <= lsl) || (usl != null && b.x0 >= usl);
+          return (
+            <rect key={i} x={sx(b.x0)} y={sy(b.n)} width={Math.max(1, sx(b.x1) - sx(b.x0) - 1)} height={H - PAD - sy(b.n)}
+              fill={out ? '#fca5a5' : '#93c5fd'} stroke="#fff" strokeWidth="0.5" />
+          );
+        })}
+        {sd > 0 && <path d={curve} fill="none" stroke="#0f172a" strokeWidth="1.8" />}
+        {specLine(lsl, '#ef4444', 'LSL')}
+        {specLine(usl, '#ef4444', 'USL')}
+        {specLine(target, '#8b5cf6', 'Target')}
+        {specLine(mean, '#3b82f6', 'X̄')}
+      </svg>
+      <p className="text-[10px] text-gray-400 text-center">Histograma + curva normal — barras rojas = fuera de especificación</p>
+    </div>
+  );
+}
+
+// Parsea texto pegado (CSV/TSV/una columna) a subgrupos según tipo de carta
+function parsePasted(text: string, chartType: string, subgroupSize: number): any {
+  const rows = text.trim().split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  if (['XBAR_R', 'XBAR_S'].includes(chartType)) {
+    // cada línea = un subgrupo con valores separados por coma/tab/; o una sola columna que se agrupa de a subgroupSize
+    const parsed = rows.map((l) => l.split(/[,;\t]/).map((v) => Number(v.trim())).filter((v) => !isNaN(v)));
+    if (parsed.every((r) => r.length === 1)) {
+      const flat = parsed.map((r) => r[0]);
+      const groups: number[][] = [];
+      for (let i = 0; i + subgroupSize <= flat.length; i += subgroupSize) groups.push(flat.slice(i, i + subgroupSize));
+      return groups;
+    }
+    return parsed.filter((r) => r.length > 0);
+  }
+  if (chartType === 'I_MR') {
+    return rows.map((l) => Number(l.split(/[,;\t]/)[0])).filter((v) => !isNaN(v));
+  }
+  // atributos: dos columnas n,defectuosos|defectos
+  return rows.map((l) => {
+    const c = l.split(/[,;\t]/).map((v) => Number(v.trim()));
+    return ['P', 'NP'].includes(chartType) ? { n: c[0] || 0, defectives: c[1] || 0 } : { n: c[0] || 1, defects: c[1] || 0 };
+  });
 }
 
 export default function SpcPage() {
@@ -145,11 +251,16 @@ export default function SpcPage() {
   const saveData = async () => {
     if (!selected) return;
     try {
-      const subgroups = dataText.trim() ? JSON.parse(dataText) : null;
+      let subgroups: any = null;
+      const t = dataText.trim();
+      if (t) {
+        try { subgroups = JSON.parse(t); }
+        catch { subgroups = parsePasted(t, selected.chartType, selected.subgroupSize); }
+      }
       const res = await apiFetch<{ item: any }>(`/core-tools/spc/${selected.id}`, { method: 'PUT', json: { subgroups } });
       setSelected(res.item);
       setError('');
-    } catch (e: any) { setError('JSON inválido: ' + (e?.message || '')); }
+    } catch (e: any) { setError('Datos inválidos: ' + (e?.message || '')); }
   };
 
   const calculate = async () => {
@@ -247,8 +358,8 @@ export default function SpcPage() {
             <ControlChart points={derivedPoints} limits={selected.limits} alarms={alarms} spreadPoints={derivedSpread} />
 
             {cap && (
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                {[['Cp', cap.cp], ['Cpk', cap.cpk], ['Pp', cap.pp], ['Ppk', cap.ppk], ['σ within', cap.sigmaWithin]].map(([l, v]) => (
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                {[['Cp', cap.cp], ['Cpk', cap.cpk], ['Pp', cap.pp], ['Ppk', cap.ppk], ['PPM est.', cap.ppm], ['σ within', cap.sigmaWithin]].map(([l, v]) => (
                   <div key={l as string} className={`rounded-lg border px-3 py-2 text-center ${
                     l === 'Cpk' && v != null ? (v >= 1.33 ? 'border-emerald-200 bg-emerald-50' : v >= 1.0 ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50') : 'border-gray-200 bg-gray-50'
                   }`}>
@@ -267,6 +378,17 @@ export default function SpcPage() {
                 {cap.verdict === 'NO CAPAZ' ? <XCircle className="h-3.5 w-3.5" /> : cap.verdict === 'MARGINAL' ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle className="h-3.5 w-3.5" />}
                 Proceso {cap.verdict}
               </span>
+            )}
+
+            {/* Histograma con specs — solo cartas de variables */}
+            {['XBAR_R', 'XBAR_S', 'I_MR'].includes(selected.chartType) && Array.isArray(sg) && (
+              <div className="pt-3 border-t border-gray-100">
+                <h4 className="text-xs font-bold text-gray-600 mb-2">Distribución del proceso</h4>
+                <Histogram
+                  values={Array.isArray(sg[0]) ? sg.flat().map(Number) : sg.map(Number)}
+                  usl={selected.usl} lsl={selected.lsl} target={selected.target}
+                />
+              </div>
             )}
 
             {alarms.length > 0 && (

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { PackageCheck, Plus, ArrowLeft, Trash2, Loader2, Send, CheckCircle } from 'lucide-react';
+import { PackageCheck, Plus, ArrowLeft, Trash2, Loader2, Send, CheckCircle, FileSignature, StickyNote } from 'lucide-react';
 
 const EL_STATUS: Record<string, { label: string; cls: string }> = {
   PENDING: { label: 'Pendiente', cls: 'bg-gray-100 text-gray-600' },
@@ -14,6 +14,7 @@ const SUB_STATUS: Record<string, { label: string; cls: string }> = {
   DRAFT: { label: 'Borrador', cls: 'bg-gray-100 text-gray-600' },
   SUBMITTED: { label: 'Enviado', cls: 'bg-amber-100 text-amber-700' },
   APPROVED: { label: 'Aprobado', cls: 'bg-emerald-100 text-emerald-700' },
+  INTERIM: { label: 'Aprobación interina', cls: 'bg-blue-100 text-blue-700' },
   REJECTED: { label: 'Rechazado', cls: 'bg-red-100 text-red-700' },
 };
 
@@ -23,6 +24,7 @@ export default function PpapPage() {
   const [selected, setSelected] = useState<any | null>(null);
   const [elements, setElements] = useState<any[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [showPsw, setShowPsw] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ partNumber: '', partName: '', customer: '', level: 3, apqpId: '' });
@@ -66,6 +68,13 @@ export default function PpapPage() {
     setSelected(res.item);
   };
 
+  const setElNote = async (i: number, note: string) => {
+    if (!selected) return;
+    const next = elements.map((el, j) => (j === i ? { ...el, note } : el));
+    setElements(next);
+    await apiFetch<{ item: any }>(`/core-tools/ppap/${selected.id}`, { method: 'PUT', json: { elements: next } });
+  };
+
   const setStatus = async (status: string) => {
     if (!selected) return;
     const res = await apiFetch<{ item: any }>(`/core-tools/ppap/${selected.id}`, { method: 'PUT', json: { status } });
@@ -86,9 +95,15 @@ export default function PpapPage() {
     const st = SUB_STATUS[selected.status] || SUB_STATUS.DRAFT;
     return (
       <div className="space-y-4">
-        <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
-          <ArrowLeft className="h-4 w-4" /> Volver
-        </button>
+        <div className="flex items-center justify-between">
+          <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
+            <ArrowLeft className="h-4 w-4" /> Volver
+          </button>
+          <button onClick={() => setShowPsw(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <FileSignature className="h-4 w-4" /> Ver PSW (Warrant)
+          </button>
+        </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex items-start justify-between">
@@ -109,10 +124,14 @@ export default function PpapPage() {
             </button>
           )}
           {selected.status === 'SUBMITTED' && (
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={() => setStatus('APPROVED')}
                 className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700">
                 <CheckCircle className="h-4 w-4" /> Aprobado por cliente
+              </button>
+              <button onClick={() => setStatus('INTERIM')}
+                className="rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50">
+                Aprobación interina
               </button>
               <button onClick={() => setStatus('REJECTED')}
                 className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50">
@@ -120,29 +139,100 @@ export default function PpapPage() {
               </button>
             </div>
           )}
+          {selected.status === 'INTERIM' && (
+            <div className="mt-3 flex gap-2">
+              <span className="text-xs text-blue-700 self-center">Aprobación interina vigente — pendiente aprobación final.</span>
+              <button onClick={() => setStatus('APPROVED')}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700">
+                <CheckCircle className="h-4 w-4" /> Aprobación final
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-50">
           {elements.map((el, i) => (
-            <div key={el.n} className="flex items-center gap-3 px-4 py-2.5">
-              <span className="w-6 text-center text-xs font-bold text-gray-400">{el.n}</span>
-              <span className="flex-1 text-sm text-gray-700">{el.name}</span>
-              <div className="flex gap-1">
-                {Object.entries(EL_STATUS).map(([k, v]) => (
-                  <button
-                    key={k}
-                    onClick={() => setElStatus(i, k)}
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition-all ${
-                      el.status === k ? v.cls + ' ring-1 ring-current' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                    }`}
-                  >
-                    {v.label}
-                  </button>
-                ))}
+            <div key={el.n} className="px-4 py-2.5">
+              <div className="flex items-center gap-3">
+                <span className="w-6 text-center text-xs font-bold text-gray-400">{el.n}</span>
+                <span className="flex-1 text-sm text-gray-700">{el.name}</span>
+                <div className="flex gap-1">
+                  {Object.entries(EL_STATUS).map(([k, v]) => (
+                    <button
+                      key={k}
+                      onClick={() => setElStatus(i, k)}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition-all ${
+                        el.status === k ? v.cls + ' ring-1 ring-current' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                      }`}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-1 ml-9">
+                <StickyNote className="h-3 w-3 text-gray-300 shrink-0" />
+                <input
+                  className="flex-1 rounded border border-transparent hover:border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-500 bg-transparent"
+                  placeholder="Nota / evidencia / ubicación del documento…"
+                  defaultValue={el.note || ''}
+                  onBlur={(e) => e.target.value !== (el.note || '') && setElNote(i, e.target.value)}
+                />
               </div>
             </div>
           ))}
         </div>
+
+        {/* Vista PSW — Part Submission Warrant */}
+        {showPsw && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl max-h-[90vh] overflow-y-auto">
+              <div className="border-b-4 border-amber-500 px-6 py-4">
+                <h3 className="text-lg font-bold text-gray-900">PART SUBMISSION WARRANT (PSW)</h3>
+                <p className="text-xs text-gray-500">{selected.code} · Nivel de envío {selected.level}</p>
+              </div>
+              <div className="px-6 py-4 space-y-4 text-sm">
+                <div className="grid grid-cols-2 gap-3">
+                  <div><span className="text-[10px] font-bold text-gray-400 uppercase">Nº de pieza</span><div className="font-bold">{selected.partNumber}</div></div>
+                  <div><span className="text-[10px] font-bold text-gray-400 uppercase">Nombre</span><div className="font-bold">{selected.partName || '—'}</div></div>
+                  <div><span className="text-[10px] font-bold text-gray-400 uppercase">Cliente</span><div>{selected.customer || '—'}</div></div>
+                  <div><span className="text-[10px] font-bold text-gray-400 uppercase">Estado</span><div>{st.label}</div></div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">Elementos del paquete ({done}/{elements.length})</div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                    {elements.map((el) => (
+                      <div key={el.n} className="flex items-center gap-1.5 text-[11px]">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${
+                          el.status === 'APPROVED' ? 'bg-emerald-500' : el.status === 'READY' ? 'bg-blue-500' : el.status === 'SUBMITTED' ? 'bg-amber-400' : 'bg-gray-300'
+                        }`} />
+                        <span className="text-gray-600">{el.n}. {el.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-[11px] text-gray-600 leading-relaxed">
+                  <strong>DECLARACIÓN:</strong> Declaro que las muestras representadas por este warrant son representativas de nuestras piezas de producción,
+                  fueron fabricadas con herramientas de producción, procesos de producción y en el ritmo de producción normal, y cumplen con todos los
+                  requisitos del cliente.
+                </div>
+                <div className="grid grid-cols-3 gap-4 pt-6">
+                  {['Elaborado por', 'Fecha', 'Firma cliente'].map((l) => (
+                    <div key={l} className="border-t border-gray-400 pt-1 text-[10px] text-gray-500">{l}</div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
+                <button onClick={() => window.print()} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  Imprimir
+                </button>
+                <button onClick={() => setShowPsw(false)} className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700">
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

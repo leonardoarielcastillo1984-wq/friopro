@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { createLLMProvider } from '../services/llm/factory.js';
 import {
-  computeGrrCrossed, computeBias, computeLinearity, computeStability,
+  computeGrrCrossed, computeGrrAnova, computeGrrNested, computeBias, computeLinearity, computeStability,
   computeAttributeAgreement, computeSpc, computeActionPriority,
   APQP_PHASES, PPAP_ELEMENTS,
 } from '../domain/coreToolsCalc.js';
@@ -93,9 +93,15 @@ export async function coreToolsRoutes(app: FastifyInstance) {
 
     let results: any;
     switch (study.studyType) {
-      case 'GRR_CROSS':
+      case 'GRR_CROSS': {
+        const ar = computeGrrCrossed((study.readings as any[]) || [], study.tolerance);
+        if (ar.error) { results = ar; break; }
+        const anova = computeGrrAnova((study.readings as any[]) || [], study.tolerance);
+        results = { ...ar, anova: anova.error ? null : anova };
+        break;
+      }
       case 'GRR_NESTED':
-        results = computeGrrCrossed((study.readings as any[]) || [], study.tolerance);
+        results = computeGrrNested((study.readings as any[]) || [], study.tolerance);
         break;
       case 'BIAS':
         results = computeBias((study.referenceValues as any[]) || [], study.tolerance);
@@ -267,11 +273,12 @@ Respondé solo el texto, sin encabezados markdown.`;
       product: z.string().optional().nullable(), team: z.string().optional().nullable(),
       status: z.string().optional(), items: z.any().optional(),
     }).parse(req.body);
-    // Recalcular AP de cada item si vienen items
+    // Recalcular AP de cada item si vienen items (+ AP2 post-optimización)
     if (Array.isArray(body.items)) {
       body.items = body.items.map((it: any) => ({
         ...it,
         ap: it.s && it.o && it.d ? computeActionPriority(Number(it.s), Number(it.o), Number(it.d)) : null,
+        ap2: it.s2 && it.o2 && it.d2 ? computeActionPriority(Number(it.s2), Number(it.o2), Number(it.d2)) : null,
       }));
     }
     const item = await app.prisma.fmeaStudy.update({ where: { id: req.params.id }, data: body });
@@ -554,6 +561,7 @@ Respondé en español formal, estructurado con las 3 secciones, sin encabezados 
     const body = z.object({
       name: z.string().min(1),
       area: z.string().optional().nullable(),
+      layer: z.enum(['OPERATOR', 'SUPERVISOR', 'MANAGER', 'EXEC']).optional().nullable(),
       frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']).default('WEEKLY'),
       checklist: z.array(z.object({ question: z.string(), category: z.string().optional() })).default([]),
     }).parse(req.body);
@@ -565,6 +573,7 @@ Respondé en español formal, estructurado con las 3 secciones, sin encabezados 
     const tenantId = await requireTenant(req, app);
     const body = z.object({
       name: z.string().optional(), area: z.string().optional().nullable(),
+      layer: z.string().optional().nullable(),
       frequency: z.string().optional(), checklist: z.any().optional(), active: z.boolean().optional(),
     }).parse(req.body);
     const item = await app.prisma.lpaPlan.update({ where: { id: req.params.id }, data: body });

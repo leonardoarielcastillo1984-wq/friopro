@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS lpa_plans (
   "tenantId" UUID NOT NULL,
   name       TEXT NOT NULL,
   area       TEXT,
+  layer      TEXT,
   frequency  TEXT NOT NULL DEFAULT 'WEEKLY',
   checklist  JSONB,
   active     BOOLEAN NOT NULL DEFAULT true,
