@@ -27,6 +27,32 @@ async function llmInterpret(req: FastifyRequest, prompt: string): Promise<string
   return res.text || '';
 }
 
+// Crea un Plan de Acción real (módulo action-plans) desde una herramienta Core Tools
+async function createLinkedActionPlan(app: FastifyInstance, req: FastifyRequest, data: {
+  tenantId: string; findingDescription?: string | null; plannedAction?: string | null;
+  area?: string | null; process?: string | null; severity?: string | null; ncrId?: string | null;
+}) {
+  const seqResult: any = await app.prisma.$queryRaw`SELECT nextval('action_plan_seq')::int as seq`;
+  const seqNum = Array.isArray(seqResult) ? seqResult[0]?.seq : null;
+  return app.prisma.actionPlan.create({
+    data: {
+      tenantId: data.tenantId,
+      sequenceNumber: seqNum ?? undefined,
+      origin: 'OTHER',
+      type: 'CORRECTIVE',
+      status: 'OPEN',
+      findingDescription: data.findingDescription ?? null,
+      plannedAction: data.plannedAction ?? null,
+      area: data.area ?? null,
+      process: data.process ?? null,
+      severity: data.severity ?? null,
+      ncrId: data.ncrId ?? null,
+      createdById: (req as any).auth?.userId ?? null,
+      updatedById: (req as any).auth?.userId ?? null,
+    },
+  });
+}
+
 export async function coreToolsRoutes(app: FastifyInstance) {
   // ════════════════════════════════ MSA ════════════════════════════════
   app.get('/msa', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -373,6 +399,33 @@ Respondé SOLO un JSON array con 3 objetos: [{"failureMode":"...","effect":"..."
     return reply.send({ ok: true });
   });
 
+  // IA: revisar cobertura del plan de control (métodos, planes de reacción, características especiales)
+  app.post('/control-plans/:id/ai-review', async (req: FastifyRequest<IdParams>, reply: FastifyReply) => {
+    const tenantId = await requireTenant(req, app);
+    const plan = await app.prisma.controlPlan.findFirst({ where: { id: req.params.id, tenantId, deletedAt: null } });
+    if (!plan) return reply.code(404).send({ error: 'No encontrado' });
+    const items = (plan.items as any[]) || [];
+    const summary = items.map((it, i) =>
+      `${i + 1}. Paso: ${it.step || 'N/D'} | Característica: ${it.characteristic || 'N/D'} | Spec: ${it.spec || 'N/D'} | Método control: ${it.controlMethod || 'FALTA'} | Plan de reacción: ${it.reactionPlan || 'FALTA'} | Especial: ${it.special ? 'SÍ' : 'no'}`
+    ).join('\n');
+    const prompt = `Sos un experto IATF 16949 en Planes de Control (AIAG PPAP/CP). Revisá el siguiente plan de control "${plan.name}" (fase ${plan.phase}, proceso ${plan.process || 'N/D'}) y:
+(a) señalá qué filas tienen método de control o plan de reacción faltante o débil,
+(b) para las características especiales, verificá si el método de control es robusto (SPC, poka-yoke) o insuficiente (solo inspección visual),
+(c) sugerí mejoras concretas de frecuencia/método de muestreo.
+
+Items:
+${summary}
+
+Respondé en español formal, sin encabezados markdown, en párrafos cortos.`;
+    try {
+      const text = await llmInterpret(req, prompt);
+      await app.prisma.controlPlan.update({ where: { id: plan.id }, data: { aiNotes: text } });
+      return reply.send({ notes: text });
+    } catch (e: any) {
+      return reply.code(502).send({ error: e?.message || 'Error de IA' });
+    }
+  });
+
   // ════════════════════════════════ APQP ════════════════════════════════
   app.get('/apqp', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await requireTenant(req, app);
@@ -427,6 +480,38 @@ Respondé SOLO un JSON array con 3 objetos: [{"failureMode":"...","effect":"..."
     return reply.send({ ok: true });
   });
 
+  // IA: revisar avance del proyecto y riesgos de cronograma
+  app.post('/apqp/:id/ai-review', async (req: FastifyRequest<IdParams>, reply: FastifyReply) => {
+    const tenantId = await requireTenant(req, app);
+    const project = await app.prisma.apqpProject.findFirst({ where: { id: req.params.id, tenantId, deletedAt: null } });
+    if (!project) return reply.code(404).send({ error: 'No encontrado' });
+    const phases = (project.phases as any[]) || [];
+    const now = new Date();
+    const summary = phases.map((p) => {
+      const delivs = (p.deliverables || []).map((d: any) => {
+        const overdue = d.dueDate && d.status !== 'DONE' && new Date(d.dueDate) < now;
+        return `${d.name} [${d.status}]${d.dueDate ? ` vence ${d.dueDate}` : ''}${overdue ? ' ¡VENCIDO!' : ''}`;
+      }).join('; ');
+      return `Fase ${p.phase} - ${p.name}: ${delivs}`;
+    }).join('\n');
+    const prompt = `Sos un experto AIAG-APQP / IATF 16949. Analizá el proyecto "${project.name}" (cliente ${project.customer || 'N/D'}, pieza ${project.partNumber || 'N/D'}, fase actual ${project.currentPhase}/5) y:
+(a) identificá entregables vencidos o en riesgo de retraso,
+(b) evaluá si el proyecto puede avanzar de fase con seguridad,
+(c) sugerí acciones concretas para destrabar los entregables pendientes.
+
+Entregables por fase:
+${summary}
+
+Respondé en español formal, sin encabezados markdown, en párrafos cortos.`;
+    try {
+      const text = await llmInterpret(req, prompt);
+      await app.prisma.apqpProject.update({ where: { id: project.id }, data: { aiNotes: text } });
+      return reply.send({ notes: text });
+    } catch (e: any) {
+      return reply.code(502).send({ error: e?.message || 'Error de IA' });
+    }
+  });
+
   // ════════════════════════════════ PPAP ════════════════════════════════
   app.get('/ppap', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await requireTenant(req, app);
@@ -476,11 +561,51 @@ Respondé SOLO un JSON array con 3 objetos: [{"failureMode":"...","effect":"..."
     return reply.send({ ok: true });
   });
 
+  // IA: revisar completitud del expediente PPAP y preparación para el PSW
+  app.post('/ppap/:id/ai-review', async (req: FastifyRequest<IdParams>, reply: FastifyReply) => {
+    const tenantId = await requireTenant(req, app);
+    const sub = await app.prisma.ppapSubmission.findFirst({ where: { id: req.params.id, tenantId, deletedAt: null } });
+    if (!sub) return reply.code(404).send({ error: 'No encontrado' });
+    const elements = (sub.elements as any[]) || [];
+    const pending = elements.filter((e) => e.status === 'PENDING').map((e) => e.name);
+    const ready = elements.filter((e) => e.status === 'READY' || e.status === 'APPROVED').length;
+    const summary = elements.map((e) => `${e.n}. ${e.name} [${e.status}]${e.note ? ` — ${e.note}` : ''}`).join('\n');
+    const prompt = `Sos un experto AIAG-PPAP / IATF 16949. Revisá el expediente PPAP de la pieza "${sub.partNumber}" (${sub.partName || 'N/D'}, cliente ${sub.customer || 'N/D'}, nivel ${sub.level}) y:
+(a) indicá qué elementos críticos siguen pendientes (${pending.join(', ') || 'ninguno'}),
+(b) evaluá si el expediente está en condiciones de firmar el PSW (Part Submission Warrant),
+(c) sugerí el orden de prioridad para cerrar los elementos faltantes.
+
+Estado de elementos (${ready}/${elements.length} listos o aprobados):
+${summary}
+
+Respondé en español formal, sin encabezados markdown, en párrafos cortos.`;
+    try {
+      const text = await llmInterpret(req, prompt);
+      await app.prisma.ppapSubmission.update({ where: { id: sub.id }, data: { aiNotes: text } });
+      return reply.send({ notes: text });
+    } catch (e: any) {
+      return reply.code(502).send({ error: e?.message || 'Error de IA' });
+    }
+  });
+
+  // Adjunta datos reales de NCR y Plan de Acción vinculados a un/varios 8D
+  async function attachLinks(app: FastifyInstance, tenantId: string, reports: any[]) {
+    const ncrIds = [...new Set(reports.map((r) => r.ncrId).filter(Boolean))];
+    const apIds = [...new Set(reports.map((r) => r.actionPlanId).filter(Boolean))];
+    const [ncrs, aps] = await Promise.all([
+      ncrIds.length ? app.prisma.nonConformity.findMany({ where: { id: { in: ncrIds }, tenantId }, select: { id: true, code: true, title: true, severity: true, status: true } }) : [],
+      apIds.length ? app.prisma.actionPlan.findMany({ where: { id: { in: apIds }, tenantId }, select: { id: true, code: true, status: true, effectiveness: true } }) : [],
+    ]);
+    const ncrMap = new Map(ncrs.map((n: any) => [n.id, n]));
+    const apMap = new Map(aps.map((a: any) => [a.id, a]));
+    return reports.map((r) => ({ ...r, ncr: r.ncrId ? ncrMap.get(r.ncrId) || null : null, actionPlan: r.actionPlanId ? apMap.get(r.actionPlanId) || null : null }));
+  }
+
   // ════════════════════════════════ 8D ════════════════════════════════
   app.get('/eight-d', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await requireTenant(req, app);
     const items = await app.prisma.eightDReport.findMany({ where: { tenantId, deletedAt: null }, orderBy: { createdAt: 'desc' } });
-    return reply.send({ items });
+    return reply.send({ items: await attachLinks(app, tenantId, items) });
   });
 
   app.post('/eight-d', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -503,18 +628,40 @@ Respondé SOLO un JSON array con 3 objetos: [{"failureMode":"...","effect":"..."
     const tenantId = await requireTenant(req, app);
     const item = await app.prisma.eightDReport.findFirst({ where: { id: req.params.id, tenantId, deletedAt: null } });
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
-    return reply.send({ item });
+    const [enriched] = await attachLinks(app, tenantId, [item]);
+    return reply.send({ item: enriched });
   });
 
   app.put('/eight-d/:id', async (req: FastifyRequest<IdParams>, reply: FastifyReply) => {
     const tenantId = await requireTenant(req, app);
     const body = z.object({
       title: z.string().optional(), status: z.string().optional(), disciplines: z.any().optional(),
+      ncrId: z.string().uuid().optional().nullable(),
     }).parse(req.body);
     const data: any = { ...body };
     if (body.status === 'CLOSED') data.closedAt = new Date();
     const item = await app.prisma.eightDReport.update({ where: { id: req.params.id }, data });
     return reply.send({ item });
+  });
+
+  // Crea (o retorna) un Plan de Acción real vinculado a este 8D
+  app.post('/eight-d/:id/create-action-plan', async (req: FastifyRequest<IdParams>, reply: FastifyReply) => {
+    const tenantId = await requireTenant(req, app);
+    const report = await app.prisma.eightDReport.findFirst({ where: { id: req.params.id, tenantId, deletedAt: null } });
+    if (!report) return reply.code(404).send({ error: 'No encontrado' });
+    if (report.actionPlanId) {
+      const existing = await app.prisma.actionPlan.findFirst({ where: { id: report.actionPlanId, tenantId } });
+      if (existing) return reply.send({ actionPlan: existing, alreadyExisted: true });
+    }
+    const d = (report.disciplines as any) || {};
+    const plan = await createLinkedActionPlan(app, req, {
+      tenantId,
+      findingDescription: `[8D ${report.code}] ${report.title}${d.d2?.description ? ` — ${d.d2.description}` : ''}`,
+      plannedAction: d.d5?.actions || d.d3?.containment || null,
+      ncrId: report.ncrId || null,
+    });
+    await app.prisma.eightDReport.update({ where: { id: report.id }, data: { actionPlanId: plan.id } });
+    return reply.code(201).send({ actionPlan: plan });
   });
 
   app.delete('/eight-d/:id', async (req: FastifyRequest<IdParams>, reply: FastifyReply) => {
@@ -617,5 +764,61 @@ Respondé en español formal, estructurado con las 3 secciones, sin encabezados 
       include: { plan: { select: { name: true, area: true } } },
     });
     return reply.send({ items });
+  });
+
+  // IA: analizar tendencia de scores y hallazgos recurrentes del plan
+  app.post('/lpa/plans/:id/ai-review', async (req: FastifyRequest<IdParams>, reply: FastifyReply) => {
+    const tenantId = await requireTenant(req, app);
+    const plan = await app.prisma.lpaPlan.findFirst({
+      where: { id: req.params.id, tenantId, deletedAt: null },
+      include: { executions: { orderBy: { executedAt: 'desc' }, take: 15 } },
+    });
+    if (!plan) return reply.code(404).send({ error: 'No encontrado' });
+    const execs = plan.executions || [];
+    const scores = execs.map((e) => e.score).filter((s) => s != null);
+    const allFindings = execs.flatMap((e: any) => (e.findings || []).map((f: any) => f.question));
+    const freq: Record<string, number> = {};
+    for (const q of allFindings) freq[q] = (freq[q] || 0) + 1;
+    const recurring = Object.entries(freq).filter(([, c]) => c > 1).map(([q, c]) => `"${q}" (${c} veces)`).join(', ');
+    const prompt = `Sos un experto en LPA (Layered Process Audits) e IATF 16949. Analizá el plan "${plan.name}" (área ${plan.area || 'N/D'}, capa ${plan.layer || 'N/D'}, frecuencia ${plan.frequency}) con ${execs.length} ejecuciones recientes y scores: ${scores.join(', ') || 'sin datos'}.
+
+Hallazgos recurrentes (NOK repetidos): ${recurring || 'ninguno detectado'}.
+
+Analizá: (a) la tendencia del score (mejora/empeora/estable), (b) si hay hallazgos sistémicos que requieran una acción correctiva de raíz en vez de corrección puntual, (c) sugerí 2-3 acciones concretas de mejora del proceso auditado.
+
+Respondé en español formal, sin encabezados markdown, en párrafos cortos.`;
+    try {
+      const text = await llmInterpret(req, prompt);
+      await app.prisma.lpaPlan.update({ where: { id: plan.id }, data: { aiNotes: text } });
+      return reply.send({ notes: text });
+    } catch (e: any) {
+      return reply.code(502).send({ error: e?.message || 'Error de IA' });
+    }
+  });
+
+  // Crea un Plan de Acción real a partir de un hallazgo NOK de una ejecución LPA
+  app.post('/lpa/executions/:id/findings/:index/create-action-plan', async (req: FastifyRequest<{ Params: { id: string; index: string } }>, reply: FastifyReply) => {
+    const tenantId = await requireTenant(req, app);
+    const exec = await app.prisma.lpaExecution.findFirst({
+      where: { id: req.params.id, tenantId },
+      include: { plan: { select: { name: true, area: true } } },
+    });
+    if (!exec) return reply.code(404).send({ error: 'Ejecución no encontrada' });
+    const idx = Number(req.params.index);
+    const findings = (exec.findings as any[]) || [];
+    const finding = findings[idx];
+    if (!finding) return reply.code(404).send({ error: 'Hallazgo no encontrado' });
+    if (finding.actionPlanId) {
+      const existing = await app.prisma.actionPlan.findFirst({ where: { id: finding.actionPlanId, tenantId } });
+      if (existing) return reply.send({ actionPlan: existing, alreadyExisted: true });
+    }
+    const plan = await createLinkedActionPlan(app, req, {
+      tenantId,
+      findingDescription: `[LPA ${exec.plan?.name || ''}] ${finding.question}${finding.comment ? ` — ${finding.comment}` : ''}`,
+      area: exec.plan?.area || null,
+    });
+    findings[idx] = { ...finding, actionPlanId: plan.id };
+    await app.prisma.lpaExecution.update({ where: { id: exec.id }, data: { findings } });
+    return reply.code(201).send({ actionPlan: plan });
   });
 }

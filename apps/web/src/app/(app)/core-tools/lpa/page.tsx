@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Layers, Plus, ArrowLeft, Trash2, Loader2, Play, CheckCircle, XCircle, Minus, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Layers, Plus, ArrowLeft, Trash2, Loader2, Play, CheckCircle, XCircle, Minus, TrendingUp, AlertTriangle, Sparkles, ClipboardPlus } from 'lucide-react';
 
 const FREQ: Record<string, string> = { DAILY: 'Diaria', WEEKLY: 'Semanal', MONTHLY: 'Mensual' };
-const LAYERS: Record<string, string> = { LAYER_1: 'Capa 1 — Operario/turno', LAYER_2: 'Capa 2 — Supervisor', LAYER_3: 'Capa 3 — Gerencia' };
-const LAYER_SHORT: Record<string, string> = { LAYER_1: 'Capa 1', LAYER_2: 'Capa 2', LAYER_3: 'Capa 3' };
+const LAYERS: Record<string, string> = { OPERATOR: 'Capa 1 — Operario/turno', SUPERVISOR: 'Capa 2 — Supervisor', MANAGER: 'Capa 3 — Gerencia', EXEC: 'Capa 4 — Dirección' };
+const LAYER_SHORT: Record<string, string> = { OPERATOR: 'Capa 1', SUPERVISOR: 'Capa 2', MANAGER: 'Capa 3', EXEC: 'Capa 4' };
 
 // ── Gráfico de tendencia de scores ───────────────────────────────────────────
 function ScoreTrend({ executions }: { executions: any[] }) {
@@ -50,8 +50,10 @@ export default function LpaPage() {
   const [auditor, setAuditor] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [apLoadingKey, setApLoadingKey] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ name: '', area: '', frequency: 'WEEKLY', layer: 'LAYER_1', questions: '' });
+  const [form, setForm] = useState({ name: '', area: '', frequency: 'WEEKLY', layer: 'OPERATOR', questions: '' });
 
   const load = async () => {
     setLoading(true);
@@ -74,7 +76,7 @@ export default function LpaPage() {
         json: { name: form.name, area: form.area || null, frequency: form.frequency, layer: form.layer, checklist },
       });
       setShowCreate(false);
-      setForm({ name: '', area: '', frequency: 'WEEKLY', layer: 'LAYER_1', questions: '' });
+      setForm({ name: '', area: '', frequency: 'WEEKLY', layer: 'OPERATOR', questions: '' });
       load();
     } catch (e: any) { setError(e?.message || 'Error creando'); }
   };
@@ -102,6 +104,29 @@ export default function LpaPage() {
     await apiFetch(`/core-tools/lpa/plans/${id}`, { method: 'DELETE' });
     if (selected?.id === id) setSelected(null);
     load();
+  };
+
+  const aiReview = async () => {
+    if (!selected) return;
+    setAiLoading(true);
+    try {
+      const res = await apiFetch<{ notes: string }>(`/core-tools/lpa/plans/${selected.id}/ai-review`, { method: 'POST' });
+      setSelected({ ...selected, aiNotes: res.notes });
+    } catch (e: any) { setError(e?.message || 'Error de IA'); } finally { setAiLoading(false); }
+  };
+
+  const createFindingActionPlan = async (execId: string, idx: number) => {
+    const key = `${execId}-${idx}`;
+    setApLoadingKey(key);
+    try {
+      const res = await apiFetch<{ actionPlan: any }>(`/core-tools/lpa/executions/${execId}/findings/${idx}/create-action-plan`, { method: 'POST' });
+      setSelected((prev: any) => ({
+        ...prev,
+        executions: (prev.executions || []).map((ex: any) =>
+          ex.id !== execId ? ex : { ...ex, findings: (ex.findings || []).map((f: any, i: number) => i !== idx ? f : { ...f, actionPlanId: res.actionPlan.id }) }
+        ),
+      }));
+    } catch (e: any) { setError(e?.message || 'Error creando plan de acción'); } finally { setApLoadingKey(null); }
   };
 
   // ── Ejecución de auditoría ─────────────────────────────────────────────────
@@ -178,11 +203,26 @@ export default function LpaPage() {
           <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
             <ArrowLeft className="h-4 w-4" /> Volver
           </button>
-          <button onClick={() => startExecution(selected)}
-            className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700">
-            <Play className="h-4 w-4" /> Ejecutar auditoría
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={aiReview} disabled={aiLoading}
+              className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">
+              {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Analizar con IA
+            </button>
+            <button onClick={() => startExecution(selected)}
+              className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700">
+              <Play className="h-4 w-4" /> Ejecutar auditoría
+            </button>
+          </div>
         </div>
+
+        {selected.aiNotes && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+            <h3 className="font-semibold text-violet-900 text-sm mb-2 flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4" /> Análisis IA
+            </h3>
+            <p className="text-sm text-violet-900 whitespace-pre-wrap leading-relaxed">{selected.aiNotes}</p>
+          </div>
+        )}
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex items-start justify-between">
@@ -229,7 +269,7 @@ export default function LpaPage() {
         {/* Hallazgos de todas las ejecuciones */}
         {(() => {
           const findings = (selected.executions || []).flatMap((ex: any) =>
-            (ex.findings || []).map((f: any) => ({ ...f, date: ex.executedAt, auditor: ex.auditorName })));
+            (ex.findings || []).map((f: any, idx: number) => ({ ...f, date: ex.executedAt, auditor: ex.auditorName, execId: ex.id, idx })));
           return findings.length > 0 && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4">
               <h3 className="font-semibold text-red-800 text-sm mb-2 flex items-center gap-1.5">
@@ -237,12 +277,22 @@ export default function LpaPage() {
               </h3>
               <div className="space-y-1.5">
                 {findings.map((f: any, i: number) => (
-                  <div key={i} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs">
-                    <div className="font-medium text-gray-800">{f.question}</div>
-                    {f.comment && <div className="text-gray-500 mt-0.5">{f.comment}</div>}
-                    <div className="text-[10px] text-gray-400 mt-0.5">
-                      {new Date(f.date).toLocaleDateString('es-AR')} · {f.auditor || 'Sin auditor'}
+                  <div key={i} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-medium text-gray-800">{f.question}</div>
+                      {f.comment && <div className="text-gray-500 mt-0.5">{f.comment}</div>}
+                      <div className="text-[10px] text-gray-400 mt-0.5">
+                        {new Date(f.date).toLocaleDateString('es-AR')} · {f.auditor || 'Sin auditor'}
+                      </div>
                     </div>
+                    {f.actionPlanId ? (
+                      <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Plan creado</span>
+                    ) : (
+                      <button onClick={() => createFindingActionPlan(f.execId, f.idx)} disabled={apLoadingKey === `${f.execId}-${f.idx}`}
+                        className="shrink-0 flex items-center gap-1 rounded-full bg-red-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-red-700 disabled:opacity-50">
+                        {apLoadingKey === `${f.execId}-${f.idx}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <ClipboardPlus className="h-3 w-3" />} Plan de Acción
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

@@ -169,3 +169,11 @@ CREATE TABLE IF NOT EXISTS lpa_executions (
 );
 CREATE INDEX IF NOT EXISTS lpa_executions_tenant_idx ON lpa_executions ("tenantId");
 CREATE INDEX IF NOT EXISTS lpa_executions_plan_idx ON lpa_executions ("planId");
+
+-- IA + vínculos reales entre módulos (Control Plan/APQP/PPAP/LPA con notas de IA; 8D con Plan de Acción real)
+ALTER TABLE control_plans ADD COLUMN IF NOT EXISTS "aiNotes" TEXT;
+ALTER TABLE apqp_projects ADD COLUMN IF NOT EXISTS "aiNotes" TEXT;
+ALTER TABLE ppap_submissions ADD COLUMN IF NOT EXISTS "aiNotes" TEXT;
+ALTER TABLE lpa_plans ADD COLUMN IF NOT EXISTS "aiNotes" TEXT;
+ALTER TABLE eight_d_reports ADD COLUMN IF NOT EXISTS "actionPlanId" UUID;
+CREATE SEQUENCE IF NOT EXISTS action_plan_seq;

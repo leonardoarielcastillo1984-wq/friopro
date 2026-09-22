@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { PackageCheck, Plus, ArrowLeft, Trash2, Loader2, Send, CheckCircle, FileSignature, StickyNote } from 'lucide-react';
+import { PackageCheck, Plus, ArrowLeft, Trash2, Loader2, Send, CheckCircle, FileSignature, StickyNote, Sparkles } from 'lucide-react';
 
 const EL_STATUS: Record<string, { label: string; cls: string }> = {
   PENDING: { label: 'Pendiente', cls: 'bg-gray-100 text-gray-600' },
@@ -26,6 +26,7 @@ export default function PpapPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showPsw, setShowPsw] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ partNumber: '', partName: '', customer: '', level: 3, apqpId: '' });
 
@@ -82,6 +83,15 @@ export default function PpapPage() {
     load();
   };
 
+  const aiReview = async () => {
+    if (!selected) return;
+    setAiLoading(true);
+    try {
+      const res = await apiFetch<{ notes: string }>(`/core-tools/ppap/${selected.id}/ai-review`, { method: 'POST' });
+      setSelected({ ...selected, aiNotes: res.notes });
+    } catch (e: any) { setError(e?.message || 'Error de IA'); } finally { setAiLoading(false); }
+  };
+
   const remove = async (id: string) => {
     if (!confirm('¿Eliminar este PPAP?')) return;
     await apiFetch(`/core-tools/ppap/${id}`, { method: 'DELETE' });
@@ -99,11 +109,26 @@ export default function PpapPage() {
           <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
             <ArrowLeft className="h-4 w-4" /> Volver
           </button>
-          <button onClick={() => setShowPsw(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            <FileSignature className="h-4 w-4" /> Ver PSW (Warrant)
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={aiReview} disabled={aiLoading}
+              className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">
+              {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Revisar con IA
+            </button>
+            <button onClick={() => setShowPsw(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              <FileSignature className="h-4 w-4" /> Ver PSW (Warrant)
+            </button>
+          </div>
         </div>
+
+        {selected.aiNotes && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+            <h3 className="font-semibold text-violet-900 text-sm mb-2 flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4" /> Revisión IA
+            </h3>
+            <p className="text-sm text-violet-900 whitespace-pre-wrap leading-relaxed">{selected.aiNotes}</p>
+          </div>
+        )}
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex items-start justify-between">

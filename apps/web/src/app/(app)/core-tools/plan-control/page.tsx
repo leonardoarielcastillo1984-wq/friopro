@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { ClipboardCheck, Plus, ArrowLeft, Trash2, Loader2, Save, Star } from 'lucide-react';
+import { ClipboardCheck, Plus, ArrowLeft, Trash2, Loader2, Save, Star, Sparkles, TrendingUp } from 'lucide-react';
 
 const PHASES: Record<string, string> = { PROTOTYPE: 'Prototipo', PRELAUNCH: 'Pre-lanzamiento', PRODUCTION: 'Producción' };
 const EMPTY_ROW = { id: '', step: '', characteristic: '', spec: '', method: '', sampleSize: '', frequency: '', controlMethod: '', reactionPlan: '', special: false };
@@ -10,23 +10,27 @@ const EMPTY_ROW = { id: '', step: '', characteristic: '', spec: '', method: '', 
 export default function ControlPlanPage() {
   const [items, setItems] = useState<any[]>([]);
   const [fmeas, setFmeas] = useState<any[]>([]);
+  const [spcCharts, setSpcCharts] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ name: '', phase: 'PRODUCTION', partNumber: '', process: '', fmeaId: '' });
 
   const load = async () => {
     setLoading(true);
     try {
-      const [cp, fm] = await Promise.all([
+      const [cp, fm, spc] = await Promise.all([
         apiFetch<{ items: any[] }>('/core-tools/control-plans'),
         apiFetch<{ items: any[] }>('/core-tools/fmea'),
+        apiFetch<{ items: any[] }>('/core-tools/spc').catch(() => ({ items: [] })),
       ]);
       setItems(cp.items || []);
       setFmeas(fm.items || []);
+      setSpcCharts(spc.items || []);
     } catch (e: any) { setError(e?.message || 'Error'); } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
@@ -62,6 +66,15 @@ export default function ControlPlanPage() {
     const next = [...rows]; next[i] = { ...next[i], [k]: v }; setRows(next);
   };
 
+  const aiReview = async () => {
+    if (!selected) return;
+    setAiLoading(true);
+    try {
+      const res = await apiFetch<{ notes: string }>(`/core-tools/control-plans/${selected.id}/ai-review`, { method: 'POST' });
+      setSelected({ ...selected, aiNotes: res.notes });
+    } catch (e: any) { setError(e?.message || 'Error de IA'); } finally { setAiLoading(false); }
+  };
+
   const remove = async (id: string) => {
     if (!confirm('¿Eliminar este plan?')) return;
     await apiFetch(`/core-tools/control-plans/${id}`, { method: 'DELETE' });
@@ -79,11 +92,26 @@ export default function ControlPlanPage() {
           <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
             <ArrowLeft className="h-4 w-4" /> Volver
           </button>
-          <button onClick={save} disabled={saving}
-            className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={aiReview} disabled={aiLoading}
+              className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">
+              {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Revisar con IA
+            </button>
+            <button onClick={save} disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar
+            </button>
+          </div>
         </div>
+
+        {selected.aiNotes && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+            <h3 className="font-semibold text-violet-900 text-sm mb-2 flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4" /> Revisión IA
+            </h3>
+            <p className="text-sm text-violet-900 whitespace-pre-wrap leading-relaxed">{selected.aiNotes}</p>
+          </div>
+        )}
 
         <div className="rounded-xl border border-gray-200 bg-white p-4 flex items-start justify-between">
           <div>
@@ -127,7 +155,7 @@ export default function ControlPlanPage() {
                 <th className="px-2 py-2 w-8">★</th><th className="px-2 py-2">Paso</th><th className="px-2 py-2">Característica</th>
                 <th className="px-2 py-2">Especificación</th><th className="px-2 py-2">Método de medición</th>
                 <th className="px-2 py-2 w-20">Muestra</th><th className="px-2 py-2 w-24">Frecuencia</th>
-                <th className="px-2 py-2">Método de control</th><th className="px-2 py-2">Plan de reacción</th><th className="px-2 py-2 w-8"></th>
+                <th className="px-2 py-2">Método de control</th><th className="px-2 py-2">Plan de reacción</th><th className="px-2 py-2 w-28">Carta SPC</th><th className="px-2 py-2 w-8"></th>
               </tr>
             </thead>
             <tbody>
@@ -156,6 +184,22 @@ export default function ControlPlanPage() {
                         value={r[k] || ''} onChange={(e) => updateRow(i, k, e.target.value)} />
                     </td>
                   ))}
+                  <td className="px-1 py-1">
+                    <select className="w-full rounded border border-gray-200 px-1 py-1 text-[10px] bg-transparent"
+                      value={r.spcChartId || ''} onChange={(e) => updateRow(i, 'spcChartId', e.target.value || null)}>
+                      <option value="">— vincular —</option>
+                      {spcCharts.map((s) => <option key={s.id} value={s.id}>{s.code}</option>)}
+                    </select>
+                    {r.spcChartId && (() => {
+                      const chart = spcCharts.find((s) => s.id === r.spcChartId);
+                      const cpk = chart?.capability?.cpk;
+                      return cpk != null ? (
+                        <div className={`mt-0.5 flex items-center gap-1 text-[10px] font-bold ${cpk >= 1.33 ? 'text-emerald-600' : cpk >= 1 ? 'text-amber-600' : 'text-red-600'}`}>
+                          <TrendingUp className="h-3 w-3" /> Cpk {cpk.toFixed(2)}
+                        </div>
+                      ) : null;
+                    })()}
+                  </td>
                   <td className="px-1 py-1">
                     <button onClick={() => setRows(rows.filter((_, j) => j !== i))} className="p-1 text-gray-300 hover:text-red-500">
                       <Trash2 className="h-3.5 w-3.5" />

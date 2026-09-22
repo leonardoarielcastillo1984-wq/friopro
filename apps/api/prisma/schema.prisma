@@ -10995,6 +10995,7 @@ model ControlPlan {
   // items: [{ id, step, characteristic, spec, method, sampleSize, frequency, controlMethod, reactionPlan, special }]
   items      Json?
   status     String    @default("DRAFT") // DRAFT, ACTIVE, OBSOLETE
+  aiNotes    String?   @db.Text
   deletedAt  DateTime?
   createdAt  DateTime  @default(now()) @db.Timestamptz
   updatedAt  DateTime  @updatedAt @db.Timestamptz
@@ -11017,6 +11018,7 @@ model ApqpProject {
   phases       Json?
   startDate    DateTime?
   dueDate      DateTime?
+  aiNotes      String?   @db.Text
   deletedAt    DateTime?
   createdAt    DateTime  @default(now()) @db.Timestamptz
   updatedAt    DateTime  @updatedAt @db.Timestamptz
@@ -11040,6 +11042,7 @@ model PpapSubmission {
   status      String    @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, REJECTED
   submittedAt DateTime?
   approvedAt  DateTime?
+  aiNotes     String?   @db.Text
   deletedAt   DateTime?
   createdAt   DateTime  @default(now()) @db.Timestamptz
   updatedAt   DateTime  @updatedAt @db.Timestamptz
@@ -11055,6 +11058,7 @@ model EightDReport {
   code        String
   title       String
   ncrId       String?   @db.Uuid
+  actionPlanId String?  @db.Uuid
   status      String    @default("OPEN") // OPEN, CLOSED
   // disciplines: { d1:{team}, d2:{description}, d3:{containment}, d4:{rootCause, why5:[]}, d5:{actions}, d6:{validation}, d7:{systemic}, d8:{recognition} }
   disciplines Json?
@@ -11080,6 +11084,7 @@ model LpaPlan {
   // checklist: [{ question, category }]
   checklist  Json?
   active     Boolean        @default(true)
+  aiNotes    String?        @db.Text
   deletedAt  DateTime?
   createdAt  DateTime       @default(now()) @db.Timestamptz
   updatedAt  DateTime       @updatedAt @db.Timestamptz

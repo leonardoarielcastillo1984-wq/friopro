@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Wrench, Plus, ArrowLeft, Trash2, Loader2, Save, Sparkles, CheckCircle, Link2, ShieldCheck, X } from 'lucide-react';
+import { Wrench, Plus, ArrowLeft, Trash2, Loader2, Save, Sparkles, CheckCircle, Link2, ShieldCheck, X, ClipboardPlus } from 'lucide-react';
 
 const DISCIPLINES = [
   { key: 'd1', title: 'D1 — Equipo', field: 'team', placeholder: 'Miembros del equipo multidisciplinario…', team: true },
@@ -65,20 +65,26 @@ function IshikawaDiagram({ data, problem }: { data: Record<string, string[]>; pr
 
 export default function EightDPage() {
   const [items, setItems] = useState<any[]>([]);
+  const [ncrs, setNcrs] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [disc, setDisc] = useState<any>({});
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [apLoading, setApLoading] = useState(false);
   const [error, setError] = useState('');
   const [title, setTitle] = useState('');
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch<{ items: any[] }>('/core-tools/eight-d');
+      const [res, ncr] = await Promise.all([
+        apiFetch<{ items: any[] }>('/core-tools/eight-d'),
+        apiFetch<{ ncrs: any[] }>('/ncr').catch(() => ({ ncrs: [] })),
+      ]);
       setItems(res.items || []);
+      setNcrs(ncr.ncrs || []);
     } catch (e: any) { setError(e?.message || 'Error'); } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
@@ -120,6 +126,23 @@ export default function EightDPage() {
     if (!selected) return;
     const res = await apiFetch<{ item: any }>(`/core-tools/eight-d/${selected.id}`, { method: 'PUT', json: { status: 'CLOSED' } });
     setSelected(res.item); load();
+  };
+
+  const setNcr = async (ncrId: string) => {
+    if (!selected) return;
+    const res = await apiFetch<{ item: any }>(`/core-tools/eight-d/${selected.id}`, { method: 'PUT', json: { ncrId: ncrId || null } });
+    const ncr = ncrs.find((n) => n.id === ncrId) || null;
+    setSelected({ ...res.item, ncr, actionPlan: selected.actionPlan });
+  };
+
+  const createActionPlan = async () => {
+    if (!selected) return;
+    setApLoading(true);
+    try {
+      await save();
+      const res = await apiFetch<{ actionPlan: any }>(`/core-tools/eight-d/${selected.id}/create-action-plan`, { method: 'POST' });
+      setSelected({ ...selected, actionPlanId: res.actionPlan.id, actionPlan: res.actionPlan });
+    } catch (e: any) { setError(e?.message || 'Error creando plan de acción'); } finally { setApLoading(false); }
   };
 
   const remove = async (id: string) => {
@@ -189,12 +212,31 @@ export default function EightDPage() {
             <p className="text-sm text-gray-500">Abierto {new Date(selected.openedAt).toLocaleDateString('es-AR')}</p>
             <div className="flex items-center gap-1.5 mt-1.5">
               <Link2 className="h-3.5 w-3.5 text-gray-400" />
-              <input
-                className="rounded border border-transparent hover:border-gray-200 px-1.5 py-0.5 text-xs text-gray-600 bg-transparent w-56"
-                placeholder="Vincular NCR / reclamo (código o referencia)"
-                value={disc.ncrRef || ''}
-                onChange={(e) => setMeta('ncrRef', e.target.value)}
-              />
+              <select
+                className="rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-600 bg-transparent max-w-[260px]"
+                value={selected.ncrId || ''}
+                onChange={(e) => setNcr(e.target.value)}
+              >
+                <option value="">Sin NCR vinculada</option>
+                {ncrs.map((n) => <option key={n.id} value={n.id}>{n.code} — {n.title}</option>)}
+              </select>
+              {selected.ncr && (
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selected.ncr.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                  NCR {selected.ncr.status}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              {selected.actionPlan ? (
+                <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  <ClipboardPlus className="h-3 w-3" /> Plan de Acción {selected.actionPlan.code || '(sin código)'} · {selected.actionPlan.status}
+                </span>
+              ) : (
+                <button onClick={createActionPlan} disabled={apLoading}
+                  className="flex items-center gap-1 rounded-full bg-red-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-red-700 disabled:opacity-50">
+                  {apLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ClipboardPlus className="h-3 w-3" />} Crear Plan de Acción real
+                </button>
+              )}
             </div>
           </div>
           <div className="text-right">

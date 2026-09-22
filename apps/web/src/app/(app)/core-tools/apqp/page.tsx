@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { FolderKanban, Plus, ArrowLeft, Trash2, Loader2, CheckCircle, Circle, ChevronRight, CalendarClock, User } from 'lucide-react';
+import { FolderKanban, Plus, ArrowLeft, Trash2, Loader2, CheckCircle, Circle, ChevronRight, CalendarClock, User, Sparkles } from 'lucide-react';
 
 const PHASE_COLORS = ['bg-blue-500', 'bg-violet-500', 'bg-amber-500', 'bg-emerald-500', 'bg-pink-500'];
 
@@ -12,6 +12,7 @@ export default function ApqpPage() {
   const [phases, setPhases] = useState<any[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ name: '', customer: '', partNumber: '', startDate: '', dueDate: '' });
 
@@ -70,6 +71,15 @@ export default function ApqpPage() {
     setSelected(res.item);
   };
 
+  const aiReview = async () => {
+    if (!selected) return;
+    setAiLoading(true);
+    try {
+      const res = await apiFetch<{ notes: string }>(`/core-tools/apqp/${selected.id}/ai-review`, { method: 'POST' });
+      setSelected({ ...selected, aiNotes: res.notes });
+    } catch (e: any) { setError(e?.message || 'Error de IA'); } finally { setAiLoading(false); }
+  };
+
   const remove = async (id: string) => {
     if (!confirm('¿Eliminar este proyecto APQP?')) return;
     await apiFetch(`/core-tools/apqp/${id}`, { method: 'DELETE' });
@@ -95,9 +105,24 @@ export default function ApqpPage() {
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     return (
       <div className="space-y-4">
-        <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
-          <ArrowLeft className="h-4 w-4" /> Volver
-        </button>
+        <div className="flex items-center justify-between">
+          <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
+            <ArrowLeft className="h-4 w-4" /> Volver
+          </button>
+          <button onClick={aiReview} disabled={aiLoading}
+            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">
+            {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Revisar avance con IA
+          </button>
+        </div>
+
+        {selected.aiNotes && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+            <h3 className="font-semibold text-violet-900 text-sm mb-2 flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4" /> Revisión IA
+            </h3>
+            <p className="text-sm text-violet-900 whitespace-pre-wrap leading-relaxed">{selected.aiNotes}</p>
+          </div>
+        )}
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex items-start justify-between">
