@@ -6,11 +6,12 @@ import Link from 'next/link';
 import { VehicleArt } from '../_components/FleetVisual';
 import { apiFetch } from '@/lib/api';
 import { FacturaFields, FACTURA_INICIAL, subirArchivoFactura, type FacturaData } from '../_components/FacturaForm';
-import { Plus, X, ScanLine, CalendarClock, Wrench, Download, Play, CheckCircle2, Pause, Ban, PackagePlus, Trash2, UserCog } from 'lucide-react';
+import { Plus, X, ScanLine, CalendarClock, Wrench, Download, Play, CheckCircle2, Pause, Ban, PackagePlus, Trash2, UserCog, Pencil } from 'lucide-react';
 
 type WorkOrder = {
   id: string; code: string; title: string; type: string; priority: string; status: string;
-  assetId: string | null; scheduledDate: string | null; technician?: { name: string } | null;
+  assetId: string | null; scheduledDate: string | null; technician?: { id?: string; name: string } | null;
+  technicianId?: string | null; laborCost?: number; partsCost?: number;
   totalCost: number; origen?: string | null; plan?: { id: string; code: string; title: string } | null;
 };
 
@@ -72,6 +73,7 @@ function OrdenesPageInner() {
   const [tecnicos, setTecnicos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(params.get('nueva') === '1');
+  const [editId, setEditId] = useState<string | null>(null);
   const [tab, setTab] = useState<'ACTIVAS' | 'HISTORIAL'>('ACTIVAS');
   const [form, setForm] = useState<any>({ title: '', type: 'CORRECTIVE', priority: 'MEDIUM', assetId: '', technicianId: '', scheduledDate: '' });
   const [conFactura, setConFactura] = useState(false);
@@ -126,13 +128,71 @@ function OrdenesPageInner() {
     tab === 'ACTIVAS' ? ['PENDING', 'IN_PROGRESS', 'ON_HOLD'].includes(o.status) : ['COMPLETED', 'CANCELLED'].includes(o.status)
   );
 
+  const abrirEdicion = (o: WorkOrder) => {
+    const veh = o.assetId ? vehiculoPorAsset.get(o.assetId) : null;
+    setForm({
+      title: o.title,
+      type: o.type,
+      priority: o.priority,
+      assetId: veh?.id || '',
+      technicianId: o.technicianId || o.technician?.id || '',
+      scheduledDate: o.scheduledDate ? o.scheduledDate.slice(0, 10) : '',
+    });
+    setConFactura(false);
+    setFactura(FACTURA_INICIAL);
+    setFacturaFile(null);
+    setError(null);
+    setEditId(o.id);
+    setShowModal(true);
+  };
+
+  const cerrarModal = () => {
+    setShowModal(false);
+    setEditId(null);
+    setError(null);
+  };
+
+  const eliminar = async (o: WorkOrder) => {
+    if (!window.confirm(`¿Eliminar la orden ${o.code} — "${o.title}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await apiFetch(`/maintenance/work-orders/${o.id}`, { method: 'DELETE' });
+      if (detalleId === o.id) setDetalleId(null);
+      load();
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo eliminar la orden');
+    }
+  };
+
   const crear = async () => {
     if (!form.title || !form.assetId) { setError('Título y vehículo son obligatorios'); return; }
-    if (conFactura && !factura.total) { setError('Si cargás factura, el total es obligatorio'); return; }
+    if (!editId && conFactura && !factura.total) { setError('Si cargás factura, el total es obligatorio'); return; }
     setSaving(true);
     setError(null);
     try {
       const veh = vehiculos.find((v) => v.id === form.assetId);
+
+      if (editId) {
+        const actual = ordenes.find((o) => o.id === editId);
+        await apiFetch(`/maintenance/work-orders/${editId}`, {
+          method: 'PUT',
+          json: {
+            title: form.title,
+            type: form.type,
+            priority: form.priority,
+            assetId: veh?.maintenanceAssetId || null,
+            technicianId: form.technicianId || null,
+            scheduledDate: form.scheduledDate ? new Date(`${form.scheduledDate}T12:00:00`).toISOString() : undefined,
+            // Preservar costos: el backend recalcula totalCost = laborCost + partsCost
+            laborCost: actual?.laborCost ?? 0,
+            partsCost: actual?.partsCost ?? 0,
+          },
+        });
+        cerrarModal();
+        setForm({ title: '', type: 'CORRECTIVE', priority: 'MEDIUM', assetId: '', technicianId: '', scheduledDate: '' });
+        load();
+        return;
+      }
+
       const otRes = await apiFetch<{ workOrder?: any; id?: string }>('/maintenance/work-orders', {
         method: 'POST',
         json: {
@@ -180,7 +240,7 @@ function OrdenesPageInner() {
         await sugerirEstado(veh, 'EN_TALLER', workOrderId);
       }
 
-      setShowModal(false);
+      cerrarModal();
       setForm({ title: '', type: 'CORRECTIVE', priority: 'MEDIUM', assetId: '', technicianId: '', scheduledDate: '' });
       setConFactura(false);
       setFactura(FACTURA_INICIAL);
@@ -291,7 +351,15 @@ function OrdenesPageInner() {
                   <td className="px-2.5 py-2 text-neutral-600">{o.technician?.name || '—'}</td>
                   <td className="px-2.5 py-2 text-neutral-600">${(o.totalCost || 0).toLocaleString('es-AR')}</td>
                   <td className="px-2.5 py-2">
-                    <button className="block text-xs font-medium text-blue-600 mb-2" onClick={() => setDetalleId(o.id)}>Ver orden</button>
+                    <div className="flex items-center gap-1.5">
+                      <button className="text-xs font-medium text-blue-600 hover:underline" onClick={() => setDetalleId(o.id)}>Ver</button>
+                      <button title="Editar orden" onClick={() => abrirEdicion(o)} className="p-1 text-neutral-400 hover:text-blue-600">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button title="Eliminar orden" onClick={() => eliminar(o)} className="p-1 text-neutral-400 hover:text-red-600">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                     {veh && (
                       <Link href={`/flota-360/vehiculos/${veh.id}`} className="text-[11px] font-medium text-blue-600 hover:underline">Ver activo</Link>
                     )}
@@ -317,8 +385,8 @@ function OrdenesPageInner() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-              <h2 className="text-sm font-semibold text-neutral-900">Nueva orden de trabajo</h2>
-              <button onClick={() => setShowModal(false)}><X className="h-4 w-4 text-neutral-400" /></button>
+              <h2 className="text-sm font-semibold text-neutral-900">{editId ? 'Editar orden de trabajo' : 'Nueva orden de trabajo'}</h2>
+              <button onClick={cerrarModal}><X className="h-4 w-4 text-neutral-400" /></button>
             </div>
             <div className="p-4 space-y-3">
               {error && <p className="text-xs text-red-600">{error}</p>}
@@ -368,17 +436,21 @@ function OrdenesPageInner() {
                 <input type="date" value={form.scheduledDate} onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
               </div>
 
-              {/* Factura opcional del gasto */}
-              <label className="flex items-center gap-2 cursor-pointer pt-1">
-                <input type="checkbox" checked={conFactura} onChange={(e) => setConFactura(e.target.checked)} className="h-3.5 w-3.5 rounded border-neutral-300 text-blue-600" />
-                <span className="text-xs font-medium text-neutral-700">Cargar factura / comprobante del gasto</span>
-              </label>
-              {conFactura && <FacturaFields data={factura} onChange={setFactura} file={facturaFile} onFile={setFacturaFile} />}
+              {/* Factura opcional del gasto (solo al crear) */}
+              {!editId && (
+                <>
+                  <label className="flex items-center gap-2 cursor-pointer pt-1">
+                    <input type="checkbox" checked={conFactura} onChange={(e) => setConFactura(e.target.checked)} className="h-3.5 w-3.5 rounded border-neutral-300 text-blue-600" />
+                    <span className="text-xs font-medium text-neutral-700">Cargar factura / comprobante del gasto</span>
+                  </label>
+                  {conFactura && <FacturaFields data={factura} onChange={setFactura} file={facturaFile} onFile={setFacturaFile} />}
+                </>
+              )}
             </div>
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
-              <button onClick={() => setShowModal(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">Cancelar</button>
+              <button onClick={cerrarModal} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">Cancelar</button>
               <button onClick={crear} disabled={saving} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-                {saving ? 'Guardando…' : 'Crear'}
+                {saving ? 'Guardando…' : editId ? 'Guardar cambios' : 'Crear'}
               </button>
             </div>
           </div>
