@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { HardHat, Plus, X, Pencil, Trash2, QrCode, Printer, Copy, Check } from 'lucide-react';
+import { HardHat, Plus, X, Pencil, Trash2, QrCode, Printer, Copy, Check, Trophy, Clock, AlertTriangle, CheckCircle2, Timer, ListOrdered } from 'lucide-react';
 
 type Mecanico = {
   id: string; code: string; name: string; email: string | null; phone: string | null;
@@ -26,6 +26,17 @@ const AVAILABILITY: Record<string, string> = {
   OFF: 'Fuera de servicio',
 };
 
+type RankingItem = {
+  posicion: number; technicianId: string; nombre: string; code: string;
+  specialization: string | null;
+  completadas: number; enCurso: number; pendientes: number; vencidas: number;
+  tasaCumplimiento: number; tasaATiempo: number;
+  promedioResolucionHs: number | null; promedioEjecucionHs: number | null;
+  costoTotal: number; costoRepuestos: number; score: number;
+};
+
+const MEDALLAS = ['bg-amber-400 text-white', 'bg-neutral-300 text-neutral-700', 'bg-amber-700/70 text-white'];
+
 export default function MecanicosPage() {
   const [mecanicos, setMecanicos] = useState<Mecanico[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +49,10 @@ export default function MecanicosPage() {
   const [qrActivo, setQrActivo] = useState<Mecanico | null>(null);
   const [qrBusy, setQrBusy] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [vista, setVista] = useState<'listado' | 'ranking'>('listado');
+  const [ranking, setRanking] = useState<RankingItem[]>([]);
+  const [rankingDias, setRankingDias] = useState(30);
+  const [rankingLoading, setRankingLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -56,6 +71,20 @@ export default function MecanicosPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const cargarRanking = async (dias: number) => {
+    setRankingLoading(true);
+    try {
+      const res = await apiFetch<{ ranking: RankingItem[] }>(`/maintenance/technicians/ranking?scope=fleet&days=${dias}`);
+      setRanking(res.ranking || []);
+    } catch {
+      setRanking([]);
+    } finally {
+      setRankingLoading(false);
+    }
+  };
+
+  useEffect(() => { if (vista === 'ranking') cargarRanking(rankingDias); }, [vista, rankingDias]);
 
   const abrirNuevo = () => {
     setEditando(null);
@@ -184,8 +213,80 @@ body{font-family:-apple-system,'Segoe UI',sans-serif;display:flex;justify-conten
         </button>
       </div>
 
+      <div className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white p-1 w-fit">
+        <button onClick={() => setVista('listado')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${vista === 'listado' ? 'bg-blue-600 text-white' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+          <ListOrdered className="h-3.5 w-3.5" /> Listado
+        </button>
+        <button onClick={() => setVista('ranking')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${vista === 'ranking' ? 'bg-blue-600 text-white' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+          <Trophy className="h-3.5 w-3.5" /> Ranking
+        </button>
+      </div>
+
       {error && !showForm && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
 
+      {vista === 'ranking' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-neutral-500">Período:</span>
+            {[7, 30, 90].map((d) => (
+              <button key={d} onClick={() => setRankingDias(d)} className={`rounded-md px-2.5 py-1 text-xs font-medium border ${rankingDias === d ? 'bg-blue-600 text-white border-blue-600' : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50'}`}>
+                {d} días
+              </button>
+            ))}
+          </div>
+
+          {rankingLoading && <p className="py-8 text-center text-sm text-neutral-400">Calculando ranking…</p>}
+          {!rankingLoading && ranking.length === 0 && <p className="py-8 text-center text-sm text-neutral-400">Sin datos de desempeño en el período</p>}
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {ranking.map((r) => (
+              <div key={r.technicianId} className="rounded-lg border border-neutral-200 bg-white p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${r.posicion <= 3 ? MEDALLAS[r.posicion - 1] : 'bg-neutral-100 text-neutral-500'}`}>
+                      {r.posicion}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-900">{r.nombre}</p>
+                      <p className="text-[11px] text-neutral-400">{r.code}{r.specialization ? ` · ${r.specialization}` : ''}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-blue-600">{r.score}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-neutral-400">score</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-1.5">
+                  <div>
+                    <div className="flex justify-between text-[11px] text-neutral-500"><span>Cumplimiento</span><span className="font-medium text-neutral-700">{r.tasaCumplimiento}%</span></div>
+                    <div className="h-1.5 rounded-full bg-neutral-100"><div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${r.tasaCumplimiento}%` }} /></div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[11px] text-neutral-500"><span>A tiempo (vs fecha programada)</span><span className="font-medium text-neutral-700">{r.tasaATiempo}%</span></div>
+                    <div className="h-1.5 rounded-full bg-neutral-100"><div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${r.tasaATiempo}%` }} /></div>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-4 gap-1 text-center">
+                  <div className="rounded-md bg-emerald-50 py-1.5"><p className="text-sm font-bold text-emerald-700">{r.completadas}</p><p className="text-[10px] text-emerald-600 flex items-center justify-center gap-0.5"><CheckCircle2 className="h-2.5 w-2.5" />Hechas</p></div>
+                  <div className="rounded-md bg-blue-50 py-1.5"><p className="text-sm font-bold text-blue-700">{r.enCurso}</p><p className="text-[10px] text-blue-600 flex items-center justify-center gap-0.5"><Timer className="h-2.5 w-2.5" />En curso</p></div>
+                  <div className="rounded-md bg-neutral-50 py-1.5"><p className="text-sm font-bold text-neutral-600">{r.pendientes}</p><p className="text-[10px] text-neutral-500">Pend.</p></div>
+                  <div className="rounded-md bg-red-50 py-1.5"><p className="text-sm font-bold text-red-600">{r.vencidas}</p><p className="text-[10px] text-red-500 flex items-center justify-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5" />Venc.</p></div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-2 text-[11px] text-neutral-500">
+                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" />Resolución: {r.promedioResolucionHs !== null ? `${r.promedioResolucionHs}h` : '—'}</span>
+                  <span>Ejecución: {r.promedioEjecucionHs !== null ? `${r.promedioEjecucionHs}h` : '—'}</span>
+                  <span className="font-medium text-neutral-600">${r.costoTotal.toLocaleString('es-AR')}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {vista === 'listado' && (
       <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
@@ -234,6 +335,7 @@ body{font-family:-apple-system,'Segoe UI',sans-serif;display:flex;justify-conten
           </tbody>
         </table>
       </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">

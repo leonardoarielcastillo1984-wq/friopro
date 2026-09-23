@@ -378,6 +378,99 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     return reply.send({ technicians });
   });
 
+  // GET /maintenance/technicians/ranking?scope=fleet&days=30 - Ranking de desempeño
+  // Métricas por técnico: cumplimiento, puntualidad vs fecha programada, tiempos y costos.
+  app.get('/technicians/ranking', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.db?.tenantId) {
+      return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    }
+
+    const { scope, days } = request.query as any;
+    const dias = Math.min(Math.max(parseInt(days, 10) || 30, 1), 365);
+    const desde = new Date();
+    desde.setDate(desde.getDate() - dias);
+    desde.setHours(0, 0, 0, 0);
+    const ahora = new Date();
+
+    const whereTec: any = { tenantId: request.db.tenantId, isActive: true };
+    if (scope === 'fleet') whereTec.scope = 'FLEET';
+    else if (scope !== 'all') whereTec.scope = 'INFRA';
+
+    const tecnicos = await getPrisma(request).maintenanceTechnician.findMany({
+      where: whereTec,
+      select: { id: true, name: true, code: true, specialization: true },
+    });
+    if (tecnicos.length === 0) return reply.send({ dias, ranking: [] });
+
+    // OTs relevantes: creadas o completadas en el período, o actualmente abiertas
+    const ordenes = await getPrisma(request).workOrder.findMany({
+      where: {
+        tenantId: request.db.tenantId,
+        technicianId: { in: tecnicos.map((t: any) => t.id) },
+        status: { not: 'CANCELLED' },
+        OR: [
+          { createdAt: { gte: desde } },
+          { completedAt: { gte: desde } },
+          { status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] } },
+        ],
+      },
+      select: {
+        technicianId: true, status: true, createdAt: true, scheduledDate: true,
+        startedAt: true, completedAt: true, estimatedDuration: true, actualDuration: true,
+        totalCost: true, partsCost: true,
+      },
+    });
+
+    const ranking = tecnicos.map((t: any) => {
+      const ots = ordenes.filter((o: any) => o.technicianId === t.id);
+      const completadas = ots.filter((o: any) => o.status === 'COMPLETED' && o.completedAt && new Date(o.completedAt) >= desde);
+      const abiertas = ots.filter((o: any) => ['PENDING', 'IN_PROGRESS', 'ON_HOLD'].includes(o.status));
+      const vencidas = abiertas.filter((o: any) => o.scheduledDate && new Date(o.scheduledDate) < ahora);
+
+      // Puntualidad: completada antes del fin del día programado
+      const conFecha = completadas.filter((o: any) => o.scheduledDate);
+      const aTiempo = conFecha.filter((o: any) => {
+        const limite = new Date(o.scheduledDate);
+        limite.setHours(23, 59, 59, 999);
+        return new Date(o.completedAt) <= limite;
+      });
+
+      // Tiempos (horas): resolución = creación→cierre | ejecución = inicio→cierre
+      const resHs = completadas.map((o: any) => (new Date(o.completedAt).getTime() - new Date(o.createdAt).getTime()) / 3600000);
+      const ejecHs = completadas
+        .filter((o: any) => o.startedAt)
+        .map((o: any) => (new Date(o.completedAt).getTime() - new Date(o.startedAt).getTime()) / 3600000);
+      const prom = (arr: number[]) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null);
+
+      const totalCerrables = completadas.length + abiertas.length;
+      const tasaCumplimiento = totalCerrables > 0 ? Math.round((completadas.length / totalCerrables) * 100) : 0;
+      const tasaATiempo = conFecha.length > 0
+        ? Math.round((aTiempo.length / conFecha.length) * 100)
+        : (totalCerrables > 0 ? tasaCumplimiento : 0);
+      const score = Math.round(tasaCumplimiento * 0.6 + tasaATiempo * 0.4);
+
+      return {
+        technicianId: t.id,
+        nombre: t.name,
+        code: t.code,
+        specialization: t.specialization,
+        completadas: completadas.length,
+        enCurso: abiertas.filter((o: any) => o.status === 'IN_PROGRESS').length,
+        pendientes: abiertas.filter((o: any) => o.status !== 'IN_PROGRESS').length,
+        vencidas: vencidas.length,
+        tasaCumplimiento,
+        tasaATiempo,
+        promedioResolucionHs: prom(resHs),
+        promedioEjecucionHs: prom(ejecHs),
+        costoTotal: Math.round(completadas.reduce((s: number, o: any) => s + (o.totalCost || 0), 0)),
+        costoRepuestos: Math.round(completadas.reduce((s: number, o: any) => s + (o.partsCost || 0), 0)),
+        score,
+      };
+    }).sort((a: any, b: any) => b.score - a.score || b.completadas - a.completadas);
+
+    return reply.send({ dias, ranking: ranking.map((r: any, i: number) => ({ posicion: i + 1, ...r })) });
+  });
+
   // POST /maintenance/technicians - Crear técnico
   app.post('/technicians', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.db?.tenantId) {
@@ -1191,6 +1284,18 @@ export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: st
   const dataUpdate: any = {};
   for (const key of WORK_ORDER_FIELDS) {
     if (updateData[key] !== undefined) dataUpdate[key] = updateData[key];
+  }
+
+  // Al completar: si nunca se marcó inicio, usar la creación como referencia y
+  // persistir la duración real (horas) para métricas de desempeño del técnico.
+  if (seCompletaAhora) {
+    const inicioEfectivo = dataUpdate.startedAt ?? ordenActual.startedAt ?? ordenActual.createdAt;
+    if (dataUpdate.startedAt === undefined && !ordenActual.startedAt) {
+      dataUpdate.startedAt = inicioEfectivo;
+    }
+    if (updateData.actualDuration === undefined && inicioEfectivo) {
+      dataUpdate.actualDuration = Math.max(0, Math.round((Date.now() - new Date(inicioEfectivo).getTime()) / 3600000));
+    }
   }
 
   const workOrder = await prisma.workOrder.update({

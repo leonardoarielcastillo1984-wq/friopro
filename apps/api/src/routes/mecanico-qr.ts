@@ -215,8 +215,13 @@ export async function mecanicoQRRoutes(app: FastifyInstance) {
       }
     }
 
-    const descripcionFinal = body.data.notas
-      ? `${orden.description ? orden.description + '\n\n' : ''}Cierre del mecánico: ${body.data.notas}`
+    // Nota de cierre: observaciones + odómetro informado (queda trazable en la OT
+    // aunque el activo no tenga vehículo vinculado en Flota 360)
+    const partesCierre: string[] = [];
+    if (body.data.notas) partesCierre.push(body.data.notas);
+    if (body.data.odometro) partesCierre.push(`Odómetro: ${body.data.odometro} km`);
+    const descripcionFinal = partesCierre.length > 0
+      ? `${orden.description ? orden.description + '\n\n' : ''}Cierre del mecánico: ${partesCierre.join(' · ')}`
       : undefined;
 
     const result = await applyWorkOrderUpdate(prisma(), qr.tenantId, workOrderId, {
