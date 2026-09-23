@@ -4,6 +4,7 @@ import PageTitleHelp from '@/components/ui/PageTitleHelp';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import {
   FileText, BookOpen, AlertTriangle, Shield, TrendingUp, Users,
   GraduationCap, Activity, Target, RefreshCw,
@@ -101,6 +102,7 @@ function DistBar({ label, value, total, color }: { label: string; value: number;
 export default function DashboardPage() {
   const [data, setData] = useState<D>(EMPTY);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   async function load() {
     setLoading(true);
@@ -137,6 +139,7 @@ export default function DashboardPage() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
+  const nombreUsuario = user?.name || user?.email?.split('@')[0] || '';
 
   const alerts: { msg: string; href: string; level: 'red' | 'yellow' }[] = [];
   if (data.actions.overdue > 0)
@@ -169,7 +172,7 @@ export default function DashboardPage() {
               <Activity className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">{greeting} — SGI 360 <PageTitleHelp moduleHref="/dashboard" /></h1>
+              <h1 className="text-xl font-bold text-gray-900">{greeting}{nombreUsuario ? `, ${nombreUsuario}` : ''} <PageTitleHelp moduleHref="/dashboard" /></h1>
               <p className="text-sm text-gray-500">Panel ejecutivo · {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
             </div>
           </div>
