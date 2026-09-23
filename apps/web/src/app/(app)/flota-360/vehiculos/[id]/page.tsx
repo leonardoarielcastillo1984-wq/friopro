@@ -78,14 +78,16 @@ export default function VehiculoFichaPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [c, t, e] = await Promise.all([
+      const [c, t, e, cond] = await Promise.all([
         apiFetch<any>(`/flota/vehiculos/${id}/completo`),
         apiFetch<any>(`/flota/vehiculos/${id}/twin`).catch(() => null),
         apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-historial`).catch(() => null),
+        apiFetch<{ conductores: any[] }>('/flota/conductores').catch(() => ({ conductores: [] })),
       ]);
       setCompleto(c);
       setTwin(t);
       setEstadoOp(e);
+      setConductores(cond.conductores || []);
     } finally {
       setLoading(false);
     }
