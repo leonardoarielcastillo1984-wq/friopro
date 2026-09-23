@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { PackageSearch, AlertTriangle, Plus, X, PackagePlus, PackageMinus } from 'lucide-react';
+import { PackageSearch, AlertTriangle, Plus, X, PackagePlus, PackageMinus, Pencil, Trash2 } from 'lucide-react';
 
 type Parte = {
   id: string; code: string; name: string; category: string | null;
@@ -18,6 +18,7 @@ export default function RepuestosPage() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [showNuevo, setShowNuevo] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<any>(FORM_VACIO);
   const [ajuste, setAjuste] = useState<{ parte: Parte | null; cantidad: string }>({ parte: null, cantidad: '' });
 
@@ -33,29 +34,62 @@ export default function RepuestosPage() {
 
   useEffect(() => { load(); }, []);
 
+  const abrirEdicion = (p: Parte) => {
+    setForm({
+      code: p.code, name: p.name, category: p.category || '',
+      currentStock: String(p.currentStock), minStock: String(p.minStock),
+      unitCost: String(p.unitCost), supplier: p.supplier || '', location: p.location || '',
+    });
+    setEditId(p.id);
+    setError(null);
+    setShowNuevo(true);
+  };
+
+  const cerrarModal = () => {
+    setShowNuevo(false);
+    setEditId(null);
+    setForm(FORM_VACIO);
+    setError(null);
+  };
+
+  const eliminar = async (p: Parte) => {
+    if (!window.confirm(`¿Eliminar el repuesto ${p.code} — "${p.name}"? Esta acción no se puede deshacer.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/maintenance/spare-parts/${p.id}`, { method: 'DELETE' });
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo eliminar el repuesto');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const crear = async () => {
     if (!form.name) { setError('El nombre es obligatorio'); return; }
     setBusy(true);
     setError(null);
     try {
-      await apiFetch('/maintenance/spare-parts', {
-        method: 'POST',
-        json: {
-          code: form.code || undefined,
-          name: form.name,
-          category: form.category || undefined,
-          currentStock: form.currentStock ? Number(form.currentStock) : 0,
-          minStock: form.minStock ? Number(form.minStock) : 0,
-          unitCost: form.unitCost ? Number(form.unitCost) : 0,
-          supplier: form.supplier || undefined,
-          location: form.location || undefined,
-        },
-      });
-      setShowNuevo(false);
-      setForm(FORM_VACIO);
+      const payload = {
+        code: form.code || undefined,
+        name: form.name,
+        category: form.category || undefined,
+        currentStock: form.currentStock ? Number(form.currentStock) : 0,
+        minStock: form.minStock ? Number(form.minStock) : 0,
+        unitCost: form.unitCost ? Number(form.unitCost) : 0,
+        supplier: form.supplier || undefined,
+        location: form.location || undefined,
+      };
+      if (editId) {
+        await apiFetch(`/maintenance/spare-parts/${editId}`, { method: 'PUT', json: payload });
+      } else {
+        await apiFetch('/maintenance/spare-parts', { method: 'POST', json: payload });
+      }
+      cerrarModal();
       await load();
     } catch (e: any) {
-      setError(e?.message || 'No se pudo crear el repuesto');
+      setError(e?.message || 'No se pudo guardar el repuesto');
     } finally {
       setBusy(false);
     }
@@ -118,7 +152,7 @@ export default function RepuestosPage() {
               <th className="text-left font-medium px-3 py-2">Costo unit.</th>
               <th className="text-left font-medium px-3 py-2">Proveedor</th>
               <th className="text-left font-medium px-3 py-2">Ubicación</th>
-              <th className="text-left font-medium px-3 py-2">Stock</th>
+              <th className="text-left font-medium px-3 py-2">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -137,7 +171,11 @@ export default function RepuestosPage() {
                 <td className="px-3 py-2 text-neutral-600">{p.supplier || '—'}</td>
                 <td className="px-3 py-2 text-neutral-600">{p.location || '—'}</td>
                 <td className="px-3 py-2">
-                  <button disabled={busy} onClick={() => { setAjuste({ parte: p, cantidad: '' }); setError(null); }} className="text-xs font-medium text-blue-600 hover:underline disabled:opacity-50">Ajustar</button>
+                  <div className="flex items-center gap-1.5">
+                    <button disabled={busy} onClick={() => { setAjuste({ parte: p, cantidad: '' }); setError(null); }} className="text-xs font-medium text-blue-600 hover:underline disabled:opacity-50">Ajustar</button>
+                    <button disabled={busy} title="Editar repuesto" onClick={() => abrirEdicion(p)} className="p-1 text-neutral-400 hover:text-blue-600 disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
+                    <button disabled={busy} title="Eliminar repuesto" onClick={() => eliminar(p)} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -150,8 +188,8 @@ export default function RepuestosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-              <h2 className="text-sm font-semibold text-neutral-900">Nuevo repuesto</h2>
-              <button onClick={() => setShowNuevo(false)}><X className="h-4 w-4 text-neutral-400" /></button>
+              <h2 className="text-sm font-semibold text-neutral-900">{editId ? 'Editar repuesto' : 'Nuevo repuesto'}</h2>
+              <button onClick={cerrarModal}><X className="h-4 w-4 text-neutral-400" /></button>
             </div>
             <div className="p-4 space-y-3">
               {error && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
@@ -171,7 +209,7 @@ export default function RepuestosPage() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Stock inicial</label>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">{editId ? 'Stock actual' : 'Stock inicial'}</label>
                   <input type="number" min={0} value={form.currentStock} onChange={(e) => setForm({ ...form, currentStock: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
                 <div>
@@ -195,8 +233,8 @@ export default function RepuestosPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
-              <button onClick={() => setShowNuevo(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
-              <button onClick={crear} disabled={busy} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy ? 'Guardando…' : 'Crear'}</button>
+              <button onClick={cerrarModal} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
+              <button onClick={crear} disabled={busy} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy ? 'Guardando…' : editId ? 'Guardar cambios' : 'Crear'}</button>
             </div>
           </div>
         </div>

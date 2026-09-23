@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Disc, Plus, X, History } from 'lucide-react';
+import { Disc, Plus, X, History, Trash2 } from 'lucide-react';
 
 type Neumatico = {
   id: string; codigo: string; marca: string | null; medida: string | null; status: string;
@@ -58,6 +58,20 @@ export default function NeumaticosPage() {
       await load();
     } catch (e: any) {
       setError(e?.message || 'No se pudo crear el neumático');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const eliminar = async (n: Neumatico) => {
+    if (!window.confirm(`¿Eliminar el neumático ${n.codigo}? Esta acción no se puede deshacer.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/flota/neumaticos/${n.id}`, { method: 'DELETE' });
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo eliminar el neumático');
     } finally {
       setBusy(false);
     }
@@ -124,7 +138,14 @@ export default function NeumaticosPage() {
                 <td className={`px-3 py-2 ${n.profBanda != null && n.profBanda < 3 ? 'text-red-600 font-medium' : 'text-neutral-600'}`}>{n.profBanda != null ? `${n.profBanda} mm` : '—'}</td>
                 <td className="px-3 py-2 text-neutral-600">{Math.round(n.kmAcumulados).toLocaleString('es-AR')} km</td>
                 <td className="px-3 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${STATUS_COLOR[n.status] || 'bg-neutral-100'}`}>{n.status}</span></td>
-                <td className="px-3 py-2"><button title="Historial y rotaciones" onClick={() => verHistorial(n)} className="text-neutral-400 hover:text-blue-600"><History className="h-4 w-4" /></button></td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <button title="Historial y rotaciones" onClick={() => verHistorial(n)} className="p-1 text-neutral-400 hover:text-blue-600"><History className="h-4 w-4" /></button>
+                    {n.status === 'DISPONIBLE' && (
+                      <button disabled={busy} title="Eliminar neumático" onClick={() => eliminar(n)} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

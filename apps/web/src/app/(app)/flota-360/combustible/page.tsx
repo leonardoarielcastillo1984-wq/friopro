@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { Fuel, Plus } from 'lucide-react';
+import { Fuel, Plus, Trash2 } from 'lucide-react';
 import CargaCombustible from '../_components/CargaCombustible';
 
 type Registro = {
@@ -18,6 +18,8 @@ export default function CombustiblePage() {
   const [registros, setRegistros] = useState<Registro[]>([]);
   const [vehiculos, setVehiculos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showCarga, setShowCarga] = useState(false);
 
   const load = async () => {
@@ -38,6 +40,21 @@ export default function CombustiblePage() {
 
   useEffect(() => { load(); }, []);
 
+  const eliminar = async (r: Registro) => {
+    if (!r.vehiculo?.id) return;
+    if (!window.confirm(`¿Eliminar la carga del ${new Date(r.fecha).toLocaleDateString('es-AR')} (${r.litros ?? '?'} L)?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/flota/vehiculos/${r.vehiculo.id}/combustible/${r.id}`, { method: 'DELETE' });
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo eliminar la carga');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-sm text-neutral-500">Cargando…</div>;
 
   const hayDatos = data && data.litrosMes > 0;
@@ -53,6 +70,8 @@ export default function CombustiblePage() {
           <Plus className="h-4 w-4" /> Registrar carga
         </button>
       </div>
+
+      {error && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
 
       {!hayDatos ? (
         <div className="rounded-lg border border-neutral-200 bg-white p-6 text-sm text-neutral-400 text-center">Sin datos suficientes de combustible este mes — registrá la primera carga</div>
@@ -90,10 +109,11 @@ export default function CombustiblePage() {
               <th className="text-left font-medium px-3 py-2">Costo</th>
               <th className="text-left font-medium px-3 py-2">Conductor</th>
               <th className="text-left font-medium px-3 py-2">Estación</th>
+              <th className="text-left font-medium px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
-            {registros.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-neutral-400">Sin cargas registradas</td></tr>}
+            {registros.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-neutral-400">Sin cargas registradas</td></tr>}
             {registros.map((r) => (
               <tr key={r.id} className="hover:bg-neutral-50">
                 <td className="px-3 py-2 text-neutral-600">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
@@ -106,6 +126,11 @@ export default function CombustiblePage() {
                 <td className="px-3 py-2 text-neutral-600">{r.costoTotal != null ? `$${Math.round(r.costoTotal).toLocaleString('es-AR')}` : '—'}</td>
                 <td className="px-3 py-2 text-neutral-600">{r.conductor?.nombre || '—'}</td>
                 <td className="px-3 py-2 text-neutral-600">{r.estacion || '—'}</td>
+                <td className="px-3 py-2">
+                  {r.vehiculo?.id && (
+                    <button disabled={busy} title="Eliminar carga" onClick={() => eliminar(r)} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { VehicleArt } from './FleetVisual';
 import { apiFetch } from '@/lib/api';
-import { Plus, X, Truck, Container } from 'lucide-react';
+import { Plus, X, Truck, Container, Trash2 } from 'lucide-react';
 
 type Vehiculo = {
   id: string; dominio: string; tipo: string; marca?: string; modelo?: string; anio?: number;
@@ -24,6 +24,7 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<any>({ dominio: '', tipo: modo === 'semis' ? 'SEMI' : 'CAMION', marca: '', modelo: '', anio: '', currentOdometer: '', valorAdquisicion: '' });
   const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
@@ -67,6 +68,20 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
     }
   };
 
+  const eliminar = async (v: Vehiculo) => {
+    if (!window.confirm(`¿Dar de baja la unidad ${v.dominio}? Quedará marcada como BAJA (el historial se conserva).`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/flota/vehiculos/${v.id}`, { method: 'DELETE' });
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo dar de baja la unidad');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -82,6 +97,7 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
       </div>
 
       <div className="flex justify-between gap-3 flex-wrap"><input aria-label="Buscar unidades" value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar dominio, marca o modelo…" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm w-72" /><div className="flex gap-1 rounded-lg bg-slate-100 p-1">{(['visual', 'tabla'] as const).map(view => <button key={view} onClick={() => setVista(view)} aria-pressed={vista === view} className={`rounded-md px-4 py-1 text-xs ${vista === view ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500'}`}>{view === 'visual' ? 'Vista visual' : 'Tabla'}</button>)}</div></div>
+      {error && !showModal && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
       {vista === 'visual' ? <div className="fleet-asset-grid">
         {loading && <p>Cargando unidades…</p>}
         {!loading && !filtrados.length && <p className="text-sm text-slate-500">Sin unidades para esta búsqueda.</p>}
@@ -122,7 +138,12 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
                   <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${STATUS_COLOR[v.status] || 'bg-neutral-100'}`}>{v.status}</span>
                 </td>
                 <td className="px-3 py-2 text-right">
-                  <Link href={`/flota-360/vehiculos/${v.id}`} className="text-xs text-blue-600 hover:underline">Ver ficha</Link>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <Link href={`/flota-360/vehiculos/${v.id}`} className="text-xs text-blue-600 hover:underline">Ver ficha</Link>
+                    {v.status !== 'BAJA' && (
+                      <button disabled={busy} title="Dar de baja" onClick={() => eliminar(v)} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
