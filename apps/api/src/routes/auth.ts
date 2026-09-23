@@ -667,10 +667,26 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       tenantRole = memberships[0].role;
     }
 
+    // Nombre para mostrar: perfil de plataforma → empleado HR (mismo email) → email
+    let displayName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    if (!displayName) {
+      try {
+        const tenantUser = await (app.prisma as any).user.findFirst({
+          where: { email: user.email, employee: { deletedAt: null } },
+          include: { employee: { select: { firstName: true, lastName: true } } },
+        });
+        if (tenantUser?.employee) {
+          displayName = `${tenantUser.employee.firstName || ''} ${tenantUser.employee.lastName || ''}`.trim();
+        }
+      } catch {
+        // Si falla el lookup, se usa el email como antes
+      }
+    }
+
     return reply.send({
       user: {
         id: user.id,
-        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        name: displayName || user.email,
         email: user.email,
         globalRole: user.globalRole,
       },
