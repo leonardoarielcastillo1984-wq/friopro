@@ -124,6 +124,15 @@ function OrdenesPageInner() {
     return m;
   }, [vehiculos]);
 
+  // ?editar=<id> → abrir el modal de edición cuando ya cargaron las órdenes
+  const editarParam = params.get('editar');
+  useEffect(() => {
+    if (!editarParam || loading || ordenes.length === 0) return;
+    const o = ordenes.find((x) => x.id === editarParam);
+    if (o) abrirEdicion(o);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editarParam, loading, ordenes.length]);
+
   const filtradas = ordenes.filter((o) =>
     tab === 'ACTIVAS' ? ['PENDING', 'IN_PROGRESS', 'ON_HOLD'].includes(o.status) : ['COMPLETED', 'CANCELLED'].includes(o.status)
   );

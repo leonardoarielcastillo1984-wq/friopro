@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { Fuel, Plus, Trash2 } from 'lucide-react';
+import { Fuel, Plus, Trash2, Pencil, X } from 'lucide-react';
 import CargaCombustible from '../_components/CargaCombustible';
 
 type Registro = {
   id: string; fecha: string; litros: number | null; costoTotal: number | null; odometro: number | null;
   rendimiento: number | null; estacion: string | null; tipoCombustible: string;
+  precioPorLitro?: number | null; notas?: string | null;
   vehiculo?: { id: string; dominio: string; tipo: string } | null;
   conductor?: { id: string; nombre: string } | null;
 };
@@ -21,6 +22,8 @@ export default function CombustiblePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCarga, setShowCarga] = useState(false);
+  const [editando, setEditando] = useState<Registro | null>(null);
+  const [editForm, setEditForm] = useState<any>({ litros: '', precioPorLitro: '', odometro: '', estacion: '', fecha: '', notas: '' });
 
   const load = async () => {
     setLoading(true);
@@ -50,6 +53,45 @@ export default function CombustiblePage() {
       await load();
     } catch (e: any) {
       setError(e?.message || 'No se pudo eliminar la carga');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const abrirEdicion = (r: Registro) => {
+    setEditando(r);
+    setEditForm({
+      litros: r.litros != null ? String(r.litros) : '',
+      precioPorLitro: r.precioPorLitro != null ? String(r.precioPorLitro) : (r.costoTotal != null && r.litros ? String(Math.round((r.costoTotal / r.litros) * 100) / 100) : ''),
+      odometro: r.odometro != null ? String(Math.round(r.odometro)) : '',
+      estacion: r.estacion || '',
+      fecha: r.fecha ? new Date(r.fecha).toISOString().slice(0, 10) : '',
+      notas: r.notas || '',
+    });
+    setError(null);
+  };
+
+  const guardarEdicion = async () => {
+    if (!editando?.vehiculo?.id) return;
+    if (!editForm.litros) { setError('Los litros son obligatorios'); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/flota/vehiculos/${editando.vehiculo.id}/combustible/${editando.id}`, {
+        method: 'PATCH',
+        json: {
+          litros: Number(editForm.litros),
+          precioPorLitro: editForm.precioPorLitro ? Number(editForm.precioPorLitro) : null,
+          odometro: editForm.odometro ? Number(editForm.odometro) : null,
+          estacion: editForm.estacion || null,
+          fecha: editForm.fecha ? new Date(`${editForm.fecha}T12:00:00`).toISOString() : undefined,
+          notas: editForm.notas || null,
+        },
+      });
+      setEditando(null);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo guardar la carga');
     } finally {
       setBusy(false);
     }
@@ -128,7 +170,10 @@ export default function CombustiblePage() {
                 <td className="px-3 py-2 text-neutral-600">{r.estacion || '—'}</td>
                 <td className="px-3 py-2">
                   {r.vehiculo?.id && (
-                    <button disabled={busy} title="Eliminar carga" onClick={() => eliminar(r)} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                    <div className="flex items-center gap-1.5">
+                      <button disabled={busy} title="Editar carga" onClick={() => abrirEdicion(r)} className="p-1 text-neutral-400 hover:text-blue-600 disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button disabled={busy} title="Eliminar carga" onClick={() => eliminar(r)} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -159,6 +204,53 @@ export default function CombustiblePage() {
           onClose={() => setShowCarga(false)}
           onSaved={load}
         />
+      )}
+
+      {/* Modal editar carga */}
+      {editando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <h2 className="text-sm font-semibold text-neutral-900">Editar carga — {editando.vehiculo?.dominio}</h2>
+              <button onClick={() => setEditando(null)}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              {error && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Litros *</label>
+                  <input type="number" min={0} step="0.01" value={editForm.litros} onChange={(e) => setEditForm({ ...editForm, litros: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Precio/litro ($)</label>
+                  <input type="number" min={0} step="0.01" value={editForm.precioPorLitro} onChange={(e) => setEditForm({ ...editForm, precioPorLitro: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Odómetro (km)</label>
+                  <input type="number" min={0} value={editForm.odometro} onChange={(e) => setEditForm({ ...editForm, odometro: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Fecha</label>
+                  <input type="date" value={editForm.fecha} onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Estación</label>
+                <input value={editForm.estacion} onChange={(e) => setEditForm({ ...editForm, estacion: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Notas</label>
+                <input value={editForm.notas} onChange={(e) => setEditForm({ ...editForm, notas: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
+              <button onClick={() => setEditando(null)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
+              <button onClick={guardarEdicion} disabled={busy} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar cambios'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

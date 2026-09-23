@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { VehicleArt } from './_components/FleetVisual';
 import { apiFetch } from '@/lib/api';
-import { AlertTriangle, Plus, QrCode, ChevronRight, Truck, ScanLine, CalendarClock, Wrench, CircleCheck, ClipboardList } from 'lucide-react';
+import { AlertTriangle, Plus, QrCode, ChevronRight, Truck, ScanLine, CalendarClock, Wrench, CircleCheck, ClipboardList, Pencil, Trash2 } from 'lucide-react';
 
 type Orden = {
   id: string; codigo: string; titulo: string; tipo: string; prioridad: string; estado: string;
@@ -57,6 +57,8 @@ export default function CentroDeTrabajoPage() {
   const [data, setData] = useState<CentroTrabajo | null>(null);
   const [tab, setTab] = useState<'hoy' | 'proceso' | 'pendientes' | 'completadas'>('hoy');
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -69,6 +71,20 @@ export default function CentroDeTrabajoPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const eliminar = async (o: Orden) => {
+    if (!window.confirm(`¿Eliminar la orden ${o.codigo} — "${o.titulo}"? Esta acción no se puede deshacer.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/maintenance/work-orders/${o.id}`, { method: 'DELETE' });
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo eliminar la orden');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (loading || !data) {
     return <div className="p-8 text-sm text-neutral-500">Cargando centro de trabajo…</div>;
@@ -127,6 +143,8 @@ export default function CentroDeTrabajoPage() {
           );
         })}
       </div>
+
+      {error && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
 
       {data.resumen.vencidas > 0 && (
         <div className="flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2">
@@ -203,7 +221,11 @@ export default function CentroDeTrabajoPage() {
                         <span className="flex items-center gap-1"><OrigenIcon className="h-3 w-3 shrink-0" /> <span className="text-[11px]">{o.origen}</span></span>
                       </td>
                       <td className="px-2.5 py-2">
-                        <Link href={`/flota-360/ordenes?ver=${o.id}`} className="text-[11px] font-medium text-blue-600 hover:underline">Ver OT</Link>
+                        <div className="flex items-center gap-1.5">
+                          <Link href={`/flota-360/ordenes?ver=${o.id}`} className="text-[11px] font-medium text-blue-600 hover:underline">Ver</Link>
+                          <Link href={`/flota-360/ordenes?editar=${o.id}`} title="Editar orden" className="p-1 text-neutral-400 hover:text-blue-600"><Pencil className="h-3.5 w-3.5" /></Link>
+                          <button disabled={busy} title="Eliminar orden" onClick={() => eliminar(o)} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
                       </td>
                     </tr>
                   );

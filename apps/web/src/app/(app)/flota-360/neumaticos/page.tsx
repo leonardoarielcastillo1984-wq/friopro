@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Disc, Plus, X, History, Trash2 } from 'lucide-react';
+import { Disc, Plus, X, History, Trash2, Pencil } from 'lucide-react';
 
 type Neumatico = {
   id: string; codigo: string; marca: string | null; medida: string | null; status: string;
@@ -21,6 +21,7 @@ export default function NeumaticosPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNuevo, setShowNuevo] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<any>(FORM_VACIO);
   const [historial, setHistorial] = useState<{ abierto: boolean; neumatico: Neumatico | null; rotaciones: any[]; posiciones: any[]; cargando: boolean }>({ abierto: false, neumatico: null, rotaciones: [], posiciones: [], cargando: false });
 
@@ -36,28 +37,47 @@ export default function NeumaticosPage() {
 
   useEffect(() => { load(); }, []);
 
+  const abrirEdicion = (n: Neumatico & { dot?: string | null; notas?: string | null }) => {
+    setForm({
+      codigo: n.codigo, marca: n.marca || '', medida: n.medida || '',
+      dot: n.dot || '', condicion: n.condicion, profBanda: n.profBanda != null ? String(n.profBanda) : '',
+      notas: n.notas || '',
+    });
+    setEditId(n.id);
+    setError(null);
+    setShowNuevo(true);
+  };
+
+  const cerrarModal = () => {
+    setShowNuevo(false);
+    setEditId(null);
+    setForm(FORM_VACIO);
+    setError(null);
+  };
+
   const crear = async () => {
     if (!form.codigo) { setError('El código es obligatorio'); return; }
     setBusy(true);
     setError(null);
     try {
-      await apiFetch('/flota/neumaticos', {
-        method: 'POST',
-        json: {
-          codigo: form.codigo,
-          marca: form.marca || undefined,
-          medida: form.medida || undefined,
-          dot: form.dot || undefined,
-          condicion: form.condicion,
-          profBanda: form.profBanda ? Number(form.profBanda) : undefined,
-          notas: form.notas || undefined,
-        },
-      });
-      setShowNuevo(false);
-      setForm(FORM_VACIO);
+      const payload = {
+        codigo: form.codigo,
+        marca: form.marca || undefined,
+        medida: form.medida || undefined,
+        dot: form.dot || undefined,
+        condicion: form.condicion,
+        profBanda: form.profBanda ? Number(form.profBanda) : undefined,
+        notas: form.notas || undefined,
+      };
+      if (editId) {
+        await apiFetch(`/flota/neumaticos/${editId}`, { method: 'PATCH', json: payload });
+      } else {
+        await apiFetch('/flota/neumaticos', { method: 'POST', json: payload });
+      }
+      cerrarModal();
       await load();
     } catch (e: any) {
-      setError(e?.message || 'No se pudo crear el neumático');
+      setError(e?.message || 'No se pudo guardar el neumático');
     } finally {
       setBusy(false);
     }
@@ -141,6 +161,7 @@ export default function NeumaticosPage() {
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1.5">
                     <button title="Historial y rotaciones" onClick={() => verHistorial(n)} className="p-1 text-neutral-400 hover:text-blue-600"><History className="h-4 w-4" /></button>
+                    <button title="Editar neumático" onClick={() => abrirEdicion(n)} className="p-1 text-neutral-400 hover:text-blue-600"><Pencil className="h-3.5 w-3.5" /></button>
                     {n.status === 'DISPONIBLE' && (
                       <button disabled={busy} title="Eliminar neumático" onClick={() => eliminar(n)} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
                     )}
@@ -214,8 +235,8 @@ export default function NeumaticosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-              <h2 className="text-sm font-semibold text-neutral-900">Nuevo neumático</h2>
-              <button onClick={() => setShowNuevo(false)}><X className="h-4 w-4 text-neutral-400" /></button>
+              <h2 className="text-sm font-semibold text-neutral-900">{editId ? 'Editar neumático' : 'Nuevo neumático'}</h2>
+              <button onClick={cerrarModal}><X className="h-4 w-4 text-neutral-400" /></button>
             </div>
             <div className="p-4 space-y-3">
               {error && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
@@ -257,8 +278,8 @@ export default function NeumaticosPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
-              <button onClick={() => setShowNuevo(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
-              <button onClick={crear} disabled={busy} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy ? 'Guardando…' : 'Crear'}</button>
+              <button onClick={cerrarModal} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
+              <button onClick={crear} disabled={busy} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy ? 'Guardando…' : editId ? 'Guardar cambios' : 'Crear'}</button>
             </div>
           </div>
         </div>

@@ -1912,6 +1912,49 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  // PATCH /vehiculos/:vehiculoId/combustible/:registroId - Editar carga
+  app.patch('/vehiculos/:vehiculoId/combustible/:registroId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { registroId } = req.params as any;
+    const schema = z.object({
+      litros: z.number().positive().optional(),
+      precioPorLitro: z.number().optional().nullable(),
+      odometro: z.number().optional().nullable(),
+      estacion: z.string().optional().nullable(),
+      tipoCombustible: z.string().optional(),
+      litrosUrea: z.number().nonnegative().optional().nullable(),
+      precioPorLitroUrea: z.number().nonnegative().optional().nullable(),
+      conductorId: z.string().uuid().optional().nullable(),
+      fecha: z.string().optional(),
+      notas: z.string().optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const actual = await (app.prisma as any).registroCombustible.findFirst({ where: { id: registroId, tenantId } });
+    if (!actual) return reply.code(404).send({ error: 'Registro no encontrado' });
+
+    const litros = body.data.litros ?? actual.litros;
+    const precioPorLitro = body.data.precioPorLitro !== undefined ? body.data.precioPorLitro : actual.precioPorLitro;
+    const litrosUrea = body.data.litrosUrea !== undefined ? body.data.litrosUrea : actual.litrosUrea;
+    const precioPorLitroUrea = body.data.precioPorLitroUrea !== undefined ? body.data.precioPorLitroUrea : actual.precioPorLitroUrea;
+    const costoCombustible = precioPorLitro && litros ? litros * precioPorLitro : 0;
+    const costoUrea = litrosUrea && precioPorLitroUrea ? litrosUrea * precioPorLitroUrea : null;
+    const costoTotal = (costoCombustible || costoUrea) ? (costoCombustible + (costoUrea || 0)) : null;
+
+    const registro = await (app.prisma as any).registroCombustible.update({
+      where: { id: registroId },
+      data: {
+        ...body.data,
+        fecha: body.data.fecha ? new Date(body.data.fecha) : undefined,
+        costoTotal,
+        costoUrea,
+      },
+    });
+    return reply.send({ registro });
+  });
+
   app.post('/vehiculos/:vehiculoId/combustible', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });

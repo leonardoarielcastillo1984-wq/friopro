@@ -101,8 +101,8 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
       {vista === 'visual' ? <div className="fleet-asset-grid">
         {loading && <p>Cargando unidades…</p>}
         {!loading && !filtrados.length && <p className="text-sm text-slate-500">Sin unidades para esta búsqueda.</p>}
-        {filtrados.map(v => <Link key={v.id} href={`/flota-360/vehiculos/${v.id}`} className="fleet-panel hover:border-blue-300 transition-colors">
-          <div className="flex items-center justify-between p-4"><strong className="text-lg">{v.dominio}</strong><span className={`rounded-full px-2 py-1 text-[10px] ${STATUS_COLOR[v.status] || 'bg-slate-100'}`}>{v.status.replaceAll('_', ' ')}</span></div>
+        {filtrados.map(v => <Link key={v.id} href={`/flota-360/vehiculos/${v.id}`} className="fleet-panel hover:border-blue-300 transition-colors relative">
+          <div className="flex items-center justify-between p-4"><strong className="text-lg">{v.dominio}</strong><span className="flex items-center gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] ${STATUS_COLOR[v.status] || 'bg-slate-100'}`}>{v.status.replaceAll('_', ' ')}</span>{v.status !== 'BAJA' && (<button disabled={busy} title="Dar de baja" onClick={(e) => { e.preventDefault(); e.stopPropagation(); eliminar(v); }} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>)}</span></div>
           <div className="fleet-asset-art"><VehicleArt semi={v.tipo === 'SEMI'} /></div>
           <div className="p-4"><p className="font-semibold text-sm">{[v.marca, v.modelo].filter(Boolean).join(' ') || v.tipo}</p><p className="text-xs text-slate-500 mt-1">{v.tipo} · {v.anio || 'Año sin informar'}</p><div className="flex justify-between border-t border-slate-100 mt-4 pt-3 text-xs"><span>{v.currentOdometer != null ? `${v.currentOdometer.toLocaleString('es-AR')} km` : 'Sin lectura'}</span><span className="text-blue-600 font-semibold">Ver gemelo digital →</span></div></div>
         </Link>)}
