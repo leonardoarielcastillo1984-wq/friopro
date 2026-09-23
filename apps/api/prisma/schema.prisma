@@ -415,6 +415,7 @@ model Tenant {
   maintenanceInterventions     MaintenanceIntervention[]
   maintenanceInterventionSpareParts MaintenanceInterventionSparePart[]
   workOrderSpareParts      WorkOrderSparePart[]
+  mechanicQRs              MechanicQR[]
   workOrders               WorkOrder[]
   maintenanceCosts         MaintenanceCost[]
   actionItems              ActionItem[]
@@ -3388,6 +3389,7 @@ model MaintenanceTechnician {
   scope              String  @default("INFRA") // INFRA (Infraestructura) | FLEET (Flota 360, "mecánicos")
 
   workOrders WorkOrder[]
+  mechanicQRs MechanicQR[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -3395,6 +3397,28 @@ model MaintenanceTechnician {
   @@index([tenantId])
   @@index([code])
   @@map("maintenance_technicians")
+}
+
+// QR personal del mecánico: al escanearlo ve sus tareas asignadas (OTs) y puede iniciarlas/completarlas
+model MechanicQR {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  token    String  @unique
+  isActive Boolean @default(true)
+
+  technicianId String                 @db.Uuid
+  technician   MaintenanceTechnician  @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+
+  useCount    Int       @default(0)
+  lastUsedAt  DateTime?
+  generatedAt DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([token])
+  @@index([technicianId])
+  @@map("mechanic_qrs")
 }
 
 model MaintenancePlan {

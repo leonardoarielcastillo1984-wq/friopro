@@ -108,6 +108,7 @@ import { registerSurveyRoutes } from './routes/surveys.js';
 import { climaCulturaRoutes } from './routes/clima-cultura.js';
 import { inspeccionesRoutes } from './routes/inspecciones.js';
 import { maintenanceInterventionsRoutes } from './routes/maintenance-interventions.js';
+import { mecanicoQRRoutes } from './routes/mecanico-qr.js';
 import { climaCanalRoutes } from './routes/clima-canal.js';
 import { climaRoutes } from './routes/clima.js';
 import { licenseRoutes } from './routes/license.js';
@@ -483,6 +484,7 @@ export async function buildApp() {
   await app.register(climaCanalRoutes, { prefix: '/clima' });
   await app.register(inspeccionesRoutes, { prefix: '/inspecciones' });
   await app.register(maintenanceInterventionsRoutes, { prefix: '/maintenance-interventions' });
+  await app.register(mecanicoQRRoutes, { prefix: '/mecanico-qr' });
   await app.register(flotaRoutes, { prefix: '/flota' });
   await app.register(fleetOpsRoutes, { prefix: '/fleet-ops' });
   await app.register(driverHubRoutes, { prefix: '/driver-hub' });

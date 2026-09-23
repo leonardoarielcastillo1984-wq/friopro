@@ -22,6 +22,7 @@ const ALWAYS_ALLOWED_PATHS = [
   '/clima', // Temporal: permitir acceso a clima para pruebas
   '/inspecciones/public', // Página pública QR inspecciones (sin auth)
   '/maintenance-interventions/public', // Página pública QR intervenciones (sin auth)
+  '/mecanico-qr/public', // Página pública QR del mecánico (sin auth)
   '/onlyoffice-callback', // OnlyOffice llama este endpoint sin token desde el servidor
 ];
 
