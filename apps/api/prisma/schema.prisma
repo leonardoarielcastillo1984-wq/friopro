@@ -458,6 +458,7 @@ model Tenant {
   neumaticoPosiciones            NeumaticoPosicion[]
   neumaticoRotaciones            NeumaticoRotacion[]
   neumaticoPresiones             NeumaticoPresion[]
+  neumaticoControlesPresion      NeumaticoControlPresion[]
   neumaticoDanios                NeumaticoDanio[]
   neumaticoRecaps                NeumaticoRecap[]
   vencimientosDocumento          VencimientoDocumento[]
@@ -8064,11 +8065,44 @@ model NeumaticoPresion {
   fecha         DateTime @default(now()) @db.Timestamptz
   notas         String?
 
+  // Acción realizada en el control: VERIFICADA (estaba OK), INFLADA (se infló), AJUSTADA (se corrigió a otro valor)
+  accion String @default("VERIFICADA")
+  // Ronda de control a la que pertenece esta medición (si fue parte de un control de unidad)
+  controlId String?                  @db.Uuid
+  control   NeumaticoControlPresion? @relation(fields: [controlId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([tenantId])
   @@index([neumaticoId])
+  @@index([controlId])
   @@map("flota_neumatico_presiones")
+}
+
+// Ronda de control de presión de una unidad (evento auditable).
+// Agrupa las mediciones de todas las cubiertas montadas en una fecha.
+model NeumaticoControlPresion {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String @db.Uuid // scalar (sin relación, igual que NeumaticoPresion)
+
+  fecha         DateTime @default(now()) @db.Timestamptz
+  observador    String?
+  kmAlControlar Float?
+  notas         String?
+
+  cubiertasRevisadas Int @default(0)
+  cubiertasInfladas  Int @default(0)
+
+  presiones NeumaticoPresion[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@map("flota_neumatico_control_presion")
 }
 
 model NeumaticoDanio {

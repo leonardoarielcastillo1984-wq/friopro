@@ -1357,6 +1357,81 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ presiones });
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // CONTROL DE PRESIÓN (ronda auditable de toda la unidad)
+  // ═══════════════════════════════════════════════════════════════
+
+  // POST /vehiculos/:id/control-presion — registra una ronda de control:
+  // crea el evento + una medición por cubierta (con su acción).
+  app.post('/vehiculos/:id/control-presion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      observador: z.string().max(200).optional(),
+      kmAlControlar: z.number().nonnegative().optional(),
+      notas: z.string().max(500).optional(),
+      items: z.array(z.object({
+        neumaticoId: z.string().uuid(),
+        eje: z.number().int().min(0),
+        lado: z.enum(['IZQ', 'DER']),
+        posicion: z.enum(['SIMPLE', 'EXT', 'INT', 'AUXILIO']).default('SIMPLE'),
+        presionMedida: z.number().positive(),
+        accion: z.enum(['VERIFICADA', 'INFLADA', 'AJUSTADA']).default('VERIFICADA'),
+        temperatura: z.number().optional(),
+      })).min(1),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+
+    const { items, observador, kmAlControlar, notas } = body.data;
+    const infladas = items.filter(i => i.accion === 'INFLADA' || i.accion === 'AJUSTADA').length;
+
+    const control = await (app.prisma as any).neumaticoControlPresion.create({
+      data: {
+        tenantId, vehiculoId: id, observador, kmAlControlar, notas,
+        cubiertasRevisadas: items.length,
+        cubiertasInfladas: infladas,
+        presiones: {
+          create: items.map(i => ({
+            tenantId,
+            neumaticoId: i.neumaticoId,
+            vehiculoId: id,
+            eje: i.eje, lado: i.lado, posicion: i.posicion,
+            presionMedida: i.presionMedida,
+            temperatura: i.temperatura,
+            accion: i.accion,
+            observador,
+          })),
+        },
+      },
+      include: { presiones: true },
+    });
+    return reply.code(201).send({ control });
+  });
+
+  // GET /vehiculos/:id/controles-presion — historial de rondas con su detalle
+  app.get('/vehiculos/:id/controles-presion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const controles = await (app.prisma as any).neumaticoControlPresion.findMany({
+      where: { vehiculoId: id, tenantId },
+      include: {
+        presiones: {
+          include: { neumatico: { select: { id: true, codigo: true, presionRecomendada: true } } },
+          orderBy: [{ eje: 'asc' }, { lado: 'asc' }],
+        },
+      },
+      orderBy: { fecha: 'desc' },
+      take: 30,
+    });
+    return reply.send({ controles });
+  });
+
   // POST daño en neumático
   app.post('/neumaticos/:neumaticoId/danio', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);

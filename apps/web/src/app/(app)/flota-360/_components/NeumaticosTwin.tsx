@@ -127,16 +127,21 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
   const [montar, setMontar] = useState<{ abierto: boolean; eje: number; lado: 'IZQ' | 'DER'; posicion: string }>({ abierto: false, eje: 1, lado: 'IZQ', posicion: 'SIMPLE' });
   const [accion, setAccion] = useState<{ tipo: 'medir' | 'presion' | null; banda: string; presion: string }>({ tipo: null, banda: '', presion: '' });
   const [toast, setToast] = useState<string | null>(null);
+  // Control de presión (ronda de toda la unidad)
+  const [control, setControl] = useState<{ abierto: boolean; observador: string; notas: string; mediciones: Record<string, string> }>({ abierto: false, observador: '', notas: '', mediciones: {} });
+  const [ultimoControl, setUltimoControl] = useState<{ fecha: string; cubiertasRevisadas: number; cubiertasInfladas: number } | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [d, n] = await Promise.all([
+      const [d, n, c] = await Promise.all([
         apiFetch<{ posiciones: Posicion[] }>(`/flota/vehiculos/${vehiculoId}/diagrama`),
         apiFetch<{ neumaticos: any[] }>('/flota/neumaticos'),
+        apiFetch<{ controles: any[] }>(`/flota/vehiculos/${vehiculoId}/controles-presion`).catch(() => ({ controles: [] })),
       ]);
       setPosiciones(d.posiciones || []);
       setLibres((n.neumaticos || []).filter((x: any) => x.status === 'DISPONIBLE'));
+      setUltimoControl(c.controles?.[0] ?? null);
     } finally { setLoading(false); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [vehiculoId]);
@@ -262,6 +267,34 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
     } catch (e: any) { setError(e?.message || 'No se pudo guardar'); } finally { setBusy(false); }
   };
 
+  // ── Control de presión (ronda de toda la unidad) ──
+  const montadas = posiciones.filter(p => p.neumatico);
+  const accionAuto = (psi: number, rec: number | null | undefined) => {
+    if (rec == null) return 'VERIFICADA';
+    if (psi < rec * 0.9) return 'INFLADA';   // estaba baja → se infló
+    if (psi > rec * 1.15) return 'AJUSTADA'; // estaba alta → se corrigió
+    return 'VERIFICADA';
+  };
+  const guardarControl = async () => {
+    const items = montadas
+      .map(p => {
+        const psi = Number(control.mediciones[p.id]);
+        if (!psi || psi <= 0) return null;
+        return { neumaticoId: p.neumatico!.id, eje: p.eje, lado: p.lado, posicion: p.posicion, presionMedida: psi, accion: accionAuto(psi, p.neumatico!.presionRecomendada) };
+      })
+      .filter(Boolean);
+    if (items.length === 0) { setError('Ingresá la presión medida de al menos una cubierta'); return; }
+    setBusy(true); setError(null);
+    try {
+      await apiFetch(`/flota/vehiculos/${vehiculoId}/control-presion`, { method: 'POST', json: { observador: control.observador || undefined, kmAlControlar: odometro ?? undefined, notas: control.notas || undefined, items } });
+      const infl = items.filter(i => i!.accion !== 'VERIFICADA').length;
+      setControl({ abierto: false, observador: '', notas: '', mediciones: {} });
+      flash(`Control registrado: ${items.length} revisadas${infl ? `, ${infl} infladas/ajustadas` : ''}`);
+      await load();
+    } catch (e: any) { setError(e?.message || 'No se pudo registrar el control'); } finally { setBusy(false); }
+  };
+  const diasDesdeControl = ultimoControl ? Math.floor((Date.now() - new Date(ultimoControl.fecha).getTime()) / 86400000) : null;
+
   // ── Slot (rueda o hueco drop-target) ──
   const slot = (eje: number, lado: 'IZQ' | 'DER', posicion: 'SIMPLE' | 'EXT' | 'INT' | 'AUXILIO') => {
     const p = posDe(eje, lado, posicion);
@@ -298,9 +331,24 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
             <input type="range" min={0} max={100000} step={5000} value={proyKm} onChange={e => setProyKm(Number(e.target.value))} className="w-24 accent-violet-600" />
             <span className="font-mono w-14 text-violet-700 font-semibold">{proyKm > 0 ? `+${(proyKm / 1000).toLocaleString('es-AR')}k` : 'hoy'}</span>
           </div>
+          <button onClick={() => setControl({ abierto: true, observador: '', notas: '', mediciones: {} })} disabled={montadas.length === 0} className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline disabled:opacity-40" title={montadas.length === 0 ? 'No hay cubiertas montadas' : 'Registrar control de presión de toda la unidad'}><Gauge className="h-3 w-3" /> Control PSI</button>
           <button onClick={() => setMontar({ abierto: true, eje: 1, lado: 'IZQ', posicion: 'SIMPLE' })} className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline"><ArrowDownToLine className="h-3 w-3" /> Montar</button>
         </div>
       </div>
+
+      {/* Badge último control de presión */}
+      {!loading && (
+        <div className="px-3 pb-1">
+          {ultimoControl ? (
+            <p className={`text-[10px] ${diasDesdeControl != null && diasDesdeControl > 15 ? 'text-amber-600 font-medium' : 'text-neutral-400'}`}>
+              Último control de presión: <b>{new Date(ultimoControl.fecha).toLocaleDateString('es-AR')}</b> (hace {diasDesdeControl}d) · {ultimoControl.cubiertasRevisadas} revisadas{ultimoControl.cubiertasInfladas ? `, ${ultimoControl.cubiertasInfladas} infladas` : ''}
+              {diasDesdeControl != null && diasDesdeControl > 15 && ' — recomendado cada ~15 días'}
+            </p>
+          ) : (
+            <p className="text-[10px] text-neutral-400">Sin controles de presión registrados — usá "Control PSI" para dejar constancia.</p>
+          )}
+        </div>
+      )}
 
       {error && <p className="mx-3 mt-2 rounded-md bg-red-50 border border-red-200 px-3 py-1.5 text-xs text-red-700">{error}</p>}
       {toast && <p className="mx-3 mt-2 rounded-md bg-green-50 border border-green-200 px-3 py-1.5 text-xs text-green-700">{toast}</p>}
@@ -472,6 +520,52 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
               <button onClick={() => setMontar({ ...montar, abierto: false })} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
               <button disabled={busy} onClick={() => { const el = document.getElementById('montar-sel') as HTMLSelectElement; if (el?.value) montarNeumatico(el.value); }} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">{busy ? 'Montando…' : 'Montar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal control de presión (ronda de toda la unidad) */}
+      {control.abierto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <h3 className="text-sm font-semibold flex items-center gap-1.5"><Gauge className="h-4 w-4 text-emerald-600" /> Control de presión</h3>
+              <button onClick={() => setControl({ ...control, abierto: false })}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="p-4 space-y-3 overflow-y-auto">
+              <p className="text-[11px] text-neutral-500">Ingresá el PSI medido en cada cubierta. Si está por debajo de la recomendada se marca <b>inflada</b> automáticamente.</p>
+              <div className="space-y-1.5">
+                {montadas.map(p => {
+                  const rec = p.neumatico!.presionRecomendada;
+                  const psi = Number(control.mediciones[p.id]) || 0;
+                  const acc = psi > 0 ? accionAuto(psi, rec) : null;
+                  return (
+                    <div key={p.id} className="flex items-center gap-2 rounded-md border border-neutral-200 px-2.5 py-1.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-semibold text-neutral-800 truncate">{p.neumatico!.codigo} <span className="font-normal text-neutral-400">· {posLabel(p.eje, p.lado, p.posicion)}</span></p>
+                        <p className="text-[9px] text-neutral-400">{rec != null ? `Rec: ${rec} psi` : 'Sin presión recomendada'}</p>
+                      </div>
+                      <input type="number" min={0} step="0.5" value={control.mediciones[p.id] || ''} onChange={e => setControl({ ...control, mediciones: { ...control.mediciones, [p.id]: e.target.value } })} placeholder="PSI" className="w-20 rounded border border-neutral-300 px-2 py-1 text-xs text-right" />
+                      {acc && <span className={`text-[9px] font-bold w-16 text-right ${acc === 'VERIFICADA' ? 'text-green-600' : 'text-amber-600'}`}>{acc === 'VERIFICADA' ? 'OK' : acc === 'INFLADA' ? 'Inflada' : 'Ajustada'}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-medium text-neutral-600 mb-0.5">Observador</label>
+                  <input value={control.observador} onChange={e => setControl({ ...control, observador: e.target.value })} placeholder="Quién controla" className="w-full rounded border border-neutral-300 px-2 py-1 text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-neutral-600 mb-0.5">Notas</label>
+                  <input value={control.notas} onChange={e => setControl({ ...control, notas: e.target.value })} placeholder="Opcional" className="w-full rounded border border-neutral-300 px-2 py-1 text-xs" />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
+              <button onClick={() => setControl({ ...control, abierto: false })} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
+              <button disabled={busy} onClick={guardarControl} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{busy ? 'Guardando…' : 'Registrar control'}</button>
             </div>
           </div>
         </div>
