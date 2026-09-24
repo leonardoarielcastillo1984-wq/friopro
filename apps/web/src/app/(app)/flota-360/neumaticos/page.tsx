@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Disc, Plus, X, History, Trash2, Pencil } from 'lucide-react';
+import { Disc, Plus, X, History, Trash2, Pencil, Package, Repeat, Truck, AlertTriangle, DollarSign, Wrench } from 'lucide-react';
 import MapaNeumaticos from '../_components/MapaNeumaticos';
 
 type Neumatico = {
   id: string; codigo: string; marca: string | null; medida: string | null; status: string;
-  condicion: string; profBanda: number | null; kmAcumulados: number;
+  condicion: string; profBanda: number | null; profBandaOriginal: number | null; kmAcumulados: number;
+  recapsCount?: number; precioCompra?: number | null;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -15,6 +16,19 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const FORM_VACIO = { codigo: '', cantidad: '1', marca: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '8', proveedor: '', fechaCompra: '', precioCompra: '', presionRecomendada: '', notas: '' };
+
+function Card({ icon, label, value, sub, tone = 'text-neutral-900' }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: string; tone?: string }) {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white px-3.5 py-3 flex items-center gap-3">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-neutral-100 text-neutral-500">{icon}</span>
+      <div className="min-w-0">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400 truncate">{label}</p>
+        <p className={`text-lg font-bold leading-tight ${tone}`}>{value}</p>
+        {sub && <p className="text-[10px] text-neutral-400 truncate">{sub}</p>}
+      </div>
+    </div>
+  );
+}
 
 export default function NeumaticosPage() {
   const [neumaticos, setNeumaticos] = useState<Neumatico[]>([]);
@@ -123,6 +137,24 @@ export default function NeumaticosPage() {
 
   const enAlerta = neumaticos.filter((n) => (n.profBanda != null && n.profBanda < 3) || n.kmAcumulados > 80000);
 
+  // ── KPIs de cubiertas ──
+  const MIN_LEGAL = 1.6;
+  const usablePct = (n: Neumatico) => {
+    if (n.profBanda == null) return null;
+    const o = n.profBandaOriginal && n.profBandaOriginal > MIN_LEGAL ? n.profBandaOriginal : 8;
+    return Math.max(0, Math.min(1, (n.profBanda - MIN_LEGAL) / (o - MIN_LEGAL)));
+  };
+  const stats = {
+    total: neumaticos.length,
+    enStock: neumaticos.filter(n => n.status === 'DISPONIBLE').length,
+    nuevasStock: neumaticos.filter(n => n.status === 'DISPONIBLE' && n.condicion === 'NUEVA').length,
+    recapadas: neumaticos.filter(n => n.condicion === 'RECAPADA' || (n.recapsCount || 0) > 0).length,
+    enUso: neumaticos.filter(n => n.status === 'EN_USO').length,
+    proximasCambio: neumaticos.filter(n => { const p = usablePct(n); return p != null && p <= 0.25 && (n.profBanda ?? 0) > 2.5; }).length,
+    criticas: neumaticos.filter(n => n.profBanda != null && n.profBanda <= 2.5).length,
+    valorStock: neumaticos.filter(n => n.status === 'DISPONIBLE').reduce((s, n) => s + (n.precioCompra || 0), 0),
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -136,6 +168,19 @@ export default function NeumaticosPage() {
       </div>
 
       {error && !showNuevo && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
+
+      {/* ── Tarjetas KPI de cubiertas ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Card icon={<Package className="h-4 w-4" />} label="En stock" value={stats.enStock} sub={`${stats.nuevasStock} nuevas`} />
+        <Card icon={<Disc className="h-4 w-4" />} label="Nuevas (stock)" value={stats.nuevasStock} sub="sin usar, disponibles" tone="text-green-600" />
+        <Card icon={<Repeat className="h-4 w-4" />} label="Recapadas" value={stats.recapadas} sub="con ≥1 recap" tone="text-violet-600" />
+        <Card icon={<Truck className="h-4 w-4" />} label="En uso" value={stats.enUso} sub="montadas" tone="text-blue-600" />
+        <Card icon={<AlertTriangle className="h-4 w-4" />} label="Próx. a cambio" value={stats.proximasCambio} sub="banda ≤25% útil" tone="text-amber-600" />
+        <Card icon={<Wrench className="h-4 w-4" />} label="Críticas" value={stats.criticas} sub="banda ≤2.5mm" tone="text-red-600" />
+      </div>
+      {stats.valorStock > 0 && (
+        <p className="text-[11px] text-neutral-500 flex items-center gap-1"><DollarSign className="h-3 w-3" /> Valor en stock (cubiertas disponibles): <b className="text-neutral-700">${Math.round(stats.valorStock).toLocaleString('es-AR')}</b></p>
+      )}
 
       {enAlerta.length > 0 && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
