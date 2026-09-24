@@ -16,6 +16,24 @@ const ESTADO_STYLE: Record<string, { bg: string; color: string; label: string }>
   AL_DIA: { bg: '#DCFCE7', color: '#16A34A', label: 'Al día' },
 };
 
+// ── Dibujo cenital del vehículo (mismo esquema que NeumaticosTwin del sistema) ──
+const IMG_SRC = { SEMI: '/flota-assets/semi-top.png', DEFAULT: '/flota-assets/tractor-top.png' };
+const X_POS: Record<string, number> = {
+  'IZQ-EXT': 12, 'IZQ-INT': 28, 'IZQ-SIMPLE': 16,
+  'DER-INT': 72, 'DER-EXT': 88, 'DER-SIMPLE': 84,
+};
+function ejeYPct(idx0: number, totalEjes: number, esSemi: boolean, numSteering: number): number {
+  if (esSemi) {
+    const [a, b] = [66, 88];
+    return totalEjes <= 1 ? 78 : a + (idx0 / (totalEjes - 1)) * (b - a);
+  }
+  if (idx0 < numSteering) return numSteering === 1 ? 40 : 36 + idx0 * 11;
+  const driveIdx = idx0 - numSteering;
+  const numDrive = Math.max(1, totalEjes - numSteering);
+  const [a, b] = [62, 88];
+  return numDrive <= 1 ? 72 : a + (driveIdx / (numDrive - 1)) * (b - a);
+}
+
 export default function MantenimientoQRPage() {
   const { token } = useParams() as { token: string };
   const [loading, setLoading] = useState(true);
@@ -380,38 +398,45 @@ export default function MantenimientoQRPage() {
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#111827' }}>¿En qué posición pusiste cada cubierta?</p>
                 <p style={{ margin: '2px 0 0', fontSize: 11, color: '#6B7280' }}>Tocá la posición y elegí la cubierta nueva/recapada (o una montada para rotarla).</p>
               </div>
-              <div style={{ padding: 12, display: 'grid', gap: 8 }}>
-                {ejes.map(eje => {
-                  const dual = esDual(eje);
-                  const slots: { lado: 'IZQ' | 'DER'; posicion: 'SIMPLE' | 'EXT' | 'INT' }[] = dual
-                    ? [{ lado: 'IZQ', posicion: 'EXT' }, { lado: 'IZQ', posicion: 'INT' }, { lado: 'DER', posicion: 'INT' }, { lado: 'DER', posicion: 'EXT' }]
-                    : [{ lado: 'IZQ', posicion: 'SIMPLE' }, { lado: 'DER', posicion: 'SIMPLE' }];
-                  return (
-                    <div key={eje} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', width: 22 }}>E{eje}</span>
-                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${slots.length},1fr)`, gap: 6 }}>
-                        {slots.map(s => {
-                          const c = cubiertaEnSlot(eje, s.lado, s.posicion);
-                          const esCambio = !!cambios[posKey(eje, s.lado, s.posicion)];
-                          return (
-                            <button key={posKey(eje, s.lado, s.posicion)} type="button"
-                              onClick={() => setPickerPos({ eje, lado: s.lado, posicion: s.posicion })}
-                              style={{
-                                padding: '8px 4px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                                border: esCambio ? `2px solid ${primary}` : '1px solid #D1D5DB',
-                                background: esCambio ? `${primary}15` : c ? '#F3F4F6' : '#fff',
-                                color: esCambio ? primary : c ? '#111827' : '#9CA3AF',
-                                minHeight: 44, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
-                              }}>
-                              <span style={{ fontSize: 9, fontWeight: 400, color: '#9CA3AF' }}>{s.lado === 'IZQ' ? 'Izq' : 'Der'}{s.posicion !== 'SIMPLE' ? ` ${s.posicion === 'EXT' ? 'ext' : 'int'}` : ''}</span>
-                              <span>{c ? c.codigo : 'vacía'}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
+              {/* Dibujo cenital del camión — mismo esquema que el sistema (NeumaticosTwin) */}
+              <div style={{ padding: 12 }}>
+                <div style={{ position: 'relative', margin: '0 auto', width: '100%', maxWidth: 300 }}>
+                  <img src={esSemi ? IMG_SRC.SEMI : IMG_SRC.DEFAULT} alt="Vehículo visto desde arriba" style={{ display: 'block', width: '100%', height: 'auto', userSelect: 'none' }} draggable={false} />
+                  {ejes.map(eje => {
+                    const y = ejeYPct(eje - 1, totalEjes, esSemi, numSteering);
+                    const dual = esDual(eje);
+                    const slots: { lado: 'IZQ' | 'DER'; posicion: 'SIMPLE' | 'EXT' | 'INT' }[] = dual
+                      ? [{ lado: 'IZQ', posicion: 'EXT' }, { lado: 'IZQ', posicion: 'INT' }, { lado: 'DER', posicion: 'INT' }, { lado: 'DER', posicion: 'EXT' }]
+                      : [{ lado: 'IZQ', posicion: 'SIMPLE' }, { lado: 'DER', posicion: 'SIMPLE' }];
+                    return slots.map(s => {
+                      const c = cubiertaEnSlot(eje, s.lado, s.posicion);
+                      const esCambio = !!cambios[posKey(eje, s.lado, s.posicion)];
+                      const size = dual ? 34 : 40;
+                      return (
+                        <button key={posKey(eje, s.lado, s.posicion)} type="button"
+                          onClick={() => setPickerPos({ eje, lado: s.lado, posicion: s.posicion })}
+                          style={{
+                            position: 'absolute', left: `${X_POS[`${s.lado}-${s.posicion}`]}%`, top: `${y}%`, transform: 'translate(-50%,-50%)',
+                            width: size, height: size, borderRadius: '50%', cursor: 'pointer', padding: 0,
+                            border: esCambio ? `3px solid ${primary}` : c ? '2px solid #6B7280' : '2px dashed #D1D5DB',
+                            background: esCambio ? `${primary}22` : c ? '#fff' : 'rgba(255,255,255,0.7)',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                          title={`${s.lado === 'IZQ' ? 'Izq' : 'Der'} ${s.posicion === 'SIMPLE' ? '' : s.posicion === 'EXT' ? 'ext' : 'int'} — ${c ? c.codigo : 'vacía'}`}>
+                          <span style={{ fontSize: dual ? 7 : 8, fontWeight: 700, color: esCambio ? primary : c ? '#111827' : '#9CA3AF', lineHeight: 1, textAlign: 'center', padding: 1, overflow: 'hidden' }}>
+                            {c ? c.codigo : '+'}
+                          </span>
+                        </button>
+                      );
+                    });
+                  })}
+                  {/* etiqueta de eje */}
+                  {ejes.map(eje => (
+                    <span key={`lbl-${eje}`} style={{ position: 'absolute', left: '50%', top: `${ejeYPct(eje - 1, totalEjes, esSemi, numSteering)}%`, transform: 'translate(-50%,-50%)', fontSize: 8, fontWeight: 700, color: 'rgba(107,114,128,0.7)', textTransform: 'uppercase', pointerEvents: 'none' }}>E{eje}</span>
+                  ))}
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: 10, color: '#9CA3AF', textAlign: 'center' }}>Vista cenital · Izq/Der según sentido de marcha · rueda doble = EXT/INT</p>
               </div>
               {Object.keys(cambios).length > 0 && (
                 <div style={{ padding: '8px 12px', borderTop: '1px solid #E5E7EB', background: '#FFFBEB' }}>

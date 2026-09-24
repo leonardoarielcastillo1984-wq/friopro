@@ -613,6 +613,16 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
           try {
             const kmMonto = km ?? vehiculo.currentOdometer ?? null;
             const ahora = new Date();
+            // PRE-PASADA — capturar la posición origen de cada cubierta entrante ANTES de desmontar
+            // (necesario para NeumaticoRotacion.ejeOrigen/ladoOrigen y para no perderlo en swaps A↔B)
+            const origenPorNeum: Record<string, { eje: number; lado: string; posicion: string }> = {};
+            for (const c of cambios) {
+              const posAct = await (app.prisma as any).neumaticoPosicion.findFirst({
+                where: { neumaticoId: c.neumaticoId, tenantId: qr.tenantId, activo: true },
+                select: { eje: true, lado: true, posicion: true },
+              });
+              if (posAct) origenPorNeum[c.neumaticoId] = posAct;
+            }
             // PASADA 1 — desmontar: lo que ocupa la posición destino + la cubierta entrante donde esté
             for (const c of cambios) {
               await (app.prisma as any).neumaticoPosicion.updateMany({
@@ -637,9 +647,11 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
                 },
               });
               await (app.prisma as any).neumatico.updateMany({ where: { id: c.neumaticoId }, data: { status: 'EN_USO' } });
+              const origen = origenPorNeum[c.neumaticoId];
               await (app.prisma as any).neumaticoRotacion.create({
                 data: {
                   tenantId: qr.tenantId, neumaticoId: c.neumaticoId, vehiculoId: vehiculo.id,
+                  ejeOrigen: origen?.eje ?? 0, ladoOrigen: origen?.lado ?? 'STOCK', posOrigen: origen?.posicion ?? 'STOCK',
                   ejeDestino: c.eje, ladoDestino: c.lado, posDestino: c.posicion,
                   kmAlRotar: kmMonto, notas: `Intervención ${intervencion.id} — ${tiposLabel.join(' + ')}`,
                 },
