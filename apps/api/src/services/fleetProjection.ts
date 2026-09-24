@@ -412,6 +412,41 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
     });
   }
 
+  // ── Neumáticos como componente evaluable (condición medida agregada del tren de rodaje) ──
+  // Aparece como tarjeta en la grilla de sistemas; el detalle por posición sigue en `neumaticos`.
+  {
+    const montadas = neumaticosProj as any[];
+    const conBanda = montadas.filter(x => x.bandaActual != null);
+    const peor = conBanda.slice().sort((a, b) => a.bandaActual - b.bandaActual)[0];
+    const peorProy = conBanda.filter(x => x.bandaProyectada != null).sort((a, b) => a.bandaProyectada - b.bandaProyectada)[0];
+    const neumComp: any = {
+      key: 'neumaticos', label: 'Neumáticos (tren de rodaje)', sistema: 'NEUMATICOS',
+      tipoMetrica: 'CONDICION_MEDIDA', referencia: null, evidencia: montadas.length ? 'MEDIDA' : 'FALTANTE', porQue: [] as string[],
+    };
+    if (montadas.length === 0) {
+      neumComp.situacion = 'SIN_MEDICION';
+      neumComp.porQue.push('Sin neumáticos montados en el vehículo: no hay condición de rodaje que proyectar. Montá cubiertas desde la ficha para evaluarlas.');
+    } else {
+      neumComp.neumaticosResumen = {
+        montadas: montadas.length,
+        conBanda: conBanda.length,
+        peorBanda: peor?.bandaActual ?? null,
+        peorBandaProyectada: peorProy?.bandaProyectada ?? null,
+        peorCodigo: peor?.codigo ?? null,
+        peorPosicion: peor?.posicion ?? null,
+        reemplazosEnRango: reemplazos.length,
+      };
+      neumComp.situacion = reemplazos.length > 0 ? 'VENCIDO' : (peor && peor.bandaActual <= 3) ? 'PROXIMO' : 'AL_DIA';
+      neumComp.porQue.push(`${montadas.length} neumático(s) montados; ${conBanda.length} con medición de banda registrada.`);
+      if (peor) neumComp.porQue.push(`Peor cubierta: ${peor.codigo} (${peor.posicion}) con ${peor.bandaActual} mm → ${peor.bandaProyectada ?? '—'} mm proyectados al final del escenario.`);
+      if (reemplazos.length > 0) neumComp.porQue.push(`${reemplazos.length} cubierta(s) cruzan el mínimo legal (1.6 mm) dentro del horizonte: reemplazo previsto.`);
+      else neumComp.porQue.push('Ninguna cubierta cruza el mínimo legal dentro del horizonte proyectado.');
+      neumComp.porQue.push('Cada cubierta se proyecta por su propia tasa de desgaste (mediciones reales o estimación desde montaje). Detalle por posición más abajo.');
+      if (conBanda.length < montadas.length) neumComp.porQue.push(`${montadas.length - conBanda.length} cubierta(s) sin medición de banda: no se proyectan (faltaría inventar el desgaste).`);
+    }
+    componentesOut.push(neumComp);
+  }
+
   // ── Documentación que vence en el horizonte (solo si hay fecha estimada) ──
   const docsEnRango = fechaEstimada
     ? (vehiculo.vencimientos || []).filter((v: any) => { const f = new Date(v.fechaVto); return f > now && f <= fechaEstimada; })
