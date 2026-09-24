@@ -606,48 +606,72 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
         });
 
         // ── Cambio / rotación de neumáticos indicado en el diagrama ──────────
-        // Dos pasadas: primero desmonta todo lo involucrado, después monta.
-        // Así un intercambio A↔B o una rotación entre posiciones no pisa montajes.
+        // Una cubierta que ya está montada en ESTE vehículo se REUBICA (update en
+        // el lugar, igual que /rotar) — no se desmonta, así no genera un gasto de
+        // cubierta espurio ni un desmontaje ficticio. Solo se desmonta lo que sale
+        // del vehículo: el ocupante desplazado que no se reubica, o la cubierta
+        // que viene de otro vehículo.
         const cambios = body.data.neumaticoCambios;
         if (cambios && cambios.length > 0) {
           try {
             const kmMonto = km ?? vehiculo.currentOdometer ?? null;
             const ahora = new Date();
-            // PRE-PASADA — capturar la posición origen de cada cubierta entrante ANTES de desmontar
-            // (necesario para NeumaticoRotacion.ejeOrigen/ladoOrigen y para no perderlo en swaps A↔B)
-            const origenPorNeum: Record<string, { eje: number; lado: string; posicion: string }> = {};
-            for (const c of cambios) {
-              const posAct = await (app.prisma as any).neumaticoPosicion.findFirst({
-                where: { neumaticoId: c.neumaticoId, tenantId: qr.tenantId, activo: true },
-                select: { eje: true, lado: true, posicion: true },
-              });
-              if (posAct) origenPorNeum[c.neumaticoId] = posAct;
+            const incomingIds = new Set<string>(cambios.map((c: any) => c.neumaticoId));
+            const destSlots = new Set<string>(cambios.map((c: any) => `${c.eje}-${c.lado}-${c.posicion}`));
+            // Snapshot de posiciones activas del vehículo (para decidir update-in-place)
+            const activas = await (app.prisma as any).neumaticoPosicion.findMany({
+              where: { vehiculoId: vehiculo.id, tenantId: qr.tenantId, activo: true },
+              select: { id: true, neumaticoId: true, eje: true, lado: true, posicion: true },
+            });
+            const porNeum = new Map<string, any>(activas.map((p: any) => [p.neumaticoId, p]));
+            // Posición activa de cada cubierta entrante en CUALQUIER vehículo (origen de la rotación)
+            const posGlobales = await (app.prisma as any).neumaticoPosicion.findMany({
+              where: { tenantId: qr.tenantId, activo: true, neumaticoId: { in: [...incomingIds] } },
+              select: { neumaticoId: true, eje: true, lado: true, posicion: true },
+            });
+            const origenGlobal = new Map<string, any>(posGlobales.map((p: any) => [p.neumaticoId, p]));
+
+            // PASADA 1 — desmontar SOLO los ocupantes que realmente se van del vehículo:
+            // su slot es destino de un cambio y ellos mismos NO se reubican.
+            for (const p of activas) {
+              const slot = `${p.eje}-${p.lado}-${p.posicion}`;
+              if (destSlots.has(slot) && !incomingIds.has(p.neumaticoId)) {
+                await (app.prisma as any).neumaticoPosicion.update({
+                  where: { id: p.id },
+                  data: { activo: false, desmontadoAt: ahora, kmAlDesmontar: kmMonto },
+                });
+              }
             }
-            // PASADA 1 — desmontar: lo que ocupa la posición destino + la cubierta entrante donde esté
-            for (const c of cambios) {
-              await (app.prisma as any).neumaticoPosicion.updateMany({
-                where: { vehiculoId: vehiculo.id, tenantId: qr.tenantId, activo: true, eje: c.eje, lado: c.lado, posicion: c.posicion, neumaticoId: { not: c.neumaticoId } },
-                data: { activo: false, desmontadoAt: ahora, kmAlDesmontar: kmMonto },
-              });
-              await (app.prisma as any).neumaticoPosicion.updateMany({
-                where: { neumaticoId: c.neumaticoId, tenantId: qr.tenantId, activo: true },
-                data: { activo: false, desmontadoAt: ahora, kmAlDesmontar: kmMonto },
-              });
-            }
-            // PASADA 2 — montar la cubierta en la posición destino
+
+            // PASADA 2 — ubicar cada cubierta entrante en su posición destino
             for (const c of cambios) {
               const neum = await (app.prisma as any).neumatico.findFirst({ where: { id: c.neumaticoId, tenantId: qr.tenantId }, select: { id: true, profBanda: true } });
               if (!neum) continue;
-              await (app.prisma as any).neumaticoPosicion.create({
-                data: {
-                  tenantId: qr.tenantId, vehiculoId: vehiculo.id, neumaticoId: c.neumaticoId,
-                  eje: c.eje, lado: c.lado, posicion: c.posicion, activo: true,
-                  kmAlMontar: kmMonto, profBandaInicio: neum.profBanda ?? null,
-                  notas: `Montado en intervención QR por ${body.data.performedByName}`,
-                },
-              });
+              const yaMontada = porNeum.get(c.neumaticoId);
+              const posGlobal = origenGlobal.get(c.neumaticoId);
+              const origen = posGlobal ? { eje: posGlobal.eje, lado: posGlobal.lado, posicion: posGlobal.posicion } : null;
+              if (yaMontada) {
+                // Reubicación dentro del mismo vehículo → update en el lugar (sin desmontar)
+                await (app.prisma as any).neumaticoPosicion.update({
+                  where: { id: yaMontada.id },
+                  data: { eje: c.eje, lado: c.lado, posicion: c.posicion },
+                });
+              } else {
+                // Viene de stock u otro vehículo → desmontarla donde esté + montarla acá
+                await (app.prisma as any).neumaticoPosicion.updateMany({
+                  where: { neumaticoId: c.neumaticoId, tenantId: qr.tenantId, activo: true },
+                  data: { activo: false, desmontadoAt: ahora, kmAlDesmontar: kmMonto },
+                });
+                await (app.prisma as any).neumaticoPosicion.create({
+                  data: {
+                    tenantId: qr.tenantId, vehiculoId: vehiculo.id, neumaticoId: c.neumaticoId,
+                    eje: c.eje, lado: c.lado, posicion: c.posicion, activo: true,
+                    kmAlMontar: kmMonto, profBandaInicio: neum.profBanda ?? null,
+                    notas: `Montado en intervención QR por ${body.data.performedByName}`,
+                  },
+                });
+              }
               await (app.prisma as any).neumatico.updateMany({ where: { id: c.neumaticoId }, data: { status: 'EN_USO' } });
-              const origen = origenPorNeum[c.neumaticoId];
               await (app.prisma as any).neumaticoRotacion.create({
                 data: {
                   tenantId: qr.tenantId, neumaticoId: c.neumaticoId, vehiculoId: vehiculo.id,

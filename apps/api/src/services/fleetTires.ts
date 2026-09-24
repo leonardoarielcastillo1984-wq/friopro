@@ -107,3 +107,44 @@ export async function aplicarDeltaKmFlota(
     // No bloquear el flujo principal por un error de acumulación
   }
 }
+
+/**
+ * Gasto en cubiertas de uno o varios vehículos en un período.
+ * Suma el `precioCompra` de cada cubierta DESMONTADA en el período, pero:
+ *  - una sola vez por cubierta (dedup por vehiculoId+neumaticoId), y
+ *  - solo si la cubierta ya NO está montada en ese vehículo.
+ * Esto último evita contar como gasto una rotación/reubicación dentro del
+ * mismo vehículo (la cubierta sigue montada → no fue una baja real).
+ */
+export async function gastoNeumaticosPeriodo(
+  prisma: any,
+  tenantId: string,
+  vehiculoIds: string[] | null,
+  desde: Date,
+): Promise<number> {
+  try {
+    const filtroVeh = vehiculoIds && vehiculoIds.length > 0 ? { vehiculoId: { in: vehiculoIds } } : {};
+    const [desmontajes, activas] = await Promise.all([
+      prisma.neumaticoPosicion.findMany({
+        where: { tenantId, ...filtroVeh, activo: false, desmontadoAt: { gte: desde } },
+        select: { vehiculoId: true, neumaticoId: true, neumatico: { select: { precioCompra: true } } },
+      }),
+      prisma.neumaticoPosicion.findMany({
+        where: { tenantId, ...filtroVeh, activo: true },
+        select: { vehiculoId: true, neumaticoId: true },
+      }),
+    ]);
+    const activasSet = new Set<string>(activas.map((p: any) => `${p.vehiculoId}:${p.neumaticoId}`));
+    const contadas = new Set<string>();
+    let total = 0;
+    for (const p of desmontajes) {
+      const key = `${p.vehiculoId}:${p.neumaticoId}`;
+      if (activasSet.has(key) || contadas.has(key)) continue;
+      contadas.add(key);
+      total += p.neumatico?.precioCompra || 0;
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}

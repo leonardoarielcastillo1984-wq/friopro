@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import XLSX from 'xlsx';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
+import { gastoNeumaticosPeriodo } from '../services/fleetTires.js';
 
 // ═══════════════════════════════════════════════════════════════
 // FLOTA 360 — Rutas NUEVAS y ADITIVAS.
@@ -399,11 +400,11 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       assetIds.length
         ? prisma().workOrder.aggregate({ where: { tenantId, assetId: { in: assetIds }, status: 'COMPLETED', completedAt: { gte: inicioMes } }, _sum: { totalCost: true } }).catch(() => ({ _sum: { totalCost: 0 } }))
         : { _sum: { totalCost: 0 } },
-      prisma().neumaticoPosicion.findMany({ where: { tenantId, activo: false, desmontadoAt: { gte: inicioMes } }, select: { neumatico: { select: { precioCompra: true } } } }).catch(() => []),
+      gastoNeumaticosPeriodo(prisma(), tenantId, null, inicioMes),
     ]);
     const gastoCombustible = combMes._sum.costoTotal || 0;
     const gastoMantenimiento = otsMes._sum.totalCost || 0;
-    const gastoNeumaticos = neumMes.reduce((a: number, p: any) => a + (p.neumatico?.precioCompra || 0), 0);
+    const gastoNeumaticos = neumMes;
     const gastoMes = gastoCombustible + gastoMantenimiento + gastoNeumaticos;
     const presupuestoMensual = settings?.flotaPresupuestoMensual ?? null;
 
@@ -829,10 +830,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         : { _sum: { totalCost: 0 } },
       prisma().registroCombustible.aggregate({ where: { tenantId, vehiculoId: conjunto.tractorId, fecha: { gte: hace6meses } }, _sum: { costoTotal: true } }),
       // Neumáticos desmontados del conjunto en el período, valuados a precio de compra real
-      prisma().neumaticoPosicion.findMany({
-        where: { tenantId, vehiculoId: { in: [conjunto.tractorId, conjunto.semiId] }, activo: false, desmontadoAt: { gte: hace6meses } },
-        select: { neumatico: { select: { precioCompra: true } } },
-      }),
+      gastoNeumaticosPeriodo(prisma(), tenantId, [conjunto.tractorId, conjunto.semiId], hace6meses),
       // Período anterior (6-12 meses atrás) para variación
       conjunto.tractor.maintenanceAssetId
         ? prisma().workOrder.aggregate({ where: { tenantId, assetId: conjunto.tractor.maintenanceAssetId, completedAt: { gte: hace12meses, lt: hace6meses } }, _sum: { totalCost: true } })
@@ -846,7 +844,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const costoTractor = otTractor._sum.totalCost || 0;
     const costoSemi = otSemi._sum.totalCost || 0;
     const costoCombustible = combustible._sum.costoTotal || 0;
-    const costoNeumaticos = neumDesmontados.reduce((acc: number, p: any) => acc + (p.neumatico?.precioCompra || 0), 0);
+    const costoNeumaticos = neumDesmontados;
     const costoMantenimiento = costoTractor + costoSemi;
     const costoTotal = costoMantenimiento + costoCombustible + costoNeumaticos;
     const hayDatos = costoTotal > 0;
@@ -1664,7 +1662,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const finMesAnterior = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
     const hace6meses = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
-    const [vehiculos, combustible6m, ots6m, neumDesmontados6m] = await Promise.all([
+    const [vehiculos, combustible6m, ots6m, neumDesmontados6m, neumActivos] = await Promise.all([
       prisma().vehiculo.findMany({
         where: { tenantId },
         select: { id: true, dominio: true, tipo: true, status: true, currentOdometer: true, maintenanceAssetId: true },
@@ -1679,11 +1677,25 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       }),
       prisma().neumaticoPosicion.findMany({
         where: { tenantId, activo: false, desmontadoAt: { gte: hace6meses } },
-        select: { vehiculoId: true, desmontadoAt: true, neumatico: { select: { precioCompra: true } } },
+        select: { vehiculoId: true, neumaticoId: true, desmontadoAt: true, neumatico: { select: { precioCompra: true } } },
+      }),
+      prisma().neumaticoPosicion.findMany({
+        where: { tenantId, activo: true },
+        select: { vehiculoId: true, neumaticoId: true },
       }),
     ]);
 
     const vehByAsset = new Map<string, any>(vehiculos.filter((v: any) => v.maintenanceAssetId).map((v: any) => [v.maintenanceAssetId, v]));
+    // Excluir cubiertas que siguen montadas en el mismo vehículo (rotación ≠ baja real)
+    // y deduplicar por (vehículo, cubierta) para no sumar el precioCompra dos veces.
+    const activasSet = new Set<string>(neumActivos.map((p: any) => `${p.vehiculoId}:${p.neumaticoId}`));
+    const desmontajePorNeum = new Map<string, any>();
+    for (const n of neumDesmontados6m) {
+      const key = `${n.vehiculoId}:${n.neumaticoId}`;
+      if (activasSet.has(key)) continue;
+      desmontajePorNeum.set(key, n); // último desmontaje del período gana
+    }
+    const neumDesmontadosFiltrados = [...desmontajePorNeum.values()];
     const mesKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const mesLabel = (d: Date) => d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
 
@@ -1704,7 +1716,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       const m = mesMap.get(mesKey(new Date(o.completedAt)));
       if (m) m.mantenimiento += o.totalCost || 0;
     }
-    for (const n of neumDesmontados6m) {
+    for (const n of neumDesmontadosFiltrados) {
       if (!n.desmontadoAt) continue;
       const m = mesMap.get(mesKey(new Date(n.desmontadoAt)));
       if (m) m.neumaticos += n.neumatico?.precioCompra || 0;
@@ -1730,7 +1742,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         const veh = o.assetId ? vehByAsset.get(o.assetId) : null;
         if (f && f >= desde && f <= hasta && veh) mapa.get(veh.id)!.mantenimiento += o.totalCost || 0;
       }
-      for (const n of neumDesmontados6m) {
+      for (const n of neumDesmontadosFiltrados) {
         const f = n.desmontadoAt ? new Date(n.desmontadoAt) : null;
         if (f && f >= desde && f <= hasta && mapa.has(n.vehiculoId)) mapa.get(n.vehiculoId)!.neumaticos += n.neumatico?.precioCompra || 0;
       }

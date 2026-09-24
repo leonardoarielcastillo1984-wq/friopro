@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { notifyBandaCritica } from '../services/notifyService.js';
 import { proyectarVehiculo } from '../services/fleetProjection.js';
-import { syncOdometroYDesgaste } from '../services/fleetTires.js';
+import { syncOdometroYDesgaste, gastoNeumaticosPeriodo } from '../services/fleetTires.js';
 import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -198,9 +198,9 @@ export default async function flotaRoutes(app: FastifyInstance) {
           vehiculo.maintenanceAssetId
             ? (app.prisma as any).workOrder.aggregate({ where: { tenantId, assetId: vehiculo.maintenanceAssetId, status: 'COMPLETED', completedAt: { gte: hace6m } }, _sum: { totalCost: true } })
             : { _sum: { totalCost: 0 } },
-          (app.prisma as any).neumaticoPosicion.findMany({ where: { tenantId, vehiculoId: id, activo: false, desmontadoAt: { gte: hace6m } }, select: { neumatico: { select: { precioCompra: true } } } }),
+          gastoNeumaticosPeriodo(app.prisma, tenantId, [id], hace6m),
         ]);
-        return (comb._sum.costoTotal || 0) + (ots._sum.totalCost || 0) + neum.reduce((a: number, p: any) => a + (p.neumatico?.precioCompra || 0), 0);
+        return (comb._sum.costoTotal || 0) + (ots._sum.totalCost || 0) + neum;
       })().catch(() => 0),
       (async () => {
         const hace6m = new Date(); hace6m.setMonth(hace6m.getMonth() - 6);
