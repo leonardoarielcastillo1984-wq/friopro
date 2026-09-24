@@ -9,6 +9,7 @@ import NeumaticosPanel from '../../_components/NeumaticosPanel';
 import FacturasPanel from '../../_components/FacturasPanel';
 import MultasPanel from '../../_components/MultasPanel';
 import RecurrenciasPanel from '../../_components/RecurrenciasPanel';
+import ProyeccionPanel from '../../_components/ProyeccionPanel';
 import { apiFetch } from '@/lib/api';
 import {
   ChevronLeft, Gauge, Wrench, ShieldCheck, ScanLine, AlertTriangle,
@@ -65,9 +66,6 @@ export default function VehiculoFichaPage() {
   const [loading, setLoading] = useState(true);
   const [showCarga, setShowCarga] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
-  const [proyKm, setProyKm] = useState(50000);
-  const [proy, setProy] = useState<any>(null);
-  const [proyLoading, setProyLoading] = useState(false);
   const [conductores, setConductores] = useState<any[]>([]);
   const [editForm, setEditForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
@@ -169,18 +167,6 @@ export default function VehiculoFichaPage() {
   if (!completo?.vehiculo) return <div className="p-8 text-sm text-neutral-500">Vehículo no encontrado</div>;
 
   const v = completo.vehiculo;
-  const cargarProyeccion = async (km: number) => {
-    setProyKm(km);
-    setProyLoading(true);
-    try {
-      const r = await apiFetch<any>(`/flota/vehiculos/${id}/proyeccion?km=${km}`);
-      setProy(r.proyeccion || null);
-    } catch {
-      setProy(null);
-    } finally {
-      setProyLoading(false);
-    }
-  };
 
   const mant = completo.mantenimiento || {};
   const kpis = mant.kpis || {};
@@ -447,124 +433,8 @@ export default function VehiculoFichaPage() {
         </div>
       )}
 
-      {/* Proyección del gemelo digital */}
-      <div className="rounded-lg border border-violet-200 bg-white p-4">
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-violet-600" />
-            <h3 className="text-sm font-semibold text-neutral-800">Proyección — ¿qué pasa si recorro…?</h3>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {[10000, 50000, 100000].map((k) => (
-              <button key={k} onClick={() => cargarProyeccion(k)} className={`rounded-md px-2.5 py-1 text-xs font-medium ${proyKm === k && proy ? 'bg-violet-600 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'}`}>
-                +{(k / 1000).toLocaleString('es-AR')}k km
-              </button>
-            ))}
-            <input type="number" min={1000} step={5000} placeholder="km" className="w-24 rounded-md border border-neutral-300 px-2 py-1 text-xs" onKeyDown={(e) => { if (e.key === 'Enter') { const v = Number((e.target as HTMLInputElement).value); if (v >= 1000) cargarProyeccion(v); } }} />
-          </div>
-        </div>
-
-        {!proy && !proyLoading && <p className="text-xs text-neutral-400">Elegí un kilometraje para proyectar servicios, desgaste y costos estimados.</p>}
-        {proyLoading && <p className="text-xs text-neutral-400">Proyectando…</p>}
-
-        {proy && !proyLoading && (
-          <div className="space-y-4">
-            {/* Resumen del horizonte */}
-            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-neutral-600">
-              <span>De <b>{proy.kmActual?.toLocaleString('es-AR')}</b> a <b>{proy.kmFinal?.toLocaleString('es-AR')} km</b></span>
-              {proy.diasEstimados != null && <span>≈ {proy.diasEstimados} días{proy.fechaEstimada ? ` (hasta ~${fmtFecha(proy.fechaEstimada)})` : ''} al ritmo actual ({proy.kmDia} km/día)</span>}
-              {proy.diasEstimados == null && <span className="text-neutral-400">Sin ritmo de uso estimado (pocos registros de combustible)</span>}
-            </div>
-
-            {/* Costos */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="rounded-md bg-neutral-50 border border-neutral-100 p-2.5">
-                <p className="text-[10px] font-medium text-neutral-500 uppercase">Operativo</p>
-                <p className="text-sm font-bold text-neutral-800">{proy.costos.operativo != null ? `$ ${proy.costos.operativo.toLocaleString('es-AR')}` : 'Sin datos'}</p>
-                {proy.costos.costoPorKmUsado != null && <p className="text-[10px] text-neutral-400">${proy.costos.costoPorKmUsado}/km</p>}
-              </div>
-              <div className="rounded-md bg-neutral-50 border border-neutral-100 p-2.5">
-                <p className="text-[10px] font-medium text-neutral-500 uppercase">Servicios</p>
-                <p className="text-sm font-bold text-neutral-800">$ {proy.costos.servicios.toLocaleString('es-AR')}</p>
-                <p className="text-[10px] text-neutral-400">{proy.servicios.reduce((a: number, s: any) => a + s.veces, 0)} ejecuciones</p>
-              </div>
-              <div className="rounded-md bg-neutral-50 border border-neutral-100 p-2.5">
-                <p className="text-[10px] font-medium text-neutral-500 uppercase">Neumáticos</p>
-                <p className="text-sm font-bold text-neutral-800">$ {proy.costos.neumaticos.toLocaleString('es-AR')}</p>
-                <p className="text-[10px] text-neutral-400">{proy.neumaticos.filter((x: any) => x.reemplazoEnRango).length} reemplazos</p>
-              </div>
-              <div className="rounded-md bg-violet-50 border border-violet-200 p-2.5">
-                <p className="text-[10px] font-medium text-violet-600 uppercase">Total estimado</p>
-                <p className="text-sm font-bold text-violet-700">$ {proy.costos.total.toLocaleString('es-AR')}</p>
-              </div>
-            </div>
-
-            {/* Programa de mantenimiento proyectado */}
-            <div>
-              <p className="text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-1.5">Programa de mantenimiento — desgaste sin service</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {proy.componentes.map((c: any) => (
-                  <div key={c.key} className="rounded-md border border-neutral-100 bg-neutral-50 p-2.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-neutral-700">{c.label}</span>
-                      <span className={`text-xs font-bold ${saludColor(c.saludProyectada)}`}>{c.saludActual}% → {c.saludProyectada}%</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-neutral-200 overflow-hidden">
-                      <div className={`h-full rounded-full ${saludBar(c.saludProyectada)}`} style={{ width: `${c.saludProyectada}%` }} />
-                    </div>
-                    <p className="text-[10px] text-neutral-400 mt-1">
-                      cada {c.intervaloKm.toLocaleString('es-AR')} km · {c.veces > 0 ? <b className="text-violet-600">{c.veces} service(s)</b> : 'sin service'} en el rango
-                      {c.conPlanCargado && ' · plan cargado'}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Neumáticos proyectados */}
-            {proy.neumaticos.length > 0 && (
-              <div>
-                <p className="text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-1.5 flex items-center gap-1"><Disc className="h-3 w-3" /> Desgaste de neumáticos</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                  {proy.neumaticos.map((x: any) => (
-                    <div key={x.codigo + x.posicion} className={`rounded-md border px-2.5 py-1.5 text-xs ${x.reemplazoEnRango ? 'border-red-200 bg-red-50' : 'border-neutral-100 bg-neutral-50'}`}>
-                      <div className="flex justify-between">
-                        <span className="font-medium text-neutral-800">{x.codigo}</span>
-                        <span className={x.reemplazoEnRango ? 'text-red-600 font-semibold' : 'text-neutral-500'}>{x.bandaActual} → {x.bandaProyectada} mm</span>
-                      </div>
-                      <p className="text-[10px] text-neutral-400">{x.posicion}{x.kmRestantes != null ? ` · ${x.kmRestantes.toLocaleString('es-AR')} km rest.` : ''}{x.reemplazoEnRango ? ' · REEMPLAZAR' : ''}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Timeline */}
-            {proy.timeline.length > 0 && (
-              <div>
-                <p className="text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-1.5">Timeline de eventos</p>
-                <ul className="space-y-1">
-                  {proy.timeline.map((t: any, i: number) => (
-                    <li key={i} className="flex items-center gap-3 text-xs rounded-md border border-neutral-100 bg-neutral-50 px-3 py-1.5">
-                      <span className="font-mono font-medium text-neutral-700 w-20 shrink-0">{t.km.toLocaleString('es-AR')} km</span>
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${t.tipo === 'SERVICIO' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{t.tipo === 'SERVICIO' ? 'Servicio' : 'Neumático'}</span>
-                      <span className="flex-1 text-neutral-700">{t.detalle}</span>
-                      {t.dias != null && <span className="text-neutral-400 shrink-0">~{t.dias}d</span>}
-                      {t.costo != null && t.costo > 0 && <span className="text-neutral-500 shrink-0">$ {t.costo.toLocaleString('es-AR')}</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {proy.docsEnRango.length > 0 && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                {proy.docsEnRango.length} documento(s) vencen dentro del horizonte: {proy.docsEnRango.map((d: any) => d.tipo).join(', ')}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Proyección del gemelo digital — escenarios por vehículo y componente */}
+      <ProyeccionPanel vehiculoId={v.id} />
 
       {/* Alertas */}
       {twinData?.alertas?.length > 0 && (

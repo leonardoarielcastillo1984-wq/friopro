@@ -521,6 +521,10 @@ model Tenant {
   fleetRecurrenceCases        FleetRecurrenceCase[]
   fleetCaseAlternatives       FleetCaseAlternative[]
   fleetCaseEvents             FleetCaseEvent[]
+
+  // Flota 360 — Proyección: catálogo técnico de referencias y mediciones de condición
+  fleetComponentReferences   FleetComponentReference[]
+  fleetComponentMeasurements FleetComponentMeasurement[]
 }
 
 model PlatformUser {
@@ -7387,6 +7391,11 @@ model Vehiculo {
   // Odómetro
   currentOdometer Float? // km actuales (se actualiza con cada registro)
 
+  // Proyección: perfil de uso declarado por el usuario (RUTA, URBANO, OBRA, MIXTO)
+  // y ritmo de uso declarado (km/mes) cuando el historial no alcanza para estimarlo.
+  perfilUso     String?
+  kmMesEstimado Float?
+
   // Valorización
   valorAdquisicion Float? // costo de compra del vehículo (para TCO / valorización)
 
@@ -7433,6 +7442,7 @@ model Vehiculo {
   updatedAt                  DateTime                     @updatedAt @db.Timestamptz
   FleetComponentInstallation FleetComponentInstallation[]
   FleetRecurrenceCase        FleetRecurrenceCase[]
+  FleetComponentMeasurement  FleetComponentMeasurement[]
 
   @@index([tenantId])
   @@index([dominio])
@@ -7681,6 +7691,11 @@ model FleetComponentInstallation {
   removedAt   DateTime?
   removedKm   Float?
   motivo      String? // INSTALACION_INICIAL, REEMPLAZO, TRASLADO, REPARACION
+
+  // Proyección: origen declarado del componente en este ciclo de instalación.
+  // ORIGINAL_CONFIRMADO | REEMPLAZO_DOCUMENTADO | ORIGEN_DESCONOCIDO
+  origen      String  @default("ORIGEN_DESCONOCIDO")
+  origenNotas String?
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
@@ -11419,4 +11434,100 @@ model LpaExecution {
   @@index([tenantId])
   @@index([planId])
   @@map("lpa_executions")
+}
+
+// ─────────────────────────────────────────────
+// FLOTA 360 — PROYECCIÓN: CATÁLOGO TÉCNICO DE REFERENCIAS
+// Referencia por componente con procedencia, aplicabilidad y estado de
+// validación. tenantId null = catálogo global compartido.
+// tipoMetrica: INTERVALO_MANTENIMIENTO (consumo del intervalo de una tarea),
+// VIDA_SERVICIO_REF (rango orientativo de evaluación, NO vida útil ni rotura),
+// CONDICION_MEDIDA (medición real con fecha y unidad).
+// estado: VERIFICADA | INTERNA_APROBADA | PROVISIONAL | FALTANTE
+// ─────────────────────────────────────────────
+model FleetComponentReference {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid // null = catálogo global
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  componentKey   String // aceite_motor, filtro_aceite, filtro_aire, filtro_combustible, refrigerante, fluido_hidraulico, aceite_transmision, filtro_transmision, embrague, caja_cambios, cardan_crucetas, diferencial, frenos, neumaticos, mangueras, refrigeracion_mecanica, direccion_suspension, burro_arranque, alternador, bateria
+  componentLabel String
+  sistema        String @default("GENERAL") // MOTOR, TRANSMISION, FRENOS, ELECTRICO, NEUMATICOS, CHASIS, REFRIGERACION, DIRECCION_SUSPENSION, GENERAL
+  tipoMetrica    String // INTERVALO_MANTENIMIENTO | VIDA_SERVICIO_REF | CONDICION_MEDIDA
+
+  // Aplicabilidad (null = aplica a todo)
+  marcaVehiculo  String?
+  modeloVehiculo String?
+  motor          String?
+  caja           String?
+  regimenUso     String? // RUTA, URBANO, OBRA, MIXTO
+  tarea          String? // para INTERVALO: qué tarea renueva el contador (ej: "cambio de aceite y filtro")
+
+  // Límites del intervalo de mantenimiento (vence por el primero que corresponda)
+  intervaloKm    Float?
+  intervaloHoras Float?
+  intervaloMeses Float?
+
+  // Rango orientativo de vida en servicio (dispara revisión, no reemplazo)
+  rangoMinKm    Float?
+  rangoMaxKm    Float?
+  rangoMinMeses Float?
+  rangoMaxMeses Float?
+
+  unidad String @default("km") // km, horas, meses, mm, %, psi
+
+  // Procedencia y validación
+  fuente           String? // manual fabricante, plan interno, evidencia de flota, hipótesis
+  documentoSeccion String? // documento y sección/tabla aplicable
+  fuenteUrl        String?
+  fechaRevision    DateTime? @db.Timestamptz
+  aprobadoPor      String?
+  estado           String    @default("FALTANTE") // VERIFICADA, INTERNA_APROBADA, PROVISIONAL, FALTANTE
+  version          Int       @default(1)
+  supersedesId     String?   @db.Uuid // versión anterior que esta fila reemplaza
+  notas            String?
+
+  // Matching con planes/OTs existentes (texto libre)
+  matchRegex String? // ej: "aceite|motor|service"
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([componentKey])
+  @@map("fleet_component_references")
+}
+
+// Medición real de condición de un componente (espesor, profundidad, holgura,
+// restricción de filtro, análisis de fluido, inspección). Es la única evidencia
+// que permite hablar de "condición observada".
+model FleetComponentMeasurement {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  componentKey String // mismo key que FleetComponentReference
+  instanceId   String? @db.Uuid // instancia puntual si aplica
+
+  tipo       String // ESPESOR, PROFUNDIDAD, HOLGURA, RESTRICCION, ANALISIS_FLUIDO, INSPECCION, PRESION, OTRO
+  valor      Float?
+  valorTexto String? // para inspecciones cualitativas (OK / CON_OBSERVACION / FUERA_DE_RANGO)
+  unidad     String? // mm, psi, %, etc.
+  kmAlMedir  Float?
+  fecha      DateTime @default(now()) @db.Timestamptz
+
+  workOrderId   String? @db.Uuid // OT donde se registró la medición
+  registradoPor String?
+  notas         String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@index([componentKey])
+  @@map("fleet_component_measurements")
 }
