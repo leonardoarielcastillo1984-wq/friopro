@@ -1019,19 +1019,44 @@ export default async function flotaRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const schema = z.object({
       codigo: z.string().min(1),
+      cantidad: z.number().int().min(1).max(60).optional().default(1),
       marca: z.string().optional(),
       modelo: z.string().optional(),
       medida: z.string().optional(),
       dot: z.string().optional(),
       condicion: z.enum(['NUEVA', 'USADA', 'RECAPADA']).optional().default('NUEVA'),
       profBanda: z.number().optional(),
+      proveedor: z.string().optional(),
+      fechaCompra: z.string().optional(),
+      precioCompra: z.number().nonnegative().optional(),
+      garantiaKm: z.number().optional(),
+      garantiaMeses: z.number().int().optional(),
+      presionRecomendada: z.number().optional(),
       sparePartId: z.string().uuid().optional().nullable(),
       notas: z.string().optional(),
     });
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
-    const neumatico = await (app.prisma as any).neumatico.create({ data: { ...body.data, tenantId } });
-    return reply.code(201).send({ neumatico });
+    const { cantidad, codigo, fechaCompra, profBanda, ...rest } = body.data;
+    const base = {
+      ...rest,
+      tenantId,
+      profBanda: profBanda ?? null,
+      profBandaOriginal: profBanda ?? null,
+      fechaCompra: fechaCompra ? new Date(fechaCompra) : null,
+    };
+    // Generar códigos correlativos: si el código termina en número, incrementarlo; si no, sufijo -1..-N
+    const m = codigo.match(/^(.*?)(\d+)$/);
+    const codigos: string[] = [];
+    for (let i = 0; i < cantidad; i++) {
+      if (cantidad === 1) { codigos.push(codigo); break; }
+      if (m) codigos.push(`${m[1]}${String(parseInt(m[2], 10) + i).padStart(m[2].length, '0')}`);
+      else codigos.push(`${codigo}-${i + 1}`);
+    }
+    const creados = await (app.prisma as any).$transaction(
+      codigos.map((c) => (app.prisma as any).neumatico.create({ data: { ...base, codigo: c } }))
+    );
+    return reply.code(201).send({ neumatico: creados[0], creados: creados.length, codigos });
   });
 
   app.patch('/neumaticos/:id', async (req: FastifyRequest, reply: FastifyReply) => {

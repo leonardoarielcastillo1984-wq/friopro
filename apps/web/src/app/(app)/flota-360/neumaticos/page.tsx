@@ -14,7 +14,7 @@ const STATUS_COLOR: Record<string, string> = {
   DISPONIBLE: 'bg-green-50 text-green-700', EN_USO: 'bg-blue-50 text-blue-700', BAJA: 'bg-red-50 text-red-600',
 };
 
-const FORM_VACIO = { codigo: '', marca: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '8', notas: '' };
+const FORM_VACIO = { codigo: '', cantidad: '1', marca: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '8', proveedor: '', fechaCompra: '', precioCompra: '', presionRecomendada: '', notas: '' };
 
 export default function NeumaticosPage() {
   const [neumaticos, setNeumaticos] = useState<Neumatico[]>([]);
@@ -38,10 +38,13 @@ export default function NeumaticosPage() {
 
   useEffect(() => { load(); }, []);
 
-  const abrirEdicion = (n: Neumatico & { dot?: string | null; notas?: string | null }) => {
+  const abrirEdicion = (n: Neumatico & { dot?: string | null; notas?: string | null; proveedor?: string | null; fechaCompra?: string | null; precioCompra?: number | null; presionRecomendada?: number | null }) => {
     setForm({
-      codigo: n.codigo, marca: n.marca || '', medida: n.medida || '',
+      codigo: n.codigo, cantidad: '1', marca: n.marca || '', medida: n.medida || '',
       dot: n.dot || '', condicion: n.condicion, profBanda: n.profBanda != null ? String(n.profBanda) : '',
+      proveedor: n.proveedor || '', fechaCompra: n.fechaCompra ? String(n.fechaCompra).slice(0, 10) : '',
+      precioCompra: n.precioCompra != null ? String(n.precioCompra) : '',
+      presionRecomendada: n.presionRecomendada != null ? String(n.presionRecomendada) : '',
       notas: n.notas || '',
     });
     setEditId(n.id);
@@ -68,12 +71,17 @@ export default function NeumaticosPage() {
         dot: form.dot || undefined,
         condicion: form.condicion,
         profBanda: form.profBanda ? Number(form.profBanda) : undefined,
+        proveedor: form.proveedor || undefined,
+        fechaCompra: form.fechaCompra || undefined,
+        precioCompra: form.precioCompra ? Number(form.precioCompra) : undefined,
+        presionRecomendada: form.presionRecomendada ? Number(form.presionRecomendada) : undefined,
         notas: form.notas || undefined,
       };
       if (editId) {
         await apiFetch(`/flota/neumaticos/${editId}`, { method: 'PATCH', json: payload });
       } else {
-        await apiFetch('/flota/neumaticos', { method: 'POST', json: payload });
+        const cantidad = Math.max(1, Math.min(60, parseInt(form.cantidad, 10) || 1));
+        await apiFetch('/flota/neumaticos', { method: 'POST', json: { ...payload, cantidad } });
       }
       cerrarModal();
       await load();
@@ -248,6 +256,7 @@ export default function NeumaticosPage() {
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Código *</label>
                   <input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} placeholder="NEU-001" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                  {!editId && Number(form.cantidad) > 1 && <p className="text-[10px] text-neutral-400 mt-0.5">Se generan códigos correlativos (NEU-001, NEU-002…)</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Condición</label>
@@ -256,6 +265,13 @@ export default function NeumaticosPage() {
                   </select>
                 </div>
               </div>
+              {!editId && (
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Cantidad a dar de alta</label>
+                  <input type="number" min={1} max={60} value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                  <p className="text-[10px] text-neutral-400 mt-0.5">Para compras de varias cubiertas iguales: crea N neumáticos con los mismos datos.</p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Marca</label>
@@ -268,12 +284,33 @@ export default function NeumaticosPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">DOT</label>
-                  <input value={form.dot} onChange={(e) => setForm({ ...form, dot: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">DOT <span className="font-normal text-neutral-400">(semana/año de fabricación)</span></label>
+                  <input value={form.dot} onChange={(e) => setForm({ ...form, dot: e.target.value })} placeholder="2424" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                  <p className="text-[10px] text-neutral-400 mt-0.5">4 dígitos grabados en el costado: semana + año. Ej: <b>2424</b> = semana 24 de 2024.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Banda (mm)</label>
                   <input type="number" min={0} step="0.1" value={form.profBanda} onChange={(e) => setForm({ ...form, profBanda: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Proveedor</label>
+                  <input value={form.proveedor} onChange={(e) => setForm({ ...form, proveedor: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Fecha de compra</label>
+                  <input type="date" value={form.fechaCompra} onChange={(e) => setForm({ ...form, fechaCompra: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Precio unitario ($)</label>
+                  <input type="number" min={0} step="0.01" value={form.precioCompra} onChange={(e) => setForm({ ...form, precioCompra: e.target.value })} placeholder="0.00" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Presión recomendada (PSI)</label>
+                  <input type="number" min={0} step="0.5" value={form.presionRecomendada} onChange={(e) => setForm({ ...form, presionRecomendada: e.target.value })} placeholder="110" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
               </div>
               <div>
