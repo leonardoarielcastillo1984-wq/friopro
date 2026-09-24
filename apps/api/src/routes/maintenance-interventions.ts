@@ -316,7 +316,7 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
     const [vehiculoFlota, settings, tipos, planes, ultimas, repuestos] = await Promise.all([
       (app.prisma as any).vehiculo.findFirst({
         where: { tenantId: qr.tenantId, maintenanceAssetId: asset.id },
-        select: { id: true, dominio: true, estadoOperativo: true },
+        select: { id: true, dominio: true, estadoOperativo: true, tipo: true, cantEjes: true, configEjes: true },
       }).catch(() => null),
       (app.prisma as any).companySettings.findUnique({
         where: { tenantId: qr.tenantId }, select: { logoUrl: true, primaryColor: true },
@@ -362,6 +362,24 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       return { id: p.id, code: p.code, title: p.title, type: p.type, estado, detalle };
     });
 
+    // Cubiertas montadas + stock disponible (para el item "cambio/rotación de neumático")
+    let cubiertas: any[] = [];
+    let neumaticosStock: any[] = [];
+    if (vehiculoFlota) {
+      [cubiertas, neumaticosStock] = await Promise.all([
+        (app.prisma as any).neumaticoPosicion.findMany({
+          where: { vehiculoId: vehiculoFlota.id, tenantId: qr.tenantId, activo: true },
+          include: { neumatico: { select: { id: true, codigo: true, medida: true, condicion: true, profBanda: true } } },
+          orderBy: [{ eje: 'asc' }, { lado: 'asc' }, { posicion: 'asc' }],
+        }).catch(() => []),
+        (app.prisma as any).neumatico.findMany({
+          where: { tenantId: qr.tenantId, status: 'DISPONIBLE' },
+          select: { id: true, codigo: true, marca: true, medida: true, condicion: true, profBanda: true },
+          orderBy: { codigo: 'asc' },
+        }).catch(() => []),
+      ]);
+    }
+
     return reply.send({
       qr: { id: qr.id, activoNombre: qr.activoNombre, activoCodigo: qr.activoCodigo, titulo: qr.titulo, instrucciones: qr.instrucciones },
       activo: {
@@ -371,6 +389,12 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       },
       empresa: { nombre: qr.tenant.name, logoUrl: settings?.logoUrl ?? null, primaryColor: settings?.primaryColor ?? '#2563eb' },
       vehiculoFlota: vehiculoFlota ?? null,
+      cubiertas: cubiertas.map((p: any) => ({
+        posicionId: p.id, eje: p.eje, lado: p.lado, posicion: p.posicion,
+        neumaticoId: p.neumatico?.id ?? null, codigo: p.neumatico?.codigo ?? null,
+        medida: p.neumatico?.medida ?? null, condicion: p.neumatico?.condicion ?? null,
+      })),
+      neumaticosStock,
       tipos,
       preventivos,
       ultimasIntervenciones: ultimas,
@@ -444,6 +468,13 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       planId: z.string().uuid().optional().nullable(),
       fotos: z.array(z.object({ url: z.string() })).optional(),
       repuestos: z.array(z.object({ sparePartId: z.string().uuid(), quantity: z.number().int().positive() })).optional(),
+      // Cambio/rotación de neumáticos: a qué posición va cada cubierta (nueva de stock o movida de otra posición)
+      neumaticoCambios: z.array(z.object({
+        eje: z.number().int().min(0),
+        lado: z.enum(['IZQ', 'DER']),
+        posicion: z.enum(['SIMPLE', 'EXT', 'INT', 'AUXILIO']).default('SIMPLE'),
+        neumaticoId: z.string().uuid(),
+      })).optional(),
     });
     const body = schema.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
@@ -573,6 +604,49 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
             notas: `Registrado vía QR por ${body.data.performedByName}`,
           },
         });
+
+        // ── Cambio / rotación de neumáticos indicado en el diagrama ──────────
+        // Dos pasadas: primero desmonta todo lo involucrado, después monta.
+        // Así un intercambio A↔B o una rotación entre posiciones no pisa montajes.
+        const cambios = body.data.neumaticoCambios;
+        if (cambios && cambios.length > 0) {
+          try {
+            const kmMonto = km ?? vehiculo.currentOdometer ?? null;
+            const ahora = new Date();
+            // PASADA 1 — desmontar: lo que ocupa la posición destino + la cubierta entrante donde esté
+            for (const c of cambios) {
+              await (app.prisma as any).neumaticoPosicion.updateMany({
+                where: { vehiculoId: vehiculo.id, tenantId: qr.tenantId, activo: true, eje: c.eje, lado: c.lado, posicion: c.posicion, neumaticoId: { not: c.neumaticoId } },
+                data: { activo: false, desmontadoAt: ahora, kmAlDesmontar: kmMonto },
+              });
+              await (app.prisma as any).neumaticoPosicion.updateMany({
+                where: { neumaticoId: c.neumaticoId, tenantId: qr.tenantId, activo: true },
+                data: { activo: false, desmontadoAt: ahora, kmAlDesmontar: kmMonto },
+              });
+            }
+            // PASADA 2 — montar la cubierta en la posición destino
+            for (const c of cambios) {
+              const neum = await (app.prisma as any).neumatico.findFirst({ where: { id: c.neumaticoId, tenantId: qr.tenantId }, select: { id: true, profBanda: true } });
+              if (!neum) continue;
+              await (app.prisma as any).neumaticoPosicion.create({
+                data: {
+                  tenantId: qr.tenantId, vehiculoId: vehiculo.id, neumaticoId: c.neumaticoId,
+                  eje: c.eje, lado: c.lado, posicion: c.posicion, activo: true,
+                  kmAlMontar: kmMonto, profBandaInicio: neum.profBanda ?? null,
+                  notas: `Montado en intervención QR por ${body.data.performedByName}`,
+                },
+              });
+              await (app.prisma as any).neumatico.updateMany({ where: { id: c.neumaticoId }, data: { status: 'EN_USO' } });
+              await (app.prisma as any).neumaticoRotacion.create({
+                data: {
+                  tenantId: qr.tenantId, neumaticoId: c.neumaticoId, vehiculoId: vehiculo.id,
+                  ejeDestino: c.eje, ladoDestino: c.lado, posDestino: c.posicion,
+                  kmAlRotar: kmMonto, notas: `Intervención ${intervencion.id} — ${tiposLabel.join(' + ')}`,
+                },
+              });
+            }
+          } catch (e: any) { console.error('[intervenciones] neumaticoCambios error:', e); }
+        }
       }
     } catch (e: any) { console.error('[intervenciones] vehiculo historial error:', e); }
 

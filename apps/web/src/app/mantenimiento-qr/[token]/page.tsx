@@ -39,6 +39,9 @@ export default function MantenimientoQRPage() {
   const [estadoOp, setEstadoOp] = useState<string | null>(null);
   const [estadoSaving, setEstadoSaving] = useState<string | null>(null);
   const [estadoMsg, setEstadoMsg] = useState('');
+  // Cambio/rotación de neumáticos: posKey "eje-lado-posicion" → neumaticoId a montar
+  const [cambios, setCambios] = useState<Record<string, string>>({});
+  const [pickerPos, setPickerPos] = useState<{ eje: number; lado: string; posicion: string } | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/maintenance-interventions/public/${token}`)
@@ -77,6 +80,56 @@ export default function MantenimientoQRPage() {
     });
   };
 
+  // ── Diagrama de cambio/rotación de neumáticos ──────────────────────────────
+  const cubiertas: any[] = data?.cubiertas ?? [];
+  const neumaticosStock: any[] = data?.neumaticosStock ?? [];
+  const vehiculoFlotaData = data?.vehiculoFlota ?? null;
+  // ¿Se seleccionó una tarea de la categoría NEUMATICOS?
+  const esNeumaticosSel = useMemo(() => {
+    const tipos: Tipo[] = data?.tipos ?? [];
+    return tipos.some(t => selTipos.has(t.id) && (t.category || '').toUpperCase() === 'NEUMATICOS');
+  }, [data, selTipos]);
+
+  const esSemi = (vehiculoFlotaData?.tipo || '').toUpperCase() === 'SEMI';
+  const numSteering = esSemi ? 0 : ((vehiculoFlotaData?.configEjes || '').trim().startsWith('8') ? 2 : 1);
+  const maxEjeMontado = cubiertas.reduce((m, c) => Math.max(m, c.eje || 0), 0);
+  const totalEjes = Math.max(vehiculoFlotaData?.cantEjes ?? 2, maxEjeMontado);
+  const ejes = useMemo(() => Array.from({ length: totalEjes }, (_, i) => i + 1), [totalEjes]);
+  const esDual = (eje: number) => {
+    if (cubiertas.some(c => c.eje === eje && (c.posicion === 'EXT' || c.posicion === 'INT'))) return true;
+    if (cubiertas.some(c => c.eje === eje && c.posicion === 'SIMPLE')) return false;
+    return esSemi ? true : eje > numSteering;
+  };
+  const posKey = (eje: number, lado: string, posicion: string) => `${eje}-${lado}-${posicion}`;
+  const montadaEn = (eje: number, lado: string, posicion: string) => cubiertas.find(c => c.eje === eje && c.lado === lado && c.posicion === posicion);
+  // Cubierta que se muestra en un slot: la asignada en el cambio, o la que ya está montada
+  const cubiertaEnSlot = (eje: number, lado: string, posicion: string) => {
+    const asignada = cambios[posKey(eje, lado, posicion)];
+    if (asignada) {
+      const deStock = neumaticosStock.find(n => n.id === asignada);
+      const montada = cubiertas.find(c => c.neumaticoId === asignada);
+      return { id: asignada, codigo: deStock?.codigo || montada?.codigo || '…', esCambio: true };
+    }
+    const m = montadaEn(eje, lado, posicion);
+    return m?.neumaticoId ? { id: m.neumaticoId, codigo: m.codigo, esCambio: false } : null;
+  };
+  const asignar = (eje: number, lado: string, posicion: string, neumaticoId: string) => {
+    setCambios(prev => ({ ...prev, [posKey(eje, lado, posicion)]: neumaticoId }));
+    setPickerPos(null);
+  };
+  const quitarCambio = (eje: number, lado: string, posicion: string) => {
+    setCambios(prev => { const c = { ...prev }; delete c[posKey(eje, lado, posicion)]; return c; });
+  };
+  // Opciones del picker: stock disponible + cubiertas montadas en otra posición (rotación)
+  const opcionesPicker = useMemo(() => {
+    const usadasEnCambios = new Set(Object.values(cambios));
+    const stock = neumaticosStock.filter(n => !usadasEnCambios.has(n.id)).map(n => ({ id: n.id, label: `${n.codigo}${n.condicion === 'RECAPADA' ? ' (recapada)' : ''}`, sub: n.medida || n.marca || '', origen: 'stock' as const }));
+    const montadas = cubiertas
+      .filter(c => c.neumaticoId && !usadasEnCambios.has(c.neumaticoId) && !(pickerPos && c.eje === pickerPos.eje && c.lado === pickerPos.lado && c.posicion === pickerPos.posicion))
+      .map(c => ({ id: c.neumaticoId, label: `${c.codigo} (montada E${c.eje} ${c.lado === 'IZQ' ? 'izq' : 'der'})`, sub: c.medida || '', origen: 'montada' as const }));
+    return { stock, montadas };
+  }, [cambios, cubiertas, neumaticosStock, pickerPos]);
+
   const enviar = async () => {
     if (!nombre.trim()) { alert('Ingresá tu nombre'); return; }
     if (selTipos.size === 0) { alert('Seleccioná al menos una tarea realizada'); return; }
@@ -97,6 +150,10 @@ export default function MantenimientoQRPage() {
           repuestos: Object.entries(selRepuestos)
             .filter(([, qty]) => qty > 0)
             .map(([sparePartId, quantity]) => ({ sparePartId, quantity })),
+          neumaticoCambios: Object.entries(cambios).map(([key, neumaticoId]) => {
+            const [eje, lado, posicion] = key.split('-');
+            return { eje: parseInt(eje), lado, posicion, neumaticoId };
+          }),
         }),
       });
       const d = await res.json();
@@ -316,6 +373,57 @@ export default function MantenimientoQRPage() {
             </div>
           ))}
 
+          {/* Diagrama de cambio/rotación de neumáticos — aparece al elegir una tarea de NEUMATICOS */}
+          {esNeumaticosSel && vehiculoFlotaData && (
+            <div style={{ marginTop: 16, border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 12px', background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#111827' }}>¿En qué posición pusiste cada cubierta?</p>
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: '#6B7280' }}>Tocá la posición y elegí la cubierta nueva/recapada (o una montada para rotarla).</p>
+              </div>
+              <div style={{ padding: 12, display: 'grid', gap: 8 }}>
+                {ejes.map(eje => {
+                  const dual = esDual(eje);
+                  const slots: { lado: 'IZQ' | 'DER'; posicion: 'SIMPLE' | 'EXT' | 'INT' }[] = dual
+                    ? [{ lado: 'IZQ', posicion: 'EXT' }, { lado: 'IZQ', posicion: 'INT' }, { lado: 'DER', posicion: 'INT' }, { lado: 'DER', posicion: 'EXT' }]
+                    : [{ lado: 'IZQ', posicion: 'SIMPLE' }, { lado: 'DER', posicion: 'SIMPLE' }];
+                  return (
+                    <div key={eje} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', width: 22 }}>E{eje}</span>
+                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${slots.length},1fr)`, gap: 6 }}>
+                        {slots.map(s => {
+                          const c = cubiertaEnSlot(eje, s.lado, s.posicion);
+                          const esCambio = !!cambios[posKey(eje, s.lado, s.posicion)];
+                          return (
+                            <button key={posKey(eje, s.lado, s.posicion)} type="button"
+                              onClick={() => setPickerPos({ eje, lado: s.lado, posicion: s.posicion })}
+                              style={{
+                                padding: '8px 4px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                                border: esCambio ? `2px solid ${primary}` : '1px solid #D1D5DB',
+                                background: esCambio ? `${primary}15` : c ? '#F3F4F6' : '#fff',
+                                color: esCambio ? primary : c ? '#111827' : '#9CA3AF',
+                                minHeight: 44, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
+                              }}>
+                              <span style={{ fontSize: 9, fontWeight: 400, color: '#9CA3AF' }}>{s.lado === 'IZQ' ? 'Izq' : 'Der'}{s.posicion !== 'SIMPLE' ? ` ${s.posicion === 'EXT' ? 'ext' : 'int'}` : ''}</span>
+                              <span>{c ? c.codigo : 'vacía'}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {Object.keys(cambios).length > 0 && (
+                <div style={{ padding: '8px 12px', borderTop: '1px solid #E5E7EB', background: '#FFFBEB' }}>
+                  <p style={{ margin: 0, fontSize: 11, color: '#92400E' }}>
+                    {Object.keys(cambios).length} cambio(s) marcado(s).{' '}
+                    <button type="button" onClick={() => setCambios({})} style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 11, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Limpiar</button>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
             <input style={S.input} placeholder="Tu nombre y apellido *" value={nombre} onChange={e => setNombre(e.target.value)} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -426,6 +534,57 @@ export default function MantenimientoQRPage() {
 
         <p style={{ ...S.muted, textAlign: 'center', fontSize: 11, marginTop: 8 }}>Registro de intervenciones · SGI 360</p>
       </div>
+
+      {/* Picker de cubierta para la posición tocada */}
+      {pickerPos && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}
+          onClick={() => setPickerPos(null)}>
+          <div style={{ background: '#fff', width: '100%', maxWidth: 520, borderRadius: '16px 16px 0 0', maxHeight: '75vh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid #F3F4F6' }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827' }}>
+                Eje {pickerPos.eje} · {pickerPos.lado === 'IZQ' ? 'Izquierda' : 'Derecha'}{pickerPos.posicion !== 'SIMPLE' ? ` ${pickerPos.posicion === 'EXT' ? 'externa' : 'interna'}` : ''}
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6B7280' }}>¿Qué cubierta va en esta posición?</p>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '8px 12px' }}>
+              {cambios[posKey(pickerPos.eje, pickerPos.lado, pickerPos.posicion)] && (
+                <button type="button" onClick={() => { quitarCambio(pickerPos.eje, pickerPos.lado, pickerPos.posicion); }}
+                  style={{ width: '100%', textAlign: 'left', padding: '10px 12px', marginBottom: 6, borderRadius: 10, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#DC2626', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  ✕ Quitar cambio (dejar como estaba)
+                </button>
+              )}
+              {opcionesPicker.stock.length > 0 && (
+                <p style={{ margin: '6px 4px 4px', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase' }}>De stock</p>
+              )}
+              {opcionesPicker.stock.map(o => (
+                <button key={o.id} type="button" onClick={() => asignar(pickerPos.eje, pickerPos.lado, pickerPos.posicion, o.id)}
+                  style={{ width: '100%', textAlign: 'left', padding: '11px 12px', marginBottom: 4, borderRadius: 10, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer' }}>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#111827' }}>{o.label}</p>
+                  {o.sub && <p style={{ margin: 0, fontSize: 11, color: '#9CA3AF' }}>{o.sub}</p>}
+                </button>
+              ))}
+              {opcionesPicker.montadas.length > 0 && (
+                <p style={{ margin: '10px 4px 4px', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase' }}>Rotar desde otra posición</p>
+              )}
+              {opcionesPicker.montadas.map(o => (
+                <button key={o.id} type="button" onClick={() => asignar(pickerPos.eje, pickerPos.lado, pickerPos.posicion, o.id)}
+                  style={{ width: '100%', textAlign: 'left', padding: '11px 12px', marginBottom: 4, borderRadius: 10, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer' }}>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#111827' }}>{o.label}</p>
+                  {o.sub && <p style={{ margin: 0, fontSize: 11, color: '#9CA3AF' }}>{o.sub}</p>}
+                </button>
+              ))}
+              {opcionesPicker.stock.length === 0 && opcionesPicker.montadas.length === 0 && (
+                <p style={{ padding: '16px', fontSize: 13, color: '#9CA3AF', textAlign: 'center' }}>No hay cubiertas disponibles ni montadas para mover.</p>
+              )}
+            </div>
+            <button type="button" onClick={() => setPickerPos(null)}
+              style={{ margin: 12, padding: '12px', borderRadius: 12, border: 'none', background: '#F3F4F6', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

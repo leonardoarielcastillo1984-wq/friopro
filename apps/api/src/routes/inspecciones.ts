@@ -380,12 +380,27 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const rutaMatch = ultimaInspeccion?.notas?.match(/Ruta:\s*([^|]+)/);
     const ultimaRuta = rutaMatch ? rutaMatch[1].trim() : null;
 
+    // Cubiertas montadas del vehículo (para el control de PSI dentro del checklist del chofer)
+    const cubiertas = vehiculo
+      ? await (app.prisma as any).neumaticoPosicion.findMany({
+          where: { vehiculoId: vehiculo.id, tenantId: qr.tenantId, activo: true },
+          include: { neumatico: { select: { id: true, codigo: true, medida: true, presionRecomendada: true } } },
+          orderBy: [{ eje: 'asc' }, { lado: 'asc' }, { posicion: 'asc' }],
+        }).catch(() => [])
+      : [];
+
     return reply.send({
       qr: { id: qr.id, activoNombre: qr.activoNombre, activoCodigo: qr.activoCodigo, ubicacion: qr.ubicacion,
         sector: qr.sector, titulo: qr.titulo, subtitulo: qr.subtitulo, instrucciones: qr.instrucciones, pie: qr.pie,
         esTercero: !qr.maintenanceAssetId },
       plantilla: { id: qr.plantilla.id, nombre: qr.plantilla.nombre, categoria: qr.plantilla.categoria, items: qr.plantilla.items, diagramaFotos: qr.plantilla.diagramaFotos ?? null },
       empresa: { nombre: qr.tenant.name, logoUrl: settings?.logoUrl ?? null, primaryColor: settings?.primaryColor ?? '#2563eb' },
+      vehiculoId: vehiculo?.id ?? null,
+      cubiertas: cubiertas.map((p: any) => ({
+        posicionId: p.id, eje: p.eje, lado: p.lado, posicion: p.posicion,
+        neumaticoId: p.neumatico?.id ?? null, codigo: p.neumatico?.codigo ?? null,
+        medida: p.neumatico?.medida ?? null, presionRecomendada: p.neumatico?.presionRecomendada ?? null,
+      })),
       prefill: {
         inspectorNombre: vehiculo?.conductor?.nombre ?? null,
         inspectorEmail: vehiculo?.conductor?.email ?? null,
@@ -416,6 +431,11 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       empresaTransporte: z.string().max(200).optional().or(z.literal('')).transform(v => v || undefined),
       conductor: z.string().max(200).optional().or(z.literal('')).transform(v => v || undefined),
       kmReported: z.number().positive().optional(),
+      // Control de presión de neumáticos dentro del checklist del chofer
+      presiones: z.array(z.object({
+        posicionId: z.string().uuid(),
+        psi: z.number().positive().max(300),
+      })).optional(),
       respuestas: z.array(z.object({
         itemId: z.string().uuid(),
         valor: z.any(),
@@ -472,6 +492,53 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     });
 
     await (app.prisma as any).inspeccionQR.update({ where: { id: qr.id }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
+
+    // ── Control de presión de neumáticos (si el chofer cargó PSI) ─────────────
+    // Crea una ronda auditable (NeumaticoControlPresion) + una medición por cubierta.
+    if (body.data.presiones?.length && qr.maintenanceAssetId) {
+      try {
+        const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+          where: { maintenanceAssetId: qr.maintenanceAssetId, tenantId: qr.tenantId },
+          select: { id: true },
+        });
+        if (vehiculo) {
+          const posIds = body.data.presiones.map((p: any) => p.posicionId);
+          const posiciones = await (app.prisma as any).neumaticoPosicion.findMany({
+            where: { id: { in: posIds }, vehiculoId: vehiculo.id, tenantId: qr.tenantId, activo: true },
+            include: { neumatico: { select: { id: true, presionRecomendada: true } } },
+          });
+          if (posiciones.length > 0) {
+            const control = await (app.prisma as any).neumaticoControlPresion.create({
+              data: {
+                tenantId: qr.tenantId, vehiculoId: vehiculo.id,
+                observador: body.data.inspectorNombre, kmAlControlar: body.data.kmReported ?? null,
+                notas: 'Control desde checklist del chofer',
+                cubiertasRevisadas: posiciones.length, cubiertasInfladas: 0,
+              },
+            });
+            let infladas = 0;
+            for (const pos of posiciones) {
+              const p = body.data.presiones.find((x: any) => x.posicionId === pos.id);
+              if (!p || !pos.neumatico) continue;
+              const rec = pos.neumatico.presionRecomendada;
+              const accion = rec != null && p.psi < rec * 0.9 ? 'INFLADA' : 'VERIFICADA';
+              if (accion !== 'VERIFICADA') infladas++;
+              await (app.prisma as any).neumaticoPresion.create({
+                data: {
+                  tenantId: qr.tenantId, neumaticoId: pos.neumatico.id, vehiculoId: vehiculo.id,
+                  eje: pos.eje, lado: pos.lado, posicion: pos.posicion,
+                  presionMedida: p.psi, observador: body.data.inspectorNombre,
+                  accion, controlId: control.id,
+                },
+              });
+            }
+            if (infladas > 0) {
+              await (app.prisma as any).neumaticoControlPresion.update({ where: { id: control.id }, data: { cubiertasInfladas: infladas } });
+            }
+          }
+        }
+      } catch (e: any) { console.error('[inspecciones] control presion error:', e); }
+    }
 
     // Auto-actualizar odómetro y estado del activo
     if (qr.maintenanceAssetId) {
