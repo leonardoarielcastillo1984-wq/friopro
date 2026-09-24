@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Disc, Plus, X, History, Trash2, Pencil } from 'lucide-react';
+import MapaNeumaticos from '../_components/MapaNeumaticos';
 
 type Neumatico = {
   id: string; codigo: string; marca: string | null; medida: string | null; status: string;
@@ -133,6 +134,9 @@ export default function NeumaticosPage() {
           {enAlerta.length} neumáticos con banda baja o alto kilometraje acumulado
         </div>
       )}
+
+      {/* Mapa visual de salud de cubiertas por vehículo */}
+      <MapaNeumaticos />
 
       <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
         <table className="w-full text-sm">

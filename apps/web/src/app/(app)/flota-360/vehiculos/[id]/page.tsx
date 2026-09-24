@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { DigitalTwin } from '../../_components/FleetVisual';
 import CargaCombustible from '../../_components/CargaCombustible';
-import NeumaticosPanel from '../../_components/NeumaticosPanel';
+import NeumaticosTwin from '../../_components/NeumaticosTwin';
 import FacturasPanel from '../../_components/FacturasPanel';
 import MultasPanel from '../../_components/MultasPanel';
 import RecurrenciasPanel from '../../_components/RecurrenciasPanel';
@@ -515,7 +515,7 @@ export default function VehiculoFichaPage() {
       )}
 
       {/* Neumáticos: diagrama de ejes + montar/desmontar/presión/medición */}
-      <NeumaticosPanel vehiculoId={v.id} odometro={v.currentOdometer ?? null} />
+      <NeumaticosTwin vehiculoId={v.id} odometro={v.currentOdometer ?? null} />
 
       {/* Facturas y multas de la unidad */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

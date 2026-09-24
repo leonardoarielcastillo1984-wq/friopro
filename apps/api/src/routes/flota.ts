@@ -1238,6 +1238,61 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ rotaciones });
   });
 
+  // POST intercambiar: swap atómico de dos neumáticos montados en el mismo vehículo.
+  // Registra una rotación por cada uno y actualiza ambas posiciones en una transacción.
+  app.post('/neumaticos/intercambiar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      neumaticoIdA: z.string().uuid(),
+      neumaticoIdB: z.string().uuid(),
+      kmAlRotar: z.number().optional(),
+      notas: z.string().optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const { neumaticoIdA, neumaticoIdB, kmAlRotar, notas } = body.data;
+    if (neumaticoIdA === neumaticoIdB) return reply.code(400).send({ error: 'Son el mismo neumático' });
+
+    const [posA, posB] = await Promise.all([
+      (app.prisma as any).neumaticoPosicion.findFirst({ where: { neumaticoId: neumaticoIdA, activo: true, tenantId } }),
+      (app.prisma as any).neumaticoPosicion.findFirst({ where: { neumaticoId: neumaticoIdB, activo: true, tenantId } }),
+    ]);
+    if (!posA || !posB) return reply.code(400).send({ error: 'Ambos neumáticos deben estar montados' });
+    if (posA.vehiculoId !== posB.vehiculoId) return reply.code(400).send({ error: 'El intercambio es dentro del mismo vehículo' });
+
+    await (app.prisma as any).$transaction([
+      (app.prisma as any).neumaticoRotacion.create({ data: { tenantId, neumaticoId: neumaticoIdA, vehiculoId: posA.vehiculoId, ejeOrigen: posA.eje, ladoOrigen: posA.lado, posOrigen: posA.posicion, ejeDestino: posB.eje, ladoDestino: posB.lado, posDestino: posB.posicion, kmAlRotar, notas: notas || 'Intercambio visual' } }),
+      (app.prisma as any).neumaticoRotacion.create({ data: { tenantId, neumaticoId: neumaticoIdB, vehiculoId: posB.vehiculoId, ejeOrigen: posB.eje, ladoOrigen: posB.lado, posOrigen: posB.posicion, ejeDestino: posA.eje, ladoDestino: posA.lado, posDestino: posA.posicion, kmAlRotar, notas: notas || 'Intercambio visual' } }),
+      (app.prisma as any).neumaticoPosicion.update({ where: { id: posA.id }, data: { eje: posB.eje, lado: posB.lado, posicion: posB.posicion } }),
+      (app.prisma as any).neumaticoPosicion.update({ where: { id: posB.id }, data: { eje: posA.eje, lado: posA.lado, posicion: posA.posicion } }),
+    ]);
+    return reply.send({ ok: true });
+  });
+
+  // GET mapa de flota: todos los vehículos con sus posiciones de neumáticos activas
+  // (para el tablero visual de salud de cubiertas por vehículo).
+  app.get('/neumaticos/mapa-flota', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const vehiculos = await (app.prisma as any).vehiculo.findMany({
+      where: { tenantId, status: { not: 'BAJA' } },
+      select: {
+        id: true, dominio: true, tipo: true, marca: true, modelo: true, currentOdometer: true,
+        posicionesNeumatico: {
+          where: { activo: true },
+          select: {
+            id: true, eje: true, lado: true, posicion: true,
+            neumatico: { select: { id: true, codigo: true, profBanda: true, profBandaOriginal: true, kmAcumulados: true, condicion: true, recapsCount: true } },
+          },
+          orderBy: [{ eje: 'asc' }, { lado: 'asc' }],
+        },
+      },
+      orderBy: { dominio: 'asc' },
+    });
+    return reply.send({ vehiculos });
+  });
+
   // POST presión
   app.post('/neumaticos/:neumaticoId/presion', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
