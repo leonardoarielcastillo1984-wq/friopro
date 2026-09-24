@@ -142,6 +142,7 @@ import { hazardsRoutes } from './routes/hazards.js';
 import { aspectsRoutes } from './routes/aspects.js';
 import flotaRoutes from './routes/flota.js';
 import fleetOpsRoutes from './routes/fleet-ops.js';
+import fleetRecurrenceRoutes from './routes/fleet-recurrence.js';
 import { driverHubRoutes } from './routes/driver-hub.js';
 import garantiasRoutes from './routes/garantias.js';
 import digitalTwinRoutes from './routes/digital-twin.js';
@@ -486,6 +487,7 @@ export async function buildApp() {
   await app.register(maintenanceInterventionsRoutes, { prefix: '/maintenance-interventions' });
   await app.register(mecanicoQRRoutes, { prefix: '/mecanico-qr' });
   await app.register(flotaRoutes, { prefix: '/flota' });
+  await app.register(fleetRecurrenceRoutes, { prefix: '/fleet-recurrence' });
   await app.register(fleetOpsRoutes, { prefix: '/fleet-ops' });
   await app.register(driverHubRoutes, { prefix: '/driver-hub' });
 await app.register(garantiasRoutes, { prefix: '/garantias' });

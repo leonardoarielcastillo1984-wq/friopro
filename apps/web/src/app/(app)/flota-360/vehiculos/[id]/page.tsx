@@ -8,6 +8,7 @@ import CargaCombustible from '../../_components/CargaCombustible';
 import NeumaticosPanel from '../../_components/NeumaticosPanel';
 import FacturasPanel from '../../_components/FacturasPanel';
 import MultasPanel from '../../_components/MultasPanel';
+import RecurrenciasPanel from '../../_components/RecurrenciasPanel';
 import { apiFetch } from '@/lib/api';
 import {
   ChevronLeft, Gauge, Wrench, ShieldCheck, ScanLine, AlertTriangle,
@@ -638,6 +639,8 @@ export default function VehiculoFichaPage() {
               )}
             </tbody>
           </table>
+          {/* Análisis de reparaciones recurrentes por componente */}
+          <RecurrenciasPanel vehiculoId={v.id} workOrders={workOrders} />
         </div>
       )}
 

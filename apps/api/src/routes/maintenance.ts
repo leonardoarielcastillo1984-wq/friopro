@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { notifyWorkOrderAssigned } from '../services/notifyService.js';
+import { evaluarRecurrenciasDeOT } from '../services/fleetRecurrence.js';
 
 // Schemas de validación
 const createWorkOrderSchema = z.object({
@@ -1405,6 +1406,10 @@ export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: st
           notas: workOrder.description || '',
         }
       });
+
+      // Flota 360 — evaluar recurrencias por componente si la OT está clasificada
+      evaluarRecurrenciasDeOT(prisma, tenantId, workOrder.id, workOrder.assetId)
+        .catch((e: any) => console.error('[maintenance] evaluarRecurrenciasDeOT error:', e));
     }
   }
 
