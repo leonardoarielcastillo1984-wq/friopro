@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import crypto from 'crypto';
 import { notifyIntervencionRegistrada } from '../services/notifyService.js';
+import { syncOdometroYDesgaste } from '../services/fleetTires.js';
 
 const generateToken = () => crypto.randomBytes(20).toString('hex');
 
@@ -558,10 +559,8 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       });
       if (vehiculo) {
         if (km && (vehiculo.currentOdometer == null || km > vehiculo.currentOdometer)) {
-          await (app.prisma as any).vehiculo.update({
-            where: { id: vehiculo.id },
-            data: { currentOdometer: km },
-          });
+          // Actualiza odómetro + acumula desgaste en cubiertas + propaga al acoplado
+          await syncOdometroYDesgaste(app.prisma, qr.tenantId, vehiculo.id, km).catch(() => {});
         }
         await (app.prisma as any).vehiculoHistorialMantenimiento.create({
           data: {

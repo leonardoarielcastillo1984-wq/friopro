@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { notifyIncidenteReportado, notifyFlotaAlerta } from '../services/notifyService.js';
+import { syncOdometroYDesgaste } from '../services/fleetTires.js';
 import { existsSync, mkdirSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -197,9 +198,9 @@ export async function driverHubRoutes(app: FastifyInstance) {
       },
     });
 
-    // Sync odómetro si viene
+    // Sync odómetro si viene (+ desgaste de cubiertas y propagación al acoplado)
     if (body.data.odometro && (vehiculo.currentOdometer == null || body.data.odometro > vehiculo.currentOdometer)) {
-      await prisma().vehiculo.update({ where: { id: vehiculo.id }, data: { currentOdometer: body.data.odometro } }).catch(() => {});
+      await syncOdometroYDesgaste(prisma(), qr.tenantId, vehiculo.id, body.data.odometro).catch(() => {});
     }
 
     // Notificar a admins
@@ -290,9 +291,9 @@ export async function driverHubRoutes(app: FastifyInstance) {
       },
     });
 
-    // Sync odómetro al vehículo + activo de mantenimiento
+    // Sync odómetro al vehículo + activo de mantenimiento (+ desgaste de cubiertas y acoplado)
     if (body.data.odometro && (vehiculo.currentOdometer == null || body.data.odometro > vehiculo.currentOdometer)) {
-      await prisma().vehiculo.update({ where: { id: vehiculo.id }, data: { currentOdometer: body.data.odometro } }).catch(() => {});
+      await syncOdometroYDesgaste(prisma(), qr.tenantId, vehiculo.id, body.data.odometro).catch(() => {});
       await prisma().maintenanceAsset.update({ where: { id: qr.maintenanceAssetId }, data: { currentOdometer: body.data.odometro } }).catch(() => {});
     }
 
@@ -402,9 +403,9 @@ export async function driverHubRoutes(app: FastifyInstance) {
       },
     });
 
-    // Sync odómetro al vehículo + activo
+    // Sync odómetro al vehículo + activo (+ desgaste de cubiertas y acoplado)
     if (d.odometro && (vehiculo.currentOdometer == null || d.odometro > vehiculo.currentOdometer)) {
-      await prisma().vehiculo.update({ where: { id: vehiculo.id }, data: { currentOdometer: d.odometro } }).catch(() => {});
+      await syncOdometroYDesgaste(prisma(), qr.tenantId, vehiculo.id, d.odometro).catch(() => {});
       await prisma().maintenanceAsset.update({ where: { id: qr.maintenanceAssetId }, data: { currentOdometer: d.odometro } }).catch(() => {});
     }
 

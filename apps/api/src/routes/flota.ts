@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { notifyBandaCritica } from '../services/notifyService.js';
 import { proyectarVehiculo } from '../services/fleetProjection.js';
+import { syncOdometroYDesgaste } from '../services/fleetTires.js';
 import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -809,9 +810,11 @@ export default async function flotaRoutes(app: FastifyInstance) {
           data: { currentOdometer: body.data.currentOdometer }
         });
       }
+      // Acumular desgaste en cubiertas montadas + propagar al acoplado (actualiza el odómetro del vehículo)
+      await syncOdometroYDesgaste(app.prisma, tenantId, id, body.data.currentOdometer);
     }
 
-    const { conductorId, crearActivoMantenimiento, acquisitionCost, manufacturer, purchaseDate, maintenanceAssetId, ...vehiculoFields } = body.data as any;
+    const { conductorId, crearActivoMantenimiento, acquisitionCost, manufacturer, purchaseDate, maintenanceAssetId, currentOdometer, ...vehiculoFields } = body.data as any;
     const updateData: any = { ...vehiculoFields };
     if (maintenanceAssetId !== undefined) updateData.maintenanceAssetId = maintenanceAssetId;
     await (app.prisma as any).vehiculo.updateMany({ where: { id, tenantId }, data: updateData });
@@ -1947,9 +1950,9 @@ export default async function flotaRoutes(app: FastifyInstance) {
         rendimiento = (body.data.odometro - anterior.odometro) / body.data.litros;
         rendimiento = Math.round(rendimiento * 100) / 100;
       }
-      // Actualizar odómetro del vehículo
-      await (app.prisma as any).vehiculo.updateMany({ where: { id: vehiculoId }, data: { currentOdometer: body.data.odometro } });
-      
+      // Actualizar odómetro + acumular desgaste en cubiertas + propagar al acoplado
+      await syncOdometroYDesgaste(app.prisma, tenantId, vehiculoId, body.data.odometro);
+
       // Verificar planes de mantenimiento por KM (ejecutar en background)
       verificarPlanesPorKm(app.prisma, tenantId, vehiculoId, body.data.odometro).catch(() => {});
     }

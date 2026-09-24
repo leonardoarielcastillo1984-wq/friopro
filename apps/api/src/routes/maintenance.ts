@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { notifyWorkOrderAssigned } from '../services/notifyService.js';
 import { evaluarRecurrenciasDeOT } from '../services/fleetRecurrence.js';
+import { syncOdometroYDesgaste } from '../services/fleetTires.js';
 
 // Schemas de validación
 const createWorkOrderSchema = z.object({
@@ -1383,10 +1384,8 @@ export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: st
       // Si se proporcionó odómetro en la OT, actualizar vehículo
       if (updateData.finalOdometer || updateData.odometro) {
         const nuevoOdometro = updateData.finalOdometer || updateData.odometro;
-        await prisma.vehiculo.update({
-          where: { id: vehiculo.id, tenantId },
-          data: { currentOdometer: nuevoOdometro }
-        });
+        // Actualiza odómetro + acumula desgaste en cubiertas + propaga al acoplado
+        await syncOdometroYDesgaste(prisma, tenantId, vehiculo.id, nuevoOdometro);
 
         // Verificar planes de mantenimiento por KM
         await verificarPlanesKmDespuesDeOt(prisma, tenantId, vehiculo.id, nuevoOdometro);

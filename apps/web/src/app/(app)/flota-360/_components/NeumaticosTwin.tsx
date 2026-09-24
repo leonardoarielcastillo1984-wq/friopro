@@ -28,10 +28,31 @@ type Posicion = {
 type Libre = { id: string; codigo: string; marca: string | null; medida: string | null };
 
 const MIN_LEGAL = 1.6;
-const W = 64;          // diámetro de rueda
-const RING = 7;        // espesor del anillo gauge
-const ROW_H = 96;      // alto por eje
-const CH_W = 150;      // ancho del chasis
+const W = 46;          // diámetro de rueda (gauge)
+const RING = 6;        // espesor del anillo gauge
+
+// ── Anclaje de ruedas sobre la imagen cenital real ──
+// Coordenadas en % del alto/ancho de la imagen renderizada.
+const IMG_SRC = { SEMI: '/flota-assets/semi-top.png', DEFAULT: '/flota-assets/tractor-top.png' };
+// X (% del ancho) por lado+posición
+const X_POS: Record<string, number> = {
+  'IZQ-EXT': 12, 'IZQ-INT': 28, 'IZQ-SIMPLE': 16,
+  'DER-INT': 72, 'DER-EXT': 88, 'DER-SIMPLE': 84,
+};
+// Y (% del alto) por índice de eje según tipo de vehículo
+function ejeYPct(idx0: number, totalEjes: number, esSemi: boolean, numSteering: number): number {
+  if (esSemi) {
+    // Semis: todos los ejes en el tren trasero (~66–88% de la imagen)
+    const [a, b] = [66, 88];
+    return totalEjes <= 1 ? 78 : a + (idx0 / (totalEjes - 1)) * (b - a);
+  }
+  // Tractor/camión: ejes de dirección adelante (~40%), de tracción atrás (~62–88%)
+  if (idx0 < numSteering) return numSteering === 1 ? 40 : 36 + idx0 * 11;
+  const driveIdx = idx0 - numSteering;
+  const numDrive = Math.max(1, totalEjes - numSteering);
+  const [a, b] = [62, 88];
+  return numDrive <= 1 ? 72 : a + (driveIdx / (numDrive - 1)) * (b - a);
+}
 
 function usablePct(banda: number | null | undefined, orig: number | null | undefined) {
   if (banda == null) return null;
@@ -63,7 +84,7 @@ function Rueda({ p, size = W, ghost = false, proyBanda }: { p: Posicion | null; 
   const color = bandaColor(pct);
   const critico = banda != null && banda <= 2.5;
   return (
-    <div className={`relative rounded-full transition-transform ${ghost ? 'opacity-60' : ''}`} style={{ width: size, height: size }}>
+    <div className={`relative rounded-full transition-transform ${ghost ? 'opacity-60' : ''}`} style={{ width: size, height: size, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))' }}>
       <svg width={size} height={size} className="block">
         {/* pista */}
         <circle cx={size / 2} cy={size / 2} r={r} fill={n ? '#ffffff' : '#f5f5f5'} stroke={n ? '#e5e5e5' : '#e5e5e5'} strokeWidth={RING} strokeDasharray={n ? undefined : '3 4'} />
@@ -93,7 +114,7 @@ function Rueda({ p, size = W, ghost = false, proyBanda }: { p: Posicion | null; 
   );
 }
 
-export default function NeumaticosTwin({ vehiculoId, odometro }: { vehiculoId: string; odometro: number | null }) {
+export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, configEjes }: { vehiculoId: string; odometro: number | null; tipo?: string; cantEjes?: number | null; configEjes?: string | null }) {
   const [posiciones, setPosiciones] = useState<Posicion[]>([]);
   const [libres, setLibres] = useState<Libre[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,11 +143,20 @@ export default function NeumaticosTwin({ vehiculoId, odometro }: { vehiculoId: s
 
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2600); };
 
-  // ── Layout ──
-  const ejes = useMemo(() => [...new Set(posiciones.filter(p => p.posicion !== 'AUXILIO').map(p => p.eje))].sort((a, b) => a - b), [posiciones]);
+  // ── Layout sobre la imagen real ──
+  const esSemi = (tipo || '').toUpperCase() === 'SEMI';
+  const numSteering = esSemi ? 0 : ((configEjes || '').trim().startsWith('8') ? 2 : 1);
+  const ejesMontados = useMemo(() => [...new Set(posiciones.filter(p => p.posicion !== 'AUXILIO').map(p => p.eje))], [posiciones]);
+  const totalEjes = Math.max(cantEjes || 0, ejesMontados.length ? Math.max(...ejesMontados) : 0, 2);
+  const ejes = useMemo(() => Array.from({ length: totalEjes }, (_, i) => i + 1), [totalEjes]);
   const auxilios = posiciones.filter(p => p.posicion === 'AUXILIO');
   const posDe = (eje: number, lado: string, pos: string) => posiciones.find(p => p.eje === eje && p.lado === lado && p.posicion === pos);
-  const esDual = (eje: number) => posiciones.some(p => p.eje === eje && (p.posicion === 'EXT' || p.posicion === 'INT'));
+  // Dual si hay EXT/INT montadas; si el eje está vacío, doble por defecto en tracción/semi
+  const esDual = (eje: number) => {
+    if (posiciones.some(p => p.eje === eje && (p.posicion === 'EXT' || p.posicion === 'INT'))) return true;
+    if (posiciones.some(p => p.eje === eje && p.posicion === 'SIMPLE')) return false;
+    return esSemi ? true : eje > numSteering;
+  };
 
   // ── Tasas de desgaste por neumático (para proyección) ──
   const [tasas, setTasas] = useState<Record<string, number | null>>({});
@@ -255,12 +285,12 @@ export default function NeumaticosTwin({ vehiculoId, odometro }: { vehiculoId: s
     );
   };
 
-  const altura = Math.max(1, ejes.length) * ROW_H + 150;
+  const imgSrc = esSemi ? IMG_SRC.SEMI : IMG_SRC.DEFAULT;
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
       <div className="px-3 py-2 border-b border-neutral-200 flex items-center justify-between flex-wrap gap-2">
-        <span className="text-xs font-semibold text-neutral-800 flex items-center gap-1.5"><CircleDot className="h-3.5 w-3.5 text-violet-600" /> Gemelo de neumáticos</span>
+        <span className="text-xs font-semibold text-neutral-800 flex items-center gap-1.5"><CircleDot className="h-3.5 w-3.5 text-violet-600" /> Gemelo de neumáticos {esSemi && <span className="text-[9px] font-normal text-neutral-400">(semi)</span>}</span>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
             <Sparkles className="h-3 w-3 text-violet-500" />
@@ -276,44 +306,40 @@ export default function NeumaticosTwin({ vehiculoId, odometro }: { vehiculoId: s
       {toast && <p className="mx-3 mt-2 rounded-md bg-green-50 border border-green-200 px-3 py-1.5 text-xs text-green-700">{toast}</p>}
 
       <div className="p-4 flex gap-4">
-        {/* ── Esquema cenital ── */}
-        <div className="relative mx-auto" style={{ width: CH_W + 2 * (W + 14), minHeight: altura }}>
-          {loading ? (
-            <p className="text-xs text-neutral-400 py-10 text-center">Cargando…</p>
-          ) : (
-            <>
-              {/* Chasis + cabina (cenital) */}
-              <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-8 rounded-t-[40px] rounded-b-lg border-2 border-neutral-300 bg-gradient-to-b from-neutral-100 to-neutral-200 shadow-inner" style={{ width: CH_W }}>
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold text-neutral-400 tracking-widest">FRENTE</div>
-                <div className="absolute top-7 left-1/2 -translate-x-1/2 h-10 w-[86%] rounded-t-3xl bg-neutral-300/60 border border-neutral-300" />
-              </div>
-              {/* Ejes */}
-              <div className="relative pt-16 space-y-0">
-                {ejes.length === 0 && <p className="text-xs text-neutral-400 text-center py-8">Sin neumáticos montados — arrastrá o usá "Montar"</p>}
+        {/* ── Esquema cenital sobre la imagen real ── */}
+        <div className="shrink-0">
+          <div className="relative mx-auto" style={{ width: 240 }}>
+            {loading ? (
+              <p className="text-xs text-neutral-400 py-10 text-center">Cargando…</p>
+            ) : (
+              <>
+                <img src={imgSrc} alt={esSemi ? 'Semirremolque visto desde arriba' : 'Vehículo visto desde arriba'} className="block w-full h-auto select-none" draggable={false} />
+                {/* Ruedas-gauge posicionadas sobre los ejes de la imagen */}
                 {ejes.map((eje) => {
+                  const y = ejeYPct(eje - 1, totalEjes, esSemi, numSteering);
                   const dual = esDual(eje);
-                  return (
-                    <div key={eje} className="relative flex items-center justify-between" style={{ height: ROW_H }}>
-                      {/* etiqueta de eje sobre el chasis */}
-                      <span className="absolute left-1/2 -translate-x-1/2 text-[9px] font-bold text-neutral-400 uppercase">Eje {eje}</span>
-                      {/* izquierda: EXT afuera, INT adentro */}
-                      <div className="flex items-center gap-1.5 pl-1">
-                        {dual ? <>{slot(eje, 'IZQ', 'EXT')}{slot(eje, 'IZQ', 'INT')}</> : slot(eje, 'IZQ', 'SIMPLE')}
-                      </div>
-                      {/* derecha: INT adentro, EXT afuera */}
-                      <div className="flex items-center gap-1.5 pr-1">
-                        {dual ? <>{slot(eje, 'DER', 'INT')}{slot(eje, 'DER', 'EXT')}</> : slot(eje, 'DER', 'SIMPLE')}
-                      </div>
+                  const slotsDef: { lado: 'IZQ' | 'DER'; pos: 'SIMPLE' | 'EXT' | 'INT' }[] = dual
+                    ? [{ lado: 'IZQ', pos: 'EXT' }, { lado: 'IZQ', pos: 'INT' }, { lado: 'DER', pos: 'INT' }, { lado: 'DER', pos: 'EXT' }]
+                    : [{ lado: 'IZQ', pos: 'SIMPLE' }, { lado: 'DER', pos: 'SIMPLE' }];
+                  return slotsDef.map(s => (
+                    <div key={`${eje}-${s.lado}-${s.pos}`} className="absolute" style={{ left: `${X_POS[`${s.lado}-${s.pos}`]}%`, top: `${y}%`, transform: 'translate(-50%,-50%)' }}>
+                      {slot(eje, s.lado, s.pos)}
                     </div>
-                  );
+                  ));
                 })}
-                {/* Auxilio */}
-                <div className="relative flex items-center justify-center gap-2 pt-3 mt-2 border-t border-dashed border-neutral-200">
-                  <span className="text-[9px] font-bold text-neutral-400 uppercase">Auxilio</span>
-                  {auxilios.length > 0 ? auxilios.map(p => slot(p.eje, p.lado, 'AUXILIO')) : slot(0, 'IZQ', 'AUXILIO')}
-                </div>
-              </div>
-            </>
+                {/* etiqueta de eje */}
+                {ejes.map((eje) => (
+                  <span key={`lbl-${eje}`} className="absolute left-1/2 -translate-x-1/2 text-[8px] font-bold text-neutral-500/70 uppercase pointer-events-none" style={{ top: `${ejeYPct(eje - 1, totalEjes, esSemi, numSteering)}%`, transform: 'translate(-50%,-50%)' }}>E{eje}</span>
+                ))}
+              </>
+            )}
+          </div>
+          {/* Auxilio debajo de la imagen */}
+          {!loading && (
+            <div className="relative flex items-center justify-center gap-2 pt-3 mt-2 border-t border-dashed border-neutral-200">
+              <span className="text-[9px] font-bold text-neutral-400 uppercase">Auxilio</span>
+              {auxilios.length > 0 ? auxilios.map(p => slot(p.eje, p.lado, 'AUXILIO')) : slot(0, 'IZQ', 'AUXILIO')}
+            </div>
           )}
         </div>
 

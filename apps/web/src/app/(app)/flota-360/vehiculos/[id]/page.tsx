@@ -515,7 +515,7 @@ export default function VehiculoFichaPage() {
       )}
 
       {/* Neumáticos: diagrama de ejes + montar/desmontar/presión/medición */}
-      <NeumaticosTwin vehiculoId={v.id} odometro={v.currentOdometer ?? null} />
+      <NeumaticosTwin vehiculoId={v.id} odometro={v.currentOdometer ?? null} tipo={v.tipo} cantEjes={v.cantEjes} configEjes={v.configEjes} />
 
       {/* Facturas y multas de la unidad */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
