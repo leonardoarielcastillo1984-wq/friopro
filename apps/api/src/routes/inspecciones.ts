@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import crypto from 'crypto';
-import { notifyInspeccionHallazgo, notifyInspeccionOT } from '../services/notifyService.js';
+import { notifyInspeccionHallazgo, notifyInspeccionOT, notifyBandaCritica } from '../services/notifyService.js';
 import ExcelJS from 'exceljs';
 
 const generateToken = () => crypto.randomBytes(20).toString('hex');
@@ -384,7 +384,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     const cubiertas = vehiculo
       ? await (app.prisma as any).neumaticoPosicion.findMany({
           where: { vehiculoId: vehiculo.id, tenantId: qr.tenantId, activo: true },
-          include: { neumatico: { select: { id: true, codigo: true, medida: true, presionRecomendada: true } } },
+          include: { neumatico: { select: { id: true, codigo: true, medida: true, presionRecomendada: true, profBanda: true } } },
           orderBy: [{ eje: 'asc' }, { lado: 'asc' }, { posicion: 'asc' }],
         }).catch(() => [])
       : [];
@@ -400,6 +400,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         posicionId: p.id, eje: p.eje, lado: p.lado, posicion: p.posicion,
         neumaticoId: p.neumatico?.id ?? null, codigo: p.neumatico?.codigo ?? null,
         medida: p.neumatico?.medida ?? null, presionRecomendada: p.neumatico?.presionRecomendada ?? null,
+        profBanda: p.neumatico?.profBanda ?? null,
       })),
       prefill: {
         inspectorNombre: vehiculo?.conductor?.nombre ?? null,
@@ -435,6 +436,11 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       presiones: z.array(z.object({
         posicionId: z.string().uuid(),
         psi: z.number().positive().max(300),
+      })).optional(),
+      // Medición de canaleta / profundidad de banda (mm) — opcional, "cada tanto"
+      mediciones: z.array(z.object({
+        posicionId: z.string().uuid(),
+        profBanda: z.number().positive().max(30),
       })).optional(),
       respuestas: z.array(z.object({
         itemId: z.string().uuid(),
@@ -538,6 +544,49 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
           }
         }
       } catch (e: any) { console.error('[inspecciones] control presion error:', e); }
+    }
+
+    // ── Medición de canaleta / profundidad de banda (si se cargó mm) ──────────
+    // Cada medición crea un NeumaticoMedicion y actualiza profBanda de la cubierta,
+    // recalibrando la proyección de desgaste con datos reales (no solo por km).
+    if (body.data.mediciones?.length && qr.maintenanceAssetId) {
+      try {
+        const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+          where: { maintenanceAssetId: qr.maintenanceAssetId, tenantId: qr.tenantId },
+          select: { id: true, dominio: true },
+        });
+        if (vehiculo) {
+          const posIds = body.data.mediciones.map((m: any) => m.posicionId);
+          const posiciones = await (app.prisma as any).neumaticoPosicion.findMany({
+            where: { id: { in: posIds }, vehiculoId: vehiculo.id, tenantId: qr.tenantId, activo: true },
+            include: { neumatico: { select: { id: true, codigo: true, profBanda: true, profBandaOriginal: true } } },
+          });
+          for (const pos of posiciones) {
+            const m = body.data.mediciones.find((x: any) => x.posicionId === pos.id);
+            if (!m || !pos.neumatico) continue;
+            await (app.prisma as any).neumaticoMedicion.create({
+              data: {
+                tenantId: qr.tenantId, neumaticoId: pos.neumatico.id, vehiculoId: vehiculo.id,
+                eje: pos.eje, lado: pos.lado, posicion: pos.posicion,
+                profBanda: m.profBanda, kmAlMedir: body.data.kmReported ?? null,
+                observador: body.data.inspectorNombre, notas: 'Medición desde checklist del chofer',
+              },
+            });
+            // Actualizar profBanda actual + setear original si la cubierta no lo tiene
+            const upd: any = { profBanda: m.profBanda };
+            if (pos.neumatico.profBandaOriginal == null) upd.profBandaOriginal = pos.neumatico.profBanda ?? m.profBanda;
+            await (app.prisma as any).neumatico.updateMany({ where: { id: pos.neumatico.id }, data: upd });
+            // Alerta a admins si la banda quedó baja
+            if (m.profBanda <= 2.5) {
+              notifyBandaCritica(app.prisma, {
+                tenantId: qr.tenantId, vehiculoDominio: vehiculo.dominio || 'Sin asignar',
+                neumaticoCodigo: pos.neumatico.codigo, profBanda: m.profBanda,
+                posicion: `Eje ${pos.eje} ${pos.lado}/${pos.posicion}`, neumaticoId: pos.neumatico.id,
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch (e: any) { console.error('[inspecciones] medicion canaleta error:', e); }
     }
 
     // ── Auto-acople de conjunto operativo (tractor + semi del checklist) ──────

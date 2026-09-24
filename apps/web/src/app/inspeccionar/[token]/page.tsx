@@ -18,6 +18,7 @@ export default function InspeccionarPage() {
   const [inspector, setInspector] = useState({ nombre: '', email: '', phone: '', dominioTractor: '', dominioSemi: '', ruta: '', km: '', empresaTransporte: '', conductor: '' });
   const [respuestas, setRespuestas] = useState<Record<string, Respuesta>>({});
   const [presiones, setPresiones] = useState<Record<string, string>>({});
+  const [canaletas, setCanaletas] = useState<Record<string, string>>({});
   const [notas, setNotas] = useState('');
   const [resultado, setResultado] = useState<any>(null);
 
@@ -110,6 +111,9 @@ export default function InspeccionarPage() {
           presiones: Object.entries(presiones)
             .filter(([, v]) => v !== '' && !isNaN(parseFloat(v)))
             .map(([posicionId, v]) => ({ posicionId, psi: parseFloat(v) })),
+          mediciones: Object.entries(canaletas)
+            .filter(([, v]) => v !== '' && !isNaN(parseFloat(v)))
+            .map(([posicionId, v]) => ({ posicionId, profBanda: parseFloat(v) })),
         }),
       });
       const json = await res.json();
@@ -329,8 +333,8 @@ export default function InspeccionarPage() {
             {(data?.cubiertas?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                 <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Presión de neumáticos (PSI)</p>
-                  <span className="text-[10px] text-gray-400">opcional · con cubierta fría</span>
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Presión (PSI) y canaleta (mm)</p>
+                  <span className="text-[10px] text-gray-400">opcional · canaleta cada tanto</span>
                 </div>
                 <div className="divide-y divide-gray-50">
                   {data.cubiertas.map((c: any) => {
@@ -338,6 +342,9 @@ export default function InspeccionarPage() {
                     const val = presiones[c.posicionId] ?? '';
                     const num = parseFloat(val);
                     const baja = val !== '' && !isNaN(num) && rec != null && num < rec * 0.9;
+                    const cVal = canaletas[c.posicionId] ?? '';
+                    const cNum = parseFloat(cVal);
+                    const cBaja = cVal !== '' && !isNaN(cNum) && cNum <= 2;
                     return (
                       <div key={c.posicionId} className="px-4 py-3 flex items-center gap-3">
                         <div className="flex-1 min-w-0">
@@ -345,21 +352,30 @@ export default function InspeccionarPage() {
                             Eje {c.eje} · {c.lado === 'IZQ' ? 'Izq' : 'Der'}{c.posicion !== 'SIMPLE' ? ` ${c.posicion === 'EXT' ? 'ext' : 'int'}` : ''}
                           </p>
                           <p className="text-[11px] text-gray-400 truncate">
-                            {c.codigo || 'Cubierta'}{rec != null ? ` · rec. ${rec} PSI` : ''}
+                            {c.codigo || 'Cubierta'}{c.profBanda != null ? ` · banda ${c.profBanda}mm` : ''}
                           </p>
                         </div>
-                        <div className="relative w-28 shrink-0">
-                          <input type="number" inputMode="decimal" min="0" max="300" step="0.5"
-                            value={val} onChange={e => setPresiones(p => ({ ...p, [c.posicionId]: e.target.value }))}
-                            placeholder={rec != null ? String(rec) : 'PSI'}
-                            className={`w-full text-sm border rounded-xl px-3 py-2.5 pr-9 outline-none text-right font-semibold ${baja ? 'border-red-300 bg-red-50 text-red-600' : 'border-gray-200'}`} />
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">psi</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="relative w-20">
+                            <input type="number" inputMode="decimal" min="0" max="300" step="0.5"
+                              value={val} onChange={e => setPresiones(p => ({ ...p, [c.posicionId]: e.target.value }))}
+                              placeholder={rec != null ? String(rec) : 'PSI'} title="Presión (PSI)"
+                              className={`w-full text-sm border rounded-xl px-2 py-2.5 pr-7 outline-none text-right font-semibold ${baja ? 'border-red-300 bg-red-50 text-red-600' : 'border-gray-200'}`} />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">psi</span>
+                          </div>
+                          <div className="relative w-20">
+                            <input type="number" inputMode="decimal" min="0" max="30" step="0.1"
+                              value={cVal} onChange={e => setCanaletas(p => ({ ...p, [c.posicionId]: e.target.value }))}
+                              placeholder="mm" title="Canaleta / profundidad de banda (mm)"
+                              className={`w-full text-sm border rounded-xl px-2 py-2.5 pr-7 outline-none text-right font-semibold ${cBaja ? 'border-red-300 bg-red-50 text-red-600' : 'border-gray-200'}`} />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">mm</span>
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <p className="px-4 py-2 text-[10px] text-gray-400 bg-gray-50">Si medís una cubierta baja, inflala y anotá el valor ya corregido.</p>
+                <p className="px-4 py-2 text-[10px] text-gray-400 bg-gray-50">PSI con cubierta fría. La canaleta (mm) medila cada tanto con profundímetro — recalibra el desgaste real de la cubierta.</p>
               </div>
             )}
 
