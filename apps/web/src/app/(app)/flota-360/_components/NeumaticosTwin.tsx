@@ -27,7 +27,8 @@ type Posicion = {
 };
 type Libre = { id: string; codigo: string; marca: string | null; medida: string | null };
 
-const MIN_LEGAL = 1.6;
+const MIN_LEGAL = 2;   // mm — piso de vida útil (0%)
+const BANDA_NUEVA = 16; // mm — cubierta nueva (100%), rango típico 15–17
 const W = 46;          // diámetro de rueda (gauge)
 const RING = 6;        // espesor del anillo gauge
 
@@ -56,7 +57,7 @@ function ejeYPct(idx0: number, totalEjes: number, esSemi: boolean, numSteering: 
 
 function usablePct(banda: number | null | undefined, orig: number | null | undefined) {
   if (banda == null) return null;
-  const o = orig && orig > MIN_LEGAL ? orig : 8;
+  const o = orig && orig > MIN_LEGAL ? orig : BANDA_NUEVA;
   return Math.max(0, Math.min(1, (banda - MIN_LEGAL) / (o - MIN_LEGAL)));
 }
 function bandaColor(pct: number | null) {
@@ -179,8 +180,8 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
             const a = pts[0], b = pts[pts.length - 1];
             const dKm = b.kmAlMedir - a.kmAlMedir;
             out[n.id] = dKm > 0 ? (a.profBanda - b.profBanda) / dKm : null;
-          } else if ((n.kmAcumulados || 0) > 1000 && (n.profBandaOriginal ?? 8) > (n.profBanda ?? 0)) {
-            out[n.id] = ((n.profBandaOriginal ?? 8) - (n.profBanda ?? 0)) / (n.kmAcumulados || 1);
+          } else if ((n.kmAcumulados || 0) > 1000 && (n.profBandaOriginal ?? BANDA_NUEVA) > (n.profBanda ?? 0)) {
+            out[n.id] = ((n.profBandaOriginal ?? BANDA_NUEVA) - (n.profBanda ?? 0)) / (n.kmAcumulados || 1);
           } else out[n.id] = null;
         } catch { out[n.id] = null; }
       }
@@ -440,7 +441,7 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
                     <Rueda p={sel} size={72} />
                     <div className="text-[11px] space-y-0.5">
                       <p className="text-neutral-600">{[sel.neumatico.marca, sel.neumatico.medida].filter(Boolean).join(' · ') || '—'}</p>
-                      <p className="text-neutral-500">Banda: <b className={bandaTxt(usablePct(sel.neumatico.profBanda, sel.neumatico.profBandaOriginal))}>{sel.neumatico.profBanda ?? '—'} mm</b> / {sel.neumatico.profBandaOriginal ?? 8} mm</p>
+                      <p className="text-neutral-500">Banda: <b className={bandaTxt(usablePct(sel.neumatico.profBanda, sel.neumatico.profBandaOriginal))}>{sel.neumatico.profBanda ?? '—'} mm</b> / {sel.neumatico.profBandaOriginal ?? BANDA_NUEVA} mm</p>
                       <p className="text-neutral-500">Km acum.: <b>{Math.round(sel.neumatico.kmAcumulados || 0).toLocaleString('es-AR')}</b></p>
                       {sel.neumatico.recapsCount > 0 && <p className="text-neutral-500">Recaps: {sel.neumatico.recapsCount}</p>}
                       {sel.ultimaPresion && <p className="text-neutral-500">Presión: <b>{sel.ultimaPresion.presionMedida} psi</b>{sel.neumatico.presionRecomendada ? ` / ${sel.neumatico.presionRecomendada}` : ''}</p>}
@@ -455,7 +456,7 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
                       : (() => {
                           const pts = detalle.mediciones.filter((m: any) => m.profBanda != null).sort((a: any, b: any) => (a.kmAlMedir ?? 0) - (b.kmAlMedir ?? 0));
                           const w = 260, h = 90, pad = 18;
-                          const maxB = Math.max(8, ...pts.map((m: any) => m.profBanda));
+                          const maxB = Math.max(BANDA_NUEVA, ...pts.map((m: any) => m.profBanda));
                           const xs = pts.map((m: any, i: number) => pad + (pts.length === 1 ? (w - 2 * pad) / 2 : (i / (pts.length - 1)) * (w - 2 * pad)));
                           const ys = pts.map((m: any) => h - pad - ((m.profBanda - 0) / maxB) * (h - 2 * pad));
                           const line = xs.map((x: number, i: number) => `${x},${ys[i]}`).join(' ');
@@ -465,7 +466,7 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
                             <>
                               <svg width={w} height={h} className="rounded-md bg-neutral-50 border border-neutral-100">
                                 <line x1={pad} y1={h - pad - (MIN_LEGAL / maxB) * (h - 2 * pad)} x2={w - pad} y2={h - pad - (MIN_LEGAL / maxB) * (h - 2 * pad)} stroke="#fca5a5" strokeDasharray="3 3" strokeWidth="1" />
-                                <text x={w - pad} y={h - pad - (MIN_LEGAL / maxB) * (h - 2 * pad) - 3} fontSize="8" fill="#ef4444" textAnchor="end">1.6mm legal</text>
+                                <text x={w - pad} y={h - pad - (MIN_LEGAL / maxB) * (h - 2 * pad) - 3} fontSize="8" fill="#ef4444" textAnchor="end">{MIN_LEGAL}mm mín</text>
                                 {pts.length > 1 && <polyline points={line} fill="none" stroke="#8b5cf6" strokeWidth="2" />}
                                 {pts.map((m: any, i: number) => <circle key={i} cx={xs[i]} cy={ys[i]} r="3" fill="#8b5cf6" />)}
                               </svg>

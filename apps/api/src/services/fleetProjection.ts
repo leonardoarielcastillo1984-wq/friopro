@@ -374,7 +374,7 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
   const neumaticosProj = (vehiculo.posicionesNeumatico || []).map((p: any) => {
     const n = p.neumatico;
     if (!n) return null;
-    const banda0 = n.profBandaOriginal ?? 8;
+    const banda0 = n.profBandaOriginal ?? 16; // mm — cubierta nueva (rango típico 15–17)
     const banda = n.profBanda ?? banda0;
     const kmAcum = n.kmAcumulados || 0;
     let tasa: number | null = null;
@@ -388,7 +388,7 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
       tasa = (banda0 - banda) / kmAcum; modeloTasa = 'tasa estimada desde montaje (1 punto)';
     }
     const bandaFut = tasa != null ? Math.max(0, banda - tasa * kmProyectar) : null;
-    const kmRestantes = tasa != null && tasa > 0 ? Math.round((banda - 1.6) / tasa) : null;
+    const kmRestantes = tasa != null && tasa > 0 ? Math.round((banda - 2) / tasa) : null;
     return {
       codigo: n.codigo, posicion: `Eje ${p.eje} ${p.lado}/${p.posicion}`,
       condicion: n.condicion, recaps: n.recapsCount || 0,

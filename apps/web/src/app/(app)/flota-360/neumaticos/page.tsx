@@ -15,7 +15,7 @@ const STATUS_COLOR: Record<string, string> = {
   DISPONIBLE: 'bg-green-50 text-green-700', EN_USO: 'bg-blue-50 text-blue-700', BAJA: 'bg-red-50 text-red-600',
 };
 
-const FORM_VACIO = { codigo: '', cantidad: '1', marca: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '8', proveedor: '', fechaCompra: '', precioCompra: '', presionRecomendada: '', notas: '' };
+const FORM_VACIO = { codigo: '', cantidad: '1', marca: '', medida: '', dot: '', condicion: 'NUEVA', profBanda: '16', proveedor: '', fechaCompra: '', precioCompra: '', presionRecomendada: '', notas: '' };
 
 function Card({ icon, label, value, sub, tone = 'text-neutral-900' }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: string; tone?: string }) {
   return (
@@ -138,10 +138,11 @@ export default function NeumaticosPage() {
   const enAlerta = neumaticos.filter((n) => (n.profBanda != null && n.profBanda < 3) || n.kmAcumulados > 80000);
 
   // ── KPIs de cubiertas ──
-  const MIN_LEGAL = 1.6;
+  const MIN_LEGAL = 2;    // mm — piso de vida útil (0%)
+  const BANDA_NUEVA = 16; // mm — cubierta nueva (100%), rango típico 15–17
   const usablePct = (n: Neumatico) => {
     if (n.profBanda == null) return null;
-    const o = n.profBandaOriginal && n.profBandaOriginal > MIN_LEGAL ? n.profBandaOriginal : 8;
+    const o = n.profBandaOriginal && n.profBandaOriginal > MIN_LEGAL ? n.profBandaOriginal : BANDA_NUEVA;
     return Math.max(0, Math.min(1, (n.profBanda - MIN_LEGAL) / (o - MIN_LEGAL)));
   };
   const stats = {

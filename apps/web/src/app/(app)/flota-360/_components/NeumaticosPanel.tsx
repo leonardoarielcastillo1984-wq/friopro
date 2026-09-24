@@ -336,7 +336,7 @@ export default function NeumaticosPanel({ vehiculoId, odometro }: { vehiculoId: 
               <div>
                 <label className="block text-xs font-medium text-neutral-600">Profundidad de banda (mm) *</label>
                 <input type="number" min={0} max={30} step="0.1" value={medicion.banda} onChange={(e) => setMedicion({ ...medicion, banda: e.target.value })} placeholder="ej: 5.2" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
-                <p className="text-[10px] text-neutral-400 mt-0.5">Mínimo legal: 1.6 mm · Nueva: ~8 mm</p>
+                <p className="text-[10px] text-neutral-400 mt-0.5">Mínimo: 2 mm · Nueva: ~16 mm</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-600">Presión (psi) — opcional</label>
@@ -380,7 +380,7 @@ export default function NeumaticosPanel({ vehiculoId, odometro }: { vehiculoId: 
                     const first = pts[0], last = pts[pts.length - 1];
                     const dKm = last.kmAlMedir - first.kmAlMedir;
                     const tasa = dKm > 0 ? ((first.profBanda - last.profBanda) / dKm) * 1000 : 0;
-                    const kmRest = tasa > 0 ? Math.round(((last.profBanda - 1.6) / tasa) * 1000) : null;
+                    const kmRest = tasa > 0 ? Math.round(((last.profBanda - 2) / tasa) * 1000) : null;
                     return (
                       <div className="mt-3 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-800">
                         <p>Tasa de desgaste: <strong>{tasa.toFixed(3)} mm / 1.000 km</strong></p>

@@ -14,10 +14,11 @@ import { Truck, AlertTriangle } from 'lucide-react';
 type Pos = { id: string; eje: number; lado: string; posicion: string; neumatico: { id: string; codigo: string; profBanda: number | null; profBandaOriginal: number | null; kmAcumulados: number | null; condicion: string; recapsCount: number } | null };
 type Veh = { id: string; dominio: string; tipo: string; marca: string | null; modelo: string | null; currentOdometer: number | null; posicionesNeumatico: Pos[] };
 
-const MIN_LEGAL = 1.6;
+const MIN_LEGAL = 2;    // mm — piso de vida útil (0%)
+const BANDA_NUEVA = 16; // mm — cubierta nueva (100%), rango típico 15–17
 function pct(banda: number | null | undefined, orig: number | null | undefined) {
   if (banda == null) return null;
-  const o = orig && orig > MIN_LEGAL ? orig : 8;
+  const o = orig && orig > MIN_LEGAL ? orig : BANDA_NUEVA;
   return Math.max(0, Math.min(1, (banda - MIN_LEGAL) / (o - MIN_LEGAL)));
 }
 function color(p: number | null) { return p == null ? '#e5e5e5' : p > 0.5 ? '#22c55e' : p > 0.25 ? '#f59e0b' : '#ef4444'; }

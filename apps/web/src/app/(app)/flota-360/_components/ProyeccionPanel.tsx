@@ -230,12 +230,12 @@ export default function ProyeccionPanel({ vehiculoId }: { vehiculoId: string }) 
                           <div>
                             <div className="flex justify-between text-[10px] text-neutral-500 mb-0.5">
                               <span>Peor banda ({c.neumaticosResumen.peorCodigo || '—'})</span>
-                              <span className={c.neumaticosResumen.peorBandaProyectada != null && c.neumaticosResumen.peorBandaProyectada <= 1.6 ? 'text-red-600 font-semibold' : ''}>
+                              <span className={c.neumaticosResumen.peorBandaProyectada != null && c.neumaticosResumen.peorBandaProyectada <= 2 ? 'text-red-600 font-semibold' : ''}>
                                 {c.neumaticosResumen.peorBanda ?? '—'} → {c.neumaticosResumen.peorBandaProyectada ?? '—'} mm
                               </span>
                             </div>
                             <div className="h-1.5 rounded-full bg-neutral-200 overflow-hidden">
-                              <div className={`h-full rounded-full ${(c.neumaticosResumen.peorBandaProyectada ?? 99) <= 1.6 ? 'bg-red-500' : (c.neumaticosResumen.peorBandaProyectada ?? 99) <= 3 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, Math.max(0, ((c.neumaticosResumen.peorBandaProyectada ?? c.neumaticosResumen.peorBanda ?? 0) / 8) * 100))}%` }} />
+                              <div className={`h-full rounded-full ${(c.neumaticosResumen.peorBandaProyectada ?? 99) <= 2 ? 'bg-red-500' : (c.neumaticosResumen.peorBandaProyectada ?? 99) <= 4 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, Math.max(0, (((c.neumaticosResumen.peorBandaProyectada ?? c.neumaticosResumen.peorBanda ?? 0) - 2) / 14) * 100))}%` }} />
                             </div>
                             <p className="text-[10px] text-neutral-400 mt-0.5">
                               {c.neumaticosResumen.montadas} montadas · {c.neumaticosResumen.conBanda} medidas
