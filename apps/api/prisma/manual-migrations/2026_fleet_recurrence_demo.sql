@@ -43,41 +43,41 @@ BEGIN
 
   -- Activo de mantenimiento + vehículo DEMO
   v_asset := gen_random_uuid();
-  INSERT INTO maintenance_assets (id, "tenantId", code, name, category, status, "currentOdometer")
-  VALUES (v_asset, v_tenant, 'DEMO-BURRO-ASSET', 'Camión DEMO recurrencias', 'VEHICLE', 'ACTIVE', 148000);
+  INSERT INTO maintenance_assets (id, "tenantId", code, name, category, status, "currentOdometer", "updatedAt")
+  VALUES (v_asset, v_tenant, 'DEMO-BURRO-ASSET', 'Camión DEMO recurrencias', 'VEHICLE', 'ACTIVE', 148000, now());
 
   v_vehiculo := gen_random_uuid();
-  INSERT INTO flota_vehiculos (id, "tenantId", dominio, tipo, marca, modelo, anio, "currentOdometer", status, "estadoOperativo", "maintenanceAssetId")
-  VALUES (v_vehiculo, v_tenant, 'DEMO-BURRO', 'CAMION', 'Demo', 'Recurrencias', 2020, 148000, 'ACTIVO', 'OPERATIVO', v_asset);
+  INSERT INTO flota_vehiculos (id, "tenantId", dominio, tipo, marca, modelo, anio, "currentOdometer", status, "estadoOperativo", "maintenanceAssetId", "updatedAt")
+  VALUES (v_vehiculo, v_tenant, 'DEMO-BURRO', 'CAMION', 'Demo', 'Recurrencias', 2020, 148000, 'ACTIVO', 'OPERATIVO', v_asset, now());
 
   -- Componente padre + regla de recurrencia (3 en 180 días — config de demo)
   v_comp := gen_random_uuid();
-  INSERT INTO fleet_components (id, "tenantId", nombre, categoria, sinonimos)
-  VALUES (v_comp, v_tenant, 'Burro de arranque', 'ELECTRICO', ARRAY['motor de arranque','arranque','starter','burro']);
+  INSERT INTO fleet_components (id, "tenantId", nombre, categoria, sinonimos, "updatedAt")
+  VALUES (v_comp, v_tenant, 'Burro de arranque', 'ELECTRICO', ARRAY['motor de arranque','arranque','starter','burro'], now());
 
-  INSERT INTO fleet_recurrence_rules (id, "tenantId", "componentId", "maxIntervenciones", "ventanaDias", "soloFallas")
-  VALUES (gen_random_uuid(), v_tenant, v_comp, 3, 180, true);
+  INSERT INTO fleet_recurrence_rules (id, "tenantId", "componentId", "maxIntervenciones", "ventanaDias", "soloFallas", "updatedAt")
+  VALUES (gen_random_uuid(), v_tenant, v_comp, 3, 180, true, now());
 
   -- Instancia instalada del burro (la pieza física actual)
   v_inst := gen_random_uuid();
-  INSERT INTO fleet_component_instances (id, "tenantId", "componentId", "serialNumber", notas)
-  VALUES (v_inst, v_tenant, v_comp, 'BOSCH-0001-DEMO', 'Burro original del vehículo demo');
+  INSERT INTO fleet_component_instances (id, "tenantId", "componentId", "serialNumber", notas, "updatedAt")
+  VALUES (v_inst, v_tenant, v_comp, 'BOSCH-0001-DEMO', 'Burro original del vehículo demo', now());
   INSERT INTO fleet_component_installations (id, "tenantId", "instanceId", "vehiculoId", "installedAt", "installedKm", motivo)
   VALUES (gen_random_uuid(), v_tenant, v_inst, v_vehiculo, now() - interval '400 days', 0, 'INSTALACION_INICIAL');
 
   -- ── 3 OTs completadas: misma falla de fondo (burro), piezas distintas ──
   -- OT1: cambio de carbones (hace ~5 meses)
-  INSERT INTO work_orders (id, "tenantId", code, title, description, type, priority, status, "assetId", "scheduledDate", "startedAt", "completedAt", "laborCost", "partsCost", "totalCost")
+  INSERT INTO work_orders (id, "tenantId", code, title, description, type, priority, status, "assetId", "scheduledDate", "startedAt", "completedAt", "laborCost", "partsCost", "totalCost", "updatedAt")
   VALUES (v_ot1, v_tenant, 'OT-DEMO-001', 'No arranca — cambio de carbones del burro', 'El motor de arranque giraba débil. Se cambiaron los carbones.', 'CORRECTIVE', 'HIGH', 'COMPLETED', v_asset,
-          now() - interval '150 days', now() - interval '150 days', now() - interval '149 days', 18000, 9500, 27500);
+          now() - interval '150 days', now() - interval '150 days', now() - interval '149 days', 18000, 9500, 27500, now());
   -- OT2: cambio del automático/solenoide (hace ~3 meses)
-  INSERT INTO work_orders (id, "tenantId", code, title, description, type, priority, status, "assetId", "scheduledDate", "startedAt", "completedAt", "laborCost", "partsCost", "totalCost")
+  INSERT INTO work_orders (id, "tenantId", code, title, description, type, priority, status, "assetId", "scheduledDate", "startedAt", "completedAt", "laborCost", "partsCost", "totalCost", "updatedAt")
   VALUES (v_ot2, v_tenant, 'OT-DEMO-002', 'Arranque falla de nuevo — automático del burro', 'El burro no acoplaba. Se reemplazó el automático (solenoide).', 'CORRECTIVE', 'HIGH', 'COMPLETED', v_asset,
-          now() - interval '90 days', now() - interval '90 days', now() - interval '89 days', 18000, 22000, 40000);
+          now() - interval '90 days', now() - interval '90 days', now() - interval '89 days', 18000, 22000, 40000, now());
   -- OT3: reparación del bendix (hace ~1 mes)
-  INSERT INTO work_orders (id, "tenantId", code, title, description, type, priority, status, "assetId", "scheduledDate", "startedAt", "completedAt", "laborCost", "partsCost", "totalCost")
+  INSERT INTO work_orders (id, "tenantId", code, title, description, type, priority, status, "assetId", "scheduledDate", "startedAt", "completedAt", "laborCost", "partsCost", "totalCost", "updatedAt")
   VALUES (v_ot3, v_tenant, 'OT-DEMO-003', 'Ruido al arrancar — bendix del burro de arranque', 'Bendix con juego. Se reparó y ajustó.', 'CORRECTIVE', 'MEDIUM', 'COMPLETED', v_asset,
-          now() - interval '30 days', now() - interval '30 days', now() - interval '29 days', 15000, 6000, 21000);
+          now() - interval '30 days', now() - interval '30 days', now() - interval '29 days', 15000, 6000, 21000, now());
 
   -- Vínculos OT↔componente (clasificación CONFIRMADA, subcomponentes distintos)
   INSERT INTO fleet_work_order_components (id, "tenantId", "workOrderId", "componentId", "instanceId", subcomponente, sintoma, causa, "trabajoRealizado", clasificacion)
