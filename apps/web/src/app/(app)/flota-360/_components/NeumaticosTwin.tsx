@@ -152,7 +152,9 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
   const esSemi = (tipo || '').toUpperCase() === 'SEMI';
   const numSteering = esSemi ? 0 : ((configEjes || '').trim().startsWith('8') ? 2 : 1);
   const ejesMontados = useMemo(() => [...new Set(posiciones.filter(p => p.posicion !== 'AUXILIO').map(p => p.eje))], [posiciones]);
-  const totalEjes = Math.max(cantEjes || 0, ejesMontados.length ? Math.max(...ejesMontados) : 0, 2);
+  const maxMontado = ejesMontados.length ? Math.max(...ejesMontados) : 0;
+  // cantEjes del vehículo manda; si no está seteado, default 2 (delantero+trasero). Nunca menos que los ejes con cubiertas montadas.
+  const totalEjes = Math.max(cantEjes ?? 2, maxMontado);
   const ejes = useMemo(() => Array.from({ length: totalEjes }, (_, i) => i + 1), [totalEjes]);
   const auxilios = posiciones.filter(p => p.posicion === 'AUXILIO');
   const posDe = (eje: number, lado: string, pos: string) => posiciones.find(p => p.eje === eje && p.lado === lado && p.posicion === pos);
@@ -295,6 +297,22 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
   };
   const diasDesdeControl = ultimoControl ? Math.floor((Date.now() - new Date(ultimoControl.fecha).getTime()) / 86400000) : null;
 
+  // ── Agregar / quitar eje (persiste cantEjes en el vehículo) ──
+  const cambiarEjes = async (delta: number) => {
+    const nuevo = totalEjes + delta;
+    if (nuevo < 1 || nuevo > 10) return;
+    if (delta < 0) {
+      const ocupado = posiciones.some(p => p.eje === totalEjes && p.posicion !== 'AUXILIO' && p.neumatico);
+      if (ocupado) { setError(`El eje ${totalEjes} tiene cubiertas montadas — desmontalas primero`); return; }
+    }
+    setBusy(true); setError(null);
+    try {
+      await apiFetch(`/flota/vehiculos/${vehiculoId}`, { method: 'PATCH', json: { cantEjes: nuevo } });
+      flash(`${nuevo} ejes`);
+      await load();
+    } catch (e: any) { setError(e?.message || 'No se pudo actualizar los ejes'); } finally { setBusy(false); }
+  };
+
   // ── Slot (rueda o hueco drop-target) ──
   const slot = (eje: number, lado: 'IZQ' | 'DER', posicion: 'SIMPLE' | 'EXT' | 'INT' | 'AUXILIO') => {
     const p = posDe(eje, lado, posicion);
@@ -330,6 +348,13 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
             <span>Proyectar</span>
             <input type="range" min={0} max={100000} step={5000} value={proyKm} onChange={e => setProyKm(Number(e.target.value))} className="w-24 accent-violet-600" />
             <span className="font-mono w-14 text-violet-700 font-semibold">{proyKm > 0 ? `+${(proyKm / 1000).toLocaleString('es-AR')}k` : 'hoy'}</span>
+          </div>
+          {/* Stepper de ejes: suma/quita una fila de ruedas */}
+          <div className="flex items-center gap-0.5 rounded-md border border-neutral-200 px-1 py-0.5" title="Cantidad de ejes del vehículo">
+            <span className="text-[9px] font-medium text-neutral-400 px-0.5">Ejes</span>
+            <button disabled={busy || totalEjes <= 1} onClick={() => cambiarEjes(-1)} className="h-4 w-4 rounded text-neutral-500 hover:bg-neutral-100 disabled:opacity-30 text-xs leading-none">−</button>
+            <span className="w-4 text-center text-[11px] font-bold text-neutral-700">{totalEjes}</span>
+            <button disabled={busy || totalEjes >= 10} onClick={() => cambiarEjes(1)} className="h-4 w-4 rounded text-neutral-500 hover:bg-neutral-100 disabled:opacity-30 text-xs leading-none">+</button>
           </div>
           <button onClick={() => setControl({ abierto: true, observador: '', notas: '', mediciones: {} })} disabled={montadas.length === 0} className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline disabled:opacity-40" title={montadas.length === 0 ? 'No hay cubiertas montadas' : 'Registrar control de presión de toda la unidad'}><Gauge className="h-3 w-3" /> Control PSI</button>
           <button onClick={() => setMontar({ abierto: true, eje: 1, lado: 'IZQ', posicion: 'SIMPLE' })} className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline"><ArrowDownToLine className="h-3 w-3" /> Montar</button>
