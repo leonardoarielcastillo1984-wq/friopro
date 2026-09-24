@@ -540,6 +540,55 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       } catch (e: any) { console.error('[inspecciones] control presion error:', e); }
     }
 
+    // ── Auto-acople de conjunto operativo (tractor + semi del checklist) ──────
+    // Si el chofer indicó dominio del tractor y del semi, se crea/activa el
+    // ConjuntoOperativo. Si alguno estaba acoplado a otro compañero, se desacopla.
+    if (body.data.dominioTractor && body.data.dominioSemi) {
+      try {
+        const norm = (s: string) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const dTrac = norm(body.data.dominioTractor);
+        const dSemi = norm(body.data.dominioSemi);
+        if (dTrac && dSemi && dTrac !== dSemi) {
+          const vehiculos = await (app.prisma as any).vehiculo.findMany({
+            where: { tenantId: qr.tenantId },
+            select: { id: true, dominio: true, tipo: true, maintenanceAssetId: true },
+          });
+          const tractor = vehiculos.find((v: any) => norm(v.dominio) === dTrac && (v.tipo || '').toUpperCase() !== 'SEMI')
+            ?? vehiculos.find((v: any) => norm(v.dominio) === dTrac)
+            ?? vehiculos.find((v: any) => v.maintenanceAssetId === qr.maintenanceAssetId); // fallback: el vehículo del QR
+          const semi = vehiculos.find((v: any) => norm(v.dominio) === dSemi && (v.tipo || '').toUpperCase() === 'SEMI')
+            ?? vehiculos.find((v: any) => norm(v.dominio) === dSemi);
+          if (tractor && semi && tractor.id !== semi.id) {
+            const yaExiste = await (app.prisma as any).conjuntoOperativo.findFirst({
+              where: { tenantId: qr.tenantId, estado: 'ACOPLADO', tractorId: tractor.id, semiId: semi.id },
+            });
+            if (!yaExiste) {
+              // Desacoplar conjuntos activos que usen este tractor o este semi con otro compañero
+              const activos = await (app.prisma as any).conjuntoOperativo.findMany({
+                where: { tenantId: qr.tenantId, estado: 'ACOPLADO', OR: [{ tractorId: tractor.id }, { semiId: semi.id }] },
+              });
+              for (const c of activos) {
+                await (app.prisma as any).conjuntoOperativo.update({
+                  where: { id: c.id },
+                  data: {
+                    estado: 'DESACOPLADO', fechaDesacople: new Date(),
+                    eventos: { create: { tenantId: qr.tenantId, tipo: 'DESACOPLE', notas: 'Desacople automático — el chofer reportó otra combinación en el checklist' } },
+                  },
+                });
+              }
+              await (app.prisma as any).conjuntoOperativo.create({
+                data: {
+                  tenantId: qr.tenantId, tractorId: tractor.id, semiId: semi.id, estado: 'ACOPLADO',
+                  notas: `Acoplado automáticamente desde checklist (${body.data.inspectorNombre})`,
+                  eventos: { create: { tenantId: qr.tenantId, tipo: 'ACOPLE', notas: 'Acople automático desde checklist del chofer' } },
+                },
+              });
+            }
+          }
+        }
+      } catch (e: any) { console.error('[inspecciones] auto-acople error:', e); }
+    }
+
     // Auto-actualizar odómetro y estado del activo
     if (qr.maintenanceAssetId) {
       try {
