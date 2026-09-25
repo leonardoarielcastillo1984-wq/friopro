@@ -45,7 +45,7 @@ export default function CombustiblePage() {
 
   const eliminar = async (r: Registro) => {
     if (!r.vehiculo?.id) return;
-    if (!window.confirm(`¿Eliminar la carga del ${new Date(r.fecha).toLocaleDateString('es-AR')} (${r.litros ?? '?'} L)?`)) return;
+    if (!window.confirm(`¿Eliminar la carga del ${new Date(r.fecha).toLocaleDateString('es-AR')} (${r.litros ?? '?'} ${r.tipoCombustible === 'GNC' ? 'm³' : 'L'})?`)) return;
     setBusy(true);
     setError(null);
     try {
@@ -67,6 +67,7 @@ export default function CombustiblePage() {
       estacion: r.estacion || '',
       fecha: r.fecha ? new Date(r.fecha).toISOString().slice(0, 10) : '',
       notas: r.notas || '',
+      tipoCombustible: r.tipoCombustible || 'DIESEL',
     });
     setError(null);
   };
@@ -86,6 +87,7 @@ export default function CombustiblePage() {
           estacion: editForm.estacion || null,
           fecha: editForm.fecha ? new Date(`${editForm.fecha}T12:00:00`).toISOString() : undefined,
           notas: editForm.notas || null,
+          tipoCombustible: editForm.tipoCombustible || 'DIESEL',
         },
       });
       setEditando(null);
@@ -145,7 +147,7 @@ export default function CombustiblePage() {
             <tr>
               <th className="text-left font-medium px-3 py-2">Fecha</th>
               <th className="text-left font-medium px-3 py-2">Vehículo</th>
-              <th className="text-left font-medium px-3 py-2">Litros</th>
+              <th className="text-left font-medium px-3 py-2">Carga</th>
               <th className="text-left font-medium px-3 py-2">Odómetro</th>
               <th className="text-left font-medium px-3 py-2">Rendimiento</th>
               <th className="text-left font-medium px-3 py-2">Costo</th>
@@ -162,9 +164,9 @@ export default function CombustiblePage() {
                 <td className="px-3 py-2 font-medium text-neutral-800">
                   {r.vehiculo ? <Link href={`/flota-360/vehiculos/${r.vehiculo.id}`} className="hover:text-blue-700">{r.vehiculo.dominio}</Link> : '—'}
                 </td>
-                <td className="px-3 py-2 text-neutral-600">{r.litros != null ? `${r.litros.toLocaleString('es-AR')} L` : '—'}</td>
+                <td className="px-3 py-2 text-neutral-600">{r.litros != null ? `${r.litros.toLocaleString('es-AR')} ${r.tipoCombustible === 'GNC' ? 'm³' : 'L'}` : '—'}{r.tipoCombustible && r.tipoCombustible !== 'DIESEL' ? <span className="ml-1 rounded bg-teal-50 px-1 text-[10px] font-semibold text-teal-700">{r.tipoCombustible}</span> : null}</td>
                 <td className="px-3 py-2 text-neutral-600">{r.odometro != null ? `${Math.round(r.odometro).toLocaleString('es-AR')} km` : '—'}</td>
-                <td className="px-3 py-2 text-neutral-600">{r.rendimiento != null ? `${r.rendimiento} km/L` : '—'}</td>
+                <td className="px-3 py-2 text-neutral-600">{r.rendimiento != null ? `${r.rendimiento} ${r.tipoCombustible === 'GNC' ? 'km/m³' : 'km/L'}` : '—'}</td>
                 <td className="px-3 py-2 text-neutral-600">{r.costoTotal != null ? `$${Math.round(r.costoTotal).toLocaleString('es-AR')}` : '—'}</td>
                 <td className="px-3 py-2 text-neutral-600">{r.conductor?.nombre || '—'}</td>
                 <td className="px-3 py-2 text-neutral-600">{r.estacion || '—'}</td>
@@ -218,11 +220,11 @@ export default function CombustiblePage() {
               {error && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Litros *</label>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">{editForm.tipoCombustible === 'GNC' ? 'm³ *' : 'Litros *'}</label>
                   <input type="number" min={0} step="0.01" value={editForm.litros} onChange={(e) => setEditForm({ ...editForm, litros: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Precio/litro ($)</label>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Precio/{editForm.tipoCombustible === 'GNC' ? 'm³' : 'litro'} ($)</label>
                   <input type="number" min={0} step="0.01" value={editForm.precioPorLitro} onChange={(e) => setEditForm({ ...editForm, precioPorLitro: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
               </div>
@@ -236,9 +238,20 @@ export default function CombustiblePage() {
                   <input type="date" value={editForm.fecha} onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">Estación</label>
-                <input value={editForm.estacion} onChange={(e) => setEditForm({ ...editForm, estacion: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Estación</label>
+                  <input value={editForm.estacion} onChange={(e) => setEditForm({ ...editForm, estacion: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Combustible</label>
+                  <select value={editForm.tipoCombustible} onChange={(e) => setEditForm({ ...editForm, tipoCombustible: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                    <option value="DIESEL">Diésel</option>
+                    <option value="NAFTA">Nafta</option>
+                    <option value="GNC">GNC</option>
+                    <option value="ELECTRICO">Eléctrico</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Notas</label>

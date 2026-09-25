@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { X, Fuel } from 'lucide-react';
 
-type VehiculoOpt = { id: string; dominio: string; tipo: string; currentOdometer?: number | null };
+type VehiculoOpt = { id: string; dominio: string; tipo: string; tipoCombustible?: string | null; currentOdometer?: number | null };
 type ConductorOpt = { id: string; nombre: string };
 
 /**
@@ -34,6 +34,21 @@ export default function CargaCombustible({ vehiculos, vehiculoId, onClose, onSav
     fecha: new Date().toISOString().slice(0, 10),
     notas: '',
   });
+
+  const esGnc = form.tipoCombustible === 'GNC';
+  const unidad = esGnc ? 'm³' : 'litros';
+  const unidadCorta = esGnc ? 'm³' : 'L';
+
+  // Si el vehículo viene fijo (ficha), pre-seleccionar su tipo de combustible declarado
+  useEffect(() => {
+    if (vehiculoId) {
+      const v = vehiculos.find((x) => x.id === vehiculoId);
+      if (v?.tipoCombustible && v.tipoCombustible !== form.tipoCombustible) {
+        setForm((f: any) => ({ ...f, tipoCombustible: v.tipoCombustible }));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehiculoId, vehiculos]);
 
   const vehSel = vehiculos.find((v) => v.id === form.vehiculoId);
 
@@ -86,7 +101,11 @@ export default function CargaCombustible({ vehiculos, vehiculoId, onClose, onSav
           {!vehiculoId && (
             <div>
               <label className="block text-xs font-medium text-neutral-600 mb-1">Vehículo *</label>
-              <select value={form.vehiculoId} onChange={(e) => setForm({ ...form, vehiculoId: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+              <select value={form.vehiculoId} onChange={(e) => {
+                const vid = e.target.value;
+                const v = vehiculos.find((x) => x.id === vid);
+                setForm({ ...form, vehiculoId: vid, tipoCombustible: v?.tipoCombustible || 'DIESEL' });
+              }} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
                 <option value="">Seleccionar…</option>
                 {vehiculos.map((v) => <option key={v.id} value={v.id}>{v.dominio} ({v.tipo})</option>)}
               </select>
@@ -95,11 +114,11 @@ export default function CargaCombustible({ vehiculos, vehiculoId, onClose, onSav
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Litros *</label>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">{esGnc ? 'm³ *' : 'Litros *'}</label>
               <input type="number" min={0} step="0.01" value={form.litros} onChange={(e) => setForm({ ...form, litros: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Precio / litro ($)</label>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Precio / {unidadCorta} ($)</label>
               <input type="number" min={0} step="0.01" value={form.precioPorLitro} onChange={(e) => setForm({ ...form, precioPorLitro: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
             </div>
           </div>

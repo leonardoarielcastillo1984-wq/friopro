@@ -127,18 +127,22 @@ export default async function flotaRoutes(app: FastifyInstance) {
     });
     const docSalud = Math.max(0, 100 - docsVencidos.length * 35 - docsPorVencer.length * 15);
 
-    // ── COMBUSTIBLE: eficiencia (L/100km) ──
+    // ── COMBUSTIBLE: eficiencia (L/100km o m³/100km si es GNC) ──
+    // Solo compara cargas del mismo tipo de combustible que el vehículo.
     let combSalud = 85;
     let l100km: number | null = null;
-    if (regs.length >= 2) {
-      const withOdo = regs.filter((r: any) => r.odometro && r.litros);
+    const tipoCombVeh = vehiculo.tipoCombustible || 'DIESEL';
+    const regsTipo = regs.filter((r: any) => (r.tipoCombustible || 'DIESEL') === tipoCombVeh);
+    if (regsTipo.length >= 2) {
+      const withOdo = regsTipo.filter((r: any) => r.odometro && r.litros);
       if (withOdo.length >= 2) {
         const totalLitros = withOdo.slice(0, 5).reduce((s: number, r: any) => s + r.litros, 0);
         const kmRecorridos = withOdo[0].odometro - withOdo[Math.min(4, withOdo.length - 1)].odometro;
         if (kmRecorridos > 0) {
           l100km = Math.round((totalLitros / kmRecorridos) * 100 * 10) / 10;
-          // Camión: referencia 30L/100km. Más bajo = mejor.
-          combSalud = Math.max(10, Math.min(100, Math.round(100 - Math.max(0, l100km - 28) * 3)));
+          // Camión: referencia 30L/100km diésel (~33 m³/100km GNC). Más bajo = mejor.
+          const ref = tipoCombVeh === 'GNC' ? 31 : 28;
+          combSalud = Math.max(10, Math.min(100, Math.round(100 - Math.max(0, l100km - ref) * 3)));
         }
       }
     }
@@ -161,7 +165,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       const dias = Math.ceil((new Date(v.fechaVto).getTime() - now.getTime()) / 86400000);
       alertas.push({ tipo: 'ALERTA', componente: 'Documentación', mensaje: `${v.tipo} vence en ${dias} días` });
     });
-    if (combSalud < 50 && l100km) alertas.push({ tipo: 'ALERTA', componente: 'Combustible', mensaje: `Consumo elevado: ${l100km} L/100km` });
+    if (combSalud < 50 && l100km) alertas.push({ tipo: 'ALERTA', componente: 'Combustible', mensaje: `Consumo elevado: ${l100km} ${tipoCombVeh === 'GNC' ? 'm³' : 'L'}/100km` });
 
     // ── PREDICCIÓN próximo servicio ──
     let diasProxServicio: number | null = null;
@@ -656,6 +660,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const schema = z.object({
       dominio: z.string().min(1).max(20).transform(v => v.toUpperCase()),
       tipo: z.string().default('CAMION'),
+      tipoCombustible: z.enum(['DIESEL', 'NAFTA', 'GNC', 'ELECTRICO']).optional(),
       marca: z.string().optional(),
       modelo: z.string().optional(),
       anio: z.number().int().optional(),
@@ -778,6 +783,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const schema = z.object({
       dominio: z.string().optional().transform(v => v ? v.toUpperCase() : v),
       tipo: z.string().optional(),
+      tipoCombustible: z.enum(['DIESEL', 'NAFTA', 'GNC', 'ELECTRICO']).optional(),
       cantEjes: z.number().int().min(1).max(10).optional(),
       configEjes: z.string().optional(),
       marca: z.string().optional(),
@@ -2014,11 +2020,11 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
 
-    // Calcular rendimiento vs carga anterior
+    // Calcular rendimiento vs carga anterior DEL MISMO TIPO de combustible
     let rendimiento: number | null = null;
     if (body.data.odometro) {
       const anterior = await (app.prisma as any).registroCombustible.findFirst({
-        where: { vehiculoId, tenantId, odometro: { not: null } },
+        where: { vehiculoId, tenantId, odometro: { not: null }, tipoCombustible: body.data.tipoCombustible },
         orderBy: { fecha: 'desc' },
       });
       if (anterior?.odometro && body.data.odometro > anterior.odometro) {
@@ -2583,19 +2589,28 @@ export default async function flotaRoutes(app: FastifyInstance) {
     // El modelo no tiene kmRecorridos: se deriva de rendimiento (km/L) * litros.
     const cargas = await (app.prisma as any).registroCombustible.findMany({
       where: { tenantId, conductorId: { not: null }, fecha: { gte: hace6m }, litros: { not: null }, rendimiento: { not: null } },
-      select: { conductorId: true, litros: true, rendimiento: true },
+      select: { conductorId: true, litros: true, rendimiento: true, tipoCombustible: true },
     });
-    const rendPorConductor = new Map<string, { km: number; litros: number }>();
+    // Rendimiento por conductor separado por tipo de combustible (no mezclar L con m³ de GNC)
+    const rendPorConductor = new Map<string, { km: number; litros: number; tipo: string }>();
     for (const c of cargas) {
-      const acc = rendPorConductor.get(c.conductorId) || { km: 0, litros: 0 };
+      const tipo = c.tipoCombustible || 'DIESEL';
+      const key = `${c.conductorId}:${tipo}`;
+      const acc = rendPorConductor.get(key) || { km: 0, litros: 0, tipo };
       acc.km += (c.rendimiento || 0) * (c.litros || 0);
       acc.litros += c.litros || 0;
-      rendPorConductor.set(c.conductorId, acc);
+      rendPorConductor.set(key, acc);
     }
-    // Promedio de flota para comparar eficiencia
-    let kmTot = 0, litTot = 0;
-    rendPorConductor.forEach((v) => { kmTot += v.km; litTot += v.litros; });
-    const rendFlota = litTot > 0 ? kmTot / litTot : null;
+    // Promedio de flota por tipo para comparar eficiencia
+    const litKmPorTipo = new Map<string, { km: number; litros: number }>();
+    rendPorConductor.forEach((v) => {
+      const acc = litKmPorTipo.get(v.tipo) || { km: 0, litros: 0 };
+      acc.km += v.km; acc.litros += v.litros;
+      litKmPorTipo.set(v.tipo, acc);
+    });
+    const rendFlotaPorTipo = new Map<string, number>();
+    litKmPorTipo.forEach((v, tipo) => { if (v.litros > 0) rendFlotaPorTipo.set(tipo, v.km / v.litros); });
+    const rendFlota = rendFlotaPorTipo.get('DIESEL') ?? [...rendFlotaPorTipo.values()][0] ?? null;
 
     // Incidentes por vehículo (se atribuyen al conductor asignado a la unidad)
     const vehiculoIds = conductores.flatMap((c: any) => c.vehiculos.map((v: any) => v.id));
@@ -2669,14 +2684,21 @@ export default async function flotaRoutes(app: FastifyInstance) {
       let kmL: number | null = null;
       let kmRecorridos = 0;
       if (incluirFijos) {
-        const rend = rendPorConductor.get(c.id);
+        // Tipo dominante del chofer (por litros cargados) → compara contra su mismo tipo
+        let rend: { km: number; litros: number; tipo: string } | undefined;
+        for (const [k, v] of rendPorConductor) {
+          if (!k.startsWith(`${c.id}:`)) continue;
+          if (!rend || v.litros > rend.litros) rend = v;
+        }
         kmL = rend && rend.litros > 0 ? rend.km / rend.litros : null;
         kmRecorridos = rend?.km || 0;
-        if (kmL != null && rendFlota != null && rendFlota > 0) {
-          const diff = (rendFlota - kmL) / rendFlota;
-          if (diff > 0.15) penalizaciones.push({ motivo: 'Consumo alto de combustible', puntos: 10, detalle: `${kmL.toFixed(2)} km/L vs ${rendFlota.toFixed(2)} promedio` });
-          else if (diff > 0.08) penalizaciones.push({ motivo: 'Consumo sobre promedio', puntos: 5, detalle: `${kmL.toFixed(2)} km/L vs ${rendFlota.toFixed(2)} promedio` });
-          else if (diff < -0.10) bonificaciones.push({ motivo: 'Eficiencia destacada', puntos: 5, detalle: `${kmL.toFixed(2)} km/L, ${Math.round(-diff * 100)}% mejor que la flota` });
+        const rendRef = rend ? (rendFlotaPorTipo.get(rend.tipo) ?? null) : null;
+        const unComb = rend?.tipo === 'GNC' ? 'km/m³' : 'km/L';
+        if (kmL != null && rendRef != null && rendRef > 0) {
+          const diff = (rendRef - kmL) / rendRef;
+          if (diff > 0.15) penalizaciones.push({ motivo: 'Consumo alto de combustible', puntos: 10, detalle: `${kmL.toFixed(2)} ${unComb} vs ${rendRef.toFixed(2)} promedio` });
+          else if (diff > 0.08) penalizaciones.push({ motivo: 'Consumo sobre promedio', puntos: 5, detalle: `${kmL.toFixed(2)} ${unComb} vs ${rendRef.toFixed(2)} promedio` });
+          else if (diff < -0.10) bonificaciones.push({ motivo: 'Eficiencia destacada', puntos: 5, detalle: `${kmL.toFixed(2)} ${unComb}, ${Math.round(-diff * 100)}% mejor que la flota` });
         }
         const docsVencidos = [c.licenciaVto, c.psicofisicoVto].filter((d) => d && new Date(d) < ahora).length;
         if (docsVencidos) penalizaciones.push({ motivo: 'Documentación vencida', puntos: docsVencidos * 6, detalle: `${docsVencidos} doc${docsVencidos !== 1 ? 's' : ''} vencida${docsVencidos !== 1 ? 's' : ''}` });

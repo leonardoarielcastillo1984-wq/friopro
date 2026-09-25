@@ -105,6 +105,7 @@ export async function driverHubRoutes(app: FastifyInstance) {
         marca: vehiculo.marca,
         modelo: vehiculo.modelo,
         currentOdometer: vehiculo.currentOdometer,
+        tipoCombustible: vehiculo.tipoCombustible || 'DIESEL',
         conductor: vehiculo.conductor?.nombre || null,
       } : null,
       checklistUrl: inspeccionQR ? `/inspeccionar/${inspeccionQR.token}` : null,
@@ -256,11 +257,12 @@ export async function driverHubRoutes(app: FastifyInstance) {
     const costoTotal = body.data.montoTotal
       ?? (litros != null && body.data.precioPorLitro ? Math.round(litros * body.data.precioPorLitro * 100) / 100 : null);
 
-    // Rendimiento vs carga anterior (solo si hay litros + odómetro)
+    // Rendimiento vs carga anterior DEL MISMO TIPO (solo si hay litros + odómetro).
+    // Sin el filtro, una carga GNC (m³) compararía contra una carga diésel (L).
     let rendimiento: number | null = null;
     if (litros != null && litros > 0 && body.data.odometro) {
       const anterior = await prisma().registroCombustible.findFirst({
-        where: { vehiculoId: vehiculo.id, tenantId: qr.tenantId, odometro: { not: null } },
+        where: { vehiculoId: vehiculo.id, tenantId: qr.tenantId, odometro: { not: null }, tipoCombustible: body.data.tipoCombustible },
         orderBy: { fecha: 'desc' },
       });
       if (anterior?.odometro && body.data.odometro > anterior.odometro) {

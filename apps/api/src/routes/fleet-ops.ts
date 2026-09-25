@@ -2309,18 +2309,21 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     cubiertas.sort((a, b) => a.kmRestantes - b.kmRestantes);
 
     // ── Combustible: desvío de rendimiento ──
+    // Desvío agrupado por vehículo + tipo de combustible (no mezclar L con m³ de GNC)
     const cargasRend = await prisma().registroCombustible.findMany({
       where: { tenantId, rendimiento: { not: null } },
       orderBy: { fecha: 'asc' },
-      select: { vehiculoId: true, rendimiento: true },
+      select: { vehiculoId: true, rendimiento: true, tipoCombustible: true },
     });
     const rendPorVeh = new Map<string, number[]>();
     for (const c of cargasRend) {
-      if (!rendPorVeh.has(c.vehiculoId)) rendPorVeh.set(c.vehiculoId, []);
-      rendPorVeh.get(c.vehiculoId)!.push(c.rendimiento);
+      const key = `${c.vehiculoId}|${c.tipoCombustible || 'DIESEL'}`;
+      if (!rendPorVeh.has(key)) rendPorVeh.set(key, []);
+      rendPorVeh.get(key)!.push(c.rendimiento);
     }
     const combustible: any[] = [];
-    for (const [vehiculoId, lista] of rendPorVeh) {
+    for (const [key, lista] of rendPorVeh) {
+      const vehiculoId = key.split('|')[0];
       if (lista.length < 4) continue;
       const recientes = lista.slice(-3);
       const historicas = lista.slice(0, -3);
@@ -2331,6 +2334,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       combustible.push({
         vehiculoId,
         vehiculo: vehLabel(vehMap.get(vehiculoId)),
+        tipoCombustible: key.split('|')[1],
         rendHistorico: +rendHistorico.toFixed(2),
         rendReciente: +rendReciente.toFixed(2),
         desvioPct: +desvioPct.toFixed(1),
@@ -2487,7 +2491,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     ] = await Promise.all([
       prisma().vehiculo.findMany({
         where: { tenantId },
-        select: { id: true, dominio: true, tipo: true, marca: true, modelo: true, anio: true, currentOdometer: true, status: true },
+        select: { id: true, dominio: true, tipo: true, tipoCombustible: true, marca: true, modelo: true, anio: true, currentOdometer: true, status: true },
       }),
       prisma().registroCombustible.findMany({
         where: { tenantId },
@@ -2624,7 +2628,9 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const co2PorKm: any[] = [];
     for (const [vehiculoId, lista] of cargasPorVeh) {
       const v: any = vehMap.get(vehiculoId);
-      const conRend = lista.filter(c => c.rendimiento != null && c.rendimiento > 0);
+      const tipoVeh = v?.tipoCombustible || 'DIESEL';
+      // Solo cargas del tipo declarado del vehículo (km/L diésel vs km/m³ GNC no se mezclan)
+      const conRend = lista.filter(c => c.rendimiento != null && c.rendimiento > 0 && (c.tipoCombustible || 'DIESEL') === tipoVeh);
       const litros = lista.reduce((a, c) => a + (c.litros || 0), 0);
       const gasto = lista.reduce((a, c) => a + (c.costoTotal || 0), 0);
       const km = kmDe(vehiculoId);
@@ -2633,6 +2639,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         combustible.push({
           vehiculoId, vehiculo: vehLabel(v),
           modelo: v ? `${v.marca || ''} ${v.modelo || ''}`.trim() : '—',
+          tipoCombustible: tipoVeh,
           l100km: +(100 / rendProm).toFixed(1),
           costoPorKm: km > 0 ? +(gasto / km).toFixed(2) : null,
           cargas: lista.length,

@@ -7389,6 +7389,11 @@ model Vehiculo {
   chasis     String?
   motor      String?
 
+  // Combustible principal del vehículo: DIESEL, NAFTA, GNC, ELECTRICO.
+  // Se usa para pre-seleccionar el tipo en las cargas y para calcular
+  // rendimiento solo contra cargas del mismo tipo (no mezclar L con m³).
+  tipoCombustible String @default("DIESEL")
+
   // Odómetro
   currentOdometer Float? // km actuales (se actualiza con cada registro)
 

@@ -48,6 +48,9 @@ export default function UnidadHubPage() {
   const [cLitros, setCLitros] = useState(''); const [cMonto, setCMonto] = useState('');
   const [cPrecio, setCPrecio] = useState(''); const [cKm, setCKm] = useState('');
   const [cEst, setCEst] = useState(''); const [cUrea, setCUrea] = useState(''); const [cTicket, setCTicket] = useState('');
+  const [cTipo, setCTipo] = useState<string | null>(null); // null = usar el tipo declarado del vehículo
+  const tipoComb = cTipo || data?.vehiculo?.tipoCombustible || 'DIESEL';
+  const unComb = tipoComb === 'GNC' ? 'm³' : 'L';
   // servicio
   const [sTipo, setSTipo] = useState<'INICIO_SERVICIO' | 'FIN_SERVICIO'>('INICIO_SERVICIO');
   const [sKm, setSKm] = useState(''); const [sNotas, setSNotas] = useState('');
@@ -126,7 +129,7 @@ export default function UnidadHubPage() {
     if (!nombre.trim()) return alert('Ingresá tu nombre');
     if (cModo === 'litros' && !cLitros) return alert('Ingresá los litros');
     if (cModo === 'monto' && !cMonto) return alert('Ingresá el monto');
-    post('combustible', { litros: cModo === 'litros' && cLitros ? +cLitros : undefined, montoTotal: cModo === 'monto' && cMonto ? +cMonto : undefined, precioPorLitro: cPrecio ? +cPrecio : undefined, odometro: cKm ? +cKm : undefined, estacion: cEst.trim() || undefined, litrosUrea: cUrea ? +cUrea : undefined, fotoTicket: cTicket || undefined, conductorId: conductorId || undefined, reportadoPorNombre: nombre.trim() });
+    post('combustible', { litros: cModo === 'litros' && cLitros ? +cLitros : undefined, montoTotal: cModo === 'monto' && cMonto ? +cMonto : undefined, precioPorLitro: cPrecio ? +cPrecio : undefined, odometro: cKm ? +cKm : undefined, estacion: cEst.trim() || undefined, tipoCombustible: tipoComb, litrosUrea: cUrea ? +cUrea : undefined, fotoTicket: cTicket || undefined, conductorId: conductorId || undefined, reportadoPorNombre: nombre.trim() });
   };
   const envServ = async () => {
     if (!nombre.trim()) return alert('Ingresá tu nombre');
@@ -268,15 +271,18 @@ export default function UnidadHubPage() {
       {vista === 'combustible' && (
         <div style={S.card}>{Volver}
           <h3 style={{ margin: '0 0 12px', fontSize: 16, color: '#111827' }}>Cargué combustible</h3>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            {[{ id: 'DIESEL', l: 'Diésel' }, { id: 'NAFTA', l: 'Nafta' }, { id: 'GNC', l: 'GNC' }].map(t => <button key={t.id} type="button" onClick={() => setCTipo(t.id)} style={{ flex: 1, padding: '8px 0', borderRadius: 10, fontSize: 12, cursor: 'pointer', fontWeight: 600, border: tipoComb === t.id ? '2px solid #0F766E' : '1px solid #D1D5DB', background: tipoComb === t.id ? '#0F766E12' : '#fff', color: tipoComb === t.id ? '#0F766E' : '#6B7280' }}>{t.l}</button>)}
+          </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            {[{ id: 'litros', l: 'Por litros' }, { id: 'monto', l: 'Por monto ($)' }].map(m => <button key={m.id} type="button" onClick={() => setCModo(m.id as any)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 600, border: cModo === m.id ? `2px solid ${primary}` : '1px solid #D1D5DB', background: cModo === m.id ? `${primary}12` : '#fff', color: cModo === m.id ? primary : '#6B7280' }}>{m.l}</button>)}
+            {[{ id: 'litros', l: `Por ${unComb}` }, { id: 'monto', l: 'Por monto ($)' }].map(m => <button key={m.id} type="button" onClick={() => setCModo(m.id as any)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 600, border: cModo === m.id ? `2px solid ${primary}` : '1px solid #D1D5DB', background: cModo === m.id ? `${primary}12` : '#fff', color: cModo === m.id ? primary : '#6B7280' }}>{m.l}</button>)}
           </div>
           <div style={{ display: 'grid', gap: 10 }}>
             {cModo === 'litros'
-              ? <div><label style={S.label}>Litros cargados *</label><input style={S.input} type="number" min="0" step="0.1" placeholder="Ej: 120" value={cLitros} onChange={e => setCLitros(e.target.value)} /></div>
+              ? <div><label style={S.label}>{unComb === 'm³' ? 'm³ cargados *' : 'Litros cargados *'}</label><input style={S.input} type="number" min="0" step="0.1" placeholder="Ej: 120" value={cLitros} onChange={e => setCLitros(e.target.value)} /></div>
               : <div><label style={S.label}>Monto gastado ($) *</label><input style={S.input} type="number" min="0" placeholder="Ej: 85000" value={cMonto} onChange={e => setCMonto(e.target.value)} /></div>}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div><label style={S.label}>Precio/L (opc.)</label><input style={S.input} type="number" min="0" placeholder="$/L" value={cPrecio} onChange={e => setCPrecio(e.target.value)} /></div>
+              <div><label style={S.label}>Precio/{unComb} (opc.)</label><input style={S.input} type="number" min="0" placeholder={`$/${unComb}`} value={cPrecio} onChange={e => setCPrecio(e.target.value)} /></div>
               <div><label style={S.label}>Kilometraje</label><input style={S.input} type="number" min="0" placeholder="km" value={cKm} onChange={e => setCKm(e.target.value)} /></div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
