@@ -101,7 +101,7 @@ export default function CombustiblePage() {
 
   if (loading) return <div className="p-8 text-sm text-neutral-500">Cargando…</div>;
 
-  const hayDatos = data && data.litrosMes > 0;
+  const hayDatos = data && (data.litrosMes > 0 || (data.m3GncMes || 0) > 0);
 
   return (
     <div className="space-y-4">
@@ -122,8 +122,9 @@ export default function CombustiblePage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="rounded-lg border border-neutral-200 bg-white p-4">
-            <div className="flex items-center gap-2 text-neutral-500 text-xs font-medium uppercase mb-1"><Fuel className="h-3.5 w-3.5" /> Litros del mes</div>
+            <div className="flex items-center gap-2 text-neutral-500 text-xs font-medium uppercase mb-1"><Fuel className="h-3.5 w-3.5" /> Combustible del mes</div>
             <p className="text-2xl font-semibold text-neutral-900">{data.litrosMes.toLocaleString('es-AR')} L</p>
+            {(data.m3GncMes || 0) > 0 && <p className="text-sm font-semibold text-teal-700 mt-0.5">+ {data.m3GncMes.toLocaleString('es-AR')} m³ GNC</p>}
           </div>
           <div className="rounded-lg border border-neutral-200 bg-white p-4">
             <div className="text-neutral-500 text-xs font-medium uppercase mb-1">Costo del mes</div>
@@ -131,7 +132,8 @@ export default function CombustiblePage() {
           </div>
           <div className="rounded-lg border border-neutral-200 bg-white p-4">
             <div className="text-neutral-500 text-xs font-medium uppercase mb-1">Rendimiento promedio</div>
-            <p className="text-2xl font-semibold text-neutral-900">{data.promedioKmL != null ? `${data.promedioKmL} km/L` : 'Sin datos suficientes'}</p>
+            <p className="text-2xl font-semibold text-neutral-900">{data.promedioKmL != null ? `${data.promedioKmL} km/L` : 'Sin datos'}</p>
+            {data.promedioKmM3 != null && <p className="text-sm font-semibold text-teal-700 mt-0.5">{data.promedioKmM3} km/m³ GNC</p>}
           </div>
           <div className="rounded-lg border border-neutral-200 bg-white p-4">
             <div className="text-neutral-500 text-xs font-medium uppercase mb-1">L/100km</div>

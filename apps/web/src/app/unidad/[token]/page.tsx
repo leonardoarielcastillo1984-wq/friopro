@@ -49,7 +49,10 @@ export default function UnidadHubPage() {
   const [cPrecio, setCPrecio] = useState(''); const [cKm, setCKm] = useState('');
   const [cEst, setCEst] = useState(''); const [cUrea, setCUrea] = useState(''); const [cTicket, setCTicket] = useState('');
   const [cTipo, setCTipo] = useState<string | null>(null); // null = usar el tipo declarado del vehículo
-  const tipoComb = cTipo || data?.vehiculo?.tipoCombustible || 'DIESEL';
+  const tipoVehComb = data?.vehiculo?.tipoCombustible || 'DIESEL';
+  const esDual = tipoVehComb === 'MIXTO';
+  // Unidad dual (diésel+GNC): sin default — el chofer indica qué cargó
+  const tipoComb = cTipo || (esDual ? null : tipoVehComb);
   const unComb = tipoComb === 'GNC' ? 'm³' : 'L';
   // servicio
   const [sTipo, setSTipo] = useState<'INICIO_SERVICIO' | 'FIN_SERVICIO'>('INICIO_SERVICIO');
@@ -127,6 +130,7 @@ export default function UnidadHubPage() {
   };
   const envComb = async () => {
     if (!nombre.trim()) return alert('Ingresá tu nombre');
+    if (esDual && !cTipo) return alert('Esta unidad es dual — indicá si cargaste Diésel o GNC');
     if (cModo === 'litros' && !cLitros) return alert('Ingresá los litros');
     if (cModo === 'monto' && !cMonto) return alert('Ingresá el monto');
     post('combustible', { litros: cModo === 'litros' && cLitros ? +cLitros : undefined, montoTotal: cModo === 'monto' && cMonto ? +cMonto : undefined, precioPorLitro: cPrecio ? +cPrecio : undefined, odometro: cKm ? +cKm : undefined, estacion: cEst.trim() || undefined, tipoCombustible: tipoComb, litrosUrea: cUrea ? +cUrea : undefined, fotoTicket: cTicket || undefined, conductorId: conductorId || undefined, reportadoPorNombre: nombre.trim() });
@@ -274,6 +278,7 @@ export default function UnidadHubPage() {
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             {[{ id: 'DIESEL', l: 'Diésel' }, { id: 'NAFTA', l: 'Nafta' }, { id: 'GNC', l: 'GNC' }].map(t => <button key={t.id} type="button" onClick={() => setCTipo(t.id)} style={{ flex: 1, padding: '8px 0', borderRadius: 10, fontSize: 12, cursor: 'pointer', fontWeight: 600, border: tipoComb === t.id ? '2px solid #0F766E' : '1px solid #D1D5DB', background: tipoComb === t.id ? '#0F766E12' : '#fff', color: tipoComb === t.id ? '#0F766E' : '#6B7280' }}>{t.l}</button>)}
           </div>
+          {esDual && !cTipo && <p style={{ ...S.muted, fontSize: 12, marginTop: -6, marginBottom: 10 }}>Unidad dual — indicá qué combustible cargaste</p>}
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
             {[{ id: 'litros', l: `Por ${unComb}` }, { id: 'monto', l: 'Por monto ($)' }].map(m => <button key={m.id} type="button" onClick={() => setCModo(m.id as any)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 600, border: cModo === m.id ? `2px solid ${primary}` : '1px solid #D1D5DB', background: cModo === m.id ? `${primary}12` : '#fff', color: cModo === m.id ? primary : '#6B7280' }}>{m.l}</button>)}
           </div>

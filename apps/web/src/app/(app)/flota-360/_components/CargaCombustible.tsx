@@ -43,8 +43,10 @@ export default function CargaCombustible({ vehiculos, vehiculoId, onClose, onSav
   useEffect(() => {
     if (vehiculoId) {
       const v = vehiculos.find((x) => x.id === vehiculoId);
-      if (v?.tipoCombustible && v.tipoCombustible !== form.tipoCombustible) {
-        setForm((f: any) => ({ ...f, tipoCombustible: v.tipoCombustible }));
+      // La carga es de un tipo concreto; si la unidad es dual sugerimos GNC
+      const t = v?.tipoCombustible === 'MIXTO' ? 'GNC' : v?.tipoCombustible;
+      if (t && t !== form.tipoCombustible) {
+        setForm((f: any) => ({ ...f, tipoCombustible: t }));
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -104,7 +106,7 @@ export default function CargaCombustible({ vehiculos, vehiculoId, onClose, onSav
               <select value={form.vehiculoId} onChange={(e) => {
                 const vid = e.target.value;
                 const v = vehiculos.find((x) => x.id === vid);
-                setForm({ ...form, vehiculoId: vid, tipoCombustible: v?.tipoCombustible || 'DIESEL' });
+                setForm({ ...form, vehiculoId: vid, tipoCombustible: v?.tipoCombustible === 'MIXTO' ? 'GNC' : (v?.tipoCombustible || 'DIESEL') });
               }} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
                 <option value="">Seleccionar…</option>
                 {vehiculos.map((v) => <option key={v.id} value={v.id}>{v.dominio} ({v.tipo})</option>)}

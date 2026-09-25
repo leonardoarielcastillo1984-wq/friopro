@@ -132,7 +132,18 @@ export default async function flotaRoutes(app: FastifyInstance) {
     let combSalud = 85;
     let l100km: number | null = null;
     const tipoCombVeh = vehiculo.tipoCombustible || 'DIESEL';
-    const regsTipo = regs.filter((r: any) => (r.tipoCombustible || 'DIESEL') === tipoCombVeh);
+    // Unidad dual (MIXTO = diésel+GNC): la eficiencia se calcula sobre el
+    // combustible dominante por volumen cargado (L y m³ no se pueden mezclar).
+    let tipoEfic = tipoCombVeh;
+    if (tipoCombVeh === 'MIXTO') {
+      const volPorTipo = new Map<string, number>();
+      for (const r of regs) {
+        const t = r.tipoCombustible || 'DIESEL';
+        volPorTipo.set(t, (volPorTipo.get(t) || 0) + (r.litros || 0));
+      }
+      tipoEfic = [...volPorTipo.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 'DIESEL';
+    }
+    const regsTipo = regs.filter((r: any) => (r.tipoCombustible || 'DIESEL') === tipoEfic);
     if (regsTipo.length >= 2) {
       const withOdo = regsTipo.filter((r: any) => r.odometro && r.litros);
       if (withOdo.length >= 2) {
@@ -141,7 +152,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
         if (kmRecorridos > 0) {
           l100km = Math.round((totalLitros / kmRecorridos) * 100 * 10) / 10;
           // Camión: referencia 30L/100km diésel (~33 m³/100km GNC). Más bajo = mejor.
-          const ref = tipoCombVeh === 'GNC' ? 31 : 28;
+          const ref = tipoEfic === 'GNC' ? 31 : 28;
           combSalud = Math.max(10, Math.min(100, Math.round(100 - Math.max(0, l100km - ref) * 3)));
         }
       }
@@ -165,7 +176,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       const dias = Math.ceil((new Date(v.fechaVto).getTime() - now.getTime()) / 86400000);
       alertas.push({ tipo: 'ALERTA', componente: 'Documentación', mensaje: `${v.tipo} vence en ${dias} días` });
     });
-    if (combSalud < 50 && l100km) alertas.push({ tipo: 'ALERTA', componente: 'Combustible', mensaje: `Consumo elevado: ${l100km} ${tipoCombVeh === 'GNC' ? 'm³' : 'L'}/100km` });
+    if (combSalud < 50 && l100km) alertas.push({ tipo: 'ALERTA', componente: 'Combustible', mensaje: `Consumo elevado: ${l100km} ${tipoEfic === 'GNC' ? 'm³' : 'L'}/100km` });
 
     // ── PREDICCIÓN próximo servicio ──
     let diasProxServicio: number | null = null;
@@ -660,7 +671,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const schema = z.object({
       dominio: z.string().min(1).max(20).transform(v => v.toUpperCase()),
       tipo: z.string().default('CAMION'),
-      tipoCombustible: z.enum(['DIESEL', 'NAFTA', 'GNC', 'ELECTRICO']).optional(),
+      tipoCombustible: z.enum(['DIESEL', 'NAFTA', 'GNC', 'ELECTRICO', 'MIXTO']).optional(),
       marca: z.string().optional(),
       modelo: z.string().optional(),
       anio: z.number().int().optional(),
@@ -783,7 +794,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const schema = z.object({
       dominio: z.string().optional().transform(v => v ? v.toUpperCase() : v),
       tipo: z.string().optional(),
-      tipoCombustible: z.enum(['DIESEL', 'NAFTA', 'GNC', 'ELECTRICO']).optional(),
+      tipoCombustible: z.enum(['DIESEL', 'NAFTA', 'GNC', 'ELECTRICO', 'MIXTO']).optional(),
       cantEjes: z.number().int().min(1).max(10).optional(),
       configEjes: z.string().optional(),
       marca: z.string().optional(),
@@ -2148,11 +2159,11 @@ export default async function flotaRoutes(app: FastifyInstance) {
       }),
       (app.prisma as any).registroCombustible.findMany({
         where: { tenantId, fecha: { gte: inicioMes } },
-        select: { vehiculoId: true, litros: true, costoTotal: true, rendimiento: true, litrosUrea: true, costoUrea: true },
+        select: { vehiculoId: true, litros: true, costoTotal: true, rendimiento: true, litrosUrea: true, costoUrea: true, tipoCombustible: true },
       }),
       (app.prisma as any).registroCombustible.findMany({
         where: { tenantId, fecha: { gte: inicioMesAnterior, lte: finMesAnterior } },
-        select: { litros: true, costoTotal: true },
+        select: { litros: true, costoTotal: true, tipoCombustible: true },
       }),
       (app.prisma as any).workOrder.count({
         where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
@@ -2177,13 +2188,18 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const enTallerCount = vehiculos.filter((v: any) => v.status === 'EN_TALLER').length;
     const disponibilidadPct = totalVeh > 0 ? Math.round((activosCount / totalVeh) * 100) : 0;
 
-    // Combustible
-    const litrosMes = combustibleMes.reduce((s: number, r: any) => s + (r.litros || 0), 0);
+    // Combustible — GNC se mide en m³: nunca se suma con litros líquidos
+    const esLiquido = (r: any) => (r.tipoCombustible || 'DIESEL') !== 'GNC';
+    const litrosMes = combustibleMes.filter(esLiquido).reduce((s: number, r: any) => s + (r.litros || 0), 0);
+    const m3GncMes = combustibleMes.filter((r: any) => r.tipoCombustible === 'GNC').reduce((s: number, r: any) => s + (r.litros || 0), 0);
     const costoCombuMes = combustibleMes.reduce((s: number, r: any) => s + (r.costoTotal || 0), 0);
-    const litrosMesAnt = combustibleMesAnt.reduce((s: number, r: any) => s + (r.litros || 0), 0);
+    const litrosMesAnt = combustibleMesAnt.filter(esLiquido).reduce((s: number, r: any) => s + (r.litros || 0), 0);
     const costoCombuMesAnt = combustibleMesAnt.reduce((s: number, r: any) => s + (r.costoTotal || 0), 0);
-    const rendimientos = combustibleMes.filter((r: any) => r.rendimiento != null).map((r: any) => r.rendimiento);
+    // Rendimiento: promedio por unidad — km/L para líquidos, km/m³ para GNC
+    const rendimientos = combustibleMes.filter((r: any) => r.rendimiento != null && esLiquido(r)).map((r: any) => r.rendimiento);
     const promedioKmL = rendimientos.length > 0 ? Math.round((rendimientos.reduce((s: number, r: number) => s + r, 0) / rendimientos.length) * 100) / 100 : null;
+    const rendimientosGnc = combustibleMes.filter((r: any) => r.rendimiento != null && r.tipoCombustible === 'GNC').map((r: any) => r.rendimiento);
+    const promedioKmM3 = rendimientosGnc.length > 0 ? Math.round((rendimientosGnc.reduce((s: number, r: number) => s + r, 0) / rendimientosGnc.length) * 100) / 100 : null;
     // L/100km: inverso de km/L * 100
     const l100km = promedioKmL && promedioKmL > 0 ? Math.round((100 / promedioKmL) * 100) / 100 : null;
 
@@ -2267,11 +2283,13 @@ export default async function flotaRoutes(app: FastifyInstance) {
         disponibilidadPct,
         combustible: {
           litrosMes: Math.round(litrosMes * 10) / 10,
+          m3GncMes: Math.round(m3GncMes * 10) / 10,
           costoMes: Math.round(costoCombuMes),
           litrosMesAnt: Math.round(litrosMesAnt * 10) / 10,
           costoMesAnt: Math.round(costoCombuMesAnt),
           variacionLitros: litrosMesAnt > 0 ? Math.round(((litrosMes - litrosMesAnt) / litrosMesAnt) * 100) : null,
           promedioKmL,
+          promedioKmM3,
           l100km,
           urea: {
             litrosMes: Math.round(litrosUreaMes * 10) / 10,

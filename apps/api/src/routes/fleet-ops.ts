@@ -2628,7 +2628,13 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const co2PorKm: any[] = [];
     for (const [vehiculoId, lista] of cargasPorVeh) {
       const v: any = vehMap.get(vehiculoId);
-      const tipoVeh = v?.tipoCombustible || 'DIESEL';
+      let tipoVeh = v?.tipoCombustible || 'DIESEL';
+      // Unidad dual (MIXTO): la eficiencia usa el combustible dominante por volumen
+      if (tipoVeh === 'MIXTO') {
+        const volPorTipo = new Map<string, number>();
+        for (const c of lista) { const t = c.tipoCombustible || 'DIESEL'; volPorTipo.set(t, (volPorTipo.get(t) || 0) + (c.litros || 0)); }
+        tipoVeh = [...volPorTipo.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 'DIESEL';
+      }
       // Solo cargas del tipo declarado del vehículo (km/L diésel vs km/m³ GNC no se mezclan)
       const conRend = lista.filter(c => c.rendimiento != null && c.rendimiento > 0 && (c.tipoCombustible || 'DIESEL') === tipoVeh);
       const litros = lista.reduce((a, c) => a + (c.litros || 0), 0);

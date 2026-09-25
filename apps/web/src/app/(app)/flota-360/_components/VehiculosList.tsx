@@ -105,7 +105,7 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
         {filtrados.map(v => <Link key={v.id} href={`/flota-360/vehiculos/${v.id}`} className="fleet-panel hover:border-blue-300 transition-colors relative">
           <div className="flex items-center justify-between p-4"><strong className="text-lg">{v.dominio}</strong><span className="flex items-center gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] ${STATUS_COLOR[v.status] || 'bg-slate-100'}`}>{v.status.replaceAll('_', ' ')}</span>{v.status !== 'BAJA' && (<button disabled={busy} title="Dar de baja" onClick={(e) => { e.preventDefault(); e.stopPropagation(); eliminar(v); }} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>)}</span></div>
           <div className="fleet-asset-art"><VehicleArt semi={v.tipo === 'SEMI'} /></div>
-          <div className="p-4"><p className="font-semibold text-sm">{[v.marca, v.modelo].filter(Boolean).join(' ') || v.tipo}</p><p className="text-xs text-slate-500 mt-1">{v.tipo}{v.tipoCombustible === 'GNC' ? ' · GNC' : ''} · {v.anio || 'Año sin informar'}</p><div className="flex justify-between border-t border-slate-100 mt-4 pt-3 text-xs"><span>{v.currentOdometer != null ? `${v.currentOdometer.toLocaleString('es-AR')} km` : 'Sin lectura'}</span><span className="text-blue-600 font-semibold">Ver gemelo digital →</span></div></div>
+          <div className="p-4"><p className="font-semibold text-sm">{[v.marca, v.modelo].filter(Boolean).join(' ') || v.tipo}</p><p className="text-xs text-slate-500 mt-1">{v.tipo}{v.tipoCombustible === 'GNC' ? ' · GNC' : v.tipoCombustible === 'MIXTO' ? ' · Diésel+GNC' : ''} · {v.anio || 'Año sin informar'}</p><div className="flex justify-between border-t border-slate-100 mt-4 pt-3 text-xs"><span>{v.currentOdometer != null ? `${v.currentOdometer.toLocaleString('es-AR')} km` : 'Sin lectura'}</span><span className="text-blue-600 font-semibold">Ver gemelo digital →</span></div></div>
         </Link>)}
       </div> : <div className="rounded-lg border border-neutral-200 bg-white overflow-x-auto">
         <table className="w-full text-sm">
@@ -132,7 +132,7 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
                     : <Truck className="h-3.5 w-3.5 text-neutral-400" />}
                   {v.dominio}
                 </td>
-                <td className="px-3 py-2 text-neutral-600">{v.tipo}{v.tipoCombustible === 'GNC' ? <span className="ml-1 rounded bg-teal-50 px-1 text-[10px] font-semibold text-teal-700">GNC</span> : null}</td>
+                <td className="px-3 py-2 text-neutral-600">{v.tipo}{(v.tipoCombustible === 'GNC' || v.tipoCombustible === 'MIXTO') ? <span className="ml-1 rounded bg-teal-50 px-1 text-[10px] font-semibold text-teal-700">{v.tipoCombustible === 'MIXTO' ? 'D+GNC' : 'GNC'}</span> : null}</td>
                 <td className="px-3 py-2 text-neutral-600">{[v.marca, v.modelo].filter(Boolean).join(' ') || '—'}</td>
                 <td className="px-3 py-2 text-neutral-600">{v.currentOdometer != null ? `${Math.round(v.currentOdometer).toLocaleString('es-AR')} km` : '—'}</td>
                 <td className="px-3 py-2">
@@ -180,8 +180,9 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
                     <label className="block text-xs font-medium text-neutral-600 mb-1">Combustible</label>
                     <select value={form.tipoCombustible} onChange={(e) => setForm({ ...form, tipoCombustible: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
                       <option value="DIESEL">Diésel</option>
+                      <option value="MIXTO">Diésel + GNC (dual)</option>
+                      <option value="GNC">Solo GNC</option>
                       <option value="NAFTA">Nafta</option>
-                      <option value="GNC">GNC</option>
                       <option value="ELECTRICO">Eléctrico</option>
                     </select>
                   </div>

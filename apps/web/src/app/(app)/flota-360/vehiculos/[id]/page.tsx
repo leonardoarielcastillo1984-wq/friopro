@@ -99,6 +99,7 @@ export default function VehiculoFichaPage() {
     const asset = completo?.mantenimiento?.asset;
     setEditForm({
       dominio: v?.dominio || '', tipo: v?.tipo || 'CAMION',
+      tipoCombustible: v?.tipoCombustible || 'DIESEL',
       marca: v?.marca || '', modelo: v?.modelo || '',
       anio: v?.anio || '', color: v?.color || '',
       chasis: v?.chasis || '', motor: v?.motor || '',
@@ -125,6 +126,7 @@ export default function VehiculoFichaPage() {
         json: {
           dominio: editForm.dominio || undefined,
           tipo: editForm.tipo || undefined,
+          tipoCombustible: editForm.tipoCombustible || undefined,
           marca: editForm.marca || undefined,
           modelo: editForm.modelo || undefined,
           anio: editForm.anio ? Number(editForm.anio) : undefined,
@@ -199,6 +201,7 @@ export default function VehiculoFichaPage() {
           </h1>
           <p className="text-xs text-neutral-500">
             {[TIPO_LABEL[v.tipo] || v.tipo, v.marca, v.modelo, v.anio].filter(Boolean).join(' · ')}
+            {v.tipoCombustible === 'GNC' ? ' · GNC' : v.tipoCombustible === 'MIXTO' ? ' · Diésel + GNC' : v.tipoCombustible === 'NAFTA' ? ' · Nafta' : v.tipoCombustible === 'ELECTRICO' ? ' · Eléctrico' : ''}
             {esSemi && ' · Sin motor propio'}
           </p>
           {(v.chasis || v.motor || v.color || v.configEjes || v.cantEjes) && (
@@ -579,6 +582,17 @@ export default function VehiculoFichaPage() {
                     <option value="OTRO">Otro</option>
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Combustible</label>
+                <select value={editForm.tipoCombustible} onChange={(e) => setEditForm({ ...editForm, tipoCombustible: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                  <option value="DIESEL">Diésel</option>
+                  <option value="MIXTO">Diésel + GNC (dual)</option>
+                  <option value="GNC">Solo GNC</option>
+                  <option value="NAFTA">Nafta</option>
+                  <option value="ELECTRICO">Eléctrico</option>
+                </select>
+                <p className="text-[11px] text-neutral-400 mt-1">Si la unidad tiene equipo de GNC, elegí &quot;Diésel + GNC&quot; — el chofer indicará qué cargó en cada carga.</p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
