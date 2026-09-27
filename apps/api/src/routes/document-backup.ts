@@ -108,6 +108,8 @@ function keyFromRef(ref: string | null | undefined): string | null {
   if (!ref || typeof ref !== 'string') return null;
   const idx = ref.indexOf('/uploads/');
   if (idx >= 0) return ref.slice(idx + '/uploads/'.length).split('?')[0] || null;
+  const sIdx = ref.indexOf('/storage/');
+  if (sIdx >= 0) return ref.slice(sIdx + '/storage/'.length).split('?')[0] || null;
   if (!ref.includes('://') && !ref.startsWith('/')) return ref; // storage key directa
   return null; // URL externa o patrón desconocido
 }

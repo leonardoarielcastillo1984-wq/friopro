@@ -72,7 +72,13 @@ async function resolveDocumentContent(doc: {
   if (doc.filePath) {
     try {
       const storage = getStorage();
-      const buffer = await storage.download(doc.filePath);
+      // Normalizar: filePath puede ser storage key cruda, URL "/storage/{key}",
+      // "/uploads/{key}" o path absoluto "/app/uploads/{key}"
+      const base = process.env.STORAGE_LOCAL_PATH || '/app/uploads';
+      let key = doc.filePath;
+      if (key.startsWith(base + '/')) key = key.slice(base.length + 1);
+      key = key.replace(/^\/(uploads|storage)\//, '');
+      const buffer = await storage.download(key);
       const mime = detectTypeByExtension(doc.filePath) || 'application/pdf';
       const text = await extractTextFromDocument(buffer, mime, doc.filePath);
       return text || '';
