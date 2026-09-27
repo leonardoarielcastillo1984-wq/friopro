@@ -74,10 +74,22 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         app.prisma.department.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
         // Indicadores
         app.prisma.indicator.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
-        // Acciones abiertas
-        app.prisma.actionItem.count({ where: { ...tenantFilter, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } } }).catch(() => 0),
-        // Acciones vencidas
-        app.prisma.actionItem.count({ where: { ...tenantFilter, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueDate: { lt: now } } }).catch(() => 0),
+        // Acciones abiertas (action_plans — mismo modelo que usa el módulo Plan de Acción;
+        // antes contaba action_items, tabla legacy que ninguna pantalla gestiona)
+        app.prisma.actionPlan.count({
+          where: {
+            ...tenantFilter, deletedAt: null,
+            status: { notIn: ['CLOSED', 'CANCELLED', 'EFFECTIVE', 'NOT_EFFECTIVE'] },
+          },
+        }).catch(() => 0),
+        // Acciones vencidas: fecha prevista de cierre pasada y sin cerrar/cancelar/verificar
+        app.prisma.actionPlan.count({
+          where: {
+            ...tenantFilter, deletedAt: null,
+            status: { notIn: ['CLOSED', 'CANCELLED', 'EFFECTIVE', 'NOT_EFFECTIVE'] },
+            plannedEndDate: { lt: now },
+          },
+        }).catch(() => 0),
         // Objetivos totales
         app.prisma.sgiObjective.count({ where: { ...tenantFilter, deletedAt: null } }).catch(() => 0),
         // Objetivos on-track (status ON_TRACK o COMPLETED)

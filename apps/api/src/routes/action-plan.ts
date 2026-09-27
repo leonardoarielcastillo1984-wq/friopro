@@ -337,6 +337,15 @@ export const actionPlanRoutes: FastifyPluginAsync = async (app) => {
         include: planInclude(),
       });
 
+      // Si el plan quedó CLOSED y trata una NCR, cerrar la NCR vinculada
+      // (el cierre del plan ya exige verificación de eficacia + aprobación)
+      if (updated.status === 'CLOSED' && updated.ncrId) {
+        await tx.nonConformity.updateMany({
+          where: { id: updated.ncrId, deletedAt: null, status: { notIn: ['CLOSED', 'CANCELLED'] } },
+          data: { status: 'CLOSED', closedAt: closedAt ?? new Date() },
+        });
+      }
+
       // Registrar cambios relevantes en bitácora
       const trackedFields: Record<string, string> = {
         status: 'Estado',
