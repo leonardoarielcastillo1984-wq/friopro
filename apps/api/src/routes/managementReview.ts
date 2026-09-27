@@ -19,7 +19,6 @@ const SECTION_TEMPLATES: Record<string, Array<{ key: string; title: string }>> =
     { key: 'supplier_performance',     title: 'Desempeño de Proveedores Externos (9.3.2.c7)' },
     { key: 'resources_adequacy',       title: 'Adecuación de Recursos (9.3.2.d)' },
     { key: 'risk_management',          title: 'Eficacia de Acciones para Riesgos y Oportunidades (9.3.2.e)' },
-    { key: 'actions_capa',             title: 'Estado de Acciones CAPA' },
     { key: 'improvement_opportunities',title: 'Oportunidades de Mejora (9.3.2.f)' },
   ],
   // ISO 14001:2015 — Cláusula 9.3
@@ -82,7 +81,6 @@ const SECTION_TEMPLATES: Record<string, Array<{ key: string; title: string }>> =
     { key: 'copq',                     title: 'Costo de la Mala Calidad — COPQ (9.3.2.1)' },
     { key: 'resources_adequacy',       title: 'Adecuación de Recursos (9.3.2.d)' },
     { key: 'risk_management',          title: 'Riesgos y Oportunidades del Negocio (9.3.2.e)' },
-    { key: 'actions_capa',             title: 'Estado de Acciones CAPA Abiertas' },
     { key: 'improvement_opportunities',title: 'Oportunidades de Mejora y Lecciones Aprendidas (9.3.2.f)' },
   ],
 };

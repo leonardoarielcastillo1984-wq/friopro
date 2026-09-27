@@ -561,10 +561,9 @@ export default function InformeDireccionDetailPage() {
         <div className="space-y-8">
           {review.sections.filter(s => s.key !== 'meeting_minutes' && !s.key.startsWith('input_')).map((section) => {
             const Icon = SECTION_ICONS[section.key] || FileText;
-            const isCustom = section.key.startsWith('custom_');
             return (
               <div key={section.key} className="relative">
-                {isCustom && review.status !== 'FINAL' && (
+                {review.status !== 'FINAL' && (
                   <button
                     onClick={() => deleteSection(section.key)}
                     className="absolute -top-2 -right-2 z-10 p-1 bg-white border border-red-200 rounded-full text-red-400 hover:text-red-600 hover:border-red-400 shadow-sm print:hidden"
