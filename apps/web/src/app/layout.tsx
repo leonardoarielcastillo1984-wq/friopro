@@ -1,5 +1,6 @@
 import './globals.css';
 import '@/styles/2fa.css';
+import '@/lib/dates';
 import type { ReactNode } from 'react';
 import type { Viewport } from 'next';
 import { Inter } from 'next/font/google';

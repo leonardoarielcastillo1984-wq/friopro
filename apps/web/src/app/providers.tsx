@@ -1,5 +1,6 @@
 'use client';
 
+import '@/lib/dates';
 import { AuthProvider } from '@/lib/auth-context';
 import { CompanyProvider } from '@/lib/company-context';
 
