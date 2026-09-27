@@ -66,14 +66,40 @@ type PuntoSalida = {
   responsible?: string;
   dueDate?: string;
   status: 'pending' | 'in_progress' | 'done';
+  actionPlanId?: string;
 };
 
 function parseSalidas(decisions: any): PuntoSalida[] {
   if (!decisions) return [];
-  try {
-    const arr = typeof decisions === 'string' ? JSON.parse(decisions) : decisions;
-    return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
+  if (Array.isArray(decisions)) return decisions;
+  if (typeof decisions === 'string') {
+    try {
+      const arr = JSON.parse(decisions);
+      if (Array.isArray(arr)) return arr;
+    } catch { /* no es JSON: texto histórico de "Decisiones y Acciones" */ }
+    const trimmed = decisions.trim();
+    if (!trimmed) return [];
+    // Informes anteriores guardaban "Decisiones y Acciones" como texto libre.
+    // Se normaliza a un único punto de salida para no perder la información.
+    return [{ id: 'legacy', description: trimmed, status: 'pending' }];
+  }
+  return [];
+}
+
+async function createActionPlanForSalida(pointTitle: string, salida: PuntoSalida): Promise<string> {
+  const res = await apiFetch('/action-plans', {
+    method: 'POST',
+    json: {
+      origin: 'MANAGEMENT_REVIEW',
+      type: 'IMPROVEMENT',
+      classification: pointTitle,
+      findingDescription: `[Revisión por la Dirección — ${pointTitle}] ${salida.description}`,
+      plannedAction: salida.description,
+      executorNameText: salida.responsible || null,
+      plannedEndDate: salida.dueDate || null,
+    },
+  }) as { plan: { id: string } };
+  return res.plan.id;
 }
 
 const ISO_STANDARD_LABELS: Record<string, string> = {
@@ -216,6 +242,20 @@ export default function InformeDireccionDetailPage() {
     }
   }
 
+  async function persistSectionDecisions(sectionKey: string, salidas: PuntoSalida[]) {
+    try {
+      const res = await apiFetch(`/management-reviews/${reviewId}/sections/${sectionKey}`, {
+        method: 'PATCH',
+        json: { decisions: salidas.length > 0 ? salidas : null },
+      }) as { section: ManagementReviewSection };
+      if (res.section && review) {
+        setReview({ ...review, sections: review.sections.map(s => s.key === sectionKey ? res.section : s) });
+      }
+    } catch (err) {
+      console.error('Error persisting section decisions:', err);
+    }
+  }
+
   async function saveSummary() {
     if (!review) return;
     setSavingSummary(true);
@@ -322,7 +362,7 @@ export default function InformeDireccionDetailPage() {
     router.push(`/calidad?tab=acciones`);
   }
 
-  async function aiSuggestSection(sectionKey: string, field: 'analysis' | 'outputs' | 'decisions' = 'analysis'): Promise<string> {
+  async function aiSuggestSection(sectionKey: string, field: 'analysis' | 'decisions' = 'analysis'): Promise<string> {
     const res = await apiFetch(`/management-reviews/${reviewId}/ai-suggest/${sectionKey}?field=${field}`, {
       method: 'POST',
     }) as { suggestion: string; model: string };
@@ -647,6 +687,45 @@ export default function InformeDireccionDetailPage() {
           );
         })()}
 
+        {/* ── SALIDAS DE LA REVISIÓN POR LA DIRECCIÓN (resumen consolidado) ── */}
+        <div className="border-2 border-green-200 rounded-xl overflow-hidden">
+          <div className="flex items-center px-6 py-4 bg-green-50 border-b border-green-100">
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+              Salidas de la Revisión por la Dirección
+            </h2>
+          </div>
+          <div className="p-6 space-y-5">
+            {(() => {
+              const pointsWithSalidas = review.sections
+                .filter(s => s.key !== 'meeting_minutes')
+                .map(s => ({ section: s, salidas: parseSalidas(s.decisions) }))
+                .filter(p => p.salidas.length > 0);
+
+              if (pointsWithSalidas.length === 0) {
+                return (
+                  <p className="text-sm text-gray-400 italic">
+                    Aún no se registraron decisiones y acciones en los puntos de entrada. Completá "Decisiones y Acciones" en cada punto para que aparezcan acá.
+                  </p>
+                );
+              }
+
+              return pointsWithSalidas.map(({ section, salidas }) => (
+                <div key={section.key} className="border border-gray-100 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-2">{section.title}</h3>
+                  <SalidasEditor
+                    salidas={salidas}
+                    onChange={(updater) => persistSectionDecisions(section.key, updater(salidas))}
+                    editing={false}
+                    pointTitle={section.title}
+                    disabled={review.status === 'FINAL'}
+                  />
+                </div>
+              ));
+            })()}
+          </div>
+        </div>
+
         {/* ── ACTA DE REUNIÓN ─────────────────────────────────────── */}
         <div className="border-2 border-gray-200 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-200">
@@ -776,6 +855,159 @@ export default function InformeDireccionDetailPage() {
   );
 }
 
+// Lista de Decisiones y Acciones — compartida entre puntos ISO, puntos de entrada
+// libres y el resumen consolidado de Salidas de la Dirección. Cada ítem puede
+// vincularse a un Plan de Acción real ("Crear Plan de Acción" / "Ver Plan de Acción").
+function SalidasEditor({
+  salidas, onChange, editing, pointTitle, disabled,
+}: {
+  salidas: PuntoSalida[];
+  onChange: (updater: (prev: PuntoSalida[]) => PuntoSalida[]) => void;
+  editing: boolean;
+  pointTitle: string;
+  disabled?: boolean;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [desc, setDesc] = useState('');
+  const [resp, setResp] = useState('');
+  const [due, setDue] = useState('');
+  const [creatingPlanFor, setCreatingPlanFor] = useState<string | null>(null);
+
+  const statusLabel: Record<string, string> = { pending: 'Pendiente', in_progress: 'En progreso', done: 'Completado' };
+  const statusColor: Record<string, string> = { pending: 'bg-gray-100 text-gray-600', in_progress: 'bg-blue-100 text-blue-700', done: 'bg-green-100 text-green-700' };
+
+  function add() {
+    if (!desc.trim()) return;
+    onChange((prev) => [...prev, {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      description: desc.trim(),
+      responsible: resp.trim() || undefined,
+      dueDate: due || undefined,
+      status: 'pending',
+    }]);
+    setDesc(''); setResp(''); setDue(''); setShowAdd(false);
+  }
+
+  function remove(id: string) {
+    onChange((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  function cycleStatus(id: string) {
+    const cycle: PuntoSalida['status'][] = ['pending', 'in_progress', 'done'];
+    onChange((prev) => prev.map((s) => (s.id === id ? { ...s, status: cycle[(cycle.indexOf(s.status) + 1) % cycle.length] } : s)));
+  }
+
+  async function handleCreatePlan(salida: PuntoSalida) {
+    setCreatingPlanFor(salida.id);
+    try {
+      const planId = await createActionPlanForSalida(pointTitle, salida);
+      onChange((prev) => prev.map((s) => (s.id === salida.id ? { ...s, actionPlanId: planId } : s)));
+    } catch (err) {
+      console.error('Error creando plan de acción:', err);
+      alert('No se pudo crear el plan de acción.');
+    } finally {
+      setCreatingPlanFor(null);
+    }
+  }
+
+  return (
+    <div>
+      {salidas.length === 0 && !showAdd && (
+        <p className="text-xs text-gray-400 italic">
+          {editing ? 'Sin decisiones registradas. Hacé clic en "Agregar decisión/acción" para añadir una.' : 'Sin decisiones registradas.'}
+        </p>
+      )}
+      <div className="space-y-2">
+        {salidas.map((salida) => (
+          <div key={salida.id} className="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-gray-800 leading-snug whitespace-pre-line">{salida.description}</p>
+              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                {salida.responsible && (
+                  <span className="text-xs text-gray-500 flex items-center gap-1"><Users className="w-3 h-3" /> {salida.responsible}</span>
+                )}
+                {salida.dueDate && (
+                  <span className="text-xs text-gray-500 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {new Date(salida.dueDate + 'T00:00').toLocaleDateString('es-AR')}</span>
+                )}
+                <button
+                  onClick={() => editing && cycleStatus(salida.id)}
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${statusColor[salida.status] || 'bg-gray-100 text-gray-600'} ${editing ? 'cursor-pointer hover:opacity-75' : 'cursor-default'}`}
+                  title={editing ? 'Clic para cambiar estado' : undefined}
+                >
+                  {statusLabel[salida.status] || salida.status}
+                </button>
+                {salida.actionPlanId ? (
+                  <Link href={`/plan-accion/${salida.actionPlanId}`} className="text-xs text-green-700 hover:text-green-900 flex items-center gap-1 font-medium print:hidden">
+                    <ClipboardList className="w-3 h-3" /> Ver Plan de Acción
+                  </Link>
+                ) : !disabled && (
+                  <button
+                    onClick={() => handleCreatePlan(salida)}
+                    disabled={creatingPlanFor === salida.id}
+                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium disabled:opacity-50 print:hidden"
+                  >
+                    <ClipboardList className="w-3 h-3" /> {creatingPlanFor === salida.id ? 'Creando...' : 'Crear Plan de Acción'}
+                  </button>
+                )}
+              </div>
+            </div>
+            {editing && (
+              <button onClick={() => remove(salida.id)} className="flex-shrink-0 p-1 text-red-400 hover:text-red-600 rounded mt-0.5">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {editing && !showAdd && (
+        <button
+          onClick={() => setShowAdd(true)}
+          className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+        >
+          <Plus className="w-3 h-3" /> Agregar decisión/acción
+        </button>
+      )}
+
+      {editing && showAdd && (
+        <div className="mt-2 border border-blue-200 rounded-lg p-3 bg-blue-50/50 space-y-2">
+          <input
+            autoFocus
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') add(); if (e.key === 'Escape') setShowAdd(false); }}
+            placeholder="Decisión o acción a tomar..."
+            className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+          />
+          <div className="flex gap-2">
+            <input
+              value={resp}
+              onChange={(e) => setResp(e.target.value)}
+              placeholder="Responsable (opcional)"
+              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+            />
+            <input
+              type="date"
+              value={due}
+              onChange={(e) => setDue(e.target.value)}
+              title="Fecha límite (opcional)"
+              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={add} disabled={!desc.trim()} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50">
+              Agregar
+            </button>
+            <button onClick={() => { setShowAdd(false); setDesc(''); setResp(''); setDue(''); }} className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Section Editor Component
 function SectionEditor({
   section, Icon, isEditing, onEdit, onSave, onCancel, onAiSuggest, disabled, saving,
@@ -786,45 +1018,39 @@ function SectionEditor({
   onEdit: () => void;
   onSave: (data: any) => void;
   onCancel: () => void;
-  onAiSuggest: (field: 'analysis' | 'outputs' | 'decisions') => Promise<string>;
+  onAiSuggest: (field: 'analysis' | 'decisions') => Promise<string>;
   disabled: boolean;
   saving: boolean;
 }) {
-  const [formData, setFormData] = useState({
-    freeText: section.freeText || '',
-    outputs: section.outputs || '',
-    decisions: section.decisions || '',
-  });
+  const [freeText, setFreeText] = useState(section.freeText || '');
+  const [salidas, setSalidas] = useState<PuntoSalida[]>(() => parseSalidas(section.decisions));
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
-  const [aiField, setAiField] = useState<'analysis' | 'outputs' | 'decisions'>('analysis');
+  const [aiField, setAiField] = useState<'analysis' | 'decisions'>('analysis');
   const [aiError, setAiError] = useState<string | null>(null);
   const [showSystemData, setShowSystemData] = useState(false);
 
-  // Sync when section changes externally (after save)
-  useState(() => {
-    setFormData({
-      freeText: section.freeText || '',
-      outputs: section.outputs || '',
-      decisions: section.decisions || '',
-    });
-  });
+  // Sync cuando la sección cambia externamente (después de guardar o cancelar)
+  useEffect(() => {
+    if (!isEditing) {
+      setFreeText(section.freeText || '');
+      setSalidas(parseSalidas(section.decisions));
+    }
+  }, [section, isEditing]);
 
   function handleSave() {
-    const data: any = {};
-    data.freeText = formData.freeText.trim() || null;
-    data.outputs = formData.outputs.trim() || null;
-    data.decisions = formData.decisions.trim() || null;
-    onSave(data);
+    onSave({
+      freeText: freeText.trim() || null,
+      decisions: salidas.length > 0 ? salidas : null,
+    });
   }
 
-  const AI_FIELD_LABEL: Record<'analysis' | 'outputs' | 'decisions', string> = {
+  const AI_FIELD_LABEL: Record<'analysis' | 'decisions', string> = {
     analysis: 'análisis',
-    outputs: 'salida requerida',
     decisions: 'decisiones y acciones',
   };
 
-  async function handleAiSuggest(field: 'analysis' | 'outputs' | 'decisions' = 'analysis') {
+  async function handleAiSuggest(field: 'analysis' | 'decisions' = 'analysis') {
     setAiLoading(true);
     setAiError(null);
     setAiSuggestion(null);
@@ -841,12 +1067,11 @@ function SectionEditor({
 
   function applyAiSuggestion() {
     if (!aiSuggestion) return;
-    setFormData((prev) => ({
-      ...prev,
-      [aiField === 'analysis' ? 'freeText' : aiField]: prev[aiField === 'analysis' ? 'freeText' : aiField]
-        ? prev[aiField === 'analysis' ? 'freeText' : aiField] + '\n\n' + aiSuggestion
-        : aiSuggestion,
-    }));
+    if (aiField === 'analysis') {
+      setFreeText((prev) => (prev ? prev + '\n\n' + aiSuggestion : aiSuggestion));
+    } else {
+      setSalidas((prev) => [...prev, { id: `${Date.now()}_ai`, description: aiSuggestion, status: 'pending' }]);
+    }
     setAiSuggestion(null);
     if (!isEditing) onEdit();
   }
@@ -961,38 +1186,15 @@ function SectionEditor({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Análisis y Observaciones</label>
               <textarea
-                value={formData.freeText}
-                onChange={(e) => setFormData({ ...formData, freeText: e.target.value })}
+                value={freeText}
+                onChange={(e) => setFreeText(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 rows={6}
                 placeholder="Ingrese su análisis y observaciones sobre estos datos..."
               />
             </div>
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700">Salida Requerida</label>
-                {!disabled && (
-                  <button
-                    type="button"
-                    onClick={() => handleAiSuggest('outputs')}
-                    disabled={aiLoading}
-                    title="Sugerir salida requerida con IA"
-                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-md hover:bg-violet-100 disabled:opacity-50 transition-colors"
-                  >
-                    <Sparkles className="w-3 h-3" /> Sugerir con IA
-                  </button>
-                )}
-              </div>
-              <textarea
-                value={formData.outputs}
-                onChange={(e) => setFormData({ ...formData, outputs: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                rows={3}
-                placeholder="Describa la salida requerida (recursos, mejoras, objetivos nuevos...)"
-              />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">Decisiones y Acciones</label>
                 {!disabled && (
                   <button
@@ -1006,13 +1208,7 @@ function SectionEditor({
                   </button>
                 )}
               </div>
-              <textarea
-                value={formData.decisions}
-                onChange={(e) => setFormData({ ...formData, decisions: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                rows={3}
-                placeholder="Decisiones tomadas, responsables y fechas límite..."
-              />
+              <SalidasEditor salidas={salidas} onChange={setSalidas} editing pointTitle={section.title} disabled={disabled} />
             </div>
           </div>
         ) : (
@@ -1025,20 +1221,10 @@ function SectionEditor({
             ) : !disabled && (
               <p className="text-sm text-gray-400 italic">Sin análisis. Haga clic en "Editar" o use "Sugerir con IA" para comenzar.</p>
             )}
-            {section.outputs && (
-              <div>
-                <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">Salida Requerida</h3>
-                <div className="bg-blue-50 border border-blue-100 px-4 py-3 rounded-lg">
-                  <p className="text-gray-700 whitespace-pre-line text-sm">{section.outputs}</p>
-                </div>
-              </div>
-            )}
-            {section.decisions && (
+            {salidas.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2">Decisiones y Acciones</h3>
-                <div className="bg-green-50 border border-green-100 px-4 py-3 rounded-lg">
-                  <p className="text-gray-700 whitespace-pre-line text-sm">{section.decisions}</p>
-                </div>
+                <SalidasEditor salidas={salidas} onChange={setSalidas} editing={false} pointTitle={section.title} disabled={disabled} />
               </div>
             )}
           </div>
@@ -1066,10 +1252,6 @@ function InputSectionCard({
   const [freeText, setFreeText] = useState(section.freeText || '');
   const [salidas, setSalidas] = useState<PuntoSalida[]>(() => parseSalidas(section.decisions));
   const [saving, setSaving] = useState(false);
-  const [showAddSalida, setShowAddSalida] = useState(false);
-  const [newSalidaDesc, setNewSalidaDesc] = useState('');
-  const [newSalidaResp, setNewSalidaResp] = useState('');
-  const [newSalidaDate, setNewSalidaDate] = useState('');
 
   useEffect(() => {
     if (!editing) {
@@ -1077,17 +1259,6 @@ function InputSectionCard({
       setSalidas(parseSalidas(section.decisions));
     }
   }, [section, editing]);
-
-  const salidaStatusLabel: Record<string, string> = {
-    pending: 'Pendiente',
-    in_progress: 'En progreso',
-    done: 'Completado',
-  };
-  const salidaStatusColor: Record<string, string> = {
-    pending: 'bg-gray-100 text-gray-600',
-    in_progress: 'bg-blue-100 text-blue-700',
-    done: 'bg-green-100 text-green-700',
-  };
 
   async function save() {
     setSaving(true);
@@ -1102,7 +1273,6 @@ function InputSectionCard({
       if (res.section) {
         onUpdated(res.section);
         setEditing(false);
-        setShowAddSalida(false);
       }
     } catch (err) {
       console.error('Error saving input section:', err);
@@ -1111,43 +1281,10 @@ function InputSectionCard({
     }
   }
 
-  function addSalida() {
-    if (!newSalidaDesc.trim()) return;
-    const salida: PuntoSalida = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      description: newSalidaDesc.trim(),
-      responsible: newSalidaResp.trim() || undefined,
-      dueDate: newSalidaDate || undefined,
-      status: 'pending',
-    };
-    setSalidas(prev => [...prev, salida]);
-    setNewSalidaDesc('');
-    setNewSalidaResp('');
-    setNewSalidaDate('');
-    setShowAddSalida(false);
-  }
-
-  function removeSalida(id: string) {
-    setSalidas(prev => prev.filter(s => s.id !== id));
-  }
-
-  function cycleSalidaStatus(id: string) {
-    const cycle: PuntoSalida['status'][] = ['pending', 'in_progress', 'done'];
-    setSalidas(prev => prev.map(s => {
-      if (s.id !== id) return s;
-      const next = cycle[(cycle.indexOf(s.status) + 1) % cycle.length];
-      return { ...s, status: next };
-    }));
-  }
-
   function cancelEdit() {
     setFreeText(section.freeText || '');
     setSalidas(parseSalidas(section.decisions));
     setEditing(false);
-    setShowAddSalida(false);
-    setNewSalidaDesc('');
-    setNewSalidaResp('');
-    setNewSalidaDate('');
   }
 
   return (
@@ -1213,108 +1350,12 @@ function InputSectionCard({
           )}
         </div>
 
-        {/* Puntos de Salida */}
+        {/* Decisiones y Acciones */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider flex items-center gap-1">
-              <CheckCircle className="w-3 h-3" /> Puntos de Salida ({salidas.length})
-            </p>
-            {editing && (
-              <button
-                onClick={() => setShowAddSalida(true)}
-                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
-              >
-                <Plus className="w-3 h-3" /> Agregar salida
-              </button>
-            )}
-          </div>
-
-          {salidas.length === 0 && !showAddSalida && (
-            <p className="text-xs text-gray-400 italic">
-              {editing ? 'Hacé clic en "Agregar salida" para añadir puntos de salida.' : 'Sin puntos de salida registrados.'}
-            </p>
-          )}
-
-          <div className="space-y-2">
-            {salidas.map(salida => (
-              <div key={salida.id} className="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-800 font-medium leading-snug">{salida.description}</p>
-                  <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                    {salida.responsible && (
-                      <span className="text-xs text-gray-500 flex items-center gap-1">
-                        <Users className="w-3 h-3" /> {salida.responsible}
-                      </span>
-                    )}
-                    {salida.dueDate && (
-                      <span className="text-xs text-gray-500 flex items-center gap-1">
-                        <CalendarDays className="w-3 h-3" /> {new Date(salida.dueDate + 'T00:00').toLocaleDateString('es-AR')}
-                      </span>
-                    )}
-                    <button
-                      onClick={() => editing && cycleSalidaStatus(salida.id)}
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${salidaStatusColor[salida.status] || 'bg-gray-100 text-gray-600'} ${editing ? 'cursor-pointer hover:opacity-75' : 'cursor-default'}`}
-                      title={editing ? 'Clic para cambiar estado' : undefined}
-                    >
-                      {salidaStatusLabel[salida.status] || salida.status}
-                    </button>
-                  </div>
-                </div>
-                {editing && (
-                  <button
-                    onClick={() => removeSalida(salida.id)}
-                    className="flex-shrink-0 p-1 text-red-400 hover:text-red-600 rounded mt-0.5"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Formulario nueva salida */}
-          {showAddSalida && editing && (
-            <div className="mt-2 border border-blue-200 rounded-lg p-3 bg-blue-50/50 space-y-2">
-              <input
-                autoFocus
-                value={newSalidaDesc}
-                onChange={e => setNewSalidaDesc(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') addSalida(); if (e.key === 'Escape') setShowAddSalida(false); }}
-                placeholder="Descripción del punto de salida (acción, decisión, recurso a proveer...)"
-                className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-              />
-              <div className="flex gap-2">
-                <input
-                  value={newSalidaResp}
-                  onChange={e => setNewSalidaResp(e.target.value)}
-                  placeholder="Responsable (opcional)"
-                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-                />
-                <input
-                  type="date"
-                  value={newSalidaDate}
-                  onChange={e => setNewSalidaDate(e.target.value)}
-                  title="Fecha límite (opcional)"
-                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-                />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={addSalida}
-                  disabled={!newSalidaDesc.trim()}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Agregar salida
-                </button>
-                <button
-                  onClick={() => { setShowAddSalida(false); setNewSalidaDesc(''); setNewSalidaResp(''); setNewSalidaDate(''); }}
-                  className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
+          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider flex items-center gap-1 mb-2">
+            <CheckCircle className="w-3 h-3" /> Decisiones y Acciones ({salidas.length})
+          </p>
+          <SalidasEditor salidas={salidas} onChange={setSalidas} editing={editing} pointTitle={section.title} disabled={disabled} />
         </div>
       </div>
     </div>

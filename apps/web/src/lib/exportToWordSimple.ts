@@ -20,11 +20,40 @@ export type ManagementReviewSection = {
   title: string;
   systemData: any;
   freeText: string | null;
-  outputs: string | null;
+  outputs?: string | null;
   decisions: any;
   createdAt: string;
   updatedAt: string;
 };
+
+const SALIDA_STATUS_LABEL: Record<string, string> = {
+  pending: 'Pendiente',
+  in_progress: 'En progreso',
+  done: 'Completado',
+};
+
+// Convierte 'decisions' (lista estructurada de puntos de salida, o texto libre
+// de informes anteriores) en líneas legibles para el documento Word.
+function decisionsToLines(decisions: any): string[] {
+  if (!decisions) return [];
+  let arr: any = decisions;
+  if (typeof decisions === 'string') {
+    try {
+      arr = JSON.parse(decisions);
+    } catch {
+      const trimmed = decisions.trim();
+      return trimmed ? [trimmed] : [];
+    }
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr.map((s: any) => {
+    const parts = [s.description || ''];
+    if (s.responsible) parts.push(`Responsable: ${s.responsible}`);
+    if (s.dueDate) parts.push(`Fecha límite: ${new Date(s.dueDate + 'T00:00').toLocaleDateString('es-AR')}`);
+    if (s.status) parts.push(`Estado: ${SALIDA_STATUS_LABEL[s.status] || s.status}`);
+    return parts.join(' — ');
+  }).filter(Boolean);
+}
 
 export type CompanySettings = {
   companyName?: string;
@@ -248,36 +277,9 @@ export async function exportToWord(
       );
     }
 
-    // Outputs
-    if (section.outputs) {
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: 'Salida Requerida',
-              bold: true,
-              size: 22,
-            }),
-          ],
-          spacing: { before: 300, after: 100 },
-        })
-      );
-
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: section.outputs,
-              size: 22,
-            }),
-          ],
-          spacing: { after: 200 },
-        })
-      );
-    }
-
-    // Decisions
-    if (section.decisions) {
+    // Decisiones y Acciones (lista estructurada de puntos de salida, o texto histórico)
+    const decisionLines = decisionsToLines(section.decisions);
+    if (decisionLines.length > 0) {
       children.push(
         new Paragraph({
           children: [
@@ -291,19 +293,19 @@ export async function exportToWord(
         })
       );
 
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: typeof section.decisions === 'string' 
-                ? section.decisions 
-                : JSON.stringify(section.decisions, null, 2),
-              size: 22,
-            }),
-          ],
-          spacing: { after: 400 },
-        })
-      );
+      decisionLines.forEach((line) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `• ${line}`,
+                size: 22,
+              }),
+            ],
+            spacing: { after: 100 },
+          })
+        );
+      });
     }
   });
 
