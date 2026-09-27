@@ -1869,7 +1869,8 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
   "summary": "Breve resumen de la cobertura de la checklist generada"
 }`;
 
-        const response = await llm.chat([{ role: 'user', content: prompt }]);
+        // gpt-oss-20b gasta tokens en reasoning; 1024 puede dejar content vacío
+        const response = await llm.chat([{ role: 'user', content: prompt }], 3000);
         const jsonMatch = response.text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) return reply.code(500).send({ error: 'La IA no devolvió un formato JSON válido' });
 
@@ -1934,7 +1935,8 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
   "recommendedDeadlineDays": 30
 }`;
 
-        const response = await llm.chat([{ role: 'user', content: prompt }]);
+        // gpt-oss-20b gasta tokens en reasoning; 1024 puede dejar content vacío
+        const response = await llm.chat([{ role: 'user', content: prompt }], 3000);
         const jsonMatch = response.text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) return reply.code(500).send({ error: 'La IA no devolvió un formato JSON válido' });
 
@@ -1979,7 +1981,7 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
             include: {
               checklist: { orderBy: { order: 'asc' } },
               findings: { where: { deletedAt: null }, orderBy: { detectedAt: 'desc' } },
-              team: { include: { auditor: { select: { name: true } } } },
+              auditTeams: { include: { auditor: { select: { name: true } } } },
             },
           });
           return audit;
@@ -1994,7 +1996,7 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
           `- ${f.code} (${f.severity}): ${f.description}`
         ).join('\n');
 
-        const teamNames = auditData.team.map((t: any) => t.auditor?.name || 'Auditor').join(', ');
+        const teamNames = (auditData.auditTeams || []).map((t: any) => t.auditor?.name || 'Auditor').join(', ');
 
         const prompt = `Eres un auditor líder experto ISO. Redacta un borrador profesional de Informe de Auditoría en español.
 
@@ -2025,7 +2027,8 @@ Responde EXACTAMENTE en formato JSON (sin markdown, sin bloques de código):
   "complianceLevel": "PARCIAL"
 }`;
 
-        const response = await llm.chat([{ role: 'user', content: prompt }]);
+        // gpt-oss-20b gasta tokens en reasoning; 1024 puede dejar content vacío
+        const response = await llm.chat([{ role: 'user', content: prompt }], 3000);
         const jsonMatch = response.text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) return reply.code(500).send({ error: 'La IA no devolvió un formato JSON válido' });
 
