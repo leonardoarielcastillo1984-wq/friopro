@@ -872,6 +872,11 @@ function SalidasEditor({
   const [resp, setResp] = useState('');
   const [due, setDue] = useState('');
   const [creatingPlanFor, setCreatingPlanFor] = useState<string | null>(null);
+  // Edición inline de una decisión existente
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDesc, setEditDesc] = useState('');
+  const [editResp, setEditResp] = useState('');
+  const [editDue, setEditDue] = useState('');
 
   const statusLabel: Record<string, string> = { pending: 'Pendiente', in_progress: 'En progreso', done: 'Completado' };
   const statusColor: Record<string, string> = { pending: 'bg-gray-100 text-gray-600', in_progress: 'bg-blue-100 text-blue-700', done: 'bg-green-100 text-green-700' };
@@ -890,6 +895,21 @@ function SalidasEditor({
 
   function remove(id: string) {
     onChange((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  function startEdit(salida: PuntoSalida) {
+    setEditingId(salida.id);
+    setEditDesc(salida.description);
+    setEditResp(salida.responsible || '');
+    setEditDue(salida.dueDate || '');
+  }
+
+  function saveEdit(id: string) {
+    if (!editDesc.trim()) return;
+    onChange((prev) => prev.map((s) => (s.id === id
+      ? { ...s, description: editDesc.trim(), responsible: editResp.trim() || undefined, dueDate: editDue || undefined }
+      : s)));
+    setEditingId(null);
   }
 
   function cycleStatus(id: string) {
@@ -919,42 +939,96 @@ function SalidasEditor({
       )}
       <div className="space-y-2">
         {salidas.map((salida) => (
-          <div key={salida.id} className="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-800 leading-snug whitespace-pre-line">{salida.description}</p>
-              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                {salida.responsible && (
-                  <span className="text-xs text-gray-500 flex items-center gap-1"><Users className="w-3 h-3" /> {salida.responsible}</span>
-                )}
-                {salida.dueDate && (
-                  <span className="text-xs text-gray-500 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {new Date(salida.dueDate + 'T00:00').toLocaleDateString('es-AR')}</span>
-                )}
-                <button
-                  onClick={() => editing && cycleStatus(salida.id)}
-                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${statusColor[salida.status] || 'bg-gray-100 text-gray-600'} ${editing ? 'cursor-pointer hover:opacity-75' : 'cursor-default'}`}
-                  title={editing ? 'Clic para cambiar estado' : undefined}
-                >
-                  {statusLabel[salida.status] || salida.status}
-                </button>
-                {salida.actionPlanId ? (
-                  <Link href={`/plan-accion/${salida.actionPlanId}`} className="text-xs text-green-700 hover:text-green-900 flex items-center gap-1 font-medium print:hidden">
-                    <ClipboardList className="w-3 h-3" /> Ver Plan de Acción
-                  </Link>
-                ) : !disabled && (
+          <div key={salida.id} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5">
+            {editing && editingId === salida.id ? (
+              <div className="space-y-2">
+                <textarea
+                  autoFocus
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  rows={3}
+                  placeholder="Decisión o acción..."
+                  className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white resize-none"
+                />
+                <div className="flex gap-2">
+                  <input
+                    value={editResp}
+                    onChange={(e) => setEditResp(e.target.value)}
+                    placeholder="Responsable (opcional)"
+                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                  />
+                  <input
+                    type="date"
+                    value={editDue}
+                    onChange={(e) => setEditDue(e.target.value)}
+                    title="Fecha límite (opcional)"
+                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
                   <button
-                    onClick={() => handleCreatePlan(salida)}
-                    disabled={creatingPlanFor === salida.id}
-                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium disabled:opacity-50 print:hidden"
+                    onClick={() => saveEdit(salida.id)}
+                    disabled={!editDesc.trim()}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50"
                   >
-                    <ClipboardList className="w-3 h-3" /> {creatingPlanFor === salida.id ? 'Creando...' : 'Crear Plan de Acción'}
+                    <Save className="w-3 h-3" /> Guardar
                   </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-800 leading-snug whitespace-pre-line">{salida.description}</p>
+                  <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                    {salida.responsible && (
+                      <span className="text-xs text-gray-500 flex items-center gap-1"><Users className="w-3 h-3" /> {salida.responsible}</span>
+                    )}
+                    {salida.dueDate && (
+                      <span className="text-xs text-gray-500 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {new Date(salida.dueDate + 'T00:00').toLocaleDateString('es-AR')}</span>
+                    )}
+                    <button
+                      onClick={() => !disabled && cycleStatus(salida.id)}
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${statusColor[salida.status] || 'bg-gray-100 text-gray-600'} ${!disabled ? 'cursor-pointer hover:opacity-75' : 'cursor-default'}`}
+                      title={!disabled ? 'Clic para cambiar estado' : undefined}
+                    >
+                      {statusLabel[salida.status] || salida.status}
+                    </button>
+                    {salida.actionPlanId ? (
+                      <Link href={`/plan-accion/${salida.actionPlanId}`} className="text-xs text-green-700 hover:text-green-900 flex items-center gap-1 font-medium print:hidden">
+                        <ClipboardList className="w-3 h-3" /> Ver Plan de Acción
+                      </Link>
+                    ) : !disabled && (
+                      <button
+                        onClick={() => handleCreatePlan(salida)}
+                        disabled={creatingPlanFor === salida.id}
+                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium disabled:opacity-50 print:hidden"
+                      >
+                        <ClipboardList className="w-3 h-3" /> {creatingPlanFor === salida.id ? 'Creando...' : 'Crear Plan de Acción'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {editing && (
+                  <div className="flex-shrink-0 flex items-center gap-0.5 mt-0.5">
+                    <button
+                      onClick={() => startEdit(salida)}
+                      className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                      title="Editar decisión"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => remove(salida.id)} className="p-1 text-red-400 hover:text-red-600 rounded" title="Eliminar">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 )}
               </div>
-            </div>
-            {editing && (
-              <button onClick={() => remove(salida.id)} className="flex-shrink-0 p-1 text-red-400 hover:text-red-600 rounded mt-0.5">
-                <X className="w-3.5 h-3.5" />
-              </button>
             )}
           </div>
         ))}
@@ -1224,7 +1298,13 @@ function SectionEditor({
             {salidas.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2">Decisiones y Acciones</h3>
-                <SalidasEditor salidas={salidas} onChange={setSalidas} editing={false} pointTitle={section.title} disabled={disabled} />
+                <SalidasEditor
+                  salidas={salidas}
+                  onChange={(updater) => onSave({ decisions: updater(salidas) })}
+                  editing={false}
+                  pointTitle={section.title}
+                  disabled={disabled}
+                />
               </div>
             )}
           </div>
@@ -1285,6 +1365,21 @@ function InputSectionCard({
     setFreeText(section.freeText || '');
     setSalidas(parseSalidas(section.decisions));
     setEditing(false);
+  }
+
+  // En modo lectura, los cambios (crear plan, cambiar estado) se persisten directo
+  async function persistDecisions(updater: (prev: PuntoSalida[]) => PuntoSalida[]) {
+    const next = updater(salidas);
+    setSalidas(next);
+    try {
+      const res = await apiFetch(`/management-reviews/${reviewId}/sections/${section.key}`, {
+        method: 'PATCH',
+        json: { decisions: next.length > 0 ? next : null },
+      }) as { section: ManagementReviewSection };
+      if (res.section) onUpdated(res.section);
+    } catch (err) {
+      console.error('Error persisting decisions:', err);
+    }
   }
 
   return (
@@ -1355,7 +1450,13 @@ function InputSectionCard({
           <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider flex items-center gap-1 mb-2">
             <CheckCircle className="w-3 h-3" /> Decisiones y Acciones ({salidas.length})
           </p>
-          <SalidasEditor salidas={salidas} onChange={setSalidas} editing={editing} pointTitle={section.title} disabled={disabled} />
+          <SalidasEditor
+            salidas={salidas}
+            onChange={editing ? setSalidas : persistDecisions}
+            editing={editing}
+            pointTitle={section.title}
+            disabled={disabled}
+          />
         </div>
       </div>
     </div>
