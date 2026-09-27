@@ -884,7 +884,7 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
       satisfactionIssues.push({
         id: 'no-surveys', title: 'Satisfacción del Cliente',
         detail: 'No existen encuestas de satisfacción activas', severity: 'HIGH',
-        href: '/encuestas',
+        href: '/clientes?tab=encuestas',
       });
     } else {
       for (const s of surveys) {
@@ -893,13 +893,13 @@ export const auditReadinessRoutes: FastifyPluginAsync = async (app) => {
           satisfactionIssues.push({
             id: s.id, title: s.title,
             detail: 'Encuesta sin respuestas recibidas', severity: 'MEDIUM',
-            href: '/encuestas',
+            href: `/clientes/encuestas/${s.id}`,
           });
         }
       }
     }
     const satisfactionModule: ModuleReadiness = {
-      key: 'satisfaccion-cliente', label: 'Satisfacción del Cliente', href: '/encuestas',
+      key: 'satisfaccion-cliente', label: 'Satisfacción del Cliente', href: '/clientes?tab=encuestas',
       total: Math.max(1, surveys.length), pending: satisfactionIssues.length,
       score: scoreFrom(Math.max(1, surveys.length), satisfactionIssues.length),
       issues: satisfactionIssues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH' ? -1 : 1)).slice(0, 10),

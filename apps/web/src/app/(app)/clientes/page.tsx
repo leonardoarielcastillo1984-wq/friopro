@@ -105,6 +105,11 @@ export default function ClientesPage() {
 
   useEffect(() => {
     loadData();
+    // Deep-link: ?tab=encuestas abre la pestaña de encuestas (ej. desde Preparación de Auditoría)
+    try {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab === 'encuestas' || tab === 'surveys') setActiveTab('surveys');
+    } catch { /* noop */ }
   }, []);
 
   const loadData = async () => {
@@ -597,6 +602,16 @@ export default function ClientesPage() {
                       <Eye className="w-4 h-4" />
                       Ver
                     </Link>
+                    {(survey._count?.responses || 0) > 0 && (
+                      <Link
+                        href={`/clientes/encuestas/${survey.id}/respuestas`}
+                        className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-sm"
+                        title="Ver resultados y respuestas"
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                        Respuestas
+                      </Link>
+                    )}
                     <button
                       onClick={() => {
                         setEditingSurvey(survey);
