@@ -589,14 +589,52 @@ async function buildSectionSystemData(params: {
     };
   } catch { data.security_objectives = { nota: 'Completar manualmente con el cumplimiento de objetivos de seguridad.' }; }
 
-  // ── IATF: COPQ y scorecards (manual) ────────────────────────────────────────
-  data.copq = {
-    nota: 'Completar manualmente: costo de la mala calidad interna (retrabajos, scrap) y externa (reclamos, garantías, devoluciones) del período.',
-    ncrsRelated: data.nonconformities?.totalNcrs ?? 0,
-  };
-  data.customer_scorecards = {
-    nota: 'Completar manualmente: desempeño en scorecards de clientes, portales de proveedores, entregas a tiempo y ppm reportados por clientes.',
-  };
+  // ── IATF: COPQ y scorecards ─────────────────────────────────────────────────
+  try {
+    const periodNcrsAll = await tx.nonConformity.findMany({
+      where: { tenantId, deletedAt: null, createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { code: true, title: true, source: true, severity: true, status: true, portalAccessTokenId: true },
+    }).catch(() => [] as any[]);
+
+    const internalSources = ['INTERNAL_AUDIT', 'PROCESS_DEVIATION', 'SUPPLIER_ISSUE'];
+    const externalSources = ['CUSTOMER_COMPLAINT', 'PORTAL_EXTERNAL'];
+    const correctiveActions = await tx.actionItem.count({
+      where: { tenantId, deletedAt: null, type: 'CORRECTIVE', createdAt: { gte: periodStart, lte: periodEnd } },
+    }).catch(() => 0);
+
+    data.copq = {
+      ncrsRelated: data.nonconformities?.totalNcrs ?? 0,
+      internalFailureNcrs: periodNcrsAll.filter((n: any) => internalSources.includes(n.source)).length,
+      externalFailureNcrs: periodNcrsAll.filter((n: any) => externalSources.includes(n.source)).length,
+      criticalNcrs: periodNcrsAll.filter((n: any) => n.severity === 'CRITICAL').length,
+      correctiveActions,
+      nota: 'Completar manualmente el monto en $: costo interno (retrabajos, scrap) y externo (reclamos, garantías, devoluciones). Las tarjetas cuantifican el volumen de fallos del período.',
+    };
+
+    const portalAccesses = await tx.portalAccessLog.count({
+      where: { createdAt: { gte: periodStart, lte: periodEnd }, accessToken: { tenantId } },
+    }).catch(() => 0);
+    const activeCustomers = await tx.customer.count({
+      where: { tenantId, deletedAt: null, status: 'ACTIVE', type: 'CLIENT' },
+    }).catch(() => 0);
+    const complaintNcrs = periodNcrsAll.filter((n: any) => n.source === 'CUSTOMER_COMPLAINT');
+    const portalNcrs = periodNcrsAll.filter((n: any) => n.source === 'PORTAL_EXTERNAL' || n.portalAccessTokenId);
+
+    data.customer_scorecards = {
+      customerComplaints: complaintNcrs.length,
+      portalNcrs: portalNcrs.length,
+      portalAccesses,
+      avgNps: data.stakeholder_communications?.avgNps ?? null,
+      avgSatisfaction: data.stakeholder_communications?.avgSatisfaction ?? null,
+      qrFeedbacks: data.stakeholder_communications?.qrFeedbacks ?? 0,
+      activeCustomers,
+      items: [...complaintNcrs, ...portalNcrs].slice(0, 10).map((n: any) => ({ code: n.code, title: n.title, source: n.source, severity: n.severity, status: n.status })),
+      nota: 'Completar manualmente: desempeño en scorecards de clientes, entregas a tiempo y ppm reportados por clientes.',
+    };
+  } catch {
+    data.copq = { nota: 'Completar manualmente: costo de la mala calidad del período.' };
+    data.customer_scorecards = { nota: 'Completar manualmente: desempeño en scorecards de clientes.' };
+  }
 
   return data;
 }
