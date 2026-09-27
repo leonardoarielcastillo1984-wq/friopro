@@ -826,6 +826,24 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
         });
         if (!existing) return null;
 
+        // Recalcular los indicadores del punto con datos frescos del sistema,
+        // para que las tarjetas de la sección se actualicen en cada guardado.
+        try {
+          const freshData = await buildSectionSystemData({
+            tenantId,
+            periodStart: review.periodStart,
+            periodEnd: review.periodEnd,
+            standards: Array.isArray(review.standards) ? review.standards : [],
+            tx,
+          });
+          if (freshData[req.params.sectionKey] !== undefined) {
+            data.systemData = freshData[req.params.sectionKey];
+          }
+        } catch (err) {
+          // Si falla el recálculo, se guarda igual sin tocar systemData
+          console.warn('No se pudo recalcular systemData de la sección:', err);
+        }
+
         return tx.managementReviewSection.update({
           where: { id: existing.id },
           data,
