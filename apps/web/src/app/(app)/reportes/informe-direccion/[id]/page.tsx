@@ -174,6 +174,7 @@ export default function InformeDireccionDetailPage() {
   const [editingActa, setEditingActa] = useState(false);
   const [actaForm, setActaForm] = useState({ fecha: '', lugar: '', asistentes: '', acuerdos: '', proxima: '' });
   const [savingActa, setSavingActa] = useState(false);
+  const [aiActaLoading, setAiActaLoading] = useState(false);
 
   const [showAddInput, setShowAddInput] = useState(false);
   const [newInputTitle, setNewInputTitle] = useState('');
@@ -360,6 +361,32 @@ export default function InformeDireccionDetailPage() {
   function handleCreatePlanAcciones() {
     const acuerdos = actaForm.acuerdos || review?.sections.find(s => s.key === 'meeting_minutes')?.freeText || '';
     router.push(`/calidad?tab=acciones`);
+  }
+
+  async function aiActa() {
+    setAiActaLoading(true);
+    try {
+      const res = await apiFetch(`/management-reviews/${reviewId}/ai-acta`, {
+        method: 'POST',
+      }) as { acuerdos: string; model: string };
+      if (!res?.acuerdos) return;
+      if (editingActa) {
+        setActaForm(p => ({ ...p, acuerdos: res.acuerdos }));
+      } else {
+        // Abrir edición preservando los campos ya cargados del acta
+        const existing = review?.sections.find(s => s.key === 'meeting_minutes');
+        let base = { fecha: '', lugar: '', asistentes: '', acuerdos: '', proxima: '' };
+        if (existing?.freeText) {
+          try { base = { ...base, ...JSON.parse(existing.freeText) }; } catch { /* freeText no es JSON */ }
+        }
+        setActaForm({ ...base, acuerdos: res.acuerdos });
+        setEditingActa(true);
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error al generar sugerencia con IA');
+    } finally {
+      setAiActaLoading(false);
+    }
   }
 
   async function aiSuggestSection(sectionKey: string, field: 'analysis' | 'decisions' = 'analysis'): Promise<string> {
@@ -733,6 +760,20 @@ export default function InformeDireccionDetailPage() {
               Acta de Reunión de la Dirección
             </h2>
             <div className="flex items-center gap-2 print:hidden">
+              {review.status !== 'FINAL' && (
+                <button
+                  onClick={aiActa}
+                  disabled={aiActaLoading}
+                  title="Generar acuerdos y decisiones del acta con IA a partir de las salidas de cada punto"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50"
+                >
+                  {aiActaLoading ? (
+                    <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Consultando IA...</>
+                  ) : (
+                    <><Sparkles className="w-3.5 h-3.5" /> Sugerir con IA</>
+                  )}
+                </button>
+              )}
               {review.status !== 'FINAL' && !editingActa && (
                 <button
                   onClick={openActaEdit}

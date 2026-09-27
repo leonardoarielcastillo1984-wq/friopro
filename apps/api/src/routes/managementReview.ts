@@ -1139,4 +1139,116 @@ Generá únicamente el texto del análisis, sin encabezados ni formato adicional
       }
     },
   );
+
+  // POST /management-reviews/:id/ai-acta
+  // Sugiere el texto de "Acuerdos y decisiones" del acta a partir del resumen
+  // de salidas (decisions) de todos los puntos + métricas clave del systemData.
+  app.post(
+    '/management-reviews/:id/ai-acta',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const tenantId = (req as any).db?.tenantId ?? (req as any).auth?.tenantId;
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+      const data = await (app as any).runWithDbContext(req, async (tx: any) => {
+        const review = await tx.managementReview.findFirst({
+          where: { id: req.params.id, tenantId, deletedAt: null },
+          select: { title: true, periodStart: true, periodEnd: true, standards: true },
+        });
+        if (!review) return null;
+        const sections = await tx.managementReviewSection.findMany({
+          where: { reportId: req.params.id },
+          select: { key: true, title: true, freeText: true, decisions: true, systemData: true },
+          orderBy: { order: 'asc' },
+        });
+        return { review, sections };
+      });
+
+      if (!data) return reply.code(404).send({ error: 'Informe no encontrado' });
+
+      const { review, sections } = data;
+      const STATUS_LABEL: Record<string, string> = { pending: 'pendiente', in_progress: 'en curso', done: 'resuelta' };
+
+      const parseSalidas = (decisions: any): any[] => {
+        if (!decisions) return [];
+        if (Array.isArray(decisions)) return decisions;
+        if (typeof decisions === 'string') {
+          try {
+            const arr = JSON.parse(decisions);
+            if (Array.isArray(arr)) return arr;
+          } catch { /* texto libre histórico */ }
+          const trimmed = decisions.trim();
+          return trimmed ? [{ description: trimmed, status: 'pending' }] : [];
+        }
+        return [];
+      };
+
+      // Resumen de salidas por punto
+      const salidasLines: string[] = [];
+      for (const s of sections as any[]) {
+        if (s.key === 'meeting_minutes') continue;
+        const salidas = parseSalidas(s.decisions);
+        if (salidas.length === 0) continue;
+        salidasLines.push(`\n■ ${s.title}:`);
+        for (const sal of salidas) {
+          const parts = [`  - ${sal.description}`];
+          const meta: string[] = [];
+          if (sal.status && STATUS_LABEL[sal.status]) meta.push(`estado: ${STATUS_LABEL[sal.status]}`);
+          if (sal.responsible) meta.push(`responsable: ${sal.responsible}`);
+          if (sal.dueDate) meta.push(`vence: ${String(sal.dueDate).slice(0, 10)}`);
+          if (sal.actionPlanId) meta.push('con plan de acción vinculado');
+          if (meta.length) parts.push(` (${meta.join(', ')})`);
+          salidasLines.push(parts.join(''));
+        }
+      }
+
+      // Métricas numéricas relevantes del systemData (máx. ~10 por sección)
+      const metricLines: string[] = [];
+      for (const s of sections as any[]) {
+        if (s.key === 'meeting_minutes' || !s.systemData) continue;
+        try {
+          const sd = typeof s.systemData === 'string' ? JSON.parse(s.systemData) : s.systemData;
+          const nums = Object.entries(sd)
+            .filter(([k, v]) => typeof v === 'number' && !k.startsWith('_'))
+            .slice(0, 10)
+            .map(([k, v]) => `${k}: ${v}`);
+          if (nums.length) metricLines.push(`- ${s.title}: ${nums.join(', ')}`);
+        } catch { /* systemData no parseable */ }
+      }
+
+      const periodStr = `${new Date(review.periodStart).toLocaleDateString('es-AR')} al ${new Date(review.periodEnd).toLocaleDateString('es-AR')}`;
+      const normas = Array.isArray(review.standards) ? review.standards.join(', ') : review.standards;
+
+      const prompt = `Sos un experto en sistemas de gestión integrado (SGI) con profundo conocimiento en ${normas}.
+Estás redactando el ACTA DE REUNIÓN DE REVISIÓN POR LA DIRECCIÓN del período ${periodStr} ("${review.title}").
+
+Tu tarea es redactar el bloque "ACUERDOS Y DECISIONES TOMADAS" del acta, basándote en las salidas decididas en cada punto de la agenda y los datos más relevantes del sistema.
+
+SALIDAS DECIDIDAS EN LOS PUNTOS DE LA AGENDA:
+${salidasLines.length ? salidasLines.join('\n') : '(sin salidas registradas)'}
+
+DATOS RELEVANTES DEL SISTEMA (métricas del período):
+${metricLines.length ? metricLines.join('\n') : '(sin métricas)'}
+
+El texto debe:
+- Ser una lista numerada de acuerdos/decisiones concretas tomadas por la dirección
+- Reflejar las salidas ya registradas (mencionar responsables y plazos donde existan)
+- Destacar los compromisos de mejora más relevantes
+- Usar lenguaje formal y técnico apropiado para un acta de revisión por la dirección (español argentino)
+- NO inventar decisiones que contradigan las salidas listadas
+- Tener entre 5 y 12 puntos numerados
+
+Generá únicamente la lista numerada de acuerdos, sin encabezados ni texto adicional.`;
+
+      try {
+        const llm = createLLMProvider(req.tenant);
+        const response = await llm.chat([{ role: 'user', content: prompt }], 1500);
+        return reply.send({ acuerdos: response.text, model: response.model });
+      } catch (err: any) {
+        app.log.error('AI acta error:', err);
+        return reply.code(503).send({
+          error: err?.message || 'El servicio de IA no está disponible en este momento',
+        });
+      }
+    },
+  );
 }
