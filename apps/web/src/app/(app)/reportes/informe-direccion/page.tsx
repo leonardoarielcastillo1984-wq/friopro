@@ -70,6 +70,8 @@ export default function InformeDireccionPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [editingReview, setEditingReview] = useState<ManagementReview | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     loadReviews();
@@ -114,6 +116,34 @@ export default function InformeDireccionPage() {
       setModalError(err instanceof Error ? err.message : 'Error al crear informe');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function updateReview(reviewId: string, data: {
+    title: string;
+    summary: string;
+    periodStart: string;
+    periodEnd: string;
+    createdAt: string;
+    standards: string[];
+  }) {
+    try {
+      setUpdating(true);
+      setModalError(null);
+      const res = await apiFetch(`/management-reviews/${reviewId}`, {
+        method: 'PATCH',
+        json: data,
+      }) as { review: ManagementReview };
+
+      if (res.review) {
+        setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, ...res.review } : r));
+        setEditingReview(null);
+      }
+    } catch (err) {
+      console.error('Error updating review:', err);
+      setModalError(err instanceof Error ? err.message : 'Error al actualizar informe');
+    } finally {
+      setUpdating(false);
     }
   }
 
@@ -283,6 +313,13 @@ export default function InformeDireccionPage() {
                           <Eye className="w-4 h-4" />
                         </Link>
                         <button
+                          onClick={() => { setEditingReview(review); setModalError(null); }}
+                          className="p-1 text-gray-600 hover:text-amber-600 transition-colors"
+                          title="Editar datos del informe"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => generateDraft(review.id)}
                           className="p-1 text-gray-600 hover:text-green-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           title={review.status === 'FINAL' ? 'El informe está finalizado' : 'Generar borrador con datos del sistema'}
@@ -319,6 +356,192 @@ export default function InformeDireccionPage() {
           error={modalError}
         />
       )}
+
+      {/* Edit Modal */}
+      {editingReview && (
+        <EditReviewModal
+          review={editingReview}
+          onClose={() => { setEditingReview(null); setModalError(null); }}
+          onSubmit={(data) => updateReview(editingReview.id, data)}
+          loading={updating}
+          error={modalError}
+        />
+      )}
+    </div>
+  );
+}
+
+// Edit Review Modal Component
+function EditReviewModal({
+  review,
+  onClose,
+  onSubmit,
+  loading,
+  error,
+}: {
+  review: ManagementReview;
+  onClose: () => void;
+  onSubmit: (data: any) => void;
+  loading: boolean;
+  error: string | null;
+}) {
+  const toDateInput = (iso: string) => {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  };
+
+  const [formData, setFormData] = useState({
+    title: review.title,
+    summary: review.summary || '',
+    periodStart: toDateInput(review.periodStart),
+    periodEnd: toDateInput(review.periodEnd),
+    createdAt: toDateInput(review.createdAt),
+    standards: review.standards,
+  });
+
+  const availableStandards = Object.keys(ISO_STANDARD_LABELS);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!formData.title || !formData.periodStart || !formData.periodEnd || formData.standards.length === 0) {
+      return;
+    }
+    onSubmit(formData);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-900">Editar Informe</h2>
+          <p className="text-gray-600 mt-1">
+            Modifica los datos del informe
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm flex items-start gap-2">
+              <span className="mt-0.5">⚠️</span>
+              <span>{error}</span>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Título del Informe *
+            </label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Resumen
+            </label>
+            <textarea
+              value={formData.summary}
+              onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={3}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Fecha de Inicio *
+              </label>
+              <input
+                type="date"
+                value={formData.periodStart}
+                onChange={(e) => setFormData({ ...formData, periodStart: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Fecha de Fin *
+              </label>
+              <input
+                type="date"
+                value={formData.periodEnd}
+                onChange={(e) => setFormData({ ...formData, periodEnd: e.target.value })}
+                min={formData.periodStart}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Fecha de Creado
+            </label>
+            <input
+              type="date"
+              value={formData.createdAt}
+              onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Normas Aplicables *
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {availableStandards.map((standard) => (
+                <label key={standard} className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.standards.includes(standard)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setFormData({
+                          ...formData,
+                          standards: [...formData.standards, standard]
+                        });
+                      } else {
+                        setFormData({
+                          ...formData,
+                          standards: formData.standards.filter(s => s !== standard)
+                        });
+                      }
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">
+                    {ISO_STANDARD_LABELS[standard]}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !formData.title || !formData.periodStart || !formData.periodEnd || formData.standards.length === 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {loading ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

@@ -883,6 +883,24 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
       if ('summary' in body) data.summary = body.summary && typeof body.summary === 'string' ? body.summary.trim() : null;
       if ('status' in body && ['DRAFT', 'FINAL'].includes(body.status)) data.status = body.status;
 
+      const parseDate = (v: any): Date | null => {
+        const d = new Date(v);
+        return v && !isNaN(d.getTime()) ? d : null;
+      };
+      for (const field of ['periodStart', 'periodEnd', 'createdAt'] as const) {
+        if (field in body) {
+          const d = parseDate(body[field]);
+          if (!d) return reply.code(400).send({ error: `Fecha inválida en ${field}` });
+          data[field] = d;
+        }
+      }
+      if ('standards' in body) {
+        if (!Array.isArray(body.standards) || body.standards.length === 0) {
+          return reply.code(400).send({ error: 'standards debe ser un array no vacío' });
+        }
+        data.standards = body.standards;
+      }
+
       if (Object.keys(data).length === 0) {
         return reply.code(400).send({ error: 'No updatable fields provided' });
       }
