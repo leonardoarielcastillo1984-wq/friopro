@@ -403,11 +403,44 @@ async function buildSectionSystemData(params: {
       where: { tenantId, deletedAt: null, type: 'IMPROVEMENT', createdAt: { gte: periodStart, lte: periodEnd } },
       select: { code: true, title: true, status: true, priority: true },
     }).catch(() => []);
+
+    // Oportunidades detectadas en auditorías (hallazgos tipo OPPORTUNITY)
+    const auditOpps = await tx.auditFinding.findMany({
+      where: { tenantId, deletedAt: null, type: 'OPPORTUNITY', createdAt: { gte: periodStart, lte: periodEnd } },
+      select: { code: true, description: true, status: true, area: true },
+    }).catch(() => []);
+
+    // Hallazgos recurrentes (misma desviación reaparece)
+    const recurringFindings = await tx.auditFinding.count({
+      where: { tenantId, deletedAt: null, isRecurrence: true, createdAt: { gte: periodStart, lte: periodEnd } },
+    }).catch(() => 0);
+
+    // NCRs recurrentes: mismo clause incumplido 2+ veces en el período
+    const periodNcrs = await tx.nonConformity.findMany({
+      where: { tenantId, createdAt: { gte: periodStart, lte: periodEnd }, clause: { not: null } },
+      select: { code: true, title: true, clause: true, status: true },
+    }).catch(() => []);
+    const byClause: Record<string, any[]> = {};
+    for (const n of periodNcrs as any[]) {
+      const c = (n.clause || '').trim();
+      if (!c) continue;
+      (byClause[c] = byClause[c] || []).push(n);
+    }
+    const recurringNcrItems = Object.entries(byClause)
+      .filter(([, list]) => list.length > 1)
+      .flatMap(([clause, list]) => list.map((n: any) => ({ code: n.code, title: n.title, clause, status: n.status })));
+
     data.improvement_opportunities = {
       total: improvements.length,
       open: improvements.filter((i: any) => i.status !== 'CLOSED').length,
       closed: improvements.filter((i: any) => i.status === 'CLOSED').length,
+      auditOpportunities: auditOpps.length,
+      auditOpportunitiesOpen: auditOpps.filter((o: any) => o.status !== 'CLOSED').length,
+      recurringFindings,
+      recurringNcrs: recurringNcrItems.length,
       items: improvements.slice(0, 10),
+      auditItems: auditOpps.slice(0, 10),
+      recurringItems: recurringNcrItems.slice(0, 10),
       nota: 'Completar manualmente con análisis de tendencias, benchmarking y propuestas del equipo.',
     };
   } catch { data.improvement_opportunities = { total: 0, nota: 'Completar manualmente.' }; }

@@ -1498,6 +1498,11 @@ const METRIC_DEFS: Record<string, { label: string; tone: 'bad' | 'good' | 'neutr
   withoutData:          { label: 'Sin datos', tone: 'bad' },
   onTarget:             { label: 'En meta', tone: 'good' },
   offTarget:            { label: 'Fuera de meta', tone: 'bad' },
+  // Oportunidades de mejora
+  auditOpportunities:     { label: 'Oportunidades de auditoría', tone: 'neutral' },
+  auditOpportunitiesOpen: { label: 'Oportunidades abiertas', tone: 'neutral' },
+  recurringFindings:      { label: 'Hallazgos recurrentes', tone: 'bad' },
+  recurringNcrs:          { label: 'NCRs recurrentes', tone: 'bad' },
   // Riesgos
   high:                 { label: 'Riesgos altos', tone: 'bad' },
   medium:               { label: 'Riesgos medios', tone: 'neutral' },
