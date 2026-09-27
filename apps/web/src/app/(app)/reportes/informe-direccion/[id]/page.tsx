@@ -159,6 +159,7 @@ export default function InformeDireccionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generatingDraft, setGeneratingDraft] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editingSummary, setEditingSummary] = useState(false);
@@ -396,6 +397,25 @@ export default function InformeDireccionDetailPage() {
     return res.suggestion;
   }
 
+  async function setReviewStatus(status: 'DRAFT' | 'FINAL') {
+    const msg = status === 'FINAL'
+      ? '¿Marcar el informe como FINAL? No se podrá editar hasta reabrirlo.'
+      : '¿Reabrir el informe como borrador?';
+    if (!confirm(msg)) return;
+    setFinalizing(true);
+    try {
+      await apiFetch(`/management-reviews/${reviewId}`, {
+        method: 'PATCH',
+        json: { status },
+      });
+      if (review) setReview({ ...review, status });
+    } catch (err: any) {
+      alert(err?.message || 'Error al cambiar el estado del informe');
+    } finally {
+      setFinalizing(false);
+    }
+  }
+
   function exportToPDF() {
     window.print();
   }
@@ -496,6 +516,27 @@ export default function InformeDireccionDetailPage() {
             <FileDown className="w-4 h-4" />
             Word
           </button>
+          {review.status === 'DRAFT' ? (
+            <button
+              onClick={() => setReviewStatus('FINAL')}
+              disabled={finalizing}
+              title="Marcar el informe como finalizado (bloquea la edición)"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 transition-colors disabled:opacity-50 print:hidden"
+            >
+              <CheckCircle className="w-4 h-4" />
+              {finalizing ? 'Finalizando...' : 'Finalizar informe'}
+            </button>
+          ) : (
+            <button
+              onClick={() => setReviewStatus('DRAFT')}
+              disabled={finalizing}
+              title="Volver el informe a borrador para permitir edición"
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 print:hidden"
+            >
+              <RefreshCw className="w-4 h-4" />
+              {finalizing ? 'Reabriendo...' : 'Reabrir'}
+            </button>
+          )}
         </div>
       </div>
 
