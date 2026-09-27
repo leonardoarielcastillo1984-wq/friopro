@@ -231,32 +231,52 @@ async function buildSectionSystemData(params: {
 
   // ── INDICADORES / KPIs ──────────────────────────────────────────────────────
   try {
+    // Todos los indicadores activos, no solo los medidos en el período
+    const indicators = await tx.indicator.findMany({
+      where: { tenantId, deletedAt: null, isActive: true },
+      select: {
+        id: true, name: true, code: true, unit: true, targetValue: true,
+        direction: true, currentValue: true, status: true, lastMeasuredAt: true,
+      },
+      orderBy: { code: 'asc' },
+    });
     const measurements = await tx.indicatorMeasurement.findMany({
       where: {
         measuredAt: { gte: periodStart, lte: periodEnd },
         indicator: { tenantId, deletedAt: null, isActive: true },
       },
-      include: { indicator: true },
+      select: { indicatorId: true, value: true, measuredAt: true },
+      orderBy: { measuredAt: 'asc' },
     });
-    const validMeasurements = measurements.filter((m: any) => m.indicator);
-    const grouped = validMeasurements.reduce((acc: any, m: any) => {
-      const k = m.indicator.id;
-      if (!acc[k]) acc[k] = { name: m.indicator.name, code: m.indicator.code, unit: m.indicator.unit, target: m.indicator.targetValue, direction: m.indicator.direction, values: [] };
-      acc[k].values.push(m.value);
+    const grouped = measurements.reduce((acc: any, m: any) => {
+      (acc[m.indicatorId] ||= []).push(m.value);
       return acc;
-    }, {} as any);
-    const kpis = Object.values(grouped).map((k: any) => {
-      const avg = k.values.reduce((s: number, v: number) => s + v, 0) / k.values.length;
-      const onTarget = k.target == null ? null
-        : k.direction === 'LOWER_BETTER' ? avg <= k.target
-        : avg >= k.target;
-      return { name: k.name, code: k.code, unit: k.unit, average: +avg.toFixed(2), target: k.target, onTarget, measurements: k.values.length };
+    }, {} as Record<string, number[]>);
+    const kpis = indicators.map((ind: any) => {
+      const values = grouped[ind.id] || [];
+      const avg = values.length > 0 ? values.reduce((s: number, v: number) => s + v, 0) / values.length : null;
+      const value = avg ?? ind.currentValue ?? null;
+      const target = ind.targetValue;
+      const onTarget = target == null || value == null ? null
+        : ind.direction === 'LOWER_BETTER' ? value <= target
+        : value >= target;
+      return {
+        name: ind.name, code: ind.code, unit: ind.unit,
+        value: value != null ? +value.toFixed(2) : null,
+        average: avg != null ? +avg.toFixed(2) : null,
+        target, onTarget,
+        measurements: values.length,
+        status: ind.status,
+        lastMeasuredAt: ind.lastMeasuredAt,
+      };
     });
     data.process_performance = {
       kpis,
       totalIndicators: kpis.length,
+      measuredInPeriod: kpis.filter((k: any) => k.measurements > 0).length,
       onTarget: kpis.filter((k: any) => k.onTarget === true).length,
       offTarget: kpis.filter((k: any) => k.onTarget === false).length,
+      withoutData: kpis.filter((k: any) => k.value == null).length,
       overallScore: kpis.length > 0 ? Math.round((kpis.filter((k: any) => k.onTarget).length / kpis.length) * 100) : 0,
     };
   } catch { data.process_performance = { kpis: [], totalIndicators: 0, onTarget: 0, offTarget: 0 }; }

@@ -773,8 +773,11 @@ export default function InformeDireccionDetailPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Asistentes</label>
-                  <textarea value={actaForm.asistentes} onChange={e => setActaForm(p => ({ ...p, asistentes: e.target.value }))} rows={3} placeholder="Nombre — Cargo&#10;..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Participantes de la reunión</label>
+                  <AttendeeEditor
+                    value={actaForm.asistentes}
+                    onChange={(v) => setActaForm(p => ({ ...p, asistentes: v }))}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Acuerdos y decisiones tomadas</label>
@@ -1492,6 +1495,8 @@ const METRIC_DEFS: Record<string, { label: string; tone: 'bad' | 'good' | 'neutr
   averageProgress:      { label: 'Avance promedio', tone: 'good', suffix: '%' },
   // KPIs / proceso
   totalIndicators:      { label: 'Indicadores', tone: 'neutral' },
+  measuredInPeriod:     { label: 'Medidos en período', tone: 'neutral' },
+  withoutData:          { label: 'Sin datos', tone: 'bad' },
   onTarget:             { label: 'En meta', tone: 'good' },
   offTarget:            { label: 'Fuera de meta', tone: 'bad' },
   // Riesgos
@@ -1719,6 +1724,96 @@ function SectionMetrics({ data }: { data: any }) {
   );
 }
 
+// Editor de participantes de la reunión: lista nombre + cargo.
+// Se serializa como líneas "Nombre — Cargo" para compatibilidad con actas previas.
+function AttendeeEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  type Attendee = { name: string; role: string };
+  const parse = (text: string): Attendee[] =>
+    text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+      const parts = l.split(/\s+—\s+|\s+-\s+/);
+      return { name: parts[0] || '', role: parts.slice(1).join(' — ') || '' };
+    });
+  const serialize = (list: Attendee[]) =>
+    list.filter(r => r.name.trim()).map(r => r.role.trim() ? `${r.name.trim()} — ${r.role.trim()}` : r.name.trim()).join('\n');
+
+  const [rows, setRows] = useState<Attendee[]>(() => parse(value));
+
+  function commit(next: Attendee[]) {
+    setRows(next);
+    onChange(serialize(next));
+  }
+  const update = (idx: number, patch: Partial<Attendee>) =>
+    commit(rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  const add = () => commit([...rows, { name: '', role: '' }]);
+  const remove = (idx: number) => commit(rows.filter((_, i) => i !== idx));
+
+  return (
+    <div className="space-y-2">
+      {rows.map((r, i) => (
+        <div key={i} className="flex gap-2 items-center">
+          <input
+            value={r.name}
+            onChange={(e) => update(i, { name: e.target.value })}
+            placeholder="Nombre y apellido"
+            className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+          <input
+            value={r.role}
+            onChange={(e) => update(i, { role: e.target.value })}
+            placeholder="Cargo / Rol (opcional)"
+            className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+          <button onClick={() => remove(i)} className="p-1 text-red-400 hover:text-red-600 rounded" title="Quitar">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      {rows.length === 0 && (
+        <p className="text-xs text-gray-400 italic">Sin participantes cargados.</p>
+      )}
+      <button
+        onClick={add}
+        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+      >
+        <Plus className="w-3.5 h-3.5" /> Agregar participante
+      </button>
+    </div>
+  );
+}
+
+function KpiTable({ kpis }: { kpis: any[] }) {
+  return (
+    <table className="w-full text-xs border border-gray-200 rounded">
+      <thead>
+        <tr className="bg-gray-100 text-gray-600 text-left">
+          <th className="px-2 py-1.5">Código</th>
+          <th className="px-2 py-1.5">Indicador</th>
+          <th className="px-2 py-1.5 text-right">Valor</th>
+          <th className="px-2 py-1.5 text-right">Meta</th>
+          <th className="px-2 py-1.5 text-right">Med.</th>
+          <th className="px-2 py-1.5">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {kpis.map((k: any, i: number) => (
+          <tr key={k.code || i} className="border-t border-gray-100">
+            <td className="px-2 py-1.5 font-mono text-gray-500">{k.code}</td>
+            <td className="px-2 py-1.5 text-gray-800">{k.name}</td>
+            <td className="px-2 py-1.5 text-right font-medium">{k.value != null ? `${k.value} ${k.unit || ''}` : '—'}</td>
+            <td className="px-2 py-1.5 text-right text-gray-500">{k.target != null ? `${k.target} ${k.unit || ''}` : '—'}</td>
+            <td className="px-2 py-1.5 text-right text-gray-500">{k.measurements ?? 0}</td>
+            <td className="px-2 py-1.5">
+              {k.onTarget === true && <span className="text-green-600 font-medium">En meta</span>}
+              {k.onTarget === false && <span className="text-red-600 font-medium">Fuera de meta</span>}
+              {k.onTarget == null && <span className="text-gray-400">Sin datos</span>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function SectionDataViewer({ data }: { data: any }) {
   if (typeof data !== 'object' || data === null) {
     return <span className="text-sm text-gray-600">{String(data)}</span>;
@@ -1728,8 +1823,10 @@ function SectionDataViewer({ data }: { data: any }) {
       {Object.entries(data).map(([key, value]) => (
         <div key={key} className="flex gap-2 text-sm">
           <span className="font-medium text-gray-600 min-w-[160px] capitalize">{key.replace(/_/g, ' ')}:</span>
-          <span className="text-gray-700">
-            {typeof value === 'object' && value !== null
+          <span className="text-gray-700 flex-1">
+            {key === 'kpis' && Array.isArray(value) ? (
+              <KpiTable kpis={value} />
+            ) : typeof value === 'object' && value !== null
               ? Array.isArray(value)
                 ? `${(value as any[]).length} elementos`
                 : JSON.stringify(value).slice(0, 120)
