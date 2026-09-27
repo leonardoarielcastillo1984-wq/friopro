@@ -805,10 +805,15 @@ export async function registerManagementReviewRoutes(app: FastifyInstance) {
           tx,
         });
 
-        // Rebuild sections from scratch to get updated templates and deduplicate keys
-        // Delete all existing sections first
+        // Rebuild template-managed sections to get updated templates and deduplicate keys.
+        // Solo se borran las keys que existen en SECTION_TEMPLATES: meeting_minutes,
+        // secciones custom_* e input_* se preservan intactas.
+        const allTemplateKeys = new Set<string>();
+        for (const templates of Object.values(SECTION_TEMPLATES)) {
+          for (const t of templates) allTemplateKeys.add(t.key);
+        }
         await tx.managementReviewSection.deleteMany({
-          where: { reportId: req.params.id },
+          where: { reportId: req.params.id, key: { in: [...allTemplateKeys] } },
         });
 
         // Collect unique sections across all standards (dedup by key, first title wins)
