@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ChevronLeft, FileText, Download, Printer, Share2, CheckCircle, AlertCircle, FileBarChart, Edit, Save, X, Plus } from 'lucide-react';
+import { ChevronLeft, FileText, Download, Printer, Share2, CheckCircle, AlertCircle, FileBarChart, Edit, Save, X, Plus, Sparkles } from 'lucide-react';
 import { useCompany } from '@/lib/company-context';
 import DocCodeBadge from '@/components/DocCodeBadge';
 import ExportButton from '@/components/ExportButton';
@@ -138,6 +138,7 @@ export default function ReportPage() {
   const [editingReport, setEditingReport] = useState<AuditReport | null>(null);
   const [saving, setSaving] = useState(false);
   const [patchingSeverity, setPatchingSeverity] = useState<string | null>(null);
+  const [aiSuggesting, setAiSuggesting] = useState(false);
 
   useEffect(() => {
     if (auditId) {
@@ -184,6 +185,30 @@ export default function ReportPage() {
       setError(err instanceof Error ? err.message : 'Error generating draft');
     } finally {
       setDraftGenerating(false);
+    }
+  }
+
+  // Sugerencia IA: completa Resumen Ejecutivo y Conclusión con datos de la auditoría
+  async function suggestWithAI() {
+    try {
+      setAiSuggesting(true);
+      setError(null);
+      if (!editMode) startEdit();
+      const res = await apiFetch(`/audit/audits/${auditId}/report/ai-draft`, {
+        method: 'POST',
+      }) as { draft?: { executiveSummary?: string; conclusion?: string } };
+      const d = res?.draft;
+      if (d) {
+        setEditingReport(prev => prev ? {
+          ...prev,
+          executiveSummary: d.executiveSummary || prev.executiveSummary,
+          conclusion: d.conclusion || prev.conclusion,
+        } : prev);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al generar sugerencia con IA');
+    } finally {
+      setAiSuggesting(false);
     }
   }
 
@@ -387,6 +412,15 @@ export default function ReportPage() {
           {editMode ? (
             <>
               <button
+                onClick={suggestWithAI}
+                disabled={aiSuggesting || saving}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                title="Completar Resumen Ejecutivo y Conclusión con IA según los datos de esta auditoría"
+              >
+                <Sparkles className="w-4 h-4" />
+                {aiSuggesting ? 'Generando...' : 'Sugerir con IA'}
+              </button>
+              <button
                 onClick={saveReport}
                 disabled={saving}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
@@ -418,6 +452,15 @@ export default function ReportPage() {
               >
                 <FileBarChart className="w-4 h-4" />
                 {draftGenerating ? 'Generando...' : 'Generar borrador'}
+              </button>
+              <button
+                onClick={suggestWithAI}
+                disabled={aiSuggesting}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-colors disabled:opacity-50"
+                title="Completa Resumen Ejecutivo y Conclusión con IA según los datos de esta auditoría"
+              >
+                <Sparkles className="w-4 h-4" />
+                {aiSuggesting ? 'Generando...' : 'Sugerir con IA'}
               </button>
               <button
                 onClick={generatePDF}
