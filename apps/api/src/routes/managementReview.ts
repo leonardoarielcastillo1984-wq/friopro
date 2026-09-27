@@ -232,19 +232,25 @@ async function buildSectionSystemData(params: {
   // ── INDICADORES / KPIs ──────────────────────────────────────────────────────
   try {
     const measurements = await tx.indicatorMeasurement.findMany({
-      where: { measuredAt: { gte: periodStart, lte: periodEnd } },
-      include: { indicator: { where: { tenantId } } },
+      where: {
+        measuredAt: { gte: periodStart, lte: periodEnd },
+        indicator: { tenantId, deletedAt: null, isActive: true },
+      },
+      include: { indicator: true },
     });
     const validMeasurements = measurements.filter((m: any) => m.indicator);
     const grouped = validMeasurements.reduce((acc: any, m: any) => {
       const k = m.indicator.id;
-      if (!acc[k]) acc[k] = { name: m.indicator.name, code: m.indicator.code, unit: m.indicator.unit, target: m.indicator.targetValue, values: [] };
+      if (!acc[k]) acc[k] = { name: m.indicator.name, code: m.indicator.code, unit: m.indicator.unit, target: m.indicator.targetValue, direction: m.indicator.direction, values: [] };
       acc[k].values.push(m.value);
       return acc;
     }, {} as any);
     const kpis = Object.values(grouped).map((k: any) => {
       const avg = k.values.reduce((s: number, v: number) => s + v, 0) / k.values.length;
-      return { name: k.name, code: k.code, unit: k.unit, average: +avg.toFixed(2), target: k.target, onTarget: k.target ? avg >= k.target : null, measurements: k.values.length };
+      const onTarget = k.target == null ? null
+        : k.direction === 'LOWER_BETTER' ? avg <= k.target
+        : avg >= k.target;
+      return { name: k.name, code: k.code, unit: k.unit, average: +avg.toFixed(2), target: k.target, onTarget, measurements: k.values.length };
     });
     data.process_performance = {
       kpis,
@@ -448,8 +454,11 @@ async function buildSectionSystemData(params: {
     }).catch(() => []);
     const now3 = new Date();
     const measurements = await tx.indicatorMeasurement.findMany({
-      where: { measuredAt: { gte: periodStart, lte: periodEnd } },
-      include: { indicator: { where: { tenantId } } },
+      where: {
+        measuredAt: { gte: periodStart, lte: periodEnd },
+        indicator: { tenantId, deletedAt: null, isActive: true },
+      },
+      include: { indicator: true },
     }).catch(() => []);
     const validM = measurements.filter((m: any) => m.indicator);
     data.monitoring_results = {
