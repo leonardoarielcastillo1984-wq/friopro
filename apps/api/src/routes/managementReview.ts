@@ -1158,7 +1158,7 @@ Generá únicamente el texto del análisis, sin encabezados ni formato adicional
         const sections = await tx.managementReviewSection.findMany({
           where: { reportId: req.params.id },
           select: { key: true, title: true, freeText: true, decisions: true, systemData: true },
-          orderBy: { order: 'asc' },
+          orderBy: { key: 'asc' },
         });
         return { review, sections };
       });
