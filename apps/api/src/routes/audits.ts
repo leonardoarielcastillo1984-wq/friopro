@@ -575,6 +575,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       setIfDefined('requiresClosingMeeting');
       setIfDefined('notificationStatus');
       if ('isoStandard' in body) data.isoStandard = Array.isArray(body.isoStandard) ? body.isoStandard : undefined;
+      if (body.leadAuditorId) data.leadAuditorId = body.leadAuditorId; // requerido en schema: solo actualizar con UUID válido
 
       if ('plannedStartDate' in body) data.plannedStartDate = body.plannedStartDate ? new Date(body.plannedStartDate) : null;
       if ('plannedEndDate' in body) data.plannedEndDate = body.plannedEndDate ? new Date(body.plannedEndDate) : null;
@@ -1189,6 +1190,10 @@ INSTRUCCIONES:
               dateData.status = 'COMPLETED';
             }
           }
+          // Auditor líder seleccionable desde el informe (requerido en schema: solo si viene UUID válido)
+          if (req.body.leadAuditorId) {
+            dateData.leadAuditorId = req.body.leadAuditorId;
+          }
           if (Object.keys(dateData).length > 0) {
             await tx.audit.update({ where: { id: req.params.id }, data: dateData });
           }
@@ -1350,6 +1355,8 @@ INSTRUCCIONES:
             maturityLevel: body.maturityLevel,
             certificationRecommendation: body.certificationRecommendation,
             mainRisks: body.mainRisks,
+            // Auditor líder seleccionable desde el informe (requerido en schema: solo si viene UUID válido)
+            ...(body.leadAuditorId ? { leadAuditorId: body.leadAuditorId } : {}),
           },
         });
       });
@@ -1467,7 +1474,7 @@ INSTRUCCIONES:
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
       const audit = await app.runWithDbContext(req, async (tx) => {
-        return tx.audit.findUnique({
+        const found = await tx.audit.findUnique({
           where: { id: req.params.id, tenantId },
           include: {
             checklist: {
@@ -1483,10 +1490,15 @@ INSTRUCCIONES:
             },
           },
         });
+        if (!found) return null;
+        const leadAuditor = (found as any).leadAuditorId
+          ? await tx.auditor.findUnique({ where: { id: (found as any).leadAuditorId }, select: { id: true, name: true, type: true } })
+          : null;
+        return { ...found, leadAuditor };
       });
 
       if (!audit) return reply.code(404).send({ error: 'Auditoría no encontrada' });
-      console.log('[DEBUG] /full response for', req.params.id, 'checklist:', audit.checklist?.length || 0, 'items');
+      console.log('[DEBUG] /full response for', req.params.id, 'checklist:', (audit as any).checklist?.length || 0, 'items');
       return reply.send({ audit });
     },
   );

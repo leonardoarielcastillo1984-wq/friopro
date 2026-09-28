@@ -29,7 +29,14 @@ type Audit = {
   certificationRecommendation: string | null;
   mainRisks: string | null;
   reportVersion: number;
+  leadAuditorId?: string | null;
   leadAuditor?: { id: string; name: string; type: string } | null;
+};
+
+type Auditor = {
+  id: string;
+  name: string;
+  type: string;
 };
 
 type ChecklistItem = {
@@ -65,6 +72,7 @@ export default function AuditReportPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [auditors, setAuditors] = useState<Auditor[]>([]);
   const [reportData, setReportData] = useState({
     objective: '',
     scope: '',
@@ -72,6 +80,7 @@ export default function AuditReportPage() {
     maturityLevel: '',
     certificationRecommendation: '',
     mainRisks: '',
+    leadAuditorId: '',
   });
 
   useEffect(() => {
@@ -79,6 +88,7 @@ export default function AuditReportPage() {
       try {
         setLoading(true);
         const res = await apiFetch(`/audit/audits/${auditId}/full`) as any;
+        apiFetch('/audit/auditors').then((r: any) => setAuditors(r?.auditors || [])).catch(() => {});
         if (res.audit) {
           setAudit(res.audit);
           setChecklist(res.audit.checklist || []);
@@ -90,6 +100,7 @@ export default function AuditReportPage() {
             maturityLevel: res.audit.maturityLevel || '',
             certificationRecommendation: res.audit.certificationRecommendation || '',
             mainRisks: res.audit.mainRisks || '',
+            leadAuditorId: res.audit.leadAuditorId || res.audit.leadAuditor?.id || '',
           });
         }
       } catch (err) {
@@ -409,12 +420,26 @@ export default function AuditReportPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Auditor Líder</label>
-            <input
-              type="text"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-              placeholder="Nombre del auditor líder"
-              defaultValue={audit.auditTeamDetails?.leader || audit.leadAuditor?.name || ''}
-            />
+            {editMode ? (
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                value={reportData.leadAuditorId}
+                onChange={(e) => setReportData({ ...reportData, leadAuditorId: e.target.value })}
+              >
+                <option value="">Seleccionar auditor...</option>
+                {auditors.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.type === 'INTERNAL' ? 'Interno' : 'Externo'})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-sm text-gray-900 py-2">
+                {audit.leadAuditor
+                  ? `${audit.leadAuditor.name} (${audit.leadAuditor.type === 'INTERNAL' ? 'Interno' : 'Externo'})`
+                  : (audit.auditTeamDetails?.leader || '-')}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Auditores Participantes</label>

@@ -25,7 +25,14 @@ type Audit = {
   scope: string | null;
   objective: string | null;
   interviewees: string | null;
+  leadAuditorId?: string | null;
   leadAuditor?: { id: string; name: string; type: string } | null;
+};
+
+type Auditor = {
+  id: string;
+  name: string;
+  type: string;
 };
 
 type Finding = {
@@ -68,6 +75,7 @@ type AuditReport = {
   conclusion: string | null;
   actualStartDate?: string | null;
   actualEndDate?: string | null;
+  leadAuditorId?: string | null;
 };
 
 type DraftResponse = {
@@ -140,6 +148,7 @@ export default function ReportPage() {
   const [saving, setSaving] = useState(false);
   const [patchingSeverity, setPatchingSeverity] = useState<string | null>(null);
   const [aiSuggesting, setAiSuggesting] = useState(false);
+  const [auditors, setAuditors] = useState<Auditor[]>([]);
 
   useEffect(() => {
     if (auditId) {
@@ -151,14 +160,16 @@ export default function ReportPage() {
     try {
       setLoading(true);
       setError(null);
-      const [auditRes, findingsRes, checklistRes, reportRes] = await Promise.all([
+      const [auditRes, findingsRes, checklistRes, reportRes, auditorsRes] = await Promise.all([
         apiFetch(`/audit/audits/${auditId}`) as Promise<{ audit: Audit }>,
         apiFetch(`/audit/audits/${auditId}/findings`) as Promise<{ findings: Finding[] }>,
         apiFetch(`/audit/audits/${auditId}/checklist`) as Promise<{ items: ChecklistItem[] }>,
         apiFetch(`/audit/audits/${auditId}/report-content`).catch(() => ({ report: null })) as Promise<{ report: AuditReport | null }>,
+        apiFetch(`/audit/auditors`).catch(() => ({ auditors: [] })) as Promise<{ auditors: Auditor[] }>,
       ]);
 
       if (auditRes.audit) setAudit(auditRes.audit);
+      if (auditorsRes.auditors) setAuditors(auditorsRes.auditors);
       if (findingsRes.findings) setFindings(findingsRes.findings);
       if (checklistRes.items) setChecklist(checklistRes.items);
       if (reportRes.report) setReport(reportRes.report);
@@ -272,8 +283,8 @@ export default function ReportPage() {
         json: editingReport,
       });
       setReport(editingReport);
-      // Reload audit to reflect updated dates
-      if (editingReport.actualStartDate !== undefined || editingReport.actualEndDate !== undefined) {
+      // Reload audit to reflect updated dates / auditor líder
+      if (editingReport.actualStartDate !== undefined || editingReport.actualEndDate !== undefined || editingReport.leadAuditorId !== undefined) {
         const auditRes = await apiFetch(`/audit/audits/${auditId}`) as { audit: Audit };
         if (auditRes.audit) setAudit(auditRes.audit);
       }
@@ -302,6 +313,7 @@ export default function ReportPage() {
       conclusion: report?.conclusion ?? draft?.conclusion ?? null,
       actualStartDate: audit?.actualStartDate ? audit.actualStartDate.slice(0, 10) : null,
       actualEndDate: audit?.actualEndDate ? audit.actualEndDate.slice(0, 10) : null,
+      leadAuditorId: audit?.leadAuditorId ?? audit?.leadAuditor?.id ?? null,
     });
     setEditMode(true);
   }
@@ -633,11 +645,26 @@ export default function ReportPage() {
             </div>
             <div>
               <p className="text-sm text-gray-500">Auditor Líder</p>
-              <p className="font-medium">
-                {audit.leadAuditor
-                  ? `${audit.leadAuditor.name} (${audit.leadAuditor.type === 'INTERNAL' ? 'Interno' : 'Externo'})`
-                  : 'No asignado'}
-              </p>
+              {editMode && editingReport ? (
+                <select
+                  value={editingReport.leadAuditorId || ''}
+                  onChange={(e) => setEditingReport({ ...editingReport, leadAuditorId: e.target.value || null })}
+                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="">Seleccionar auditor...</option>
+                  {auditors.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.type === 'INTERNAL' ? 'Interno' : 'Externo'})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="font-medium">
+                  {audit.leadAuditor
+                    ? `${audit.leadAuditor.name} (${audit.leadAuditor.type === 'INTERNAL' ? 'Interno' : 'Externo'})`
+                    : 'No asignado'}
+                </p>
+              )}
             </div>
             <div>
               <p className="text-sm text-gray-500">Normas Aplicables</p>
