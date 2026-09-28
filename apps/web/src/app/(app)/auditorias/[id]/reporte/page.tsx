@@ -25,6 +25,7 @@ type Audit = {
   scope: string | null;
   objective: string | null;
   interviewees: string | null;
+  leadAuditor?: { id: string; name: string; type: string } | null;
 };
 
 type Finding = {
@@ -224,6 +225,9 @@ export default function ReportPage() {
     sections.push(`<h1>INFORME DE AUDITORÍA</h1>`);
     sections.push(`<h2>${audit.title}</h2>`);
     sections.push(`<p><strong>Código:</strong> ${audit.code} · <strong>Área:</strong> ${audit.area}</p>`);
+    if (audit.leadAuditor?.name) {
+      sections.push(`<p><strong>Auditor Líder:</strong> ${audit.leadAuditor.name} (${audit.leadAuditor.type === 'INTERNAL' ? 'Interno' : 'Externo'})</p>`);
+    }
     if (report?.executiveSummary) {
       sections.push(`<h2>Resumen Ejecutivo</h2><p>${report.executiveSummary}</p>`);
     } else if (draft?.executiveSummary) {
@@ -626,6 +630,14 @@ export default function ReportPage() {
             <div>
               <p className="text-sm text-gray-500">Área Auditada</p>
               <p className="font-medium">{audit.area}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Auditor Líder</p>
+              <p className="font-medium">
+                {audit.leadAuditor
+                  ? `${audit.leadAuditor.name} (${audit.leadAuditor.type === 'INTERNAL' ? 'Interno' : 'Externo'})`
+                  : 'No asignado'}
+              </p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Normas Aplicables</p>
