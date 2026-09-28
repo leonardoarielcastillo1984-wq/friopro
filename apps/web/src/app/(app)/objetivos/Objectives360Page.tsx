@@ -330,6 +330,18 @@ export default function Objectives360Page() {
     name: '', responsibleId: '', startDate: '', endDate: '', status: 'PENDING',
   });
   const [savingActivity, setSavingActivity] = useState(false);
+  const [showProgressForm, setShowProgressForm] = useState(false);
+  const [progressForm, setProgressForm] = useState<{ progress: number; justification: string; status: string; evidenceUrl: string; evidenceName: string }>({
+    progress: 0, justification: '', status: '', evidenceUrl: '', evidenceName: '',
+  });
+  const [savingProgress, setSavingProgress] = useState(false);
+  const [availableAudits, setAvailableAudits] = useState<{ id: string; code: string; title: string }[]>([]);
+  const [availableCapas, setAvailableCapas] = useState<{ id: string; code: string | null; plannedAction: string | null; findingDescription: string | null }[]>([]);
+  const [availableRisks, setAvailableRisks] = useState<{ id: string; code: string; title: string }[]>([]);
+  const [linkIndicatorId, setLinkIndicatorId] = useState('');
+  const [linkAuditId, setLinkAuditId] = useState('');
+  const [linkCapaId, setLinkCapaId] = useState('');
+  const [linkRiskId, setLinkRiskId] = useState('');
   const [formData, setFormData] = useState<Partial<Objective>>({
     year: currentYear,
     status: 'PLANNED',
@@ -396,6 +408,27 @@ export default function Objectives360Page() {
     } catch { setPositions([]); }
   }, []);
 
+  const loadAvailableAudits = useCallback(async () => {
+    try {
+      const res = await apiFetch('/audit/audits') as { audits?: { id: string; code: string; title: string }[] };
+      setAvailableAudits(res.audits ?? []);
+    } catch { setAvailableAudits([]); }
+  }, []);
+
+  const loadAvailableCapas = useCallback(async () => {
+    try {
+      const res = await apiFetch('/action-plans') as { plans?: { id: string; code: string | null; plannedAction: string | null; findingDescription: string | null }[] };
+      setAvailableCapas(res.plans ?? []);
+    } catch { setAvailableCapas([]); }
+  }, []);
+
+  const loadAvailableRisks = useCallback(async () => {
+    try {
+      const res = await apiFetch('/risks') as { risks?: { id: string; code: string; title: string }[] };
+      setAvailableRisks(res.risks ?? []);
+    } catch { setAvailableRisks([]); }
+  }, []);
+
   const loadContextStrategies = async (originType: string, year: number) => {
     const DAFO_TYPES = ['FO', 'FA', 'DO', 'DA'];
     if (!DAFO_TYPES.includes(originType)) { setContextStrategies([]); return; }
@@ -418,7 +451,10 @@ export default function Objectives360Page() {
     loadProcesses();
     loadKpis();
     loadPositions();
-  }, [loadObjectives, loadPolicies, loadStats, loadProcesses, loadKpis, loadPositions]);
+    loadAvailableAudits();
+    loadAvailableCapas();
+    loadAvailableRisks();
+  }, [loadObjectives, loadPolicies, loadStats, loadProcesses, loadKpis, loadPositions, loadAvailableAudits, loadAvailableCapas, loadAvailableRisks]);
 
   // URL params pre-fill desde módulo Contexto
   useEffect(() => {
@@ -663,6 +699,128 @@ export default function Objectives360Page() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleOpenProgressForm = () => {
+    if (!detailObjective) return;
+    setProgressForm({ progress: detailObjective.progress ?? 0, justification: '', status: detailObjective.status, evidenceUrl: '', evidenceName: '' });
+    setShowProgressForm(true);
+  };
+
+  const handleSaveProgress = async () => {
+    if (!detailObjective) return;
+    if (!progressForm.justification.trim()) {
+      alert('La justificación es obligatoria para registrar un avance manual');
+      return;
+    }
+    setSavingProgress(true);
+    try {
+      await apiFetch(`/objectives/${detailObjective.id}/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          progress: Number(progressForm.progress),
+          justification: progressForm.justification,
+          status: progressForm.status || undefined,
+          evidenceUrl: progressForm.evidenceUrl || undefined,
+          evidenceName: progressForm.evidenceName || undefined,
+          source: 'MANUAL',
+        }),
+      });
+      setShowProgressForm(false);
+      await refreshDetail(detailObjective.id);
+      await loadObjectives();
+      await loadStats();
+    } catch (e: any) {
+      console.error(e);
+      alert('Error al registrar avance: ' + (e?.message || ''));
+    } finally {
+      setSavingProgress(false);
+    }
+  };
+
+  const handleLinkIndicator = async () => {
+    if (!detailObjective || !linkIndicatorId) return;
+    try {
+      await apiFetch(`/objectives/${detailObjective.id}/indicators`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: linkIndicatorId }),
+      });
+      setLinkIndicatorId('');
+      await refreshDetail(detailObjective.id);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleUnlinkIndicator = async (relationId: string) => {
+    if (!detailObjective) return;
+    try {
+      await apiFetch(`/objectives/indicators/${relationId}`, { method: 'DELETE' });
+      await refreshDetail(detailObjective.id);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleLinkAudit = async () => {
+    if (!detailObjective || !linkAuditId) return;
+    try {
+      await apiFetch(`/objectives/${detailObjective.id}/audits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: linkAuditId }),
+      });
+      setLinkAuditId('');
+      await refreshDetail(detailObjective.id);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleUnlinkAudit = async (relationId: string) => {
+    if (!detailObjective) return;
+    try {
+      await apiFetch(`/objectives/audits/${relationId}`, { method: 'DELETE' });
+      await refreshDetail(detailObjective.id);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleLinkCapa = async () => {
+    if (!detailObjective || !linkCapaId) return;
+    try {
+      await apiFetch(`/objectives/${detailObjective.id}/capas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: linkCapaId }),
+      });
+      setLinkCapaId('');
+      await refreshDetail(detailObjective.id);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleUnlinkCapa = async (relationId: string) => {
+    if (!detailObjective) return;
+    try {
+      await apiFetch(`/objectives/capas/${relationId}`, { method: 'DELETE' });
+      await refreshDetail(detailObjective.id);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleLinkRisk = async () => {
+    if (!detailObjective || !linkRiskId) return;
+    try {
+      await apiFetch(`/objectives/${detailObjective.id}/risks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: linkRiskId }),
+      });
+      setLinkRiskId('');
+      await refreshDetail(detailObjective.id);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleUnlinkRisk = async (relationId: string) => {
+    if (!detailObjective) return;
+    try {
+      await apiFetch(`/objectives/risks/${relationId}`, { method: 'DELETE' });
+      await refreshDetail(detailObjective.id);
+    } catch (e) { console.error(e); }
   };
 
   const filteredObjectives = useMemo(() => {
@@ -1379,13 +1537,34 @@ export default function Objectives360Page() {
                 <p className="text-sm text-muted-foreground text-center py-8">Sin actividades registradas</p>
               )}
             </TabsContent>
-            <TabsContent value="indicators" className="py-4">
+            <TabsContent value="indicators" className="py-4 space-y-3">
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Vincular indicador / KPI</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={linkIndicatorId}
+                    onChange={(e) => setLinkIndicatorId(e.target.value)}
+                  >
+                    <option value="">— Seleccionar KPI —</option>
+                    {kpis.map((k) => (
+                      <option key={k.id} value={k.id}>{k.code ? `[${k.code}] ` : ''}{k.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <Button size="sm" onClick={handleLinkIndicator} disabled={!linkIndicatorId}>
+                  <Plus className="w-4 h-4 mr-1" /> Vincular
+                </Button>
+              </div>
               {(obj.indicators && obj.indicators.length > 0) ? (
                 <div className="space-y-2">
                   {obj.indicators.map((ind) => (
                     <Card key={ind.id}>
-                      <CardContent className="p-3">
+                      <CardContent className="p-3 flex items-center justify-between">
                         <p className="font-medium text-sm">{ind.indicator?.name || `Indicador ${ind.indicatorId.slice(0, 8)}`}</p>
+                        <Button size="sm" variant="ghost" onClick={() => handleUnlinkIndicator(ind.id)}>
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                        </Button>
                       </CardContent>
                     </Card>
                   ))}
@@ -1394,7 +1573,12 @@ export default function Objectives360Page() {
                 <p className="text-sm text-muted-foreground text-center py-8">Sin indicadores vinculados</p>
               )}
             </TabsContent>
-            <TabsContent value="history" className="py-4">
+            <TabsContent value="history" className="py-4 space-y-3">
+              <div className="flex justify-end">
+                <Button size="sm" onClick={handleOpenProgressForm}>
+                  <Plus className="w-4 h-4 mr-1" /> Registrar avance
+                </Button>
+              </div>
               {(obj.progressLogs && obj.progressLogs.length > 0) ? (
                 <div className="space-y-3">
                   {obj.progressLogs.map((log) => (
@@ -1431,22 +1615,76 @@ export default function Objectives360Page() {
             </TabsContent>
             <TabsContent value="links" className="py-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Auditorías ({obj.audits?.length ?? 0})</h4>
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">Auditorías ({obj.audits?.length ?? 0})</h4>
+                  <div className="flex gap-1">
+                    <select
+                      className="h-8 flex-1 rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                      value={linkAuditId}
+                      onChange={(e) => setLinkAuditId(e.target.value)}
+                    >
+                      <option value="">— Auditoría —</option>
+                      {availableAudits.map((a) => (
+                        <option key={a.id} value={a.id}>{a.code ? `[${a.code}] ` : ''}{a.title}</option>
+                      ))}
+                    </select>
+                    <Button size="sm" variant="outline" onClick={handleLinkAudit} disabled={!linkAuditId}>
+                      <Plus className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                   {obj.audits && obj.audits.length > 0 ? obj.audits.map((a) => (
-                    <div key={a.id} className="text-xs border rounded p-2 mb-1">{a.audit?.title || a.auditId}</div>
+                    <div key={a.id} className="text-xs border rounded p-2 flex items-center justify-between gap-2">
+                      <span>{a.audit?.title || a.auditId}</span>
+                      <button onClick={() => handleUnlinkAudit(a.id)} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
+                    </div>
                   )) : <p className="text-xs text-muted-foreground">Sin auditorías</p>}
                 </div>
-                <div>
-                  <h4 className="text-sm font-medium mb-2">CAPA ({obj.capas?.length ?? 0})</h4>
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">CAPA ({obj.capas?.length ?? 0})</h4>
+                  <div className="flex gap-1">
+                    <select
+                      className="h-8 flex-1 rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                      value={linkCapaId}
+                      onChange={(e) => setLinkCapaId(e.target.value)}
+                    >
+                      <option value="">— CAPA —</option>
+                      {availableCapas.map((c) => (
+                        <option key={c.id} value={c.id}>{c.code ? `[${c.code}] ` : ''}{(c.plannedAction || c.findingDescription || c.id).slice(0, 60)}</option>
+                      ))}
+                    </select>
+                    <Button size="sm" variant="outline" onClick={handleLinkCapa} disabled={!linkCapaId}>
+                      <Plus className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                   {obj.capas && obj.capas.length > 0 ? obj.capas.map((c) => (
-                    <div key={c.id} className="text-xs border rounded p-2 mb-1">{c.capa?.title || c.capaId}</div>
+                    <div key={c.id} className="text-xs border rounded p-2 flex items-center justify-between gap-2">
+                      <span>{c.capa?.title || c.capaId}</span>
+                      <button onClick={() => handleUnlinkCapa(c.id)} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
+                    </div>
                   )) : <p className="text-xs text-muted-foreground">Sin CAPA</p>}
                 </div>
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Riesgos ({obj.risks?.length ?? 0})</h4>
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">Riesgos ({obj.risks?.length ?? 0})</h4>
+                  <div className="flex gap-1">
+                    <select
+                      className="h-8 flex-1 rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+                      value={linkRiskId}
+                      onChange={(e) => setLinkRiskId(e.target.value)}
+                    >
+                      <option value="">— Riesgo —</option>
+                      {availableRisks.map((r) => (
+                        <option key={r.id} value={r.id}>{r.code ? `[${r.code}] ` : ''}{r.title}</option>
+                      ))}
+                    </select>
+                    <Button size="sm" variant="outline" onClick={handleLinkRisk} disabled={!linkRiskId}>
+                      <Plus className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                   {obj.risks && obj.risks.length > 0 ? obj.risks.map((r) => (
-                    <div key={r.id} className="text-xs border rounded p-2 mb-1">{r.risk?.description || r.riskId}</div>
+                    <div key={r.id} className="text-xs border rounded p-2 flex items-center justify-between gap-2">
+                      <span>{r.risk?.description || r.riskId}</span>
+                      <button onClick={() => handleUnlinkRisk(r.id)} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
+                    </div>
                   )) : <p className="text-xs text-muted-foreground">Sin riesgos</p>}
                 </div>
               </div>
@@ -1515,6 +1753,53 @@ export default function Objectives360Page() {
     );
   };
 
+  /* ─── Progress Form Dialog ─── */
+  const ProgressFormDialog = () => {
+    if (!showProgressForm || !detailObjective) return null;
+    const update = (key: string, val: any) => setProgressForm((d) => ({ ...d, [key]: val }));
+    return (
+      <Dialog open={showProgressForm} onOpenChange={setShowProgressForm}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Registrar avance</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Progreso (%)</Label>
+              <Input type="number" min={0} max={100} value={progressForm.progress} onChange={(e) => update('progress', Number(e.target.value))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Estado</Label>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                value={progressForm.status}
+                onChange={(e) => update('status', e.target.value)}
+              >
+                {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Justificación *</Label>
+              <Input value={progressForm.justification} onChange={(e) => update('justification', e.target.value)} placeholder="Fundamento del avance registrado..." />
+            </div>
+            <div className="space-y-2">
+              <Label>URL de evidencia (opcional)</Label>
+              <Input value={progressForm.evidenceUrl} onChange={(e) => update('evidenceUrl', e.target.value)} placeholder="https://..." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowProgressForm(false)}>Cancelar</Button>
+            <Button onClick={handleSaveProgress} disabled={savingProgress}>
+              {savingProgress ? 'Guardando...' : 'Guardar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   /* ─── Main Layout ─── */
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -1539,6 +1824,7 @@ export default function Objectives360Page() {
       {FormDialog()}
       {DetailDialog()}
       {ActivityFormDialog()}
+      {ProgressFormDialog()}
     </div>
   );
 }

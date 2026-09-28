@@ -289,7 +289,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const item = await app.runWithDbContext(req, async (tx: any) => {
-      return tx.sgiObjective.findFirst({
+      const found = await tx.sgiObjective.findFirst({
         where: { id, tenantId, deletedAt: null },
         include: {
           policy: true,
@@ -304,6 +304,40 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
           progressLogs: { orderBy: { createdAt: 'desc' }, take: 100 },
         },
       });
+      if (!found) return null;
+      // Enriquecer relaciones débiles (auditId/capaId/riskId/indicatorId son escalares,
+      // sin FK real hacia otros módulos) con el nombre/título correspondiente.
+      const [indicatorRows, auditRows, capaRows, riskRows] = await Promise.all([
+        found.indicators?.length
+          ? tx.indicator.findMany({ where: { id: { in: found.indicators.map((i: any) => i.indicatorId) } }, select: { id: true, name: true } })
+          : [],
+        found.audits?.length
+          ? tx.audit.findMany({ where: { id: { in: found.audits.map((a: any) => a.auditId) } }, select: { id: true, title: true, code: true } })
+          : [],
+        found.capas?.length
+          ? tx.actionPlan.findMany({ where: { id: { in: found.capas.map((c: any) => c.capaId) } }, select: { id: true, plannedAction: true, findingDescription: true, code: true } })
+          : [],
+        found.risks?.length
+          ? tx.risk.findMany({ where: { id: { in: found.risks.map((r: any) => r.riskId) } }, select: { id: true, title: true, description: true } })
+          : [],
+      ]);
+      const indicatorMap = new Map(indicatorRows.map((r: any) => [r.id, r]));
+      const auditMap = new Map(auditRows.map((r: any) => [r.id, r]));
+      const capaMap = new Map(capaRows.map((r: any) => [r.id, r]));
+      const riskMap = new Map(riskRows.map((r: any) => [r.id, r]));
+      return {
+        ...found,
+        indicators: found.indicators?.map((i: any) => ({ ...i, indicator: indicatorMap.get(i.indicatorId) ?? null })),
+        audits: found.audits?.map((a: any) => ({ ...a, audit: auditMap.get(a.auditId) ?? null })),
+        capas: found.capas?.map((c: any) => {
+          const capa: any = capaMap.get(c.capaId);
+          return { ...c, capa: capa ? { id: capa.id, title: capa.plannedAction || capa.findingDescription || capa.code } : null };
+        }),
+        risks: found.risks?.map((r: any) => {
+          const risk: any = riskMap.get(r.riskId);
+          return { ...r, risk: risk ? { id: risk.id, description: risk.title || risk.description } : null };
+        }),
+      };
     });
     if (!item) return reply.code(404).send({ error: 'Not found' });
     return reply.send({ item: enrichObjective(item) });
