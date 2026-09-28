@@ -324,6 +324,12 @@ export default function Objectives360Page() {
   const [showForm, setShowForm] = useState(false);
   const [editingObjective, setEditingObjective] = useState<Objective | null>(null);
   const [detailObjective, setDetailObjective] = useState<Objective | null>(null);
+  const [showActivityForm, setShowActivityForm] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<ObjectiveActivity | null>(null);
+  const [activityForm, setActivityForm] = useState<{ name: string; responsibleId: string; startDate: string; endDate: string; status: string }>({
+    name: '', responsibleId: '', startDate: '', endDate: '', status: 'PENDING',
+  });
+  const [savingActivity, setSavingActivity] = useState(false);
   const [formData, setFormData] = useState<Partial<Objective>>({
     year: currentYear,
     status: 'PLANNED',
@@ -578,6 +584,82 @@ export default function Objectives360Page() {
       const res = await apiFetch(`/objectives/${obj.id}`) as { item: Objective };
       setDetailObjective(res.item);
       setActiveTab('info');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const refreshDetail = async (objectiveId: string) => {
+    try {
+      const res = await apiFetch(`/objectives/${objectiveId}`) as { item: Objective };
+      setDetailObjective(res.item);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleNewActivity = () => {
+    setEditingActivity(null);
+    setActivityForm({ name: '', responsibleId: '', startDate: '', endDate: '', status: 'PENDING' });
+    setShowActivityForm(true);
+  };
+
+  const handleEditActivity = (a: ObjectiveActivity) => {
+    setEditingActivity(a);
+    setActivityForm({
+      name: a.name,
+      responsibleId: a.responsibleId || '',
+      startDate: a.startDate ? a.startDate.split('T')[0] : '',
+      endDate: a.endDate ? a.endDate.split('T')[0] : '',
+      status: a.status || 'PENDING',
+    });
+    setShowActivityForm(true);
+  };
+
+  const handleSaveActivity = async () => {
+    if (!detailObjective) return;
+    if (!activityForm.name.trim()) {
+      alert('El nombre de la actividad es obligatorio');
+      return;
+    }
+    setSavingActivity(true);
+    try {
+      const payload: any = {
+        name: activityForm.name,
+        responsibleId: activityForm.responsibleId || undefined,
+        startDate: activityForm.startDate || undefined,
+        endDate: activityForm.endDate || undefined,
+        status: activityForm.status,
+      };
+      if (editingActivity) {
+        await apiFetch(`/objectives/activities/${editingActivity.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch(`/objectives/${detailObjective.id}/activities`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+      setShowActivityForm(false);
+      await refreshDetail(detailObjective.id);
+    } catch (e: any) {
+      console.error(e);
+      alert('Error al guardar actividad: ' + (e?.message || ''));
+    } finally {
+      setSavingActivity(false);
+    }
+  };
+
+  const handleDeleteActivity = async (activityId: string) => {
+    if (!detailObjective) return;
+    if (!confirm('¿Eliminar esta actividad?')) return;
+    try {
+      await apiFetch(`/objectives/activities/${activityId}`, { method: 'DELETE' });
+      await refreshDetail(detailObjective.id);
     } catch (e) {
       console.error(e);
     }
@@ -1263,7 +1345,12 @@ export default function Objectives360Page() {
                 <div className="bg-blue-600 h-4 rounded-full transition-all" style={{ width: `${Math.min(obj.progress ?? 0, 100)}%` }} />
               </div>
             </TabsContent>
-            <TabsContent value="activities" className="py-4">
+            <TabsContent value="activities" className="py-4 space-y-3">
+              <div className="flex justify-end">
+                <Button size="sm" onClick={handleNewActivity}>
+                  <Plus className="w-4 h-4 mr-1" /> Nueva actividad
+                </Button>
+              </div>
               {(obj.activities && obj.activities.length > 0) ? (
                 <div className="space-y-2">
                   {obj.activities.map((a) => (
@@ -1275,7 +1362,15 @@ export default function Objectives360Page() {
                             {a.startDate && new Date(a.startDate).toLocaleDateString()} — {a.endDate && new Date(a.endDate).toLocaleDateString()}
                           </p>
                         </div>
-                        <Badge variant="outline">{ACTIVITY_STATUS_LABELS[a.status] || a.status}</Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{ACTIVITY_STATUS_LABELS[a.status] || a.status}</Badge>
+                          <Button size="sm" variant="ghost" onClick={() => handleEditActivity(a)}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDeleteActivity(a.id)}>
+                            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -1362,6 +1457,64 @@ export default function Objectives360Page() {
     );
   };
 
+  /* ─── Activity Form Dialog ─── */
+  const ActivityFormDialog = () => {
+    if (!showActivityForm) return null;
+    const update = (key: string, val: any) => setActivityForm((d) => ({ ...d, [key]: val }));
+    return (
+      <Dialog open={showActivityForm} onOpenChange={setShowActivityForm}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingActivity ? 'Editar actividad' : 'Nueva actividad'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input value={activityForm.name} onChange={(e) => update('name', e.target.value)} placeholder="Ej: Capacitar al equipo en..." />
+            </div>
+            <div className="space-y-2">
+              <Label>Responsable</Label>
+              <EmployeeCombobox
+                value={activityForm.responsibleId}
+                onChange={(id) => update('responsibleId', id)}
+                placeholder="Buscar responsable..."
+                allowFreeText
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Inicio</Label>
+                <Input type="date" value={activityForm.startDate} onChange={(e) => update('startDate', e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Fin</Label>
+                <Input type="date" value={activityForm.endDate} onChange={(e) => update('endDate', e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Estado</Label>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                value={activityForm.status}
+                onChange={(e) => update('status', e.target.value)}
+              >
+                {Object.entries(ACTIVITY_STATUS_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowActivityForm(false)}>Cancelar</Button>
+            <Button onClick={handleSaveActivity} disabled={savingActivity}>
+              {savingActivity ? 'Guardando...' : 'Guardar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   /* ─── Main Layout ─── */
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -1385,6 +1538,7 @@ export default function Objectives360Page() {
       {TableSection()}
       {FormDialog()}
       {DetailDialog()}
+      {ActivityFormDialog()}
     </div>
   );
 }
