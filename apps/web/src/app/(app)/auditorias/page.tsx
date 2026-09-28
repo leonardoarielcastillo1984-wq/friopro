@@ -36,6 +36,7 @@ type Audit = {
   modality: string | null;
   auditLocation: string | null;
   objective: string | null;
+  leadAuditor?: { id: string; name: string; type: string } | null;
 };
 
 type Stats = {
@@ -371,6 +372,10 @@ export default function AuditoriasPage() {
                         <h3 className="text-base font-medium text-gray-900">{audit.title}</h3>
                         <p className="text-sm text-gray-500 mt-1">
                           Área: {audit.area} • Normas: {audit.isoStandard?.join(', ') || 'N/A'}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Auditor líder: {audit.leadAuditor?.name || 'No asignado'}
+                          {audit.leadAuditor ? ` (${audit.leadAuditor.type === 'INTERNAL' ? 'Interno' : 'Externo'})` : ''}
                         </p>
                       </div>
                     </div>

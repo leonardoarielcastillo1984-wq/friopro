@@ -501,10 +501,16 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const audits = await app.runWithDbContext(req, async (tx) => {
-      return tx.audit.findMany({
+      const rows = await tx.audit.findMany({
         where: { tenantId, deletedAt: null },
         orderBy: { plannedStartDate: 'desc' },
       });
+      const auditorIds = [...new Set(rows.map((a: any) => a.leadAuditorId).filter(Boolean))];
+      const auditors = auditorIds.length
+        ? await tx.auditor.findMany({ where: { id: { in: auditorIds } }, select: { id: true, name: true, type: true } })
+        : [];
+      const auditorMap = new Map(auditors.map((a: any) => [a.id, a]));
+      return rows.map((a: any) => ({ ...a, leadAuditor: auditorMap.get(a.leadAuditorId) ?? null }));
     });
 
     return reply.send({ audits });
@@ -515,9 +521,14 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
 
     const audit = await app.runWithDbContext(req, async (tx) => {
-      return tx.audit.findUnique({
+      const found = await tx.audit.findUnique({
         where: { id: req.params.id, tenantId },
       });
+      if (!found) return null;
+      const leadAuditor = found.leadAuditorId
+        ? await tx.auditor.findUnique({ where: { id: found.leadAuditorId }, select: { id: true, name: true, type: true } })
+        : null;
+      return { ...found, leadAuditor };
     });
 
     if (!audit) return reply.code(404).send({ error: 'Audit not found' });

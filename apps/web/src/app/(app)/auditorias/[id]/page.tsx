@@ -19,6 +19,7 @@ type Audit = {
   actualEndDate: string | null;
   duration: number | null;
   leadAuditorId: string;
+  leadAuditor?: { id: string; name: string; type: string } | null;
   area: string;
   process: string | null;
   isoStandard: string[];
@@ -377,6 +378,14 @@ export default function AuditDetailPage() {
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-1">Área / Proceso</h3>
               <p className="text-gray-900">{audit.area}{audit.process ? ` / ${audit.process}` : ''}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-1">Auditor Líder</h3>
+              <p className="text-gray-900">
+                {audit.leadAuditor
+                  ? `${audit.leadAuditor.name} (${audit.leadAuditor.type === 'INTERNAL' ? 'Interno' : 'Externo'})`
+                  : 'No asignado'}
+              </p>
             </div>
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-1">Fechas Planificadas</h3>

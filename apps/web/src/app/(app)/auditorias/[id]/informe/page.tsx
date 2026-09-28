@@ -29,6 +29,7 @@ type Audit = {
   certificationRecommendation: string | null;
   mainRisks: string | null;
   reportVersion: number;
+  leadAuditor?: { id: string; name: string; type: string } | null;
 };
 
 type ChecklistItem = {
@@ -412,7 +413,7 @@ export default function AuditReportPage() {
               type="text"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
               placeholder="Nombre del auditor líder"
-              defaultValue={audit.auditTeamDetails?.leader || ''}
+              defaultValue={audit.auditTeamDetails?.leader || audit.leadAuditor?.name || ''}
             />
           </div>
           <div>
