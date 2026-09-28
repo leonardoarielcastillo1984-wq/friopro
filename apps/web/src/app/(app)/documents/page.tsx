@@ -137,7 +137,7 @@ export default function DocumentsPage() {
   const [uploadModuleUrl, setUploadModuleUrl] = useState('');
   const [departments, setDepartments] = useState<{id: string; name: string}[]>([]);
   const [normatives, setNormatives] = useState<{id: string; name: string; code: string}[]>([]);
-  const [users, setUsers] = useState<{id: string; name: string; email: string}[]>([]);
+  const [employees, setEmployees] = useState<{id: string; firstName: string; lastName: string; email: string}[]>([]);
 
   // Estado para tipos de documento personalizados
   const [docTypeOptions, setDocTypeOptions] = useState([
@@ -216,11 +216,11 @@ export default function DocumentsPage() {
     setError(null);
     setLoading(true);
     try {
-      const [res, deptsRes, normsRes, membersRes, storageRes] = await Promise.all([
+      const [res, deptsRes, normsRes, empsRes, storageRes] = await Promise.all([
         apiFetch<{ documents: DocumentRow[] }>('/documents').catch(() => ({ documents: [] })),
         apiFetch<{ departments: {id: string; name: string}[] }>('/hr/departments').catch(() => ({ departments: [] })),
         apiFetch<{ normativos: {id: string; name: string; code: string}[] }>('/normativos').catch(() => ({ normativos: [] })),
-        apiFetch<{ members: {userId: string; name: string; email: string}[] }>('/settings/members').catch(() => ({ members: [] })),
+        apiFetch<{ employees: {id: string; firstName: string; lastName: string; email: string}[] }>('/hr/employees').catch(() => ({ employees: [] })),
         fetch(`/api/documents/list`).then(r => r.json()).catch(() => ({ documents: [] })),
       ]);
 
@@ -241,9 +241,7 @@ export default function DocumentsPage() {
       setDocs([...(res?.documents ?? []), ...storageDocuments]);
       setDepartments(deptsRes.departments ?? []);
       setNormatives(normsRes.normativos ?? []);
-      setUsers((membersRes.members ?? [])
-        .map((m: any) => ({ id: m.userId, name: m.name, email: m.email }))
-        .sort((a: any, b: any) => a.name.localeCompare(b.name)));
+      setEmployees((empsRes.employees ?? []).sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
     } catch (err: any) {
       const msg = err?.message ?? 'Error al cargar documentos';
       setError(msg);
@@ -756,8 +754,8 @@ export default function DocumentsPage() {
                 className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
               >
                 <option value="">Sin asignar</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                {employees.map((e) => (
+                  <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.email})</option>
                 ))}
               </select>
             </div>

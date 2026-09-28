@@ -28,6 +28,30 @@ function safeParseDate(value: string | null | undefined): Date | null {
   return date;
 }
 
+// Document.ownerId es FK a PlatformUser, pero la UI lista empleados.
+// Resuelve el ID: si es un PlatformUser lo devuelve tal cual; si es un Employee,
+// mapea por email a su PlatformUser (misma convención que hr.ts al dar acceso
+// a un empleado). Si no hay mapeo posible, devuelve null.
+async function resolveOwnerId(db: any, tenantId: string, rawId: string | null | undefined): Promise<string | null> {
+  if (!rawId) return null;
+  const asUser = await db.platformUser.findUnique({ where: { id: rawId }, select: { id: true } });
+  if (asUser) return rawId;
+  const employee = await db.employee.findFirst({
+    where: { id: rawId, tenantId, deletedAt: null },
+    select: { email: true },
+  });
+  if (!employee?.email) {
+    console.log('[DOCUMENTS] ownerId sin mapeo posible, usando null:', rawId);
+    return null;
+  }
+  const mapped = await db.platformUser.findFirst({
+    where: { email: employee.email },
+    select: { id: true },
+  });
+  if (!mapped) console.log('[DOCUMENTS] empleado sin usuario de plataforma (email %s), usando null', employee.email);
+  return mapped?.id ?? null;
+}
+
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
@@ -243,6 +267,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const body = bodySchema.parse(req.body);
 
     const created = await app.runWithDbContext(req, async (tx: any) => {
+      const resolvedOwnerId = await resolveOwnerId(tx, req.db!.tenantId as string, body.ownerId);
       const doc = await tx.document.create({
         data: {
           tenantId: (req.db!.tenantId as string),
@@ -252,7 +277,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           departmentId: body.departmentId,
           normativeId: body.normativeId,
           process: body.process,
-          ownerId: body.ownerId,
+          ownerId: resolvedOwnerId,
           reviewDate: safeParseDate(body.reviewDate),
           nextReviewDate: safeParseDate(body.nextReviewDate),
           reviewStatus: (body.reviewStatus as any) ?? 'APPROVED',
@@ -299,18 +324,10 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       const existing = await tx.document.findFirst({ where: { id: params.id, deletedAt: null } });
       if (!existing) return null;
 
-      // Validar ownerId - si no existe en PlatformUser, usar null
-      let validOwnerId = body.ownerId !== undefined ? (body.ownerId || null) : existing.ownerId;
-      if (validOwnerId) {
-        const ownerExists = await tx.platformUser.findUnique({
-          where: { id: validOwnerId },
-          select: { id: true }
-        });
-        if (!ownerExists) {
-          console.log('[DOCUMENTS_PATCH] ownerId no existe, usando null:', validOwnerId);
-          validOwnerId = null;
-        }
-      }
+      // Resolver ownerId: admite PlatformUser o Employee (mapea por email)
+      const validOwnerId = body.ownerId !== undefined
+        ? await resolveOwnerId(tx, req.db!.tenantId as string, body.ownerId)
+        : existing.ownerId;
 
       const updated = await tx.document.update({
         where: { id: existing.id },
@@ -564,16 +581,9 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: `La fecha de ${badField} no es válida. Verificala e intentá nuevamente.` });
     }
 
-    // Validar ownerId - si no existe en PlatformUser, usar null
+    // Resolver ownerId: admite PlatformUser o Employee (mapea por email)
     if (ownerId) {
-      const ownerExists = await (app.prisma as any).platformUser.findUnique({
-        where: { id: ownerId },
-        select: { id: true }
-      });
-      if (!ownerExists) {
-        console.log('[DOCUMENTS_UPLOAD] ownerId no existe, usando null:', ownerId);
-        ownerId = null;
-      }
+      ownerId = await resolveOwnerId(app.prisma as any, tenantId, ownerId);
     }
 
     const created = await app.runWithDbContext(req, async (tx: any) => {

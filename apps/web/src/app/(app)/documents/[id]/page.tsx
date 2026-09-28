@@ -58,7 +58,7 @@ export default function DocumentDetailPage() {
   const [editNextReviewDate, setEditNextReviewDate] = useState('');
   const [departments, setDepartments] = useState<{id: string; name: string}[]>([]);
   const [normatives, setNormatives] = useState<{id: string; name: string; code: string}[]>([]);
-  const [users, setUsers] = useState<{id: string; name: string; email: string}[]>([]);
+  const [employees, setEmployees] = useState<{id: string; firstName: string; lastName: string; email: string}[]>([]);
   const [showVersions, setShowVersions] = useState(false);
   const [versions, setVersions] = useState<any[]>([]);
   const [showNewVersion, setShowNewVersion] = useState(false);
@@ -211,16 +211,14 @@ export default function DocumentDetailPage() {
 
   async function loadDepartmentsAndNormatives() {
     try {
-      const [deptsRes, normsRes, membersRes] = await Promise.all([
+      const [deptsRes, normsRes, empsRes] = await Promise.all([
         apiFetch<{ departments: {id: string; name: string}[] }>('/hr/departments').catch(() => ({ departments: [] })),
         apiFetch<{ normativos: {id: string; name: string; code: string}[] }>('/normativos').catch(() => ({ normativos: [] })),
-        apiFetch<{ members: {userId: string; name: string; email: string}[] }>('/settings/members').catch(() => ({ members: [] })),
+        apiFetch<{ employees: {id: string; firstName: string; lastName: string; email: string}[] }>('/hr/employees').catch(() => ({ employees: [] })),
       ]);
       setDepartments(deptsRes.departments);
       setNormatives(normsRes.normativos);
-      setUsers((membersRes.members ?? [])
-        .map(m => ({ id: m.userId, name: m.name, email: m.email }))
-        .sort((a, b) => a.name.localeCompare(b.name)));
+      setEmployees((empsRes.employees ?? []).sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
     } catch (err) {
       console.error('Error loading departments and normatives:', err);
     }
@@ -709,18 +707,22 @@ export default function DocumentDetailPage() {
                     <label className="block text-sm font-medium text-neutral-700 mb-1">Responsable</label>
                     <select
                       className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-                      value={editOwnerId}
+                      value={
+                        // ownerId guardado es PlatformUser id; las opciones son Employee ids.
+                        // Si el usuario no tocó el campo (sigue el ownerId original), se mapea
+                        // al empleado con el mismo email. Si eligió un empleado o vació, se respeta.
+                        employees.some(e => e.id === editOwnerId)
+                          ? editOwnerId
+                          : editOwnerId !== (doc?.ownerId ?? '')
+                            ? editOwnerId
+                            : (employees.find(e => (e.email || '').toLowerCase() === (doc?.owner?.email || '').toLowerCase())?.id ?? '')
+                      }
                       onChange={(e) => setEditOwnerId(e.target.value)}
                     >
                       <option value="">Sin asignar</option>
-                      {users.map((u) => (
-                        <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                      {employees.map((e) => (
+                        <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.email})</option>
                       ))}
-                      {doc?.owner && !users.some(u => u.id === doc.owner!.id) && (
-                        <option value={doc.owner.id}>
-                          {doc.owner.firstName} {doc.owner.lastName} ({doc.owner.email}) — actual
-                        </option>
-                      )}
                     </select>
                   </div>
                 </div>
