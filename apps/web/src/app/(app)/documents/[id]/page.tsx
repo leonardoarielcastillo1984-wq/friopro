@@ -58,7 +58,7 @@ export default function DocumentDetailPage() {
   const [editNextReviewDate, setEditNextReviewDate] = useState('');
   const [departments, setDepartments] = useState<{id: string; name: string}[]>([]);
   const [normatives, setNormatives] = useState<{id: string; name: string; code: string}[]>([]);
-  const [employees, setEmployees] = useState<{id: string; firstName: string; lastName: string; email: string}[]>([]);
+  const [users, setUsers] = useState<{id: string; name: string; email: string}[]>([]);
   const [showVersions, setShowVersions] = useState(false);
   const [versions, setVersions] = useState<any[]>([]);
   const [showNewVersion, setShowNewVersion] = useState(false);
@@ -211,14 +211,16 @@ export default function DocumentDetailPage() {
 
   async function loadDepartmentsAndNormatives() {
     try {
-      const [deptsRes, normsRes, empsRes] = await Promise.all([
+      const [deptsRes, normsRes, membersRes] = await Promise.all([
         apiFetch<{ departments: {id: string; name: string}[] }>('/hr/departments').catch(() => ({ departments: [] })),
         apiFetch<{ normativos: {id: string; name: string; code: string}[] }>('/normativos').catch(() => ({ normativos: [] })),
-        apiFetch<{ employees: {id: string; firstName: string; lastName: string; email: string}[] }>('/hr/employees').catch(() => ({ employees: [] })),
+        apiFetch<{ members: {userId: string; name: string; email: string}[] }>('/settings/members').catch(() => ({ members: [] })),
       ]);
       setDepartments(deptsRes.departments);
       setNormatives(normsRes.normativos);
-      setEmployees((empsRes.employees ?? []).sort((a: any, b: any) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
+      setUsers((membersRes.members ?? [])
+        .map(m => ({ id: m.userId, name: m.name, email: m.email }))
+        .sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
       console.error('Error loading departments and normatives:', err);
     }
@@ -711,9 +713,14 @@ export default function DocumentDetailPage() {
                       onChange={(e) => setEditOwnerId(e.target.value)}
                     >
                       <option value="">Sin asignar</option>
-                      {employees.map((e) => (
-                        <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.email})</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
                       ))}
+                      {doc?.owner && !users.some(u => u.id === doc.owner!.id) && (
+                        <option value={doc.owner.id}>
+                          {doc.owner.firstName} {doc.owner.lastName} ({doc.owner.email}) — actual
+                        </option>
+                      )}
                     </select>
                   </div>
                 </div>
