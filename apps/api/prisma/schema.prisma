@@ -4941,6 +4941,7 @@ model ObjectiveActivity {
   startDate     DateTime?
   endDate       DateTime?
   status        String       @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  resources     String?      @db.Text // Recursos necesarios (ISO 9001 §6.2.2)
   createdAt     DateTime     @default(now()) @db.Timestamptz
   updatedAt     DateTime     @updatedAt @db.Timestamptz
 

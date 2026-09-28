@@ -171,6 +171,7 @@ interface ObjectiveActivity {
   id: string;
   name: string;
   responsibleId?: string;
+  resources?: string | null;
   startDate?: string;
   endDate?: string;
   status: string;
@@ -326,8 +327,8 @@ export default function Objectives360Page() {
   const [detailObjective, setDetailObjective] = useState<Objective | null>(null);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [editingActivity, setEditingActivity] = useState<ObjectiveActivity | null>(null);
-  const [activityForm, setActivityForm] = useState<{ name: string; responsibleId: string; startDate: string; endDate: string; status: string }>({
-    name: '', responsibleId: '', startDate: '', endDate: '', status: 'PENDING',
+  const [activityForm, setActivityForm] = useState<{ name: string; responsibleId: string; startDate: string; endDate: string; status: string; resources: string }>({
+    name: '', responsibleId: '', startDate: '', endDate: '', status: 'PENDING', resources: '',
   });
   const [savingActivity, setSavingActivity] = useState(false);
   const [showProgressForm, setShowProgressForm] = useState(false);
@@ -636,7 +637,7 @@ export default function Objectives360Page() {
 
   const handleNewActivity = () => {
     setEditingActivity(null);
-    setActivityForm({ name: '', responsibleId: '', startDate: '', endDate: '', status: 'PENDING' });
+    setActivityForm({ name: '', responsibleId: '', startDate: '', endDate: '', status: 'PENDING', resources: '' });
     setShowActivityForm(true);
   };
 
@@ -648,6 +649,7 @@ export default function Objectives360Page() {
       startDate: a.startDate ? a.startDate.split('T')[0] : '',
       endDate: a.endDate ? a.endDate.split('T')[0] : '',
       status: a.status || 'PENDING',
+      resources: a.resources || '',
     });
     setShowActivityForm(true);
   };
@@ -666,6 +668,7 @@ export default function Objectives360Page() {
         startDate: activityForm.startDate || undefined,
         endDate: activityForm.endDate || undefined,
         status: activityForm.status,
+        resources: activityForm.resources || undefined,
       };
       if (editingActivity) {
         await apiFetch(`/objectives/activities/${editingActivity.id}`, {
@@ -1519,6 +1522,9 @@ export default function Objectives360Page() {
                           <p className="text-xs text-muted-foreground">
                             {a.startDate && new Date(a.startDate).toLocaleDateString()} — {a.endDate && new Date(a.endDate).toLocaleDateString()}
                           </p>
+                          {a.resources && (
+                            <p className="text-xs text-muted-foreground mt-0.5">Recursos: {a.resources}</p>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline">{ACTIVITY_STATUS_LABELS[a.status] || a.status}</Badge>
@@ -1740,6 +1746,15 @@ export default function Objectives360Page() {
                   <option key={k} value={k}>{v}</option>
                 ))}
               </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Recursos necesarios</Label>
+              <Input
+                value={activityForm.resources}
+                onChange={(e) => update('resources', e.target.value)}
+                placeholder="Ej: capacitación, software, presupuesto $X, horas del personal..."
+              />
+              <p className="text-[11px] text-muted-foreground">ISO 9001 §6.2.2: qué recursos se requerirán para la actividad</p>
             </div>
           </div>
           <DialogFooter>

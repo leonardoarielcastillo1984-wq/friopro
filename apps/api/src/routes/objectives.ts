@@ -47,6 +47,7 @@ const activitySchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   status: z.string().optional(),
+  resources: emptyToUndefined(z.string().optional()),
 });
 
 const relationSchema = z.object({
