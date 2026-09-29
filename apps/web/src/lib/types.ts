@@ -10,6 +10,8 @@ export type TenantOption = {
   name: string;
   slug: string;
   role: 'TENANT_ADMIN' | 'TENANT_USER';
+  country: string | null;
+  logoUrl: string | null;
 };
 
 export type LoginResponse = {

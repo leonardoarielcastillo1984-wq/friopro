@@ -125,6 +125,7 @@ import { documentsPublicRoutes } from './routes/documentsPublic.js';
 import { processMapsRoutes } from './routes/processMaps.js';
 import { processTemplatesRoutes } from './routes/processTemplates.js';
 import { registerCompanyRoutes } from './routes/register-company.js';
+import { workspacesRoutes } from './routes/workspaces.js';
 import { registerSupplierRoutes } from './routes/suppliers.js';
 import { registerHelpRoutes } from './routes/help.js';
 import { demoRoutes } from './routes/demo.js';
@@ -493,6 +494,8 @@ export async function buildApp() {
   await app.register(driverHubRoutes, { prefix: '/driver-hub' });
 await app.register(garantiasRoutes, { prefix: '/garantias' });
 await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
+  await app.register(workspacesRoutes, { prefix: '/workspaces' });
+  await app.register(workspacesRoutes, { prefix: '/api/workspaces' });
   await app.register(registerCompanyRoutes); // Registro de empresas
   await app.register(saasRoutes);
 

@@ -6,11 +6,31 @@ import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import type { TenantOption } from '@/lib/types';
 import { Building2, ArrowRight, Loader2, Globe, Shield, User } from 'lucide-react';
+import { COUNTRIES } from '@/lib/countries';
 
 const ROLE_LABELS: Record<string, string> = {
   TENANT_ADMIN: 'Administrador',
   TENANT_USER: 'Usuario',
 };
+
+const COUNTRY_FLAGS = COUNTRIES;
+
+// Bandera chiquita: emoji + fallback textual (en Windows los emoji de bandera
+// no renderizan y quedan las letras del código — igual de legible)
+function FlagBadge({ country }: { country?: string | null }) {
+  if (!country) return null;
+  const c = COUNTRY_FLAGS[country];
+  return (
+    <span className="absolute -bottom-2 -right-2 flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 shadow-sm">
+      <span className="text-sm leading-none" aria-hidden>{c?.flag ?? '🌐'}</span>
+      <span className="text-[10px] font-semibold text-neutral-600 uppercase">{country}</span>
+    </span>
+  );
+}
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+}
 
 export default function SelectTenantPage() {
   const router = useRouter();
@@ -47,60 +67,76 @@ export default function SelectTenantPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg">
-      <div className="text-center mb-8">
-        <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 mb-4">
-          <Globe className="h-7 w-7 text-brand-600" />
-        </div>
-        <h1 className="text-2xl font-bold text-neutral-900">Seleccionar organización</h1>
-        <p className="text-sm text-neutral-500 mt-1">Elegí la organización con la que querés trabajar</p>
+    <div className="mx-auto max-w-3xl">
+      <div className="text-center mb-10">
+        <h1 className="text-3xl font-bold text-neutral-900">¿Qué sistema de gestión querés usar?</h1>
+        <p className="text-sm text-neutral-500 mt-2">Elegí el espacio de trabajo con el que vas a trabajar</p>
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 max-w-lg mx-auto">{error}</div>
       )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
+          <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
         </div>
       ) : tenants.length === 0 ? (
-        <div className="bg-white rounded-xl border border-neutral-200 p-8 text-center">
+        <div className="bg-white rounded-xl border border-neutral-200 p-8 text-center max-w-lg mx-auto">
           <Building2 className="h-10 w-10 text-neutral-200 mx-auto mb-3" />
-          <p className="text-neutral-500">No tenés organizaciones asignadas</p>
+          <p className="text-neutral-500">No tenés sistemas de gestión asignados</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {tenants.map((t) => (
             <button
               key={t.tenantId}
               onClick={() => switchTenant(t.tenantId)}
               disabled={switching !== null}
-              className="w-full group flex items-center gap-4 rounded-xl border border-neutral-200 bg-white p-5 text-left transition-all hover:border-brand-300 hover:shadow-md disabled:opacity-60"
+              className="group relative flex flex-col items-center rounded-2xl border-2 border-neutral-200 bg-white px-6 py-8 text-center transition-all hover:border-brand-500 hover:shadow-xl hover:-translate-y-1 disabled:opacity-60 disabled:hover:translate-y-0"
             >
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-50 text-brand-600 group-hover:bg-brand-100 transition-colors">
-                <Building2 className="h-5 w-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-neutral-900 truncate">{t.name}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-neutral-400 font-mono">{t.slug}</span>
-                  <span className="text-neutral-200">·</span>
-                  <span className="text-xs text-neutral-500 flex items-center gap-1">
-                    {t.role === 'TENANT_ADMIN' ? <Shield className="h-3 w-3" /> : <User className="h-3 w-3" />}
-                    {ROLE_LABELS[t.role] || t.role}
-                  </span>
+              {/* Avatar con logo o iniciales + bandera del país */}
+              <div className="relative mb-5">
+                <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-brand-50 to-brand-100 ring-1 ring-neutral-200 group-hover:ring-brand-300 transition-all">
+                  {t.logoUrl ? (
+                    <img src={t.logoUrl} alt={t.name} className="max-h-16 max-w-[80%] object-contain" />
+                  ) : (
+                    <span className="text-2xl font-bold text-brand-700">{initials(t.name)}</span>
+                  )}
                 </div>
+                <FlagBadge country={t.country} />
               </div>
-              {switching === t.tenantId ? (
-                <Loader2 className="h-5 w-5 animate-spin text-brand-600 flex-shrink-0" />
-              ) : (
-                <ArrowRight className="h-5 w-5 text-neutral-300 group-hover:text-brand-500 transition-colors flex-shrink-0" />
+
+              <p className="font-bold text-lg text-neutral-900 group-hover:text-brand-700 transition-colors">{t.name}</p>
+              {t.country && COUNTRY_FLAGS[t.country] && (
+                <p className="text-xs text-neutral-400 mt-0.5">{COUNTRY_FLAGS[t.country].name}</p>
               )}
+
+              <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600">
+                {t.role === 'TENANT_ADMIN' ? <Shield className="h-3 w-3" /> : <User className="h-3 w-3" />}
+                {ROLE_LABELS[t.role] || t.role}
+              </span>
+
+              <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                {switching === t.tenantId ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Ingresando…
+                  </>
+                ) : (
+                  <>
+                    Ingresar <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </span>
             </button>
           ))}
         </div>
       )}
+
+      <p className="mt-10 text-center text-xs text-neutral-400 flex items-center justify-center gap-1.5">
+        <Globe className="h-3.5 w-3.5" />
+        Podés cambiar de sistema de gestión en cualquier momento desde el menú de tu perfil
+      </p>
     </div>
   );
 }

@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Upload, Building2, Palette, FileText, Save, ImageIcon, X, Download, Archive } from 'lucide-react';
+import { Upload, Building2, Palette, FileText, Save, ImageIcon, X, Download, Archive, Globe, Plus, Copy, Pencil, Check, Loader2 } from 'lucide-react';
+import { COUNTRIES } from '@/lib/countries';
 
 type CompanySettings = {
   companyName: string;
@@ -478,6 +479,292 @@ export default function CompanySettingsPage() {
           </button>
         </div>
       </form>
+
+      {/* Sistemas de gestión por país (fuera del form: acciones independientes) */}
+      <WorkspacesSection />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Workspaces multi-país: Dada Argentina / Dada Chile / etc.
+// Lista los workspaces del grupo, permite agregar un país y clonar estructura.
+// ─────────────────────────────────────────────────────────────────────────────
+type Workspace = {
+  tenantId: string;
+  name: string;
+  slug: string;
+  country: string | null;
+  isRoot: boolean;
+  isCurrent: boolean;
+  logoUrl: string | null;
+  memberCount: number;
+  myRole: string | null;
+};
+
+const CLONE_SECTIONS = [
+  { key: 'areas', label: 'Áreas / Departamentos' },
+  { key: 'documentTypes', label: 'Tipos y codificación de documentos' },
+  { key: 'processes', label: 'Mapa y procesos' },
+  { key: 'normatives', label: 'Normativos (metadatos + cláusulas)' },
+] as const;
+
+function WorkspacesSection() {
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [forbidden, setForbidden] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // agregar país
+  const [showAdd, setShowAdd] = useState(false);
+  const [newCountry, setNewCountry] = useState('');
+  const [newName, setNewName] = useState('');
+
+  // editar raíz (nombre/país)
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCountry, setEditCountry] = useState('');
+
+  // clonar estructura
+  const [cloneTarget, setCloneTarget] = useState<string | null>(null);
+  const [cloneSource, setCloneSource] = useState('');
+  const [cloneSections, setCloneSections] = useState<string[]>(['areas', 'documentTypes', 'processes']);
+
+  async function load() {
+    try {
+      const res = await apiFetch<{ workspaces: Workspace[] }>('/workspaces') as any;
+      setWorkspaces(res.workspaces ?? []);
+      setLoaded(true);
+    } catch (e: any) {
+      if (e?.status === 403 || String(e?.message ?? '').includes('403')) setForbidden(true);
+      setLoaded(true);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  const usedCountries = new Set(workspaces.map((w) => w.country).filter(Boolean));
+  const availableCountries = Object.entries(COUNTRIES).filter(([code]) => !usedCountries.has(code));
+
+  async function addCountry() {
+    if (!newCountry) return;
+    setBusy('add'); setError(null); setNotice(null);
+    try {
+      await apiFetch('/workspaces', {
+        method: 'POST',
+        json: { country: newCountry, name: newName.trim() || undefined, copyMembers: true },
+      });
+      setShowAdd(false); setNewCountry(''); setNewName('');
+      setNotice('Workspace creado. Los usuarios del grupo ya pueden elegirlo al iniciar sesión.');
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? 'Error al crear el workspace');
+    } finally { setBusy(null); }
+  }
+
+  async function saveEdit(tenantId: string) {
+    setBusy(`edit-${tenantId}`); setError(null);
+    try {
+      await apiFetch(`/workspaces/${tenantId}`, {
+        method: 'PATCH',
+        json: { name: editName.trim() || undefined, country: editCountry || null },
+      });
+      setEditing(null);
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? 'Error al guardar');
+    } finally { setBusy(null); }
+  }
+
+  async function doClone(targetId: string) {
+    if (!cloneSource || cloneSections.length === 0) return;
+    setBusy(`clone-${targetId}`); setError(null); setNotice(null);
+    try {
+      const res = await apiFetch(`/workspaces/${targetId}/clone-structure`, {
+        method: 'POST',
+        json: { sourceTenantId: cloneSource, sections: cloneSections },
+      }) as any;
+      const r = res?.result ?? {};
+      setNotice(`Estructura clonada: ${r.areas ?? 0} áreas, ${r.documentTypes ?? 0} tipos de doc., ${r.processes ?? 0} procesos, ${r.normatives ?? 0} normativos.`);
+      setCloneTarget(null);
+    } catch (e: any) {
+      setError(e?.message ?? 'Error al clonar');
+    } finally { setBusy(null); }
+  }
+
+  function toggleSection(k: string) {
+    setCloneSections((prev) => prev.includes(k) ? prev.filter((s) => s !== k) : [...prev, k]);
+  }
+
+  if (!loaded) return null;
+  if (forbidden) return null;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+        <Globe className="w-5 h-5" />
+        Sistemas de gestión por país
+      </h2>
+      <p className="text-sm text-gray-500 mb-4">
+        Si tu empresa opera en más de un país, cada país es un sistema de gestión independiente
+        (empleados, documentos y datos propios) pero con el mismo equipo y plan.
+        Al iniciar sesión, los usuarios eligen a cuál entrar.
+      </p>
+
+      {error && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {notice && <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+
+      <div className="space-y-2">
+        {workspaces.map((w) => (
+          <div key={w.tenantId} className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-50 border border-gray-100 overflow-hidden">
+              {w.logoUrl
+                ? <img src={w.logoUrl} alt="" className="max-h-7 max-w-[80%] object-contain" />
+                : <Building2 className="w-5 h-5 text-gray-300" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              {editing === w.tenantId ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm w-48"
+                    placeholder="Nombre del workspace"
+                  />
+                  <select
+                    value={editCountry}
+                    onChange={(e) => setEditCountry(e.target.value)}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm"
+                  >
+                    <option value="">Sin país</option>
+                    {Object.entries(COUNTRIES).map(([code, c]) => (
+                      <option key={code} value={code} disabled={usedCountries.has(code) && w.country !== code}>
+                        {c.flag} {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => saveEdit(w.tenantId)} disabled={busy === `edit-${w.tenantId}`}
+                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="Guardar">
+                    {busy === `edit-${w.tenantId}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  </button>
+                  <button type="button" onClick={() => setEditing(null)} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded" title="Cancelar">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    {w.name}
+                    {w.country && <span title={COUNTRIES[w.country]?.name}>{COUNTRIES[w.country]?.flag}</span>}
+                    {w.isCurrent && <span className="text-[10px] font-medium bg-blue-50 text-blue-600 rounded-full px-2 py-0.5">Actual</span>}
+                    {w.isRoot && <span className="text-[10px] font-medium bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">Principal</span>}
+                  </p>
+                  <p className="text-xs text-gray-400">{w.memberCount} usuarios{w.country ? ` · ${COUNTRIES[w.country]?.name ?? w.country}` : ''}</p>
+                </>
+              )}
+            </div>
+            {editing !== w.tenantId && (
+              <div className="flex items-center gap-1">
+                <button type="button" title="Editar nombre/país"
+                  onClick={() => { setEditing(w.tenantId); setEditName(w.name); setEditCountry(w.country ?? ''); }}
+                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button type="button" title="Clonar estructura hacia este workspace"
+                  onClick={() => {
+                    setCloneTarget(cloneTarget === w.tenantId ? null : w.tenantId);
+                    setCloneSource(workspaces.find((x) => x.tenantId !== w.tenantId)?.tenantId ?? '');
+                  }}
+                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Panel de clonación */}
+      {cloneTarget && (
+        <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/50 p-4">
+          <p className="text-sm font-semibold text-gray-800 mb-2">
+            Clonar estructura → {workspaces.find((w) => w.tenantId === cloneTarget)?.name}
+          </p>
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <label className="text-xs text-gray-500">Desde:</label>
+            <select value={cloneSource} onChange={(e) => setCloneSource(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded text-sm bg-white">
+              <option value="">Elegir origen…</option>
+              {workspaces.filter((w) => w.tenantId !== cloneTarget).map((w) => (
+                <option key={w.tenantId} value={w.tenantId}>{w.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-wrap gap-3 mb-3">
+            {CLONE_SECTIONS.map((s) => (
+              <label key={s.key} className="flex items-center gap-1.5 text-sm text-gray-700">
+                <input type="checkbox" checked={cloneSections.includes(s.key)} onChange={() => toggleSection(s.key)}
+                  className="rounded border-gray-300" />
+                {s.label}
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => doClone(cloneTarget)}
+              disabled={!cloneSource || cloneSections.length === 0 || busy === `clone-${cloneTarget}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {busy === `clone-${cloneTarget}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+              Clonar
+            </button>
+            <button type="button" onClick={() => setCloneTarget(null)}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+              Cancelar
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">Solo copia lo que falta (no duplica elementos con el mismo nombre/código).</p>
+        </div>
+      )}
+
+      {/* Agregar país */}
+      {availableCountries.length > 0 && (
+        <div className="mt-4">
+          {!showAdd ? (
+            <button type="button" onClick={() => setShowAdd(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-dashed border-gray-300 text-gray-600 rounded-lg hover:border-blue-400 hover:text-blue-600 transition-colors">
+              <Plus className="w-4 h-4" /> Agregar país
+            </button>
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">País</label>
+                <select value={newCountry} onChange={(e) => setNewCountry(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                  <option value="">Elegir país…</option>
+                  {availableCountries.map(([code, c]) => (
+                    <option key={code} value={code}>{c.flag} {c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1 min-w-48">
+                <label className="block text-xs text-gray-500 mb-1">Nombre (opcional)</label>
+                <input value={newName} onChange={(e) => setNewName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  placeholder={newCountry && workspaces[0] ? `${workspaces.find(w => w.isRoot)?.name?.split(' ')[0] ?? 'Empresa'} ${COUNTRIES[newCountry]?.name ?? ''}` : 'Ej: Dada Chile'} />
+              </div>
+              <button type="button" onClick={addCountry} disabled={!newCountry || busy === 'add'}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                {busy === 'add' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Crear
+              </button>
+              <button type="button" onClick={() => setShowAdd(false)}
+                className="px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">Cancelar</button>
+              <p className="w-full text-xs text-gray-400">Se crea vacío y el equipo actual del grupo queda habilitado automáticamente.</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

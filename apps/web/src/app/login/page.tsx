@@ -85,7 +85,8 @@ export default function LoginPage() {
       if ((data as any)?.activeTenant?.id) localStorage.setItem('tenantId', (data as any).activeTenant.id);
       if ((data as any)?.csrfToken) localStorage.setItem('csrfToken', (data as any).csrfToken);
 
-      window.location.href = '/dashboard';
+      // Multi-país: si tiene más de un sistema de gestión, elegir primero
+      window.location.href = (data as any)?.needsTenantSwitch ? '/select-tenant' : '/dashboard';
     } catch (e: any) {
       setError(e.message || 'Error inesperado. Por favor intentá nuevamente.');
     } finally {

@@ -318,7 +318,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                     onClick={() => { setShowUserMenu(false); router.push('/select-tenant'); }}
                     className="w-full px-4 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
                   >
-                    Cambiar organización
+                    Cambiar sistema de gestión
                   </button>
                   {user?.globalRole === 'SUPER_ADMIN' && (
                     <button

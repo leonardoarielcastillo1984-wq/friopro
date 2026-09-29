@@ -364,6 +364,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       user: { id: user.id, email: user.email, globalRole: user.globalRole },
       activeTenant,
       tenantRole,
+      needsTenantSwitch: !body.tenantId && memberships.length > 1,
       csrfToken,
     });
   });
@@ -702,11 +703,18 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         where: { deletedAt: null },
         orderBy: { name: 'asc' },
       });
+      const logos = await (app.prisma as any).companySettings.findMany({
+        where: { tenantId: { in: tenants.map((t) => t.id) } },
+        select: { tenantId: true, logoUrl: true },
+      });
+      const logoByTenant = new Map(logos.map((l: any) => [l.tenantId, l.logoUrl]));
       return reply.send({
         tenants: tenants.map((t) => ({
           tenantId: t.id,
           name: t.name,
           slug: t.slug,
+          country: (t as any).country ?? null,
+          logoUrl: logoByTenant.get(t.id) ?? null,
           role: 'TENANT_ADMIN',
         })),
       });
@@ -723,11 +731,19 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       orderBy: { createdAt: 'asc' },
     });
 
+    const memberLogos = await (app.prisma as any).companySettings.findMany({
+      where: { tenantId: { in: memberships.map((m) => m.tenantId) } },
+      select: { tenantId: true, logoUrl: true },
+    });
+    const logoByMemberTenant = new Map(memberLogos.map((l: any) => [l.tenantId, l.logoUrl]));
+
     return reply.send({
       tenants: memberships.map((m) => ({
         tenantId: m.tenantId,
         name: m.tenant.name,
         slug: m.tenant.slug,
+        country: (m.tenant as any).country ?? null,
+        logoUrl: logoByMemberTenant.get(m.tenantId) ?? null,
         role: m.role,
       })),
     });

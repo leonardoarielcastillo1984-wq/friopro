@@ -312,6 +312,12 @@ model Tenant {
   status      String @default("ACTIVE")
   storageUsed Int    @default(0) @map("storage_used")
 
+  // Multi-país: workspaces de un mismo grupo empresario (ej. "Dada Argentina",
+  // "Dada Chile"). parentTenantId null = raíz del grupo; los hijos son
+  // tenants independientes que comparten plan/miembros con la raíz.
+  country        String? // ISO-3166 alpha-2: AR, CL, BR...
+  parentTenantId String? @db.Uuid
+
   // Demo mode
   isDemo        Boolean   @default(false)
   demoStartedAt DateTime? @db.Timestamptz
@@ -526,6 +532,8 @@ model Tenant {
   // Flota 360 — Proyección: catálogo técnico de referencias y mediciones de condición
   fleetComponentReferences   FleetComponentReference[]
   fleetComponentMeasurements FleetComponentMeasurement[]
+
+  @@index([parentTenantId])
 }
 
 model PlatformUser {

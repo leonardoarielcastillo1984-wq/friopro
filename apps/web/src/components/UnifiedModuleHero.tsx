@@ -117,7 +117,9 @@ export default function UnifiedModuleHero({
         if (data.csrfToken) localStorage.setItem('csrfToken', data.csrfToken);
       }
 
-      window.location.href = destination;
+      // Multi-país: si el usuario tiene más de un sistema de gestión, elegir primero
+      const dest = data.needsTenantSwitch && moduleKey === 'sgi360' ? '/select-tenant' : destination;
+      window.location.href = dest;
     } catch (err: any) {
       setLoginError(err.message || 'Error al iniciar sesión');
     } finally {
