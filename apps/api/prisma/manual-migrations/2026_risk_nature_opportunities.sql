@@ -4,9 +4,9 @@
 -- 2) Nuevos valores en enum RiskStrategy para estrategias de oportunidad.
 -- Migración aditiva e idempotente.
 
-ALTER TABLE "risks" ADD COLUMN IF NOT EXISTS "nature" TEXT NOT NULL DEFAULT 'RISK';
+ALTER TABLE "Risk" ADD COLUMN IF NOT EXISTS "nature" TEXT NOT NULL DEFAULT 'RISK';
 
-CREATE INDEX IF NOT EXISTS "risks_nature_idx" ON "risks" ("nature");
+CREATE INDEX IF NOT EXISTS "Risk_nature_idx" ON "Risk" ("nature");
 
 ALTER TYPE "RiskStrategy" ADD VALUE IF NOT EXISTS 'EXPLOTAR';
 ALTER TYPE "RiskStrategy" ADD VALUE IF NOT EXISTS 'POTENCIAR';
