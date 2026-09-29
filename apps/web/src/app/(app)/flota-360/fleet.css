@@ -48,6 +48,15 @@
 .fleet-event-red { background:#fee8e8; color:#b33139; border-color:#ed5c65; }
 .fleet-event-amber { background:#fff3d4; color:#946408; border-color:#eeb63c; }
 .fleet-event-violet { background:#f0eaff; color:#7942c2; border-color:#9f74e7; }
+/* Proyección de plan (no es un evento real): contorno punteado neutro */
+.fleet-event-plan { background:#f4f7fc; color:#425572; border:1px dashed #aebdd0; border-left-width:3px; }
+/* Columna que contiene el día actual */
+.fleet-col-hoy { background:#f2f7ff; box-shadow:inset 2px 0 0 #2563eb; }
+.fleet-hoy-tag { display:inline-block; margin-left:6px; background:#2563eb; color:#fff; border-radius:999px; padding:1px 7px; font-size:9px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+/* Scroll vertical dentro del cronograma para header sticky; altura de fila consistente */
+.fleet-schedule-scroll { overflow:auto; max-height:calc(100vh - 240px); }
+.fleet-plan-matrix tbody td { height:66px; vertical-align:top; }
+.fleet-plan-matrix tbody td.sticky { vertical-align:middle; }
 .fleet-planning { display:flex; flex-direction:column; }
 .fleet-planning > * { order:3; }
 .fleet-planning > :first-child { order:0; }

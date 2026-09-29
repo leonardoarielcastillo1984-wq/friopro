@@ -6,7 +6,7 @@ import { VehicleArt } from '../_components/FleetVisual';
 import { apiFetch } from '@/lib/api';
 import {
   Plus, X, Wrench, Zap, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, ScanLine, CalendarClock,
-  Pencil, PackageSearch, Users2, ExternalLink, RotateCcw, History, Filter, Trash2,
+  Pencil, PackageSearch, Users2, ExternalLink, RotateCcw, History, Filter, Trash2, Download,
 } from 'lucide-react';
 
 type RepuestoRegla = { sparePartId: string; cantidad: number; nombre: string; code: string | null; disponible: number | null; currentStock: number | null };
@@ -27,7 +27,13 @@ type Alerta = {
   estado: 'VENCIDO' | 'URGENTE' | 'PROXIMO';
 };
 
-type EventoCelda = { tipo: 'OT' | 'QR' | 'PLAN'; id: string; codigo?: string; titulo?: string; estado: string; prioridad?: string; origen?: string | null; hallazgos?: number; criticos?: number };
+type EventoCelda = {
+  tipo: 'OT' | 'QR' | 'PLAN'; id: string; codigo?: string; titulo?: string; estado: string;
+  prioridad?: string; origen?: string | null; hallazgos?: number; criticos?: number;
+  fecha?: string | null; fechaReal?: string | null; responsable?: string | null;
+  evidencias?: number; duracionEst?: number | null; duracionReal?: number | null;
+  inspector?: string | null;
+};
 
 type PlanActivo = {
   id: string; plan: string; codigo: string;
@@ -40,7 +46,9 @@ type PlanActivo = {
 };
 type Celda = { eventos: EventoCelda[] } | null;
 type Columna = { index: number; label: string; desde: string; hasta: string };
-type Fila = { vehiculoId: string; dominio: string; tipo: string; status: string; odometro: number | null; hasPlan: boolean; celdas: Celda[] };
+type PlanResumen = { titulo: string; frecuencia: string };
+type Fila = { vehiculoId: string; dominio: string; tipo: string; status: string; odometro: number | null; hasPlan: boolean; planResumen?: PlanResumen | null; evaluable?: boolean; celdas: Celda[] };
+type Resumen = { totalUnidades: number; conPlan: number; vencidos: number; pendientesRevision: number; sinEvaluar: number };
 
 type RepuestoInv = {
   id: string; code: string; name: string; category: string | null;
@@ -56,6 +64,16 @@ const CRIT_COLOR: Record<string, string> = { BAJA: 'bg-neutral-100 text-neutral-
 const ALERTA_COLOR: Record<string, string> = { VENCIDO: 'bg-red-50 text-red-700', URGENTE: 'bg-amber-50 text-amber-700', PROXIMO: 'bg-blue-50 text-blue-700' };
 const ALERTA_LABEL: Record<string, string> = { VENCIDO: 'Vencido', URGENTE: 'Urgente', PROXIMO: 'Próximo' };
 const REPUESTO_COLOR: Record<string, string> = { OK: 'bg-green-50 text-green-700', BAJO: 'bg-amber-50 text-amber-700', CRITICO: 'bg-red-50 text-red-700' };
+
+// Color + etiqueta por estado de evento en la grilla (azul/rojo/verde/amarillo/violeta según spec)
+const EVENTO_COLOR: Record<string, string> = {
+  PROGRAMADO: 'blue', EJECUTADO: 'green', VENCIDO: 'red',
+  PENDIENTE_REVISION: 'amber', QR: 'violet', PROXIMO: 'plan',
+};
+const EVENTO_LABEL: Record<string, string> = {
+  PROGRAMADO: 'Programado', EJECUTADO: 'Ejecutado', VENCIDO: 'Vencido',
+  PENDIENTE_REVISION: 'Pendiente revisión', QR: 'Inspección QR', PROXIMO: 'Previsto',
+};
 
 function fmtFecha(d: string | null) {
   if (!d) return '—';
@@ -116,6 +134,9 @@ export default function PlanesFrecuenciasClient() {
   const [ajusteMotivo, setAjusteMotivo] = useState('');
   const [historialRepuesto, setHistorialRepuesto] = useState<RepuestoInv | null>(null);
   const [historialMovs, setHistorialMovs] = useState<any[]>([]);
+  const [resumen, setResumen] = useState<Resumen | null>(null);
+  const [showRegMant, setShowRegMant] = useState(false);
+  const [regMantForm, setRegMantForm] = useState<any>({ vehiculoId: '', titulo: '', tipo: 'PREVENTIVE', fecha: '', odometro: '', tecnicoId: '', descripcion: '', laborCost: '', repuestos: [] as { sparePartId: string; cantidad: number }[] });
 
   const [form, setForm] = useState<any>(FORM_INICIAL);
   const [saving, setSaving] = useState(false);
@@ -143,7 +164,7 @@ export default function PlanesFrecuenciasClient() {
       const [r, a, prog, inv, v, taller, filtros, planes, tecs, spareCat] = await Promise.all([
         apiFetch<{ rules: Rule[] }>('/fleet-ops/component-rules'),
         apiFetch<{ alertas: Alerta[] }>(`/fleet-ops/alertas-servicio?${alertaParams.toString()}`),
-        apiFetch<{ columnas: Columna[]; filas: Fila[] }>(`/fleet-ops/programa-mantenimiento?${params.toString()}`),
+        apiFetch<{ columnas: Columna[]; filas: Fila[]; resumen?: Resumen }>(`/fleet-ops/programa-mantenimiento?${params.toString()}`),
         apiFetch<{ repuestos: RepuestoInv[] }>('/fleet-ops/repuestos-inventario'),
         apiFetch<{ vehiculos: any[] }>('/flota/vehiculos'),
         apiFetch<{ dias: string[]; filas: FilaTaller[] }>('/fleet-ops/carga-taller?dias=7'),
@@ -162,6 +183,7 @@ export default function PlanesFrecuenciasClient() {
       setTallerFilas(taller.filas || []);
       setTiposDisponibles(filtros.tipos || []);
       setPlanesActivos(planes.planes || []);
+      setResumen(prog.resumen || null);
       setTecnicos((tecs.technicians || []).map((t: any) => ({ id: t.id, name: t.name })));
       setCatalogoRepuestos((spareCat.parts || []).map((p: any) => ({ id: p.id, code: p.code, name: p.name, currentStock: p.currentStock })));
     } finally {
@@ -351,6 +373,77 @@ export default function PlanesFrecuenciasClient() {
     }
   };
 
+  // "Registrar mantenimiento": crea una OT directamente COMPLETED — el backend descuenta
+  // stock de repuestos, calcula costos y avanza el plan (flujo real existente).
+  const registrarMantenimiento = async () => {
+    const veh = vehiculos.find((v) => v.id === regMantForm.vehiculoId);
+    if (!veh?.maintenanceAssetId || !regMantForm.titulo || !regMantForm.fecha) {
+      setError('Unidad, trabajo realizado y fecha son obligatorios');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiFetch('/maintenance/work-orders', {
+        method: 'POST',
+        json: {
+          title: regMantForm.titulo,
+          description: regMantForm.descripcion || undefined,
+          type: regMantForm.tipo,
+          status: 'COMPLETED',
+          assetId: veh.maintenanceAssetId,
+          technicianId: regMantForm.tecnicoId || undefined,
+          scheduledDate: new Date(regMantForm.fecha + 'T12:00:00').toISOString(),
+          finalOdometer: regMantForm.odometro ? Number(regMantForm.odometro) : undefined,
+          laborCost: regMantForm.laborCost ? Number(regMantForm.laborCost) : 0,
+          repuestos: (regMantForm.repuestos || []).map((rp: any) => ({ sparePartId: rp.sparePartId, quantity: Number(rp.cantidad) || 1 })),
+        },
+      });
+      setShowRegMant(false);
+      setRegMantForm({ vehiculoId: '', titulo: '', tipo: 'PREVENTIVE', fecha: '', odometro: '', tecnicoId: '', descripcion: '', laborCost: '', repuestos: [] });
+      load();
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo registrar el mantenimiento');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Exportar la grilla visible a CSV (unidad x período) — dato real del endpoint.
+  const exportarCSV = () => {
+    const sep = ';';
+    const fmtD = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString('es-AR') : '');
+    const header = ['Unidad', 'Tipo', 'Plan', 'Odómetro', ...columnas.map((c) => (periodo === 'MES' ? `${fmtD(c.desde)} - ${fmtD(c.hasta)}` : c.label))];
+    const lineas = filas.map((f) => [
+      f.dominio, f.tipo, f.planResumen ? `${f.planResumen.titulo} (${f.planResumen.frecuencia})` : 'Sin plan',
+      f.odometro != null ? String(f.odometro) : '',
+      ...f.celdas.map((c) => (c?.eventos || []).map((e) => `${e.codigo || e.titulo || 'Inspección QR'} [${EVENTO_LABEL[e.estado] || e.estado}] ${fmtD(e.fecha)}`).join(' | ')),
+    ]);
+    const csv = [header, ...lineas].map((l) => l.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(sep)).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `cronograma-mantenimiento-${fmtFechaInput(new Date())}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  // Etiqueta de rango para columnas semanales en vista MES: "31 ago – 6 sep"
+  const fmtRango = (desde: string, hasta: string) => {
+    const d = new Date(desde), h = new Date(hasta);
+    const corta = (x: Date) => x.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+    return `${corta(d)} – ${corta(h)}`;
+  };
+
+  const hoy = new Date();
+  const colContieneHoy = (c: Columna) => hoy >= new Date(c.desde) && hoy <= new Date(c.hasta);
+  // Posición % de la línea "Hoy" dentro de la columna (fracción del rango de la columna)
+  const posHoyEnCol = (c: Columna) => {
+    const d = +new Date(c.desde), h = +new Date(c.hasta);
+    if (!(h > d)) return 50;
+    return Math.min(97, Math.max(3, ((hoy.getTime() - d) / (h - d)) * 100));
+  };
+
   const abrirAjuste = (p: RepuestoInv) => { setAjusteRepuesto(p); setAjusteDelta(''); setAjusteMotivo(''); };
   const guardarAjuste = async () => {
     if (!ajusteRepuesto || !ajusteDelta || !ajusteMotivo || ajusteMotivo.trim().length < 3) { setError('Ingresá cantidad y motivo (mínimo 3 caracteres)'); return; }
@@ -468,81 +561,52 @@ export default function PlanesFrecuenciasClient() {
   return (
     <div className="fleet-planning space-y-3">
       {/* Cabecera */}
-      <div className="rounded-lg border border-neutral-200 bg-white p-3 space-y-2.5">
+      <div className="rounded-lg border border-neutral-200 bg-white p-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-lg font-bold text-[#0d1b3d]">Planes y frecuencias</h1>
-            <p className="text-xs text-neutral-500">Cockpit operativo de planificación de mantenimiento de flota</p>
+            <h1 className="text-lg font-bold text-[#0d1b3d]">Cronograma de mantenimiento</h1>
+            <p className="text-xs text-neutral-500">Planificación y seguimiento de la flota</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setShowNuevoPlan(true)} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 shrink-0">
-              <CalendarClock className="h-3.5 w-3.5" /> Nuevo plan
+              <CalendarClock className="h-3.5 w-3.5" /> Crear plan
             </button>
-            <button onClick={() => setShowModal(true)} className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 shrink-0">
-              <Plus className="h-3.5 w-3.5" /> Nuevo componente
+            <Link href="/flota-360/ordenes?nueva=1" className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 shrink-0">
+              <Plus className="h-3.5 w-3.5" /> Programar
+            </Link>
+            <button onClick={() => { setError(null); setRegMantForm({ ...regMantForm, fecha: fmtFechaInput(new Date()) }); setShowRegMant(true); }} className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 shrink-0">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Registrar mantenimiento
+            </button>
+            <button onClick={() => setShowModal(true)} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-50 shrink-0" title="Definir un componente del catálogo de frecuencias">
+              <Wrench className="h-3.5 w-3.5" /> Componente
             </button>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap border-t border-neutral-100 pt-2.5">
-          <div className="flex items-center rounded-md border border-neutral-300 overflow-hidden">
-            {(['SEMANA', 'MES', 'TRIMESTRE'] as const).map((p) => (
-              <button key={p} onClick={() => setPeriodo(p)} className={`px-2.5 py-1 text-[11px] font-medium ${periodo === p ? 'bg-blue-600 text-white' : 'bg-white text-neutral-600 hover:bg-neutral-50'}`}>
-                {p === 'SEMANA' ? 'Semana' : p === 'MES' ? 'Mes' : 'Trimestre'}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1">
-            <button onClick={irAnterior} className="rounded-md border border-neutral-300 p-1 hover:bg-neutral-50"><ChevronLeft className="h-3.5 w-3.5" /></button>
-            <button onClick={irHoy} className="rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium hover:bg-neutral-50">Hoy</button>
-            <button onClick={irSiguiente} className="rounded-md border border-neutral-300 p-1 hover:bg-neutral-50"><ChevronRight className="h-3.5 w-3.5" /></button>
-            <span className="text-xs font-medium text-neutral-700 ml-1 capitalize">{periodoLabel}</span>
-          </div>
-          <div className="h-4 w-px bg-neutral-200 mx-1" />
-          <Filter className="h-3.5 w-3.5 text-neutral-400" />
-          <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} className="rounded-md border border-neutral-300 px-2 py-1 text-[11px]">
-            <option value="">Todos los tipos</option>
-            {tiposDisponibles.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded-md border border-neutral-300 px-2 py-1 text-[11px]">
-            <option value="">Todos los estados</option>
-            <option value="ACTIVO">Activo</option>
-            <option value="EN_TALLER">En taller</option>
-            <option value="INACTIVO">Inactivo</option>
-            <option value="BAJA">Baja</option>
-          </select>
-          <select value={filtroVehiculo} onChange={(e) => setFiltroVehiculo(e.target.value)} className="rounded-md border border-neutral-300 px-2 py-1 text-[11px] max-w-[140px]">
-            <option value="">Todas las unidades</option>
-            {vehiculos.map((v) => <option key={v.id} value={v.id}>{v.dominio}</option>)}
-          </select>
-          <label className="flex items-center gap-1.5 text-[11px] text-neutral-600 cursor-pointer">
-            <input type="checkbox" checked={soloAlertas} onChange={(e) => setSoloAlertas(e.target.checked)} className="rounded" />
-            Solo alertas
-          </label>
         </div>
       </div>
 
-      {/* Contexto visual del período: mantiene visible frecuencia, riesgo y cobertura de la flota. */}
+      {/* KPIs: Con plan / Sin plan / Vencidos / Pendientes de revisión — datos reales del endpoint */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         <div className="rounded-xl border border-blue-100 bg-blue-50/45 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-700">Cobertura de planes</p>
-          <p className="mt-1 text-xl font-bold text-neutral-900">{unidadesConPlan}<span className="text-xs font-medium text-neutral-400"> / {filas.length}</span></p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-700">Con plan</p>
+          <p className="mt-1 text-xl font-bold text-neutral-900">{resumen ? resumen.conPlan : unidadesConPlan}<span className="text-xs font-medium text-neutral-400"> / {resumen ? resumen.totalUnidades : filas.length}</span></p>
           <p className="mt-1 text-[11px] text-neutral-500">unidades con frecuencia configurada</p>
         </div>
-        <div className={`rounded-xl border p-3 ${alertasVencidas > 0 ? 'border-red-200 bg-red-50/60' : 'border-emerald-100 bg-emerald-50/50'}`}>
-          <p className={`text-[10px] font-semibold uppercase tracking-wide ${alertasVencidas > 0 ? 'text-red-700' : 'text-emerald-700'}`}>Servicios vencidos</p>
-          <p className="mt-1 text-xl font-bold text-neutral-900">{alertasVencidas}</p>
-          <p className="mt-1 text-[11px] text-neutral-500">requieren definición de OT</p>
+        <div className={`rounded-xl border p-3 ${(resumen ? resumen.totalUnidades - resumen.conPlan : filas.length - unidadesConPlan) > 0 ? 'border-neutral-200 bg-white' : 'border-emerald-100 bg-emerald-50/50'}`}>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Sin plan</p>
+          <p className="mt-1 text-xl font-bold text-neutral-900">{resumen ? resumen.totalUnidades - resumen.conPlan : filas.length - unidadesConPlan}</p>
+          <p className="mt-1 text-[11px] text-neutral-500">unidades sin frecuencia asignada</p>
         </div>
-        <div className="rounded-xl border border-amber-100 bg-amber-50/55 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Próximos a vencer</p>
-          <p className="mt-1 text-xl font-bold text-neutral-900">{alertasUrgentes}</p>
-          <p className="mt-1 text-[11px] text-neutral-500">dentro de la ventana preventiva</p>
+        <div className={`rounded-xl border p-3 ${(resumen?.vencidos ?? 0) > 0 ? 'border-red-200 bg-red-50/60' : 'border-emerald-100 bg-emerald-50/50'}`}>
+          <p className={`text-[10px] font-semibold uppercase tracking-wide ${(resumen?.vencidos ?? 0) > 0 ? 'text-red-700' : 'text-emerald-700'}`}>Vencidos</p>
+          <p className="mt-1 text-xl font-bold text-neutral-900">{resumen?.vencidos ?? '—'}</p>
+          <p className="mt-1 text-[11px] text-neutral-500">
+            OTs pendientes pasadas de fecha{(resumen?.sinEvaluar ?? 0) > 0 ? ` · ${resumen!.sinEvaluar} sin evaluar` : ''}
+          </p>
         </div>
-        <div className={`rounded-xl border p-3 ${repuestosCriticos > 0 ? 'border-violet-100 bg-violet-50/55' : 'border-neutral-200 bg-white'}`}>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-700">Repuestos a revisar</p>
-          <p className="mt-1 text-xl font-bold text-neutral-900">{repuestosCriticos}</p>
-          <p className="mt-1 text-[11px] text-neutral-500">stock bajo o reservado sin cobertura</p>
+        <div className={`rounded-xl border p-3 ${(resumen?.pendientesRevision ?? 0) > 0 ? 'border-amber-200 bg-amber-50/55' : 'border-neutral-200 bg-white'}`}>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Pendientes de revisión</p>
+          <p className="mt-1 text-xl font-bold text-neutral-900">{resumen?.pendientesRevision ?? '—'}</p>
+          <p className="mt-1 text-[11px] text-neutral-500">inspecciones con hallazgos sin derivar</p>
         </div>
       </div>
 
@@ -646,52 +710,130 @@ export default function PlanesFrecuenciasClient() {
         </div>
       </div>
 
-      {/* Fila 2: Matriz / cronograma de mantenimiento */}
+      {/* Cronograma de mantenimiento — elemento central */}
       <div className="fleet-schedule rounded-lg border border-neutral-200 bg-white overflow-hidden">
-        <div className="px-3 py-2 border-b border-neutral-200 flex items-center justify-between">
-          <span className="text-xs font-semibold text-neutral-800 flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" /> Programa de mantenimientos</span>
-          <span className="text-[11px] text-neutral-400">Click en un evento para ver el detalle</span>
+        {/* Toolbar: período, navegación, filtros y exportación */}
+        <div className="px-3 py-2 border-b border-neutral-200 flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-neutral-800 flex items-center gap-1.5 mr-1"><CalendarClock className="h-3.5 w-3.5" /> Cronograma</span>
+          <div className="flex items-center rounded-md border border-neutral-300 overflow-hidden">
+            {(['SEMANA', 'MES', 'TRIMESTRE'] as const).map((p) => (
+              <button key={p} onClick={() => setPeriodo(p)} className={`px-2.5 py-1 text-[11px] font-medium ${periodo === p ? 'bg-blue-600 text-white' : 'bg-white text-neutral-600 hover:bg-neutral-50'}`}>
+                {p === 'SEMANA' ? 'Semana' : p === 'MES' ? 'Mes' : 'Trimestre'}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={irAnterior} aria-label="Período anterior" className="rounded-md border border-neutral-300 p-1 hover:bg-neutral-50"><ChevronLeft className="h-3.5 w-3.5" /></button>
+            <button onClick={irHoy} className="rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium hover:bg-neutral-50">Hoy</button>
+            <button onClick={irSiguiente} aria-label="Período siguiente" className="rounded-md border border-neutral-300 p-1 hover:bg-neutral-50"><ChevronRight className="h-3.5 w-3.5" /></button>
+            <span className="text-xs font-medium text-neutral-700 ml-1 capitalize">{periodoLabel}</span>
+          </div>
+          <div className="h-4 w-px bg-neutral-200 mx-1" />
+          <Filter className="h-3.5 w-3.5 text-neutral-400" />
+          <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} aria-label="Filtrar por tipo" className="rounded-md border border-neutral-300 px-2 py-1 text-[11px]">
+            <option value="">Todos los tipos</option>
+            {tiposDisponibles.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} aria-label="Filtrar por estado" className="rounded-md border border-neutral-300 px-2 py-1 text-[11px]">
+            <option value="">Todos los estados</option>
+            <option value="ACTIVO">Activo</option>
+            <option value="EN_TALLER">En taller</option>
+            <option value="INACTIVO">Inactivo</option>
+            <option value="BAJA">Baja</option>
+          </select>
+          <select value={filtroVehiculo} onChange={(e) => setFiltroVehiculo(e.target.value)} aria-label="Filtrar por unidad" className="rounded-md border border-neutral-300 px-2 py-1 text-[11px] max-w-[140px]">
+            <option value="">Todas las unidades</option>
+            {vehiculos.map((v) => <option key={v.id} value={v.id}>{v.dominio}</option>)}
+          </select>
+          <label className="flex items-center gap-1.5 text-[11px] text-neutral-600 cursor-pointer">
+            <input type="checkbox" checked={soloAlertas} onChange={(e) => setSoloAlertas(e.target.checked)} className="rounded" />
+            Solo alertas
+          </label>
+          <button onClick={exportarCSV} className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50">
+            <Download className="h-3.5 w-3.5" /> Exportar
+          </button>
         </div>
-        <div className="overflow-x-auto">
+
+        <div className="fleet-schedule-scroll">
           <table className="fleet-plan-matrix w-full text-xs">
             <thead className="bg-neutral-50 text-neutral-500 uppercase tracking-wide">
               <tr>
-                <th className="text-left font-medium px-2.5 py-1.5 sticky left-0 bg-neutral-50 z-10 min-w-[140px]">Activo</th>
-                {columnas.map((c) => (
-                  <th key={c.index} className="text-center font-medium px-2 py-1.5 min-w-[64px] capitalize">{c.label}</th>
-                ))}
+                <th className="text-left font-medium px-2.5 py-2 sticky left-0 top-0 bg-neutral-50 z-30 min-w-[190px]">Unidad / Plan</th>
+                {columnas.map((c) => {
+                  const esHoy = colContieneHoy(c);
+                  return (
+                    <th key={c.index} className={`text-center font-medium px-2 py-2 min-w-[110px] capitalize sticky top-0 z-20 ${esHoy ? 'fleet-col-hoy' : 'bg-neutral-50'}`}>
+                      {periodo === 'MES' ? fmtRango(c.desde, c.hasta) : c.label}
+                      {esHoy && <span className="fleet-hoy-tag">Hoy</span>}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {filas.length === 0 && <tr><td colSpan={columnas.length + 1} className="px-3 py-6 text-center text-neutral-400">No hay vehículos cargados en la flota</td></tr>}
               {filas.map((f) => (
                 <tr key={f.vehiculoId} className="hover:bg-neutral-50">
-                  <td className="px-2.5 py-2 font-medium text-neutral-800 sticky left-0 bg-white z-10">
+                  <td className="px-2.5 py-2 font-medium text-neutral-800 sticky left-0 bg-white z-10 border-r border-neutral-200">
                     <Link href={`/flota-360/vehiculos/${f.vehiculoId}`} className="flex items-center gap-2 text-blue-800"><VehicleArt semi={f.tipo === 'SEMI'} className="fleet-thumb" /><strong>{f.dominio}</strong></Link>
                     <div className="text-[11px] text-neutral-400">{f.tipo} · {f.odometro != null ? `${f.odometro.toLocaleString('es-AR')} km` : 's/odómetro'}</div>
-                    {!f.hasPlan && <span className="inline-block mt-0.5 rounded bg-neutral-100 text-neutral-500 px-1 py-0.5 text-[10px]">Sin plan asignado</span>}
+                    {f.planResumen ? (
+                      <div className="mt-0.5 text-[11px] text-neutral-600 truncate" title={`${f.planResumen.titulo} · ${f.planResumen.frecuencia}`}>
+                        <span className="font-medium">{f.planResumen.titulo}</span>
+                        <span className="text-neutral-400"> · {f.planResumen.frecuencia}</span>
+                      </div>
+                    ) : (
+                      <span className="inline-block mt-1 rounded border border-amber-200 bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[10px] font-medium">Sin plan asignado</span>
+                    )}
                   </td>
                   {f.celdas.map((c, ci) => {
                     const col = columnas[ci];
-                    const tieneVencido = c?.eventos.some((e) => e.estado === 'VENCIDO');
-                    const tieneEjecutado = c?.eventos.some((e) => e.estado === 'EJECUTADO');
-                    const tieneProgramado = c?.eventos.some((e) => e.estado === 'PROGRAMADO');
-                    const tienePlan = c?.eventos.some((e) => e.tipo === 'PLAN');
-                    const tieneQR = c?.eventos.some((e) => e.tipo === 'QR');
-                    return (
-                      <td key={ci} className="px-2 py-2 text-center group relative">
-                        {c ? (
-                          <div>{c.eventos.map((evento, index) => <button key={`${evento.tipo}-${evento.id}-${index}`} onClick={() => setCeldaDetalle({ fila: f, col, eventos: c.eventos })} className={`fleet-event fleet-event-${evento.estado === 'VENCIDO' ? 'red' : evento.estado === 'EJECUTADO' ? 'green' : evento.tipo === 'QR' ? 'violet' : evento.tipo === 'PLAN' ? 'amber' : 'blue'}`} title={evento.titulo || evento.codigo}>
-                            <strong className="block">{evento.titulo || evento.codigo || (evento.tipo === 'QR' ? 'Inspección QR' : 'Mantenimiento')}</strong><span>{evento.tipo === 'QR' ? 'Inspección QR' : evento.estado.toLowerCase().replaceAll('_', ' ')}</span>
-                          </button>)}</div>
-                        ) : (
+                    const esHoyCol = col ? colContieneHoy(col) : false;
+                    const lineaHoy = esHoyCol && col ? (
+                      <span className="pointer-events-none absolute inset-y-0 w-[2px] bg-blue-500/70 z-10" style={{ left: `${posHoyEnCol(col)}%` }} />
+                    ) : null;
+                    if (!c || c.eventos.length === 0) {
+                      return (
+                        <td key={ci} className={`p-0 relative ${esHoyCol ? 'fleet-col-hoy' : ''}`}>
+                          {lineaHoy}
                           <Link
                             href={`/flota-360/ordenes?nueva=1&vehiculoId=${f.vehiculoId}&fecha=${col ? fmtFechaInput(new Date(col.desde)) : ''}&titulo=${encodeURIComponent('Mantenimiento programado')}`}
-                            className="text-neutral-200 group-hover:text-blue-500 text-[13px] leading-none"
-                            title="Crear OT en esta fecha"
+                            className="group flex h-full min-h-[66px] w-full items-center justify-center"
+                            title={`Programar mantenimiento para ${f.dominio} en ${col ? fmtFecha(col.desde) : 'esta fecha'}`}
                           >
-                            +
+                            <span className="text-neutral-200 group-hover:text-blue-500 text-[13px] leading-none">+</span>
+                            <span className="absolute bottom-1 text-[9px] font-medium text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">Programar</span>
                           </Link>
+                        </td>
+                      );
+                    }
+                    // Agrupar inspecciones QR de la misma celda en un solo ítem
+                    const qrs = c.eventos.filter((e) => e.tipo === 'QR');
+                    const otros = c.eventos.filter((e) => e.tipo !== 'QR');
+                    const items: { ev?: EventoCelda; qrGroup?: EventoCelda[] }[] = otros.map((ev) => ({ ev }));
+                    if (qrs.length === 1) items.push({ ev: qrs[0] });
+                    else if (qrs.length > 1) items.push({ qrGroup: qrs });
+                    const MAX_VISIBLES = 2;
+                    const visibles = items.slice(0, MAX_VISIBLES);
+                    const ocultos = items.length - visibles.length;
+                    return (
+                      <td key={ci} className={`px-1.5 py-1.5 relative ${esHoyCol ? 'fleet-col-hoy' : ''}`}>
+                        {lineaHoy}
+                        {visibles.map((item, i) => item.qrGroup ? (
+                          <button key={`qrg-${i}`} onClick={() => setCeldaDetalle({ fila: f, col, eventos: c.eventos })} className="fleet-event fleet-event-violet">
+                            <strong className="block">{item.qrGroup.length} inspecciones QR</strong>
+                            <span>Ver registros</span>
+                          </button>
+                        ) : item.ev ? (
+                          <button key={`${item.ev.tipo}-${item.ev.id}-${i}`} onClick={() => setCeldaDetalle({ fila: f, col, eventos: c.eventos })} className={`fleet-event fleet-event-${EVENTO_COLOR[item.ev.estado] || 'blue'}`} title={item.ev.titulo || item.ev.codigo}>
+                            <strong className="block">{item.ev.titulo || item.ev.codigo || 'Mantenimiento'}</strong>
+                            <span>{EVENTO_LABEL[item.ev.estado] || item.ev.estado}{item.ev.fecha ? ` · ${fmtFecha(item.ev.fecha)}` : ''}</span>
+                          </button>
+                        ) : null)}
+                        {ocultos > 0 && (
+                          <button onClick={() => setCeldaDetalle({ fila: f, col, eventos: c.eventos })} className="mt-0.5 block w-full text-center text-[10px] font-medium text-blue-600 hover:underline">
+                            Ver {ocultos} más
+                          </button>
                         )}
                       </td>
                     );
@@ -705,9 +847,10 @@ export default function PlanesFrecuenciasClient() {
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500 inline-block" /> Programado</span>
           <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-600" /> Ejecutado</span>
           <span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3 text-red-600" /> Vencido</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500 inline-block" /> Alerta próxima</span>
-          <span className="flex items-center gap-1"><ScanLine className="h-3 w-3 text-purple-600" /> Inspección / hallazgo QR</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-neutral-200 inline-block" /> Sin plan asignado</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500 inline-block" /> Pendiente de revisión</span>
+          <span className="flex items-center gap-1"><ScanLine className="h-3 w-3 text-purple-600" /> Inspección QR</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded border border-dashed border-neutral-400 inline-block" /> Previsto por plan</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-amber-100 border border-amber-300 inline-block" /> Sin plan asignado</span>
         </div>
       </div>
 
@@ -1013,39 +1156,148 @@ export default function PlanesFrecuenciasClient() {
                 <div key={i} className="rounded-md border border-neutral-200 p-2.5 space-y-1.5">
                   {ev.tipo === 'OT' ? (
                     <>
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium text-neutral-800">{ev.codigo} · {ev.titulo}</span>
-                        <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${ev.estado === 'VENCIDO' ? 'bg-red-50 text-red-700' : ev.estado === 'EJECUTADO' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>{ev.estado === 'VENCIDO' ? 'Vencido' : ev.estado === 'EJECUTADO' ? 'Ejecutado' : 'Programado'}</span>
+                        <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium shrink-0 ${ev.estado === 'VENCIDO' ? 'bg-red-50 text-red-700' : ev.estado === 'EJECUTADO' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>{EVENTO_LABEL[ev.estado] || 'Programado'}</span>
                       </div>
-                      <p className="text-xs text-neutral-500">Prioridad: {ev.prioridad} · Origen: {ev.origen || 'Mantenimiento'}</p>
-                      <Link href="/flota-360/ordenes" className="text-xs text-blue-600 hover:underline flex items-center gap-1 w-fit"><ExternalLink className="h-3 w-3" /> Ver en Órdenes de trabajo</Link>
-                      {ev.estado !== 'EJECUTADO' && (
-                        <div className="flex items-center gap-1.5 pt-1">
-                          <input type="date" value={moverFecha} onChange={(e) => setMoverFecha(e.target.value)} className="rounded-md border border-neutral-300 px-2 py-1 text-xs" />
-                          <button onClick={() => moverOT(ev.id)} disabled={saving || !moverFecha} className="rounded-md bg-neutral-800 px-2 py-1 text-[11px] font-medium text-white hover:bg-neutral-700 disabled:opacity-50">Mover</button>
-                        </div>
-                      )}
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-neutral-600">
+                        <span>Prevista: <strong className="font-medium">{fmtFecha(ev.fecha ?? null)}</strong></span>
+                        <span>Real: <strong className="font-medium">{ev.fechaReal ? fmtFecha(ev.fechaReal) : '—'}</strong></span>
+                        <span>Responsable: <strong className="font-medium">{ev.responsable || 'Sin asignar'}</strong></span>
+                        <span>Odómetro: <strong className="font-medium">{celdaDetalle.fila.odometro != null ? `${celdaDetalle.fila.odometro.toLocaleString('es-AR')} km` : '—'}</strong></span>
+                        {ev.duracionEst != null && <span>Dur. estimada: <strong className="font-medium">{ev.duracionEst}h</strong></span>}
+                        {ev.duracionReal != null && <span>Dur. real: <strong className="font-medium">{ev.duracionReal}h</strong></span>}
+                        <span>Evidencias: <strong className="font-medium">{ev.evidencias || 0}</strong></span>
+                        <span>Prioridad: <strong className="font-medium">{ev.prioridad || '—'}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-3 pt-0.5 flex-wrap">
+                        <Link href={`/flota-360/ordenes?ver=${ev.id}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1 w-fit"><ExternalLink className="h-3 w-3" /> Ver / completar en Órdenes</Link>
+                        {ev.estado !== 'EJECUTADO' && (
+                          <div className="flex items-center gap-1.5">
+                            <input type="date" value={moverFecha} onChange={(e) => setMoverFecha(e.target.value)} className="rounded-md border border-neutral-300 px-2 py-1 text-xs" />
+                            <button onClick={() => moverOT(ev.id)} disabled={saving || !moverFecha} className="rounded-md bg-neutral-800 px-2 py-1 text-[11px] font-medium text-white hover:bg-neutral-700 disabled:opacity-50">Reprogramar</button>
+                          </div>
+                        )}
+                      </div>
                     </>
                   ) : ev.tipo === 'PLAN' ? (
                     <>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-neutral-800 flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5 text-amber-600" /> {ev.titulo || 'Servicio planificado'}</span>
-                        <span className="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700">Alerta próxima</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-neutral-800 flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5 text-neutral-500" /> {ev.titulo || 'Servicio planificado'}</span>
+                        <span className="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium border border-dashed border-neutral-400 text-neutral-600 shrink-0">Previsto por plan</span>
                       </div>
-                      <p className="text-xs text-neutral-500">El plan de mantenimiento vence en este período. Podés generar la OT con fecha programada.</p>
-                      <Link href={`/flota-360/ordenes?nueva=1&vehiculoId=${celdaDetalle.fila.vehiculoId}&titulo=${encodeURIComponent(ev.titulo || 'Servicio planificado')}&fecha=${celdaDetalle.col ? fmtFechaInput(new Date(celdaDetalle.col.desde)) : ''}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1 w-fit"><ExternalLink className="h-3 w-3" /> Crear OT programada</Link>
+                      <p className="text-xs text-neutral-500">Vencimiento previsto del plan{ev.fecha ? `: ${fmtFecha(ev.fecha)}` : ' en este período'}. Podés generar la OT con fecha programada.</p>
+                      <Link href={`/flota-360/ordenes?nueva=1&vehiculoId=${celdaDetalle.fila.vehiculoId}&titulo=${encodeURIComponent(ev.titulo || 'Servicio planificado')}&fecha=${ev.fecha ? fmtFechaInput(new Date(ev.fecha)) : celdaDetalle.col ? fmtFechaInput(new Date(celdaDetalle.col.desde)) : ''}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1 w-fit"><ExternalLink className="h-3 w-3" /> Crear OT programada</Link>
                     </>
                   ) : (
                     <>
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium text-neutral-800 flex items-center gap-1"><ScanLine className="h-3.5 w-3.5 text-purple-600" /> Inspección QR</span>
+                        {ev.estado === 'PENDIENTE_REVISION' && <span className="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700 shrink-0">Pendiente revisión</span>}
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-neutral-600">
+                        <span>Fecha: <strong className="font-medium">{fmtFecha(ev.fecha ?? null)}</strong></span>
+                        <span>Inspector: <strong className="font-medium">{ev.inspector || '—'}</strong></span>
                       </div>
                       <p className="text-xs text-neutral-500">{ev.hallazgos || 0} hallazgo(s) registrado(s){ev.criticos ? `, ${ev.criticos} crítico(s)` : ''}</p>
-                      <Link href="/flota-360/inspecciones" className="text-xs text-blue-600 hover:underline flex items-center gap-1 w-fit"><ExternalLink className="h-3 w-3" /> Ver inspecciones QR</Link>
+                      <div className="flex items-center gap-3">
+                        <Link href="/flota-360/inspecciones" className="text-xs text-blue-600 hover:underline flex items-center gap-1 w-fit"><ExternalLink className="h-3 w-3" /> Ver inspecciones QR</Link>
+                        {ev.estado === 'PENDIENTE_REVISION' && (
+                          <Link href={`/flota-360/ordenes?nueva=1&vehiculoId=${celdaDetalle.fila.vehiculoId}&titulo=${encodeURIComponent('Hallazgo inspección QR')}`} className="text-xs text-amber-700 hover:underline flex items-center gap-1 w-fit"><Plus className="h-3 w-3" /> Derivar a OT</Link>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: registrar mantenimiento ya ejecutado (OT COMPLETED — descuenta stock y avanza plan) */}
+      {showRegMant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <h2 className="text-sm font-semibold text-neutral-900">Registrar mantenimiento ejecutado</h2>
+              <button onClick={() => setShowRegMant(false)}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              {error && <p className="text-xs text-red-600">{error}</p>}
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Unidad *</label>
+                <select value={regMantForm.vehiculoId} onChange={(e) => { const veh = vehiculos.find((v) => v.id === e.target.value); setRegMantForm({ ...regMantForm, vehiculoId: e.target.value, odometro: veh?.currentOdometer != null ? String(veh.currentOdometer) : regMantForm.odometro }); }} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                  <option value="">Seleccionar…</option>
+                  {vehiculos.filter((v) => v.maintenanceAssetId).map((v) => <option key={v.id} value={v.id}>{v.dominio} · {v.tipo}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Trabajo realizado *</label>
+                <input value={regMantForm.titulo} onChange={(e) => setRegMantForm({ ...regMantForm, titulo: e.target.value })} placeholder="Ej: Cambio de aceite y filtros" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Fecha real *</label>
+                  <input type="date" value={regMantForm.fecha} onChange={(e) => setRegMantForm({ ...regMantForm, fecha: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Tipo</label>
+                  <select value={regMantForm.tipo} onChange={(e) => setRegMantForm({ ...regMantForm, tipo: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                    <option value="PREVENTIVE">Preventivo</option>
+                    <option value="CORRECTIVE">Correctivo</option>
+                    <option value="PREDICTIVE">Predictivo</option>
+                    <option value="EMERGENCY">Emergencia</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Odómetro (km)</label>
+                  <input type="number" value={regMantForm.odometro} onChange={(e) => setRegMantForm({ ...regMantForm, odometro: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Responsable</label>
+                  <select value={regMantForm.tecnicoId} onChange={(e) => setRegMantForm({ ...regMantForm, tecnicoId: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                    <option value="">Sin asignar</option>
+                    {tecnicos.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Repuestos utilizados</label>
+                <div className="space-y-1.5">
+                  {(regMantForm.repuestos || []).map((rp: any, i: number) => {
+                    const parte = catalogoRepuestos.find((p) => p.id === rp.sparePartId);
+                    return (
+                      <div key={rp.sparePartId} className="flex items-center gap-2">
+                        <span className="flex-1 truncate text-xs text-neutral-700">{parte ? `${parte.code} · ${parte.name}` : rp.sparePartId}</span>
+                        <input type="number" min={1} value={rp.cantidad} onChange={(e) => setRegMantForm({ ...regMantForm, repuestos: regMantForm.repuestos.map((x: any, j: number) => j === i ? { ...x, cantidad: Number(e.target.value) } : x) })} className="w-16 rounded-md border border-neutral-300 px-2 py-1 text-xs" />
+                        <button type="button" onClick={() => setRegMantForm({ ...regMantForm, repuestos: regMantForm.repuestos.filter((_: any, j: number) => j !== i) })} className="text-neutral-400 hover:text-red-600"><X className="h-3.5 w-3.5" /></button>
+                      </div>
+                    );
+                  })}
+                  <select value="" onChange={(e) => { const pid = e.target.value; if (pid) setRegMantForm({ ...regMantForm, repuestos: [...(regMantForm.repuestos || []), { sparePartId: pid, cantidad: 1 }] }); }} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                    <option value="">+ Agregar repuesto…</option>
+                    {catalogoRepuestos.filter((p) => !(regMantForm.repuestos || []).some((rp: any) => rp.sparePartId === p.id)).map((p) => (
+                      <option key={p.id} value={p.id}>{p.code} · {p.name} (stock {p.currentStock})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Costo mano de obra ($)</label>
+                <input type="number" value={regMantForm.laborCost} onChange={(e) => setRegMantForm({ ...regMantForm, laborCost: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Observaciones</label>
+                <textarea value={regMantForm.descripcion} onChange={(e) => setRegMantForm({ ...regMantForm, descripcion: e.target.value })} rows={2} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+              <p className="text-[11px] text-neutral-400">Se crea una OT ejecutada: descuenta el stock de repuestos, calcula costos y avanza el plan de la unidad.</p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
+              <button onClick={() => setShowRegMant(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">Cancelar</button>
+              <button onClick={registrarMantenimiento} disabled={saving} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{saving ? 'Registrando…' : 'Registrar'}</button>
             </div>
           </div>
         </div>

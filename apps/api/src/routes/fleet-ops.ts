@@ -1334,7 +1334,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     if (estado) vehiculoWhere.status = estado;
     if (vehiculoId) vehiculoWhere.id = vehiculoId;
 
-    const [vehiculos, workOrders, inspecciones, planesActivos] = await Promise.all([
+    const [vehiculos, workOrders, inspecciones, otsVencidasGlobal, inspPendRevisionGlobal, planesActivos] = await Promise.all([
       prisma().vehiculo.findMany({
         where: vehiculoWhere,
         select: { id: true, dominio: true, tipo: true, status: true, currentOdometer: true, maintenanceAssetId: true },
@@ -1342,11 +1342,23 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       }),
       prisma().workOrder.findMany({
         where: { tenantId, scheduledDate: { gte: rangoConsultaDesde, lte: rangoConsultaHasta } },
-        select: { id: true, code: true, title: true, status: true, priority: true, scheduledDate: true, assetId: true, origen: true },
+        select: {
+          id: true, code: true, title: true, status: true, priority: true,
+          scheduledDate: true, completedAt: true, assetId: true, origen: true, estimatedDuration: true, actualDuration: true,
+          technician: { select: { name: true } },
+          _count: { select: { evidencePhotos: true } },
+        },
       }),
       prisma().inspeccion.findMany({
         where: { tenantId, createdAt: { gte: rangoConsultaDesde, lte: rangoConsultaHasta } },
         include: { qr: { select: { maintenanceAssetId: true } }, hallazgos: { select: { id: true, severidad: true, equipoDestino: true } } },
+      }),
+      // KPIs globales (no limitados al rango visible): OT vencidas e inspecciones con hallazgos sin derivar
+      prisma().workOrder.count({
+        where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] }, scheduledDate: { lt: now } },
+      }),
+      prisma().inspeccion.count({
+        where: { tenantId, hallazgosCount: { gt: 0 }, otId: null, ncrId: null, capaId: null },
       }),
       prisma().maintenancePlan.findMany({
         where: { tenantId, status: 'ACTIVE', assetId: { not: null } },
@@ -1388,11 +1400,24 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
           let estadoOT: 'PROGRAMADO' | 'EJECUTADO' | 'VENCIDO' = 'PROGRAMADO';
           if (o.status === 'COMPLETED') estadoOT = 'EJECUTADO';
           else if (o.status === 'PENDING' && new Date(o.scheduledDate) < now) estadoOT = 'VENCIDO';
-          eventos.push({ tipo: 'OT', id: o.id, codigo: o.code, titulo: o.title, estado: estadoOT, prioridad: o.priority, origen: o.origen });
+          eventos.push({
+            tipo: 'OT', id: o.id, codigo: o.code, titulo: o.title, estado: estadoOT,
+            prioridad: o.priority, origen: o.origen,
+            fecha: o.scheduledDate, fechaReal: o.completedAt ?? null,
+            responsable: o.technician?.name ?? null,
+            evidencias: o._count?.evidencePhotos ?? 0,
+            duracionEst: o.estimatedDuration ?? null, duracionReal: o.actualDuration ?? null,
+          });
         }
         for (const i of inspEnCol) {
           const hallazgosRol = i.hallazgos.filter((h: any) => !h.equipoDestino || (esSemi ? h.equipoDestino === 'SEMI' : h.equipoDestino === 'TRACTOR'));
-          eventos.push({ tipo: 'QR', id: i.id, estado: 'QR', hallazgos: hallazgosRol.length, criticos: hallazgosRol.filter((h: any) => h.severidad === 'CRITICO').length });
+          const derivada = !!(i.otId || i.ncrId || i.capaId);
+          eventos.push({
+            tipo: 'QR', id: i.id,
+            estado: hallazgosRol.length > 0 && !derivada ? 'PENDIENTE_REVISION' : 'QR',
+            hallazgos: hallazgosRol.length, criticos: hallazgosRol.filter((h: any) => h.severidad === 'CRITICO').length,
+            fecha: i.createdAt, inspector: i.inspectorNombre ?? null,
+          });
         }
         // Proyección de planes: marca ámbar cuando el próximo servicio cae dentro de la columna
         // (por fecha nextExecutionDate o por km estimado con promedio de uso).
@@ -1412,15 +1437,30 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
             }
           }
           if (fechaPlan && fechaPlan >= col.desde && fechaPlan <= col.hasta) {
-            eventos.push({ tipo: 'PLAN', id: p.id, titulo: p.title, estado: 'PROXIMO' });
+            eventos.push({ tipo: 'PLAN', id: p.id, titulo: p.title, estado: 'PROXIMO', fecha: fechaPlan });
           }
         }
         return eventos.length > 0 ? { eventos } : null;
       });
 
+      const primerPlan = planesVeh[0] || null;
+      const planResumen = primerPlan
+        ? {
+            titulo: primerPlan.title,
+            frecuencia: primerPlan.frequencyUnit === 'KM' && primerPlan.triggerKm
+              ? `cada ${Math.round(primerPlan.triggerKm).toLocaleString('es-AR')} km`
+              : `cada ${primerPlan.frequencyValue} ${primerPlan.frequencyUnit === 'DAYS' ? 'días' : primerPlan.frequencyUnit === 'WEEKS' ? 'semanas' : primerPlan.frequencyUnit === 'MONTHS' ? 'meses' : 'años'}`,
+          }
+        : null;
+      // El vencimiento no puede evaluarse si el plan no tiene fecha ni regla por km con odómetro cargado
+      const evaluable = planesVeh.some((p: any) =>
+        p.nextExecutionDate || (p.frequencyUnit === 'KM' && p.triggerKm && v.currentOdometer != null)
+      );
+
       return {
         vehiculoId: v.id, dominio: v.dominio, tipo: v.tipo, status: v.status,
         odometro: v.currentOdometer, hasPlan: v.maintenanceAssetId ? planPorAsset.has(v.maintenanceAssetId) : false,
+        planResumen, evaluable,
         celdas,
       };
     });
@@ -1429,7 +1469,15 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       filas = filas.filter((f: any) => f.celdas.some((c: any) => c?.eventos.some((e: any) => e.estado === 'VENCIDO')));
     }
 
-    return reply.send({ periodo, periodoInicio, periodoFin, columnas, filas });
+    const resumen = {
+      totalUnidades: filas.length,
+      conPlan: filas.filter((f: any) => f.hasPlan).length,
+      vencidos: otsVencidasGlobal,
+      pendientesRevision: inspPendRevisionGlobal,
+      sinEvaluar: filas.filter((f: any) => f.hasPlan && !f.evaluable).length,
+    };
+
+    return reply.send({ periodo, periodoInicio, periodoFin, columnas, filas, resumen });
   });
 
   // Mueve una OT planificada (aún no iniciada) a otra fecha dentro del cronograma.
@@ -1445,10 +1493,35 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     if (!ot) return reply.code(404).send({ error: 'Orden de trabajo no encontrada' });
     if (ot.status !== 'PENDING') return reply.code(409).send({ error: 'Solo se pueden reprogramar órdenes pendientes' });
 
+    const fechaAnterior = ot.scheduledDate;
     const actualizada = await prisma().workOrder.update({
       where: { id: ot.id },
       data: { scheduledDate: new Date(body.data.nuevaFecha) },
     });
+
+    // Trazabilidad: conservar la fecha anterior en el historial del vehículo (auditoría).
+    // La reprogramación nunca borra la fecha original.
+    try {
+      const vehiculo = await prisma().vehiculo.findFirst({
+        where: { tenantId, maintenanceAssetId: ot.assetId },
+        select: { id: true },
+      });
+      if (vehiculo) {
+        await prisma().vehiculoHistorialMantenimiento.create({
+          data: {
+            tenantId,
+            vehiculoId: vehiculo.id,
+            workOrderId: ot.id,
+            fecha: new Date(),
+            tipo: 'REPROGRAMACION',
+            descripcion: `OT ${ot.code} reprogramada: ${fechaAnterior ? new Date(fechaAnterior).toLocaleDateString('es-AR') : 'sin fecha'} → ${new Date(body.data.nuevaFecha).toLocaleDateString('es-AR')}`,
+          },
+        });
+      }
+    } catch (e) {
+      console.error('[fleet-ops] no se pudo registrar trazabilidad de reprogramación:', e);
+    }
+
     return reply.send({ ok: true, workOrder: actualizada });
   });
 
