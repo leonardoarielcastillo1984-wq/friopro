@@ -37,6 +37,8 @@ export type DocumentRow = {
   processes?: { id: string; name: string }[];
   ownerId?: string | null;
   owner?: { id: string; firstName: string; lastName: string; email: string } | null;
+  responsibleEmployeeId?: string | null;
+  responsibleEmployee?: { id: string; firstName: string; lastName: string; email: string } | null;
   reviewDate?: string | null;
   nextReviewDate?: string | null;
   reviewStatus?: 'APPROVED' | 'REQUIRES_UPDATE';

@@ -52,6 +52,26 @@ async function resolveOwnerId(db: any, tenantId: string, rawId: string | null | 
   return mapped?.id ?? null;
 }
 
+// Document.responsibleEmployeeId es un escalar a Employee (sin relación Prisma).
+// Resuelve el ID recibido: si ya es un Employee del tenant lo devuelve; si es un
+// PlatformUser, mapea por email a su Employee. Si no hay mapeo posible → null.
+async function resolveResponsibleEmployeeId(db: any, tenantId: string, rawId: string | null | undefined): Promise<string | null> {
+  if (!rawId) return null;
+  const employee = await db.employee.findFirst({
+    where: { id: rawId, tenantId, deletedAt: null },
+    select: { id: true },
+  });
+  if (employee) return employee.id;
+  // Puede ser un PlatformUser: mapear por email al Employee
+  const user = await db.platformUser.findUnique({ where: { id: rawId }, select: { email: true } });
+  if (!user?.email) return null;
+  const byEmail = await db.employee.findFirst({
+    where: { tenantId, deletedAt: null, email: { equals: user.email, mode: 'insensitive' } },
+    select: { id: true },
+  });
+  return byEmail?.id ?? null;
+}
+
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
     app.requireFeature(req, 'documentos');
@@ -77,6 +97,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           process: true,
           ownerId: true,
           owner: { select: { id: true, firstName: true, lastName: true, email: true } },
+          responsibleEmployeeId: true,
           reviewDate: true,
           nextReviewDate: true,
           reviewStatus: true,
@@ -102,6 +123,18 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       (processesByDoc[link.documentId] ??= []).push({ id: link.process.id, name: link.process.name });
     }
 
+    // Resolver responsables (empleados) en lote
+    const respIds = [...new Set(documents.map((d: any) => d.responsibleEmployeeId).filter(Boolean))] as string[];
+    const respEmployees = respIds.length
+      ? await app.runWithDbContext(req, async (tx: any) => {
+          return tx.employee.findMany({
+            where: { id: { in: respIds } },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          });
+        })
+      : [];
+    const respById = new Map(respEmployees.map((e: any) => [e.id, e]));
+
     // Calcular estado automático de vigencia
     const today = new Date();
     const documentsWithAutoStatus = documents.map((d: any) => {
@@ -113,7 +146,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         else if (diffDays <= 15) autoStatus = 'POR_VENCER';
         else autoStatus = 'VIGENTE';
       }
-      return { ...d, autoStatus, processes: processesByDoc[d.id] ?? [] };
+      return { ...d, autoStatus, processes: processesByDoc[d.id] ?? [], responsibleEmployee: respById.get(d.responsibleEmployeeId) ?? null };
     });
 
     return reply.send({ documents: documentsWithAutoStatus });
@@ -229,12 +262,21 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     if (autoStatus === 'VENCIDO') alerts.push('Documento vencido');
     if (autoStatus === 'POR_VENCER') alerts.push('Documento próximo a vencer');
     if (!doc.reviewDate) alerts.push('Sin revisión registrada');
-    if (!doc.ownerId) alerts.push('Sin responsable asignado');
+    if (!doc.ownerId && !doc.responsibleEmployeeId) alerts.push('Sin responsable asignado');
+
+    const responsibleEmployee = doc.responsibleEmployeeId
+      ? await app.runWithDbContext(req, async (tx: any) =>
+          tx.employee.findFirst({
+            where: { id: doc.responsibleEmployeeId },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          }))
+      : null;
 
     // Return full document data including content and filePath
     return reply.send({
       document: {
         ...doc,
+        responsibleEmployee,
         content: extractedContent || doc.content,
         filePath: doc.filePath,
         fileUrl: doc.filePath ? `/documents/${doc.id}/download` : null,
@@ -259,6 +301,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       normativeId: z.string().uuid().optional(),
       process: z.string().optional(),
       ownerId: z.string().uuid().optional(),
+      responsibleEmployeeId: z.string().uuid().nullable().optional(),
       reviewDate: z.string().datetime().optional(),
       nextReviewDate: z.string().datetime().optional(),
       reviewStatus: z.enum(['APPROVED', 'REQUIRES_UPDATE']).optional(),
@@ -267,7 +310,9 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const body = bodySchema.parse(req.body);
 
     const created = await app.runWithDbContext(req, async (tx: any) => {
-      const resolvedOwnerId = await resolveOwnerId(tx, req.db!.tenantId as string, body.ownerId);
+      const rawResponsible = body.responsibleEmployeeId ?? body.ownerId ?? null;
+      const resolvedOwnerId = await resolveOwnerId(tx, req.db!.tenantId as string, rawResponsible);
+      const responsibleEmployeeId = await resolveResponsibleEmployeeId(tx, req.db!.tenantId as string, rawResponsible);
       const doc = await tx.document.create({
         data: {
           tenantId: (req.db!.tenantId as string),
@@ -278,6 +323,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           normativeId: body.normativeId,
           process: body.process,
           ownerId: resolvedOwnerId,
+          responsibleEmployeeId,
           reviewDate: safeParseDate(body.reviewDate),
           nextReviewDate: safeParseDate(body.nextReviewDate),
           reviewStatus: (body.reviewStatus as any) ?? 'APPROVED',
@@ -312,6 +358,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       normativeIds: z.union([z.array(z.string().uuid()), z.null()]).optional(),
       process: z.union([z.string(), z.null()]).optional(),
       ownerId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional(),
+      responsibleEmployeeId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional(),
       reviewDate: z.union([z.string().datetime(), z.literal(''), z.null()]).optional(),
       nextReviewDate: z.union([z.string().datetime(), z.literal(''), z.null()]).optional(),
       reviewStatus: z.enum(['APPROVED', 'REQUIRES_UPDATE']).optional(),
@@ -324,10 +371,18 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       const existing = await tx.document.findFirst({ where: { id: params.id, deletedAt: null } });
       if (!existing) return null;
 
-      // Resolver ownerId: admite PlatformUser o Employee (mapea por email)
-      const validOwnerId = body.ownerId !== undefined
-        ? await resolveOwnerId(tx, req.db!.tenantId as string, body.ownerId)
+      // Resolver responsable: responsibleEmployeeId tiene precedencia; ownerId se
+      // acepta como alias (el front legacy lo usa para enviar el id del empleado).
+      // ownerId se resuelve a PlatformUser solo para notificaciones/alertas.
+      const rawResponsible = body.responsibleEmployeeId !== undefined
+        ? body.responsibleEmployeeId
+        : body.ownerId;
+      const validOwnerId = rawResponsible !== undefined
+        ? await resolveOwnerId(tx, req.db!.tenantId as string, rawResponsible || null)
         : existing.ownerId;
+      const validResponsibleEmployeeId = rawResponsible !== undefined
+        ? await resolveResponsibleEmployeeId(tx, req.db!.tenantId as string, rawResponsible || null)
+        : (existing as any).responsibleEmployeeId ?? null;
 
       const updated = await tx.document.update({
         where: { id: existing.id },
@@ -343,6 +398,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
             : (body.normativeId !== undefined ? body.normativeId : existing.normativeId),
           process: body.process !== undefined ? body.process : existing.process,
           ownerId: validOwnerId,
+          responsibleEmployeeId: validResponsibleEmployeeId,
           reviewDate: body.reviewDate !== undefined ? safeParseDate(body.reviewDate) : existing.reviewDate,
           nextReviewDate: body.nextReviewDate !== undefined ? safeParseDate(body.nextReviewDate) : existing.nextReviewDate,
           reviewStatus: (body.reviewStatus as any) ?? existing.reviewStatus,
@@ -418,6 +474,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       normativeIds: z.array(z.string()).optional(),
       process: z.string().optional().nullable(),
       ownerId: z.string().uuid().optional().nullable(),
+      responsibleEmployeeId: z.string().uuid().optional().nullable(),
       nextReviewDate: z.string().optional().nullable(),
       documentCode: z.string().optional().nullable(),
       typeConfigId: z.string().uuid().optional().nullable(),
@@ -425,6 +482,9 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     }).parse(req.body);
 
     const created = await app.runWithDbContext(req, async (tx: any) => {
+      const rawResponsible = body.responsibleEmployeeId ?? body.ownerId ?? null;
+      const resolvedOwnerId = await resolveOwnerId(tx, tenantId, rawResponsible);
+      const responsibleEmployeeId = await resolveResponsibleEmployeeId(tx, tenantId, rawResponsible);
       return tx.document.create({
         data: {
           tenantId,
@@ -434,7 +494,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           departmentId: body.departmentId ?? null,
           normativeIds: body.normativeIds ?? [],
           process: body.process ?? null,
-          ownerId: body.ownerId ?? null,
+          ownerId: resolvedOwnerId,
+          responsibleEmployeeId,
           nextReviewDate: safeParseDate(body.nextReviewDate),
           documentCode: body.documentCode ?? null,
           typeConfigId: body.typeConfigId ?? null,
@@ -566,6 +627,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const normativeId = normativeIds.length > 0 ? normativeIds[0] : singleNormativeId;
     const docProcess = (data.fields?.process as any)?.value || null;
     let ownerId = (data.fields?.ownerId as any)?.value || null;
+    const responsibleEmployeeIdRaw = (data.fields?.responsibleEmployeeId as any)?.value || null;
     const reviewDate = (data.fields?.reviewDate as any)?.value || null;
     const nextReviewDate = (data.fields?.nextReviewDate as any)?.value || null;
     const documentCode = (data.fields?.documentCode as any)?.value || null;
@@ -581,9 +643,13 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: `La fecha de ${badField} no es válida. Verificala e intentá nuevamente.` });
     }
 
-    // Resolver ownerId: admite PlatformUser o Employee (mapea por email)
-    if (ownerId) {
-      ownerId = await resolveOwnerId(app.prisma as any, tenantId, ownerId);
+    // Resolver ownerId: admite PlatformUser o Employee (mapea por email).
+    // responsibleEmployeeId guarda SIEMPRE el empleado real (aunque no tenga usuario).
+    const rawResponsible = responsibleEmployeeIdRaw || ownerId;
+    let responsibleEmployeeId: string | null = null;
+    if (rawResponsible) {
+      ownerId = await resolveOwnerId(app.prisma as any, tenantId, rawResponsible);
+      responsibleEmployeeId = await resolveResponsibleEmployeeId(app.prisma as any, tenantId, rawResponsible);
     }
 
     const created = await app.runWithDbContext(req, async (tx: any) => {
@@ -599,6 +665,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           normativeIds: normativeIds.length > 0 ? normativeIds : (normativeId ? [normativeId] : []),
           process: docProcess,
           ownerId,
+          responsibleEmployeeId,
           reviewDate: safeParseDate(reviewDate),
           nextReviewDate: safeParseDate(nextReviewDate),
           documentCode: documentCode || null,
@@ -1822,6 +1889,7 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
         typeConfig: { select: { id: true, name: true, abbreviation: true, color: true } },
         department: { select: { id: true, name: true } },
         owner: { select: { id: true, email: true, firstName: true, lastName: true } },
+        responsibleEmployeeId: true,
         approvedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
         relatedDocument: { select: { id: true, title: true, documentCode: true } },
         systemModuleUrl: true,
@@ -1830,12 +1898,28 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
       },
     } as any);
 
+    // Resolver responsables (empleados) en lote
+    const respIds = [...new Set(docs.map((d: any) => d.responsibleEmployeeId).filter(Boolean))] as string[];
+    const respMap = new Map(
+      (respIds.length
+        ? await app.prisma.employee.findMany({
+            where: { id: { in: respIds } },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          })
+        : []
+      ).map((e: any) => [e.id, e])
+    );
+    const docsWithResponsible = docs.map((d: any) => ({
+      ...d,
+      responsibleEmployee: respMap.get(d.responsibleEmployeeId) ?? null,
+    }));
+
     const [codeConfig, typeConfigs] = await Promise.all([
       (app.prisma as any).documentCodeConfig.findUnique({ where: { tenantId } }),
       (app.prisma as any).documentTypeConfig.findMany({ where: { tenantId, deletedAt: null }, orderBy: { name: 'asc' } }),
     ]);
 
-    return reply.send({ documents: docs, codeConfig, typeConfigs });
+    return reply.send({ documents: docsWithResponsible, codeConfig, typeConfigs });
   });
 
   // ── PUT /documents/:id/master — Actualizar metadatos del maestro ──
@@ -1853,8 +1937,13 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
       process: z.string().optional(),
       status: z.enum(['DRAFT', 'REVIEW', 'EFFECTIVE', 'OBSOLETE']).optional(),
       systemModuleUrl: z.string().optional().nullable(),
+      responsibleEmployeeId: z.union([z.string().uuid(), z.literal(''), z.null()]).optional(),
     });
     const data = schema.parse(req.body);
+
+    const responsibleEmployeeId = data.responsibleEmployeeId !== undefined
+      ? await resolveResponsibleEmployeeId(app.prisma as any, req.db!.tenantId as string, data.responsibleEmployeeId || null)
+      : undefined;
 
     const updated = await app.prisma.document.update({
       where: { id },
@@ -1863,6 +1952,7 @@ Respondé EXACTAMENTE en este formato JSON (sin markdown, sin bloques de código
         ...(data.typeConfigId !== undefined && { typeConfigId: data.typeConfigId }),
         ...(data.approvedAt !== undefined && { approvedAt: data.approvedAt ? new Date(data.approvedAt) : null }),
         ...(data.approvedById !== undefined && { approvedById: data.approvedById }),
+        ...(responsibleEmployeeId !== undefined && { responsibleEmployeeId }),
         ...(data.relatedDocumentId !== undefined && { relatedDocumentId: data.relatedDocumentId }),
         ...(data.nextReviewDate !== undefined && { nextReviewDate: safeParseDate(data.nextReviewDate) }),
         ...(data.process !== undefined && { process: data.process }),

@@ -363,6 +363,7 @@ export default function DocumentsPage() {
           normativeIds: uploadNormativeIds,
           process: uploadProcess || null,
           ownerId: uploadOwnerId || null,
+          responsibleEmployeeId: uploadOwnerId || null,
           nextReviewDate: uploadNextReviewDate || null,
         },
       }) as { document: { id: string; title: string } };
@@ -417,7 +418,10 @@ export default function DocumentsPage() {
       formData.append('departmentId', uploadDepartmentId);
       if (uploadNormativeIds.length > 0) formData.append('normativeIds', JSON.stringify(uploadNormativeIds));
       if (uploadProcess) formData.append('process', uploadProcess);
-      if (uploadOwnerId) formData.append('ownerId', uploadOwnerId);
+      if (uploadOwnerId) {
+        formData.append('ownerId', uploadOwnerId);
+        formData.append('responsibleEmployeeId', uploadOwnerId);
+      }
       if (uploadNextReviewDate) formData.append('nextReviewDate', uploadNextReviewDate);
       if (uploadTypeConfigId) formData.append('typeConfigId', uploadTypeConfigId);
 

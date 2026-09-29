@@ -1257,6 +1257,11 @@ model Document {
   ownerId String?       @db.Uuid
   owner   PlatformUser? @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
+  // Responsable funcional del documento: escalar a Employee (sin relación Prisma;
+  // se resuelve manualmente en las queries). ownerId sigue siendo el usuario de
+  // plataforma cuando el empleado tiene cuenta (para notificaciones/alertas).
+  responsibleEmployeeId String? @db.Uuid
+
   reviewDate            DateTime? @db.Timestamptz
   nextReviewDate        DateTime? @db.Timestamptz
   reviewStatus          String?

@@ -76,6 +76,8 @@ interface DocRow {
   typeConfig: { id: string; name: string; abbreviation: string; color: string } | null;
   department: { id: string; name: string } | null;
   owner: { id: string; email: string; firstName?: string; lastName?: string } | null;
+  responsibleEmployeeId?: string | null;
+  responsibleEmployee?: { id: string; firstName: string; lastName: string; email: string } | null;
   approvedBy: { id: string; email: string; firstName?: string; lastName?: string } | null;
   relatedDocument: { id: string; title: string; documentCode: string | null } | null;
   systemModuleUrl: string | null;
@@ -238,7 +240,7 @@ export default function MaestroDocumentos() {
         d.department?.name || d.process || '',
         String(d.version),
         STATUS_CONFIG[d.status]?.label || d.status,
-        userName(d.owner),
+        userName(d.responsibleEmployee || d.owner),
         formatDate(d.createdAt),
         formatDate(d.approvedAt),
         formatDate(d.nextReviewDate),
@@ -429,7 +431,7 @@ export default function MaestroDocumentos() {
                         {st.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-neutral-600">{userName(doc.owner)}</td>
+                    <td className="px-4 py-3 text-xs text-neutral-600">{userName(doc.responsibleEmployee || doc.owner)}</td>
                     <td className="px-4 py-3 text-xs text-neutral-500">{formatDate(doc.createdAt)}</td>
                     <td className="px-4 py-3 text-xs text-neutral-500">{formatDate(doc.approvedAt)}</td>
                     <td className="px-4 py-3 text-xs">

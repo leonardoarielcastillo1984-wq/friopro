@@ -138,7 +138,7 @@ export default function DocumentDetailPage() {
         setEditNormativeIds([]);
         setEditNormativeId('');
       }
-      setEditOwnerId(docRes.document.ownerId || '');
+      setEditOwnerId(docRes.document.responsibleEmployeeId || docRes.document.ownerId || '');
       setEditProcess(docRes.document.process || '');
       setEditNextReviewDate(docRes.document.nextReviewDate ? new Date(docRes.document.nextReviewDate).toISOString().split('T')[0] : '');
       
@@ -239,6 +239,7 @@ export default function DocumentDetailPage() {
           normativeIds: editNormativeIds.length > 0 ? editNormativeIds : null,
           normativeId: editNormativeIds.length > 0 ? editNormativeIds[0] : null, // Para compatibilidad
           ownerId: editOwnerId || null,
+          responsibleEmployeeId: editOwnerId || null,
           process: editProcess || null,
           nextReviewDate: editNextReviewDate && editNextReviewDate.trim() !== '' 
             ? new Date(editNextReviewDate).toISOString() 
@@ -868,10 +869,14 @@ export default function DocumentDetailPage() {
                 <p className="text-sm font-medium text-neutral-800">{doc.process}</p>
               </div>
             )}
-            {doc.owner && (
+            {(doc.responsibleEmployee || doc.owner) && (
               <div>
                 <p className="text-xs text-neutral-500 mb-1">Responsable</p>
-                <p className="text-sm font-medium text-neutral-800">{doc.owner.firstName} {doc.owner.lastName}</p>
+                <p className="text-sm font-medium text-neutral-800">
+                  {doc.responsibleEmployee
+                    ? `${doc.responsibleEmployee.firstName} ${doc.responsibleEmployee.lastName}`
+                    : `${doc.owner?.firstName ?? ''} ${doc.owner?.lastName ?? ''}`.trim()}
+                </p>
               </div>
             )}
             {doc.reviewDate && (
