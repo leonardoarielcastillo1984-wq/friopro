@@ -146,7 +146,7 @@ export default function StrategicPanel({ year, refreshKey = 0 }: { year: number;
       </div>
     );
   }
-  if (error || !data) {
+  if (error || !data || !data.current) {
     return (
       <div className="bg-white border border-gray-200 rounded-xl p-4 text-sm text-gray-500">
         {error || 'Sin datos estratégicos.'}
@@ -154,7 +154,8 @@ export default function StrategicPanel({ year, refreshKey = 0 }: { year: number;
     );
   }
 
-  const { current, history, live } = data;
+  const { current, live } = data;
+  const history = data.history ?? [];
   const bs = BAND_STYLES[current.band] || BAND_STYLES.yellow;
   const maxScore = Math.max(100, ...history.map((h) => h.score));
 
