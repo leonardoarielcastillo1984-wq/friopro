@@ -464,23 +464,76 @@ export async function workspacesRoutes(app: FastifyInstance) {
             createdById: req.auth.userId,
           },
         });
+        // Cláusulas: jerarquía por parentClauseId → dos pasadas con remap
+        // (primero nivel 0, luego hijas con padre ya remapeado)
         const clauses = await app.prisma.normativeClause.findMany({
           where: { normativeId: n.id },
-          orderBy: { clauseNumber: 'asc' },
+          orderBy: [{ level: 'asc' }, { extractionOrder: 'asc' }],
         });
         if (clauses.length) {
-          await (app.prisma as any).normativeClause.createMany({
-            data: clauses.map((c: any) => ({
-              normativeId: created.id,
-              clauseNumber: c.clauseNumber,
-              title: c.title,
-              content: c.content,
-              parentClauseId: null,
-              level: c.level,
-              tags: c.tags,
-              aiMetadata: c.aiMetadata,
-            })),
-          });
+          const clauseIdMap = new Map<string, string>();
+          // Pasada 1: raíces (level 0 o sin padre resoluble aún)
+          for (const c of clauses as any[]) {
+            if (c.parentClauseId) continue;
+            const nc = await (app.prisma as any).normativeClause.create({
+              data: {
+                normativeId: created.id,
+                clauseNumber: c.clauseNumber,
+                title: c.title,
+                content: c.content,
+                parentClauseId: null,
+                level: c.level,
+                extractionOrder: c.extractionOrder,
+                pageNumber: c.pageNumber,
+                keywords: c.keywords ?? undefined,
+                status: c.status,
+              },
+            });
+            clauseIdMap.set(c.id, nc.id);
+          }
+          // Pasadas siguientes: hijas cuyo padre ya existe (puede haber >1 nivel)
+          let pending = (clauses as any[]).filter((c) => c.parentClauseId);
+          let guard = 0;
+          while (pending.length && guard++ < 10) {
+            const next: any[] = [];
+            for (const c of pending) {
+              const parentNew = clauseIdMap.get(c.parentClauseId);
+              if (!parentNew) { next.push(c); continue; }
+              const nc = await (app.prisma as any).normativeClause.create({
+                data: {
+                  normativeId: created.id,
+                  clauseNumber: c.clauseNumber,
+                  title: c.title,
+                  content: c.content,
+                  parentClauseId: parentNew,
+                  level: c.level,
+                  extractionOrder: c.extractionOrder,
+                  pageNumber: c.pageNumber,
+                  keywords: c.keywords ?? undefined,
+                  status: c.status,
+                },
+              });
+              clauseIdMap.set(c.id, nc.id);
+            }
+            pending = next;
+          }
+          // Huérfanas (padre borrado en origen): quedan como raíz
+          for (const c of pending) {
+            await (app.prisma as any).normativeClause.create({
+              data: {
+                normativeId: created.id,
+                clauseNumber: c.clauseNumber,
+                title: c.title,
+                content: c.content,
+                parentClauseId: null,
+                level: 0,
+                extractionOrder: c.extractionOrder,
+                pageNumber: c.pageNumber,
+                keywords: c.keywords ?? undefined,
+                status: c.status,
+              },
+            });
+          }
         }
         result.normatives++;
       }
