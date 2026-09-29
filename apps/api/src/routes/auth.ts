@@ -786,6 +786,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       userId: req.auth.userId,
       tenantId: body.tenantId,
       tenantRole,
+      globalRole: req.auth.globalRole || undefined,
     });
 
     // Keep refresh cookie unchanged; only rotate on /refresh.
@@ -801,7 +802,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       select: { id: true, name: true, slug: true },
     });
 
+    // Devolvemos el accessToken: el front lo usa como Bearer (tiene prioridad
+    // sobre la cookie), sin esto el switch quedaba pisado por el JWT viejo.
     return reply.send({
+      accessToken,
       activeTenant: activeTenant || { id: body.tenantId, name: '', slug: '' },
       tenantRole,
     });

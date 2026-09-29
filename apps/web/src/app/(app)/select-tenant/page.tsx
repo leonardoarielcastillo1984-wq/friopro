@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, setTenantId } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import type { TenantOption } from '@/lib/types';
 import { Building2, ArrowRight, Loader2, Globe, Shield, User } from 'lucide-react';
@@ -57,7 +57,18 @@ export default function SelectTenantPage() {
     setError(null);
     setSwitching(tenantId);
     try {
-      await apiFetch('/auth/switch-tenant', { method: 'POST', json: { tenantId } });
+      const res = await apiFetch<{ accessToken?: string; activeTenant?: { id: string; name: string; slug: string } }>(
+        '/auth/switch-tenant',
+        { method: 'POST', json: { tenantId } }
+      );
+      // El Bearer tiene prioridad sobre la cookie: hay que reemplazar el token
+      // viejo (que apunta al tenant origen) ANTES de pedir /auth/me.
+      if (typeof window !== 'undefined') {
+        if (res.accessToken) window.localStorage.setItem('accessToken', res.accessToken);
+        window.localStorage.setItem('tenantId', tenantId);
+        if (res.activeTenant?.id) window.localStorage.setItem('activeTenant', JSON.stringify(res.activeTenant));
+      }
+      setTenantId(tenantId);
       await refreshAuth();
       router.push('/dashboard');
     } catch (err: any) {
