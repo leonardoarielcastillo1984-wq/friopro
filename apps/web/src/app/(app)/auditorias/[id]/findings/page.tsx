@@ -64,6 +64,63 @@ export default function FindingsPage() {
     responsibleId: '',
   });
 
+  // Hallazgos tipo OPPORTUNITY derivados a la matriz de oportunidades
+  const [derivedIds, setDerivedIds] = useState<Set<string>>(new Set());
+  const [derivingId, setDerivingId] = useState<string | null>(null);
+
+  async function deriveToOpportunity(finding: Finding) {
+    if (derivedIds.has(finding.id)) return;
+    setDerivingId(finding.id);
+    try {
+      const desc = `Oportunidad derivada del hallazgo ${finding.code} de la auditoría ${audit?.code ?? ''}.\n\n${finding.description}${finding.clause ? `\n\nCláusula: ${finding.clause}` : ''}${finding.area ? `\nÁrea: ${finding.area}` : ''}${finding.evidence ? `\nEvidencia: ${finding.evidence}` : ''}`;
+      await apiFetch('/risks', {
+        method: 'POST',
+        json: {
+          title: finding.description.length > 120 ? `${finding.description.slice(0, 117)}…` : finding.description,
+          description: desc,
+          category: 'Calidad',
+          nature: 'OPPORTUNITY',
+          probability: 3,
+          impact: 3,
+          strategy: 'EXPLOTAR',
+          process: finding.area || undefined,
+          standard: audit?.isoStandard?.join(', ') || undefined,
+        },
+      });
+      setDerivedIds(prev => new Set(prev).add(finding.id));
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al derivar a la matriz de oportunidades');
+    } finally {
+      setDerivingId(null);
+    }
+  }
+
+  // Botón de derivación a la matriz de oportunidades (solo hallazgos tipo OPPORTUNITY)
+  function DeriveButton({ finding }: { finding: Finding }) {
+    if (finding.type !== 'OPPORTUNITY') return null;
+    if (derivedIds.has(finding.id)) {
+      return (
+        <>
+          <span className="text-gray-300">|</span>
+          <span className="text-sm text-emerald-600 font-medium">✓ En matriz de oportunidades</span>
+        </>
+      );
+    }
+    return (
+      <>
+        <span className="text-gray-300">|</span>
+        <button
+          type="button"
+          onClick={() => deriveToOpportunity(finding)}
+          disabled={derivingId === finding.id}
+          className="text-sm text-emerald-600 hover:text-emerald-800 disabled:opacity-50 font-medium"
+        >
+          {derivingId === finding.id ? 'Derivando…' : 'Derivar a matriz de oportunidades →'}
+        </button>
+      </>
+    );
+  }
+
   useEffect(() => {
     if (auditId) {
       loadData();
@@ -285,7 +342,7 @@ export default function FindingsPage() {
                       <span><strong>Evidencia:</strong> {finding.evidence}</span>
                     )}
                   </div>
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-4 flex gap-2 items-center flex-wrap">
                     <Link
                       href={`/auditorias/${auditId}/findings/${finding.id}`}
                       className="text-sm text-blue-600 hover:text-blue-800"
@@ -299,6 +356,7 @@ export default function FindingsPage() {
                     >
                       Acciones correctivas →
                     </Link>
+                    <DeriveButton finding={finding} />
                   </div>
                 </div>
               ))}
@@ -346,7 +404,7 @@ export default function FindingsPage() {
                         <span><strong>Evidencia:</strong> {finding.evidence}</span>
                       )}
                     </div>
-                    <div className="mt-4 flex gap-2">
+                    <div className="mt-4 flex gap-2 items-center flex-wrap">
                       <Link
                         href={`/auditorias/${auditId}/findings/${finding.id}`}
                         className="text-sm text-blue-600 hover:text-blue-800"
@@ -360,6 +418,7 @@ export default function FindingsPage() {
                       >
                         Acciones correctivas →
                       </Link>
+                      <DeriveButton finding={finding} />
                     </div>
                   </div>
                 ))

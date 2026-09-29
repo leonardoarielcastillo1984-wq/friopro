@@ -2,6 +2,7 @@ import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import XLSX from 'xlsx';
+import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 
 const FEATURE_KEY = 'riesgos';
 
@@ -362,6 +363,89 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return reply.code(201).send({ risk });
+  });
+
+  // POST /risks/ai-suggest — Sugerir oportunidades con IA (FODA + procesos + canal)
+  app.post('/ai-suggest', async (req: FastifyRequest, reply: FastifyReply) => {
+    app.requireFeature(req, FEATURE_KEY);
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const userId = req.auth?.userId ?? null;
+
+    const contextData = await app.runWithDbContext(req, async (tx: any) => {
+      const year = new Date().getFullYear();
+      const foda = await tx.organizationContext.findFirst({
+        where: { tenantId, year },
+        select: { strengths: true, weaknesses: true, opportunities: true, threats: true },
+      });
+      const processes = await tx.process.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { name: true, layer: true },
+        take: 40,
+      });
+      const existingOpps = await tx.risk.findMany({
+        where: { tenantId, deletedAt: null, nature: 'OPPORTUNITY' },
+        select: { title: true },
+        take: 50,
+      });
+      const canalSuggestions = await tx.climaSuggestion.findMany({
+        where: { tenantId, deletedAt: null, type: 'MEJORA', status: { in: ['ABIERTO', 'EN_PROCESO'] } },
+        select: { title: true, content: true },
+        orderBy: { createdAt: 'desc' },
+        take: 15,
+      });
+      return { foda, processes, existingOpps, canalSuggestions };
+    });
+
+    const fodaO: string[] = Array.isArray(contextData.foda?.opportunities)
+      ? (contextData.foda.opportunities as any[]).map(String)
+      : [];
+    const fodaS: string[] = Array.isArray(contextData.foda?.strengths)
+      ? (contextData.foda.strengths as any[]).map(String)
+      : [];
+
+    const prompt = `Sos un consultor experto en Sistemas de Gestión ISO 9001 (cláusula 6.1 — acciones para abordar riesgos y oportunidades). Proponé OPORTUNIDADES de mejora/mejora del negocio para esta organización.
+
+CONTEXTO DE LA ORGANIZACIÓN:
+- Oportunidades del FODA estratégico: ${fodaO.length ? fodaO.join(' | ') : 'No cargadas'}
+- Fortalezas del FODA (se pueden potenciar): ${fodaS.length ? fodaS.join(' | ') : 'No cargadas'}
+- Procesos del mapa: ${contextData.processes.map((p: any) => p.name).join(', ') || 'No cargados'}
+- Ideas/sugerencias del canal del personal: ${contextData.canalSuggestions.map((s: any) => s.title).join(' | ') || 'Ninguna'}
+- Oportunidades ya registradas (NO repetir ni parafrasear): ${contextData.existingOpps.map((r: any) => r.title).join(' | ') || 'Ninguna'}
+
+Respondé ÚNICAMENTE con JSON válido, sin markdown ni texto adicional:
+{"suggestions":[{"title":"nombre corto de la oportunidad","description":"descripción de 1-2 oraciones","category":"Operacional|Legal|Ambiental|Seguridad Vial|Calidad|Financiero|Tecnológico|Otro","probability":1-5,"benefit":1-5,"strategy":"EXPLOTAR|POTENCIAR|COMPARTIR|ACEPTAR","source":"FODA|PROCESO|CANAL|IA"}]}
+
+Reglas:
+- Entre 4 y 8 oportunidades concretas y accionables, en español rioplatense.
+- probability = chance de materializarse (1 raro, 5 casi seguro); benefit = impacto positivo (1 marginal, 5 transformador).
+- strategy: EXPLOTAR (aprovechar directo), POTENCIAR (invertir para aumentarla), COMPARTIR (con socio/tercero), ACEPTAR (dejarla disponible).
+- "source" indica el origen que la inspiró: FODA si viene del análisis estratégico, PROCESO si mejora un proceso del mapa, CANAL si viene del personal, IA si es propuesta nueva.
+- No inventes datos financieros específicos.`;
+
+    try {
+      const llm = createGroqOnlyLLMProvider(null, app.prisma, tenantId, userId, 'risks-ai-suggest');
+      const resp = await llm.chat([{ role: 'user', content: prompt }], 4096, true);
+      const text = resp.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return reply.code(500).send({ error: 'La IA no devolvió un formato válido' });
+      const parsed = JSON.parse(jsonMatch[0]);
+      const suggestions = (Array.isArray(parsed.suggestions) ? parsed.suggestions : [])
+        .filter((s: any) => s?.title && s?.description)
+        .map((s: any) => ({
+          title: String(s.title).slice(0, 200),
+          description: String(s.description),
+          category: CATEGORIES.includes(s.category) ? s.category : 'Otro',
+          probability: Math.min(5, Math.max(1, Number(s.probability) || 3)),
+          benefit: Math.min(5, Math.max(1, Number(s.benefit) || 3)),
+          strategy: ['EXPLOTAR', 'POTENCIAR', 'COMPARTIR', 'ACEPTAR'].includes(s.strategy) ? s.strategy : 'EXPLOTAR',
+          source: ['FODA', 'PROCESO', 'CANAL', 'IA'].includes(s.source) ? s.source : 'IA',
+        }));
+      return reply.send({ suggestions });
+    } catch (e: any) {
+      app.log.error(e, 'ai-suggest failed');
+      return reply.code(503).send({ error: e?.message || 'IA no disponible' });
+    }
   });
 
   // POST /risks/import — Importar riesgos desde Excel (primera hoja)

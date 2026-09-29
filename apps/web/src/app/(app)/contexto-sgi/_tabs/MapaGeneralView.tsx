@@ -1,11 +1,12 @@
 'use client';
 import { Fragment, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Search, MapPin, X, ArrowRight, ChevronRight, AlertTriangle,
   Target, Cog, Users, Layers, Network, FileText, Shield, BarChart3,
   LogIn, LogOut, ArrowLeft, ExternalLink, ListTree, ShoppingCart,
   Truck, Package, Boxes, Wrench, Monitor, Landmark, Compass, ClipboardCheck,
-  Plus, Pencil, Trash2,
+  Plus, Pencil, Trash2, TrendingUp,
 } from 'lucide-react';
 
 // ── Tipos (mínimos, alineados al shape de GET /process-maps) ──────────────────
@@ -141,6 +142,7 @@ export default function MapaGeneralView({
   onOpenLinks: () => void;
   onNewMap: () => void;
 }) {
+  const router = useRouter();
   const [sel, setSel] = useState<Sel>(null);
   const [panelTab, setPanelTab] = useState<PanelTab>('subs');
   const [query, setQuery] = useState('');
@@ -694,6 +696,13 @@ export default function MapaGeneralView({
               <Trash2 className="h-3.5 w-3.5" aria-hidden />
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => router.push(`/riesgos?nature=OPPORTUNITY&crear=1&proceso=${encodeURIComponent(selProc.name)}`)}
+            className="flex items-center justify-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            <TrendingUp className="h-3.5 w-3.5" aria-hidden /> Registrar oportunidad
+          </button>
           <button
             type="button"
             onClick={() => onOpenProcessFicha(selProc)}

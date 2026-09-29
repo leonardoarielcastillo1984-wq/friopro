@@ -9,7 +9,8 @@ import {
   Shield, Plus, X, Search, AlertCircle, CheckCircle2, AlertTriangle, TrendingUp, 
   LayoutGrid, Table2, Download, Upload, FileSpreadsheet, Bell,
   Filter, ChevronDown, BarChart3, PieChart, Activity, Target,
-  ArrowDown, ArrowUp, Minus, Clock, RefreshCw, FileText, ClipboardCheck
+  ArrowDown, ArrowUp, Minus, Clock, RefreshCw, FileText, ClipboardCheck,
+  Sparkles, Lightbulb, MessageSquarePlus, Compass
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -91,6 +92,18 @@ export default function RiesgosPage() {
   const [viewMode, setViewMode] = useState<'matrix' | 'table' | 'process' | 'trends' | 'opportunities'>('matrix');
   const isOppView = viewMode === 'opportunities';
   const [showCreate, setShowCreate] = useState(false);
+
+  // Fuentes de oportunidades (FODA / canal QR / IA)
+  const [canalSugs, setCanalSugs] = useState<any[]>([]);
+  const [canalLoading, setCanalLoading] = useState(false);
+  const [fodaItems, setFodaItems] = useState<string[]>([]);
+  const [showFoda, setShowFoda] = useState(false);
+  const [fodaSelected, setFodaSelected] = useState<Set<number>>(new Set());
+  const [fodaLoading, setFodaLoading] = useState(false);
+  const [aiSugs, setAiSugs] = useState<any[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showAi, setShowAi] = useState(false);
+  const [aiSelected, setAiSelected] = useState<Set<number>>(new Set());
   const [creating, setCreating] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
@@ -236,6 +249,23 @@ export default function RiesgosPage() {
 
   useEffect(() => { void load(); }, []);
 
+  // Deep-link: /riesgos?nature=OPPORTUNITY&crear=1&proceso=NombreProceso
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('nature') === 'OPPORTUNITY') setViewMode('opportunities');
+    if (p.get('crear') === '1') {
+      setForm(f => ({
+        ...f,
+        nature: 'OPPORTUNITY',
+        process: p.get('proceso') || f.process,
+        title: p.get('titulo') || f.title,
+        description: p.get('descripcion') || f.description,
+      }));
+      setShowCreate(true);
+    }
+  }, []);
+
   useEffect(() => {
     apiFetch<{ departments: Array<{ id: string; name: string }> }>('/departments')
       .then((res) => setDepartments((res as any).departments ?? []))
@@ -275,11 +305,119 @@ export default function RiesgosPage() {
         responsible: '', effectiveness: undefined,
       });
       await load();
-    } catch (err: any) { 
-      setError(err?.message ?? 'Error al crear'); 
-    } finally { 
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al crear');
+    } finally {
       setCreating(false); 
     }
+  }
+
+  // ── Fuentes de oportunidades ─────────────────────────────────────────────
+
+  // Canal QR: sugerencias tipo MEJORA (se cargan como OPPORTUNITY/IDEA en el canal)
+  async function loadCanalSuggestions() {
+    setCanalLoading(true);
+    try {
+      const res = await apiFetch<{ suggestions: any[] }>('/clima/sugerencias?type=MEJORA&status=ABIERTO');
+      setCanalSugs(res.suggestions ?? []);
+    } catch { setCanalSugs([]); } finally { setCanalLoading(false); }
+  }
+
+  async function convertCanalSuggestion(s: any) {
+    try {
+      await apiFetch('/risks', {
+        method: 'POST',
+        json: {
+          title: s.title,
+          description: `${s.content}${s.employeeName ? `\n\nOrigen: Canal del personal (${s.employeeName})` : '\n\nOrigen: Canal del personal'}`,
+          category: s.category === 'PROCESS' ? 'Operacional' : s.category === 'SAFETY' ? 'Seguridad Vial' : s.category === 'QUALITY' ? 'Calidad' : 'Otro',
+          nature: 'OPPORTUNITY',
+          probability: 3,
+          impact: 3,
+          process: undefined,
+        },
+      });
+      // Marcar la sugerencia como en proceso para no duplicar
+      await apiFetch(`/clima/sugerencias/${s.id}`, { method: 'PATCH', json: { status: 'EN_PROCESO', response: 'Derivada a matriz de oportunidades' } });
+      setCanalSugs(prev => prev.filter(x => x.id !== s.id));
+      setSuccess(`Oportunidad creada desde el canal: "${s.title}"`);
+      await load();
+    } catch (err: any) { setError(err?.message ?? 'Error al convertir sugerencia'); }
+  }
+
+  // FODA: importar oportunidades del contexto estratégico (año actual)
+  async function loadFodaItems() {
+    setFodaLoading(true);
+    try {
+      const year = new Date().getFullYear();
+      const res = await apiFetch<{ item: { opportunities?: string[] } | null }>(`/context/${year}`);
+      const items = (res.item?.opportunities ?? []).filter(Boolean);
+      setFodaItems(items);
+      setFodaSelected(new Set(items.map((_: string, i: number) => i)));
+      setShowFoda(true);
+    } catch (err: any) { setError(err?.message ?? 'Error al cargar FODA'); } finally { setFodaLoading(false); }
+  }
+
+  async function importFodaSelected() {
+    const toCreate = fodaItems.filter((_, i) => fodaSelected.has(i));
+    if (toCreate.length === 0) return;
+    setFodaLoading(true);
+    try {
+      for (const text of toCreate) {
+        const title = text.length > 120 ? text.slice(0, 117) + '…' : text;
+        await apiFetch('/risks', {
+          method: 'POST',
+          json: {
+            title,
+            description: `Oportunidad importada del FODA estratégico.\n\n${text}`,
+            category: 'Otro',
+            nature: 'OPPORTUNITY',
+            probability: 3,
+            impact: 3,
+            strategy: 'POTENCIAR',
+          },
+        });
+      }
+      setSuccess(`${toCreate.length} oportunidad(es) importadas del FODA`);
+      setShowFoda(false);
+      await load();
+    } catch (err: any) { setError(err?.message ?? 'Error al importar del FODA'); } finally { setFodaLoading(false); }
+  }
+
+  // IA: sugerir oportunidades desde contexto (FODA + procesos + canal)
+  async function suggestWithAI() {
+    setAiLoading(true); setError(null);
+    try {
+      const res = await apiFetch<{ suggestions: any[] }>('/risks/ai-suggest', { method: 'POST', json: {} });
+      setAiSugs(res.suggestions ?? []);
+      setAiSelected(new Set((res.suggestions ?? []).map((_: any, i: number) => i)));
+      setShowAi(true);
+    } catch (err: any) { setError(err?.message ?? 'Error al consultar la IA'); } finally { setAiLoading(false); }
+  }
+
+  async function createAiSelected() {
+    const toCreate = aiSugs.filter((_, i) => aiSelected.has(i));
+    if (toCreate.length === 0) return;
+    setAiLoading(true);
+    try {
+      for (const s of toCreate) {
+        await apiFetch('/risks', {
+          method: 'POST',
+          json: {
+            title: s.title,
+            description: s.description,
+            category: s.category || 'Otro',
+            nature: 'OPPORTUNITY',
+            probability: s.probability || 3,
+            impact: s.benefit || 3,
+            strategy: s.strategy || 'EXPLOTAR',
+          },
+        });
+      }
+      setSuccess(`${toCreate.length} oportunidad(es) creadas desde IA`);
+      setShowAi(false);
+      await load();
+    } catch (err: any) { setError(err?.message ?? 'Error al crear oportunidades'); } finally { setAiLoading(false); }
   }
 
   // Export to Excel
@@ -1382,6 +1520,146 @@ export default function RiesgosPage() {
       {/* OPPORTUNITIES VIEW - Matriz de Oportunidades (Probabilidad × Beneficio) */}
       {viewMode === 'opportunities' && (
         <>
+          {/* Fuentes de oportunidades: FODA, Canal QR, IA */}
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-emerald-900 flex items-center gap-2">
+                <Lightbulb className="h-4 w-4" /> Fuentes de oportunidades
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* FODA */}
+              <div className="rounded-lg bg-white border border-emerald-100 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Compass className="h-4 w-4 text-emerald-600" />
+                  <span className="text-xs font-semibold text-neutral-800">FODA estratégico</span>
+                </div>
+                <p className="text-[11px] text-neutral-500 mb-2">Importá las oportunidades del análisis de contexto (ISO 4.1).</p>
+                <button type="button" onClick={loadFodaItems} disabled={fodaLoading}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:bg-neutral-300">
+                  <Download className="h-3.5 w-3.5" /> {fodaLoading && !showFoda ? 'Cargando...' : 'Importar del FODA'}
+                </button>
+              </div>
+              {/* Canal QR */}
+              <div className="rounded-lg bg-white border border-emerald-100 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <MessageSquarePlus className="h-4 w-4 text-emerald-600" />
+                  <span className="text-xs font-semibold text-neutral-800">Canal del personal</span>
+                </div>
+                <p className="text-[11px] text-neutral-500 mb-2">Ideas y oportunidades cargadas por el personal vía QR.</p>
+                <button type="button" onClick={loadCanalSuggestions} disabled={canalLoading}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:bg-neutral-300">
+                  <RefreshCw className={`h-3.5 w-3.5 ${canalLoading ? 'animate-spin' : ''}`} /> Ver sugerencias
+                </button>
+              </div>
+              {/* IA */}
+              <div className="rounded-lg bg-white border border-emerald-100 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="h-4 w-4 text-emerald-600" />
+                  <span className="text-xs font-semibold text-neutral-800">Sugerencias con IA</span>
+                </div>
+                <p className="text-[11px] text-neutral-500 mb-2">La IA propone oportunidades según tu FODA, procesos y canal.</p>
+                <button type="button" onClick={suggestWithAI} disabled={aiLoading}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:bg-neutral-300">
+                  <Sparkles className={`h-3.5 w-3.5 ${aiLoading ? 'animate-pulse' : ''}`} /> {aiLoading && !showAi ? 'Analizando...' : 'Sugerir con IA'}
+                </button>
+              </div>
+            </div>
+
+            {/* Modal/inline: ítems del FODA */}
+            {showFoda && (
+              <div className="mt-3 rounded-lg bg-white border border-emerald-200 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-neutral-800">Oportunidades del FODA {new Date().getFullYear()}</span>
+                  <button type="button" onClick={() => setShowFoda(false)} className="text-neutral-400 hover:text-neutral-600"><X className="h-4 w-4" /></button>
+                </div>
+                {fodaItems.length === 0 ? (
+                  <p className="text-xs text-neutral-500">No hay oportunidades cargadas en el FODA del año en curso. Completalas en Contexto → Análisis estratégico.</p>
+                ) : (
+                  <>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {fodaItems.map((item, i) => (
+                        <label key={i} className="flex items-start gap-2 text-xs text-neutral-700 cursor-pointer">
+                          <input type="checkbox" checked={fodaSelected.has(i)}
+                            onChange={() => { const n = new Set(fodaSelected); n.has(i) ? n.delete(i) : n.add(i); setFodaSelected(n); }}
+                            className="mt-0.5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500" />
+                          <span>{item}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button type="button" onClick={importFodaSelected} disabled={fodaLoading || fodaSelected.size === 0}
+                      className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:bg-neutral-300">
+                      <Plus className="h-3.5 w-3.5" /> Importar {fodaSelected.size} seleccionada(s)
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Lista: sugerencias del canal */}
+            {canalSugs.length > 0 && (
+              <div className="mt-3 rounded-lg bg-white border border-emerald-200 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-neutral-800">Sugerencias de mejora del personal ({canalSugs.length})</span>
+                  <button type="button" onClick={() => setCanalSugs([])} className="text-neutral-400 hover:text-neutral-600"><X className="h-4 w-4" /></button>
+                </div>
+                <div className="space-y-2 max-h-52 overflow-y-auto">
+                  {canalSugs.map(s => (
+                    <div key={s.id} className="flex items-start justify-between gap-3 rounded-lg border border-neutral-100 p-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-neutral-800 truncate">{s.title}</p>
+                        <p className="text-[11px] text-neutral-500 line-clamp-2">{s.content}</p>
+                        <p className="text-[10px] text-neutral-400 mt-0.5">{s.employeeName} · {new Date(s.createdAt).toLocaleDateString('es-AR')}</p>
+                      </div>
+                      <button type="button" onClick={() => convertCanalSuggestion(s)}
+                        className="flex-shrink-0 flex items-center gap-1 rounded-lg bg-emerald-100 text-emerald-700 px-2.5 py-1.5 text-[11px] font-medium hover:bg-emerald-200">
+                        <TrendingUp className="h-3 w-3" /> Convertir
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Lista: sugerencias IA */}
+            {showAi && (
+              <div className="mt-3 rounded-lg bg-white border border-emerald-200 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-neutral-800 flex items-center gap-1"><Sparkles className="h-3.5 w-3.5 text-emerald-600" /> Propuestas de la IA</span>
+                  <button type="button" onClick={() => setShowAi(false)} className="text-neutral-400 hover:text-neutral-600"><X className="h-4 w-4" /></button>
+                </div>
+                {aiSugs.length === 0 ? (
+                  <p className="text-xs text-neutral-500">La IA no encontró nuevas oportunidades con el contexto actual.</p>
+                ) : (
+                  <>
+                    <div className="space-y-2 max-h-72 overflow-y-auto">
+                      {aiSugs.map((s, i) => (
+                        <label key={i} className="flex items-start gap-2.5 rounded-lg border border-neutral-100 p-2.5 cursor-pointer hover:bg-emerald-50/40">
+                          <input type="checkbox" checked={aiSelected.has(i)}
+                            onChange={() => { const n = new Set(aiSelected); n.has(i) ? n.delete(i) : n.add(i); setAiSelected(n); }}
+                            className="mt-0.5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-medium text-neutral-800">{s.title}</span>
+                              <span className="rounded bg-emerald-100 text-emerald-700 px-1.5 py-0.5 text-[9px] font-bold">P{s.probability}×B{s.benefit}={s.probability * s.benefit}</span>
+                              <span className="text-[9px] text-neutral-400 bg-neutral-100 px-1 py-0.5 rounded">{s.source}</span>
+                              {s.strategy && <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">{OPP_STRATEGIES[s.strategy] || s.strategy}</span>}
+                            </div>
+                            <p className="text-[11px] text-neutral-500 mt-0.5 line-clamp-2">{s.description}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                    <button type="button" onClick={createAiSelected} disabled={aiLoading || aiSelected.size === 0}
+                      className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:bg-neutral-300">
+                      <Plus className="h-3.5 w-3.5" /> Crear {aiSelected.size} seleccionada(s)
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="rounded-xl border border-emerald-200 bg-white p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
