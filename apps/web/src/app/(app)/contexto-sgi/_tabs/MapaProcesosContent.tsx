@@ -383,6 +383,11 @@ export default function MapaProcesosContent() {
     setLoading(true);
     try {
       const raw = await apiFetch<ProcessMap[] | { data: ProcessMap[] }>('/process-maps');
+      // apiFetch retorna {} cuando el GET falla (error HTTP o de red) — no confundir con lista vacía
+      if (!Array.isArray(raw) && !(raw as any)?.data) {
+        setError('No se pudieron cargar los mapas. Recargá la página.');
+        return;
+      }
       const data: ProcessMap[] = Array.isArray(raw) ? raw : (raw as any).data ?? [];
       setMaps(data);
 
