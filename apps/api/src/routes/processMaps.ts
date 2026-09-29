@@ -10,6 +10,11 @@ const mapSchema = z.object({
   scope: z.string().optional(),
   inputLabel: z.string().optional(),
   outputLabel: z.string().optional(),
+  // Banda del Mapa General: STRATEGIC | OPERATIONAL | COMMERCIAL | SUPPORT (null/vacío = heurística por nombre)
+  mapBand: z.preprocess(
+    (v) => (v === '' ? null : v),
+    z.enum(['STRATEGIC', 'OPERATIONAL', 'COMMERCIAL', 'SUPPORT']).nullable().optional()
+  ),
 });
 
 const emptyToUndefined = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((val) => (val === '' || val === null ? undefined : val), schema);

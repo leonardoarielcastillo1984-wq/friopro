@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
 import MapaGeneralModal from './MapaGeneralModal';
+import MapaGeneralView from './MapaGeneralView';
 import ProcessTemplateWizard from './ProcessTemplateWizard';
 import ProcessAIWizard from './ProcessAIWizard';
 import {
@@ -58,6 +59,8 @@ interface ProcessMap {
   scope?: string;
   inputLabel?: string;
   outputLabel?: string;
+  // Banda en el Mapa General (STRATEGIC | OPERATIONAL | COMMERCIAL | SUPPORT); null = heurística
+  mapBand?: string | null;
   processes: Process[];
 }
 
@@ -246,7 +249,7 @@ export default function MapaProcesosContent() {
 
   // Map form
   const [showMapForm, setShowMapForm] = useState(false);
-  const [mapForm, setMapForm] = useState({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI' });
+  const [mapForm, setMapForm] = useState({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '' });
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
 
   // Process drawer
@@ -272,6 +275,8 @@ export default function MapaProcesosContent() {
 
   // General (company-wide) macro process map
   const [showGeneral, setShowGeneral] = useState(false);
+  // Vista principal del tab: 'general' = Mapa General (vista corporativa unificada); 'maps' = mapas individuales
+  const [mainView, setMainView] = useState<'general' | 'maps'>('general');
 
   // Navegación de 2 niveles: null = Mapa de Macroprocesos; con id = Desglose (subprocesos) de ese macroproceso
   const [viewMacroId, setViewMacroId] = useState<string | null>(null);
@@ -965,7 +970,7 @@ export default function MapaProcesosContent() {
       }
       setShowMapForm(false);
       setEditingMapId(null);
-      setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI' });
+      setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '' });
       await load();
     } catch { setError('Error guardando mapa'); }
     finally { setSaving(false); }
@@ -1128,6 +1133,22 @@ export default function MapaProcesosContent() {
     setActiveTab('info');
   }
 
+  // ── Navegación desde el Mapa General ──
+  function openMapFromGeneral(mapId: string) {
+    const target = maps.find(x => x.id === mapId);
+    if (!target) return;
+    setSelected(target);
+    setViewMacroId(null);
+    setMainView('maps');
+  }
+
+  function openProcessFichaFromGeneral(p: Process) {
+    // El drawer de edición guarda contra `selected.id`: primero selecciono el mapa dueño del proceso.
+    const owner = maps.find(m => m.processes.some(x => x.id === p.id));
+    if (owner) setSelected(owner);
+    openView(p);
+  }
+
   // ── Reordenamiento de subprocesos (drag & drop) ────────────────
   async function reorderSubprocesses(orderedIds: string[]) {
     if (!selected) return;
@@ -1204,12 +1225,26 @@ export default function MapaProcesosContent() {
   const siblingOptions = (viewMacro && selected) ? selected.processes.filter(p => p.parentId === viewMacro.id && p.id !== editingPid).map(p => ({ id: p.id, label: p.name })) : [];
 
   return (
-    <div className="flex gap-6 min-h-[500px]">
+    <div className="min-h-[500px]">
+      {mainView === 'general' ? (
+        <MapaGeneralView
+          maps={maps}
+          employees={employees}
+          docOptions={docOptions}
+          riskOptions={riskOptions}
+          indicatorOptions={indicatorOptions}
+          onOpenMap={m => openMapFromGeneral(m.id)}
+          onOpenProcessFicha={p => openProcessFichaFromGeneral(p as Process)}
+          onOpenLinks={() => setShowGeneral(true)}
+          onNewMap={() => { setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '' }); setShowMapForm(true); }}
+        />
+      ) : (
+      <div className="flex gap-6 min-h-[500px]">
       {/* Sidebar: lista de mapas */}
       <div ref={sidebarRef} data-no-export="true" className="w-56 flex-shrink-0 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Mapas</span>
-          <button onClick={() => { setShowMapForm(true); setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI' }); }} className="p-1 rounded hover:bg-neutral-100">
+          <button onClick={() => { setShowMapForm(true); setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '' }); }} className="p-1 rounded hover:bg-neutral-100">
             <Plus className="h-4 w-4 text-neutral-500" />
           </button>
         </div>
@@ -1241,7 +1276,7 @@ export default function MapaProcesosContent() {
             </div>
             <p className="text-xs text-neutral-400 mt-0.5 truncate pl-6">{m.processes.filter(p => !p.parentId).length} macroprocesos</p>
             <div className="absolute right-1 top-1 hidden group-hover:flex gap-0.5">
-              <button onClick={e => { e.stopPropagation(); setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI' }); setShowMapForm(true); }} className="p-1 rounded hover:bg-white"><Pencil className="h-3 w-3 text-neutral-400" /></button>
+              <button onClick={e => { e.stopPropagation(); setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI', mapBand: m.mapBand ?? '' }); setShowMapForm(true); }} className="p-1 rounded hover:bg-white"><Pencil className="h-3 w-3 text-neutral-400" /></button>
               <button onClick={e => { e.stopPropagation(); deleteMap(m.id); }} className="p-1 rounded hover:bg-white"><Trash2 className="h-3 w-3 text-red-400" /></button>
             </div>
           </div>
@@ -1259,7 +1294,7 @@ export default function MapaProcesosContent() {
           <div className="space-y-4">
             {/* Breadcrumb de navegación (2 niveles: Mapa General → Mapa → Desglose) */}
             <nav className="flex items-center gap-1.5 text-xs text-neutral-500 flex-wrap" data-pdf-ignore="true">
-              <button onClick={() => setShowGeneral(true)} className="hover:text-brand-600 font-medium">Mapa General</button>
+              <button onClick={() => setMainView('general')} className="hover:text-brand-600 font-medium">Mapa General</button>
               <ChevronRight className="h-3.5 w-3.5 text-neutral-300" />
               <button onClick={() => setViewMacroId(null)} className={`hover:text-brand-600 ${!viewMacro ? 'font-semibold text-neutral-700' : 'font-medium'}`}>{selected.name}</button>
               {viewMacro && (
@@ -1328,7 +1363,7 @@ export default function MapaProcesosContent() {
                       {showToolsMenu && (
                         <div className="absolute right-0 top-full mt-1.5 w-64 bg-white border border-neutral-200 rounded-xl shadow-xl z-30 overflow-hidden py-1.5">
                           <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Vistas</p>
-                          <button onClick={() => { setShowGeneral(true); setShowToolsMenu(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50">
+                          <button onClick={() => { setMainView('general'); setShowToolsMenu(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50">
                             <Layers className="h-4 w-4 text-indigo-500" /> Mapa General
                           </button>
                           <button onClick={() => { setShowDiagram(true); setShowToolsMenu(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50">
@@ -1818,6 +1853,8 @@ export default function MapaProcesosContent() {
           </div>
         )}
       </div>
+      </div>
+      )}
 
       {/* Modal: crear/editar mapa */}
       {showMapForm && (
@@ -1839,6 +1876,16 @@ export default function MapaProcesosContent() {
                 <input value={(mapForm as any)[f.key]} onChange={e => setMapForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
               </div>
             ))}
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Banda en el Mapa General</label>
+              <select value={mapForm.mapBand} onChange={e => setMapForm(p => ({ ...p, mapBand: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white">
+                <option value="">Automática (según nombre)</option>
+                <option value="STRATEGIC">Estratégicos</option>
+                <option value="OPERATIONAL">Operaciones</option>
+                <option value="COMMERCIAL">Comercial</option>
+                <option value="SUPPORT">Soporte</option>
+              </select>
+            </div>
             {error && <p className="text-xs text-red-500">{error}</p>}
             <div className="flex gap-2 justify-end pt-2">
               <button onClick={() => setShowMapForm(false)} className="px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50 rounded-lg border border-neutral-200">Cancelar</button>

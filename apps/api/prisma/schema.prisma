@@ -5291,6 +5291,9 @@ model ProcessMap {
   scope       String?
   inputLabel  String? @default("Requisitos del cliente / PI")
   outputLabel String? @default("Satisfacción del cliente / PI")
+  // Banda del Mapa General de procesos (vista corporativa): STRATEGIC | OPERATIONAL | COMMERCIAL | SUPPORT.
+  // null = se deduce por heurística de nombre. Campo aditivo, editable desde "Editar mapa".
+  mapBand     String?
 
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
