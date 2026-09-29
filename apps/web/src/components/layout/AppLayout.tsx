@@ -43,7 +43,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   }, []);
   
   // Skip tenant-dependent components for Super Admin without tenant or on select-tenant page
-  const isSelectTenantPage = typeof window !== 'undefined' && window.location.pathname === '/select-tenant';
+  const isSelectTenantPage = pathname === '/select-tenant';
   const isSuperAdmin = user?.globalRole === 'SUPER_ADMIN';
   const shouldSkipTenantData = isSelectTenantPage || (isSuperAdmin && !tenantId);
   const { status: demoStatus, checklist, allDone } = useDemoMode(shouldSkipTenantData ? null : tenantId);
@@ -82,6 +82,16 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   if (!user) {
     return null;
+  }
+
+  // La selección de organización es bloqueante: se renderiza a pantalla completa
+  // sin Sidebar, Topbar ni overlays para que no se pueda navegar sin elegir tenant.
+  if (isSelectTenantPage) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-100/50">
+        <main className="w-full p-4 sm:p-6">{children}</main>
+      </div>
+    );
   }
 
   return (
