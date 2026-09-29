@@ -205,6 +205,22 @@ export default function MapaGeneralView({
 
   const dimIf = (id: string) => (q && !matchSet.has(id) ? 'opacity-40 saturate-50' : '');
 
+  // Sedes únicas donde se ejecutan los procesos del mapa (para cards de banda).
+  const sitesOf = (map: GenMap): string[] =>
+    [...new Set(map.processes.flatMap(p => p.sites || []))];
+
+  // Chip de sede con pin, visible en cada card del mapa (mockup: "en qué sitio se desarrolla").
+  function SiteLine({ sites }: { sites?: string[] }) {
+    if (!sites || sites.length === 0) return null;
+    const label = sites.length <= 2 ? sites.join(' · ') : `${sites.slice(0, 2).join(' · ')} +${sites.length - 2}`;
+    return (
+      <span className="flex items-center gap-0.5 mt-0.5 text-[9px] text-neutral-400 leading-none min-w-0">
+        <MapPin className="h-2.5 w-2.5 flex-shrink-0 text-neutral-300" aria-hidden />
+        <span className="truncate">{label}</span>
+      </span>
+    );
+  }
+
   function StatusDot({ status }: { status?: string }) {
     return (
       <span
@@ -226,7 +242,7 @@ export default function MapaGeneralView({
         onClick={() => selectProc(p)}
         aria-pressed={isSel}
         title={p.description || p.name}
-        className={`group flex items-center gap-1.5 rounded-lg border bg-white pl-2 pr-1.5 py-1.5 min-w-0 max-w-[190px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`group flex flex-col justify-center rounded-lg border bg-white pl-2 pr-1.5 py-1.5 min-w-[110px] max-w-[190px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
             : isParent
@@ -236,10 +252,13 @@ export default function MapaGeneralView({
                 : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
         } ${dimIf(p.id)}`}
       >
-        <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${isSel ? 'text-indigo-600' : 'text-neutral-400'}`} aria-hidden />
-        <span className={`text-[11px] font-medium truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{p.name}</span>
-        <StatusDot status={p.status} />
-        <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${isSel ? 'text-indigo-600' : 'text-neutral-400'}`} aria-hidden />
+          <span className={`text-[11px] font-medium truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{p.name}</span>
+          <StatusDot status={p.status} />
+          <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />
+        </div>
+        {SiteLine({ sites: p.sites })}
       </button>
     );
   }
@@ -279,6 +298,7 @@ export default function MapaGeneralView({
             <span className={`text-[9px] mt-0.5 truncate ${nameHit ? 'text-amber-600 font-medium' : 'text-neutral-400'}`}>{map.name}</span>
           )}
           {head?.code && <span className="text-[9px] font-mono text-neutral-400 truncate">{head.code}</span>}
+          {SiteLine({ sites: head ? head.sites : sitesOf(map) })}
         </button>
         {visibleNodes.length > 0 && (
           <>
@@ -323,10 +343,15 @@ export default function MapaGeneralView({
         }`}
       >
         <Icon className={`h-4 w-4 flex-shrink-0 ${meta.text}`} aria-hidden />
-        <span className={`text-xs font-semibold truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'} ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
-          {map.name}
-        </span>
-        <StatusDot />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1 min-w-0">
+            <span className={`text-xs font-semibold truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'} ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
+              {map.name}
+            </span>
+            <StatusDot />
+          </div>
+          {SiteLine({ sites: sitesOf(map) })}
+        </div>
         <ChevronRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0 ml-auto" aria-hidden />
       </button>
     );
