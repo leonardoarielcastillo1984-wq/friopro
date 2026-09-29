@@ -5,6 +5,7 @@ import {
   Target, Cog, Users, Layers, Network, FileText, Shield, BarChart3,
   LogIn, LogOut, ArrowLeft, ExternalLink, ListTree, ShoppingCart,
   Truck, Package, Boxes, Wrench, Monitor, Landmark, Compass, ClipboardCheck,
+  Plus, Pencil, Trash2,
 } from 'lucide-react';
 
 // ── Tipos (mínimos, alineados al shape de GET /process-maps) ──────────────────
@@ -121,6 +122,9 @@ export default function MapaGeneralView({
   indicatorOptions,
   onOpenMap,
   onOpenProcessFicha,
+  onEditProcess,
+  onDeleteProcess,
+  onNewProcess,
   onOpenLinks,
   onNewMap,
 }: {
@@ -131,6 +135,9 @@ export default function MapaGeneralView({
   indicatorOptions: { id: string; label: string }[];
   onOpenMap: (m: GenMap) => void;
   onOpenProcessFicha: (p: GenProcess) => void;
+  onEditProcess: (p: GenProcess) => void;
+  onDeleteProcess: (p: GenProcess) => void;
+  onNewProcess: (mapId: string, parentId: string | null) => void;
   onOpenLinks: () => void;
   onNewMap: () => void;
 }) {
@@ -310,12 +317,30 @@ export default function MapaGeneralView({
                   {NodeCard({ p: n })}
                 </Fragment>
               ))}
+              {/* + agregar nodo a la rama: hijo del head si existe, si no raíz del mapa */}
+              <button
+                type="button"
+                onClick={() => onNewProcess(map.id, head?.id ?? null)}
+                title={head ? `Agregar subproceso a ${head.name}` : `Agregar proceso a ${map.name}`}
+                aria-label="Agregar proceso"
+                className="flex-shrink-0 h-6 w-6 rounded-lg border border-dashed border-neutral-300 text-neutral-400 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+              </button>
             </div>
             <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
           </>
         )}
-        {visibleNodes.length === 0 && nodes.length > 0 && (
-          <p className="text-[10px] text-neutral-400 italic px-2">Sin procesos en esta sede</p>
+        {visibleNodes.length === 0 && (
+          <button
+            type="button"
+            onClick={() => onNewProcess(map.id, head?.id ?? null)}
+            title={head ? `Agregar subproceso a ${head.name}` : `Agregar proceso a ${map.name}`}
+            className="flex items-center gap-1 text-[10px] text-neutral-400 hover:text-indigo-600 px-2 focus:outline-none focus-visible:underline"
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+            {nodes.length > 0 ? 'Sin procesos en esta sede — agregar' : 'Agregar proceso'}
+          </button>
         )}
       </div>
     );
@@ -463,6 +488,13 @@ export default function MapaGeneralView({
               </ul>
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => onNewProcess(selMap.id, null)}
+            className="flex items-center justify-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden /> Nuevo proceso en {selMap.name}
+          </button>
           <button
             type="button"
             onClick={() => onOpenMap(selMap)}
@@ -634,7 +666,34 @@ export default function MapaGeneralView({
           )}
         </div>
 
-        <div className="px-4 py-3 border-t border-neutral-100">
+        <div className="px-4 py-3 border-t border-neutral-100 space-y-2">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onEditProcess(selProc)}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden /> Editar
+            </button>
+            {!isSub && (
+              <button
+                type="button"
+                onClick={() => onNewProcess(selProcMap.id, selProc.id)}
+                title="Agregar subproceso"
+                className="flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-neutral-600 border border-neutral-200 rounded-lg hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden /> Sub
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => { onDeleteProcess(selProc); setSel(null); }}
+              title="Eliminar proceso"
+              className="flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => onOpenProcessFicha(selProc)}

@@ -1154,6 +1154,33 @@ export default function MapaProcesosContent() {
     openView(p);
   }
 
+  // Editar / eliminar / crear procesos directamente desde la vista general.
+  function editProcessFromGeneral(p: Process) {
+    const owner = maps.find(m => m.processes.some(x => x.id === p.id));
+    if (owner) setSelected(owner);
+    openEdit(p);
+  }
+
+  async function deleteProcessFromGeneral(p: Process) {
+    const owner = maps.find(m => m.processes.some(x => x.id === p.id));
+    if (!owner) return;
+    if (!confirm(`¿Eliminar el proceso "${p.name}"?`)) return;
+    await apiFetch(`/process-maps/${owner.id}/processes/${p.id}`, { method: 'DELETE' });
+    await load();
+  }
+
+  function newProcessFromGeneral(mapId: string, parentId: string | null) {
+    const owner = maps.find(m => m.id === mapId);
+    if (!owner) return;
+    setSelected(owner);
+    setViewMacroId(null);
+    const parent = parentId ? owner.processes.find(x => x.id === parentId) : null;
+    setDrawer({ ...EMPTY_PROCESS, layer: parent?.layer ?? 'OPERATIONAL', parentId: parentId ?? null });
+    setEditingPid(null);
+    setDrawerMode('edit');
+    setActiveTab('info');
+  }
+
   // ── Reordenamiento de subprocesos (drag & drop) ────────────────
   async function reorderSubprocesses(orderedIds: string[]) {
     if (!selected) return;
@@ -1240,6 +1267,9 @@ export default function MapaProcesosContent() {
           indicatorOptions={indicatorOptions}
           onOpenMap={m => openMapFromGeneral(m.id)}
           onOpenProcessFicha={p => openProcessFichaFromGeneral(p as Process)}
+          onEditProcess={p => editProcessFromGeneral(p as Process)}
+          onDeleteProcess={p => deleteProcessFromGeneral(p as Process)}
+          onNewProcess={(mapId, parentId) => newProcessFromGeneral(mapId, parentId)}
           onOpenLinks={() => setShowGeneral(true)}
           onNewMap={() => { setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '' }); setShowMapForm(true); }}
         />
