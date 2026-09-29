@@ -3,7 +3,8 @@ import { Fragment, useMemo, useState } from 'react';
 import {
   Search, MapPin, X, ArrowRight, ChevronRight, AlertTriangle,
   Target, Cog, Users, Layers, Network, FileText, Shield, BarChart3,
-  LogIn, LogOut, CheckCircle, ArrowLeft, ExternalLink, ListTree, ShoppingCart,
+  LogIn, LogOut, ArrowLeft, ExternalLink, ListTree, ShoppingCart,
+  Truck, Package, Boxes, Wrench, Monitor, Landmark, Compass, ClipboardCheck,
 } from 'lucide-react';
 
 // ── Tipos (mínimos, alineados al shape de GET /process-maps) ──────────────────
@@ -44,13 +45,16 @@ type Sel = { kind: 'map'; mapId: string } | { kind: 'process'; processId: string
 type PanelTab = 'subs' | 'docs' | 'kpis' | 'risks';
 
 const BAND_META: Record<Band, { label: string; desc: string; band: string; border: string; text: string; badge: string; icon: any }> = {
-  STRATEGIC:   { label: 'Estratégicos', desc: 'Dirección y gestión del negocio', band: 'bg-blue-50/70', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700', icon: Target },
-  OPERATIONAL: { label: 'Operaciones', desc: 'Procesos centrales en paralelo — operaciones independientes', band: 'bg-emerald-50/60', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700', icon: Cog },
-  COMMERCIAL:  { label: 'Comercial', desc: 'Banda transversal — vincula clientes con las operaciones', band: 'bg-violet-50/70', border: 'border-violet-200', text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700', icon: ShoppingCart },
-  SUPPORT:     { label: 'Soporte', desc: 'Procesos de apoyo a las operaciones', band: 'bg-orange-50/70', border: 'border-orange-200', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-700', icon: Users },
+  STRATEGIC:   { label: 'Estratégicos', desc: 'Definen el rumbo de la organización', band: 'bg-blue-50/80', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700', icon: Target },
+  OPERATIONAL: { label: 'Operativos', desc: 'ramas en paralelo — operaciones independientes que generan valor para el cliente', band: 'bg-emerald-50/70', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700', icon: Cog },
+  COMMERCIAL:  { label: 'Comercial', desc: 'Gestión de solicitudes y requisitos', band: 'bg-violet-50/80', border: 'border-violet-200', text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700', icon: ShoppingCart },
+  SUPPORT:     { label: 'Soporte', desc: 'Brindan los recursos para el funcionamiento', band: 'bg-neutral-50', border: 'border-neutral-200', text: 'text-neutral-600', badge: 'bg-neutral-100 text-neutral-600', icon: Users },
 };
 
 const LAYER_LABEL: Record<string, string> = { STRATEGIC: 'Estratégico', OPERATIONAL: 'Operativo', SUPPORT: 'Soporte' };
+
+// Tintes pastel alternados para las ramas paralelas (solo cosmético, como en el mockup).
+const BRANCH_TINTS = ['bg-white/60', 'bg-sky-50/80', 'bg-amber-50/60', 'bg-rose-50/70', 'bg-indigo-50/60'];
 
 function normalize(s?: string | null) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -74,9 +78,40 @@ function classifyMapBand(map: GenMap): Band {
 
 const toBullets = (s?: string | null) => (s || '').split(/[\n,;•]+/).map(x => x.trim()).filter(Boolean);
 
-// Secuencia real: flechas solo si los subprocesos tienen `order` con valores distintos.
-// Si todos comparten el mismo order (p.ej. default 0) se muestran agrupados sin inventar conexiones.
-const hasRealOrder = (subs: GenProcess[]) => new Set(subs.map(s => s.order ?? 0)).size > 1;
+// Icono cosmético por nombre del mapa/proceso (solo visual, no afecta datos).
+function iconFor(name?: string | null) {
+  const n = normalize(name);
+  if (/(trafico|transport|logist|flota|distrib)/.test(n)) return Truck;
+  if (/(rueda|armado|ensambl|produc|fabric)/.test(n)) return Cog;
+  if (/(ckd|kit|materia|almacen|deposito|stock)/.test(n)) return Boxes;
+  if (/(comercial|ventas|cotiz|cliente)/.test(n)) return ShoppingCart;
+  if (/(compra|adquisi|proveed)/.test(n)) return Package;
+  if (/(manten|taller|repuesto)/.test(n)) return Wrench;
+  if (/(sistema|tecnolog|informatic|digital|ti\b)/.test(n)) return Monitor;
+  if (/(finanz|contab|adminis|tesorer|pagos)/.test(n)) return Landmark;
+  if (/(direccion|gerenc|estrateg|planeam)/.test(n)) return Compass;
+  if (/(calidad|hseq|seguridad|medio amb)/.test(n)) return ClipboardCheck;
+  if (/(recursos humanos|rrhh|personal|capacit)/.test(n)) return Users;
+  if (/(document|legal|contrat|contrato)/.test(n)) return FileText;
+  return Network;
+}
+
+// Rama del mapa general: si el mapa tiene un único proceso raíz, ese es el head
+// y sus subprocesos forman la cadena. Si tiene varias raíces, el head es el mapa
+// y la cadena son las raíces ordenadas.
+function flowNodesOf(map: GenMap): { head: GenProcess | null; nodes: GenProcess[] } {
+  const roots = map.processes
+    .filter(p => !p.parentId)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
+  if (roots.length === 0) return { head: null, nodes: [] };
+  if (roots.length === 1) {
+    const subs = map.processes
+      .filter(p => p.parentId === roots[0].id)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
+    return { head: roots[0], nodes: subs };
+  }
+  return { head: null, nodes: roots };
+}
 
 export default function MapaGeneralView({
   maps,
@@ -170,18 +205,28 @@ export default function MapaGeneralView({
 
   const dimIf = (id: string) => (q && !matchSet.has(id) ? 'opacity-40 saturate-50' : '');
 
-  function ProcCard({ p, macro }: { p: GenProcess; macro?: boolean }) {
+  function StatusDot({ status }: { status?: string }) {
+    return (
+      <span
+        aria-hidden
+        className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${status === 'inactive' ? 'bg-neutral-300' : 'bg-emerald-500'}`}
+      />
+    );
+  }
+
+  // Nodo de flujo del mockup: card blanca con icono + nombre + dot + chevron.
+  function NodeCard({ p }: { p: GenProcess }) {
     const isSel = selProc?.id === p.id;
     const isParent = selParent?.id === p.id;
     const matched = matchSet.has(p.id);
+    const Icon = iconFor(p.name);
     return (
       <button
         type="button"
         onClick={() => selectProc(p)}
         aria-pressed={isSel}
-        aria-label={`${macro ? 'Proceso' : 'Subproceso'} ${p.name}`}
         title={p.description || p.name}
-        className={`group relative text-left rounded-lg border px-3 py-2 transition-all bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`group flex items-center gap-1.5 rounded-lg border bg-white pl-2 pr-1.5 py-1.5 min-w-0 max-w-[190px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
             : isParent
@@ -191,204 +236,132 @@ export default function MapaGeneralView({
                 : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
         } ${dimIf(p.id)}`}
       >
-        <div className="flex items-center gap-1.5 min-w-0">
-          {isSel && <CheckCircle className="h-3 w-3 text-indigo-600 flex-shrink-0" aria-hidden />}
-          <span className={`text-xs font-medium truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{p.name}</span>
-        </div>
-        {p.code && <p className="text-[10px] text-neutral-400 mt-0.5 font-mono truncate">{p.code}</p>}
+        <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${isSel ? 'text-indigo-600' : 'text-neutral-400'}`} aria-hidden />
+        <span className={`text-[11px] font-medium truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{p.name}</span>
+        <StatusDot status={p.status} />
+        <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />
       </button>
     );
   }
 
-  function MacroGroup({ map, macro }: { map: GenMap; macro: GenProcess }) {
-    const subs = subsOf(map.id, macro.id);
-    const ordered = hasRealOrder(subs);
-    const visibleSubs = subs.filter(matchesSite);
+  // Rama horizontal del mockup: flecha de entrada → card head (mapa o macro raíz)
+  // → cadena de nodos conectados por flechas → flecha hacia Resultados.
+  function MapBranch({ map, band, tint }: { map: GenMap; band: Band; tint: string }) {
+    const { head, nodes } = flowNodesOf(map);
+    const visibleNodes = nodes.filter(n => matchesSite(n) || subsOf(map.id, n.id).some(matchesSite));
+    const HeadIcon = iconFor(head?.name || map.name);
+    const headSel = head ? selProc?.id === head.id : selMap?.id === map.id;
+    const nameHit = mapNameSet.has(map.id);
     return (
-      <div className="min-w-0">
+      <div className={`flex items-center gap-1.5 rounded-lg ${tint} px-2 py-1.5 min-w-0`}>
+        <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
+        {/* Card head: raíz única → el macro; varias raíces → el mapa */}
         <button
           type="button"
-          onClick={() => selectProc(macro)}
-          aria-pressed={selProc?.id === macro.id}
-          className={`flex items-center gap-1.5 text-[11px] font-semibold mb-1.5 rounded-md px-1.5 py-0.5 -ml-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors ${
-            selProc?.id === macro.id ? 'text-indigo-700 bg-indigo-50' : 'text-neutral-600 hover:text-indigo-600'
-          } ${dimIf(macro.id)}`}
+          onClick={() => (head ? selectProc(head) : selectMap(map))}
+          aria-pressed={headSel}
+          title={head?.description || map.description || map.name}
+          className={`flex flex-col rounded-lg border bg-white px-2.5 py-1.5 min-w-[130px] max-w-[170px] flex-shrink-0 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+            headSel
+              ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
+              : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
+          }`}
         >
-          <Network className="h-3 w-3 flex-shrink-0" aria-hidden />
-          <span className="truncate">{macro.name}</span>
-          {macro.code && <span className="text-[9px] font-mono font-normal text-neutral-400">{macro.code}</span>}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <HeadIcon className={`h-3.5 w-3.5 flex-shrink-0 ${BAND_META[band].text}`} aria-hidden />
+            <span className={`text-[11px] font-semibold truncate ${headSel ? 'text-indigo-800' : 'text-neutral-800'}`}>
+              {head?.name || map.name}
+            </span>
+            <StatusDot status={head?.status} />
+            <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />
+          </div>
+          {head && map.name !== head.name && (
+            <span className={`text-[9px] mt-0.5 truncate ${nameHit ? 'text-amber-600 font-medium' : 'text-neutral-400'}`}>{map.name}</span>
+          )}
+          {head?.code && <span className="text-[9px] font-mono text-neutral-400 truncate">{head.code}</span>}
         </button>
-        {visibleSubs.length === 0 ? (
-          <div className={dimIf(macro.id)}>
-            {subs.length === 0 ? (
-              <div className="max-w-[200px]">{ProcCard({ p: macro, macro: true })}</div>
-            ) : (
-              <p className="text-[10px] text-neutral-400 italic px-1">Sin subprocesos en esta sede</p>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-stretch gap-1.5">
-            {visibleSubs.map((s, i) => (
-              <div key={s.id} className="flex items-center gap-1.5">
-                {i > 0 && ordered && <ArrowRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />}
-                {ProcCard({ p: s })}
-              </div>
-            ))}
-          </div>
+        {visibleNodes.length > 0 && (
+          <>
+            <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
+            <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto">
+              {visibleNodes.map((n, i) => (
+                <Fragment key={n.id}>
+                  {i > 0 && <ArrowRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />}
+                  {NodeCard({ p: n })}
+                </Fragment>
+              ))}
+            </div>
+            <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
+          </>
+        )}
+        {visibleNodes.length === 0 && nodes.length > 0 && (
+          <p className="text-[10px] text-neutral-400 italic px-2">Sin procesos en esta sede</p>
         )}
       </div>
     );
   }
-  // Carril: un mapa (área) = una fila horizontal. Sin flechas entre carriles (operaciones independientes).
-  function Lane({ map, band }: { map: GenMap; band: Band }) {
-    const meta = BAND_META[band];
-    const opMacros = macrosOf(map, 'OPERATIONAL');
-    // Macros de otras capas dentro de un carril operativo/comercial: accesibles vía panel del mapa.
-    const extraMacros = map.processes.filter(p => !p.parentId && p.layer !== 'OPERATIONAL');
-    const isSel = selMap?.id === map.id;
-    const nameHit = mapNameSet.has(map.id);
-    const visibleOps = opMacros.filter(macro =>
-      matchesSite(macro) || subsOf(map.id, macro.id).some(matchesSite)
-    );
-    return (
-      <section
-        aria-label={`${meta.label}: ${map.name}`}
-        className={`rounded-xl border ${meta.border} ${meta.band} p-3 transition-opacity`}
-      >
-        <button
-          type="button"
-          onClick={() => selectMap(map)}
-          aria-pressed={isSel}
-          title={map.description || map.name}
-          className={`flex items-center gap-2 w-full text-left rounded-lg px-1.5 py-0.5 -ml-1.5 mb-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-            isSel ? 'text-indigo-700' : `${meta.text} hover:opacity-80`
-          }`}
-        >
-          <Layers className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
-          <span className={`text-xs font-bold uppercase tracking-wide truncate ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
-            {map.name}
-          </span>
-          {map.scope && <span className="text-[10px] font-normal text-neutral-400 truncate hidden sm:inline">· {map.scope}</span>}
-          {isSel && <CheckCircle className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" aria-hidden />}
-          <ChevronRight className="h-3.5 w-3.5 text-neutral-300 ml-auto flex-shrink-0" aria-hidden />
-        </button>
 
-        {visibleOps.length === 0 ? (
-          <div className="flex items-center gap-3">
-            <p className="text-[11px] text-neutral-400 italic">
-              {opMacros.length === 0 ? 'Sin procesos operativos en este mapa' : 'Sin procesos para el filtro de sede actual'}
-            </p>
-            {extraMacros.length > 0 && (
-              <button type="button" onClick={() => selectMap(map)} className="text-[10px] text-neutral-500 underline hover:text-indigo-600">
-                +{extraMacros.length} de otras capas
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-4">
-            {visibleOps.map(macro => <Fragment key={macro.id}>{MacroGroup({ map, macro })}</Fragment>)}
-            {extraMacros.length > 0 && (
-              <button
-                type="button"
-                onClick={() => selectMap(map)}
-                className="self-end text-[10px] text-neutral-500 underline hover:text-indigo-600 text-left"
-              >
-                +{extraMacros.length} {extraMacros.length === 1 ? 'proceso' : 'procesos'} de otras capas
-              </button>
-            )}
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  // Tarjeta compacta de mapa para bandas horizontales (estratégicos / soporte / comercial).
+  // Card de mapa para bandas simples (Estratégicos / Soporte): icono + nombre + dot + chevron.
   function MapCard({ map, band }: { map: GenMap; band: Band }) {
     const meta = BAND_META[band];
-    const Icon = meta.icon;
+    const Icon = iconFor(map.name);
     const isSel = selMap?.id === map.id;
     const nameHit = mapNameSet.has(map.id);
-    const nMacros = map.processes.filter(p => !p.parentId).length;
     const mapHasMatch = q && (nameHit || map.processes.some(p => matchSet.has(p.id)));
-    const hitCount = map.processes.filter(p => matchSet.has(p.id)).length;
     return (
       <button
         type="button"
         onClick={() => selectMap(map)}
         aria-pressed={isSel}
         title={map.description || map.name}
-        className={`text-left rounded-lg border bg-white px-3 py-2.5 w-44 flex-shrink-0 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`flex items-center gap-2 rounded-lg border bg-white pl-2.5 pr-2 py-2 min-w-[150px] max-w-[210px] text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
             : mapHasMatch
-              ? `border-amber-300 ring-1 ring-amber-300 hover:border-indigo-300`
-              : `${meta.border} hover:border-indigo-300 hover:shadow-sm`
+              ? 'border-amber-300 ring-1 ring-amber-300 hover:border-indigo-300'
+              : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
         }`}
       >
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${meta.text}`} aria-hidden />
-          <span className={`text-xs font-semibold truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{map.name}</span>
-        </div>
-        <p className="text-[10px] text-neutral-400 mt-1 truncate">
-          {nMacros} {nMacros === 1 ? 'proceso' : 'procesos'}
-          {q && hitCount > 0 ? ` · ${hitCount} coincidencia${hitCount === 1 ? '' : 's'}` : ''}
-        </p>
+        <Icon className={`h-4 w-4 flex-shrink-0 ${meta.text}`} aria-hidden />
+        <span className={`text-xs font-semibold truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'} ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
+          {map.name}
+        </span>
+        <StatusDot />
+        <ChevronRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0 ml-auto" aria-hidden />
       </button>
     );
   }
 
-  // Fila de banda con etiqueta + tarjetas de mapas (estratégicos, soporte, comercial).
-  function BandRow({ band, maps: bandMaps }: { band: Band; maps: GenMap[] }) {
-    if (bandMaps.length === 0) return null;
+  // Contenedor de banda con header (icono + label + desc) y contenido arbitrario.
+  function BandSection({ band, children }: { band: Band; children: React.ReactNode }) {
     const meta = BAND_META[band];
     const Icon = meta.icon;
     return (
       <section aria-label={meta.label} className={`rounded-xl border ${meta.border} ${meta.band} p-3`}>
         <div className="flex items-center gap-2 mb-2.5 px-0.5">
-          <Icon className={`h-3.5 w-3.5 ${meta.text}`} aria-hidden />
-          <span className={`text-[11px] font-bold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
-          <span className="text-[10px] text-neutral-400">{meta.desc}</span>
+          <Icon className={`h-4 w-4 ${meta.text}`} aria-hidden />
+          <span className={`text-xs font-bold ${meta.text}`}>{meta.label}</span>
+          <span className="text-[11px] text-neutral-400">{meta.desc}</span>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {bandMaps.map(m => <Fragment key={m.id}>{MapCard({ map: m, band })}</Fragment>)}
-        </div>
+        {children}
       </section>
     );
   }
 
-  // Columna Entradas / Resultados: prioriza la selección; si no, deduplica etiquetas de los mapas.
-  function FlowColumn({ kind }: { kind: 'in' | 'out' }) {
+  // Raíl vertical Entradas / Resultados del mockup: flanquea solo el área de flujo.
+  function FlowRail({ kind }: { kind: 'in' | 'out' }) {
     const isIn = kind === 'in';
     const Icon = isIn ? LogIn : LogOut;
-    let title: string;
-    let items: string[];
-    if (selProc) {
-      title = isIn ? 'Entradas del proceso' : 'Resultados del proceso';
-      items = toBullets(isIn ? selProc.inputs : selProc.outputs);
-    } else if (selMap) {
-      title = isIn ? (selMap.inputLabel || 'Entradas') : (selMap.outputLabel || 'Resultados');
-      items = [];
-    } else {
-      title = isIn ? 'Entradas' : 'Resultados';
-      const uniq = new Set<string>();
-      maps.forEach(m => {
-        const v = (isIn ? m.inputLabel : m.outputLabel)?.trim();
-        if (v) uniq.add(v);
-      });
-      items = Array.from(uniq).slice(0, 5);
-    }
+    const title = isIn ? 'Entradas' : 'Resultados';
+    const sub = isIn ? 'Requisitos, materiales, solicitudes' : 'Productos, servicios, satisfacción del cliente';
     return (
-      <aside aria-label={isIn ? 'Entradas' : 'Resultados'} className="flex flex-col items-center justify-center w-24 lg:w-28 flex-shrink-0 self-stretch">
-        <div className="bg-white border border-neutral-200 rounded-xl px-2.5 py-4 text-center shadow-sm w-full h-full flex flex-col items-center justify-center">
+      <div aria-label={title} className="w-28 lg:w-32 flex-shrink-0 self-stretch flex">
+        <div className="bg-white border border-neutral-200 rounded-xl px-3 py-4 w-full flex flex-col items-center justify-center text-center shadow-sm">
           <Icon className={`h-4 w-4 mb-1.5 ${isIn ? 'text-blue-500' : 'text-emerald-500'}`} aria-hidden />
-          <p className="text-[10px] font-semibold text-neutral-600 leading-tight">{title}</p>
-          {items.length > 0 && (
-            <ul className="mt-2 text-[9px] text-neutral-400 text-left space-y-0.5 w-full">
-              {items.slice(0, 4).map((it, i) => <li key={i} className="truncate">• {it}</li>)}
-            </ul>
-          )}
+          <p className="text-[11px] font-bold text-neutral-700 leading-tight">{title}</p>
+          <p className="text-[9px] text-neutral-400 mt-1 leading-snug">{sub}</p>
         </div>
-      </aside>
+      </div>
     );
   }
 
@@ -417,14 +390,18 @@ export default function MapaGeneralView({
       const macros = macrosOf(selMap);
       const bandCounts: Record<string, number> = {};
       macros.forEach(p => { bandCounts[p.layer] = (bandCounts[p.layer] || 0) + 1; });
+      const MapIcon = iconFor(selMap.name);
       return (
         <div className="px-4 py-4 space-y-4">
           <div>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badge}`}>{meta.label}</span>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className={`h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.badge}`}>
+                <MapIcon className="h-3.5 w-3.5" aria-hidden />
+              </span>
+              <h3 className="text-sm font-bold text-neutral-900 truncate">{selMap.name}</h3>
             </div>
-            <h3 className="text-sm font-bold text-neutral-900">{selMap.name}</h3>
-            {selMap.scope && <p className="text-[11px] text-neutral-500 mt-1"><span className="font-medium">Alcance:</span> {selMap.scope}</p>}
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badge}`}>{meta.label}</span>
+            {selMap.scope && <p className="text-[11px] text-neutral-500 mt-1.5"><span className="font-medium">Alcance:</span> {selMap.scope}</p>}
             {selMap.description && <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">{selMap.description}</p>}
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -442,17 +419,19 @@ export default function MapaGeneralView({
             {macros.length === 0 ? (
               <p className="text-xs text-neutral-400 italic">Sin procesos en este mapa</p>
             ) : (
-              <ul className="space-y-1">
-                {macros.map(macro => (
+              <ul className="space-y-0.5">
+                {macros.map((macro, i) => (
                   <li key={macro.id}>
                     <button
                       type="button"
                       onClick={() => selectProc(macro)}
-                      className="flex items-center gap-1.5 w-full text-left text-xs text-neutral-700 hover:text-indigo-600 rounded px-1 py-1 -mx-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                      className="flex items-center gap-2.5 w-full text-left rounded-lg px-1.5 py-1.5 -mx-1.5 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 group"
                     >
-                      <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />
-                      <span className="truncate">{macro.name}</span>
-                      {macro.code && <span className="text-[9px] font-mono text-neutral-400">{macro.code}</span>}
+                      <span className="text-[10px] font-mono font-semibold text-neutral-400 bg-neutral-100 rounded px-1.5 py-0.5 w-7 text-center flex-shrink-0">
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      <span className="flex-1 text-xs text-neutral-700 group-hover:text-indigo-600 truncate">{macro.name}</span>
+                      <ChevronRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
                     </button>
                   </li>
                 ))}
@@ -464,7 +443,7 @@ export default function MapaGeneralView({
             onClick={() => onOpenMap(selMap)}
             className="flex items-center justify-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
           >
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Abrir mapa
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Abrir mapa {selMap.name}
           </button>
         </div>
       );
@@ -508,16 +487,23 @@ export default function MapaGeneralView({
             )}
           </nav>
           <div>
-            <div className="flex items-center gap-1.5 mb-1.5">
+            <div className="flex items-center gap-2 mb-1.5">
+              {(() => { const PIcon = iconFor(selProc.name); return (
+                <span className={`h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isSub ? 'bg-neutral-100 text-neutral-500' : 'bg-indigo-100 text-indigo-600'}`}>
+                  <PIcon className="h-3.5 w-3.5" aria-hidden />
+                </span>
+              ); })()}
+              <h3 className="text-sm font-bold text-neutral-900 truncate">{selProc.name}</h3>
+            </div>
+            <div className="flex items-center gap-1.5">
               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isSub ? 'bg-neutral-100 text-neutral-600' : 'bg-indigo-100 text-indigo-700'}`}>
                 {isSub ? 'Subproceso' : LAYER_LABEL[selProc.layer] || selProc.layer}
               </span>
               {selProc.status === 'inactive' && (
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500">Inactivo</span>
               )}
+              {selProc.code && <span className="text-[10px] font-mono text-neutral-400">{selProc.code}</span>}
             </div>
-            <h3 className="text-sm font-bold text-neutral-900">{selProc.name}</h3>
-            {selProc.code && <p className="text-[10px] font-mono text-neutral-400 mt-0.5">{selProc.code}</p>}
           </div>
           {selProc.description && <p className="text-xs text-neutral-500 leading-relaxed">{selProc.description}</p>}
           <dl className="grid grid-cols-2 gap-2 text-[11px]">
@@ -572,16 +558,19 @@ export default function MapaGeneralView({
             subs.length === 0 ? (
               <p className="text-xs text-neutral-400 italic">{isSub ? 'Los subprocesos no tienen nivel inferior' : 'Sin subprocesos cargados'}</p>
             ) : (
-              <ul className="space-y-1">
+              <ul className="space-y-0.5">
                 {subs.map((s, i) => (
-                  <li key={s.id} className="flex items-center gap-1.5">
-                    {hasRealOrder(subs) && <span className="text-[9px] text-neutral-300 w-3 text-right flex-shrink-0">{i + 1}.</span>}
+                  <li key={s.id}>
                     <button
                       type="button"
                       onClick={() => selectProc(s)}
-                      className="flex-1 text-left text-xs text-neutral-700 hover:text-indigo-600 rounded px-1.5 py-1 -mx-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 truncate"
+                      className="flex items-center gap-2.5 w-full text-left rounded-lg px-1.5 py-1.5 -mx-1.5 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 group"
                     >
-                      {s.name}
+                      <span className="text-[10px] font-mono font-semibold text-neutral-400 bg-neutral-100 rounded px-1.5 py-0.5 w-7 text-center flex-shrink-0">
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      <span className="flex-1 text-xs text-neutral-700 group-hover:text-indigo-600 truncate">{s.name}</span>
+                      <ChevronRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
                     </button>
                   </li>
                 ))}
@@ -626,7 +615,7 @@ export default function MapaGeneralView({
             onClick={() => onOpenProcessFicha(selProc)}
             className="flex items-center justify-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
           >
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Abrir ficha del proceso
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Abrir ficha de {selProc.name}
           </button>
         </div>
       </div>
@@ -639,7 +628,11 @@ export default function MapaGeneralView({
     <div className="flex gap-4 h-full min-h-0">
       {/* Área del mapa */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Buscador + filtro sede */}
+        {/* Título + buscador + filtro sede */}
+        <div className="mb-3">
+          <h2 className="text-base font-bold text-neutral-900">Mapa general de procesos</h2>
+          <p className="text-xs text-neutral-400">Operaciones independientes, procesos conectados</p>
+        </div>
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" aria-hidden />
@@ -705,35 +698,50 @@ export default function MapaGeneralView({
           </div>
         ) : (
           <div className="flex-1 overflow-auto">
-            <div className="flex items-stretch gap-3 min-w-[900px] pb-4">
-              {FlowColumn({ kind: 'in' })}
-              <div className="flex flex-col justify-center flex-shrink-0"><ArrowRight className="h-4 w-4 text-neutral-300" aria-hidden /></div>
-              <div className="flex-1 space-y-3 min-w-0">
-                {BandRow({ band: 'STRATEGIC', maps: bands.STRATEGIC })}
-                {bands.OPERATIONAL.length > 0 && (
-                  <section aria-label={BAND_META.OPERATIONAL.label} className="space-y-3">
-                    <div className="flex items-center gap-2 px-0.5">
-                      <Cog className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">{BAND_META.OPERATIONAL.label}</span>
-                      <span className="text-[10px] text-neutral-400">{BAND_META.OPERATIONAL.desc}</span>
-                    </div>
-                    {bands.OPERATIONAL.map(m => <Fragment key={m.id}>{Lane({ map: m, band: 'OPERATIONAL' })}</Fragment>)}
-                  </section>
-                )}
-                {bands.COMMERCIAL.length > 0 && (
-                  <section aria-label={BAND_META.COMMERCIAL.label} className="space-y-3">
-                    <div className="flex items-center gap-2 px-0.5">
-                      <ShoppingCart className="h-3.5 w-3.5 text-violet-600" aria-hidden />
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-violet-700">{BAND_META.COMMERCIAL.label}</span>
-                      <span className="text-[10px] text-neutral-400">{BAND_META.COMMERCIAL.desc}</span>
-                    </div>
-                    {bands.COMMERCIAL.map(m => <Fragment key={m.id}>{Lane({ map: m, band: 'COMMERCIAL' })}</Fragment>)}
-                  </section>
-                )}
-                {BandRow({ band: 'SUPPORT', maps: bands.SUPPORT })}
+            <div className="space-y-3 min-w-[960px] pb-4">
+              {/* Banda 1: Estratégicos — cards simples full-width */}
+              {bands.STRATEGIC.length > 0 && (
+                <BandSection band="STRATEGIC">
+                  <div className="flex flex-wrap gap-2">
+                    {bands.STRATEGIC.map(m => <Fragment key={m.id}>{MapCard({ map: m, band: 'STRATEGIC' })}</Fragment>)}
+                  </div>
+                </BandSection>
+              )}
+
+              {/* Área de flujo: Entradas | Operativos + Comercial | Resultados */}
+              <div className="flex items-stretch gap-3">
+                {FlowRail({ kind: 'in' })}
+                <div className="flex-1 space-y-3 min-w-0">
+                  {bands.OPERATIONAL.length > 0 && (
+                    <BandSection band="OPERATIONAL">
+                      <div className="space-y-1.5">
+                        {bands.OPERATIONAL.map((m, i) => (
+                          <Fragment key={m.id}>{MapBranch({ map: m, band: 'OPERATIONAL', tint: BRANCH_TINTS[i % BRANCH_TINTS.length] })}</Fragment>
+                        ))}
+                      </div>
+                    </BandSection>
+                  )}
+                  {bands.COMMERCIAL.length > 0 && (
+                    <BandSection band="COMMERCIAL">
+                      <div className="space-y-1.5">
+                        {bands.COMMERCIAL.map(m => (
+                          <Fragment key={m.id}>{MapBranch({ map: m, band: 'COMMERCIAL', tint: '' })}</Fragment>
+                        ))}
+                      </div>
+                    </BandSection>
+                  )}
+                </div>
+                {FlowRail({ kind: 'out' })}
               </div>
-              <div className="flex flex-col justify-center flex-shrink-0"><ArrowRight className="h-4 w-4 text-neutral-300" aria-hidden /></div>
-              {FlowColumn({ kind: 'out' })}
+
+              {/* Banda 4: Soporte — cards simples full-width */}
+              {bands.SUPPORT.length > 0 && (
+                <BandSection band="SUPPORT">
+                  <div className="flex flex-wrap gap-2">
+                    {bands.SUPPORT.map(m => <Fragment key={m.id}>{MapCard({ map: m, band: 'SUPPORT' })}</Fragment>)}
+                  </div>
+                </BandSection>
+              )}
             </div>
           </div>
         )}
