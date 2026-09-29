@@ -203,7 +203,8 @@ export type NCRStats = {
 
 export type RiskStatus = 'IDENTIFIED' | 'ASSESSED' | 'MITIGATING' | 'MONITORED' | 'CLOSED';
 export type RiskAspectType = 'AMBIENTAL' | 'CALIDAD' | 'SEGURIDAD' | 'LEGAL' | 'IATF' | 'TECNOLOGICO' | 'FINANCIERO' | 'REPUTACIONAL';
-export type RiskStrategy = 'EVITAR' | 'MITIGAR' | 'TRANSFERIR' | 'ACEPTAR';
+export type RiskStrategy = 'EVITAR' | 'MITIGAR' | 'TRANSFERIR' | 'ACEPTAR' | 'EXPLOTAR' | 'POTENCIAR' | 'COMPARTIR';
+export type RiskNature = 'RISK' | 'OPPORTUNITY';
 
 export type Risk = {
   id: string;
@@ -211,6 +212,7 @@ export type Risk = {
   title: string;
   description: string;
   category: string;
+  nature: RiskNature;
   process: string | null;
   standard: string | null;
   identificationDate: string;

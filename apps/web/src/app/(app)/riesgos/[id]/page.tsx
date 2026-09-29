@@ -20,6 +20,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 
 const PROB_LABELS = ['', 'Raro', 'Improbable', 'Posible', 'Probable', 'Casi seguro'];
 const IMPACT_LABELS = ['', 'Insignificante', 'Menor', 'Moderado', 'Mayor', 'Catastrófico'];
+const BENEFIT_LABELS = ['', 'Marginal', 'Menor', 'Moderado', 'Significativo', 'Transformador'];
 
 function getRiskColor(level: number): string {
   if (level >= 20) return 'bg-red-600 text-white';
@@ -249,13 +250,14 @@ export default function RiskDetailPage() {
   }
 
   const stCfg = STATUS_CONFIG[risk.status] ?? STATUS_CONFIG.IDENTIFIED;
+  const isOpp = (risk as any).nature === 'OPPORTUNITY';
 
   return (
     <div className="max-w-[1000px] mx-auto space-y-6">
       {/* Back + Actions */}
       <div className="flex items-center justify-between">
         <button onClick={() => router.push('/riesgos')} className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-800 transition-colors">
-          <ArrowLeft className="h-4 w-4" /> Riesgos
+          <ArrowLeft className="h-4 w-4" /> {isOpp ? 'Oportunidades' : 'Riesgos'}
         </button>
         <div className="flex items-center gap-2">
           <button onClick={() => setEditing(!editing)} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-50">
@@ -282,6 +284,9 @@ export default function RiskDetailPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-xs text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">{risk.code}</span>
+              {isOpp && (
+                <span className="rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-0.5 text-xs font-semibold">Oportunidad</span>
+              )}
               <span className={`rounded-lg px-2.5 py-0.5 text-xs font-bold ${getRiskColor(risk.riskLevel)}`}>{getRiskLabel(risk.riskLevel)}</span>
               <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${stCfg.bg} ${stCfg.color}`}>{stCfg.label}</span>
               <span className="text-xs text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">{risk.category}</span>
@@ -302,7 +307,7 @@ export default function RiskDetailPage() {
         {/* Inherent Risk */}
         <div className="bg-white rounded-xl border border-neutral-200 p-6">
           <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-orange-500" /> Riesgo Inherente
+            <AlertTriangle className="h-4 w-4 text-orange-500" /> {isOpp ? 'Valor Inherente' : 'Riesgo Inherente'}
           </h2>
           <div className="space-y-3">
             <div className="flex justify-between items-center">
@@ -310,8 +315,8 @@ export default function RiskDetailPage() {
               <span className="font-medium text-sm">{risk.probability} — {PROB_LABELS[risk.probability]}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-neutral-600">Impacto</span>
-              <span className="font-medium text-sm">{risk.impact} — {IMPACT_LABELS[risk.impact]}</span>
+              <span className="text-sm text-neutral-600">{isOpp ? 'Beneficio' : 'Impacto'}</span>
+              <span className="font-medium text-sm">{risk.impact} — {(isOpp ? BENEFIT_LABELS : IMPACT_LABELS)[risk.impact]}</span>
             </div>
             <div className="border-t pt-3 flex justify-between items-center">
               <span className="text-sm font-medium text-neutral-700">Nivel</span>

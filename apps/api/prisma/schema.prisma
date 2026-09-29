@@ -759,6 +759,10 @@ model Risk {
 
   status RiskStatus @default(IDENTIFIED)
 
+  // Naturaleza del registro: RISK (riesgo, matriz prob×impacto negativo) u OPPORTUNITY
+  // (oportunidad, matriz prob×beneficio, estrategias EXPLOTAR/POTENCIAR/COMPARTIR/ACEPTAR)
+  nature String @default("RISK")
+
   // Campos específicos por norma ISO 14001, 9001, 45001, IATF 16949
   requirement         String? // Requisito normativo específico (ej: "ISO 14001:2015 - Cláusula 6.1.2")
   aspectType          RiskAspectType? // Tipo de aspecto (Ambiental, Calidad, Seguridad, etc.)
@@ -813,10 +817,15 @@ enum RiskAspectType {
 }
 
 // Estrategia de tratamiento según ISO 31000
+// Riesgos: EVITAR/MITIGAR/TRANSFERIR/ACEPTAR
+// Oportunidades: EXPLOTAR/POTENCIAR/COMPARTIR/ACEPTAR
 enum RiskStrategy {
   EVITAR
   MITIGAR
   TRANSFERIR
+  EXPLOTAR
+  POTENCIAR
+  COMPARTIR
   ACEPTAR
 }
 

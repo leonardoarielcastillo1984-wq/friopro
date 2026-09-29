@@ -11,6 +11,7 @@ const createSchema = z.object({
   title: z.string().min(2),
   description: z.string().min(5),
   category: z.string().min(2),
+  nature: z.enum(['RISK', 'OPPORTUNITY']).optional(),
   process: z.string().optional(),
   standard: z.string().optional(),
   identificationDate: z.string().datetime().optional(),
@@ -30,7 +31,7 @@ const createSchema = z.object({
   legalRequirement: z.boolean().optional(),
   legalReference: z.string().optional(),
   riskSource: z.string().optional(),
-  strategy: z.enum(['EVITAR', 'MITIGAR', 'TRANSFERIR', 'ACEPTAR']).optional(),
+  strategy: z.enum(['EVITAR', 'MITIGAR', 'TRANSFERIR', 'ACEPTAR', 'EXPLOTAR', 'POTENCIAR', 'COMPARTIR']).optional(),
   responsible: z.string().optional(),
   effectiveness: z.number().int().min(0).max(100).optional(),
 });
@@ -39,6 +40,7 @@ const updateSchema = z.object({
   title: z.string().min(2).optional(),
   description: z.string().min(5).optional(),
   category: z.string().optional(),
+  nature: z.enum(['RISK', 'OPPORTUNITY']).optional(),
   process: z.string().optional(),
   standard: z.string().optional(),
   identificationDate: z.string().datetime().optional(),
@@ -60,7 +62,7 @@ const updateSchema = z.object({
   legalRequirement: z.boolean().optional(),
   legalReference: z.string().optional(),
   riskSource: z.string().optional(),
-  strategy: z.enum(['EVITAR', 'MITIGAR', 'TRANSFERIR', 'ACEPTAR']).optional(),
+  strategy: z.enum(['EVITAR', 'MITIGAR', 'TRANSFERIR', 'ACEPTAR', 'EXPLOTAR', 'POTENCIAR', 'COMPARTIR']).optional(),
   responsible: z.string().optional(),
   effectiveness: z.number().int().min(0).max(100).optional(),
 });
@@ -89,6 +91,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
         q: z.string().optional(),
         aspectType: z.string().optional(),
         strategy: z.string().optional(),
+        nature: z.enum(['RISK', 'OPPORTUNITY']).optional(),
         legalRequirement: z.enum(['true', 'false']).optional(),
         riskSource: z.string().optional(),
         minLevel: z.coerce.number().int().optional(),
@@ -104,6 +107,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
     if (query.process) where.process = query.process;
     if (query.aspectType) where.aspectType = query.aspectType;
     if (query.strategy) where.strategy = query.strategy;
+    if (query.nature) where.nature = query.nature;
     if (query.legalRequirement) where.legalRequirement = query.legalRequirement === 'true';
     if (query.riskSource) where.riskSource = query.riskSource;
     if (query.q) {
@@ -153,6 +157,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
         process: z.string().optional(),
         aspectType: z.string().optional(),
         strategy: z.string().optional(),
+        nature: z.enum(['RISK', 'OPPORTUNITY']).optional(),
         legalRequirement: z.enum(['true', 'false']).optional(),
         riskSource: z.string().optional(),
         minLevel: z.coerce.number().int().optional(),
@@ -168,6 +173,7 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
     if (query.process) where.process = query.process;
     if (query.aspectType) where.aspectType = query.aspectType;
     if (query.strategy) where.strategy = query.strategy;
+    if (query.nature) where.nature = query.nature;
     if (query.legalRequirement) where.legalRequirement = query.legalRequirement === 'true';
     if (query.riskSource) where.riskSource = query.riskSource;
     if (query.minLevel !== undefined || query.maxLevel !== undefined) {
@@ -337,6 +343,17 @@ export const riskRoutes: FastifyPluginAsync = async (app) => {
           inherentImpact: body.inherentImpact,
           treatmentPlan: body.treatmentPlan,
           controls: body.controls,
+          nature: body.nature ?? 'RISK',
+          requirement: body.requirement,
+          aspectType: body.aspectType,
+          hazard: body.hazard,
+          environmentalAspect: body.environmentalAspect,
+          legalRequirement: body.legalRequirement ?? false,
+          legalReference: body.legalReference,
+          riskSource: body.riskSource,
+          strategy: body.strategy,
+          responsible: body.responsible,
+          effectiveness: body.effectiveness,
           ownerId: body.ownerId,
           createdById: req.auth?.userId ?? null,
           updatedById: req.auth?.userId ?? null,

@@ -28,13 +28,32 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 const CATEGORIES = ['Operacional', 'Legal', 'Ambiental', 'Seguridad Vial', 'Calidad', 'Financiero', 'Tecnológico', 'Otro'];
 const PROB_LABELS = ['', 'Raro', 'Improbable', 'Posible', 'Probable', 'Casi seguro'];
 const IMPACT_LABELS = ['', 'Insignificante', 'Menor', 'Moderado', 'Mayor', 'Catastrófico'];
+const BENEFIT_LABELS = ['', 'Marginal', 'Menor', 'Moderado', 'Significativo', 'Transformador'];
 const RISK_LEVELS = ['Bajo', 'Medio', 'Alto', 'Crítico'];
+const OPP_LEVELS = ['Marginal', 'Moderada', 'Alta', 'Excepcional'];
+const OPP_STRATEGIES: Record<string, string> = { EXPLOTAR: 'Explotar', POTENCIAR: 'Potenciar', COMPARTIR: 'Compartir', ACEPTAR: 'Aceptar' };
+const RISK_STRATEGIES: Record<string, string> = { EVITAR: 'Evitar', MITIGAR: 'Mitigar', TRANSFERIR: 'Transferir', ACEPTAR: 'Aceptar' };
 
 function getRiskColor(level: number): string {
   if (level >= 20) return 'bg-red-600 text-white';
   if (level >= 12) return 'bg-orange-500 text-white';
   if (level >= 5) return 'bg-amber-400 text-neutral-900';
   return 'bg-green-500 text-white';
+}
+
+// Matriz de oportunidades: valor alto = bueno (verde fuerte), valor bajo = neutro
+function getOppColor(level: number): string {
+  if (level >= 20) return 'bg-emerald-700 text-white';
+  if (level >= 12) return 'bg-emerald-500 text-white';
+  if (level >= 5) return 'bg-emerald-200 text-emerald-900';
+  return 'bg-neutral-200 text-neutral-600';
+}
+
+function getOppLabel(level: number): string {
+  if (level >= 20) return 'Excepcional';
+  if (level >= 12) return 'Alta';
+  if (level >= 5) return 'Moderada';
+  return 'Marginal';
 }
 
 function getRiskLabel(level: number): string {
@@ -69,7 +88,8 @@ export default function RiesgosPage() {
   const [showFilters, setShowFilters] = useState(false);
   
   // View modes
-  const [viewMode, setViewMode] = useState<'matrix' | 'table' | 'process' | 'trends'>('matrix');
+  const [viewMode, setViewMode] = useState<'matrix' | 'table' | 'process' | 'trends' | 'opportunities'>('matrix');
+  const isOppView = viewMode === 'opportunities';
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -104,6 +124,7 @@ export default function RiesgosPage() {
   const [form, setForm] = useState({
     title: '', description: '', category: 'Operacional', probability: 3, impact: 3,
     treatmentPlan: '', controls: '', standard: '', process: '', inherentProbability: 3, inherentImpact: 3,
+    nature: 'RISK' as 'RISK' | 'OPPORTUNITY',
     // ISO fields
     aspectType: undefined, strategy: undefined, legalRequirement: false, requirement: '',
     legalReference: '', riskSource: undefined, environmentalAspect: '', hazard: '',
@@ -114,6 +135,7 @@ export default function RiesgosPage() {
     setError(null); setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set('nature', isOppView ? 'OPPORTUNITY' : 'RISK');
       if (filterStatus) params.set('status', filterStatus);
       if (filterCategory) params.set('category', filterCategory);
       if (filterAspectType) params.set('aspectType', filterAspectType);
@@ -221,9 +243,9 @@ export default function RiesgosPage() {
   }, []);
 
   useEffect(() => {
-    // reload when filters change (server-side filtering)
+    // reload when filters or naturaleza (tab) change (server-side filtering)
     void load();
-  }, [filterCategory, filterLevel, filterStatus, filterAspectType, filterStrategy, filterLegalRequirement, filterDateFrom, filterDateTo]);
+  }, [filterCategory, filterLevel, filterStatus, filterAspectType, filterStrategy, filterLegalRequirement, filterDateFrom, filterDateTo, isOppView]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault(); 
@@ -240,11 +262,12 @@ export default function RiesgosPage() {
           inherentImpact: Number(form.inherentImpact),
         } 
       });
-      setSuccess('Riesgo creado correctamente'); 
+      setSuccess(form.nature === 'OPPORTUNITY' ? 'Oportunidad creada correctamente' : 'Riesgo creado correctamente'); 
       setShowCreate(false);
       setForm({ 
         title: '', description: '', category: 'Operacional', 
         probability: 3, impact: 3, inherentProbability: 3, inherentImpact: 3,
+        nature: isOppView ? 'OPPORTUNITY' : 'RISK',
         treatmentPlan: '', controls: '', standard: '', process: '',
         // Reset ISO fields
         aspectType: undefined, strategy: undefined, legalRequirement: false, requirement: '',
@@ -536,9 +559,9 @@ export default function RiesgosPage() {
             ])}
           />
 
-          <button onClick={() => { setShowCreate(!showCreate); setError(null); setSuccess(null); }} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors">
+          <button onClick={() => { if (!showCreate) setForm(f => ({ ...f, nature: isOppView ? 'OPPORTUNITY' : 'RISK' })); setShowCreate(!showCreate); setError(null); setSuccess(null); }} className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors ${isOppView ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-brand-600 hover:bg-brand-700'}`}>
             {showCreate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />} 
-            {showCreate ? 'Cancelar' : 'Nuevo riesgo'}
+            {showCreate ? 'Cancelar' : (isOppView ? 'Nueva oportunidad' : 'Nuevo riesgo')}
           </button>
         </div>
       </div>
@@ -619,6 +642,9 @@ export default function RiesgosPage() {
           </button>
           <button onClick={() => setViewMode('trends')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'trends' ? 'bg-brand-100 text-brand-700' : 'text-neutral-600 hover:bg-neutral-100'}`}>
             <BarChart3 className="h-4 w-4" /> Tendencias
+          </button>
+          <button onClick={() => setViewMode('opportunities')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'opportunities' ? 'bg-emerald-100 text-emerald-700' : 'text-neutral-600 hover:bg-neutral-100'}`}>
+            <TrendingUp className="h-4 w-4" /> Oportunidades
           </button>
         </div>
         
@@ -732,8 +758,10 @@ export default function RiesgosPage() {
 
       {/* Create Form */}
       {showCreate && (
-        <form onSubmit={handleCreate} className="bg-white rounded-xl border border-brand-200 p-5 space-y-4">
-          <h2 className="text-base font-semibold">Nuevo Riesgo</h2>
+        <form onSubmit={handleCreate} className={`bg-white rounded-xl border p-5 space-y-4 ${form.nature === 'OPPORTUNITY' ? 'border-emerald-300' : 'border-brand-200'}`}>
+          <h2 className="text-base font-semibold flex items-center gap-2">
+            {form.nature === 'OPPORTUNITY' ? <><TrendingUp className="h-4 w-4 text-emerald-600" /> Nueva Oportunidad</> : 'Nuevo Riesgo'}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-neutral-700 mb-1">Título *</label>
@@ -782,13 +810,26 @@ export default function RiesgosPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Estrategia de Tratamiento</label>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    {form.nature === 'OPPORTUNITY' ? 'Estrategia de Oportunidad' : 'Estrategia de Tratamiento'}
+                  </label>
                   <select className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm" value={form.strategy || ''} onChange={e => setForm({...form, strategy: e.target.value || (undefined as any)})}>
                     <option value="">Seleccionar...</option>
-                    <option value="EVITAR">Evitar</option>
-                    <option value="MITIGAR">Mitigar</option>
-                    <option value="TRANSFERIR">Transferir</option>
-                    <option value="ACEPTAR">Aceptar</option>
+                    {form.nature === 'OPPORTUNITY' ? (
+                      <>
+                        <option value="EXPLOTAR">Explotar</option>
+                        <option value="POTENCIAR">Potenciar</option>
+                        <option value="COMPARTIR">Compartir</option>
+                        <option value="ACEPTAR">Aceptar</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="EVITAR">Evitar</option>
+                        <option value="MITIGAR">Mitigar</option>
+                        <option value="TRANSFERIR">Transferir</option>
+                        <option value="ACEPTAR">Aceptar</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div className="flex items-center gap-2 pt-6">
@@ -841,7 +882,7 @@ export default function RiesgosPage() {
             </div>
             <div className="md:col-span-3 border-t border-neutral-200 pt-4">
               <h3 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
-                <Target className="h-4 w-4" /> Riesgo Inherente (antes de controles)
+                <Target className="h-4 w-4" /> {form.nature === 'OPPORTUNITY' ? 'Valor inherente (antes de acciones)' : 'Riesgo Inherente (antes de controles)'}
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -850,21 +891,33 @@ export default function RiesgosPage() {
                   <div className="flex justify-between text-xs text-neutral-400"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Impacto ({IMPACT_LABELS[form.inherentImpact]})</label>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    {form.nature === 'OPPORTUNITY'
+                      ? `Beneficio (${BENEFIT_LABELS[form.inherentImpact]})`
+                      : `Impacto (${IMPACT_LABELS[form.inherentImpact]})`}
+                  </label>
                   <input type="range" min={1} max={5} value={form.inherentImpact} onChange={e => setForm({...form, inherentImpact: Number(e.target.value)})} className="w-full accent-brand-600" />
                   <div className="flex justify-between text-xs text-neutral-400"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
                 </div>
               </div>
               <div className="mt-2 flex items-center gap-3">
-                <span className="text-sm font-medium">Nivel inherente:</span>
-                <span className={`rounded-lg px-3 py-1 text-sm font-bold ${getRiskColor(form.inherentProbability * form.inherentImpact)}`}>
-                  {form.inherentProbability * form.inherentImpact} — {getRiskLabel(form.inherentProbability * form.inherentImpact)}
-                </span>
+                <span className="text-sm font-medium">{form.nature === 'OPPORTUNITY' ? 'Valor inherente:' : 'Nivel inherente:'}</span>
+                {form.nature === 'OPPORTUNITY' ? (
+                  <span className={`rounded-lg px-3 py-1 text-sm font-bold ${getOppColor(form.inherentProbability * form.inherentImpact)}`}>
+                    {form.inherentProbability * form.inherentImpact} — {getOppLabel(form.inherentProbability * form.inherentImpact)}
+                  </span>
+                ) : (
+                  <span className={`rounded-lg px-3 py-1 text-sm font-bold ${getRiskColor(form.inherentProbability * form.inherentImpact)}`}>
+                    {form.inherentProbability * form.inherentImpact} — {getRiskLabel(form.inherentProbability * form.inherentImpact)}
+                  </span>
+                )}
               </div>
             </div>
             <div className="md:col-span-3 border-t border-neutral-200 pt-4">
               <h3 className="text-sm font-semibold text-neutral-700 mb-3 flex items-center gap-2">
-                <Shield className="h-4 w-4" /> Riesgo Residual (después de controles)
+                {form.nature === 'OPPORTUNITY'
+                  ? <><TrendingUp className="h-4 w-4" /> Valor esperado (con acciones)</>
+                  : <><Shield className="h-4 w-4" /> Riesgo Residual (después de controles)</>}
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -873,16 +926,26 @@ export default function RiesgosPage() {
                   <div className="flex justify-between text-xs text-neutral-400"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Impacto ({IMPACT_LABELS[form.impact]})</label>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    {form.nature === 'OPPORTUNITY'
+                      ? `Beneficio (${BENEFIT_LABELS[form.impact]})`
+                      : `Impacto (${IMPACT_LABELS[form.impact]})`}
+                  </label>
                   <input type="range" min={1} max={5} value={form.impact} onChange={e => setForm({...form, impact: Number(e.target.value)})} className="w-full accent-brand-600" />
                   <div className="flex justify-between text-xs text-neutral-400"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
                 </div>
               </div>
               <div className="mt-2 flex items-center gap-3">
-                <span className="text-sm font-medium">Nivel residual:</span>
-                <span className={`rounded-lg px-3 py-1 text-sm font-bold ${getRiskColor(form.probability * form.impact)}`}>
-                  {form.probability * form.impact} — {getRiskLabel(form.probability * form.impact)}
-                </span>
+                <span className="text-sm font-medium">{form.nature === 'OPPORTUNITY' ? 'Valor esperado:' : 'Nivel residual:'}</span>
+                {form.nature === 'OPPORTUNITY' ? (
+                  <span className={`rounded-lg px-3 py-1 text-sm font-bold ${getOppColor(form.probability * form.impact)}`}>
+                    {form.probability * form.impact} — {getOppLabel(form.probability * form.impact)}
+                  </span>
+                ) : (
+                  <span className={`rounded-lg px-3 py-1 text-sm font-bold ${getRiskColor(form.probability * form.impact)}`}>
+                    {form.probability * form.impact} — {getRiskLabel(form.probability * form.impact)}
+                  </span>
+                )}
                 {form.inherentProbability * form.inherentImpact > form.probability * form.impact && (
                   <span className="text-sm text-green-600 flex items-center gap-1">
                     <ArrowDown className="h-3 w-3" />
@@ -892,13 +955,15 @@ export default function RiesgosPage() {
               </div>
             </div>
             <div className="md:col-span-3">
-              <label className="block text-sm font-medium text-neutral-700 mb-1">Plan de tratamiento / Controles</label>
-              <textarea className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm" rows={3} value={form.treatmentPlan} onChange={e => setForm({...form, treatmentPlan: e.target.value})} placeholder="Describe las acciones de mitigación..." />
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                {form.nature === 'OPPORTUNITY' ? 'Plan de acción / Acciones para materializar' : 'Plan de tratamiento / Controles'}
+              </label>
+              <textarea className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm" rows={3} value={form.treatmentPlan} onChange={e => setForm({...form, treatmentPlan: e.target.value})} placeholder={form.nature === 'OPPORTUNITY' ? 'Describe las acciones para aprovechar la oportunidad...' : 'Describe las acciones de mitigación...'} />
             </div>
           </div>
           <div className="flex items-center gap-2 pt-2">
-            <button type="submit" disabled={creating} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-neutral-300 transition-colors">
-              <Plus className="h-4 w-4" /> {creating ? 'Creando...' : 'Crear riesgo'}
+            <button type="submit" disabled={creating} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:bg-neutral-300 transition-colors ${form.nature === 'OPPORTUNITY' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-brand-600 hover:bg-brand-700'}`}>
+              <Plus className="h-4 w-4" /> {creating ? 'Creando...' : (form.nature === 'OPPORTUNITY' ? 'Crear oportunidad' : 'Crear riesgo')}
             </button>
             <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800">Cancelar</button>
           </div>
@@ -1028,13 +1093,8 @@ export default function RiesgosPage() {
                     'REPUTACIONAL': 'bg-pink-100 text-pink-700',
                   };
                   
-                  // Labels para estrategia
-                  const strategyLabels: Record<string, string> = {
-                    'EVITAR': 'Evitar',
-                    'MITIGAR': 'Mitigar',
-                    'TRANSFERIR': 'Transferir',
-                    'ACEPTAR': 'Aceptar',
-                  };
+                  // Labels para estrategia (riesgo + oportunidad)
+                  const strategyLabels: Record<string, string> = { ...RISK_STRATEGIES, ...OPP_STRATEGIES };
                   
                   return (
                     <tr key={risk.id} className="hover:bg-neutral-50 cursor-pointer transition-colors" onClick={() => router.push(`/riesgos/${risk.id}`)}>
@@ -1319,8 +1379,148 @@ export default function RiesgosPage() {
         </div>
       )}
 
+      {/* OPPORTUNITIES VIEW - Matriz de Oportunidades (Probabilidad × Beneficio) */}
+      {viewMode === 'opportunities' && (
+        <>
+          <div className="rounded-xl border border-emerald-200 bg-white p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-base font-semibold text-neutral-900">Matriz de Oportunidades 5×5</h2>
+                <p className="text-xs text-neutral-500">ISO 31000 / ISO 9001 cláusula 6.1 — Probabilidad × Beneficio potencial</p>
+              </div>
+              <span className="text-xs text-neutral-400">{filtered.length} oportunidades</span>
+            </div>
+            <div className="flex gap-3">
+              <div className="flex flex-col justify-center items-center mr-1">
+                <span className="text-xs font-medium text-neutral-500 -rotate-90 whitespace-nowrap">PROBABILIDAD →</span>
+              </div>
+              <div className="flex-1">
+                <div className="grid grid-cols-6 gap-0.5">
+                  <div className="h-8" />
+                  {[1,2,3,4,5].map(i => (
+                    <div key={`h-${i}`} className="text-center text-[10px] font-medium text-neutral-500 pb-0.5 leading-tight">{BENEFIT_LABELS[i]}</div>
+                  ))}
+                  {[5,4,3,2,1].map(prob => (
+                    <React.Fragment key={`orow-${prob}`}>
+                      <div className="text-right text-[10px] font-medium text-neutral-500 pr-1.5 flex items-center justify-end leading-tight">{PROB_LABELS[prob]}</div>
+                      {[1,2,3,4,5].map(imp => {
+                        const level = prob * imp;
+                        const cellRisks = (matrixRisks[`${prob}-${imp}`] || []);
+                        const count = cellRisks.length;
+                        return (
+                          <div 
+                            key={`${prob}-${imp}`} 
+                            className={`h-10 w-full rounded flex flex-col items-center justify-center text-[10px] font-bold ${getOppColor(level)} ${count > 0 ? 'ring-1 ring-offset-0.5 ring-emerald-700 cursor-pointer hover:opacity-90' : 'opacity-70'}`}
+                            title={cellRisks.map(r => `${r.code}: ${r.title}`).join('\n')}
+                            onClick={() => count > 0 && router.push(`/riesgos/${cellRisks[0].id}`)}
+                          >
+                            <span>{level}</span>
+                            {count > 0 && <span className="text-[8px] font-normal opacity-90">({count})</span>}
+                          </div>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                  <div className="h-6" />
+                  <div className="col-span-5 text-center text-[10px] font-medium text-neutral-500 pt-0.5">BENEFICIO POTENCIAL →</div>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 mt-3 text-[10px]">
+              <span className="font-medium text-neutral-600">Valor:</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-neutral-300"></span> Marginal (1-4)</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-200"></span> Moderada (5-11)</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500"></span> Alta (12-19)</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-700"></span> Excepcional (≥20)</span>
+            </div>
+          </div>
+
+          {/* Tabla de oportunidades */}
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="p-4 border-b border-neutral-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-neutral-900">Oportunidades</h2>
+                <p className="text-xs text-neutral-500">Estrategias ISO 31000: Explotar / Potenciar / Compartir / Aceptar</p>
+              </div>
+              <span className="text-xs text-neutral-400">{filtered.length} registros</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-emerald-50/60 border-b border-neutral-200">
+                  <tr>
+                    <th className="px-2 py-2 text-left font-medium text-neutral-700 w-20">Código</th>
+                    <th className="px-2 py-2 text-left font-medium text-neutral-700 min-w-[200px]">Oportunidad / Proceso</th>
+                    <th className="px-2 py-2 text-left font-medium text-neutral-700 w-24">Categoría</th>
+                    <th className="px-2 py-2 text-center font-medium text-neutral-700 w-16">Prob.</th>
+                    <th className="px-2 py-2 text-center font-medium text-neutral-700 w-16">Beneficio</th>
+                    <th className="px-2 py-2 text-center font-medium text-neutral-700 w-16">Valor</th>
+                    <th className="px-2 py-2 text-center font-medium text-neutral-700 w-24">Estrategia</th>
+                    <th className="px-2 py-2 text-left font-medium text-neutral-700 w-28">Plan de acción</th>
+                    <th className="px-2 py-2 text-left font-medium text-neutral-700 w-20">Estado</th>
+                    <th className="px-2 py-2 text-left font-medium text-neutral-700 w-24">Responsable</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {filtered.map(opp => {
+                    const st = STATUS_CONFIG[opp.status] ?? STATUS_CONFIG.IDENTIFIED;
+                    return (
+                      <tr key={opp.id} className="hover:bg-emerald-50/30 cursor-pointer transition-colors" onClick={() => router.push(`/riesgos/${opp.id}`)}>
+                        <td className="px-2 py-2 font-mono text-neutral-600 whitespace-nowrap">{opp.code}</td>
+                        <td className="px-2 py-2">
+                          <div className="font-medium text-neutral-900 truncate" title={opp.title}>{opp.title}</div>
+                          <div className="text-neutral-500 truncate text-[10px]">{opp.process || 'Sin proceso'}</div>
+                        </td>
+                        <td className="px-2 py-2 text-neutral-600">{opp.category}</td>
+                        <td className="px-2 py-2 text-center">
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium">{opp.probability}</span>
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium">{opp.impact}</span>
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${getOppColor(opp.riskLevel)}`}>{opp.riskLevel}</span>
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          {opp.strategy ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[9px] font-medium">{OPP_STRATEGIES[opp.strategy] || opp.strategy}</span>
+                          ) : (
+                            <span className="text-neutral-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-2">
+                          {opp.treatmentPlan ? (
+                            <div className="text-neutral-600 truncate text-[10px] max-w-[120px]" title={opp.treatmentPlan}>{opp.treatmentPlan}</div>
+                          ) : (
+                            <span className="text-amber-600 text-[10px]">Sin plan</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-2">
+                          <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${st.bg} ${st.color}`}>{st.label}</span>
+                        </td>
+                        <td className="px-2 py-2">
+                          <div className="text-[10px] text-neutral-600 truncate">{opp.responsible || (opp.owner?.email || '-')}</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filtered.length === 0 && !loading && (
+                    <tr>
+                      <td colSpan={10} className="px-3 py-8 text-center text-neutral-500">
+                        <TrendingUp className="mx-auto h-8 w-8 text-emerald-300 mb-2" />
+                        <p className="font-medium">Sin oportunidades registradas</p>
+                        <p className="text-xs text-neutral-400 mt-1">Usá "Nueva oportunidad" para registrar la primera</p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Search and List */}
-      {viewMode !== 'trends' && (
+      {viewMode !== 'trends' && viewMode !== 'opportunities' && (
         <>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
