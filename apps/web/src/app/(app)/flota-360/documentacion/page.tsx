@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { FileWarning, Plus, X, RefreshCw, Trash2 } from 'lucide-react';
-import { DocsChoferPanel, IncidentesPanel, BitacoraPanel, ControlesPanel, JornadasPanel, LibroJornadaPanel } from '../_components/DriverHubPanels';
+import { DocsChoferPanel, IncidentesPanel, BitacoraPanel, ControlesPanel, JornadasPanel, LibroJornadaPanel, JornadasListaPanel, PoliticaJornadaPanel } from '../_components/DriverHubPanels';
 
 type Vencimiento = {
   id: string; tipo: string; fechaVto: string; renovado: boolean;
@@ -14,7 +14,7 @@ type Vencimiento = {
 
 const TIPOS_DOC = ['VTV', 'SEGURO', 'HABILITACION', 'RUTA', 'CNRT', 'SENASA', 'OTRO'];
 
-type Tab = 'vencimientos' | 'docs' | 'incidentes' | 'bitacora' | 'controles' | 'jornadas' | 'libro';
+type Tab = 'vencimientos' | 'docs' | 'incidentes' | 'bitacora' | 'controles' | 'jornadas' | 'libro' | 'jornadas-detalle' | 'politica';
 
 export default function DocumentacionPage() {
   const searchParams = useSearchParams();
@@ -108,7 +108,9 @@ export default function DocumentacionPage() {
     { id: 'incidentes', label: 'Incidentes' },
     { id: 'bitacora', label: 'Bitácora' },
     { id: 'jornadas', label: 'Jornadas' },
+    { id: 'jornadas-detalle', label: 'Jornadas (detalle)' },
     { id: 'libro', label: 'Libro de jornada' },
+    { id: 'politica', label: 'Política de descanso' },
     { id: 'controles', label: 'Controles pre-servicio' },
   ];
 
@@ -139,7 +141,9 @@ export default function DocumentacionPage() {
       {tab === 'incidentes' && <IncidentesPanel />}
       {tab === 'bitacora' && <BitacoraPanel vehiculos={vehiculos} />}
       {tab === 'jornadas' && <JornadasPanel />}
+      {tab === 'jornadas-detalle' && <JornadasListaPanel vehiculos={vehiculos} />}
       {tab === 'libro' && <LibroJornadaPanel />}
+      {tab === 'politica' && <PoliticaJornadaPanel />}
       {tab === 'controles' && <ControlesPanel vehiculos={vehiculos} />}
 
       {tab === 'vencimientos' && <>

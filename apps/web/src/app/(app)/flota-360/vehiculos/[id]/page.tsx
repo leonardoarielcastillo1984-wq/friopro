@@ -72,23 +72,34 @@ export default function VehiculoFichaPage() {
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [estadoOp, setEstadoOp] = useState<any>(null);
+  const [estadoCompuesto, setEstadoCompuesto] = useState<any>(null);
+  const [episodio, setEpisodio] = useState<any>(null);
+  const [restricciones, setRestricciones] = useState<any[]>([]);
   const [estadoSaving, setEstadoSaving] = useState<string | null>(null);
   const [showEstadoHist, setShowEstadoHist] = useState(false);
+  const [showRetirar, setShowRetirar] = useState(false);
+  const [retiroForm, setRetiroForm] = useState({ etapa: 'OTRO', motivo: '' });
   const [histRefresh, setHistRefresh] = useState(0);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [c, t, e, cond] = await Promise.all([
+      const [c, t, e, cond, restr, comp, ep] = await Promise.all([
         apiFetch<any>(`/flota/vehiculos/${id}/completo`),
         apiFetch<any>(`/flota/vehiculos/${id}/twin`).catch(() => null),
         apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-historial`).catch(() => null),
         apiFetch<{ conductores: any[] }>('/flota/conductores').catch(() => ({ conductores: [] })),
+        apiFetch<any>(`/fleet-ops/vehiculos/${id}/restricciones`).catch(() => null),
+        apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-compuesto`).catch(() => null),
+        apiFetch<any>(`/fleet-ops/vehiculos/${id}/indisponibilidad`).catch(() => null),
       ]);
       setCompleto(c);
       setTwin(t);
       setEstadoOp(e);
+      setEstadoCompuesto(comp && !comp.error ? comp : null);
+      setEpisodio(ep?.episodio ?? null);
       setConductores(cond.conductores || []);
+      setRestricciones(restr?.restricciones || []);
     } finally {
       setLoading(false);
     }
@@ -157,15 +168,35 @@ export default function VehiculoFichaPage() {
     }
   };
 
-  const cambiarEstado = async (estado: string) => {
-    setEstadoSaving(estado);
+  // Declarar la unidad disponible = cerrar el episodio abierto.
+  // Si quedan restricciones/OTs que la retiran, el backend bloquea (409).
+  const declararDisponible = async () => {
+    setEstadoSaving('DISPONIBLE');
     try {
-      await apiFetch(`/fleet-ops/vehiculos/${id}/estado`, { method: 'POST', json: { estado } });
-      const e = await apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-historial`).catch(() => null);
-      setEstadoOp(e);
-      const c = await apiFetch<any>(`/flota/vehiculos/${id}/completo`).catch(() => null);
-      if (c) setCompleto(c);
+      await apiFetch(`/fleet-ops/vehiculos/${id}/disponible`, { method: 'POST', json: {} });
+      await load();
       setHistRefresh((k) => k + 1);
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo declarar disponible');
+    } finally {
+      setEstadoSaving(null);
+    }
+  };
+
+  // Retirar del servicio = abrir episodio de indisponibilidad con etapa/motivo.
+  const retirarDelServicio = async () => {
+    setEstadoSaving('RETIRAR');
+    try {
+      await apiFetch(`/fleet-ops/vehiculos/${id}/indisponibilidad`, {
+        method: 'POST',
+        json: { etapa: retiroForm.etapa, motivo: retiroForm.motivo || undefined },
+      });
+      setShowRetirar(false);
+      setRetiroForm({ etapa: 'OTRO', motivo: '' });
+      await load();
+      setHistRefresh((k) => k + 1);
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo retirar la unidad');
     } finally {
       setEstadoSaving(null);
     }
@@ -236,41 +267,124 @@ export default function VehiculoFichaPage() {
         </div>
       </div>
 
-      {/* Estadío operativo — OPERATIVO / EN_TALLER / EN_REPARACION */}
+      {/* Estado de servicio — gobernado por el episodio de indisponibilidad.
+          Retirar del servicio abre el episodio; declarar disponible lo cierra
+          (bloqueado si quedan restricciones u OTs que la retiran). */}
       <div className="rounded-lg border border-neutral-200 bg-white p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <Activity className="h-4 w-4 text-blue-600" />
             <div>
-              <p className="text-sm font-semibold text-neutral-800">Estadío de la unidad</p>
+              <p className="text-sm font-semibold text-neutral-800">Estado de servicio</p>
               <p className="text-xs text-neutral-500">
-                {estadoOp?.estadoOperativo
-                  ? <>Actual: <span className="font-medium">{ESTADO_OP[estadoOp.estadoOperativo]?.label ?? estadoOp.estadoOperativo}</span>
-                      {estadoOp.historial?.[0] && ` · hace ${estadoOp.historial[0].horas} hs (${estadoOp.historial[0].turnos} turnos)`}</>
-                  : 'Sin eventos registrados'}
+                {estadoCompuesto
+                  ? <><span className="font-medium">{estadoCompuesto.etiqueta ?? '—'}</span>
+                      {estadoCompuesto.enTallerEfectivo && ' · en taller'}
+                      {estadoCompuesto.utilizacion === 'EN_SERVICIO' && ' · en servicio'}
+                      {v.ubicacionTipo && ` · ${v.ubicacionDetalle || v.ubicacionTipo}`}</>
+                  : estadoOp?.estadoOperativo
+                    ? <>Actual: <span className="font-medium">{ESTADO_OP[estadoOp.estadoOperativo]?.label ?? estadoOp.estadoOperativo}</span>
+                        {estadoOp.historial?.[0] && ` · hace ${estadoOp.historial[0].horas} hs (${estadoOp.historial[0].turnos} turnos)`}</>
+                    : 'Sin eventos registrados'}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
-            {(['OPERATIVO', 'EN_TALLER', 'EN_REPARACION'] as const).map((e) => {
-              const cfg = ESTADO_OP[e];
-              const activo = estadoOp?.estadoOperativo === e || (!estadoOp?.estadoOperativo && e === 'OPERATIVO');
-              return (
-                <button
-                  key={e}
-                  onClick={() => cambiarEstado(e)}
-                  disabled={estadoSaving !== null || activo}
-                  className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
-                    activo ? cfg.cls + ' cursor-default' : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50'
-                  } disabled:opacity-60`}
-                >
-                  <span className={`h-2 w-2 rounded-full ${activo ? cfg.dot : 'bg-neutral-300'}`} />
-                  {estadoSaving === e ? 'Guardando…' : cfg.label}
-                </button>
-              );
-            })}
+            {episodio ? (
+              <button
+                onClick={declararDisponible}
+                disabled={estadoSaving !== null}
+                className="inline-flex items-center gap-1.5 rounded-md border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-60"
+              >
+                <span className="h-2 w-2 rounded-full bg-green-500" />
+                {estadoSaving === 'DISPONIBLE' ? 'Verificando…' : 'Declarar disponible'}
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowRetirar(true)}
+                disabled={estadoSaving !== null || v.status === 'BAJA'}
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+              >
+                <span className="h-2 w-2 rounded-full bg-amber-500" />
+                Retirar del servicio
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Episodio abierto: etapa actual, taller, OTs causales */}
+        {episodio && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-semibold text-amber-800">
+              Retirada del servicio desde {fmtFecha(episodio.inicioAt)}
+              {episodio.etapas?.length > 0 && (
+                <> · etapa: <span className="underline">{{
+                  PENDIENTE_INGRESO: 'Pendiente de ingreso', PENDIENTE_DIAGNOSTICO: 'Pendiente de diagnóstico',
+                  ESPERANDO_PRESUPUESTO: 'Esperando presupuesto', ESPERANDO_AUTORIZACION: 'Esperando autorización',
+                  ESPERANDO_REPUESTO: 'Esperando repuesto', ESPERANDO_PAGO_REPUESTO: 'Esperando pago de repuesto',
+                  ESPERANDO_TURNO_MANO_OBRA: 'Esperando turno/mano de obra', REPARACION_EN_CURSO: 'Reparación en curso',
+                  PENDIENTE_VERIFICACION: 'Pendiente de verificación', PENDIENTE_HABILITACION: 'Pendiente de habilitación',
+                  OTRO: 'Otro',
+                }[episodio.etapas[episodio.etapas.length - 1]?.etapa] ?? episodio.etapas[episodio.etapas.length - 1]?.etapa}</span></>
+              )}
+            </p>
+            {episodio.motivo && <p className="text-xs text-amber-700 mt-0.5">{episodio.motivo}</p>}
+            <p className="text-[10px] text-amber-600 mt-1">
+              {[
+                episodio.tallerNombre ? `Taller: ${episodio.tallerNombre}` : (episodio.tallerTipo === 'INTERNO' ? 'Taller interno' : null),
+                episodio.fechaIngresoTaller ? `Ingresó ${fmtFecha(episodio.fechaIngresoTaller)}` : null,
+                episodio.fechaDevolucionEstimada ? `Devolución estimada ${fmtFecha(episodio.fechaDevolucionEstimada)}` : null,
+                episodio.ambiguo ? 'Dato migrado — fechas de referencia' : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+        )}
+
+        {/* Retirar del servicio: etapa + motivo */}
+        {showRetirar && (
+          <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-medium text-neutral-600 mb-1">Etapa / motivo de espera</label>
+                <select value={retiroForm.etapa} onChange={(e) => setRetiroForm({ ...retiroForm, etapa: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm bg-white">
+                  <option value="PENDIENTE_INGRESO">Pendiente de ingreso al taller</option>
+                  <option value="PENDIENTE_DIAGNOSTICO">Pendiente de diagnóstico</option>
+                  <option value="ESPERANDO_PRESUPUESTO">Esperando presupuesto</option>
+                  <option value="ESPERANDO_AUTORIZACION">Esperando autorización</option>
+                  <option value="ESPERANDO_REPUESTO">Esperando repuesto</option>
+                  <option value="ESPERANDO_PAGO_REPUESTO">Esperando pago de repuesto</option>
+                  <option value="ESPERANDO_TURNO_MANO_OBRA">Esperando turno / mano de obra</option>
+                  <option value="REPARACION_EN_CURSO">Reparación en curso</option>
+                  <option value="PENDIENTE_VERIFICACION">Pendiente de verificación</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-neutral-600 mb-1">Motivo (opcional)</label>
+                <input value={retiroForm.motivo} onChange={(e) => setRetiroForm({ ...retiroForm, motivo: e.target.value })} placeholder="Ej: falla de frenos, servicio programado…" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowRetirar(false)} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs text-neutral-600 hover:bg-white">Cancelar</button>
+              <button onClick={retirarDelServicio} disabled={estadoSaving !== null} className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60">
+                {estadoSaving === 'RETIRAR' ? 'Retirando…' : 'Confirmar retiro'}
+              </button>
+            </div>
+          </div>
+        )}
+        {/* Restricciones de servicio — la unidad no puede volver a
+            operativo hasta la habilitación autorizada del caso */}
+        {restricciones.length > 0 && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-xs font-semibold text-red-700 mb-1">⛔ Unidad restringida para servicio ({restricciones.length})</p>
+            {restricciones.map((r: any) => (
+              <p key={r.id} className="text-xs text-red-600">
+                • {r.motivo} {r.caso?.workOrder ? `· OT ${r.caso.workOrder.code} (${r.caso.workOrder.status})` : ''}
+              </p>
+            ))}
+            <p className="text-[10px] text-red-500 mt-1">La habilitación requiere verificación del defecto y autorización del responsable (Flota 360 → Inspecciones → Casos de defecto).</p>
+          </div>
+        )}
         {estadoOp?.ultimoCiclo && (
           <p className="text-[11px] text-neutral-500 mt-2">
             Última estadía en taller: {fmtFecha(estadoOp.ultimoCiclo.desde)} → {fmtFecha(estadoOp.ultimoCiclo.hasta)}
@@ -649,13 +763,15 @@ export default function VehiculoFichaPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Estado</label>
-                  <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Situación administrativa</label>
+                  <select value={editForm.status === 'EN_TALLER' ? 'ACTIVO' : editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
                     <option value="ACTIVO">Activo</option>
-                    <option value="EN_TALLER">En taller</option>
                     <option value="INACTIVO">Inactivo</option>
                     <option value="BAJA">Baja</option>
                   </select>
+                  {editForm.status === 'EN_TALLER' && (
+                    <p className="text-[10px] text-amber-600 mt-1">"En taller" es un estado derivado de la indisponibilidad; se gestiona desde el panel de servicio.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Fecha de compra</label>

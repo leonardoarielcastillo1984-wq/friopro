@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { LayoutDashboard, ListChecks, ClipboardCheck, ScanLine, AlertTriangle, Bell, Star, BarChart2, Wrench, QrCode } from 'lucide-react';
+import { LayoutDashboard, ListChecks, ClipboardCheck, ScanLine, AlertTriangle, Bell, Star, BarChart2, Wrench, QrCode, ShieldAlert } from 'lucide-react';
+import DefectosCasos from './DefectosCasos';
 import InspeccionesDashboard from '@/app/(app)/infraestructura/_tabs/inspecciones/Dashboard';
 import InspeccionesPlantillas from '@/app/(app)/infraestructura/_tabs/inspecciones/Plantillas';
 import InspeccionesLista from '@/app/(app)/infraestructura/_tabs/inspecciones/Lista';
@@ -21,6 +22,7 @@ const TABS = [
   { key: 'qrs', label: 'QR Operativos', icon: ScanLine },
   { key: 'intervenciones', label: 'Intervenciones QR', icon: QrCode },
   { key: 'hallazgos', label: 'Hallazgos', icon: AlertTriangle },
+  { key: 'defectos', label: 'Casos de defecto', icon: ShieldAlert },
   { key: 'ots', label: 'OTs de inspección', icon: Wrench },
   { key: 'feedback-qrs', label: 'QR Feedback', icon: Star },
   { key: 'satisfaccion', label: 'Satisfacción', icon: BarChart2 },
@@ -69,6 +71,7 @@ export default function InspeccionesPage() {
       {tab === 'qrs' && <InspeccionesQRs assetScope="fleet" />}
       {tab === 'intervenciones' && <IntervencionesQR assets={assets} />}
       {tab === 'hallazgos' && <InspeccionesHallazgos />}
+      {tab === 'defectos' && <DefectosCasos />}
       {tab === 'ots' && <InspeccionesOTs />}
       {tab === 'feedback-qrs' && <QRFeedback assetScope="fleet" />}
       {tab === 'satisfaccion' && <FeedbackStats />}

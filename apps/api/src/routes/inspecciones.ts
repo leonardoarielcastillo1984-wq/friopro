@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import crypto from 'crypto';
 import { notifyInspeccionHallazgo, notifyInspeccionOT, notifyBandaCritica } from '../services/notifyService.js';
+import { reglaParaRespuesta, procesarReporteDefecto } from '../services/defectService.js';
+import { abrirIndisponibilidad } from '../services/unidadEstadoService.js';
 import ExcelJS from 'exceljs';
 
 const generateToken = () => crypto.randomBytes(20).toString('hex');
@@ -181,20 +183,53 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         opciones: z.array(z.string()).optional(), seccion: z.string().optional(),
         orden: z.number().default(0), isRequerido: z.boolean().default(true),
         triggerHallazgo: z.boolean().default(false),
+        // Regla de criticidad (opcional, configurable por responsable)
+        severidadHallazgo: z.enum(['LEVE', 'MODERADO', 'CRITICO']).optional().nullable(),
+        bloqueaServicio: z.boolean().default(false),
+        instruccionChofer: z.string().max(500).optional().nullable(),
+        prioridadOt: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional().nullable(),
+        tipoDefecto: z.string().max(120).optional().nullable(),
+        componentKey: z.string().max(80).optional().nullable(),
+        posicion: z.string().max(80).optional().nullable(),
+        reglasRespuesta: z.array(z.object({
+          valor: z.string(),
+          generaHallazgo: z.boolean().optional(),
+          severidad: z.enum(['LEVE', 'MODERADO', 'CRITICO']).optional(),
+          bloqueaServicio: z.boolean().optional(),
+          instruccionChofer: z.string().max(500).optional().nullable(),
+          prioridadOt: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+          tipoDefecto: z.string().max(120).optional().nullable(),
+        })).optional().nullable(),
       })).default([]),
+      criticidadRevisada: z.boolean().optional(),
     });
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const mapItem = (item: any, i: number) => ({
+      label: item.label, tipo: item.tipo, opciones: item.opciones || undefined,
+      seccion: item.seccion, orden: item.orden ?? i, isRequerido: item.isRequerido, triggerHallazgo: item.triggerHallazgo,
+      severidadHallazgo: item.severidadHallazgo || null, bloqueaServicio: !!item.bloqueaServicio,
+      instruccionChofer: item.instruccionChofer || null, prioridadOt: item.prioridadOt || null,
+      tipoDefecto: item.tipoDefecto || null, componentKey: item.componentKey || null,
+      posicion: item.posicion || null, reglasRespuesta: item.reglasRespuesta || undefined,
+    });
     const plantilla = await (app.prisma as any).inspeccionPlantilla.create({
       data: {
         tenantId, nombre: body.data.nombre, descripcion: body.data.descripcion, categoria: body.data.categoria,
-        items: { create: body.data.items.map(item => ({
-          label: item.label, tipo: item.tipo, opciones: item.opciones || undefined,
-          seccion: item.seccion, orden: item.orden, isRequerido: item.isRequerido, triggerHallazgo: item.triggerHallazgo,
-        })) },
+        criticidadRevisada: !!body.data.criticidadRevisada,
+        items: { create: body.data.items.map(mapItem) },
       },
       include: { items: { orderBy: { orden: 'asc' } } },
     });
+    await (app.prisma as any).inspeccionReglaAudit.create({
+      data: {
+        tenantId, plantillaId: plantilla.id, accion: 'CREATE',
+        plantillaVersion: plantilla.version ?? 1,
+        cambios: body.data.items.map((it: any) => ({ itemLabel: it.label, campo: 'regla', despues: { severidad: it.severidadHallazgo, bloqueaServicio: it.bloqueaServicio, prioridadOt: it.prioridadOt } })),
+        usuarioId: (req as any).auth?.userId ?? null,
+        usuarioNombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null,
+      },
+    }).catch((e: any) => console.error('[plantillas] audit create error:', e));
     return reply.code(201).send({ plantilla });
   });
 
@@ -222,12 +257,29 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       triggerHallazgo: z.boolean().default(false),
       orden: z.number().default(0),
       opciones: z.array(z.string()).optional().nullable(),
+      severidadHallazgo: z.enum(['LEVE', 'MODERADO', 'CRITICO']).optional().nullable(),
+      bloqueaServicio: z.boolean().optional(),
+      instruccionChofer: z.string().max(500).optional().nullable(),
+      prioridadOt: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional().nullable(),
+      tipoDefecto: z.string().max(120).optional().nullable(),
+      componentKey: z.string().max(80).optional().nullable(),
+      posicion: z.string().max(80).optional().nullable(),
+      reglasRespuesta: z.array(z.object({
+        valor: z.string(),
+        generaHallazgo: z.boolean().optional(),
+        severidad: z.enum(['LEVE', 'MODERADO', 'CRITICO']).optional(),
+        bloqueaServicio: z.boolean().optional(),
+        instruccionChofer: z.string().max(500).optional().nullable(),
+        prioridadOt: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+        tipoDefecto: z.string().max(120).optional().nullable(),
+      })).optional().nullable(),
     }).passthrough();
     const schema = z.object({
       nombre: z.string().optional(),
       descripcion: z.string().optional().nullable(),
       categoria: z.string().optional(),
       isActive: z.boolean().optional(),
+      criticidadRevisada: z.boolean().optional(),
       items: z.array(itemSchema).optional(),
     }).passthrough();
     const body = schema.safeParse(req.body ?? {});
@@ -236,8 +288,33 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
     }
     const { items, ...rest } = body.data;
-    await (app.prisma as any).inspeccionPlantilla.updateMany({ where: { id, tenantId }, data: rest });
+    const anterior = await (app.prisma as any).inspeccionPlantilla.findFirst({
+      where: { id, tenantId }, include: { items: { orderBy: { orden: 'asc' } } },
+    });
+    if (!anterior) return reply.code(404).send({ error: 'Plantilla no encontrada' });
+
+    // Cambiar ítems o reglas incrementa la versión: las inspecciones ya
+    // respondidas conservan la versión que las interpretó.
+    const nuevaVersion = items !== undefined ? (anterior.version ?? 1) + 1 : (anterior.version ?? 1);
+    await (app.prisma as any).inspeccionPlantilla.updateMany({
+      where: { id, tenantId },
+      data: { ...rest, version: nuevaVersion },
+    });
     if (items !== undefined) {
+      // Diff de reglas para auditoría (por label del ítem)
+      const antesPorLabel = new Map((anterior.items || []).map((it: any) => [it.label, it]));
+      const cambios: any[] = [];
+      for (const it of items) {
+        const antes = antesPorLabel.get(it.label);
+        const campos = ['triggerHallazgo', 'severidadHallazgo', 'bloqueaServicio', 'instruccionChofer', 'prioridadOt', 'tipoDefecto', 'componentKey', 'posicion'];
+        for (const campo of campos) {
+          const a = antes ? (antes as any)[campo] : undefined;
+          const d = (it as any)[campo];
+          if (JSON.stringify(a ?? null) !== JSON.stringify(d ?? null)) {
+            cambios.push({ itemLabel: it.label, campo, antes: a ?? null, despues: d ?? null });
+          }
+        }
+      }
       await (app.prisma as any).inspeccionItem.deleteMany({ where: { plantillaId: id } });
       if (items.length > 0) {
         await (app.prisma as any).inspeccionItem.createMany({
@@ -250,11 +327,29 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
             isRequerido: it.isRequerido !== false,
             triggerHallazgo: !!it.triggerHallazgo,
             opciones: it.opciones || undefined,
+            severidadHallazgo: it.severidadHallazgo || null,
+            bloqueaServicio: !!it.bloqueaServicio,
+            instruccionChofer: it.instruccionChofer || null,
+            prioridadOt: it.prioridadOt || null,
+            tipoDefecto: it.tipoDefecto || null,
+            componentKey: it.componentKey || null,
+            posicion: it.posicion || null,
+            reglasRespuesta: it.reglasRespuesta || undefined,
           })),
         });
       }
+      if (cambios.length > 0) {
+        await (app.prisma as any).inspeccionReglaAudit.create({
+          data: {
+            tenantId, plantillaId: id, accion: 'UPDATE_REGLAS',
+            plantillaVersion: nuevaVersion, cambios,
+            usuarioId: (req as any).auth?.userId ?? null,
+            usuarioNombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null,
+          },
+        }).catch((e: any) => console.error('[plantillas] audit update error:', e));
+      }
     }
-    return reply.send({ ok: true });
+    return reply.send({ ok: true, version: nuevaVersion });
   });
 
   app.delete('/plantillas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -447,14 +542,35 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         valor: z.any(),
         esOk: z.boolean().optional(),
         observacion: z.string().optional(),
+        fotoUrl: z.string().max(2000).optional(),
       })),
+      // Clave idempotente del envío: el reintento del chofer devuelve la
+      // inspección ya registrada en vez de duplicarla.
+      submissionKey: z.string().max(120).optional(),
     });
     const body = schema.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
 
+    // ── Idempotencia del envío completo ──
+    if (body.data.submissionKey) {
+      const previa = await (app.prisma as any).inspeccion.findFirst({
+        where: { tenantId: qr.tenantId, submissionKey: body.data.submissionKey },
+        select: { id: true, estado: true, puntaje: true, hallazgosCount: true, feedbackToken: true },
+      });
+      if (previa) {
+        return reply.code(200).send({
+          ok: true, inspeccionId: previa.id, estado: previa.estado, puntaje: previa.puntaje,
+          hallazgosCount: previa.hallazgosCount, feedbackToken: previa.feedbackToken,
+          duplicada: true, mensaje: 'La inspección ya había sido registrada (reintento detectado).',
+        });
+      }
+    }
+
     const items = qr.plantilla.items as any[];
     const respuestas = body.data.respuestas;
-    const hallazgos: any[] = [];
+    // Candidatos a reporte de defecto: la regla de criticidad decide si
+    // genera hallazgo, su severidad, si bloquea y la instrucción al chofer.
+    const candidatos: { item: any; resp: any; regla: any; equipoDestino: string }[] = [];
     let itemsOk = 0;
     let itemsEvaluados = 0;
 
@@ -466,16 +582,19 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       // Solo los ítems efectivamente respondidos (Cumple / No cumple, o valores cargados) cuentan
       if (resp.esOk === true || resp.esOk === false) itemsEvaluados++;
       if (resp.esOk === true) itemsOk++;
-      if (resp.esOk === false && item.triggerHallazgo) {
+      if (resp.esOk === false) {
+        const regla = reglaParaRespuesta(item, resp);
+        if (!regla.generaHallazgo) continue;
         const secLower = (item.seccion || '').toLowerCase();
         const labelLower = (item.label || '').toLowerCase();
         const equipoDestino = (secLower.startsWith('semi') || labelLower.startsWith('semi')) ? 'SEMI' : 'TRACTOR';
-        hallazgos.push({ descripcion: resp.observacion || `${item.label}: No cumple`, tipo: 'OPERATIVO', severidad: 'MODERADO', itemLabel: item.label, equipoDestino });
+        candidatos.push({ item, resp, regla, equipoDestino });
       }
     }
+    const hallazgos = candidatos; // alias para el resto del handler (conteos/alertas)
 
     const puntaje = itemsEvaluados > 0 ? Math.round((itemsOk / itemsEvaluados) * 100) : 100;
-    const estado = hallazgos.length === 0 ? 'COMPLETA' : puntaje < 60 ? 'CRITICA' : 'CON_HALLAZGOS';
+    const estado = candidatos.length === 0 ? 'COMPLETA' : puntaje < 60 ? 'CRITICA' : 'CON_HALLAZGOS';
 
     const inspeccion = await (app.prisma as any).inspeccion.create({
       data: {
@@ -488,12 +607,13 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         dominioSemi: body.data.dominioSemi || null,
         empresaTransporte: body.data.empresaTransporte || null,
         conductor: body.data.conductor || null,
-        estado, puntaje, hallazgosCount: hallazgos.length, itemsTotal: itemsEvaluados, itemsOk,
+        estado, puntaje, hallazgosCount: candidatos.length, itemsTotal: itemsEvaluados, itemsOk,
         notas: body.data.notas,
         kmReported: body.data.kmReported ?? null,
+        plantillaVersion: qr.plantilla.version ?? 1,
+        submissionKey: body.data.submissionKey ?? null,
         feedbackToken: generateToken(),
-        respuestas: { create: respuestas.map(r => ({ itemId: r.itemId, valor: r.valor ?? null, esOk: r.esOk ?? null, observacion: r.observacion })) },
-        hallazgos: hallazgos.length > 0 ? { create: hallazgos.map(h => ({ tenantId: qr.tenantId, ...h })) } : undefined,
+        respuestas: { create: respuestas.map(r => ({ itemId: r.itemId, valor: r.valor ?? null, esOk: r.esOk ?? null, observacion: r.observacion, fotoUrl: r.fotoUrl })) },
       },
     });
 
@@ -641,7 +761,7 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
     // Auto-actualizar odómetro y estado del activo
     if (qr.maintenanceAssetId) {
       try {
-        const hayCriticos = hallazgos.some((h: any) => h.severidad === 'CRITICO');
+        const hayCriticos = candidatos.some((c: any) => c.regla.severidad === 'CRITICO');
         const updateData: any = { lastMaintenanceDate: new Date() };
         if (hayCriticos) updateData.status = 'MAINTENANCE';
         if (body.data.kmReported) updateData.currentOdometer = body.data.kmReported;
@@ -687,49 +807,97 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
       } catch (e: any) { console.error('[inspecciones] asset/km update error:', e); }
     }
 
-    // Auto-crear OT por hallazgo si el QR está vinculado a un activo de mantenimiento
-    if (hallazgos.length > 0 && qr.maintenanceAssetId) {
+    // ── Circuito de defectos: reporte → caso (dedup) → restricción → OT ──
+    // Cada respuesta no-conforme genera un REPORTE conservado, vinculado al
+    // caso abierto del mismo defecto (o uno nuevo). La restricción de
+    // servicio se registra en la misma transacción del caso — antes y sin
+    // depender de la OT. La OT se crea UNA vez por caso, no por reporte.
+    const resultadosDefecto: any[] = [];
+    if (candidatos.length > 0 && qr.maintenanceAssetId) {
       try {
-        const hallazgosCreados = await (app.prisma as any).inspeccionHallazgo.findMany({
-          where: { inspeccionId: inspeccion.id },
-          select: { id: true, descripcion: true, severidad: true, equipoDestino: true },
+        const prisma: any = app.prisma;
+        // Resolver las unidades afectadas por identificador (no por texto):
+        // tractor = vehículo vinculado al QR; semi = dominio informado.
+        const vehiculoTractor = await prisma.vehiculo.findFirst({
+          where: { maintenanceAssetId: qr.maintenanceAssetId, tenantId: qr.tenantId },
+          select: { id: true, maintenanceAssetId: true, dominio: true },
         });
-
-        // Buscar maintenanceAssetId del semi si hay dominio informado
-        let semiAssetId: string | null = null;
+        let vehiculoSemi: any = null;
         if (body.data.dominioSemi) {
-          const semiVeh = await (app.prisma as any).vehiculo.findFirst({
+          vehiculoSemi = await prisma.vehiculo.findFirst({
             where: { dominio: { equals: body.data.dominioSemi, mode: 'insensitive' }, tenantId: qr.tenantId },
-            select: { maintenanceAssetId: true },
+            select: { id: true, maintenanceAssetId: true, dominio: true },
           }).catch(() => null);
-          semiAssetId = semiVeh?.maintenanceAssetId ?? null;
         }
+        const fechaInsp = new Date(inspeccion.createdAt ?? Date.now());
 
-        for (const h of hallazgosCreados) {
-          const prioridad = h.severidad === 'CRITICO' ? 'CRITICAL' : h.severidad === 'GRAVE' ? 'HIGH' : 'MEDIUM';
-          const esSemi = h.equipoDestino === 'SEMI';
-          const assetIdOT = esSemi && semiAssetId ? semiAssetId : qr.maintenanceAssetId;
-          const activoNombre = esSemi
-            ? `Semi ${body.data.dominioSemi?.toUpperCase() || ''}`.trim()
-            : qr.activoNombre;
-          await (app.prisma as any).workOrder.create({
-            data: {
-              code: `OT-INSP-${Date.now().toString().slice(-6)}`,
-              title: `Hallazgo inspección [${esSemi ? 'SEMI' : 'TRACTOR'}]: ${h.descripcion.slice(0, 70)}`,
-              description: `Generado automáticamente por inspección QR. Inspector: ${body.data.inspectorNombre}. Activo: ${activoNombre}.`,
-              type: 'CORRECTIVE',
-              priority: prioridad,
-              status: 'PENDING',
-              scheduledDate: new Date(),
-              assetId: assetIdOT,
-              origen: 'INSPECCION',
-              origenId: h.id,
-              activoNombreLibre: activoNombre,
-              tenantId: qr.tenantId,
-            },
-          });
-        }
-      } catch (e: any) { console.error('[inspecciones] auto OT error:', e); }
+        await prisma.$transaction(async (tx: any) => {
+          for (const c of candidatos) {
+            const vehiculo = c.equipoDestino === 'SEMI' ? (vehiculoSemi ?? vehiculoTractor) : vehiculoTractor;
+            const res = await procesarReporteDefecto(tx, {
+              tenantId: qr.tenantId, inspeccionId: inspeccion.id,
+              item: c.item, resp: c.resp, regla: c.regla, vehiculo,
+              equipoDestino: c.equipoDestino,
+              inspectorNombre: body.data.inspectorNombre, fecha: fechaInsp,
+            });
+            if (res) resultadosDefecto.push(res);
+            // Defecto bloqueante → la unidad sale de servicio: se abre (o se
+            // engrosa) el episodio de indisponibilidad, pendiente de ingreso
+            // a taller. Las restricciones siguen siendo el guard de servicio.
+            if (res?.restriccion && res.caso?.vehiculoId) {
+              await abrirIndisponibilidad(tx, {
+                tenantId: qr.tenantId, vehiculoId: res.caso.vehiculoId,
+                origen: 'CHECKLIST',
+                motivo: res.restriccion.motivo,
+                etapa: 'PENDIENTE_INGRESO',
+                comentario: `Defecto bloqueante informado por ${body.data.inspectorNombre} en inspección`,
+                usuario: { nombre: body.data.inspectorNombre },
+              });
+            }
+          }
+        });
+      } catch (e: any) { console.error('[inspecciones] procesar defectos error:', e); }
+    }
+
+    // OT de gestión: una por CASO sin OT (los re-reportes del mismo defecto
+    // no generan otra). Si la creación falla, el caso y la restricción ya
+    // quedaron registrados — el defecto no se oculta.
+    for (const r of resultadosDefecto) {
+      if (!r.caso || r.caso.workOrderId || r.duplicado) continue;
+      try {
+        const esSemi = r.caso.equipoDestino === 'SEMI';
+        const ot = await (app.prisma as any).workOrder.create({
+          data: {
+            code: `OT-INSP-${Date.now().toString().slice(-6)}-${r.caso.id.slice(0, 4)}`,
+            title: `Defecto [${esSemi ? 'SEMI' : 'TRACTOR'}]: ${(r.caso.itemLabel || '').slice(0, 70)}`,
+            description: `Caso de defecto ${r.caso.id.slice(0, 8)} — ${r.reporte.descripcion}\nInspector: ${body.data.inspectorNombre}. Reportes del defecto: ${r.caso.reportesCount}.`,
+            type: 'CORRECTIVE',
+            priority: r.reporte.prioridadOt || 'MEDIUM',
+            status: 'PENDING',
+            // Un defecto bloqueante produce una OT que retira la unidad;
+            // una no bloqueante no la saca del servicio.
+            retiraDeServicio: !!r.caso?.bloqueante,
+            scheduledDate: new Date(),
+            assetId: r.caso.maintenanceAssetId ?? qr.maintenanceAssetId,
+            origen: 'INSPECCION',
+            origenId: r.reporte.id,
+            activoNombreLibre: qr.activoNombre,
+            tenantId: qr.tenantId,
+          },
+        });
+        await (app.prisma as any).defectoCaso.update({
+          where: { id: r.caso.id },
+          data: { workOrderId: ot.id, estado: 'EN_TRATAMIENTO' },
+        });
+        await (app.prisma as any).inspeccionHallazgo.updateMany({
+          where: { casoId: r.caso.id, tenantId: qr.tenantId },
+          data: { otId: ot.id, otGenerada: true },
+        });
+        await (app.prisma as any).defectoCasoEvento.create({
+          data: { tenantId: qr.tenantId, casoId: r.caso.id, tipo: 'OT_VINCULADA', detalle: `OT ${ot.code} generada para el caso` },
+        });
+        r.caso.workOrderId = ot.id;
+      } catch (e: any) { console.error('[inspecciones] OT por caso error:', e); }
     }
 
     if (hallazgos.length > 0) {
@@ -737,17 +905,31 @@ export async function inspeccionesRoutes(app: FastifyInstance) {
         tenantId: qr.tenantId,
         activoNombre: qr.activoNombre || 'Sin nombre',
         hallazgosCount: hallazgos.length,
-        haysCriticos: hallazgos.some((h: any) => h.severidad === 'CRITICO'),
+        haysCriticos: candidatos.some((c: any) => c.regla.severidad === 'CRITICO'),
         inspeccionId: inspeccion.id,
       }).catch((e: any) => console.error('[inspecciones] notify error:', e));
     }
 
+    // Restricciones registradas + instrucciones configuradas para el chofer
+    const restricciones = resultadosDefecto.filter((r: any) => r.restriccion).map((r: any) => ({
+      motivo: r.restriccion.motivo, unidad: r.caso?.equipoDestino || 'TRACTOR',
+    }));
+    const instruccionesChofer = resultadosDefecto
+      .map((r: any) => r.reporte?.instruccionChofer).filter(Boolean);
+    const hayBloqueo = restricciones.length > 0;
+
     return reply.code(201).send({
       ok: true, inspeccionId: inspeccion.id, estado, puntaje, hallazgosCount: hallazgos.length,
       feedbackToken: inspeccion.feedbackToken,
-      mensaje: hallazgos.length > 0
-        ? `Inspección registrada con ${hallazgos.length} hallazgo(s).`
-        : '✅ Inspección completada exitosamente. Sin hallazgos.',
+      restricciones, instruccionesChofer,
+      // La plantilla sin reglas revisadas no es "apto técnicamente": solo
+      // significa que no hay condiciones bloqueantes configuradas.
+      criticidadPendiente: !qr.plantilla.criticidadRevisada,
+      mensaje: hayBloqueo
+        ? `Inspección registrada. La unidad quedó RESTRINGIDA para servicio: ${restricciones.map((r: any) => r.motivo).join('; ')}. Avisá a tu supervisor.`
+        : hallazgos.length > 0
+          ? `Inspección registrada con ${hallazgos.length} hallazgo(s).`
+          : '✅ Inspección completada exitosamente. Sin hallazgos.',
     });
   });
 

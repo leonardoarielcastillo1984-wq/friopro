@@ -58,27 +58,33 @@ export function startMaintenanceRemindersJob(prisma: any): void {
           const pendientes: Array<{ planId: string; title: string; code: string; assetName?: string | null; estado: 'VENCIDO' | 'PROXIMO'; detalle: string }> = [];
 
           for (const p of planes) {
+            // Intervalo dual: cada pata se evalúa por separado y la alerta
+            // sale por la primera que venza/esté próxima. Si falta la referencia
+            // de ejecución (lastOdometerExecution / nextExecutionDate) no se
+            // asume cero: esa pata no es evaluable y queda pendiente de datos.
             let estado: 'VENCIDO' | 'PROXIMO' | null = null;
-            let detalle = '';
+            const detalles: string[] = [];
 
-            if (p.frequencyUnit === 'KM' && p.triggerKm) {
+            if (p.triggerKm) {
               const kmActual = p.asset?.currentOdometer;
-              if (kmActual != null) {
-                const base = p.lastOdometerExecution ?? 0;
-                const restante = (base + p.triggerKm) - kmActual;
-                detalle = `Cada ${p.triggerKm.toLocaleString('es-AR')} km · faltan ${Math.max(0, Math.round(restante)).toLocaleString('es-AR')} km (actual: ${Math.round(kmActual).toLocaleString('es-AR')} km)`;
+              if (kmActual != null && p.lastOdometerExecution != null) {
+                const restante = (p.lastOdometerExecution + p.triggerKm) - kmActual;
+                detalles.push(`Cada ${Math.round(p.triggerKm).toLocaleString('es-AR')} km · faltan ${Math.max(0, Math.round(restante)).toLocaleString('es-AR')} km (actual: ${Math.round(kmActual).toLocaleString('es-AR')} km)`);
                 if (restante <= 0) estado = 'VENCIDO';
-                else if (restante <= Math.max(500, p.triggerKm * UPCOMING_KM_PCT)) estado = 'PROXIMO';
+                else if (restante <= Math.max(500, p.triggerKm * UPCOMING_KM_PCT) && estado !== 'VENCIDO') estado = 'PROXIMO';
+              } else if (kmActual != null && p.lastOdometerExecution == null) {
+                detalles.push('Sin kilometraje de última ejecución: pendiente de datos, no se asume vencido');
               }
-            } else if (p.nextExecutionDate) {
+            }
+            if (p.nextExecutionDate) {
               const dias = Math.ceil((new Date(p.nextExecutionDate).getTime() - now.getTime()) / 86400000);
-              detalle = `Próxima ejecución: ${new Date(p.nextExecutionDate).toLocaleDateString('es-AR')} (${dias < 0 ? `venció hace ${-dias} días` : `en ${dias} días`})`;
+              detalles.push(`Próxima ejecución: ${new Date(p.nextExecutionDate).toLocaleDateString('es-AR')} (${dias < 0 ? `venció hace ${-dias} días` : `en ${dias} días`})`);
               if (dias < 0) estado = 'VENCIDO';
-              else if (dias <= UPCOMING_DAYS) estado = 'PROXIMO';
+              else if (dias <= UPCOMING_DAYS && estado !== 'VENCIDO') estado = 'PROXIMO';
             }
 
             if (estado) {
-              pendientes.push({ planId: p.id, title: p.title, code: p.code, assetName: p.asset?.name ?? null, estado, detalle });
+              pendientes.push({ planId: p.id, title: p.title, code: p.code, assetName: p.asset?.name ?? null, estado, detalle: detalles.join(' · ') });
             }
           }
 

@@ -6,12 +6,15 @@ import {
   ACCION_LABEL, ACCIONES_CON_MOTIVO, ORIGEN_LABEL, accionPorCambios,
   cambiosDeAlta, diffVehiculo, registrarCambioVehiculo, resolverActor, tzParaPais,
 } from '../services/vehiculoAudit.js';
+import { estadoCompuestoBatch } from '../services/unidadEstadoService.js';
 import { proyectarVehiculo } from '../services/fleetProjection.js';
+import { evaluarVencimientoPlan } from '../services/fleetExecution.js';
 import { syncOdometroYDesgaste, gastoNeumaticosPeriodo } from '../services/fleetTires.js';
 import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
+import { recalcularCostoExterno } from './flota-talleres.js';
 
 export default async function flotaRoutes(app: FastifyInstance) {
 
@@ -262,27 +265,32 @@ export default async function flotaRoutes(app: FastifyInstance) {
       (app.prisma as any).companySettings.findUnique({ where: { tenantId }, select: { flotaReemplazoConfig: true } }).catch(() => null),
     ]);
 
-    // Próximo servicio planificado real (de MaintenancePlan, no inventado)
+    // Próximo servicio planificado real (de MaintenancePlan, no inventado):
+    // evalúa km Y fecha; sin referencia de ejecución la pata no es evaluable.
     let proximoServicio: any = null;
     for (const p of planesActivos) {
-      if (p.frequencyUnit === 'KM' && p.triggerKm && km > 0) {
-        const base = p.lastOdometerExecution ?? km;
-        const proxKm = base + p.triggerKm;
-        const kmRest = Math.round(proxKm - km);
-        if (!proximoServicio || kmRest < (proximoServicio.kmRestantes ?? Infinity)) {
-          proximoServicio = { plan: p.title, tipo: 'KM', proximoKm: proxKm, kmRestantes: kmRest };
+      const venc = evaluarVencimientoPlan(p, km > 0 ? km : null, now);
+      if (venc.proximoKm != null && venc.kmRestantes != null) {
+        if (!proximoServicio || venc.kmRestantes < (proximoServicio.kmRestantes ?? Infinity)) {
+          proximoServicio = { plan: p.title, tipo: 'KM', proximoKm: venc.proximoKm, kmRestantes: venc.kmRestantes };
         }
-      } else if (p.nextExecutionDate) {
-        const dias = Math.ceil((new Date(p.nextExecutionDate).getTime() - now.getTime()) / 86400000);
-        if (!proximoServicio || (proximoServicio.tipo === 'FECHA' && dias < proximoServicio.diasRestantes)) {
-          proximoServicio = { plan: p.title, tipo: 'FECHA', fecha: p.nextExecutionDate, diasRestantes: dias };
+      }
+      if (venc.diasRestantes != null) {
+        if (!proximoServicio || (proximoServicio.tipo === 'FECHA' && venc.diasRestantes < proximoServicio.diasRestantes)) {
+          proximoServicio = { plan: p.title, tipo: 'FECHA', fecha: p.nextExecutionDate, diasRestantes: venc.diasRestantes };
         }
       }
     }
 
     const costoPorKm = kmRecorridos6m && kmRecorridos6m > 0 ? Math.round((costos6m / kmRecorridos6m) * 100) / 100 : null;
-    const diasEnTaller = vehiculo.status === 'EN_TALLER'
-      ? Math.max(0, Math.floor((now.getTime() - new Date(vehiculo.updatedAt).getTime()) / 86400000))
+    // Días fuera de servicio: desde el inicio del episodio abierto (si hay),
+    // nunca desde updatedAt (que se reinicia con cualquier edición).
+    const episodioAbierto = await (app.prisma as any).unidadIndisponibilidad.findFirst({
+      where: { tenantId, vehiculoId: id, estado: 'ABIERTA' },
+      select: { inicioAt: true }, orderBy: { inicioAt: 'desc' },
+    }).catch(() => null);
+    const diasEnTaller = episodioAbierto
+      ? Math.max(0, Math.floor((now.getTime() - new Date(episodioAbierto.inicioAt).getTime()) / 86400000))
       : null;
 
     // ── ANÁLISIS DE REEMPLAZO (económico, determinístico) ──
@@ -413,7 +421,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
         healthScore,
         riskScore,
         estadoGeneral,
-        estadoOperativo: vehiculo.status,
+        estadoOperativo: vehiculo.estadoOperativo,
         odometro: vehiculo.currentOdometer,
         componentes,
         alertas,
@@ -594,7 +602,12 @@ export default async function flotaRoutes(app: FastifyInstance) {
       },
       orderBy: { dominio: 'asc' },
     });
-    return reply.send({ vehiculos });
+    // Etiqueta compuesta por unidad: situación × disponibilidad × ubicación
+    // × utilización, calculada de las dimensiones reales (episodio,
+    // restricciones, jornada) — nunca de un único campo.
+    const compuestos = await estadoCompuestoBatch(app.prisma, tenantId, vehiculos).catch(() => new Map());
+    const vehiculosConEstado = vehiculos.map((v: any) => ({ ...v, estadoCompuesto: compuestos.get(v.id) ?? null }));
+    return reply.send({ vehiculos: vehiculosConEstado });
   });
 
   // GET vehículo completo con datos unificados de mantenimiento
@@ -653,6 +666,8 @@ export default async function flotaRoutes(app: FastifyInstance) {
           select: {
             id: true, code: true, title: true, status: true, priority: true,
             type: true, scheduledDate: true, completedAt: true, totalCost: true,
+            ejecutorTipo: true, tallerId: true,
+            taller: { select: { id: true, nombre: true, tipo: true } },
           }
         });
 
@@ -872,6 +887,15 @@ export default async function flotaRoutes(app: FastifyInstance) {
       maintenanceAssetId, currentOdometer, motivo, ...vehiculoFields
     } = body.data as any;
     delete vehiculoFields.motivo; // por si passthrough dejó alguna copia
+
+    // El status manual es solo administrativo (ACTIVO/INACTIVO): 'EN_TALLER'
+    // es un espejo derivado del episodio de indisponibilidad — se alcanza
+    // retirando la unidad del servicio, no cambiando una etiqueta.
+    if (vehiculoFields.status === 'EN_TALLER') {
+      return reply.code(400).send({
+        error: "'EN_TALLER' no es un estado administrativo. Para retirar la unidad usá la acción 'Retirar del servicio' (episodio de indisponibilidad).",
+      });
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // AUDITORÍA: snapshot anterior + diff de campos maestros
@@ -1138,11 +1162,13 @@ export default async function flotaRoutes(app: FastifyInstance) {
   app.get('/conductores', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
-    const conductores = await (app.prisma as any).conductor.findMany({
+    const conductoresDb = await (app.prisma as any).conductor.findMany({
       where: { tenantId },
       include: { vehiculos: { select: { id: true, dominio: true, tipo: true, status: true } } },
       orderBy: { nombre: 'asc' },
     });
+    // No exponer el hash del PIN — solo el flag para la UI
+    const conductores = conductoresDb.map((c: any) => ({ ...c, tienePin: !!c.pinHash, pinHash: undefined }));
     return reply.send({ conductores });
   });
 
@@ -2032,6 +2058,12 @@ export default async function flotaRoutes(app: FastifyInstance) {
       intervencionId: z.string().uuid().optional().nullable(),
       neumaticoId: z.string().uuid().optional().nullable(),
       sparePartId: z.string().uuid().optional().nullable(),
+      // Ejecución externa
+      tallerId: z.string().uuid().optional().nullable(),
+      moneda: z.string().max(5).default('ARS'),
+      montoRepuestosPropios: z.number().nonnegative().optional(),
+      cargaKey: z.string().max(80).optional().nullable(),
+      notaCreditoDeId: z.string().uuid().optional().nullable(),
       fileUrl: z.string().optional(),
       fileName: z.string().optional(),
       mimeType: z.string().optional(),
@@ -2044,6 +2076,35 @@ export default async function flotaRoutes(app: FastifyInstance) {
       const v = await (app.prisma as any).vehiculo.findFirst({ where: { id: body.data.vehiculoId, tenantId } });
       if (!v) return reply.code(400).send({ error: 'Vehículo inválido' });
     }
+    if (body.data.tallerId) {
+      const t = await (app.prisma as any).flotaTaller.findFirst({ where: { id: body.data.tallerId, tenantId, deletedAt: null } });
+      if (!t) return reply.code(400).send({ error: 'Taller inválido' });
+    }
+    if (body.data.workOrderId) {
+      const ot = await (app.prisma as any).workOrder.findFirst({ where: { id: body.data.workOrderId, tenantId } });
+      if (!ot) return reply.code(400).send({ error: 'Orden de trabajo inválida' });
+    }
+
+    // Idempotencia: mismo cargaKey devuelve la factura ya registrada (retry no duplica).
+    // Sin cargaKey, dedupe blando por comprobante (número + punto de venta + CUIT + total).
+    if (body.data.cargaKey) {
+      const dup = await (app.prisma as any).flotaFactura.findFirst({
+        where: { tenantId, cargaKey: body.data.cargaKey },
+      });
+      if (dup) return reply.code(200).send({ factura: dup, dedup: true });
+    } else if (body.data.numero && body.data.cuitProveedor) {
+      const dup = await (app.prisma as any).flotaFactura.findFirst({
+        where: {
+          tenantId,
+          numero: body.data.numero,
+          puntoVenta: body.data.puntoVenta ?? null,
+          cuitProveedor: body.data.cuitProveedor,
+          total: body.data.total,
+          tipoComprobante: body.data.tipoComprobante,
+        },
+      });
+      if (dup) return reply.code(200).send({ factura: dup, dedup: true });
+    }
 
     const user = (req as any).user;
     const factura = await (app.prisma as any).flotaFactura.create({
@@ -2055,15 +2116,36 @@ export default async function flotaRoutes(app: FastifyInstance) {
         uploadedByNombre: user?.name || user?.email || null,
       },
     });
+
+    // Factura vinculada a una OT: su costo se refleja una sola vez — en costoExterno
+    // de la OT (que compone totalCost), no en los agregados sueltos de facturas.
+    if (factura.workOrderId) {
+      await recalcularCostoExterno(app.prisma, tenantId, factura.workOrderId).catch((e: any) => console.error('[flota] recalc costoExterno:', e));
+      const ot = await (app.prisma as any).workOrder.findFirst({ where: { id: factura.workOrderId, tenantId }, select: { code: true, tallerId: true } });
+      if (ot?.tallerId) {
+        await (app.prisma as any).flotaTallerEvento.create({
+          data: {
+            tenantId, tallerId: ot.tallerId, workOrderId: factura.workOrderId,
+            tipo: 'FACTURA',
+            detalle: `Factura ${factura.tipoComprobante} ${factura.puntoVenta ? factura.puntoVenta + '-' : ''}${factura.numero || 's/n'} por $${factura.total} vinculada a OT ${ot.code}`,
+            usuarioId: user?.id || null, usuarioNombre: user?.name || user?.email || null,
+          },
+        }).catch(() => {});
+      }
+    }
     return reply.code(201).send({ factura });
   });
 
-  // DELETE factura
+  // DELETE factura — si estaba vinculada a una OT, revierte su imputación en costoExterno
   app.delete('/facturas/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
+    const existente = await (app.prisma as any).flotaFactura.findFirst({ where: { id, tenantId }, select: { workOrderId: true } });
     await (app.prisma as any).flotaFactura.deleteMany({ where: { id, tenantId } });
+    if (existente?.workOrderId) {
+      await recalcularCostoExterno(app.prisma, tenantId, existente.workOrderId).catch(() => {});
+    }
     return reply.send({ ok: true });
   });
 
@@ -2631,19 +2713,21 @@ export default async function flotaRoutes(app: FastifyInstance) {
     });
     
     const planesConAlerta = planes.map((p: any) => {
-      const kmDesdeUltima = vehiculo.currentOdometer && p.lastOdometerExecution 
-        ? vehiculo.currentOdometer - p.lastOdometerExecution 
-        : 0;
-      const kmRestantes = (p.triggerKm || 0) - kmDesdeUltima;
-      const porcentaje = p.triggerKm > 0 ? Math.round((kmDesdeUltima / p.triggerKm) * 100) : 0;
+      // Sin referencia de ejecución (lastOdometerExecution) no se puede medir
+      // consumo: se reporta como pendiente de datos, nunca como 0% ni vencido.
+      const evaluable = vehiculo.currentOdometer != null && p.lastOdometerExecution != null;
+      const kmDesdeUltima = evaluable ? vehiculo.currentOdometer - p.lastOdometerExecution : null;
+      const kmRestantes = evaluable ? (p.triggerKm || 0) - kmDesdeUltima! : null;
+      const porcentaje = evaluable && p.triggerKm > 0 ? Math.round((kmDesdeUltima! / p.triggerKm) * 100) : null;
       return {
         ...p,
-        kmDesdeUltima: Math.round(kmDesdeUltima),
-        kmRestantes: Math.round(kmRestantes),
+        evaluable,
+        kmDesdeUltima: kmDesdeUltima != null ? Math.round(kmDesdeUltima) : null,
+        kmRestantes: kmRestantes != null ? Math.round(kmRestantes) : null,
         porcentajeUso: porcentaje,
-        alerta: porcentaje >= 90 ? 'CRITICAL' : porcentaje >= 80 ? 'WARNING' : null,
+        alerta: porcentaje == null ? 'SIN_DATOS' : porcentaje >= 90 ? 'CRITICAL' : porcentaje >= 80 ? 'WARNING' : null,
       };
-    }).sort((a: any, b: any) => b.porcentajeUso - a.porcentajeUso);
+    }).sort((a: any, b: any) => (b.porcentajeUso ?? -1) - (a.porcentajeUso ?? -1));
     
     return reply.send({ vehiculo, planes: planesConAlerta });
   });
@@ -2669,10 +2753,10 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const pendientes = (planes as any[])
       .map((p: any) => {
         const veh = vehMap.get(p.assetId) as any;
-        if (!veh || !veh.currentOdometer) return null;
-        const kmDesdeUltima = p.lastOdometerExecution 
-          ? veh.currentOdometer - p.lastOdometerExecution 
-          : veh.currentOdometer;
+        // Sin referencia de ejecución la pata km no es evaluable: pendiente de
+        // datos, no consume el intervalo completo ni aparece como alerta.
+        if (!veh || !veh.currentOdometer || p.lastOdometerExecution == null) return null;
+        const kmDesdeUltima = veh.currentOdometer - p.lastOdometerExecution;
         const kmRestantes = (p.triggerKm || 0) - kmDesdeUltima;
         const porcentaje = p.triggerKm > 0 ? (kmDesdeUltima / p.triggerKm) * 100 : 0;
         if (porcentaje < 70) return null; // Solo mostrar los que están al 70% o más
@@ -3072,25 +3156,39 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
     const inicioMesAnt = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
 
-    // Costo real del mes (combustible + OTs completadas + facturas + multas pagadas)
-    const [combustibleMes, otsMes, facturasMes, multasMes, settings] = await Promise.all([
+    // Costo real del mes (combustible + OTs completadas + facturas + multas pagadas).
+    // Anti-doble-conteo: las facturas vinculadas a una OT ya están dentro de
+    // otsMes (costoExterno → totalCost); PRESUPUESTO no es gasto; NC resta; solo ARS.
+    const [combustibleMes, otsMes, facturasMes, facturasNcMes, multasMes, settings] = await Promise.all([
       (app.prisma as any).registroCombustible.aggregate({ where: { tenantId, fecha: { gte: inicioMes } }, _sum: { costoTotal: true } }),
       (app.prisma as any).workOrder.aggregate({ where: { tenantId, status: 'COMPLETED', completedAt: { gte: inicioMes } }, _sum: { totalCost: true } }),
-      (app.prisma as any).flotaFactura.aggregate({ where: { tenantId, fecha: { gte: inicioMes } }, _sum: { total: true } }).catch(() => ({ _sum: { total: 0 } })),
+      (app.prisma as any).flotaFactura.aggregate({
+        where: { tenantId, fecha: { gte: inicioMes }, workOrderId: null, tipoComprobante: { notIn: ['PRESUPUESTO', 'NOTA_CREDITO'] }, OR: [{ moneda: 'ARS' }, { moneda: null }] },
+        _sum: { total: true },
+      }).catch(() => ({ _sum: { total: 0 } })),
+      (app.prisma as any).flotaFactura.aggregate({
+        where: { tenantId, fecha: { gte: inicioMes }, workOrderId: null, tipoComprobante: 'NOTA_CREDITO', OR: [{ moneda: 'ARS' }, { moneda: null }] },
+        _sum: { total: true },
+      }).catch(() => ({ _sum: { total: 0 } })),
       (app.prisma as any).flotaMulta.aggregate({ where: { tenantId, estado: 'PAGADA', pagadaAt: { gte: inicioMes } }, _sum: { monto: true } }).catch(() => ({ _sum: { monto: 0 } })),
       (app.prisma as any).companySettings.findUnique({ where: { tenantId }, select: { flotaPresupuestoMensual: true } }).catch(() => null),
     ]);
 
-    const realMes = (combustibleMes._sum.costoTotal || 0) + (otsMes._sum.totalCost || 0) + (facturasMes._sum.total || 0) + (multasMes._sum.monto || 0);
+    const facturasNetoMes = (facturasMes._sum.total || 0) - (facturasNcMes._sum.total || 0);
+    const realMes = (combustibleMes._sum.costoTotal || 0) + (otsMes._sum.totalCost || 0) + facturasNetoMes + (multasMes._sum.monto || 0);
     const presupuesto = settings?.flotaPresupuestoMensual ?? null;
     const desvioPresupuesto = presupuesto != null && presupuesto > 0 ? Math.round(((realMes - presupuesto) / presupuesto) * 100) : null;
 
-    // Ranking de unidades por costo del mes
+    // Ranking de unidades por costo del mes (columnas reales: camelCase entre comillas;
+    // facturas excluyen las ya imputadas a una OT y presupuestos; NC resta)
     const costosPorVeh = await (app.prisma as any).$queryRaw`
       SELECT v.id, v.dominio, v.tipo,
-        COALESCE((SELECT SUM(costo_total) FROM flota_registros_combustible WHERE vehiculo_id = v.id AND fecha >= ${inicioMes}), 0) as combustible,
-        COALESCE((SELECT SUM(total) FROM flota_facturas WHERE vehiculo_id = v.id AND fecha >= ${inicioMes}), 0) as facturas
-      FROM flota_vehiculos v WHERE v.tenant_id = ${tenantId}
+        COALESCE((SELECT SUM("costoTotal") FROM flota_registros_combustible WHERE "vehiculoId" = v.id AND fecha >= ${inicioMes}), 0) as combustible,
+        COALESCE((SELECT SUM(CASE WHEN "tipoComprobante" = 'NOTA_CREDITO' THEN -total ELSE total END)
+                  FROM flota_facturas
+                  WHERE "vehiculoId" = v.id AND fecha >= ${inicioMes}
+                    AND "workOrderId" IS NULL AND "tipoComprobante" <> 'PRESUPUESTO' AND moneda = 'ARS'), 0) as facturas
+      FROM flota_vehiculos v WHERE v."tenantId" = ${tenantId}
       ORDER BY (combustible + facturas) DESC LIMIT 10
     `.catch(() => []);
 
@@ -3100,7 +3198,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       desglose: {
         combustible: Math.round(combustibleMes._sum.costoTotal || 0),
         mantenimiento: Math.round(otsMes._sum.totalCost || 0),
-        facturas: Math.round(facturasMes._sum.total || 0),
+        facturas: Math.round(facturasNetoMes),
         multas: Math.round(multasMes._sum.monto || 0),
       },
       presupuesto, desvioPresupuesto,

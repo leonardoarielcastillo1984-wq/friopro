@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Wrench, Truck, Container, Link2, CalendarClock,
   ScanLine, PackageSearch, Disc, Fuel, Users, FileWarning, DollarSign,
   FileBarChart, LayoutGrid, ArrowLeft, Settings, Menu, X, TrendingUp, BookOpen,
-  HardHat, Activity,
+  HardHat, Activity, Building2,
 } from 'lucide-react';
 
 const GROUPS: { label: string | null; items: { href: string; label: string; icon: any; exact?: boolean }[] }[] = [

@@ -3,6 +3,13 @@ import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { notifyIncidenteReportado, notifyFlotaAlerta } from '../services/notifyService.js';
 import { syncOdometroYDesgaste } from '../services/fleetTires.js';
+import { restriccionesDelConjunto } from '../services/defectService.js';
+import { impedimentosParaServicio } from '../services/unidadEstadoService.js';
+import {
+  verificarConductor, estadoServicioChofer, iniciarJornada, cerrarJornada,
+  registrarCambioUnidad, corregirJornada, vincularControlConJornada,
+  procesarAvisosJornada, getPoliticaJornada, POLITICA_DEFAULT, hashPin,
+} from '../services/jornadaService.js';
 import { existsSync, mkdirSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -85,12 +92,18 @@ export async function driverHubRoutes(app: FastifyInstance) {
       empresa = s;
     } catch { /* sin branding */ }
 
-    // Choferes activos para el selector (identidad fuerte en registros)
-    const choferes = await prisma().conductor.findMany({
+    // Choferes activos para el selector (identidad fuerte en registros).
+    // tienePin indica si el chofer tiene PIN configurado — el PIN en sí nunca
+    // se expone, solo se valida en el servidor.
+    const choferesDb = await prisma().conductor.findMany({
       where: { tenantId: qr.tenantId, status: 'ACTIVO' },
-      select: { id: true, nombre: true, licenciaVto: true, psicofisicoVto: true },
+      select: { id: true, nombre: true, licenciaVto: true, psicofisicoVto: true, pinHash: true },
       orderBy: { nombre: 'asc' },
     }).catch(() => []);
+    const choferes = choferesDb.map((c: any) => ({
+      id: c.id, nombre: c.nombre, licenciaVto: c.licenciaVto, psicofisicoVto: c.psicofisicoVto,
+      tienePin: !!c.pinHash,
+    }));
 
     return reply.send({
       activo: {
@@ -311,6 +324,28 @@ export async function driverHubRoutes(app: FastifyInstance) {
   // ════════════════════════════════════════════════════════════════════════
   // PÚBLICO — registro de servicio (inicio/fin) y bitácora
   // ════════════════════════════════════════════════════════════════════════
+  // PÚBLICO — estado previo al inicio (informativo; la decisión real se toma
+  // al confirmar, en el servidor, dentro de la transacción).
+  app.post('/public/:token/servicio/estado', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const ctx = await resolveHubContext(prisma(), token);
+    if (!ctx) return reply.code(404).send({ error: 'QR no encontrado o inactivo' });
+    const { qr } = ctx;
+
+    const schema = z.object({
+      conductorId: z.string().uuid(),
+      pin: z.string().min(1).max(20),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Conductor y PIN son obligatorios' });
+
+    const ver = await verificarConductor(prisma(), qr.tenantId, body.data.conductorId, body.data.pin);
+    if (!ver.ok) return reply.code(ver.code).send({ error: ver.error });
+
+    const estado = await estadoServicioChofer(prisma(), qr.tenantId, ver.conductor.id);
+    return reply.send(estado);
+  });
+
   app.post('/public/:token/servicio', async (req: FastifyRequest, reply: FastifyReply) => {
     const { token } = req.params as any;
     const ctx = await resolveHubContext(prisma(), token);
@@ -319,7 +354,7 @@ export async function driverHubRoutes(app: FastifyInstance) {
     if (!vehiculo) return reply.code(400).send({ error: 'La unidad no está vinculada a un vehículo de flota' });
 
     const schema = z.object({
-      tipo: z.enum(['INICIO_SERVICIO', 'FIN_SERVICIO', 'BITACORA']),
+      tipo: z.enum(['INICIO_SERVICIO', 'FIN_SERVICIO', 'BITACORA', 'CAMBIO_UNIDAD']),
       odometro: z.number().positive().optional(),
       notas: z.string().max(2000).optional(),
       lat: z.number().optional(),
@@ -329,123 +364,231 @@ export async function driverHubRoutes(app: FastifyInstance) {
       destino: z.string().max(200).optional(),
       carga: z.string().max(300).optional(),
       conductorId: z.string().uuid().optional(),
-      reportadoPorNombre: z.string().min(1).max(200),
+      pin: z.string().min(1).max(20).optional(),
+      clienteEventoId: z.string().uuid().optional(),
+      reportadoPorNombre: z.string().min(1).max(200).optional(),
       reportadoPorTelefono: z.string().max(50).optional(),
     });
     const body = schema.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
     const d = body.data;
     const ahora = new Date();
-    const nombre = d.reportadoPorNombre.trim();
 
-    // Filtro de chofer: por conductorId (fuerte) o por nombre (fallback/legacy)
-    const filtroChofer: any = d.conductorId
-      ? { OR: [{ conductorId: d.conductorId }, { reportadoPorNombre: { equals: nombre, mode: 'insensitive' } }] }
-      : { reportadoPorNombre: { equals: nombre, mode: 'insensitive' } };
+    // ── Identidad verificada del conductor ──────────────────────────────────
+    // INICIO/FIN/CAMBIO_UNIDAD exigen conductorId + PIN (el QR sólo identifica
+    // la unidad). BITACORA admite nombre libre; si viene conductorId+PIN se
+    // verifica y se vincula a la jornada abierta.
+    let conductor: any = null;
+    if (d.tipo !== 'BITACORA' || (d.conductorId && d.pin)) {
+      const ver = await verificarConductor(prisma(), qr.tenantId, d.conductorId, d.pin);
+      if (!ver.ok) return reply.code(ver.code).send({ error: ver.error });
+      conductor = ver.conductor;
+    }
+    const nombre = conductor?.nombre || (d.reportadoPorNombre || '').trim();
+    if (!nombre) return reply.code(400).send({ error: 'Identificá quién sos (nombre o conductor + PIN).' });
 
-    // ── Jornada y descanso automáticos ──
-    let horasDescanso: number | null = null;
-    let descansoInsuficiente = false;
-    let horasTrabajadas: number | null = null;
-    let jornadaExcesiva = false;
-
+    // ── INICIO_SERVICIO — jornada explícita + política de descanso ──────────
     if (d.tipo === 'INICIO_SERVICIO') {
-      // Último FIN de servicio del MISMO chofer
-      const ultimoFin = await prisma().servicioRegistro.findFirst({
-        where: { tenantId: qr.tenantId, tipo: 'FIN_SERVICIO', ...filtroChofer },
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true },
-      });
-      if (ultimoFin) {
-        horasDescanso = Math.round(((ahora.getTime() - ultimoFin.createdAt.getTime()) / 3600000) * 10) / 10;
-        descansoInsuficiente = horasDescanso < 12;
+      // Impedimentos de servicio: situación administrativa, episodio de
+      // indisponibilidad abierto (propio o del compañero acoplado) y
+      // restricciones activas (propias o del conjunto). BLOQUEA el inicio.
+      const impedimentos = await impedimentosParaServicio(prisma(), qr.tenantId, vehiculo);
+      if (!impedimentos.ok) {
+        const detalle = impedimentos.motivos.map((m: string) => `• ${m}`).join('\n');
+        if (impedimentos.restricciones.length > 0) {
+          notifyFlotaAlerta(prisma(), {
+            tenantId: qr.tenantId, vehiculoDominio: vehiculo.dominio,
+            titulo: 'Intento de toma de servicio con unidad restringida',
+            detalle: `intentó iniciar servicio pero se rechazó: ${detalle}`,
+            reportadoPorNombre: nombre, link: '/flota-360/inspecciones',
+            entityType: 'restriccion_servicio', entityId: impedimentos.restricciones[0].id,
+          }).catch((e: any) => console.error('[driver-hub] notify restriccion:', e));
+        }
+        const registro = await prisma().servicioRegistro.create({
+          data: {
+            tenantId: qr.tenantId, vehiculoId: vehiculo.id,
+            tipo: 'INICIO_RECHAZADO',
+            motivoRechazo: 'UNIDAD_NO_DISPONIBLE',
+            clienteEventoId: d.clienteEventoId ? `${d.clienteEventoId}-r` : null,
+            eventoAt: ahora, conductorId: conductor.id,
+            reportadoPorNombre: nombre,
+          },
+        }).catch(() => null);
+        return reply.code(409).send({
+          error: 'Inicio no permitido',
+          bloqueado: true,
+          motivoRechazo: 'UNIDAD_NO_DISPONIBLE',
+          registroId: registro?.id ?? null,
+          impedimentos: impedimentos.motivos,
+          mensaje: `No podés iniciar servicio: ${impedimentos.motivos.join('. ')}. Avisá a tu supervisor.`,
+        });
       }
-    } else if (d.tipo === 'FIN_SERVICIO') {
-      // INICIO correspondiente: último INICIO del mismo chofer en esta unidad;
-      // si no hay, último INICIO de la unidad (por si arrancó otro chofer)
-      const ultimoInicio = await prisma().servicioRegistro.findFirst({
-        where: { tenantId: qr.tenantId, vehiculoId: vehiculo.id, tipo: 'INICIO_SERVICIO', ...filtroChofer },
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true },
-      }) ?? await prisma().servicioRegistro.findFirst({
-        where: { tenantId: qr.tenantId, vehiculoId: vehiculo.id, tipo: 'INICIO_SERVICIO' },
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true },
+
+      const res = await iniciarJornada(prisma(), {
+        tenantId: qr.tenantId, conductor, vehiculo, ahora,
+        clienteEventoId: d.clienteEventoId, odometro: d.odometro, notas: d.notas,
+        lat: d.lat, lng: d.lng, origen: d.origen, destino: d.destino, carga: d.carga,
+        reportadoPorTelefono: d.reportadoPorTelefono,
       });
-      if (ultimoInicio && ultimoInicio.createdAt < ahora) {
-        horasTrabajadas = Math.round(((ahora.getTime() - ultimoInicio.createdAt.getTime()) / 3600000) * 10) / 10;
-        jornadaExcesiva = horasTrabajadas > 12;
+
+      if (res.result === 'RECHAZADO') {
+        const msgs: Record<string, string> = {
+          JORNADA_ABIERTA: 'Ya tenés una jornada abierta. No podés iniciar otra hasta resolverla — si cambiaste de unidad, usá "Cambio de unidad"; si quedó abierta por error, avisá a tu supervisor para regularizarla.',
+          DESCANSO_INSUFICIENTE: `No podés iniciar: todavía no se cumplió el descanso mínimo de ${res.estado?.descansoMinHoras ?? 12}h desde tu último cierre.`,
+          SIN_HISTORIAL: 'No podés iniciar: no hay historial suficiente para verificar tu descanso. Pedile al responsable una habilitación inicial.',
+          CIERRE_NO_CONFIABLE: 'No podés iniciar: tu jornada anterior quedó sin cierre confiable. Pedile al responsable que la regularice o te habilite.',
+        };
+        return reply.code(409).send({
+          error: 'Inicio no permitido',
+          bloqueado: true,
+          motivoRechazo: res.motivo,
+          registroId: res.registro.id,
+          estado: res.estado,
+          mensaje: msgs[res.motivo] || 'Inicio no permitido.',
+        });
       }
+
+      // Sync odómetro + flag sospechoso
+      const odometroSospechoso = !!(d.odometro && vehiculo.currentOdometer != null && (d.odometro - vehiculo.currentOdometer) > 2000);
+      if (odometroSospechoso) {
+        await prisma().servicioRegistro.update({ where: { id: res.registro.id }, data: { odometroSospechoso: true } }).catch(() => {});
+      }
+      if (d.odometro && (vehiculo.currentOdometer == null || d.odometro > vehiculo.currentOdometer)) {
+        await syncOdometroYDesgaste(prisma(), qr.tenantId, vehiculo.id, d.odometro).catch(() => {});
+        await prisma().maintenanceAsset.update({ where: { id: qr.maintenanceAssetId }, data: { currentOdometer: d.odometro } }).catch(() => {});
+      }
+
+      const minDescanso = res.jornada?.politicaSnapshot?.descansoMinHoras ?? 12;
+      if (res.evaluacion === 'INSUFICIENTE') {
+        notifyFlotaAlerta(prisma(), {
+          tenantId: qr.tenantId, vehiculoDominio: vehiculo.dominio,
+          titulo: 'Descanso insuficiente al tomar servicio',
+          detalle: `inició servicio con solo <strong>${res.descansoPrevioHoras}h</strong> entre jornadas (mínimo configurado ${minDescanso}h).`,
+          reportadoPorNombre: nombre, link: '/flota-360/documentacion?tab=jornadas',
+          entityType: 'flota_jornada', entityId: res.jornada?.id,
+        }).catch((e: any) => console.error('[driver-hub] notify descanso:', e));
+      }
+      if (res.evaluacion === 'SIN_HISTORIAL' || res.evaluacion === 'CIERRE_NO_CONFIABLE') {
+        notifyFlotaAlerta(prisma(), {
+          tenantId: qr.tenantId, vehiculoDominio: vehiculo.dominio,
+          titulo: 'Inicio sin descanso verificable',
+          detalle: `inició servicio en modo advertencia sin evidencia suficiente de descanso (${res.evaluacion === 'SIN_HISTORIAL' ? 'sin historial en el sistema' : 'cierre previo no confiable'}).`,
+          reportadoPorNombre: nombre, link: '/flota-360/documentacion?tab=jornadas',
+          entityType: 'flota_jornada', entityId: res.jornada?.id,
+        }).catch(() => {});
+      }
+
+      const mensaje = res.evaluacion === 'INSUFICIENTE'
+        ? `Inicio registrado. ATENCIÓN: solo pasaron ${res.descansoPrevioHoras}h desde tu último cierre (mínimo configurado ${minDescanso}h). Avisá a tu supervisor.`
+        : res.evaluacion === 'SIN_HISTORIAL'
+          ? 'Inicio de servicio registrado. Sin historial suficiente para verificar descanso previo.'
+          : res.evaluacion === 'CIERRE_NO_CONFIABLE'
+            ? 'Inicio de servicio registrado. Tu jornada anterior quedó sin cierre confiable — quedó marcado para revisión.'
+            : res.descansoPrevioHoras != null
+              ? `Inicio de servicio registrado. Pasaron ${res.descansoPrevioHoras}h desde tu último cierre. Buen viaje.`
+              : 'Inicio de servicio registrado. Buen viaje.';
+
+      return reply.code(201).send({
+        ok: true, registroId: res.registro.id, jornadaId: res.jornada?.id,
+        mensaje, horasDescanso: res.descansoPrevioHoras,
+        descansoInsuficiente: res.evaluacion === 'INSUFICIENTE',
+        evaluacionDescanso: res.evaluacion,
+        yaExistia: !!res.yaExistia,
+      });
     }
 
-    // Odómetro sospechoso: salto >2000km vs. el valor actual de la unidad
-    const odometroSospechoso = !!(d.odometro && vehiculo.currentOdometer != null && (d.odometro - vehiculo.currentOdometer) > 2000);
+    // ── FIN_SERVICIO — cierra SOLO la jornada abierta del propio conductor ──
+    if (d.tipo === 'FIN_SERVICIO') {
+      const res = await cerrarJornada(prisma(), {
+        tenantId: qr.tenantId, conductor, vehiculo, ahora,
+        clienteEventoId: d.clienteEventoId, odometro: d.odometro, notas: d.notas,
+        lat: d.lat, lng: d.lng, reportadoPorTelefono: d.reportadoPorTelefono,
+      });
+      if (res.result === 'ERROR') {
+        return reply.code(409).send({
+          error: 'No tenés una jornada abierta',
+          mensaje: 'No se encontró una jornada abierta a tu nombre. Si tu jornada quedó mal registrada, avisá a tu supervisor para regularizarla.',
+        });
+      }
 
+      if (d.odometro && (vehiculo.currentOdometer == null || d.odometro > vehiculo.currentOdometer)) {
+        await syncOdometroYDesgaste(prisma(), qr.tenantId, vehiculo.id, d.odometro).catch(() => {});
+        await prisma().maintenanceAsset.update({ where: { id: qr.maintenanceAssetId }, data: { currentOdometer: d.odometro } }).catch(() => {});
+      }
+      const limite = res.jornada?.politicaSnapshot?.jornadaAlertaHoras ?? 12;
+      if (res.jornadaExcesiva) {
+        notifyFlotaAlerta(prisma(), {
+          tenantId: qr.tenantId, vehiculoDominio: vehiculo.dominio,
+          titulo: 'Jornada excesiva',
+          detalle: `cerró servicio con una jornada de <strong>${res.horasTrabajadas}h</strong> (supera el límite configurado de ${limite}h).`,
+          reportadoPorNombre: nombre, link: '/flota-360/documentacion?tab=jornadas',
+          entityType: 'flota_jornada', entityId: res.jornada?.id,
+        }).catch((e: any) => console.error('[driver-hub] notify jornada:', e));
+      }
+      return reply.code(201).send({
+        ok: true, registroId: res.registro.id, jornadaId: res.jornada?.id,
+        mensaje: `Fin de servicio registrado. Jornada: ${res.horasTrabajadas} horas.${res.jornadaExcesiva ? ` Supera el límite configurado (${limite}h) — se notificó a la empresa.` : ''}`,
+        horasTrabajadas: res.horasTrabajadas, jornadaExcesiva: res.jornadaExcesiva,
+      });
+    }
+
+    // ── CAMBIO_UNIDAD — se agrega la unidad a la jornada abierta, sin
+    // reiniciarla ni contar descanso. La nueva unidad debe estar apta:
+    // no se puede incorporar una unidad restringida/detenida a un servicio
+    // ya iniciado.
+    if (d.tipo === 'CAMBIO_UNIDAD') {
+      const impedimentos = await impedimentosParaServicio(prisma(), qr.tenantId, vehiculo);
+      if (!impedimentos.ok) {
+        return reply.code(409).send({
+          error: 'Unidad no disponible para servicio',
+          bloqueado: true,
+          impedimentos: impedimentos.motivos,
+          mensaje: `No podés incorporar ${vehiculo.dominio}: ${impedimentos.motivos.join('. ')}.`,
+        });
+      }
+      const res = await registrarCambioUnidad(prisma(), {
+        tenantId: qr.tenantId, conductor, vehiculo, ahora,
+        clienteEventoId: d.clienteEventoId, odometro: d.odometro, notas: d.notas,
+      });
+      if (!res.ok) {
+        return reply.code(409).send({ error: 'Sin jornada abierta', mensaje: 'No tenés una jornada abierta para registrar el cambio de unidad. Iniciá servicio primero.' });
+      }
+      if (d.odometro && (vehiculo.currentOdometer == null || d.odometro > vehiculo.currentOdometer)) {
+        await syncOdometroYDesgaste(prisma(), qr.tenantId, vehiculo.id, d.odometro).catch(() => {});
+      }
+      return reply.code(201).send({
+        ok: true, registroId: res.registro.id, jornadaId: res.jornada?.id,
+        mensaje: `Cambio de unidad registrado (${vehiculo.dominio}). Tu jornada sigue abierta.`,
+      });
+    }
+
+    // ── BITACORA — nota libre; si el chofer está identificado se vincula a
+    // su jornada abierta ──────────────────────────────────────────────────────
+    let jornadaBitacora: any = null;
+    if (conductor) {
+      jornadaBitacora = await prisma().flotaJornada.findFirst({
+        where: { tenantId: qr.tenantId, conductorId: conductor.id, estado: 'ABIERTA' },
+        select: { id: true },
+      });
+    }
     const registro = await prisma().servicioRegistro.create({
       data: {
         tenantId: qr.tenantId,
         vehiculoId: vehiculo.id,
-        tipo: d.tipo,
+        jornadaId: jornadaBitacora?.id ?? null,
+        tipo: 'BITACORA',
         odometro: d.odometro ?? null,
         notas: d.notas || null,
-        lat: d.lat ?? null,
-        lng: d.lng ?? null,
+        lat: d.lat ?? null, lng: d.lng ?? null,
         fotos: d.fotos ?? null,
-        horasDescanso,
-        horasTrabajadas,
-        descansoInsuficiente,
-        jornadaExcesiva,
-        odometroSospechoso,
-        origen: d.tipo === 'INICIO_SERVICIO' ? (d.origen || null) : null,
-        destino: d.tipo === 'INICIO_SERVICIO' ? (d.destino || null) : null,
-        carga: d.tipo === 'INICIO_SERVICIO' ? (d.carga || null) : null,
-        conductorId: d.conductorId || null,
+        clienteEventoId: d.clienteEventoId ?? null,
+        eventoAt: ahora,
+        conductorId: conductor?.id ?? null,
         reportadoPorNombre: nombre,
         reportadoPorTelefono: d.reportadoPorTelefono || null,
       },
     });
-
-    // Sync odómetro al vehículo + activo (+ desgaste de cubiertas y acoplado)
-    if (d.odometro && (vehiculo.currentOdometer == null || d.odometro > vehiculo.currentOdometer)) {
-      await syncOdometroYDesgaste(prisma(), qr.tenantId, vehiculo.id, d.odometro).catch(() => {});
-      await prisma().maintenanceAsset.update({ where: { id: qr.maintenanceAssetId }, data: { currentOdometer: d.odometro } }).catch(() => {});
-    }
-
-    // Notificar a admins eventos de seguridad vial
-    if (descansoInsuficiente) {
-      notifyFlotaAlerta(prisma(), {
-        tenantId: qr.tenantId, vehiculoDominio: vehiculo.dominio,
-        titulo: 'Descanso insuficiente al tomar servicio',
-        detalle: `inició servicio con solo <strong>${horasDescanso}h</strong> de descanso (mínimo recomendado 12h).`,
-        reportadoPorNombre: nombre, link: '/flota-360/documentacion?tab=bitacora',
-        entityType: 'servicio_registro', entityId: registro.id,
-      }).catch((e: any) => console.error('[driver-hub] notify descanso:', e));
-    }
-    if (jornadaExcesiva) {
-      notifyFlotaAlerta(prisma(), {
-        tenantId: qr.tenantId, vehiculoDominio: vehiculo.dominio,
-        titulo: 'Jornada excesiva',
-        detalle: `cerró servicio con una jornada de <strong>${horasTrabajadas}h</strong> (supera las 12h).`,
-        reportadoPorNombre: nombre, link: '/flota-360/documentacion?tab=bitacora',
-        entityType: 'servicio_registro', entityId: registro.id,
-      }).catch((e: any) => console.error('[driver-hub] notify jornada:', e));
-    }
-
-    let mensaje: string;
-    if (d.tipo === 'INICIO_SERVICIO') {
-      mensaje = descansoInsuficiente
-        ? `Inicio registrado. ATENCIÓN: solo descansaste ${horasDescanso}h (mínimo recomendado 12h). Avisá a tu supervisor.`
-        : horasDescanso != null
-          ? `Inicio de servicio registrado. Descansaste ${horasDescanso}h. Buen viaje.`
-          : 'Inicio de servicio registrado. Buen viaje.';
-    } else if (d.tipo === 'FIN_SERVICIO') {
-      mensaje = horasTrabajadas != null
-        ? `Fin de servicio registrado. Jornada: ${horasTrabajadas} horas.${jornadaExcesiva ? ' Supera las 12h — se notificó a la empresa.' : ''}`
-        : 'Fin de servicio registrado. Gracias.';
-    } else {
-      mensaje = 'Nota de bitácora registrada.';
-    }
-    return reply.code(201).send({ ok: true, registroId: registro.id, mensaje, horasDescanso, horasTrabajadas, descansoInsuficiente, jornadaExcesiva });
+    return reply.code(201).send({ ok: true, registroId: registro.id, mensaje: 'Nota de bitácora registrada.' });
   });
 
   // ════════════════════════════════════════════════════════════════════════
@@ -504,8 +647,15 @@ export async function driverHubRoutes(app: FastifyInstance) {
         observaciones: d.observaciones || null,
         reportadoPorNombre: d.reportadoPorNombre,
         reportadoPorTelefono: d.reportadoPorTelefono || null,
+        conductorId: d.conductorId || null,
       },
     });
+
+    // Contrastar el descanso DECLARADO con la jornada abierta del conductor
+    // (no sustituye el cálculo: solo marca discrepancia declarado vs calculado)
+    if (d.conductorId && d.horasDescanso != null) {
+      await vincularControlConJornada(prisma(), qr.tenantId, d.conductorId, d.horasDescanso).catch(() => {});
+    }
 
     // Notificar a admins si el chofer NO está apto para conducir
     if (!apto) {
@@ -695,18 +845,25 @@ export async function driverHubRoutes(app: FastifyInstance) {
   app.get('/servicios', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
-    const { vehiculoId, tipo } = req.query as any;
-    const registros = await prisma().servicioRegistro.findMany({
-      where: {
-        tenantId,
-        ...(vehiculoId ? { vehiculoId } : {}),
-        ...(tipo ? { tipo } : {}),
-      },
-      include: { vehiculo: { select: { id: true, dominio: true, tipo: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 300,
-    });
-    return reply.send({ registros });
+    const { vehiculoId, tipo, conductorId, page, pageSize } = req.query as any;
+    const take = Math.min(Number(pageSize) || 300, 500);
+    const skip = Math.max(0, (Number(page) || 1) - 1) * take;
+    const where: any = {
+      tenantId,
+      ...(vehiculoId ? { vehiculoId } : {}),
+      ...(tipo ? { tipo } : {}),
+      ...(conductorId ? { conductorId } : {}),
+    };
+    const [registros, total] = await Promise.all([
+      prisma().servicioRegistro.findMany({
+        where,
+        include: { vehiculo: { select: { id: true, dominio: true, tipo: true } } },
+        orderBy: { createdAt: 'desc' },
+        take, skip,
+      }),
+      prisma().servicioRegistro.count({ where }),
+    ]);
+    return reply.send({ registros, total, page: Number(page) || 1, pageSize: take });
   });
 
   // ════════════════════════════════════════════════════════════════════════
@@ -738,31 +895,34 @@ export async function driverHubRoutes(app: FastifyInstance) {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
 
-    // Último registro INICIO/FIN por unidad — si es INICIO, está en servicio
-    const registros = await prisma().servicioRegistro.findMany({
-      where: { tenantId, tipo: { in: ['INICIO_SERVICIO', 'FIN_SERVICIO'] } },
-      include: { vehiculo: { select: { id: true, dominio: true, tipo: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 2000,
-    });
-    const ultimoPorVehiculo = new Map<string, any>();
-    for (const r of registros) {
-      if (!ultimoPorVehiculo.has(r.vehiculoId)) ultimoPorVehiculo.set(r.vehiculoId, r);
-    }
+    // Fuente única: jornadas ABIERTAS (la unidad actual es la última del array)
+    const [abiertas, vehiculos] = await Promise.all([
+      prisma().flotaJornada.findMany({
+        where: { tenantId, estado: 'ABIERTA' },
+        include: { conductor: { select: { id: true, nombre: true } } },
+        orderBy: { inicioAt: 'desc' },
+      }),
+      prisma().vehiculo.findMany({ where: { tenantId }, select: { id: true, dominio: true, tipo: true } }),
+    ]);
+    const vehMap = new Map(vehiculos.map((v: any) => [v.id, v]));
     const ahora = Date.now();
-    const enServicio = [...ultimoPorVehiculo.values()]
-      .filter((r: any) => r.tipo === 'INICIO_SERVICIO')
-      .map((r: any) => ({
-        id: r.id,
-        vehiculo: r.vehiculo,
-        chofer: r.reportadoPorNombre,
-        conductorId: r.conductorId,
-        desde: r.createdAt,
-        horasEnServicio: Math.round(((ahora - new Date(r.createdAt).getTime()) / 3600000) * 10) / 10,
-        origen: r.origen, destino: r.destino, carga: r.carga,
-        horasDescanso: r.horasDescanso, descansoInsuficiente: r.descansoInsuficiente,
-      }))
-      .sort((a: any, b: any) => b.horasEnServicio - a.horasEnServicio);
+    const enServicio = abiertas.map((j: any) => {
+      const unidades: any[] = Array.isArray(j.unidades) ? j.unidades : [];
+      const ultimaUnidad = unidades.length ? unidades[unidades.length - 1] : null;
+      return {
+        id: j.id,
+        vehiculo: ultimaUnidad ? vehMap.get(ultimaUnidad.vehiculoId) || { id: ultimaUnidad.vehiculoId, dominio: ultimaUnidad.dominio } : null,
+        chofer: j.conductor?.nombre || '—',
+        conductorId: j.conductorId,
+        desde: j.inicioAt,
+        horasEnServicio: Math.round(((ahora - new Date(j.inicioAt).getTime()) / 3600000) * 10) / 10,
+        origen: j.origen, destino: j.destino, carga: j.carga,
+        horasDescanso: j.descansoPrevioHoras,
+        descansoInsuficiente: j.evaluacionDescanso === 'INSUFICIENTE',
+        evaluacionDescanso: j.evaluacionDescanso,
+        unidades,
+      };
+    }).sort((a: any, b: any) => b.horasEnServicio - a.horasEnServicio);
     return reply.send({ enServicio });
   });
 
@@ -775,26 +935,29 @@ export async function driverHubRoutes(app: FastifyInstance) {
     const { dias } = req.query as any;
     const desde = new Date(Date.now() - (Number(dias) || 30) * 86400000);
 
-    const registros = await prisma().servicioRegistro.findMany({
-      where: { tenantId, tipo: { in: ['INICIO_SERVICIO', 'FIN_SERVICIO'] }, createdAt: { gte: desde } },
-      select: { tipo: true, conductorId: true, reportadoPorNombre: true, horasTrabajadas: true, horasDescanso: true, descansoInsuficiente: true, jornadaExcesiva: true, createdAt: true },
-      orderBy: { createdAt: 'desc' },
+    const jornadasDb = await prisma().flotaJornada.findMany({
+      where: { tenantId, inicioAt: { gte: desde } },
+      include: { conductor: { select: { id: true, nombre: true } } },
+      orderBy: { inicioAt: 'desc' },
     });
 
     const porChofer = new Map<string, any>();
-    for (const r of registros) {
-      const key = r.conductorId || (r.reportadoPorNombre || '').trim().toLowerCase();
-      if (!key) continue;
+    for (const j of jornadasDb) {
+      const key = j.conductorId;
       const acc = porChofer.get(key) || {
-        chofer: r.reportadoPorNombre, conductorId: r.conductorId,
-        servicios: 0, horasTotales: 0, jornadasExcesivas: 0, descansosInsuficientes: 0, ultimoRegistro: r.createdAt,
+        chofer: j.conductor?.nombre || '—', conductorId: j.conductorId,
+        servicios: 0, horasTotales: 0, jornadasExcesivas: 0, descansosInsuficientes: 0,
+        sinHistorial: 0, regularizadas: 0, abiertas: 0, ultimoRegistro: j.inicioAt,
       };
-      if (r.tipo === 'FIN_SERVICIO') {
+      if (j.estado === 'ABIERTA') {
+        acc.abiertas += 1;
+      } else {
         acc.servicios += 1;
-        acc.horasTotales += r.horasTrabajadas || 0;
-        if (r.jornadaExcesiva) acc.jornadasExcesivas += 1;
-      } else if (r.tipo === 'INICIO_SERVICIO' && r.descansoInsuficiente) {
-        acc.descansosInsuficientes += 1;
+        acc.horasTotales += j.horasTrabajadas || 0;
+        if (j.jornadaExcesiva) acc.jornadasExcesivas += 1;
+        if (j.evaluacionDescanso === 'INSUFICIENTE') acc.descansosInsuficientes += 1;
+        if (j.evaluacionDescanso === 'SIN_HISTORIAL' || j.evaluacionDescanso === 'CIERRE_NO_CONFIABLE') acc.sinHistorial += 1;
+        if (j.cierreTipo === 'REGULARIZADO') acc.regularizadas += 1;
       }
       porChofer.set(key, acc);
     }
@@ -802,5 +965,302 @@ export async function driverHubRoutes(app: FastifyInstance) {
       .map((j: any) => ({ ...j, horasTotales: Math.round(j.horasTotales * 10) / 10, promedioJornada: j.servicios ? Math.round((j.horasTotales / j.servicios) * 10) / 10 : null }))
       .sort((a: any, b: any) => b.horasTotales - a.horasTotales);
     return reply.send({ jornadas, dias: Number(dias) || 30 });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // EMPRESA — JORNADAS EXPLÍCITAS (entidad FlotaJornada)
+  // ════════════════════════════════════════════════════════════════════════
+
+  // Helper local: exige rol de administración (tenant admin o superadmin)
+  const requireAdmin = async (req: FastifyRequest, reply: FastifyReply) => {
+    const auth = (req as any).auth;
+    if (auth?.globalRole === 'SUPERADMIN') return null;
+    if (auth?.tenantRole === 'TENANT_ADMIN') return null;
+    return reply.code(403).send({ error: 'Se requiere rol de administrador para esta acción.' });
+  };
+
+  // Lista de jornadas con filtros — fuente única para paneles y reportes
+  app.get('/jornadas-lista', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { conductorId, estado, desde, hasta, page, pageSize } = req.query as any;
+    const take = Math.min(Number(pageSize) || 50, 200);
+    const skip = Math.max(0, (Number(page) || 1) - 1) * take;
+
+    const where: any = {
+      tenantId,
+      ...(conductorId ? { conductorId } : {}),
+      ...(estado ? { estado } : {}),
+      ...((desde || hasta) ? { inicioAt: {
+        ...(desde ? { gte: new Date(desde) } : {}),
+        ...(hasta ? { lte: new Date(new Date(hasta).setHours(23, 59, 59, 999)) } : {}),
+      } } : {}),
+    };
+    const [items, total] = await Promise.all([
+      prisma().flotaJornada.findMany({
+        where,
+        include: {
+          conductor: { select: { id: true, nombre: true } },
+          _count: { select: { correcciones: true } },
+        },
+        orderBy: { inicioAt: 'desc' },
+        take, skip,
+      }),
+      prisma().flotaJornada.count({ where }),
+    ]);
+    return reply.send({ items, total, page: Number(page) || 1, pageSize: take });
+  });
+
+  // Detalle de una jornada: registros, correcciones, avisos
+  app.get('/jornadas-lista/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const jornada = await prisma().flotaJornada.findFirst({
+      where: { id, tenantId },
+      include: {
+        conductor: { select: { id: true, nombre: true } },
+        registros: { orderBy: { eventoAt: 'asc' }, select: { id: true, tipo: true, vehiculoId: true, eventoAt: true, notas: true, odometro: true } },
+        correcciones: { orderBy: { corregidoEn: 'desc' } },
+        avisos: true,
+      },
+    });
+    if (!jornada) return reply.code(404).send({ error: 'Jornada no encontrada' });
+    return reply.send({ jornada });
+  });
+
+  // Corrección autorizada de horarios — admin only, motivo obligatorio
+  app.post('/jornadas-lista/:id/corregir', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const denied = await requireAdmin(req, reply); if (denied) return denied;
+    const { id } = req.params as any;
+    const auth = (req as any).auth;
+
+    const schema = z.object({
+      inicioAt: z.string().datetime({ offset: true }).optional(),
+      finAt: z.string().datetime({ offset: true }).nullable().optional(),
+      motivo: z.string().min(5).max(500),
+      evidencia: z.string().max(2000).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos (motivo de al menos 5 caracteres requerido)', details: body.error.errors });
+
+    const res = await corregirJornada(prisma(), {
+      tenantId, jornadaId: id, userId: auth?.userId,
+      inicioAt: body.data.inicioAt ? new Date(body.data.inicioAt) : undefined,
+      finAt: body.data.finAt !== undefined ? (body.data.finAt ? new Date(body.data.finAt) : null) : undefined,
+      motivo: body.data.motivo, evidencia: body.data.evidencia,
+    });
+    if (!res.ok) return reply.code(res.code).send({ error: res.error });
+    return reply.send({ ok: true, jornada: res.jornada });
+  });
+
+  // Regularización: cerrar una jornada quedada ABIERTA sin horario real
+  // (el fin no fue informado). Queda CERRADA sin finAt → CIERRE_NO_CONFIABLE
+  // para el próximo inicio, trazable con motivo.
+  app.post('/jornadas-lista/:id/regularizar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const denied = await requireAdmin(req, reply); if (denied) return denied;
+    const { id } = req.params as any;
+    const auth = (req as any).auth;
+
+    const schema = z.object({ motivo: z.string().min(5).max(500), evidencia: z.string().max(2000).optional() });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Motivo obligatorio (mín. 5 caracteres)' });
+
+    const jornada = await prisma().flotaJornada.findFirst({ where: { id, tenantId } });
+    if (!jornada) return reply.code(404).send({ error: 'Jornada no encontrada' });
+    if (jornada.estado !== 'ABIERTA') return reply.code(409).send({ error: 'La jornada ya está cerrada.' });
+
+    const actualizada = await prisma().$transaction(async (tx: any) => {
+      await tx.flotaJornadaCorreccion.create({
+        data: { tenantId, jornadaId: id, campo: 'cierre_regularizacion', valorAnterior: 'ABIERTA', valorNuevo: 'CERRADA_SIN_FIN', motivo: body.data.motivo, evidencia: body.data.evidencia || null, corregidoPorId: auth?.userId },
+      });
+      return tx.flotaJornada.update({
+        where: { id },
+        data: { estado: 'CERRADA', finAt: null, cierreTipo: 'REGULARIZADO', cierreMotivo: body.data.motivo, cerradaPorUserId: auth?.userId },
+      });
+    });
+    return reply.send({ ok: true, jornada: actualizada });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // EMPRESA — HABILITACIÓN DE INICIO SIN HISTORIAL (circuito autorizado)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post('/habilitaciones-descanso', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const denied = await requireAdmin(req, reply); if (denied) return denied;
+    const auth = (req as any).auth;
+
+    const schema = z.object({
+      conductorId: z.string().uuid(),
+      tipo: z.enum(['SIN_HISTORIAL', 'CIERRE_NO_CONFIABLE']).default('SIN_HISTORIAL'),
+      descansoDeclaradoHoras: z.number().min(0).max(96).optional(),
+      fundamento: z.string().min(5).max(1000),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos (fundamento obligatorio)' });
+    const d = body.data;
+
+    const conductor = await prisma().conductor.findFirst({ where: { id: d.conductorId, tenantId } });
+    if (!conductor) return reply.code(404).send({ error: 'Conductor no encontrado' });
+
+    const yaExiste = await prisma().flotaHabilitacionDescanso.findFirst({
+      where: { tenantId, conductorId: d.conductorId, usadaEnJornadaId: null },
+    });
+    if (yaExiste) return reply.code(409).send({ error: 'Ya existe una habilitación vigente para este conductor.' });
+
+    const hab = await prisma().flotaHabilitacionDescanso.create({
+      data: {
+        tenantId, conductorId: d.conductorId, tipo: d.tipo,
+        descansoDeclaradoHoras: d.descansoDeclaradoHoras ?? null,
+        fundamento: d.fundamento, autorizadoPorId: auth?.userId,
+      },
+    });
+    return reply.code(201).send({ habilitacion: hab });
+  });
+
+  app.get('/habilitaciones-descanso', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const habilitaciones = await prisma().flotaHabilitacionDescanso.findMany({
+      where: { tenantId },
+      include: { conductor: { select: { id: true, nombre: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    return reply.send({ habilitaciones });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // EMPRESA — POLÍTICA DE JORNADA/DESCANSO (configurable, versionada)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get('/jornada-politica', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const politica = await getPoliticaJornada(prisma(), tenantId);
+    const historial = await prisma().flotaJornadaPoliticaHistorial.findMany({
+      where: { tenantId }, orderBy: { version: 'desc' }, take: 10,
+    });
+    return reply.send({ politica, defaults: POLITICA_DEFAULT, historial });
+  });
+
+  app.patch('/jornada-politica', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const denied = await requireAdmin(req, reply); if (denied) return denied;
+    const auth = (req as any).auth;
+
+    const schema = z.object({
+      descansoMinHoras: z.number().min(4).max(24).optional(),
+      modoAplicacion: z.enum(['ADVERTENCIA', 'BLOQUEO']).optional(),
+      jornadaAlertaHoras: z.number().min(4).max(24).optional(),
+      avisoAnticipacionHoras: z.number().min(0.5).max(8).optional(),
+      destinatarios: z.union([z.literal('ADMINS'), z.array(z.string().uuid()).min(1)]).optional(),
+      politicaRevisada: z.boolean().optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const d = body.data;
+
+    // Regla: para activar BLOQUEO el responsable debe confirmar la revisión
+    const modoDestino = d.modoAplicacion;
+    if (modoDestino === 'BLOQUEO' && d.politicaRevisada !== true) {
+      return reply.code(400).send({ error: 'Para activar el modo BLOQUEO confirmá la revisión de la política (politicaRevisada=true).' });
+    }
+
+    const actualizada = await prisma().$transaction(async (tx: any) => {
+      const previa = await tx.flotaJornadaPolitica.findUnique({ where: { tenantId } });
+      if (previa) {
+        await tx.flotaJornadaPoliticaHistorial.create({
+          data: { tenantId, politicaId: previa.id, version: previa.version, valores: previa, changedById: auth?.userId },
+        });
+      }
+      return tx.flotaJornadaPolitica.upsert({
+        where: { tenantId },
+        create: { tenantId, ...d, politicaRevisada: d.politicaRevisada ?? (d.modoAplicacion ? true : false), updatedById: auth?.userId },
+        update: { ...d, version: { increment: 1 }, updatedById: auth?.userId },
+      });
+    });
+    return reply.send({ ok: true, politica: actualizada });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // EMPRESA — PIN DE CONDUCTOR (identidad del hub QR)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.post('/conductores/:id/pin', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const denied = await requireAdmin(req, reply); if (denied) return denied;
+    const { id } = req.params as any;
+    const auth = (req as any).auth;
+
+    const schema = z.object({ pin: z.string().regex(/^\d{4,8}$/, 'PIN de 4 a 8 dígitos') });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'PIN inválido: debe tener 4 a 8 dígitos.' });
+
+    const conductor = await prisma().conductor.findFirst({ where: { id, tenantId } });
+    if (!conductor) return reply.code(404).send({ error: 'Conductor no encontrado' });
+
+    const pinHash = await hashPin(body.data.pin);
+    await prisma().conductor.update({
+      where: { id },
+      data: { pinHash, pinSetAt: new Date(), pinSetById: auth?.userId },
+    });
+    return reply.send({ ok: true });
+  });
+
+  app.delete('/conductores/:id/pin', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const denied = await requireAdmin(req, reply); if (denied) return denied;
+    const { id } = req.params as any;
+    await prisma().conductor.updateMany({ where: { id, tenantId }, data: { pinHash: null, pinSetAt: null, pinSetById: null } });
+    return reply.send({ ok: true });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // EMPRESA — CONCILIACIÓN: inconsistencias heredadas para revisar
+  // ════════════════════════════════════════════════════════════════════════
+  app.get('/jornadas-conciliacion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const [sinInicio, sinFin, intentosRechazados, jornadasViejas] = await Promise.all([
+      // FIN sin jornada vinculada (huérfanos)
+      prisma().servicioRegistro.count({ where: { tenantId, tipo: 'FIN_SERVICIO', jornadaId: null } }),
+      // INICIO sin jornada vinculada (legacy o ambiguo en backfill)
+      prisma().servicioRegistro.count({ where: { tenantId, tipo: 'INICIO_SERVICIO', jornadaId: null } }),
+      // Intentos de inicio rechazados
+      prisma().servicioRegistro.findMany({
+        where: { tenantId, tipo: 'INICIO_RECHAZADO' },
+        orderBy: { eventoAt: 'desc' }, take: 50,
+        select: { id: true, reportadoPorNombre: true, motivoRechazo: true, eventoAt: true, vehiculoId: true },
+      }),
+      // Jornadas abiertas hace más de 36h (posible cierre omitido)
+      prisma().flotaJornada.findMany({
+        where: { tenantId, estado: 'ABIERTA', inicioAt: { lt: new Date(Date.now() - 36 * 3600000) } },
+        include: { conductor: { select: { id: true, nombre: true } } },
+      }),
+    ]);
+    return reply.send({
+      sinInicio, sinFin, intentosRechazados,
+      jornadasAbiertasViejas: jornadasViejas,
+      hayInconsistencias: sinInicio + sinFin + jornadasViejas.length > 0,
+    });
+  });
+
+  // Procesar avisos pendientes (llamado también desde el scheduler)
+  app.post('/jornadas-procesar-avisos', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    await procesarAvisosJornada(prisma(), tenantId);
+    return reply.send({ ok: true });
   });
 }

@@ -4,6 +4,8 @@ import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import crypto from 'crypto';
 import { notifyIntervencionRegistrada } from '../services/notifyService.js';
 import { syncOdometroYDesgaste } from '../services/fleetTires.js';
+import { restriccionesActivasDe } from '../services/defectService.js';
+import { abrirIndisponibilidad, cerrarIndisponibilidadManual } from '../services/unidadEstadoService.js';
 
 const generateToken = () => crypto.randomBytes(20).toString('hex');
 
@@ -428,24 +430,44 @@ export async function maintenanceInterventionsRoutes(app: FastifyInstance) {
       return reply.send({ ok: true, sinCambio: true, estadoOperativo: vehiculo.estadoOperativo });
     }
 
-    let nuevoStatus = vehiculo.status;
-    if (body.data.estado === 'EN_TALLER' || body.data.estado === 'EN_REPARACION') nuevoStatus = 'EN_TALLER';
-    else if (body.data.estado === 'OPERATIVO' && vehiculo.status === 'EN_TALLER') nuevoStatus = 'ACTIVO';
+    const usuario = { nombre: body.data.mecanicoNombre ?? 'Mecánico (QR)' };
 
-    await (app.prisma as any).$transaction([
-      (app.prisma as any).vehiculoEstadoEvento.create({
-        data: {
-          tenantId: qr.tenantId, vehiculoId: vehiculo.id, estado: body.data.estado,
-          origen: 'QR_MECANICO', notas: body.data.notas ?? null,
-          createdByName: body.data.mecanicoNombre ?? null,
-        },
-      }),
-      (app.prisma as any).vehiculo.update({
-        where: { id: vehiculo.id },
-        data: { estadoOperativo: body.data.estado, status: nuevoStatus },
-      }),
-    ]);
-    return reply.send({ ok: true, estadoOperativo: body.data.estado, status: nuevoStatus });
+    // El QR opera sobre el mismo episodio de indisponibilidad que la web:
+    // volver a OPERATIVO exige que no queden restricciones ni OTs que
+    // retiren la unidad — el QR no elude verificación ni habilitación.
+    if (body.data.estado === 'OPERATIVO') {
+      const res = await (app.prisma as any).$transaction(async (tx: any) =>
+        cerrarIndisponibilidadManual(tx, { tenantId: qr.tenantId, vehiculoId: vehiculo.id, usuario, motivo: body.data.notas ?? null }));
+      if (res.error) {
+        // Sin episodio pero con restricciones activas: tampoco puede pasar.
+        if (res.code === 409 && /no tiene un episodio/.test(res.error)) {
+          const activas = await restriccionesActivasDe(app.prisma as any, qr.tenantId, vehiculo.id);
+          if (activas.length > 0) {
+            return reply.code(409).send({
+              error: `La unidad tiene ${activas.length} restricción(es) de servicio activas. Requiere habilitación autorizada.`,
+              restricciones: activas.map((r: any) => ({ id: r.id, motivo: r.motivo })),
+            });
+          }
+          const v = await (app.prisma as any).vehiculo.findUnique({ where: { id: vehiculo.id } });
+          return reply.send({ ok: true, sinCambio: true, estadoOperativo: v.estadoOperativo });
+        }
+        return reply.code(res.code).send(res);
+      }
+      const v = await (app.prisma as any).vehiculo.findUnique({ where: { id: vehiculo.id } });
+      return reply.send({ ok: true, estadoOperativo: v.estadoOperativo, status: v.status });
+    }
+
+    // EN_TALLER → etapa de espera genérica; EN_REPARACION → trabajo en curso.
+    const etapa = body.data.estado === 'EN_REPARACION' ? 'REPARACION_EN_CURSO' : 'OTRO';
+    const res = await (app.prisma as any).$transaction(async (tx: any) =>
+      abrirIndisponibilidad(tx, {
+        tenantId: qr.tenantId, vehiculoId: vehiculo.id, origen: 'QR_MECANICO',
+        motivo: body.data.notas ?? null, etapa, comentario: body.data.notas ?? null,
+        tallerTipo: 'INTERNO', fechaIngresoTaller: new Date(), usuario,
+      }));
+    if (res.error) return reply.code(res.code).send(res);
+    const v = await (app.prisma as any).vehiculo.findUnique({ where: { id: vehiculo.id } });
+    return reply.send({ ok: true, estadoOperativo: v.estadoOperativo, status: v.status });
   });
 
   // ── RUTA PÚBLICA POST: registrar intervención realizada ─────────────────────

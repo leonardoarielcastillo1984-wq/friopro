@@ -71,26 +71,62 @@ function estimarRitmoUso(puntos: { km: number; fecha: Date }[]): { kmMes: number
   return { kmMes: Math.round(dKm / dMeses), fuente: 'HISTORIAL_ODOMETRO', puntosUsados: validos.length };
 }
 
-// ── Última ejecución real de una tarea (OT con km o fecha, o plan) ──
-function ultimaEjecucion(match: RegExp, ots: any[], planes: any[], planMatchExtra?: RegExp) {
-  let mejor: { km: number | null; fecha: Date | null; origen: string; detalle: string } | null = null;
+type UltimaEjec = { km: number | null; fecha: Date | null; origen: string; detalle: string };
+
+// ── Última ejecución EXPLÍCITA de una tarea (componentKey por ID) ──
+// Fuente única compartida con cronograma/alertas: los campos del plan
+// (lastExecutionDate / lastOdometerExecution) y las OTs vinculadas por ID
+// (ot.planId o WorkOrderTask → plan.componentKey). El texto ya no reinicia
+// intervalos: una OT sin vínculo explícito no cuenta como ejecución.
+export function ultimaEjecucionExplicita(componentKey: string, ots: any[], planes: any[]): UltimaEjec | null {
+  const planesDeLaTarea = planes.filter((p: any) => p.componentKey === componentKey);
+  const planIdsDeLaTarea = new Set(planesDeLaTarea.map((p: any) => p.id));
+
+  let mejor: UltimaEjec | null = null;
   for (const ot of ots) {
-    const texto = `${ot.title || ''} ${ot.description || ''}`;
-    if (!match.test(texto)) continue;
+    const vinculoPlan = ot.planId && planIdsDeLaTarea.has(ot.planId);
+    const vinculoTarea = (ot.tareas || []).some((t: any) => planIdsDeLaTarea.has(t.planId) && t.status === 'COMPLETED');
+    if (!vinculoPlan && !vinculoTarea) continue;
     const kmOt = ot.vehiculoHistorial?.[0]?.odometro ?? null;
-    const fechaOt = ot.completedAt ? new Date(ot.completedAt) : null;
+    const fechaOt = ot.executedAt ? new Date(ot.executedAt) : (ot.completedAt ? new Date(ot.completedAt) : null);
     if (!mejor || (kmOt ?? -1) > (mejor.km ?? -1) || (kmOt == null && fechaOt && (!mejor.fecha || fechaOt > mejor.fecha))) {
       mejor = { km: kmOt, fecha: fechaOt, origen: 'OT', detalle: ot.title };
     }
   }
+  for (const p of planesDeLaTarea) {
+    if (p.lastOdometerExecution == null && !p.lastExecutionDate) continue;
+    const kmP = p.lastOdometerExecution ?? null;
+    const fechaP = p.lastExecutionDate ? new Date(p.lastExecutionDate) : null;
+    if (!mejor || (kmP ?? -1) > (mejor.km ?? -1) || (kmP == null && fechaP && (!mejor.fecha || fechaP > mejor.fecha))) {
+      mejor = { km: kmP, fecha: fechaP, origen: 'PLAN', detalle: p.title || p.name };
+    }
+  }
+  return mejor;
+}
+
+// ── Sugerencia por texto (NO confirmada): solo para conciliación humana ──
+// Nunca alimenta consumo ni vencimientos; se expone para que un usuario
+// decida si corresponde vincularla.
+export function sugerenciaPorTexto(match: RegExp, ots: any[], planes: any[]): UltimaEjec | null {
+  let mejor: UltimaEjec | null = null;
+  for (const ot of ots) {
+    const texto = `${ot.title || ''} ${ot.description || ''}`;
+    if (!match.test(texto)) continue;
+    const kmOt = ot.vehiculoHistorial?.[0]?.odometro ?? null;
+    const fechaOt = ot.executedAt ? new Date(ot.executedAt) : (ot.completedAt ? new Date(ot.completedAt) : null);
+    if (!mejor || (kmOt ?? -1) > (mejor.km ?? -1) || (kmOt == null && fechaOt && (!mejor.fecha || fechaOt > mejor.fecha))) {
+      mejor = { km: kmOt, fecha: fechaOt, origen: 'OT_SUGERIDA', detalle: ot.title };
+    }
+  }
   for (const p of planes) {
+    if (p.componentKey) continue; // con vínculo explícito no es sugerencia
     if (p.lastOdometerExecution == null && !p.lastExecutionDate) continue;
     const texto = `${p.title || ''} ${p.name || ''}`;
-    if (!match.test(texto) && !(planMatchExtra && planMatchExtra.test(texto))) continue;
+    if (!match.test(texto)) continue;
     const kmP = p.lastOdometerExecution ?? null;
     const fechaP = p.lastExecutionDate ? new Date(p.lastExecutionDate) : null;
     if (!mejor || (kmP ?? -1) > (mejor.km ?? -1)) {
-      mejor = { km: kmP, fecha: fechaP, origen: 'PLAN', detalle: p.title || p.name };
+      mejor = { km: kmP, fecha: fechaP, origen: 'PLAN_SUGERIDO', detalle: p.title || p.name };
     }
   }
   return mejor;
@@ -152,7 +188,12 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
     assetId ? prisma.workOrder.findMany({
       where: { assetId, tenantId, status: 'COMPLETED' },
       orderBy: { completedAt: 'desc' }, take: 100,
-      select: { id: true, title: true, description: true, type: true, completedAt: true, totalCost: true, planId: true, vehiculoHistorial: { select: { odometro: true, fecha: true }, take: 1 } },
+      select: {
+        id: true, title: true, description: true, type: true, completedAt: true, executedAt: true,
+        totalCost: true, planId: true,
+        tareas: { select: { planId: true, status: true } },
+        vehiculoHistorial: { select: { odometro: true, fecha: true }, take: 1 },
+      },
     }).catch(() => []) : [],
     prisma.fleetComponentReference.findMany({ where: { isActive: true, OR: [{ tenantId }, { tenantId: null }] } }).catch(() => []),
     prisma.fleetComponentInstallation.findMany({ where: { vehiculoId, tenantId }, include: { instance: { include: { component: true } } } }).catch(() => []),
@@ -218,16 +259,27 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
     if (tipoMetrica === 'INTERVALO_MANTENIMIENTO') {
       const intervaloKm = ref?.intervaloKm ?? null;
       const intervaloMeses = ref?.intervaloMeses ?? null;
-      const ultima = ultimaEjecucion(ref?.matchRegex ? new RegExp(ref.matchRegex, 'i') : def.match, ots, planes);
+      // Fuente explícita: plan/OT vinculados por ID (componentKey). El regex
+      // queda solo como sugerencia pendiente de conciliación.
+      const match = ref?.matchRegex ? new RegExp(ref.matchRegex, 'i') : def.match;
+      const ultima = ultimaEjecucionExplicita(def.key, ots, planes);
+      const sugerida = sugerenciaPorTexto(match, ots, planes);
+      if (sugerida && !ultima) {
+        out.sugerenciaConciliacion = {
+          detalle: sugerida.detalle, origen: sugerida.origen,
+          km: sugerida.km, fecha: sugerida.fecha,
+          motivo: 'Coincidencia por texto sin vínculo confirmado: no cuenta como ejecución hasta conciliarla.',
+        };
+      }
 
       if (intervaloKm == null && intervaloMeses == null) {
         out.situacion = 'SIN_REFERENCIA';
         porQue.push('No hay intervalo configurado ni referencia aplicable para esta tarea.');
         if (ultima) porQue.push(`Última ejecución registrada: ${ultima.detalle}${ultima.km != null ? ` a ${Math.round(ultima.km).toLocaleString('es-AR')} km` : ''}.`);
       } else if (!ultima || (ultima.km == null && ultima.fecha == null)) {
-        out.situacion = 'SIN_HISTORIAL';
-        porQue.push('Sin registro de última ejecución: no se puede calcular el consumo del intervalo sin inventar el punto de partida.');
-        if (ultima) porQue.push(`Última OT relacionada: "${ultima.detalle}" (sin odómetro ni fecha utilizable).`);
+        out.situacion = 'SIN_DATOS';
+        porQue.push('Sin datos suficientes: no hay una ejecución vinculada por tarea/plan de referencia confiable; no se asume cero ni se infiere por texto.');
+        if (sugerida) porQue.push(`Posible ejecución sin confirmar: "${sugerida.detalle}"${sugerida.km != null ? ` a ${Math.round(sugerida.km).toLocaleString('es-AR')} km` : ''}${sugerida.fecha ? `, ${sugerida.fecha.toLocaleDateString('es-AR')}` : ''} — requiere conciliación.`);
       } else {
         const kmDesde = ultima.km != null ? Math.max(0, km - ultima.km) : null;
         const mesesDesde = ultima.fecha ? Math.max(0, (now.getTime() - ultima.fecha.getTime()) / MS_MES) : null;

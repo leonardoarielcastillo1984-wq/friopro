@@ -37,6 +37,9 @@ export default function UnidadHubPage() {
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
   const [conductorId, setConductorId] = useState('');
+  const [pin, setPin] = useState('');
+  const [estadoServ, setEstadoServ] = useState<any>(null);
+  const [estadoLoad, setEstadoLoad] = useState(false);
   const [otroChofer, setOtroChofer] = useState(false);
   // incidente
   const [iTipo, setITipo] = useState(''); const [iGrav, setIGrav] = useState('MEDIA');
@@ -54,10 +57,12 @@ export default function UnidadHubPage() {
   // Unidad dual (diésel+GNC): sin default — el chofer indica qué cargó
   const tipoComb = cTipo || (esDual ? null : tipoVehComb);
   const unComb = tipoComb === 'GNC' ? 'm³' : 'L';
-  // servicio
-  const [sTipo, setSTipo] = useState<'INICIO_SERVICIO' | 'FIN_SERVICIO'>('INICIO_SERVICIO');
+  // servicio — clienteEventoId por intento: si se reintenta (timeout/offline)
+  // el servidor devuelve el registro existente en vez de duplicar.
+  const [sTipo, setSTipo] = useState<'INICIO_SERVICIO' | 'FIN_SERVICIO' | 'CAMBIO_UNIDAD'>('INICIO_SERVICIO');
   const [sKm, setSKm] = useState(''); const [sNotas, setSNotas] = useState('');
   const [sOrigen, setSOrigen] = useState(''); const [sDestino, setSDestino] = useState(''); const [sCarga, setSCarga] = useState('');
+  const eventoId = useRef<string>('');
   // control pre-servicio (aptitud)
   const [pSis, setPSis] = useState(''); const [pDia, setPDia] = useState('');
   const [pAlc, setPAlc] = useState(''); const [pTemp, setPTemp] = useState('');
@@ -111,16 +116,16 @@ export default function UnidadHubPage() {
     if (v === 'documentos' && !docs) { setDocsLoad(true); fetch(`${API}/driver-hub/public/${token}/documentos`).then(r => r.json()).then(setDocs).catch(() => setDocs({ documentos: [], vencimientos: [] })).finally(() => setDocsLoad(false)); }
     setVista(v);
   };
-  const post = async (path: string, body: any) => {
+  const post = async (path: string, body: any): Promise<boolean> => {
     setPaso('enviando');
     try {
       const res = await fetch(`${API}/driver-hub/public/${token}/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const d = await res.json();
-      if (!res.ok || d.error) { setError(d.error || 'Error'); setPaso('error'); return; }
+      if (!res.ok || d.error) { setError(d.mensaje || d.error || 'Error'); setResultado(d); setPaso('error'); return false; }
       localStorage.setItem('hub_nombre', nombre.trim()); if (telefono.trim()) localStorage.setItem('hub_telefono', telefono.trim());
       if (conductorId) localStorage.setItem('hub_conductor_id', conductorId); else localStorage.removeItem('hub_conductor_id');
-      setResultado(d); setPaso('ok');
-    } catch { setError('Error de conexión'); setPaso('error'); }
+      setResultado(d); setPaso('ok'); return true;
+    } catch { setError('Sin conexión — el evento NO quedó registrado. Revisá tu internet e intentá de nuevo.'); setPaso('error'); return false; }
   };
 
   const envInc = async () => {
@@ -135,9 +140,40 @@ export default function UnidadHubPage() {
     if (cModo === 'monto' && !cMonto) return alert('Ingresá el monto');
     post('combustible', { litros: cModo === 'litros' && cLitros ? +cLitros : undefined, montoTotal: cModo === 'monto' && cMonto ? +cMonto : undefined, precioPorLitro: cPrecio ? +cPrecio : undefined, odometro: cKm ? +cKm : undefined, estacion: cEst.trim() || undefined, tipoCombustible: tipoComb, litrosUrea: cUrea ? +cUrea : undefined, fotoTicket: cTicket || undefined, conductorId: conductorId || undefined, reportadoPorNombre: nombre.trim() });
   };
+  // Estado pre-servicio: qué verá el chofer antes de iniciar (jornada abierta,
+  // último cierre, descanso mínimo, tiempo restante hasta habilitarse).
+  const cargarEstadoServ = async (cid: string, pinVal: string) => {
+    if (!cid || !pinVal || pinVal.length < 4) { setEstadoServ(null); return; }
+    setEstadoLoad(true);
+    try {
+      const res = await fetch(`${API}/driver-hub/public/${token}/servicio/estado`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conductorId: cid, pin: pinVal }),
+      });
+      const d = await res.json();
+      setEstadoServ(res.ok ? d : { error: d.error || 'No se pudo verificar' });
+    } catch { setEstadoServ({ error: 'Sin conexión — no se pudo consultar el estado.' }); }
+    setEstadoLoad(false);
+  };
+  useEffect(() => {
+    if (vista !== 'servicio') { setEstadoServ(null); return; }
+    const t = setTimeout(() => cargarEstadoServ(conductorId, pin), 400);
+    return () => clearTimeout(t);
+  }, [conductorId, pin, vista]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const envServ = async () => {
-    if (!nombre.trim()) return alert('Ingresá tu nombre');
-    post('servicio', { tipo: sTipo, odometro: sKm ? +sKm : undefined, notas: sNotas.trim() || undefined, ...(await gps()), conductorId: conductorId || undefined, origen: sTipo === 'INICIO_SERVICIO' ? sOrigen.trim() || undefined : undefined, destino: sTipo === 'INICIO_SERVICIO' ? sDestino.trim() || undefined : undefined, carga: sTipo === 'INICIO_SERVICIO' ? sCarga.trim() || undefined : undefined, reportadoPorNombre: nombre.trim(), reportadoPorTelefono: telefono.trim() || undefined });
+    if (!conductorId) return alert('Elegí tu nombre de la lista');
+    if (!pin.trim()) return alert('Ingresá tu PIN de conductor');
+    if (!eventoId.current) eventoId.current = crypto.randomUUID();
+    const ok = await post('servicio', {
+      tipo: sTipo, odometro: sKm ? +sKm : undefined, notas: sNotas.trim() || undefined,
+      ...(await gps()), conductorId, pin: pin.trim(), clienteEventoId: eventoId.current,
+      origen: sTipo === 'INICIO_SERVICIO' ? sOrigen.trim() || undefined : undefined,
+      destino: sTipo === 'INICIO_SERVICIO' ? sDestino.trim() || undefined : undefined,
+      carga: sTipo === 'INICIO_SERVICIO' ? sCarga.trim() || undefined : undefined,
+      reportadoPorNombre: nombre.trim(), reportadoPorTelefono: telefono.trim() || undefined,
+    });
+    if (ok) { eventoId.current = ''; setEstadoServ(null); }
   };
   const envControl = async () => {
     if (!nombre.trim()) return alert('Ingresá tu nombre');
@@ -305,10 +341,73 @@ export default function UnidadHubPage() {
       {vista === 'servicio' && (
         <div style={S.card}>{Volver}
           <h3 style={{ margin: '0 0 4px', fontSize: 16, color: '#111827' }}>Registro de servicio</h3>
-          <p style={{ ...S.muted, marginBottom: 14 }}>Se registra fecha y hora automáticamente. Al cerrar, se calcula tu jornada; al iniciar, se verifican tus 12h de descanso.</p>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <p style={{ ...S.muted, marginBottom: 14 }}>Se registra fecha y hora automáticamente al confirmar. Identificáte con tu nombre y tu PIN — el QR identifica la unidad, no al chofer.</p>
+
+          {/* ── Chofer + PIN ── */}
+          {data?.choferes?.length > 0 ? (
+            <select style={S.input} value={conductorId} onChange={e => {
+              const v = e.target.value;
+              if (v === '__otro') { setOtroChofer(true); setConductorId(''); setNombre(''); }
+              else { setConductorId(v); const c = data.choferes.find((x: any) => x.id === v); if (c) setNombre(c.nombre); }
+            }}>
+              <option value="">¿Quién sos? *</option>
+              {data.choferes.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}{c.tienePin ? '' : ' (sin PIN)'}</option>)}
+              <option value="__otro">No estoy en la lista</option>
+            </select>
+          ) : (
+            <p style={{ ...S.muted, color: '#B45309' }}>No hay choferes cargados en la flota — pedile a la empresa que los dé de alta con PIN.</p>
+          )}
+          {otroChofer && (
+            <p style={{ ...S.muted, fontSize: 12, marginTop: 8, color: '#B45309', background: '#FFFBEB', padding: 10, borderRadius: 8 }}>
+              Para iniciar o cerrar servicio necesitás estar registrado como chofer con PIN. Pedile a la empresa que te dé de alta.
+              <button type="button" onClick={() => setOtroChofer(false)} style={{ display: 'block', background: 'none', border: 'none', color: '#2563EB', fontSize: 12, cursor: 'pointer', padding: 0, marginTop: 4 }}>← Volver a la lista</button>
+            </p>
+          )}
+          {docAlertas.length > 0 && <p style={{ fontSize: 12, color: '#DC2626', fontWeight: 600, margin: '8px 0 0' }}>⚠ Tenés {docAlertas.join(' y ')} — avisá a la empresa antes de salir.</p>}
+          {conductorId && (
+            <input style={{ ...S.input, marginTop: 8 }} type="password" inputMode="numeric" maxLength={8}
+              placeholder="PIN de conductor *" value={pin}
+              onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
+              autoComplete="off" />
+          )}
+          {estadoLoad && <p style={{ ...S.muted, fontSize: 12, marginTop: 6 }}>Verificando estado…</p>}
+
+          {/* ── Estado pre-servicio ── */}
+          {estadoServ && !estadoServ.error && (
+            <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              {estadoServ.jornadaAbierta ? (
+                <>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#B45309', margin: '0 0 4px' }}>Tenés una jornada abierta desde {new Date(estadoServ.jornadaAbierta.inicioAt).toLocaleString('es-AR')} ({estadoServ.jornadaAbierta.horasTranscurridas}h).</p>
+                  <p style={{ ...S.muted, fontSize: 12 }}>No podés iniciar otra. Si cambiaste de camión, usá <strong>Cambio de unidad</strong>; si quedó abierta por error, avisá a tu supervisor.</p>
+                </>
+              ) : (
+                <>
+                  {estadoServ.ultimoCierre && <p style={{ fontSize: 12, color: '#374151', margin: '0 0 3px' }}>Último cierre: <strong>{new Date(estadoServ.ultimoCierre).toLocaleString('es-AR')}</strong> ({estadoServ.horasDesdeCierre}h atrás)</p>}
+                  <p style={{ fontSize: 12, color: '#374151', margin: '0 0 3px' }}>Descanso mínimo: <strong>{estadoServ.descansoMinHoras}h</strong>{estadoServ.politica?.modoAplicacion === 'BLOQUEO' ? ' (bloquea el inicio)' : ''}</p>
+                  {estadoServ.evaluacion === 'CUMPLE' && <p style={{ fontSize: 13, fontWeight: 600, color: '#16A34A', margin: '4px 0 0' }}>✓ Descanso suficiente — podés iniciar.</p>}
+                  {estadoServ.evaluacion === 'INSUFICIENTE' && estadoServ.restanteMinutos != null && (
+                    <p style={{ fontSize: 13, fontWeight: 600, color: estadoServ.politica?.modoAplicacion === 'BLOQUEO' ? '#DC2626' : '#B45309', margin: '4px 0 0' }}>
+                      {estadoServ.politica?.modoAplicacion === 'BLOQUEO' ? '✗' : '⚠'} Descanso insuficiente — faltan {estadoServ.restanteMinutos} min. Podés iniciar desde las {new Date(estadoServ.habilitadoDesde).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}.
+                    </p>
+                  )}
+                  {estadoServ.evaluacion === 'SIN_HISTORIAL' && (
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#B45309', margin: '4px 0 0' }}>Sin historial de jornadas en el sistema{estadoServ.politica?.modoAplicacion === 'BLOQUEO' ? ' — necesitás una habilitación del responsable para iniciar.' : '.'}</p>
+                  )}
+                  {estadoServ.evaluacion === 'CIERRE_NO_CONFIABLE' && (
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#B45309', margin: '4px 0 0' }}>Tu jornada anterior quedó sin cierre confiable{estadoServ.politica?.modoAplicacion === 'BLOQUEO' ? ' — necesitás habilitación del responsable.' : ' — quedará marcado para revisión.'}</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          {estadoServ?.error && <p style={{ fontSize: 12, color: '#DC2626', margin: '8px 0 0' }}>{estadoServ.error}</p>}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 14, marginBottom: 14, flexWrap: 'wrap' }}>
             {[{ id: 'INICIO_SERVICIO', l: 'Inicio', i: <PlayCircle size={15} />, c: '#16A34A' }, { id: 'FIN_SERVICIO', l: 'Fin', i: <StopCircle size={15} />, c: '#DC2626' }].map(t =>
-              <button key={t.id} type="button" onClick={() => setSTipo(t.id as any)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, border: sTipo === t.id ? `2px solid ${t.c}` : '1px solid #D1D5DB', background: sTipo === t.id ? `${t.c}12` : '#fff', color: sTipo === t.id ? t.c : '#6B7280' }}>{t.i} {t.l}</button>)}
+              <button key={t.id} type="button" onClick={() => setSTipo(t.id as any)} style={{ flex: 1, minWidth: 100, padding: '10px 0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, border: sTipo === t.id ? `2px solid ${t.c}` : '1px solid #D1D5DB', background: sTipo === t.id ? `${t.c}12` : '#fff', color: sTipo === t.id ? t.c : '#6B7280' }}>{t.i} {t.l}</button>)}
+            {estadoServ?.jornadaAbierta && (
+              <button type="button" onClick={() => setSTipo('CAMBIO_UNIDAD')} style={{ flex: 1, minWidth: 140, padding: '10px 0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, border: sTipo === 'CAMBIO_UNIDAD' ? '2px solid #2563EB' : '1px solid #D1D5DB', background: sTipo === 'CAMBIO_UNIDAD' ? '#EFF6FF' : '#fff', color: sTipo === 'CAMBIO_UNIDAD' ? '#2563EB' : '#6B7280' }}><Truck size={15} /> Cambio de unidad</button>
+            )}
           </div>
           <div style={{ display: 'grid', gap: 10 }}>
             {sTipo === 'INICIO_SERVICIO' && (
@@ -318,13 +417,16 @@ export default function UnidadHubPage() {
                 <input style={{ ...S.input, gridColumn: '1 / -1' }} placeholder="Carga / mercadería (opc.)" value={sCarga} onChange={e => setSCarga(e.target.value)} />
               </div>
             )}
+            {sTipo === 'CAMBIO_UNIDAD' && <p style={{ ...S.muted, fontSize: 12, background: '#EFF6FF', padding: 10, borderRadius: 8 }}>Registra que ahora conducís <strong>{veh?.dominio}</strong> dentro de tu jornada abierta — no la reinicia ni cuenta descanso.</p>}
             <div><label style={S.label}>Kilometraje actual</label><input style={S.input} type="number" min="0" placeholder="km" value={sKm} onChange={e => setSKm(e.target.value)} /></div>
             <textarea style={{ ...S.input, minHeight: 60, resize: 'vertical' }} placeholder="Observaciones (opcional)" value={sNotas} onChange={e => setSNotas(e.target.value)} />
-            {Chofer}
-            <p style={{ ...S.muted, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={12} /> Se adjunta tu ubicación GPS</p>
+            <input style={S.input} placeholder="Teléfono (opc.)" value={telefono} onChange={e => setTelefono(e.target.value)} />
+            <p style={{ ...S.muted, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={12} /> Se adjunta tu ubicación GPS. Sin conexión el evento no se confirma.</p>
           </div>
           {Err}
-          <button onClick={envServ} disabled={Env} style={{ ...S.btn, background: sTipo === 'FIN_SERVICIO' ? '#DC2626' : '#16A34A', width: '100%', marginTop: 14, opacity: Env ? 0.6 : 1 }}><Send size={16} style={{ marginRight: 8, verticalAlign: -3 }} />{Env ? 'Registrando…' : `Registrar ${sTipo === 'INICIO_SERVICIO' ? 'inicio' : 'fin'}`}</button>
+          <button onClick={envServ} disabled={Env || !conductorId || !pin.trim()}
+            style={{ ...S.btn, background: sTipo === 'FIN_SERVICIO' ? '#DC2626' : sTipo === 'CAMBIO_UNIDAD' ? '#2563EB' : '#16A34A', width: '100%', marginTop: 14, opacity: (Env || !conductorId || !pin.trim()) ? 0.6 : 1 }}>
+            <Send size={16} style={{ marginRight: 8, verticalAlign: -3 }} />{Env ? 'Registrando…' : sTipo === 'INICIO_SERVICIO' ? 'Registrar inicio' : sTipo === 'FIN_SERVICIO' ? 'Registrar fin' : 'Registrar cambio de unidad'}</button>
         </div>
       )}
 

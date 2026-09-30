@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Users, Plus, X, Pencil, Trash2, Paperclip, Loader2 } from 'lucide-react';
+import { Users, Plus, X, Pencil, Trash2, Paperclip, Loader2, KeyRound } from 'lucide-react';
 
 type Conductor = {
   id: string; nombre: string; dni: string | null; categoria: string | null;
   licenciaVto: string | null; psicofisicoVto: string | null; status: string;
   licenciaFileUrl?: string | null; psicofisicoFileUrl?: string | null;
-  telefono?: string | null; email?: string | null;
+  telefono?: string | null; email?: string | null; tienePin?: boolean;
 };
 
 function diasRestantes(fecha: string | null) {
@@ -33,6 +33,10 @@ export default function ConductoresPage() {
   const [subiendo, setSubiendo] = useState<'lic' | 'psi' | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const fileTarget = useRef<'lic' | 'psi'>('lic');
+  const [pinTarget, setPinTarget] = useState<Conductor | null>(null);
+  const [pinVal, setPinVal] = useState('');
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
 
   const subirDoc = async (f: File) => {
     setSubiendo(fileTarget.current);
@@ -116,6 +120,29 @@ export default function ConductoresPage() {
     }
   };
 
+  const guardarPin = async () => {
+    if (!pinTarget) return;
+    if (!/^\d{4,8}$/.test(pinVal)) { setPinError('PIN de 4 a 8 dígitos'); return; }
+    setPinBusy(true); setPinError(null);
+    try {
+      await apiFetch(`/driver-hub/conductores/${pinTarget.id}/pin`, { method: 'POST', json: { pin: pinVal } });
+      setPinTarget(null); setPinVal('');
+      await load();
+    } catch (e: any) { setPinError(e?.message || 'No se pudo guardar el PIN'); }
+    setPinBusy(false);
+  };
+
+  const quitarPin = async () => {
+    if (!pinTarget) return;
+    if (!confirm(`¿Quitar el PIN de ${pinTarget.nombre}? No podrá registrar inicio/fin de servicio hasta que le asignes uno nuevo.`)) return;
+    setPinBusy(true);
+    try {
+      await apiFetch(`/driver-hub/conductores/${pinTarget.id}/pin`, { method: 'DELETE' });
+      setPinTarget(null); setPinVal('');
+      await load();
+    } finally { setPinBusy(false); }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -165,6 +192,11 @@ export default function ConductoresPage() {
                   <td className="px-3 py-2 text-neutral-600">{c.status}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
+                      <button disabled={busy} onClick={() => { setPinTarget(c); setPinVal(''); setPinError(null); }}
+                        className={c.tienePin ? 'text-emerald-600 hover:text-emerald-800 disabled:opacity-50' : 'text-neutral-400 hover:text-amber-600 disabled:opacity-50'}
+                        title={c.tienePin ? 'PIN configurado — cambiar o quitar' : 'Asignar PIN (necesario para iniciar servicio)'}>
+                        <KeyRound className="h-3.5 w-3.5" />
+                      </button>
                       <button disabled={busy} onClick={() => abrirEdicion(c)} className="text-blue-600 hover:text-blue-800 disabled:opacity-50" title="Editar"><Pencil className="h-3.5 w-3.5" /></button>
                       <button disabled={busy} onClick={() => eliminar(c.id)} className="text-red-400 hover:text-red-600 disabled:opacity-50" title="Eliminar"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
@@ -175,6 +207,35 @@ export default function ConductoresPage() {
           </tbody>
         </table>
       </div>
+
+      {pinTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <h2 className="text-sm font-semibold text-neutral-900 flex items-center gap-2"><KeyRound className="h-4 w-4 text-emerald-600" />PIN de {pinTarget.nombre}</h2>
+              <button onClick={() => setPinTarget(null)}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-neutral-500">El chofer usa este PIN en el hub QR para registrar inicio y fin de servicio. Solo vos lo definís — el sistema guarda el hash, nunca el PIN en claro.</p>
+              {pinTarget.tienePin && <p className="rounded bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 text-xs text-emerald-700">Tiene PIN configurado. Definir uno nuevo lo reemplaza.</p>}
+              {pinError && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{pinError}</p>}
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Nuevo PIN (4 a 8 dígitos) *</label>
+                <input type="password" inputMode="numeric" maxLength={8} value={pinVal} onChange={e => setPinVal(e.target.value.replace(/\D/g, ''))} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm tracking-widest" placeholder="····" autoComplete="off" />
+              </div>
+            </div>
+            <div className="flex justify-between gap-2 border-t border-neutral-200 px-4 py-3">
+              {pinTarget.tienePin
+                ? <button onClick={quitarPin} disabled={pinBusy} className="rounded-md border border-red-200 text-red-600 px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">Quitar PIN</button>
+                : <span />}
+              <div className="flex gap-2">
+                <button onClick={() => setPinTarget(null)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
+                <button onClick={guardarPin} disabled={pinBusy || pinVal.length < 4} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{pinBusy ? 'Guardando…' : 'Guardar PIN'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">

@@ -4,6 +4,15 @@ import XLSX from 'xlsx';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { gastoNeumaticosPeriodo } from '../services/fleetTires.js';
 import { cambiosDeAlta, registrarCambioVehiculo, resolverActor } from '../services/vehiculoAudit.js';
+import { evaluarVencimientoPlan, registrarEjecucionPlan } from '../services/fleetExecution.js';
+import { restriccionesActivasDe, restriccionesDelConjunto, verificarCaso, habilitarPorCaso, reasignarReporte } from '../services/defectService.js';
+import {
+  ETAPAS_INDISPONIBILIDAD, UBICACION_TIPOS,
+  abrirIndisponibilidad, cambiarEtapa, cerrarIndisponibilidadManual,
+  episodioAbiertoDe, estadoCompuestoBatch, evaluarYCerrarIndisponibilidad,
+  impedimentosParaServicio,
+  registrarIngresoTaller, registrarSalidaTaller, registrarUbicacion,
+} from '../services/unidadEstadoService.js';
 
 // ═══════════════════════════════════════════════════════════════
 // FLOTA 360 — Rutas NUEVAS y ADITIVAS.
@@ -63,10 +72,13 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
   });
 
   // ─────────────────────────────────────────────────────────────
-  // ESTADÍOS OPERATIVOS — OPERATIVO | EN_TALLER | EN_REPARACION
-  // Cada cambio crea un VehiculoEstadoEvento (historial) y sincroniza
-  // vehiculo.status para compatibilidad (EN_TALLER/EN_REPARACION → 'EN_TALLER').
-  // El tiempo se mide en turnos de 9hs: horas transcurridas / 9.
+  // ESTADÍOS OPERATIVOS — la fuente de verdad es el episodio de
+  // indisponibilidad (unidadEstadoService). estadoOperativo y status son
+  // derivados; los eventos de historial se mantienen para compatibilidad.
+  // Endpoint legacy /vehiculos/:id/estado → mapea a episodios:
+  //   OPERATIVO       → cierre del episodio (bloqueado si hay restricciones)
+  //   EN_TALLER       → episodio en etapa OTRO (espera genérica)
+  //   EN_REPARACION   → etapa REPARACION_EN_CURSO
   // ─────────────────────────────────────────────────────────────
   const ESTADOS_OPERATIVOS = ['OPERATIVO', 'EN_TALLER', 'EN_REPARACION'] as const;
   const HORAS_TURNO = 9;
@@ -78,20 +90,44 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const { tenantId, vehiculoId, estado, origen, notas, workOrderId, createdByName } = opts;
     const vehiculo = await prisma().vehiculo.findFirst({ where: { id: vehiculoId, tenantId } });
     if (!vehiculo) return { error: 'Vehículo no encontrado', code: 404 };
-    if (vehiculo.estadoOperativo === estado) return { vehiculo, sinCambio: true };
+    const usuario = { nombre: createdByName };
 
-    // Sync con status legacy: taller/reparación → EN_TALLER; operativo → ACTIVO (solo si estaba en taller)
-    let nuevoStatus = vehiculo.status;
-    if (estado === 'EN_TALLER' || estado === 'EN_REPARACION') nuevoStatus = 'EN_TALLER';
-    else if (estado === 'OPERATIVO' && vehiculo.status === 'EN_TALLER') nuevoStatus = 'ACTIVO';
+    if (estado === 'OPERATIVO') {
+      // Declarar disponible = cerrar el episodio; las restricciones activas
+      // bloquean el cierre (no se levantan por cambiar una etiqueta).
+      const res = await prisma().$transaction(async (tx: any) =>
+        cerrarIndisponibilidadManual(tx, { tenantId, vehiculoId, usuario, motivo: notas ?? null }));
+      if (res.error) {
+        // Sin episodio abierto pero con restricciones: ya no está disponible.
+        const activas = await restriccionesActivasDe(prisma(), tenantId, vehiculoId);
+        if (activas.length > 0) {
+          return {
+            error: `La unidad tiene ${activas.length} restricción(es) de servicio activas. Requiere habilitación autorizada.`,
+            code: 409,
+            restricciones: activas.map((r: any) => ({ id: r.id, motivo: r.motivo, casoId: r.casoId })),
+          };
+        }
+        if (res.code === 409 && /no tiene un episodio/.test(res.error)) {
+          await prisma().$transaction(async (tx: any) => evaluarYCerrarIndisponibilidad(tx, { tenantId, vehiculoId, usuario, motivo: notas }));
+          const v2 = await prisma().vehiculo.findFirst({ where: { id: vehiculoId, tenantId } });
+          return { vehiculo: v2, sinCambio: true };
+        }
+        return res;
+      }
+      const v2 = await prisma().vehiculo.findFirst({ where: { id: vehiculoId, tenantId } });
+      return { vehiculo: v2 };
+    }
 
-    const [evento, updated] = await prisma().$transaction([
-      prisma().vehiculoEstadoEvento.create({
-        data: { tenantId, vehiculoId, estado, origen, notas: notas ?? null, workOrderId: workOrderId ?? null, createdByName: createdByName ?? null },
-      }),
-      prisma().vehiculo.update({ where: { id: vehiculoId }, data: { estadoOperativo: estado, status: nuevoStatus } }),
-    ]);
-    return { vehiculo: updated, evento };
+    const etapa = estado === 'EN_REPARACION' ? 'REPARACION_EN_CURSO' : 'OTRO';
+    const res = await prisma().$transaction(async (tx: any) =>
+      abrirIndisponibilidad(tx, {
+        tenantId, vehiculoId, origen: origen === 'QR_MECANICO' ? 'QR_MECANICO' : 'MANUAL',
+        motivo: notas ?? null, etapa, comentario: notas ?? null,
+        workOrderId: workOrderId ?? null, usuario,
+      }));
+    if (res.error) return res;
+    const v2 = await prisma().vehiculo.findFirst({ where: { id: vehiculoId, tenantId } });
+    return { vehiculo: v2, episodio: res.episodio };
   }
 
   app.post('/vehiculos/:id/estado', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -111,8 +147,191 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       tenantId, vehiculoId: id, estado: body.data.estado,
       origen: 'SISTEMA', notas: body.data.notas, workOrderId: body.data.workOrderId, createdByName: userName,
     });
-    if (res.error) return reply.code(res.code).send({ error: res.error });
+    if (res.error) return reply.code(res.code).send(res);
     return reply.send({ ok: true, estadoOperativo: res.vehiculo.estadoOperativo, status: res.vehiculo.status, sinCambio: !!res.sinCambio });
+  });
+
+  // ── EPISODIOS DE INDISPONIBILIDAD ────────────────────────────────────────
+
+  // Episodio abierto de la unidad (con etapas y tiempos)
+  app.get('/vehiculos/:id/indisponibilidad', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const episodio = await episodioAbiertoDe(prisma(), tenantId, id);
+    return reply.send({ episodio });
+  });
+
+  // Historial de episodios (cerrados + abierto)
+  app.get('/vehiculos/:id/indisponibilidades', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const episodios = await prisma().unidadIndisponibilidad.findMany({
+      where: { tenantId, vehiculoId: id },
+      include: { etapas: { orderBy: { inicioAt: 'asc' } } },
+      orderBy: { inicioAt: 'desc' }, take: 50,
+    });
+    return reply.send({ episodios });
+  });
+
+  // Abrir episodio manualmente (retirar la unidad del servicio)
+  app.post('/vehiculos/:id/indisponibilidad', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      etapa: z.enum(ETAPAS_INDISPONIBILIDAD),
+      motivo: z.string().max(500).optional(),
+      comentario: z.string().max(1000).optional(),
+      workOrderId: z.string().uuid().optional().nullable(),
+      tallerTipo: z.enum(['INTERNO', 'EXTERNO']).optional().nullable(),
+      tallerNombre: z.string().max(200).optional().nullable(),
+      fechaDevolucionEstimada: z.string().optional().nullable(),
+      responsableNombre: z.string().max(200).optional().nullable(),
+      observaciones: z.string().max(1000).optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const usuario = { id: (req as any).auth?.userId ?? null, nombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null };
+    const res = await prisma().$transaction(async (tx: any) =>
+      abrirIndisponibilidad(tx, {
+        tenantId, vehiculoId: id, origen: 'MANUAL',
+        etapa: body.data.etapa, motivo: body.data.motivo, comentario: body.data.comentario,
+        workOrderId: body.data.workOrderId ?? null,
+        tallerTipo: body.data.tallerTipo ?? null, tallerNombre: body.data.tallerNombre ?? null,
+        fechaDevolucionEstimada: body.data.fechaDevolucionEstimada ? new Date(body.data.fechaDevolucionEstimada) : null,
+        responsableNombre: body.data.responsableNombre ?? null,
+        observaciones: body.data.observaciones ?? null, usuario,
+      }));
+    if (res.error) return reply.code(res.code).send(res);
+    return reply.code(201).send({ ok: true, episodio: res.episodio });
+  });
+
+  // Cambiar etapa/motivo (no reinicia el episodio ni el contador total)
+  app.post('/indisponibilidades/:id/etapa', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      etapa: z.enum(ETAPAS_INDISPONIBILIDAD),
+      comentario: z.string().max(1000).optional(),
+      workOrderId: z.string().uuid().optional().nullable(),
+      responsableNombre: z.string().max(200).optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const usuario = { id: (req as any).auth?.userId ?? null, nombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null };
+    const res = await prisma().$transaction(async (tx: any) => {
+      const r = await cambiarEtapa(tx, {
+        tenantId, indisponibilidadId: id, etapa: body.data.etapa,
+        comentario: body.data.comentario, workOrderId: body.data.workOrderId ?? null,
+        responsableNombre: body.data.responsableNombre ?? null, usuario,
+      });
+      if (r.error) return r;
+      const ep = await tx.unidadIndisponibilidad.findUnique({ where: { id } });
+      if (ep) await evaluarYCerrarIndisponibilidad(tx, { tenantId, vehiculoId: ep.vehiculoId, usuario });
+      return { episodio: await tx.unidadIndisponibilidad.findUnique({ where: { id }, include: { etapas: { orderBy: { inicioAt: 'asc' } } } }) };
+    });
+    if (res.error) return reply.code(res.code).send(res);
+    return reply.send({ ok: true, episodio: res.episodio });
+  });
+
+  // Ingreso/salida efectivos del taller sobre el episodio
+  app.post('/indisponibilidades/:id/ingreso-taller', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      fecha: z.string().optional(),
+      tallerTipo: z.enum(['INTERNO', 'EXTERNO']).optional(),
+      tallerNombre: z.string().max(200).optional().nullable(),
+      fechaDevolucionEstimada: z.string().optional().nullable(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const usuario = { id: (req as any).auth?.userId ?? null, nombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null };
+    const res = await prisma().$transaction(async (tx: any) =>
+      registrarIngresoTaller(tx, {
+        tenantId, indisponibilidadId: id,
+        fecha: body.data.fecha ? new Date(body.data.fecha) : undefined,
+        tallerTipo: body.data.tallerTipo, tallerNombre: body.data.tallerNombre ?? null,
+        fechaDevolucionEstimada: body.data.fechaDevolucionEstimada ? new Date(body.data.fechaDevolucionEstimada) : undefined,
+        usuario,
+      }));
+    if (res.error) return reply.code(res.code).send(res);
+    return reply.send({ ok: true, episodio: res.episodio });
+  });
+
+  app.post('/indisponibilidades/:id/salida-taller', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({ fecha: z.string().optional() });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const usuario = { id: (req as any).auth?.userId ?? null, nombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null };
+    const res = await prisma().$transaction(async (tx: any) =>
+      registrarSalidaTaller(tx, { tenantId, indisponibilidadId: id, fecha: body.data.fecha ? new Date(body.data.fecha) : undefined, usuario }));
+    if (res.error) return reply.code(res.code).send(res);
+    return reply.send({ ok: true, episodio: res.episodio });
+  });
+
+  // Declarar la unidad disponible = cerrar el episodio abierto.
+  // Bloquea si quedan restricciones activas u OTs que la retiran.
+  app.post('/vehiculos/:id/disponible', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({ motivo: z.string().max(500).optional() });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const usuario = { id: (req as any).auth?.userId ?? null, nombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null };
+    const res = await prisma().$transaction(async (tx: any) =>
+      cerrarIndisponibilidadManual(tx, { tenantId, vehiculoId: id, usuario, motivo: body.data.motivo ?? null }));
+    if (res.error) return reply.code(res.code).send(res);
+    return reply.send({ ok: true, cerrado: res.cerrado, motivos: res.motivos });
+  });
+
+  // Ubicación declarada (auditable; no determina disponibilidad)
+  app.post('/vehiculos/:id/ubicacion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      tipo: z.enum([...UBICACION_TIPOS, 'SIN_DATOS']),
+      detalle: z.string().max(300).optional().nullable(),
+      notas: z.string().max(500).optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const vehiculo = await prisma().vehiculo.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+    const nombre = (req as any).auth?.name ?? (req as any).auth?.email ?? null;
+    const res = await prisma().$transaction(async (tx: any) =>
+      registrarUbicacion(tx, { tenantId, vehiculoId: id, tipo: body.data.tipo, detalle: body.data.detalle ?? null, notas: body.data.notas ?? null, createdByName: nombre }));
+    return reply.send({ ok: true, ...res });
+  });
+
+  app.get('/vehiculos/:id/ubicacion-historial', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const eventos = await prisma().vehiculoUbicacionEvento.findMany({
+      where: { tenantId, vehiculoId: id }, orderBy: { createdAt: 'desc' }, take: 50,
+    });
+    return reply.send({ eventos });
+  });
+
+  // Estado compuesto (una dimensión por vez; nunca un único enum)
+  app.get('/vehiculos/:id/estado-compuesto', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const vehiculo = await prisma().vehiculo.findFirst({ where: { id, tenantId } });
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+    const map = await estadoCompuestoBatch(prisma(), tenantId, [vehiculo]);
+    return reply.send(map.get(id));
   });
 
   app.get('/vehiculos/:id/estado-historial', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -220,81 +439,258 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
   });
 
   // ─────────────────────────────────────────────────────────────
-  // TABLERO DE DISPONIBILIDAD — KPIs de flota, tiempos por estadío
-  // (turnos de 9hs), alertas de estadía prolongada, cumplimiento
-  // preventivo y presupuesto vs. gasto real del mes.
+  // TABLERO DE DISPONIBILIDAD — tiempos calculados desde episodios de
+  // indisponibilidad + restricciones (no disponible) y jornadas
+  // (utilización), contra el tiempo elegible administrativo (alta → baja,
+  // menos períodos INACTIVO). Nada se calcula desde updatedAt ni desde
+  // el estado actual: solo intervalos de eventos persistentes.
+  //
+  // Fórmulas (documentadas):
+  //   elegible      = [max(alta, desde), min(baja, hasta)] − tramos INACTIVO
+  //   noDisponible  = unión( episodios ∩ elegible, restricciones ∩ elegible )
+  //   disponible    = elegible − noDisponible
+  //   enServicio    = unión( intervalos de unidad en jornadas ) ∩ elegible
+  //   servicioInc.  = enServicio ∩ noDisponible (inconsistencia, se reporta)
+  //   enServicioNeto= enServicio − noDisponible
+  //   disponibilidad% = disponible / elegible
+  //   utilización%   = enServicioNeto / disponible
+  //   turnos        = horas / horasTurno (configurable; default 9)
   // ─────────────────────────────────────────────────────────────
-  async function calcularTiemposPorEstadio(tenantId: string, desde: Date, hasta: Date) {
-    const [vehiculos, eventosPeriodo, eventosPrevios] = await Promise.all([
-      prisma().vehiculo.findMany({
-        where: { tenantId },
-        select: { id: true, dominio: true, tipo: true, estadoOperativo: true, status: true, maintenanceAssetId: true, currentOdometer: true },
-      }),
-      prisma().vehiculoEstadoEvento.findMany({
-        where: { tenantId, createdAt: { gte: desde, lte: hasta } },
-        orderBy: { createdAt: 'asc' },
-      }),
-      prisma().vehiculoEstadoEvento.findMany({
-        where: { tenantId, createdAt: { lt: desde } },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
-
-    // Estado de cada vehículo al inicio del período (último evento previo)
-    const estadoInicial = new Map<string, string>();
-    for (const e of eventosPrevios) {
-      if (!estadoInicial.has(e.vehiculoId)) estadoInicial.set(e.vehiculoId, e.estado);
+  type Iv = [number, number];
+  const clipIv = (a: number, b: number, d: number, h: number): Iv | null => {
+    const s = Math.max(a, d), e = Math.min(b, h);
+    return e > s ? [s, e] : null;
+  };
+  const mergeIv = (ivs: Iv[]): Iv[] => {
+    const sorted = ivs.filter(Boolean).sort((a, b) => a[0] - b[0]);
+    const out: Iv[] = [];
+    for (const iv of sorted) {
+      const last = out[out.length - 1];
+      if (last && iv[0] <= last[1]) last[1] = Math.max(last[1], iv[1]);
+      else out.push([iv[0], iv[1]]);
     }
-
-    const eventosPorVeh = new Map<string, any[]>();
-    for (const e of eventosPeriodo) {
-      const arr = eventosPorVeh.get(e.vehiculoId) || [];
-      arr.push(e);
-      eventosPorVeh.set(e.vehiculoId, arr);
+    return out;
+  };
+  const sumIv = (ivs: Iv[]) => ivs.reduce((a, iv) => a + (iv[1] - iv[0]), 0);
+  const intersectMs = (a: Iv[], b: Iv[]) => {
+    let ms = 0;
+    const am = mergeIv(a), bm = mergeIv(b);
+    let i = 0, j = 0;
+    while (i < am.length && j < bm.length) {
+      const s = Math.max(am[i][0], bm[j][0]);
+      const e = Math.min(am[i][1], bm[j][1]);
+      if (e > s) ms += e - s;
+      if (am[i][1] < bm[j][1]) i++; else j++;
     }
+    return ms;
+  };
+  const subtractIv = (base: Iv[], subs: Iv[]): Iv[] => {
+    let out = mergeIv(base);
+    for (const [s, e] of mergeIv(subs)) {
+      const next: Iv[] = [];
+      for (const [bs, be] of out) {
+        if (e <= bs || s >= be) { next.push([bs, be]); continue; }
+        if (s > bs) next.push([bs, s]);
+        if (e < be) next.push([e, be]);
+      }
+      out = next;
+    }
+    return out;
+  };
 
+  async function calcularTiemposPorEstadio(tenantId: string, desde: Date, hasta: Date, horasTurno: number = HORAS_TURNO) {
     const desdeMs = desde.getTime();
     const hastaMs = hasta.getTime();
 
-    const porUnidad = vehiculos.map((v: any) => {
-      const evs = eventosPorVeh.get(v.id) || [];
-      let cursor = desdeMs;
-      let estado = estadoInicial.get(v.id) ?? v.estadoOperativo ?? 'OPERATIVO';
-      let horasOperativo = 0, horasTaller = 0, horasReparacion = 0, ciclos = 0;
+    const [vehiculos, episodiosPeriodo, restriccionesPeriodo, jornadasPeriodo, eventosAdmin] = await Promise.all([
+      prisma().vehiculo.findMany({
+        where: { tenantId },
+        select: { id: true, dominio: true, tipo: true, estadoOperativo: true, status: true, maintenanceAssetId: true, currentOdometer: true, createdAt: true, ubicacionTipo: true, ubicacionDetalle: true, ubicacionDesde: true },
+      }),
+      prisma().unidadIndisponibilidad.findMany({
+        where: { tenantId, inicioAt: { lte: hasta }, OR: [{ finAt: null }, { finAt: { gte: desde } }] },
+        include: { etapas: { orderBy: { inicioAt: 'asc' } } },
+      }),
+      prisma().restriccionServicio.findMany({
+        where: { tenantId, createdAt: { lte: hasta }, OR: [{ activa: true }, { levantadaAt: { gte: desde } }] },
+      }),
+      prisma().flotaJornada.findMany({
+        where: { tenantId, inicioAt: { lte: hasta }, OR: [{ finAt: null }, { finAt: { gte: desde } }] },
+        select: { id: true, inicioAt: true, finAt: true, estado: true, unidades: true },
+      }),
+      // Eventos administrativos: tramos INACTIVO/BAJA para el tiempo elegible
+      prisma().vehiculoHistorialCambio.findMany({
+        where: { tenantId, accion: { in: ['CAMBIO_ESTADO', 'BAJA', 'REACTIVACION'] } },
+        select: { vehiculoId: true, cambios: true, accion: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }).catch(() => []),
+    ]);
 
-      const acumular = (est: string, ms: number) => {
-        const h = Math.max(0, ms) / 3600000;
-        if (est === 'EN_TALLER') horasTaller += h;
-        else if (est === 'EN_REPARACION') horasReparacion += h;
-        else horasOperativo += h;
-      };
-
-      for (const e of evs) {
-        const t = new Date(e.createdAt).getTime();
-        acumular(estado, t - cursor);
-        if (estado === 'OPERATIVO' && e.estado !== 'OPERATIVO') ciclos++;
-        estado = e.estado;
-        cursor = t;
+    const epPorVeh = new Map<string, any[]>();
+    for (const e of episodiosPeriodo) {
+      const arr = epPorVeh.get(e.vehiculoId) || [];
+      arr.push(e);
+      epPorVeh.set(e.vehiculoId, arr);
+    }
+    const restPorVeh = new Map<string, any[]>();
+    for (const r of restriccionesPeriodo) {
+      const arr = restPorVeh.get(r.vehiculoId) || [];
+      arr.push(r);
+      restPorVeh.set(r.vehiculoId, arr);
+    }
+    const adminPorVeh = new Map<string, any[]>();
+    for (const ev of eventosAdmin) {
+      const arr = adminPorVeh.get(ev.vehiculoId) || [];
+      arr.push(ev);
+      adminPorVeh.set(ev.vehiculoId, arr);
+    }
+    const servPorVeh = new Map<string, Iv[]>();
+    for (const j of jornadasPeriodo) {
+      const jInicio = new Date(j.inicioAt).getTime();
+      const jFin = j.finAt ? new Date(j.finAt).getTime() : hastaMs;
+      for (const u of (Array.isArray(j.unidades) ? j.unidades : []) as any[]) {
+        if (!u?.vehiculoId) continue;
+        const s = u.desde ? new Date(u.desde).getTime() : jInicio;
+        const e = u.hasta ? new Date(u.hasta).getTime() : jFin;
+        const iv = clipIv(s, e, desdeMs, hastaMs);
+        if (iv) {
+          const arr = servPorVeh.get(u.vehiculoId) || [];
+          arr.push(iv);
+          servPorVeh.set(u.vehiculoId, arr);
+        }
       }
-      acumular(estado, hastaMs - cursor);
+    }
 
-      const horasNoDisp = horasTaller + horasReparacion;
+    // Intervalos administrativos no elegibles (INACTIVO) y corte por BAJA.
+    // Sin eventos suficientes se marca ambiguo (no se inventa historial).
+    const adminDe = (v: any) => {
+      const evs = adminPorVeh.get(v.id) || [];
+      const inactivos: Iv[] = [];
+      let bajaAt: number | null = null;
+      let cursorStatus = 'ACTIVO';
+      let cursorT = new Date(v.createdAt).getTime();
+      let conHistorial = evs.length > 0;
+      for (const ev of evs) {
+        const t = new Date(ev.createdAt).getTime();
+        if (ev.accion === 'BAJA') {
+          if (cursorStatus !== 'BAJA') {
+            if (cursorStatus === 'INACTIVO') inactivos.push([cursorT, t]);
+            cursorStatus = 'BAJA'; cursorT = t;
+            if (bajaAt == null) bajaAt = t;
+          }
+          continue;
+        }
+        const cambios = Array.isArray(ev.cambios) ? ev.cambios : [];
+        const cambioStatus = cambios.find((c: any) => c?.campo === 'status');
+        if (!cambioStatus?.despues) continue;
+        const nuevo = String(cambioStatus.despues);
+        if (cursorStatus === 'INACTIVO' && nuevo !== 'INACTIVO') inactivos.push([cursorT, t]);
+        if (nuevo === 'BAJA' && bajaAt == null) bajaAt = t;
+        cursorStatus = nuevo;
+        cursorT = t;
+      }
+      if (cursorStatus === 'INACTIVO') inactivos.push([cursorT, bajaAt ?? hastaMs]);
+      // Si hoy está INACTIVO/BAJA sin historial: período ambiguo.
+      const ambiguo = !conHistorial && (v.status === 'INACTIVO' || v.status === 'BAJA');
+      return { inactivos, bajaAt, ambiguo };
+    };
+
+    const porUnidad = vehiculos.map((v: any) => {
+      const admin = adminDe(v);
+      const desdeElegible = Math.max(new Date(v.createdAt).getTime(), desdeMs);
+      const hastaElegible = Math.min(admin.bajaAt ?? hastaMs, hastaMs);
+      const baseIv = desdeElegible < hastaElegible ? [[desdeElegible, hastaElegible] as Iv] : [];
+      const elegibles = subtractIv(baseIv, admin.inactivos);
+      const elegibleMs = sumIv(elegibles);
+
+      const eps = epPorVeh.get(v.id) || [];
+      const epIvs: Iv[] = [];
+      const tallerIvs: Iv[] = [];
+      const reparacionIvs: Iv[] = [];
+      const porEtapa = new Map<string, number>();
+      let episodiosAmbiguos = 0;
+      for (const ep of eps) {
+        const ini = new Date(ep.inicioAt).getTime();
+        const fin = ep.finAt ? new Date(ep.finAt).getTime() : hastaMs;
+        const iv = clipIv(ini, fin, desdeMs, hastaMs);
+        if (iv) epIvs.push(iv);
+        if (ep.ambiguo || !ep.fechaIngresoTaller) episodiosAmbiguos++;
+        if (ep.fechaIngresoTaller) {
+          const tiv = clipIv(
+            new Date(ep.fechaIngresoTaller).getTime(),
+            ep.fechaSalidaTaller ? new Date(ep.fechaSalidaTaller).getTime() : fin,
+            desdeMs, hastaMs,
+          );
+          if (tiv) tallerIvs.push(tiv);
+        }
+        for (const et of (ep.etapas || [])) {
+          const s = new Date(et.inicioAt).getTime();
+          const e = et.finAt ? new Date(et.finAt).getTime() : fin;
+          const eiv = clipIv(s, e, desdeMs, hastaMs);
+          if (!eiv) continue;
+          const ms = eiv[1] - eiv[0];
+          porEtapa.set(et.etapa, (porEtapa.get(et.etapa) ?? 0) + ms);
+          if (et.etapa === 'REPARACION_EN_CURSO') reparacionIvs.push(eiv);
+        }
+      }
+
+      const restIvs: Iv[] = (restPorVeh.get(v.id) || []).map((r: any) => {
+        const s = new Date(r.createdAt).getTime();
+        const e = r.activa ? hastaMs : (r.levantadaAt ? new Date(r.levantadaAt).getTime() : s);
+        return clipIv(s, e, desdeMs, hastaMs);
+      }).filter(Boolean) as Iv[];
+
+      const noDispIvs = mergeIv([...epIvs, ...restIvs]);
+      const noDispElegMs = intersectMs(noDispIvs, elegibles);
+      const dispIvs = subtractIv(elegibles, noDispIvs);
+      const dispMs = sumIv(dispIvs);
+
+      const servIvs = mergeIv(servPorVeh.get(v.id) || []);
+      const servElegMs = intersectMs(servIvs, elegibles);
+      const servIncMs = intersectMs(servIvs, noDispIvs); // en servicio mientras no disponible
+      const servNetoMs = Math.max(0, servElegMs - intersectMs(servIvs, noDispIvs));
+
+      const H = 3600000;
+      const horasElegibles = elegibleMs / H;
+      const horasNoDisp = noDispElegMs / H;
+      const horasDisp = dispMs / H;
+      const horasServicio = servElegMs / H;
+      const horasServicioInc = servIncMs / H;
+      const horasServicioNeto = servNetoMs / H;
+      const horasTaller = sumIv(mergeIv(tallerIvs)) / H;
+      const horasReparacion = sumIv(mergeIv(reparacionIvs)) / H;
+      const sinDatos = elegibleMs <= 0;
+
       return {
         vehiculoId: v.id,
         dominio: v.dominio,
         tipo: v.tipo,
         estadoActual: v.estadoOperativo ?? 'OPERATIVO',
-        horasOperativo: Math.round(horasOperativo * 10) / 10,
+        situacion: v.status,
+        // Compatibilidad con el export/tablero existente
+        horasOperativo: Math.round(horasDisp * 10) / 10,
         horasTaller: Math.round(horasTaller * 10) / 10,
         horasReparacion: Math.round(horasReparacion * 10) / 10,
         horasNoDisponible: Math.round(horasNoDisp * 10) / 10,
-        turnosNoDisponible: Math.round((horasNoDisp / HORAS_TURNO) * 10) / 10,
-        turnosReparacion: Math.round((horasReparacion / HORAS_TURNO) * 10) / 10,
-        ciclos,
+        turnosNoDisponible: Math.round((horasNoDisp / horasTurno) * 10) / 10,
+        turnosReparacion: Math.round((horasReparacion / horasTurno) * 10) / 10,
+        ciclos: eps.filter((e: any) => new Date(e.inicioAt).getTime() >= desdeMs).length,
+        // Nuevas métricas
+        horasElegibles: Math.round(horasElegibles * 10) / 10,
+        horasDisponibles: Math.round(horasDisp * 10) / 10,
+        horasEnServicio: Math.round(horasServicio * 10) / 10,
+        horasEnServicioNeto: Math.round(horasServicioNeto * 10) / 10,
+        horasServicioInconsistente: Math.round(horasServicioInc * 10) / 10,
+        disponibilidadPct: sinDatos ? null : Math.round((dispMs / elegibleMs) * 1000) / 10,
+        utilizacionPct: sinDatos || dispMs <= 0 ? null : Math.round((servNetoMs / dispMs) * 1000) / 10,
+        horasPorEtapa: Object.fromEntries([...porEtapa.entries()].map(([k, ms]) => [k, Math.round((ms / H) * 10) / 10])),
+        episodios: eps.length,
+        sinDatos,
+        ambiguo: admin.ambiguo || episodiosAmbiguos > 0,
       };
     });
 
-    return { vehiculos, porUnidad, eventosPeriodo };
+    return { vehiculos, porUnidad, episodiosPeriodo, restriccionesPeriodo };
   }
 
   app.get('/disponibilidad', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -305,7 +701,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const hasta = new Date();
     const desde = new Date(hasta.getTime() - diasNum * 86400000);
 
-    const [{ vehiculos, porUnidad }, settings, planes, ruleAssets] = await Promise.all([
+    const [{ vehiculos, porUnidad, episodiosPeriodo, restriccionesPeriodo }, settings, planes, ruleAssets] = await Promise.all([
       calcularTiemposPorEstadio(tenantId, desde, hasta),
       prisma().companySettings.findUnique({ where: { tenantId }, select: { flotaOpsConfig: true, flotaPresupuestoMensual: true } }).catch(() => null),
       prisma().maintenancePlan.findMany({ where: { tenantId, status: 'ACTIVE', assetId: { not: null } } }),
@@ -316,37 +712,49 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     ]);
 
     const opsCfg = { ...OPS_DEFAULTS, ...((settings?.flotaOpsConfig as any) || {}) };
+    const horasTurno = Number(opsCfg.horasTurno) > 0 ? Number(opsCfg.horasTurno) : HORAS_TURNO;
 
-    // ── KPIs de flota ──
+    // ── Estado compuesto actual de cada unidad (una dimensión por vez) ──
+    const compuestos = await estadoCompuestoBatch(prisma(), tenantId, vehiculos);
+
+    // ── KPIs de flota (desde las dimensiones, no de un enum único) ──
     const total = vehiculos.length;
-    const enTaller = vehiculos.filter((v: any) => v.estadoOperativo === 'EN_TALLER').length;
+    const disponiblesAhora = vehiculos.filter((v: any) => compuestos.get(v.id)?.disponible).length;
+    const enTaller = vehiculos.filter((v: any) => compuestos.get(v.id)?.enTallerEfectivo).length;
+    const noDisponibles = vehiculos.filter((v: any) => compuestos.get(v.id)?.situacion === 'ACTIVA' && !compuestos.get(v.id)?.disponible).length;
+    const enServicio = vehiculos.filter((v: any) => compuestos.get(v.id)?.utilizacion === 'EN_SERVICIO').length;
+    const operativos = disponiblesAhora; // compat: 'operativos' = disponibles ahora
     const enReparacion = vehiculos.filter((v: any) => v.estadoOperativo === 'EN_REPARACION').length;
-    const operativos = total - enTaller - enReparacion;
 
-    // ── Alertas de estadía prolongada ──
-    // Último evento de cada vehículo actualmente no operativo
-    const ultimosEventos = await prisma().vehiculoEstadoEvento.findMany({
-      where: { tenantId, estado: { in: ['EN_TALLER', 'EN_REPARACION'] } },
-      orderBy: { createdAt: 'desc' },
-    });
-    const ultimoPorVeh = new Map<string, any>();
-    for (const e of ultimosEventos) {
-      if (!ultimoPorVeh.has(e.vehiculoId)) ultimoPorVeh.set(e.vehiculoId, e);
-    }
+    // Inconsistencias explícitas (nunca se corrigen solas, se muestran)
+    const inconsistencias = vehiculos
+      .map((v: any) => ({ vehiculoId: v.id, dominio: v.dominio, advertencias: compuestos.get(v.id)?.advertencias ?? [] }))
+      .filter((x: any) => x.advertencias.length > 0);
+
+    // ── Alertas de estadía prolongada: desde el inicio del episodio abierto
+    const ahora = Date.now();
     const alertasEstadia = vehiculos
-      .filter((v: any) => v.estadoOperativo === 'EN_TALLER' || v.estadoOperativo === 'EN_REPARACION')
+      .filter((v: any) => !compuestos.get(v.id)?.disponible)
       .map((v: any) => {
-        const ult = ultimoPorVeh.get(v.id);
-        const desdeEstadia = ult ? new Date(ult.createdAt).getTime() : null;
-        const horas = desdeEstadia ? (Date.now() - desdeEstadia) / 3600000 : null;
+        const c = compuestos.get(v.id);
+        const ep = c?.episodioId
+          ? (episodiosPeriodo as any[]).find((e: any) => e.id === c.episodioId)
+          : null;
+        const rest = (restriccionesPeriodo as any[]).filter((r: any) => r.vehiculoId === v.id && r.activa);
+        const inicioRef = ep
+          ? new Date(ep.inicioAt).getTime()
+          : (rest.length ? Math.min(...rest.map((r: any) => new Date(r.createdAt).getTime())) : null);
+        const horas = inicioRef ? (ahora - inicioRef) / 3600000 : null;
         const diasEstadia = horas != null ? horas / 24 : null;
         return {
           vehiculoId: v.id, dominio: v.dominio, tipo: v.tipo,
           estadoOperativo: v.estadoOperativo,
-          desde: ult?.createdAt ?? null,
+          etapa: c?.etapaLabel ?? (c?.restringida ? 'Restringida' : null),
+          etiqueta: c?.etiqueta ?? null,
+          desde: inicioRef ? new Date(inicioRef).toISOString() : null,
           horas: horas != null ? Math.round(horas * 10) / 10 : null,
           dias: diasEstadia != null ? Math.round(diasEstadia * 10) / 10 : null,
-          turnos: horas != null ? Math.round((horas / HORAS_TURNO) * 10) / 10 : null,
+          turnos: horas != null ? Math.round((horas / horasTurno) * 10) / 10 : null,
           excede: diasEstadia != null && diasEstadia > opsCfg.diasAlertaEstadia,
         };
       })
@@ -368,20 +776,14 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     for (const p of planes) {
       const veh = vehByAsset.get(p.assetId);
       if (!veh) continue;
-      const esKm = p.frequencyUnit === 'KM' && p.triggerKm;
-      let kmRestantes: number | null = null;
-      if (esKm) {
-        const base = p.lastOdometerExecution ?? veh.currentOdometer ?? 0;
-        kmRestantes = veh.currentOdometer != null ? Math.round(base + p.triggerKm - veh.currentOdometer) : null;
-      }
-      let diasRestantes: number | null = null;
-      if (p.nextExecutionDate) diasRestantes = Math.ceil((new Date(p.nextExecutionDate).getTime() - now) / 86400000);
-      const vencido = (kmRestantes != null && kmRestantes <= 0) || (diasRestantes != null && diasRestantes <= 0);
+      // Misma regla que cronograma/alertas/proyección: vence por km O por fecha,
+      // y sin referencia de ejecución no es evaluable (pendiente de datos).
+      const v = evaluarVencimientoPlan(p, veh.currentOdometer ?? null, new Date(now));
 
       const acc = cumplPorVeh.get(veh.id) || { total: 0, alDia: 0, vencidos: 0 };
       acc.total++;
       flotaTotal++;
-      if (vencido) { acc.vencidos++; flotaVencidos++; } else { acc.alDia++; flotaAlDia++; }
+      if (v.vencido) { acc.vencidos++; flotaVencidos++; } else { acc.alDia++; flotaAlDia++; }
       cumplPorVeh.set(veh.id, acc);
     }
 
@@ -418,6 +820,9 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       alertasEstadia,
       diasAlertaEstadia: opsCfg.diasAlertaEstadia,
       rankingEstadia: ranking,
+      porUnidad,
+      inconsistencias,
+      compuestos: Object.fromEntries(compuestos),
       cumplimientoPreventivo: {
         flota: { total: flotaTotal, alDia: flotaAlDia, vencidos: flotaVencidos, pct: flotaTotal > 0 ? Math.round((flotaAlDia / flotaTotal) * 100) : 100 },
         porUnidad: cumplimientoPorUnidad,
@@ -442,7 +847,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const hasta = new Date();
     const desde = new Date(hasta.getTime() - diasNum * 86400000);
 
-    const { porUnidad, eventosPeriodo } = await calcularTiemposPorEstadio(tenantId, desde, hasta);
+    const { porUnidad, episodiosPeriodo } = await calcularTiemposPorEstadio(tenantId, desde, hasta);
     const domPorVeh = new Map<string, string>(porUnidad.map((u: any) => [u.vehiculoId, u.dominio]));
 
     const resumenRows = [...porUnidad]
@@ -450,27 +855,47 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       .map((u) => ({
         'Dominio': u.dominio,
         'Tipo': u.tipo,
-        'Estado actual': u.estadoActual === 'EN_TALLER' ? 'En taller' : u.estadoActual === 'EN_REPARACION' ? 'En reparación' : 'Operativo',
+        'Situación': u.situacion,
+        'Estado actual': u.estadoActual,
+        'Horas elegibles': u.horasElegibles,
+        'Horas no disponible': u.horasNoDisponible,
+        'Horas disponibles': u.horasDisponibles,
+        'Horas en servicio': u.horasEnServicio,
         'Horas en taller': u.horasTaller,
         'Horas en reparación': u.horasReparacion,
-        'Horas no disponible': u.horasNoDisponible,
         'Turnos no disponible (9hs)': u.turnosNoDisponible,
         'Turnos reparación (9hs)': u.turnosReparacion,
-        'Ingresos a taller': u.ciclos,
+        'Disponibilidad %': u.disponibilidadPct ?? 'sin datos',
+        'Utilización %': u.utilizacionPct ?? 'sin datos',
+        'Episodios': u.episodios,
+        'Ambiguo': u.ambiguo ? 'SÍ' : '',
       }));
 
-    const eventosRows = eventosPeriodo.map((e: any) => ({
+    const ETAPA_TXT: Record<string, string> = {
+      PENDIENTE_INGRESO: 'Pendiente ingreso', PENDIENTE_DIAGNOSTICO: 'Pendiente diagnóstico',
+      ESPERANDO_PRESUPUESTO: 'Esperando presupuesto', ESPERANDO_AUTORIZACION: 'Esperando autorización',
+      ESPERANDO_REPUESTO: 'Esperando repuesto', ESPERANDO_PAGO_REPUESTO: 'Esperando pago repuesto',
+      ESPERANDO_TURNO_MANO_OBRA: 'Esperando turno/mano de obra', REPARACION_EN_CURSO: 'Reparación en curso',
+      PENDIENTE_VERIFICACION: 'Pendiente verificación', PENDIENTE_HABILITACION: 'Pendiente habilitación',
+      OTRO: 'Otro',
+    };
+    const episodiosRows = episodiosPeriodo.map((e: any) => ({
       'Dominio': domPorVeh.get(e.vehiculoId) || e.vehiculoId,
-      'Estado': e.estado === 'EN_TALLER' ? 'En taller' : e.estado === 'EN_REPARACION' ? 'En reparación' : 'Operativo',
-      'Desde': new Date(e.createdAt).toLocaleString('es-AR'),
-      'Origen': e.origen === 'QR_MECANICO' ? 'QR Mecánico' : 'Sistema',
-      'Registrado por': e.createdByName || '',
-      'Notas': e.notas || '',
+      'Estado episodio': e.estado,
+      'Origen': e.origen,
+      'Motivo': e.motivo || '',
+      'Inicio': new Date(e.inicioAt).toLocaleString('es-AR'),
+      'Fin': e.finAt ? new Date(e.finAt).toLocaleString('es-AR') : 'abierto',
+      'Etapas': (e.etapas || []).map((t: any) => `${ETAPA_TXT[t.etapa] ?? t.etapa}${t.finAt ? ` (${Math.round((new Date(t.finAt).getTime() - new Date(t.inicioAt).getTime()) / 360000) / 10}hs)` : ''}`).join(' → '),
+      'Taller': e.tallerNombre || e.tallerTipo || '',
+      'Ingreso taller': e.fechaIngresoTaller ? new Date(e.fechaIngresoTaller).toLocaleString('es-AR') : '',
+      'Salida taller': e.fechaSalidaTaller ? new Date(e.fechaSalidaTaller).toLocaleString('es-AR') : '',
+      'Ambiguo': e.ambiguo ? 'SÍ' : '',
     }));
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenRows), 'RESUMEN');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(eventosRows), 'EVENTOS');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(episodiosRows), 'EPISODIOS');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     reply.header('Content-Disposition', `attachment; filename=tiempos-taller-${diasNum}d.xlsx`);
@@ -520,8 +945,12 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
               description: `Generado automáticamente desde catálogo de componentes (Flota 360): ${rule.nombre}`,
               type: 'PREVENTIVE', status: 'ACTIVE', assetId: v.maintenanceAssetId,
               frequencyValue: rule.frecuenciaDias || 30,
+              // frequencyUnit conserva la "pata primaria" para display heredado;
+              // la lógica real lee triggerKm + frecuenciaDias (ambas patas).
               frequencyUnit: rule.frecuenciaKm ? 'KM' : 'DAYS',
               triggerKm: rule.frecuenciaKm || null,
+              frecuenciaDias: rule.frecuenciaDias || null,
+              componentKey: rule.componentKey || null,
             },
           });
           await prisma().maintenanceComponentRuleAsset.update({
@@ -550,7 +979,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
 
     const hace30dias = new Date(now); hace30dias.setDate(now.getDate() - 30);
 
-    const [vehiculos, workOrders, completadasRecientes, vencimientos] = await Promise.all([
+    const [vehiculos, workOrders, completadasRecientes, vencimientos, episodiosAbiertos] = await Promise.all([
       prisma().vehiculo.findMany({ where: { tenantId }, select: { id: true, dominio: true, tipo: true, status: true, notas: true, maintenanceAssetId: true, updatedAt: true } }),
       prisma().workOrder.findMany({
         where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] } },
@@ -568,6 +997,12 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         include: { vehiculo: { select: { id: true, dominio: true } } },
         orderBy: { fechaVto: 'asc' },
       }),
+      // Episodios de indisponibilidad abiertos — la fuente de verdad para
+      // "inmovilizados" (status='EN_TALLER' es solo espejo derivado).
+      (prisma() as any).unidadIndisponibilidad.findMany({
+        where: { tenantId, estado: 'ABIERTA' },
+        include: { etapas: { orderBy: { inicioAt: 'asc' } } },
+      }).catch(() => []),
     ]);
 
     const vehMapByAsset = new Map<string, any>(vehiculos.filter((v: any) => v.maintenanceAssetId).map((v: any) => [v.maintenanceAssetId, v]));
@@ -605,13 +1040,25 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const enProceso = ordenes.filter((o: any) => o.estado === 'IN_PROGRESS');
     const pendientes = ordenes.filter((o: any) => o.estado === 'PENDING');
 
-    const inmovilizados = vehiculos
-      .filter((v: any) => v.status === 'EN_TALLER')
-      .map((v: any) => ({
-        id: v.id, dominio: v.dominio, tipo: v.tipo, notas: v.notas,
-        enTallerDesde: v.updatedAt,
-        diasEnTaller: Math.max(0, Math.floor((now.getTime() - new Date(v.updatedAt).getTime()) / 86400000)),
-      }));
+    // Inmovilizados = unidades con episodio abierto. diasEnTaller se mide
+    // desde el inicio del episodio (o el ingreso efectivo al taller si existe),
+    // nunca desde updatedAt que se pisa con cualquier edición.
+    const vehPorId = new Map<string, any>(vehiculos.map((v: any) => [v.id, v] as [string, any]));
+    const inmovilizados = (episodiosAbiertos as any[])
+      .map((ep: any) => {
+        const v = vehPorId.get(ep.vehiculoId);
+        if (!v) return null;
+        const desde = ep.fechaIngresoTaller ?? ep.inicioAt;
+        const etapaVig = ep.etapas?.find((e: any) => !e.finAt) ?? ep.etapas?.[ep.etapas.length - 1];
+        return {
+          id: v.id, dominio: v.dominio, tipo: v.tipo, notas: v.notas,
+          etapa: etapaVig?.etapa ?? null,
+          tallerNombre: ep.tallerNombre ?? null,
+          enTallerDesde: desde,
+          diasEnTaller: Math.max(0, Math.floor((now.getTime() - new Date(desde).getTime()) / 86400000)),
+        };
+      })
+      .filter(Boolean);
 
     const proximosVencimientos = vencimientos.map((v: any) => ({
       id: v.id,
@@ -695,19 +1142,20 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       const now = new Date();
       let proximoServicio: any = null;
       for (const p of planes) {
-        if (p.frequencyUnit === 'KM' && p.triggerKm && v.currentOdometer != null) {
-          const base = p.lastOdometerExecution ?? v.currentOdometer;
-          const proxKm = base + p.triggerKm;
-          const kmRestantes = Math.round(proxKm - v.currentOdometer);
-          if (!proximoServicio || kmRestantes < proximoServicio.kmRestantes) {
-            proximoServicio = { plan: p.title, tipo: 'KM', proximoKm: proxKm, kmRestantes };
+        // Próximo servicio: evalúa ambas patas (km y fecha) — el primero que ocurra.
+        // Sin referencia de ejecución (lastOdometerExecution / nextExecutionDate)
+        // no es evaluable y no se asume el odómetro actual como base.
+        const venc = evaluarVencimientoPlan(p, v.currentOdometer ?? null, now);
+        if (venc.proximoKm != null && venc.kmRestantes != null) {
+          if (!proximoServicio || venc.kmRestantes < (proximoServicio.kmRestantes ?? Infinity)) {
+            proximoServicio = { plan: p.title, tipo: 'KM', proximoKm: venc.proximoKm, kmRestantes: venc.kmRestantes };
           }
-        } else if (p.nextExecutionDate) {
-          const dias = Math.ceil((new Date(p.nextExecutionDate).getTime() - now.getTime()) / 86400000);
-          if (!proximoServicio || proximoServicio.tipo !== 'KM' || dias < (proximoServicio.diasRestantes ?? Infinity)) {
-            if (!proximoServicio || (proximoServicio.tipo === 'FECHA' && dias < proximoServicio.diasRestantes) || proximoServicio.tipo === 'KM') {
-              proximoServicio = { plan: p.title, tipo: 'FECHA', fecha: p.nextExecutionDate, diasRestantes: dias };
-            }
+        }
+        if (venc.diasRestantes != null) {
+          const candidato = { plan: p.title, tipo: 'FECHA', fecha: p.nextExecutionDate, diasRestantes: venc.diasRestantes };
+          if (!proximoServicio
+            || (proximoServicio.tipo === 'FECHA' && venc.diasRestantes < proximoServicio.diasRestantes)) {
+            proximoServicio = candidato;
           }
         }
       }
@@ -761,6 +1209,31 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: 'El tractor o el semi ya forman parte de un conjunto operativo acoplado. Desacoplá primero.' });
     }
 
+    // Si el tractor tiene una jornada abierta, el semi pasa a formar parte
+    // del servicio: se bloquea si el semi está restringido o detenido, y su
+    // intervalo de utilización arranca al momento del acople (no antes).
+    const jornadaAbierta = await prisma().flotaJornada.findFirst({
+      where: { tenantId, estado: 'ABIERTA', unidades: { array_contains: [{ vehiculoId: tractor.id }] } as any },
+    }).catch(() => null);
+    let jornadaConUnidad: any = null;
+    if (!jornadaAbierta) {
+      // Fallback: array_contains exacto puede no matchear si el elemento tiene
+      // más claves — se revisa en memoria.
+      const abiertas = await prisma().flotaJornada.findMany({ where: { tenantId, estado: 'ABIERTA' }, select: { id: true, unidades: true } });
+      jornadaConUnidad = abiertas.find((j: any) =>
+        (Array.isArray(j.unidades) ? j.unidades : []).some((u: any) => u?.vehiculoId === tractor.id && !u.hasta));
+    }
+    const jornada = jornadaAbierta ?? jornadaConUnidad;
+    if (jornada) {
+      const impedimentos = await impedimentosParaServicio(prisma(), tenantId, semi);
+      if (!impedimentos.ok) {
+        return reply.code(409).send({
+          error: 'El semi no está apto para servicio',
+          impedimentos: impedimentos.motivos,
+        });
+      }
+    }
+
     const conjunto = await prisma().conjuntoOperativo.create({
       data: {
         tenantId,
@@ -782,6 +1255,15 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       },
       include: { tractor: true, semi: true },
     });
+
+    if (jornada) {
+      const j = await prisma().flotaJornada.findUnique({ where: { id: jornada.id }, select: { unidades: true } });
+      const unidades: any[] = Array.isArray(j?.unidades) ? j.unidades : [];
+      if (!unidades.some((u: any) => u?.vehiculoId === semi.id && !u.hasta)) {
+        unidades.push({ vehiculoId: semi.id, dominio: semi.dominio, rol: 'SEMI', desde: new Date().toISOString(), hasta: null });
+        await prisma().flotaJornada.update({ where: { id: jornada.id }, data: { unidades } });
+      }
+    }
     return reply.code(201).send({ conjunto });
   });
 
@@ -797,16 +1279,29 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     if (!conjunto) return reply.code(404).send({ error: 'No encontrado' });
     if (conjunto.estado === 'DESACOPLADO') return reply.code(409).send({ error: 'Ya está desacoplado' });
 
+    const ahora = new Date();
     await prisma().conjuntoOperativo.update({
       where: { id },
       data: {
         estado: 'DESACOPLADO',
-        fechaDesacople: new Date(),
+        fechaDesacople: ahora,
         eventos: {
           create: { tenantId, tipo: 'DESACOPLE', ubicacion: body.data.ubicacion, notas: body.data.notas },
         },
       },
     });
+
+    // Si el tractor sigue en servicio, el intervalo del semi termina al
+    // desacople: cada semi conserva únicamente su tramo real de utilización.
+    const abiertas = await prisma().flotaJornada.findMany({ where: { tenantId, estado: 'ABIERTA' }, select: { id: true, unidades: true } });
+    for (const j of abiertas) {
+      const unidades: any[] = Array.isArray(j.unidades) ? j.unidades : [];
+      let tocado = false;
+      for (const u of unidades) {
+        if (u?.vehiculoId === conjunto.semiId && !u.hasta) { u.hasta = ahora.toISOString(); tocado = true; }
+      }
+      if (tocado) await prisma().flotaJornada.update({ where: { id: j.id }, data: { unidades } });
+    }
     return reply.send({ ok: true });
   });
 
@@ -923,6 +1418,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     nombre: z.string().min(1),
     categoria: z.string().default('GENERAL'),
     tipoActivoAplicable: z.string().default('TODOS'),
+    componentKey: z.string().optional().nullable(),
     frecuenciaKm: z.number().optional().nullable(),
     frecuenciaDias: z.number().int().optional().nullable(),
     horasMotor: z.number().optional().nullable(),
@@ -954,22 +1450,118 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     return reply.code(201).send({ rule });
   });
 
+  const CAMPOS_AUDITABLES = [
+    'nombre', 'categoria', 'tipoActivoAplicable', 'componentKey',
+    'frecuenciaKm', 'frecuenciaDias', 'horasMotor', 'ciclos', 'condicionObservada',
+    'kmAnticipacion', 'diasAnticipacion', 'criticidad', 'duracionEstimada',
+    'accionVencimiento', 'checklistPlantillaId', 'isActive',
+  ];
+
+  function diffRegla(antes: any, despues: any) {
+    const cambios: { campo: string; antes: any; despues: any }[] = [];
+    for (const c of CAMPOS_AUDITABLES) {
+      const a = antes?.[c] ?? null; const d = despues?.[c] ?? null;
+      if (JSON.stringify(a) !== JSON.stringify(d)) cambios.push({ campo: c, antes: a, despues: d });
+    }
+    return cambios;
+  }
+
+  // Preview: qué planes existentes resultarían afectados si se propaga la regla.
+  // Respeta overrides por unidad (MainentanceComponentRuleAsset tiene precedencia).
+  app.get('/component-rules/:id/impacto', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const rule = await prisma().maintenanceComponentRule.findFirst({ where: { id, tenantId } });
+    if (!rule) return reply.code(404).send({ error: 'Regla no encontrada' });
+
+    const aplicaciones = await prisma().maintenanceComponentRuleAsset.findMany({
+      where: { ruleId: id, isActive: true },
+      include: { asset: { select: { id: true, code: true, name: true } } },
+    });
+    const planIds = aplicaciones.map((a: any) => a.generatedPlanId).filter(Boolean);
+    const planes = planIds.length ? await prisma().maintenancePlan.findMany({
+      where: { id: { in: planIds }, tenantId },
+      select: { id: true, code: true, title: true, assetId: true, triggerKm: true, frecuenciaDias: true, lastExecutionDate: true, lastOdometerExecution: true },
+    }) : [];
+
+    const afectados = aplicaciones.map((a: any) => ({
+      assetId: a.assetId,
+      asset: a.asset,
+      planId: a.generatedPlanId,
+      plan: planes.find((p: any) => p.id === a.generatedPlanId) || null,
+      tieneOverrideKm: a.frecuenciaKmOverride != null,
+      tieneOverrideDias: a.frecuenciaDiasOverride != null,
+      // Un override particular prevalece sobre la regla general: la propagación
+      // de esa pata NO se aplica a este plan.
+      frecuenciaEfectiva: {
+        km: a.frecuenciaKmOverride ?? rule.frecuenciaKm,
+        dias: a.frecuenciaDiasOverride ?? rule.frecuenciaDias,
+      },
+    }));
+    return reply.send({ rule, afectados });
+  });
+
   app.put('/component-rules/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    const body = ruleSchema.partial().safeParse(req.body);
+    const schema = ruleSchema.partial().extend({
+      // Alcance del cambio: FUTURAS (solo nuevas asignaciones) | PLANES_SELECCIONADOS.
+      propagar: z.object({
+        planIds: z.array(z.string().uuid()).min(1),
+      }).optional(),
+    });
+    const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
-    const { repuestos, ...data } = body.data;
+    const { repuestos, propagar, ...data } = body.data;
     const existing = await prisma().maintenanceComponentRule.findFirst({ where: { id, tenantId } });
     if (!existing) return reply.code(404).send({ error: 'No encontrado' });
-    await prisma().maintenanceComponentRule.update({ where: { id }, data });
-    if (repuestos) {
-      await prisma().maintenanceComponentRuleSparePart.deleteMany({ where: { ruleId: id } });
-      if (repuestos.length) {
-        await prisma().maintenanceComponentRuleSparePart.createMany({ data: repuestos.map(r => ({ ruleId: id, sparePartId: r.sparePartId, cantidad: r.cantidad })) });
+
+    const userId = (req as any).auth?.userId ?? null;
+    const userName = (req as any).auth?.name ?? (req as any).auth?.email ?? null;
+    const cambios = diffRegla(existing, { ...existing, ...data });
+
+    await prisma().$transaction(async (tx: any) => {
+      await tx.maintenanceComponentRule.update({ where: { id }, data });
+      if (repuestos) {
+        await tx.maintenanceComponentRuleSparePart.deleteMany({ where: { ruleId: id } });
+        if (repuestos.length) {
+          await tx.maintenanceComponentRuleSparePart.createMany({ data: repuestos.map(r => ({ ruleId: id, sparePartId: r.sparePartId, cantidad: r.cantidad })) });
+        }
       }
-    }
+
+      // Propagación solo a los planes seleccionados, respetando overrides por unidad.
+      // NUNCA toca lastExecutionDate/lastOdometerExecution ni ejecuciones históricas.
+      const planesAfectados: string[] = [];
+      if (propagar?.planIds?.length) {
+        const aplicaciones = await tx.maintenanceComponentRuleAsset.findMany({
+          where: { ruleId: id, generatedPlanId: { in: propagar.planIds } },
+        });
+        for (const ap of aplicaciones) {
+          const planData: any = {};
+          if (ap.frecuenciaKmOverride == null && data.frecuenciaKm !== undefined) planData.triggerKm = data.frecuenciaKm;
+          if (ap.frecuenciaDiasOverride == null && data.frecuenciaDias !== undefined) planData.frecuenciaDias = data.frecuenciaDias;
+          if (data.nombre !== undefined) planData.title = data.nombre;
+          if (data.componentKey !== undefined) planData.componentKey = data.componentKey;
+          if (Object.keys(planData).length === 0) continue;
+          await tx.maintenancePlan.update({ where: { id: ap.generatedPlanId }, data: planData });
+          planesAfectados.push(ap.generatedPlanId);
+        }
+      }
+
+      // Auditoría del cambio (usuario, fecha, valores, alcance)
+      await tx.maintenanceComponentRuleAudit.create({
+        data: {
+          tenantId, ruleId: id,
+          accion: 'UPDATE',
+          alcance: propagar?.planIds?.length ? 'PLANES_SELECCIONADOS' : 'FUTURAS',
+          cambios, planIds: planesAfectados,
+          usuarioId: userId, usuarioNombre: userName,
+        },
+      });
+    });
+
     return reply.send({ ok: true });
   });
 
@@ -1023,7 +1615,9 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         plan = await prisma().maintenancePlan.update({
           where: { id: existingApp.generatedPlanId },
           data: {
-            title: rule.nombre, type: 'PREVENTIVE', frequencyValue, frequencyUnit, triggerKm: frecKm || null,
+            title: rule.nombre, type: 'PREVENTIVE', frequencyValue, frequencyUnit,
+            triggerKm: frecKm || null, frecuenciaDias: frecDias || null,
+            componentKey: rule.componentKey || null,
             ...(proximaEjecucion ? { nextExecutionDate: proximaEjecucion } : {}),
             ...(kmBase != null ? { lastOdometerExecution: kmBase } : {}),
           },
@@ -1036,6 +1630,8 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
             description: `Generado desde catálogo de componentes (Flota 360): ${rule.nombre}`,
             type: 'PREVENTIVE', status: 'ACTIVE', assetId: asset.id,
             frequencyValue, frequencyUnit, triggerKm: frecKm || null,
+            frecuenciaDias: frecDias || null,
+            componentKey: rule.componentKey || null,
             nextExecutionDate: proximaEjecucion ?? null,
             lastOdometerExecution: kmBase ?? null,
           },
@@ -1108,37 +1704,45 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       .map((p: any) => {
         const veh = vehByAsset.get(p.assetId);
         const ra = ruleByPlan.get(p.id);
-        const esKm = p.frequencyUnit === 'KM' && p.triggerKm;
         const kmActual = veh?.currentOdometer ?? null;
-        let proximoKm: number | null = null;
-        let kmRestantes: number | null = null;
-        if (esKm) {
-          const base = p.lastOdometerExecution ?? kmActual ?? 0;
-          const prox = base + (p.triggerKm || 0);
-          proximoKm = prox;
-          kmRestantes = kmActual != null ? Math.round(prox - kmActual) : null;
-        }
-        let diasRestantes: number | null = null;
-        if (p.nextExecutionDate) {
-          diasRestantes = Math.ceil((new Date(p.nextExecutionDate).getTime() - now.getTime()) / 86400000);
-        }
+        // Intervalo dual: evalúa pata km y pata fecha; vence por el primero.
+        const venc = evaluarVencimientoPlan(p, kmActual, now);
+        const proximoKm = venc.proximoKm;
+        const kmRestantes = venc.kmRestantes;
+        const diasRestantes = venc.diasRestantes;
         let estadoPlan: 'VENCIDO' | 'URGENTE' | 'PROXIMO' | 'OK' = 'OK';
-        if ((kmRestantes != null && kmRestantes <= 0) || (diasRestantes != null && diasRestantes <= 0)) estadoPlan = 'VENCIDO';
+        if (venc.vencido) estadoPlan = 'VENCIDO';
         else if ((kmRestantes != null && kmRestantes <= 1500) || (diasRestantes != null && diasRestantes <= 5)) estadoPlan = 'URGENTE';
         else if ((kmRestantes != null && kmRestantes <= 4000) || (diasRestantes != null && diasRestantes <= 15)) estadoPlan = 'PROXIMO';
+
+        // Frecuencia legible con ambas patas ("30.000 km o 365 días")
+        const patas: string[] = [];
+        if (p.triggerKm) patas.push(`${Math.round(p.triggerKm).toLocaleString('es-AR')} km`);
+        if (p.frecuenciaDias) patas.push(`${p.frecuenciaDias} días`);
+        else if (!p.triggerKm) patas.push(`${p.frequencyValue} ${p.frequencyUnit === 'DAYS' ? 'días' : p.frequencyUnit === 'WEEKS' ? 'semanas' : p.frequencyUnit === 'MONTHS' ? 'meses' : 'años'}`);
 
         return {
           id: p.id,
           plan: p.title,
           codigo: p.code,
           activo: veh ? { id: veh.id, dominio: veh.dominio, tipo: veh.tipo, status: veh.status } : null,
+          assetId: p.assetId,
           componente: ra?.rule?.nombre || null,
-          frecuencia: esKm ? `Cada ${Math.round(p.triggerKm).toLocaleString('es-AR')} km` : `Cada ${p.frequencyValue} ${p.frequencyUnit === 'DAYS' ? 'días' : p.frequencyUnit === 'WEEKS' ? 'semanas' : p.frequencyUnit === 'MONTHS' ? 'meses' : 'años'}`,
+          componentKey: p.componentKey ?? null,
+          triggerKm: p.triggerKm ?? null,
+          frecuenciaDias: p.frecuenciaDias ?? null,
+          intervaloModo: p.intervaloModo ?? 'DESDE_EJECUCION',
+          requiereRevision: !!p.requiereRevision,
+          requiereOdometro: !!p.triggerKm,
+          frecuencia: patas.length ? `Cada ${patas.join(' o ')}` : '—',
           ultimaEjecucion: p.lastExecutionDate,
+          ultimoOdometro: p.lastOdometerExecution ?? null,
           proximaEjecucion: p.nextExecutionDate,
           proximoKm,
           kmRestantes,
           diasRestantes,
+          evaluable: venc.evaluable,
+          motivoVencimiento: venc.motivo,
           estado: estadoPlan,
           estadoPlan: p.status,
           tecnicoSugerido: ra?.tecnicoSugeridoId ? tecMap.get(ra.tecnicoSugeridoId) || null : null,
@@ -1401,25 +2005,31 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
             duracionEst: o.estimatedDuration ?? null, duracionReal: o.actualDuration ?? null,
           });
         }
-        // Proyección de planes: marca ámbar cuando el próximo servicio cae dentro de la columna
-        // (por fecha nextExecutionDate o por km estimado con promedio de uso).
+        // Proyección de planes: marca ámbar cuando el próximo servicio cae dentro
+        // de la columna. Vence por km O por fecha (lo primero). La fecha por km
+        // es una ESTIMACIÓN (se etiqueta estimado:true), la nextExecutionDate es
+        // una fecha cierta del intervalo/calendario.
         for (const p of planesVeh) {
+          const venc = evaluarVencimientoPlan(p, v.currentOdometer ?? null, now);
           let fechaPlan: Date | null = null;
+          let estimado = false;
+          if (venc.vencido) {
+            fechaPlan = now; // ya vencido (por km y/o fecha) → columna actual
+            eventos.push({ tipo: 'PLAN', id: p.id, titulo: p.title, estado: 'VENCIDO', fecha: fechaPlan, motivo: venc.motivo });
+            continue;
+          }
           if (p.nextExecutionDate) {
-            fechaPlan = new Date(p.nextExecutionDate);
-          } else if (p.frequencyUnit === 'KM' && p.triggerKm && v.currentOdometer != null) {
-            const base = p.lastOdometerExecution ?? v.currentOdometer;
-            const kmRestantes = base + p.triggerKm - v.currentOdometer;
-            if (kmRestantes <= 0) {
-              fechaPlan = now; // vencido por km → se muestra en la columna actual
-            } else {
-              // Estimación: 250 km/día de referencia si no hay historial de consumo
-              const kmPorDia = 250;
+            fechaPlan = new Date(p.nextExecutionDate); // fecha cierta (intervalo o calendario)
+          } else if (venc.proximoKm != null && v.currentOdometer != null) {
+            const kmRestantes = venc.proximoKm - v.currentOdometer;
+            if (kmRestantes > 0) {
+              const kmPorDia = 250; // hipótesis de uso — la fecha resultante es estimada
               fechaPlan = new Date(now.getTime() + (kmRestantes / kmPorDia) * 86400000);
+              estimado = true;
             }
           }
           if (fechaPlan && fechaPlan >= col.desde && fechaPlan <= col.hasta) {
-            eventos.push({ tipo: 'PLAN', id: p.id, titulo: p.title, estado: 'PROXIMO', fecha: fechaPlan });
+            eventos.push({ tipo: 'PLAN', id: p.id, titulo: p.title, estado: 'PROXIMO', fecha: fechaPlan, estimado });
           }
         }
         return eventos.length > 0 ? { eventos } : null;
@@ -2459,69 +3069,65 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { conductorId, desde, hasta, formato } = req.query as any;
 
-    const where: any = { tenantId, tipo: { in: ['INICIO_SERVICIO', 'FIN_SERVICIO'] } };
+    // Fuente única: entidad FlotaJornada (inicio→fin vinculados explícitamente,
+    // correcciones trazables aplicadas al valor vigente, originales preservados).
+    const where: any = { tenantId };
     if (conductorId) where.conductorId = conductorId;
     if (desde || hasta) {
-      where.createdAt = {};
-      if (desde) where.createdAt.gte = new Date(desde);
-      if (hasta) { const h = new Date(hasta); h.setHours(23, 59, 59, 999); where.createdAt.lte = h; }
+      where.inicioAt = {};
+      if (desde) where.inicioAt.gte = new Date(desde);
+      if (hasta) { const h = new Date(hasta); h.setHours(23, 59, 59, 999); where.inicioAt.lte = h; }
     }
 
-    const [regs, conductores, vehiculos] = await Promise.all([
-      prisma().servicioRegistro.findMany({
+    const [jornadasDb, vehiculos] = await Promise.all([
+      prisma().flotaJornada.findMany({
         where,
-        orderBy: { createdAt: 'asc' },
-        select: {
-          tipo: true, createdAt: true, horasTrabajadas: true, horasDescanso: true,
-          descansoInsuficiente: true, jornadaExcesiva: true, origen: true, destino: true,
-          conductorId: true, reportadoPorNombre: true, vehiculoId: true,
-        },
+        include: { conductor: { select: { id: true, nombre: true } } },
+        orderBy: { inicioAt: 'asc' },
       }),
-      prisma().conductor.findMany({ where: { tenantId }, select: { id: true, nombre: true } }),
       prisma().vehiculo.findMany({ where: { tenantId }, select: { id: true, dominio: true } }),
     ]);
-    const condMap = new Map(conductores.map((c: any) => [c.id, c.nombre]));
     const vehMap = new Map(vehiculos.map((v: any) => [v.id, v.dominio]));
 
-    // Emparejar INICIO→FIN por chofer (clave: conductorId o nombre reportado)
-    const filas: any[] = [];
-    const abiertos = new Map<string, any>();
-    const pushFila = (ini: any, fin: any | null) => filas.push({
-      fecha: ini.createdAt,
-      chofer: condMap.get(ini.conductorId) || ini.reportadoPorNombre,
-      vehiculo: vehMap.get((fin || ini).vehiculoId) || '—',
-      inicio: ini.createdAt,
-      fin: fin ? fin.createdAt : null,
-      horasJornada: fin ? fin.horasTrabajadas : null,
-      descansoPrevio: ini.horasDescanso,
-      origen: ini.origen,
-      destino: ini.destino,
-      descansoInsuficiente: ini.descansoInsuficiente,
-      jornadaExcesiva: fin ? fin.jornadaExcesiva : false,
+    const filas = jornadasDb.map((j: any) => {
+      const unidades: any[] = Array.isArray(j.unidades) ? j.unidades : [];
+      const dominios = unidades.map((u: any) => u.dominio || vehMap.get(u.vehiculoId) || '—').filter(Boolean);
+      return {
+        fecha: j.inicioAt,
+        chofer: j.conductor?.nombre || '—',
+        vehiculo: dominios.join(' → ') || '—',
+        inicio: j.inicioAt,
+        fin: j.finAt,
+        estado: j.estado,
+        cierreTipo: j.cierreTipo || (j.estado === 'ABIERTA' ? null : 'NORMAL'),
+        horasJornada: j.horasTrabajadas,
+        descansoPrevio: j.descansoPrevioHoras,
+        evaluacionDescanso: j.evaluacionDescanso,
+        origen: j.origen,
+        destino: j.destino,
+        descansoInsuficiente: j.evaluacionDescanso === 'INSUFICIENTE',
+        jornadaExcesiva: j.jornadaExcesiva,
+        corregida: j.evaluacionDescanso !== j.evaluacionDescansoOriginal
+          || j.descansoPrevioHoras !== j.descansoPrevioHorasOriginal
+          || j.cierreTipo === 'REGULARIZADO',
+      };
     });
-    for (const r of regs) {
-      const key = r.conductorId || r.reportadoPorNombre;
-      if (r.tipo === 'INICIO_SERVICIO') { abiertos.set(key, r); continue; }
-      const ini = abiertos.get(key);
-      if (!ini) continue;
-      abiertos.delete(key);
-      pushFila(ini, r);
-    }
-    for (const ini of abiertos.values()) pushFila(ini, null); // servicios en curso
-    filas.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
 
     if (formato === 'csv') {
       const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const header = 'Fecha;Chofer;Vehiculo;Inicio;Fin;Horas jornada;Descanso previo (h);Origen;Destino;Descanso <12h;Jornada >12h';
-      const lines = filas.map(f => [
+      const header = 'Fecha;Chofer;Vehiculo(s);Inicio;Fin;Estado;Horas jornada;Descanso previo (h);Evaluacion descanso;Origen;Destino;Descanso insuficiente;Jornada excesiva;Corregida/Regularizada';
+      const lines = filas.map((f: any) => [
         new Date(f.fecha).toLocaleDateString('es-AR'),
         f.chofer, f.vehiculo,
         new Date(f.inicio).toLocaleString('es-AR'),
-        f.fin ? new Date(f.fin).toLocaleString('es-AR') : 'EN CURSO',
+        f.fin ? new Date(f.fin).toLocaleString('es-AR') : (f.estado === 'ABIERTA' ? 'EN CURSO' : 'SIN CIERRE CONFIABLE'),
+        f.estado === 'ABIERTA' ? 'EN CURSO' : (f.cierreTipo === 'REGULARIZADO' ? 'REGULARIZADA' : 'CERRADA'),
         f.horasJornada ?? '', f.descansoPrevio ?? '',
+        f.evaluacionDescanso || '',
         f.origen || '', f.destino || '',
         f.descansoInsuficiente ? 'SI' : 'NO',
         f.jornadaExcesiva ? 'SI' : 'NO',
+        f.corregida ? 'SI' : 'NO',
       ].map(esc).join(';'));
       const csv = '﻿' + [header, ...lines].join('\n');
       return reply
@@ -2571,7 +3177,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       }),
       prisma().flotaFactura.findMany({
         where: { tenantId },
-        select: { vehiculoId: true, total: true, categoria: true },
+        select: { vehiculoId: true, total: true, categoria: true, tipoComprobante: true, workOrderId: true, moneda: true, montoRepuestosPropios: true },
       }),
       prisma().flotaMulta.findMany({
         where: { tenantId, estado: { not: 'ANULADA' } },
@@ -2622,7 +3228,16 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     };
     for (const c of cargas) if (c.costoTotal) acc(c.vehiculoId, 'combustible', c.costoTotal);
     for (const h of historial) acc(h.vehiculoId, 'mantenimiento', h.costo || 0);
-    for (const f of facturas) if (f.vehiculoId) acc(f.vehiculoId, 'facturas', f.total || 0);
+    for (const f of facturas) {
+      if (!f.vehiculoId) continue;
+      // Anti-doble-conteo: presupuestos no son gasto; facturas vinculadas a una OT
+      // ya están en mantenimiento vía totalCost/costoExterno; NC resta; solo ARS.
+      if (f.tipoComprobante === 'PRESUPUESTO') continue;
+      if (f.workOrderId) continue;
+      if (f.moneda && f.moneda !== 'ARS') continue;
+      const monto = (f.total || 0) - (f.montoRepuestosPropios || 0);
+      acc(f.vehiculoId, 'facturas', f.tipoComprobante === 'NOTA_CREDITO' ? -monto : monto);
+    }
     for (const m of multas) acc(m.vehiculoId, 'multas', m.monto || 0);
 
     const costos = vehiculos
@@ -2801,5 +3416,405 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       seguridad: { incidentesPor100k, multasPorChofer, controles: controlesResumen },
       co2PorKm,
     });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // CONCILIACIÓN DE HISTORIAL — datos pre-migración sin vínculo explícito
+  // ─────────────────────────────────────────────────────────────
+
+  // Lista lo que requiere revisión humana:
+  //  - planes marcados requiereRevision (ambiguos por el modelo viejo),
+  //  - OTs completadas cuyo texto sugiere un componente pero sin vínculo
+  //    explícito a un plan de ese componente (sugerencia no confirmada).
+  app.get('/mantenimiento/conciliacion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const { COMPONENTES_DEF } = await import('../services/fleetProjection.js');
+
+    const [planesRevision, otsCompletadas, planes] = await Promise.all([
+      prisma().maintenancePlan.findMany({
+        where: { tenantId, requiereRevision: true },
+        select: {
+          id: true, code: true, title: true, assetId: true, triggerKm: true,
+          frecuenciaDias: true, frequencyUnit: true, frequencyValue: true,
+          lastExecutionDate: true, lastOdometerExecution: true,
+        },
+      }),
+      prisma().workOrder.findMany({
+        where: { tenantId, status: 'COMPLETED', assetId: { not: null } },
+        orderBy: { completedAt: 'desc' }, take: 200,
+        select: {
+          id: true, code: true, title: true, description: true, assetId: true,
+          completedAt: true, executedAt: true, planId: true,
+          tareas: { select: { planId: true, status: true } },
+          vehiculoHistorial: { select: { odometro: true }, take: 1 },
+        },
+      }),
+      prisma().maintenancePlan.findMany({
+        where: { tenantId, status: 'ACTIVE', componentKey: { not: null } },
+        select: { id: true, assetId: true, componentKey: true, title: true },
+      }),
+    ]);
+
+    // Mapa assetId → planes por componentKey (vínculos explícitos existentes)
+    const planesPorAsset = new Map<string, any[]>();
+    for (const p of planes) {
+      const list = planesPorAsset.get(p.assetId!) || [];
+      list.push(p);
+      planesPorAsset.set(p.assetId!, list);
+    }
+
+    // Sugerencias: OT con coincidencia por texto pero sin tarea explícita para ese componente
+    const sugerencias: any[] = [];
+    for (const ot of otsCompletadas) {
+      const texto = `${ot.title || ''} ${ot.description || ''}`;
+      const planesDelAsset = planesPorAsset.get(ot.assetId!) || [];
+      if (!planesDelAsset.length) continue;
+      for (const def of COMPONENTES_DEF) {
+        if (!def.match.test(texto)) continue;
+        const planDelComponente = planesDelAsset.find((p: any) => p.componentKey === def.key);
+        if (!planDelComponente) continue;
+        const yaVinculada = (ot.planId === planDelComponente.id)
+          || (ot.tareas || []).some((t: any) => t.planId === planDelComponente.id);
+        if (yaVinculada) continue;
+        sugerencias.push({
+          workOrderId: ot.id, otCode: ot.code, otTitle: ot.title,
+          assetId: ot.assetId,
+          fecha: ot.executedAt ?? ot.completedAt,
+          odometro: ot.vehiculoHistorial?.[0]?.odometro ?? null,
+          componentKey: def.key, componenteLabel: def.label,
+          planIdSugerido: planDelComponente.id, planTitulo: planDelComponente.title,
+        });
+      }
+    }
+
+    return reply.send({
+      planesPendientesRevision: planesRevision,
+      sugerencias,
+      totalSugerencias: sugerencias.length,
+    });
+  });
+
+  // Confirmar conciliación: vincula explícitamente una OT histórica a un plan
+  // (tarea) y aplica la ejecución. Idempotente por sourceKey ot:{wo}|{plan}.
+  // Si el plan requiere km y no hay odómetro, NO confirma silenciosamente.
+  app.post('/mantenimiento/conciliar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      workOrderId: z.string().uuid(),
+      planId: z.string().uuid(),
+      odometro: z.number().optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+
+    const { workOrderId, planId } = body.data;
+    const ot = await prisma().workOrder.findFirst({
+      where: { id: workOrderId, tenantId },
+      include: { vehiculoHistorial: { select: { odometro: true }, take: 1 } },
+    });
+    if (!ot) return reply.code(404).send({ error: 'OT no encontrada' });
+    const plan = await prisma().maintenancePlan.findFirst({ where: { id: planId, tenantId } });
+    if (!plan) return reply.code(404).send({ error: 'Plan no encontrado' });
+    if (plan.assetId !== ot.assetId) {
+      return reply.code(400).send({ error: 'El plan y la OT no corresponden a la misma unidad' });
+    }
+
+    const odometro = body.data.odometro ?? ot.vehiculoHistorial?.[0]?.odometro ?? null;
+    const fechaEjecucion = ot.executedAt ?? ot.completedAt ?? new Date();
+
+    const resultado = await prisma().$transaction(async (tx: any) => {
+      await tx.workOrderTask.upsert({
+        where: { workOrderId_planId: { workOrderId, planId } },
+        update: { status: 'COMPLETED', completedAt: fechaEjecucion },
+        create: { tenantId, workOrderId, planId, status: 'COMPLETED', completedAt: fechaEjecucion },
+      });
+      return registrarEjecucionPlan(tx, {
+        tenantId, planId, workOrderId, executedAt: fechaEjecucion, odometro,
+        registradoPor: (req as any).auth?.userId ?? null,
+        notes: `Conciliación manual confirmada — OT ${ot.code}`,
+      });
+    });
+
+    if (resultado.status === 'PENDIENTE_KM') {
+      return reply.code(400).send({ error: resultado.motivo, requiereOdometro: true });
+    }
+    if (resultado.status === 'DUPLICADA') {
+      return reply.send({ ok: true, duplicada: true, plan: resultado.plan });
+    }
+    return reply.send({ ok: true, plan: resultado.plan, referenciaAplicada: resultado.referenciaAplicada });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // CASOS DE DEFECTO (inspecciones) — seguimiento, verificación,
+  // habilitación y restricciones de servicio.
+  // ═══════════════════════════════════════════════════════════════
+
+  // Lista de casos con seguimiento completo (los abiertos no
+  // desaparecen al cambiar el día: persisten hasta resolución).
+  app.get('/defectos', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const where: any = { tenantId };
+    if (q.estado) where.estado = q.estado;
+    if (q.vehiculoId) where.vehiculoId = q.vehiculoId;
+    if (q.bloqueante === 'true') where.bloqueante = true;
+    if (q.abiertos === 'true') where.estado = { in: ['ABIERTO', 'EN_TRATAMIENTO', 'REPARADO_INFORMADO'] };
+    const casos = await prisma().defectoCaso.findMany({
+      where,
+      include: {
+        vehiculo: { select: { id: true, dominio: true, tipo: true, estadoOperativo: true } },
+        workOrder: { select: { id: true, code: true, status: true, priority: true, scheduledDate: true, completedAt: true, technician: { select: { name: true } } } },
+        restricciones: { where: { activa: true }, select: { id: true, motivo: true, createdAt: true } },
+        reportes: {
+          select: { id: true, descripcion: true, fotoUrl: true, createdAt: true, inspeccion: { select: { id: true, inspectorNombre: true, createdAt: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        casoPrevio: { select: { id: true, itemLabel: true, resueltoAt: true } },
+        _count: { select: { reportes: true } },
+      },
+      orderBy: [{ bloqueante: 'desc' }, { ultimoReporteAt: 'desc' }],
+      take: 200,
+    });
+    const ahora = Date.now();
+    const conAntiguedad = casos.map((c: any) => ({
+      ...c,
+      antiguedadDias: Math.floor((ahora - new Date(c.primerReporteAt).getTime()) / 86400000),
+    }));
+    return reply.send({ casos: conAntiguedad });
+  });
+
+  // Detalle de un caso: circuito completo reporte → OT → verificación → habilitación
+  app.get('/defectos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const caso = await prisma().defectoCaso.findFirst({
+      where: { id, tenantId },
+      include: {
+        vehiculo: { select: { id: true, dominio: true, tipo: true, estadoOperativo: true, status: true } },
+        workOrder: { select: { id: true, code: true, title: true, status: true, priority: true, scheduledDate: true, completedAt: true, technician: { select: { name: true } } } },
+        restricciones: { orderBy: { createdAt: 'desc' } },
+        reportes: {
+          include: { inspeccion: { select: { id: true, inspectorNombre: true, createdAt: true, plantillaVersion: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        eventos: { orderBy: { createdAt: 'asc' } },
+        casoPrevio: { select: { id: true, itemLabel: true, resueltoAt: true, estado: true } },
+        recurrencias: { select: { id: true, estado: true, primerReporteAt: true } },
+      },
+    });
+    if (!caso) return reply.code(404).send({ error: 'Caso no encontrado' });
+    return reply.send({ caso });
+  });
+
+  // Vincular (o crear) la OT de gestión del caso — una por caso
+  app.post('/defectos/:id/ot', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      workOrderId: z.string().uuid().optional(), // vincular existente
+      title: z.string().max(200).optional(),
+      priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+      scheduledDate: z.string().optional(),
+      technicianId: z.string().uuid().optional().nullable(),
+      notas: z.string().max(500).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const d = body.data;
+
+    const caso = await prisma().defectoCaso.findFirst({ where: { id, tenantId } });
+    if (!caso) return reply.code(404).send({ error: 'Caso no encontrado' });
+    if (caso.workOrderId) {
+      const existente = await prisma().workOrder.findFirst({ where: { id: caso.workOrderId, tenantId }, select: { id: true, code: true, status: true } });
+      return reply.code(409).send({ error: 'El caso ya tiene una OT asociada', workOrder: existente });
+    }
+
+    const usuario = { id: (req as any).auth?.userId ?? null, nombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null };
+    const resultado = await prisma().$transaction(async (tx: any) => {
+      let ot: any;
+      if (d.workOrderId) {
+        ot = await tx.workOrder.findFirst({ where: { id: d.workOrderId, tenantId } });
+        if (!ot) throw Object.assign(new Error('OT no encontrada'), { code: 404 });
+      } else {
+        const ultimo = await tx.defectoCaso.findFirst({
+          where: { tenantId },
+          include: { reportes: { orderBy: { createdAt: 'asc' }, take: 1 } },
+        });
+        ot = await tx.workOrder.create({
+          data: {
+            tenantId,
+            code: `OT-DEF-${Date.now().toString().slice(-6)}`,
+            title: d.title || `Defecto: ${caso.itemLabel}`,
+            description: `Caso de defecto ${caso.id.slice(0, 8)} — ${ultimo?.reportes?.[0]?.descripcion || caso.itemLabel}. Reportes: ${caso.reportesCount}.`,
+            type: 'CORRECTIVE',
+            priority: d.priority || (caso.severidad === 'CRITICO' ? 'HIGH' : 'MEDIUM'),
+            status: 'PENDING',
+            scheduledDate: d.scheduledDate ? new Date(d.scheduledDate) : new Date(),
+            assetId: caso.maintenanceAssetId,
+            technicianId: d.technicianId ?? null,
+            origen: 'INSPECCION',
+          },
+        });
+      }
+      await tx.defectoCaso.update({ where: { id: caso.id }, data: { workOrderId: ot.id, estado: 'EN_TRATAMIENTO' } });
+      await tx.inspeccionHallazgo.updateMany({ where: { tenantId, casoId: caso.id }, data: { otId: ot.id, otGenerada: true } });
+      await tx.defectoCasoEvento.create({
+        data: { tenantId, casoId: caso.id, tipo: 'OT_VINCULADA', detalle: `OT ${ot.code} ${d.workOrderId ? 'vinculada manualmente' : 'generada'} — ${usuario.nombre || 'usuario'}`, usuarioId: usuario.id, usuarioNombre: usuario.nombre },
+      });
+      return ot;
+    });
+    return reply.code(201).send({ ok: true, workOrder: resultado });
+  });
+
+  // Verificación del defecto (paso separado de la reparación)
+  app.post('/defectos/:id/verificar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      resultado: z.enum(['OK', 'FALLA_PERSISTE']),
+      notas: z.string().max(1000).optional(),
+      evidenciaUrl: z.string().max(2000).optional(),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const usuario = { id: (req as any).auth?.userId ?? null, nombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null };
+    const res = await prisma().$transaction(async (tx: any) => {
+      const r = await verificarCaso(tx, { tenantId, casoId: id, resultado: body.data.resultado, notas: [body.data.notas, body.data.evidenciaUrl ? `Evidencia: ${body.data.evidenciaUrl}` : null].filter(Boolean).join(' | ') || null, usuario });
+      if (r.error) return r;
+      // Si el caso era bloqueante y quedó VERIFICADO, la etapa del episodio
+      // refleja que falta el último paso: la habilitación autorizada.
+      if (body.data.resultado === 'OK' && r.caso?.bloqueante && r.caso.vehiculoId) {
+        const ep = await episodioAbiertoDe(tx, tenantId, r.caso.vehiculoId);
+        if (ep) {
+          await cambiarEtapa(tx, {
+            tenantId, indisponibilidadId: ep.id, etapa: 'PENDIENTE_HABILITACION',
+            comentario: `Verificación OK del caso ${id.slice(0, 8)} — pendiente habilitación autorizada`,
+            workOrderId: r.caso.workOrderId ?? null, usuario,
+          });
+        }
+      }
+      return r;
+    });
+    if (res.error) return reply.code(res.code).send({ error: res.error });
+    return reply.send({ ok: true, caso: res.caso });
+  });
+
+  // Habilitación de la unidad (requiere permiso admin/encargado + caso verificado)
+  app.post('/defectos/:id/habilitar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    // Permiso: habilitar una unidad bloqueada es una decisión autorizada.
+    // TENANT_ADMIN siempre puede; el resto requiere rol explícito.
+    const rol = (req as any).auth?.tenantRole;
+    const esAdmin = (req as any).auth?.globalRole === 'SUPERADMIN' || rol === 'TENANT_ADMIN';
+    if (!esAdmin) {
+      return reply.code(403).send({ error: 'Sin permiso para habilitar unidades. Requiere responsable de flota.' });
+    }
+    const { id } = req.params as any;
+    const schema = z.object({ motivo: z.string().max(500).optional() });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const usuario = { id: (req as any).auth?.userId ?? null, nombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null };
+
+    const res = await prisma().$transaction(async (tx: any) =>
+      habilitarPorCaso(tx, { tenantId, casoId: id, motivo: body.data.motivo ?? null, usuario }),
+    );
+    if (res.error) return reply.code(res.code).send({ error: res.error });
+
+    // Si no quedan restricciones, se reevalúan las causas del episodio: se
+    // cierra solo si tampoco quedan OTs que retiren la unidad. El estado
+    // operativo queda sincronizado por el servicio central.
+    if (res.libre && res.caso?.vehiculoId) {
+      await prisma().$transaction(async (tx: any) =>
+        evaluarYCerrarIndisponibilidad(tx, {
+          tenantId, vehiculoId: res.caso.vehiculoId, usuario,
+          motivo: `Habilitado tras resolución del caso ${id.slice(0, 8)} por ${usuario.nombre || 'responsable'}`,
+        }));
+    }
+    return reply.send({ ok: true, caso: res.caso, libre: res.libre, restriccionesRestantes: res.restriccionesRestantes });
+  });
+
+  // Reasignar un reporte a otro caso (corrección trazable, sin borrar datos)
+  app.post('/defectos/reasignar-reporte', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      hallazgoId: z.string().uuid(),
+      casoDestinoId: z.string().uuid(),
+      motivo: z.string().min(3).max(500),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const usuario = { id: (req as any).auth?.userId ?? null, nombre: (req as any).auth?.name ?? (req as any).auth?.email ?? null };
+    const res = await prisma().$transaction(async (tx: any) =>
+      reasignarReporte(tx, { tenantId, hallazgoId: body.data.hallazgoId, casoDestinoId: body.data.casoDestinoId, motivo: body.data.motivo, usuario }),
+    );
+    if (res.error) return reply.code(res.code).send({ error: res.error });
+    return reply.send({ ok: true });
+  });
+
+  // Conciliación: reportes sin caso o casos que podrían corresponder
+  // a otro defecto (sugerencia por similitud — nunca automática).
+  app.get('/defectos/conciliacion', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const [sinCaso, casosAbiertos] = await Promise.all([
+      prisma().inspeccionHallazgo.findMany({
+        where: { tenantId, casoId: null, estado: { in: ['ABIERTO', 'EN_PROCESO'] } },
+        include: { inspeccion: { select: { inspectorNombre: true, createdAt: true, dominioTractor: true, dominioSemi: true } } },
+        orderBy: { createdAt: 'desc' }, take: 100,
+      }),
+      prisma().defectoCaso.findMany({
+        where: { tenantId, estado: { in: ['ABIERTO', 'EN_TRATAMIENTO', 'REPARADO_INFORMADO'] } },
+        include: { vehiculo: { select: { dominio: true } } },
+        take: 200,
+      }),
+    ]);
+    // Sugerencias: mismo vehículo (si resolvible) o itemKey similar
+    const sugerencias = sinCaso.map((h: any) => ({
+      hallazgo: h,
+      candidatos: casosAbiertos.filter((c: any) =>
+        (h.vehiculoId && c.vehiculoId === h.vehiculoId) ||
+        (h.itemLabel && c.itemLabel && h.itemLabel.toLowerCase() === c.itemLabel.toLowerCase()),
+      ).map((c: any) => ({ id: c.id, itemLabel: c.itemLabel, vehiculo: c.vehiculo?.dominio, estado: c.estado })),
+    }));
+    return reply.send({ sinCaso: sugerencias, totalSinCaso: sinCaso.length });
+  });
+
+  // Restricciones activas (una por línea, con origen y antigüedad)
+  app.get('/restricciones', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const where: any = { tenantId };
+    if (q.vehiculoId) where.vehiculoId = q.vehiculoId;
+    if (q.activas !== 'false') where.activa = true;
+    const restricciones = await prisma().restriccionServicio.findMany({
+      where,
+      include: {
+        vehiculo: { select: { id: true, dominio: true, tipo: true, estadoOperativo: true } },
+        caso: { select: { id: true, itemLabel: true, severidad: true, estado: true, workOrder: { select: { code: true, status: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    return reply.send({ restricciones });
+  });
+
+  // Restricciones activas de una unidad (para fichas y validaciones)
+  app.get('/vehiculos/:id/restricciones', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const restricciones = await restriccionesActivasDe(prisma(), tenantId, id);
+    const delConjunto = await restriccionesDelConjunto(prisma(), tenantId, id);
+    return reply.send({ restricciones, conjunto: delConjunto.conjunto, restriccionesConjunto: delConjunto.restricciones });
   });
 }

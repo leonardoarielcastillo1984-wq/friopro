@@ -18,7 +18,7 @@ export default function InspeccionesPlantillas() {
   const [showNew, setShowNew] = useState(false);
   const [showBuiltIn, setShowBuiltIn] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ nombre: '', descripcion: '', categoria: 'GENERAL' });
+  const [form, setForm] = useState({ nombre: '', descripcion: '', categoria: 'GENERAL', criticidadRevisada: false });
   const [items, setItems] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [previewCat, setPreviewCat] = useState<string | null>(null);
@@ -40,7 +40,7 @@ export default function InspeccionesPlantillas() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm({ nombre: '', descripcion: '', categoria: 'GENERAL' });
+    setForm({ nombre: '', descripcion: '', categoria: 'GENERAL', criticidadRevisada: false });
     setItems([]);
     setShowNew(true);
   };
@@ -49,10 +49,17 @@ export default function InspeccionesPlantillas() {
     const r: any = await apiFetch(`/inspecciones/plantillas/${p.id}`);
     const plantilla = r.plantilla;
     setEditingId(plantilla.id);
-    setForm({ nombre: plantilla.nombre, descripcion: plantilla.descripcion || '', categoria: plantilla.categoria });
+    setForm({ nombre: plantilla.nombre, descripcion: plantilla.descripcion || '', categoria: plantilla.categoria, criticidadRevisada: !!plantilla.criticidadRevisada });
     setItems((plantilla.items || []).map((it: any) => ({
       label: it.label, tipo: it.tipo, seccion: it.seccion || '',
       isRequerido: it.isRequerido, triggerHallazgo: it.triggerHallazgo,
+      severidadHallazgo: it.severidadHallazgo || '',
+      bloqueaServicio: !!it.bloqueaServicio,
+      instruccionChofer: it.instruccionChofer || '',
+      prioridadOt: it.prioridadOt || '',
+      tipoDefecto: it.tipoDefecto || '',
+      componentKey: it.componentKey || '',
+      posicion: it.posicion || '',
     })));
     setShowNew(true);
   };
@@ -60,7 +67,21 @@ export default function InspeccionesPlantillas() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      const payload = { ...form, items: items.map((it, i) => { const { _idx, ...clean } = it as any; return { ...clean, orden: i }; }) };
+      const payload = {
+        ...form,
+        items: items.map((it, i) => {
+          const { _idx, ...clean } = it as any;
+          return {
+            ...clean, orden: i,
+            severidadHallazgo: clean.severidadHallazgo || null,
+            prioridadOt: clean.prioridadOt || null,
+            instruccionChofer: clean.instruccionChofer || null,
+            tipoDefecto: clean.tipoDefecto || null,
+            componentKey: clean.componentKey || null,
+            posicion: clean.posicion || null,
+          };
+        }),
+      };
       console.log('[handleSave] payload:', JSON.stringify(payload, null, 2));
       if (editingId) {
         await apiFetch(`/inspecciones/plantillas/${editingId}`, { method: 'PATCH', json: payload });
@@ -68,7 +89,7 @@ export default function InspeccionesPlantillas() {
         await apiFetch('/inspecciones/plantillas', { method: 'POST', json: payload });
       }
       setShowNew(false); setEditingId(null);
-      setForm({ nombre: '', descripcion: '', categoria: 'GENERAL' }); setItems([]); load();
+      setForm({ nombre: '', descripcion: '', categoria: 'GENERAL', criticidadRevisada: false }); setItems([]); load();
     } catch (err: any) {
       console.error('[handleSave] error:', err);
       alert(`Error: ${err?.message || 'desconocido'}\n${err?.details ? JSON.stringify(err.details, null, 2) : ''}`);
@@ -128,9 +149,12 @@ export default function InspeccionesPlantillas() {
                     </div>
                     <p className="font-semibold text-gray-800 text-sm">{p.nombre}</p>
                     {p.descripcion && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.descripcion}</p>}
-                    <div className="flex items-center gap-2 mt-3">
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLOR[p.categoria] || 'bg-gray-100 text-gray-600'}`}>{p.categoria}</span>
-                      <span className="text-xs text-gray-400">{p._count?.items || 0} items · {p._count?.instancias || 0} QRs</span>
+                      <span className="text-xs text-gray-400">v{p.version || 1} · {p._count?.items || 0} items · {p._count?.instancias || 0} QRs</span>
+                      {!p.criticidadRevisada
+                        ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200" title="Las reglas de criticidad no fueron revisadas aún">Criticidad pendiente</span>
+                        : <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Criticidad revisada</span>}
                       {CAT_TO_DIAGRAM[p.categoria] && (
                         <button onClick={() => setPreviewCat(CAT_TO_DIAGRAM[p.categoria])} className="ml-auto text-gray-300 hover:text-blue-500 transition-colors" title="Ver diagrama">
                           <Eye className="w-3.5 h-3.5" />
@@ -202,6 +226,14 @@ export default function InspeccionesPlantillas() {
               </div>
               <input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
                 className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none" placeholder="Descripción (opcional)" />
+
+              <label className="flex items-start gap-2 text-xs text-gray-600 bg-amber-50 border border-amber-100 rounded-xl p-3 cursor-pointer">
+                <input type="checkbox" checked={form.criticidadRevisada} onChange={e => setForm(p => ({ ...p, criticidadRevisada: e.target.checked }))} className="mt-0.5" />
+                <span>
+                  <strong>Reglas de criticidad revisadas por el responsable.</strong><br />
+                  Si está desmarcado, el checklist opera con el comportamiento básico (hallazgos moderados, sin bloqueos) y se muestra como "pendiente de revisión" — nunca como "apto".
+                </span>
+              </label>
 
               {CAT_TO_DIAGRAM[form.categoria] && (
                 <div>
@@ -282,6 +314,40 @@ export default function InspeccionesPlantillas() {
                                     Hallazgo
                                   </label>
                                   <button type="button" onClick={() => setItems(p => p.filter((_, j) => j !== item._idx))} className="text-gray-300 hover:text-red-500 shrink-0"><X className="w-3 h-3" /></button>
+
+                                  {/* Regla de criticidad — visible cuando el ítem genera hallazgo */}
+                                  {item.triggerHallazgo && (
+                                    <div className="w-full grid grid-cols-2 sm:grid-cols-3 gap-1.5 mt-1 pl-4 border-l-2 border-amber-200">
+                                      <select value={item.severidadHallazgo || ''}
+                                        onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, severidadHallazgo: e.target.value } : x))}
+                                        className="text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 outline-none bg-white" title="Severidad del defecto">
+                                        <option value="">Severidad: (def. MODERADO)</option>
+                                        <option value="LEVE">Leve</option>
+                                        <option value="MODERADO">Moderado</option>
+                                        <option value="CRITICO">Crítico</option>
+                                      </select>
+                                      <select value={item.prioridadOt || ''}
+                                        onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, prioridadOt: e.target.value } : x))}
+                                        className="text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 outline-none bg-white" title="Prioridad de la OT (distinta de la severidad del defecto)">
+                                        <option value="">Prioridad OT: (def. MEDIA)</option>
+                                        <option value="LOW">Baja</option>
+                                        <option value="MEDIUM">Media</option>
+                                        <option value="HIGH">Alta</option>
+                                        <option value="CRITICAL">Crítica</option>
+                                      </select>
+                                      <input placeholder="Tipo de defecto (clave de agrupación)" value={item.tipoDefecto || ''}
+                                        onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, tipoDefecto: e.target.value } : x))}
+                                        className="text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 outline-none" title="Clave para agrupar reportes del mismo defecto (ej: frenos_abs)" />
+                                      <input placeholder="Instrucción para el chofer" value={item.instruccionChofer || ''}
+                                        onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, instruccionChofer: e.target.value } : x))}
+                                        className="col-span-2 text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 outline-none" />
+                                      <label className="flex items-center gap-1 text-[11px] text-red-600 font-medium cursor-pointer">
+                                        <input type="checkbox" checked={!!item.bloqueaServicio}
+                                          onChange={e => setItems(p => p.map((x, j) => j === item._idx ? { ...x, bloqueaServicio: e.target.checked } : x))} />
+                                        ⛔ Bloquea servicio
+                                      </label>
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                               <div className="px-3 py-2">

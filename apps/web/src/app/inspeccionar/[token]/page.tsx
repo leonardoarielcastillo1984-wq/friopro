@@ -21,6 +21,23 @@ export default function InspeccionarPage() {
   const [canaletas, setCanaletas] = useState<Record<string, string>>({});
   const [notas, setNotas] = useState('');
   const [resultado, setResultado] = useState<any>(null);
+  // Clave idempotente del envío: se genera una vez por carga del formulario.
+  // Si el chofer reintenta (mala señal, doble tap), el servidor devuelve la
+  // inspección ya registrada en vez de duplicarla.
+  const [submissionKey] = useState(() =>
+    typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
+  // Regla visible para el chofer cuando marca "No cumple": instrucción
+  // configurada en la plantilla (si existe).
+  const instruccionDe = (itemId: string) => {
+    const item = items.find((i: any) => i.id === itemId);
+    if (!item) return null;
+    const resp = respuestas[itemId];
+    const reglas = Array.isArray((item as any).reglasRespuesta) ? (item as any).reglasRespuesta : [];
+    const porValor = reglas.find((r: any) => String(r.valor) === String(resp?.valor));
+    if (porValor?.instruccionChofer) return porValor.instruccionChofer;
+    return (item as any).instruccionChofer || null;
+  };
 
   useEffect(() => {
     fetch(`${API_BASE}/inspecciones/public/${token}`)
@@ -114,6 +131,7 @@ export default function InspeccionarPage() {
           mediciones: Object.entries(canaletas)
             .filter(([, v]) => v !== '' && !isNaN(parseFloat(v)))
             .map(([posicionId, v]) => ({ posicionId, profBanda: parseFloat(v) })),
+          submissionKey,
         }),
       });
       const json = await res.json();
@@ -155,10 +173,29 @@ export default function InspeccionarPage() {
             </div>
           </div>
         )}
-        {resultado?.hallazgosCount > 0 && (
+        {resultado?.restricciones?.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-left mb-4">
+            <p className="text-sm font-bold text-red-800 mb-1">⛔ Unidad restringida para servicio</p>
+            {resultado.restricciones.map((r: any, i: number) => (
+              <p key={i} className="text-xs text-red-700">• [{r.unidad}] {r.motivo}</p>
+            ))}
+            <p className="text-xs text-red-600 mt-2">Avisá a tu supervisor antes de salir.</p>
+          </div>
+        )}
+        {resultado?.instruccionesChofer?.length > 0 && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left mb-4">
+            {resultado.instruccionesChofer.map((ins: string, i: number) => (
+              <p key={i} className="text-xs text-blue-800">ℹ️ {ins}</p>
+            ))}
+          </div>
+        )}
+        {resultado?.hallazgosCount > 0 && !resultado?.restricciones?.length && (
           <div className="bg-amber-50 rounded-xl p-3 text-xs text-amber-700 mb-4">
             ⚠️ Se detectaron <strong>{resultado.hallazgosCount} hallazgo(s)</strong>. El responsable fue notificado.
           </div>
+        )}
+        {resultado?.criticidadPendiente && (
+          <p className="text-[10px] text-gray-400 mb-3">Este checklist está pendiente de revisión de criticidad por el responsable de flota.</p>
         )}
         <p className="text-xs text-gray-400">Podés cerrar esta página</p>
         <a href="https://www.logismart.ar" target="_blank" rel="noreferrer" className="text-xs text-blue-300 hover:underline mt-1 block">www.logismart.ar</a>
@@ -454,6 +491,11 @@ export default function InspeccionarPage() {
 
                           {resp.esOk === false && item.triggerHallazgo && (
                             <div className="mt-2">
+                              {instruccionDe(item.id) && (
+                                <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2 mb-2">
+                                  ⚠️ {instruccionDe(item.id)}
+                                </div>
+                              )}
                               <input placeholder="Describí el problema detectado..." value={resp.observacion || ''}
                                 onChange={e => setResp(item.id, { observacion: e.target.value })}
                                 className="w-full text-xs border border-red-200 bg-red-50 rounded-xl px-3 py-2 outline-none placeholder:text-red-300" />

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { FileText, Plus, X, Trash2, Upload, AlertTriangle, NotebookPen, MapPin, HeartPulse, CheckCircle2, XCircle, Download } from 'lucide-react';
+import { FileText, Plus, X, Trash2, Upload, AlertTriangle, NotebookPen, MapPin, HeartPulse, CheckCircle2, XCircle, Download, Settings2, ShieldCheck, KeyRound, RefreshCw } from 'lucide-react';
 
 const CAT_L: Record<string, string> = { SEGURIDAD_HIGIENE: 'Seguridad e higiene', COMUNICADO: 'Comunicado', DOCUMENTO_UNIDAD: 'Doc. de unidad', GENERAL: 'General' };
 const CAT_COLOR: Record<string, string> = { SEGURIDAD_HIGIENE: 'bg-red-50 text-red-700', COMUNICADO: 'bg-blue-50 text-blue-700', DOCUMENTO_UNIDAD: 'bg-cyan-50 text-cyan-700', GENERAL: 'bg-neutral-100 text-neutral-600' };
@@ -12,7 +12,15 @@ const ESTADO_INC: Record<string, string> = { ABIERTO: 'bg-red-50 text-red-700', 
 const TIPO_SERV_L: Record<string, { label: string; color: string }> = {
   INICIO_SERVICIO: { label: 'Inicio servicio', color: 'bg-green-50 text-green-700' },
   FIN_SERVICIO: { label: 'Fin servicio', color: 'bg-red-50 text-red-700' },
+  CAMBIO_UNIDAD: { label: 'Cambio de unidad', color: 'bg-blue-50 text-blue-700' },
+  INICIO_RECHAZADO: { label: 'Inicio rechazado', color: 'bg-red-100 text-red-800' },
   BITACORA: { label: 'Bitácora', color: 'bg-purple-50 text-purple-700' },
+};
+const EVAL_DESC_L: Record<string, { label: string; color: string }> = {
+  CUMPLE: { label: 'Descanso suficiente', color: 'bg-green-50 text-green-700' },
+  INSUFICIENTE: { label: 'Descanso insuficiente', color: 'bg-red-100 text-red-700' },
+  SIN_HISTORIAL: { label: 'Sin historial', color: 'bg-amber-50 text-amber-700' },
+  CIERRE_NO_CONFIABLE: { label: 'Cierre no confiable', color: 'bg-amber-100 text-amber-800' },
 };
 
 // ── Documentos para el chofer ────────────────────────────────────────────────
@@ -552,6 +560,10 @@ export function LibroJornadaPanel() {
 
   const fmtHora = (d: string | null) => d ? new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'EN CURSO';
 
+  const evalBadge = (f: any) => f.evaluacionDescanso && f.evaluacionDescanso !== 'CUMPLE'
+    ? <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${EVAL_DESC_L[f.evaluacionDescanso]?.color || 'bg-neutral-100 text-neutral-600'}`}>{EVAL_DESC_L[f.evaluacionDescanso]?.label || f.evaluacionDescanso}</span>
+    : null;
+
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between flex-wrap gap-2">
@@ -610,8 +622,10 @@ export function LibroJornadaPanel() {
                 <td className="px-3 py-2 text-neutral-500 text-xs">{f.origen || f.destino ? `${f.origen || '—'} → ${f.destino || '—'}` : '—'}</td>
                 <td className="px-3 py-2">
                   <div className="flex gap-1">
-                    {f.descansoInsuficiente && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">DESC&lt;12h</span>}
-                    {f.jornadaExcesiva && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">JORN&gt;12h</span>}
+                    {f.descansoInsuficiente && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">DESC INSUF.</span>}
+                    {f.jornadaExcesiva && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">JORN. EXCESIVA</span>}
+                    {f.cierreTipo === 'REGULARIZADO' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">REGULARIZADA</span>}
+                    {f.corregida && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">CORREGIDA</span>}
                   </div>
                 </td>
               </tr>
@@ -619,6 +633,455 @@ export function LibroJornadaPanel() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ── Jornadas detalladas: lista con corrección y regularización (admin) ──────
+export function JornadasListaPanel({ vehiculos }: { vehiculos: any[] }) {
+  const [items, setItems] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [conductores, setConductores] = useState<any[]>([]);
+  const [conductorId, setConductorId] = useState('');
+  const [estado, setEstado] = useState('');
+  const [desde, setDesde] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); });
+  const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10));
+  const [detalle, setDetalle] = useState<any>(null);
+  const [corrigiendo, setCorrigiendo] = useState(false);
+  const [regularizando, setRegularizando] = useState(false);
+  const [motivo, setMotivo] = useState('');
+  const [nuevoInicio, setNuevoInicio] = useState('');
+  const [nuevoFin, setNuevoFin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const pageSize = 50;
+
+  useEffect(() => {
+    apiFetch<{ conductores: any[] }>('/flota/conductores').then(d => setConductores(d.conductores || [])).catch(() => {});
+  }, []);
+
+  const load = async () => {
+    setLoading(true);
+    const q = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (conductorId) q.set('conductorId', conductorId);
+    if (estado) q.set('estado', estado);
+    if (desde) q.set('desde', desde);
+    if (hasta) q.set('hasta', hasta);
+    try {
+      const d = await apiFetch<{ items: any[]; total: number }>(`/driver-hub/jornadas-lista?${q}`);
+      setItems(d.items || []); setTotal(d.total || 0);
+    } catch { setItems([]); }
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, [page, conductorId, estado, desde, hasta]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const abrirDetalle = async (id: string) => {
+    setError(null);
+    try {
+      const d = await apiFetch<{ jornada: any }>(`/driver-hub/jornadas-lista/${id}`);
+      setDetalle(d.jornada);
+      setNuevoInicio(d.jornada.inicioAt ? new Date(d.jornada.inicioAt).toISOString().slice(0, 16) : '');
+      setNuevoFin(d.jornada.finAt ? new Date(d.jornada.finAt).toISOString().slice(0, 16) : '');
+      setMotivo('');
+    } catch { setError('No se pudo cargar el detalle'); }
+  };
+
+  const corregir = async () => {
+    if (!motivo || motivo.trim().length < 5) { setError('El motivo es obligatorio (mín. 5 caracteres)'); return; }
+    setBusy(true); setError(null);
+    try {
+      await apiFetch(`/driver-hub/jornadas-lista/${detalle.id}/corregir`, {
+        method: 'POST',
+        json: {
+          motivo: motivo.trim(),
+          inicioAt: nuevoInicio ? new Date(nuevoInicio).toISOString() : undefined,
+          finAt: detalle.estado === 'ABIERTA' ? (nuevoFin ? new Date(nuevoFin).toISOString() : null) : (nuevoFin ? new Date(nuevoFin).toISOString() : undefined),
+        },
+      });
+      setCorrigiendo(false); setMsg('Corrección aplicada y registrada.'); await load(); setDetalle(null);
+    } catch (e: any) { setError(e?.message || 'No se pudo corregir'); }
+    setBusy(false);
+  };
+
+  const regularizar = async () => {
+    if (!motivo || motivo.trim().length < 5) { setError('El motivo es obligatorio (mín. 5 caracteres)'); return; }
+    setBusy(true); setError(null);
+    try {
+      await apiFetch(`/driver-hub/jornadas-lista/${detalle.id}/regularizar`, { method: 'POST', json: { motivo: motivo.trim() } });
+      setRegularizando(false); setMsg('Jornada regularizada (cerrada sin fin confiable).'); await load(); setDetalle(null);
+    } catch (e: any) { setError(e?.message || 'No se pudo regularizar'); }
+    setBusy(false);
+  };
+
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+
+  return (
+    <div className="space-y-4">
+      {msg && <p className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">{msg}</p>}
+      {error && !detalle && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
+
+      <div className="flex flex-wrap gap-2 items-end">
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Chofer</label>
+          <select value={conductorId} onChange={e => { setConductorId(e.target.value); setPage(1); }} className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+            <option value="">Todos</option>
+            {conductores.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Estado</label>
+          <select value={estado} onChange={e => { setEstado(e.target.value); setPage(1); }} className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+            <option value="">Todas</option><option value="ABIERTA">Abiertas</option><option value="CERRADA">Cerradas</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Desde</label>
+          <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setPage(1); }} className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Hasta</label>
+          <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setPage(1); }} className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+        </div>
+        <p className="text-xs text-neutral-400 ml-auto">{total} jornadas · pág. {page}/{pages}</p>
+      </div>
+
+      <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th className="text-left font-medium px-3 py-2">Inicio</th>
+              <th className="text-left font-medium px-3 py-2">Fin</th>
+              <th className="text-left font-medium px-3 py-2">Chofer</th>
+              <th className="text-left font-medium px-3 py-2">Horas</th>
+              <th className="text-left font-medium px-3 py-2">Descanso previo</th>
+              <th className="text-left font-medium px-3 py-2">Estado</th>
+              <th className="text-left font-medium px-3 py-2">Flags</th>
+              <th className="text-left font-medium px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-100">
+            {loading && <tr><td colSpan={8} className="px-3 py-6 text-center text-neutral-400">Cargando…</td></tr>}
+            {!loading && items.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-neutral-400">Sin jornadas en el período</td></tr>}
+            {items.map((j: any) => (
+              <tr key={j.id} className="hover:bg-neutral-50">
+                <td className="px-3 py-2 text-neutral-600 text-xs">{new Date(j.inicioAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="px-3 py-2 text-neutral-600 text-xs">{j.finAt ? new Date(j.finAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : (j.estado === 'ABIERTA' ? 'EN CURSO' : '—')}</td>
+                <td className="px-3 py-2 font-medium text-neutral-800">{j.conductor?.nombre || '—'}</td>
+                <td className="px-3 py-2 font-semibold text-neutral-800">{j.horasTrabajadas != null ? `${j.horasTrabajadas}h` : '—'}</td>
+                <td className="px-3 py-2 text-xs">
+                  {j.descansoPrevioHoras != null ? `${j.descansoPrevioHoras}h` : '—'}
+                  {j.evaluacionDescanso && j.evaluacionDescanso !== 'CUMPLE' && <div><span className={`rounded px-1 py-0.5 text-[10px] font-bold ${EVAL_DESC_L[j.evaluacionDescanso]?.color || ''}`}>{EVAL_DESC_L[j.evaluacionDescanso]?.label || j.evaluacionDescanso}</span></div>}
+                </td>
+                <td className="px-3 py-2">
+                  <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${j.estado === 'ABIERTA' ? 'bg-emerald-50 text-emerald-700' : j.cierreTipo === 'REGULARIZADO' ? 'bg-amber-50 text-amber-700' : 'bg-neutral-100 text-neutral-600'}`}>
+                    {j.estado === 'ABIERTA' ? 'Abierta' : j.cierreTipo === 'REGULARIZADO' ? 'Regularizada' : 'Cerrada'}
+                  </span>
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex flex-wrap gap-1">
+                    {j.jornadaExcesiva && <span className="rounded bg-red-100 px-1 py-0.5 text-[10px] font-bold text-red-700">&gt;12h</span>}
+                    {j._count?.correcciones > 0 && <span className="rounded bg-violet-100 px-1 py-0.5 text-[10px] font-bold text-violet-700">{j._count.correcciones} corr.</span>}
+                    {j.discrepanciaDeclaradoCalc && <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-bold text-amber-700" title="El descanso declarado en el control no coincide con el calculado">Discrep.</span>}
+                  </div>
+                </td>
+                <td className="px-3 py-2"><button onClick={() => abrirDetalle(j.id)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Detalle</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {pages > 1 && (
+        <div className="flex justify-center gap-2">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="rounded-md border border-neutral-300 px-3 py-1 text-sm disabled:opacity-40">← Anterior</button>
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page >= pages} className="rounded-md border border-neutral-300 px-3 py-1 text-sm disabled:opacity-40">Siguiente →</button>
+        </div>
+      )}
+
+      {/* Detalle + corrección/regularización */}
+      {detalle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-lg rounded-lg bg-white shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <h2 className="text-sm font-semibold text-neutral-900">Jornada de {detalle.conductor?.nombre}</h2>
+              <button onClick={() => setDetalle(null)}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div><span className="text-neutral-500">Inicio:</span> <strong>{new Date(detalle.inicioAt).toLocaleString('es-AR')}</strong></div>
+                <div><span className="text-neutral-500">Fin:</span> <strong>{detalle.finAt ? new Date(detalle.finAt).toLocaleString('es-AR') : detalle.estado === 'ABIERTA' ? 'En curso' : 'Sin fin confiable'}</strong></div>
+                <div><span className="text-neutral-500">Horas:</span> <strong>{detalle.horasTrabajadas ?? '—'}h</strong></div>
+                <div><span className="text-neutral-500">Descanso previo:</span> <strong>{detalle.descansoPrevioHoras ?? '—'}h</strong></div>
+                <div><span className="text-neutral-500">Evaluación:</span> <strong>{EVAL_DESC_L[detalle.evaluacionDescanso]?.label || detalle.evaluacionDescanso || '—'}</strong></div>
+                <div><span className="text-neutral-500">Estado:</span> <strong>{detalle.estado}{detalle.cierreTipo === 'REGULARIZADO' ? ' (regularizada)' : ''}</strong></div>
+                {(detalle.origen || detalle.destino) && <div className="col-span-2"><span className="text-neutral-500">Recorrido:</span> {detalle.origen || '—'} → {detalle.destino || '—'}{detalle.carga ? ` · ${detalle.carga}` : ''}</div>}
+                <div className="col-span-2"><span className="text-neutral-500">Unidades:</span> {(detalle.unidades || []).map((u: any) => u.dominio).join(' → ') || '—'}</div>
+                {detalle.evaluacionDescansoOriginal && detalle.evaluacionDescanso !== detalle.evaluacionDescansoOriginal && (
+                  <div className="col-span-2 text-violet-700 bg-violet-50 rounded px-2 py-1">Valor original preservado: {EVAL_DESC_L[detalle.evaluacionDescansoOriginal]?.label || detalle.evaluacionDescansoOriginal} ({detalle.descansoPrevioHorasOriginal}h)</div>
+                )}
+              </div>
+              {detalle.registros?.length > 0 && (
+                <div className="border-t pt-2">
+                  <p className="text-xs font-semibold text-neutral-600 mb-1">Eventos vinculados</p>
+                  {detalle.registros.map((r: any) => (
+                    <div key={r.id} className="text-xs text-neutral-500 py-0.5">{new Date(r.eventoAt).toLocaleString('es-AR')} — {TIPO_SERV_L[r.tipo]?.label || r.tipo}{r.notas ? ` · ${r.notas}` : ''}</div>
+                  ))}
+                </div>
+              )}
+              {detalle.correcciones?.length > 0 && (
+                <div className="border-t pt-2">
+                  <p className="text-xs font-semibold text-neutral-600 mb-1">Correcciones ({detalle.correcciones.length})</p>
+                  {detalle.correcciones.map((c: any) => (
+                    <div key={c.id} className="text-xs text-neutral-500 py-1 border-b last:border-0">
+                      <span className="font-medium text-violet-700">{c.campo}</span>: {c.valorAnterior} → {c.valorNuevo}
+                      <div className="text-neutral-400">{c.motivo} · {new Date(c.corregidoEn).toLocaleString('es-AR')}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {detalle.avisos?.length > 0 && (
+                <div className="border-t pt-2">
+                  <p className="text-xs font-semibold text-neutral-600 mb-1">Avisos enviados</p>
+                  {detalle.avisos.map((a: any) => <div key={a.id} className="text-xs text-neutral-500">{a.tipo} · {a.estadoEntrega}{a.enviadoAt ? ` · ${new Date(a.enviadoAt).toLocaleString('es-AR')}` : ''}</div>)}
+                </div>
+              )}
+              {error && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
+
+              {!corrigiendo && !regularizando && (
+                <div className="flex gap-2 border-t pt-3">
+                  <button onClick={() => setCorrigiendo(true)} className="flex-1 rounded-md border border-violet-300 text-violet-700 px-3 py-1.5 text-sm font-medium hover:bg-violet-50">Corregir horarios</button>
+                  {detalle.estado === 'ABIERTA' && <button onClick={() => setRegularizando(true)} className="flex-1 rounded-md border border-amber-300 text-amber-700 px-3 py-1.5 text-sm font-medium hover:bg-amber-50">Regularizar (sin fin)</button>}
+                </div>
+              )}
+
+              {corrigiendo && (
+                <div className="border-t pt-3 space-y-2">
+                  <p className="text-xs font-semibold text-violet-700">Corrección de horarios — queda trazada con tu usuario</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-medium text-neutral-600 mb-1">Inicio corregido</label><input type="datetime-local" value={nuevoInicio} onChange={e => setNuevoInicio(e.target.value)} className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm" /></div>
+                    <div><label className="block text-xs font-medium text-neutral-600 mb-1">Fin corregido{detalle.estado === 'ABIERTA' ? ' (vacío = sigue abierta)' : ''}</label><input type="datetime-local" value={nuevoFin} onChange={e => setNuevoFin(e.target.value)} className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm" /></div>
+                  </div>
+                  <div><label className="block text-xs font-medium text-neutral-600 mb-1">Motivo *</label><input value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ej: el chofer cerró 2h tarde por falta de señal" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" /></div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setCorrigiendo(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm">Cancelar</button>
+                    <button onClick={corregir} disabled={busy} className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">{busy ? 'Aplicando…' : 'Aplicar corrección'}</button>
+                  </div>
+                </div>
+              )}
+              {regularizando && (
+                <div className="border-t pt-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-700">Regularización — la jornada queda cerrada SIN fin confiable. El próximo inicio de este chofer se evaluará como CIERRE_NO_CONFIABLE.</p>
+                  <div><label className="block text-xs font-medium text-neutral-600 mb-1">Motivo *</label><input value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ej: el chofer no registró el fin — confirmado por teléfono" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" /></div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setRegularizando(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm">Cancelar</button>
+                    <button onClick={regularizar} disabled={busy} className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">{busy ? 'Aplicando…' : 'Regularizar'}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Política de jornada + habilitaciones + conciliación ─────────────────────
+export function PoliticaJornadaPanel() {
+  const [politica, setPolitica] = useState<any>(null);
+  const [historial, setHistorial] = useState<any[]>([]);
+  const [conductores, setConductores] = useState<any[]>([]);
+  const [habilitaciones, setHabilitaciones] = useState<any[]>([]);
+  const [conciliacion, setConciliacion] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [form, setForm] = useState({ descansoMinHoras: 12, modoAplicacion: 'ADVERTENCIA', jornadaAlertaHoras: 12, avisoAnticipacionHoras: 1 });
+  const [confirmBloqueo, setConfirmBloqueo] = useState(false);
+  const [habForm, setHabForm] = useState({ conductorId: '', descansoDeclaradoHoras: '', fundamento: '' });
+  const [showHab, setShowHab] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [p, h, c] = await Promise.all([
+        apiFetch<{ politica: any; historial: any[] }>('/driver-hub/jornada-politica'),
+        apiFetch<{ habilitaciones: any[] }>('/driver-hub/habilitaciones-descanso'),
+        apiFetch<any>('/driver-hub/jornadas-conciliacion'),
+      ]);
+      setPolitica(p.politica); setHistorial(p.historial || []);
+      setHabilitaciones(h.habilitaciones || []); setConciliacion(c);
+      setForm({
+        descansoMinHoras: p.politica.descansoMinHoras ?? 12,
+        modoAplicacion: p.politica.modoAplicacion || 'ADVERTENCIA',
+        jornadaAlertaHoras: p.politica.jornadaAlertaHoras ?? 12,
+        avisoAnticipacionHoras: p.politica.avisoAnticipacionHoras ?? 1,
+      });
+    } catch (e: any) { setError(e?.message || 'Error al cargar'); }
+    apiFetch<{ conductores: any[] }>('/flota/conductores').then(d => setConductores(d.conductores || [])).catch(() => {});
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const guardar = async () => {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const payload: any = {
+        descansoMinHoras: Number(form.descansoMinHoras),
+        jornadaAlertaHoras: Number(form.jornadaAlertaHoras),
+        avisoAnticipacionHoras: Number(form.avisoAnticipacionHoras),
+        modoAplicacion: form.modoAplicacion,
+      };
+      if (form.modoAplicacion === 'BLOQUEO') payload.politicaRevisada = true;
+      await apiFetch('/driver-hub/jornada-politica', { method: 'PATCH', json: payload });
+      setMsg('Política actualizada.'); setConfirmBloqueo(false); await load();
+    } catch (e: any) { setError(e?.message || 'No se pudo guardar'); }
+    setBusy(false);
+  };
+
+  const crearHab = async () => {
+    if (!habForm.conductorId || !habForm.fundamento || habForm.fundamento.trim().length < 5) { setError('Conductor y fundamento son obligatorios'); return; }
+    setBusy(true); setError(null);
+    try {
+      await apiFetch('/driver-hub/habilitaciones-descanso', {
+        method: 'POST',
+        json: {
+          conductorId: habForm.conductorId,
+          descansoDeclaradoHoras: habForm.descansoDeclaradoHoras !== '' ? Number(habForm.descansoDeclaradoHoras) : undefined,
+          fundamento: habForm.fundamento.trim(),
+        },
+      });
+      setShowHab(false); setHabForm({ conductorId: '', descansoDeclaradoHoras: '', fundamento: '' });
+      setMsg('Habilitación creada.'); await load();
+    } catch (e: any) { setError(e?.message || 'No se pudo crear'); }
+    setBusy(false);
+  };
+
+  if (loading) return <p className="text-sm text-neutral-400 py-8 text-center">Cargando política…</p>;
+
+  return (
+    <div className="space-y-6">
+      {msg && <p className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">{msg}</p>}
+      {error && <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</p>}
+
+      {/* Política */}
+      <div className="rounded-lg border border-neutral-200 bg-white p-4 space-y-3">
+        <div className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-blue-600" /><h3 className="text-sm font-semibold text-neutral-900">Política de descanso y jornada</h3><span className="text-xs text-neutral-400 ml-auto">v{politica?.version || 1}</span></div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Descanso mínimo (h)</label>
+            <input type="number" min="4" max="24" step="0.5" value={form.descansoMinHoras} onChange={e => setForm({ ...form, descansoMinHoras: Number(e.target.value) })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Alerta de jornada (h)</label>
+            <input type="number" min="4" max="24" step="0.5" value={form.jornadaAlertaHoras} onChange={e => setForm({ ...form, jornadaAlertaHoras: Number(e.target.value) })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Aviso anticipado (h)</label>
+            <input type="number" min="0.5" max="8" step="0.5" value={form.avisoAnticipacionHoras} onChange={e => setForm({ ...form, avisoAnticipacionHoras: Number(e.target.value) })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Modo de aplicación</label>
+            <select value={form.modoAplicacion} onChange={e => { setForm({ ...form, modoAplicacion: e.target.value }); setConfirmBloqueo(false); }} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+              <option value="ADVERTENCIA">Advertencia (registra y avisa)</option>
+              <option value="BLOQUEO">Bloqueo (impide el inicio)</option>
+            </select>
+          </div>
+        </div>
+        {form.modoAplicacion === 'BLOQUEO' && (
+          <label className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+            <input type="checkbox" checked={confirmBloqueo} onChange={e => setConfirmBloqueo(e.target.checked)} className="mt-0.5" />
+            <span>Confirmo que revisé la política: en modo <strong>BLOQUEO</strong> el chofer NO podrá iniciar servicio sin el descanso mínimo salvo habilitación expresa. El intento queda registrado como rechazo.</span>
+          </label>
+        )}
+        <div className="flex justify-end">
+          <button onClick={guardar} disabled={busy || (form.modoAplicacion === 'BLOQUEO' && !confirmBloqueo && politica?.modoAplicacion !== 'BLOQUEO')}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            {busy ? 'Guardando…' : 'Guardar política'}
+          </button>
+        </div>
+        {historial.length > 0 && (
+          <details className="text-xs text-neutral-500">
+            <summary className="cursor-pointer font-medium">Historial de cambios ({historial.length})</summary>
+            {historial.map(h => <div key={h.id} className="py-1 border-t border-neutral-100">v{h.version} · {new Date(h.changedAt).toLocaleString('es-AR')} · modo {h.valores?.modoAplicacion}, descanso {h.valores?.descansoMinHoras}h</div>)}
+          </details>
+        )}
+      </div>
+
+      {/* Conciliación */}
+      {conciliacion?.hayInconsistencias && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2">
+          <div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" /><h3 className="text-sm font-semibold text-amber-800">Conciliación de datos</h3></div>
+          <ul className="text-xs text-amber-800 space-y-1">
+            {conciliacion.sinFin > 0 && <li>· {conciliacion.sinFin} registros INICIO sin jornada vinculada (legacy o ambiguos en la migración — revisar manualmente)</li>}
+            {conciliacion.sinInicio > 0 && <li>· {conciliacion.sinInicio} registros FIN huérfanos sin inicio vinculado</li>}
+            {conciliacion.jornadasAbiertasViejas?.length > 0 && <li>· {conciliacion.jornadasAbiertasViejas.length} jornada(s) ABIERTA hace más de 36h: {conciliacion.jornadasAbiertasViejas.map((j: any) => j.conductor?.nombre).join(', ')} — revisar y regularizar en la pestaña Jornadas</li>}
+          </ul>
+          {conciliacion.intentosRechazados?.length > 0 && <p className="text-xs text-amber-700">{conciliacion.intentosRechazados.length} intento(s) de inicio rechazados recientemente (visibles en Bitácora como "Inicio rechazado").</p>}
+        </div>
+      )}
+
+      {/* Habilitaciones */}
+      <div className="rounded-lg border border-neutral-200 bg-white p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-600" /><h3 className="text-sm font-semibold text-neutral-900">Habilitaciones de inicio</h3></div>
+          <button onClick={() => setShowHab(true)} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"><Plus className="h-3.5 w-3.5" /> Nueva habilitación</button>
+        </div>
+        <p className="text-xs text-neutral-500">Circuito autorizado para el primer inicio de un chofer (sin historial) o tras un cierre no confiable — de un solo uso.</p>
+        <table className="w-full text-sm">
+          <thead className="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide"><tr>
+            <th className="text-left font-medium px-3 py-2">Chofer</th><th className="text-left font-medium px-3 py-2">Tipo</th>
+            <th className="text-left font-medium px-3 py-2">Descanso declarado</th><th className="text-left font-medium px-3 py-2">Fundamento</th>
+            <th className="text-left font-medium px-3 py-2">Estado</th></tr></thead>
+          <tbody className="divide-y divide-neutral-100">
+            {habilitaciones.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-neutral-400 text-xs">Sin habilitaciones</td></tr>}
+            {habilitaciones.map((h: any) => (
+              <tr key={h.id}>
+                <td className="px-3 py-2 font-medium">{h.conductor?.nombre || '—'}</td>
+                <td className="px-3 py-2 text-xs">{h.tipo === 'SIN_HISTORIAL' ? 'Sin historial' : 'Cierre no confiable'}</td>
+                <td className="px-3 py-2">{h.descansoDeclaradoHoras != null ? `${h.descansoDeclaradoHoras}h` : '—'}</td>
+                <td className="px-3 py-2 text-xs text-neutral-500 max-w-[220px]">{h.fundamento}</td>
+                <td className="px-3 py-2 text-xs">{h.usadaEnJornadaId ? <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-500">Usada</span> : <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 font-medium">Vigente</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showHab && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <h2 className="text-sm font-semibold text-neutral-900">Habilitar inicio de jornada</h2>
+              <button onClick={() => setShowHab(false)}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Chofer *</label>
+                <select value={habForm.conductorId} onChange={e => setHabForm({ ...habForm, conductorId: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                  <option value="">Seleccionar…</option>
+                  {conductores.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Descanso declarado (h — opcional)</label>
+                <input type="number" min="0" max="96" step="0.5" value={habForm.descansoDeclaradoHoras} onChange={e => setHabForm({ ...habForm, descansoDeclaradoHoras: e.target.value })} placeholder="Ej: 12" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Fundamento *</label>
+                <textarea value={habForm.fundamento} onChange={e => setHabForm({ ...habForm, fundamento: e.target.value })} placeholder="Ej: alta nueva — primer servicio en la empresa" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm min-h-[60px]" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
+              <button onClick={() => setShowHab(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm">Cancelar</button>
+              <button onClick={crearHab} disabled={busy} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{busy ? 'Creando…' : 'Crear habilitación'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

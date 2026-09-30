@@ -1,4 +1,4 @@
-# SGI360 — Informe Funcional y Comercial
+#SGI360 — Informe Funcional y Comercial
 
 > Base para diseño de campaña publicitaria y estrategia de ventas
 > Fecha: Septiembre 2026
@@ -8,7 +8,7 @@
 
 ## 1. QUÉ ES SGI360
 
-SGI360 es una plataforma web SaaS multi-tenant (multi-empresa) para la gestión integral de Sistemas de Gestión de la Calidad, Seguridad y Salud Ocupacional, Ambiente y Responsabilidad Social. Está diseñada para que organizaciones de cualquier tamaño implementen, mantengan y auditen normas ISO (9001, 14001, 45001, 39001), IATF 16949 y otras, de forma digital, centralizada y trazable.
+SGI360 es una plataforma web SaaS multi-tenant (multi-empresa) para la gestión integral de Sistemas de Gestión de la Calidad, Seguridad y Salud Ocupacional, Ambiente y Responsabilidad Social. Está diseñada para que organizaciones de cualquier tamaño implementen, mantengan y auditen norm as ISO (9001, 14001, 45001, 39001), IATF 16949 y otras, de forma digital, centralizada y trazable.
 
 ### Arquitectura técnica
 
@@ -983,3 +983,4 @@ Empresas certificadas (o en proceso) en normas ISO que quieren digitalizar su ge
 ---
 
 *Este informe se basa exclusivamente en el análisis del código fuente, modelos de datos, rutas API, pantallas frontend y documentación del proyecto SGI360. Las funcionalidades marcadas como implementadas son verificables en el código. Las marcadas como pendientes o parciales reflejan el estado real al momento del análisis.*
+

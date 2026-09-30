@@ -133,6 +133,7 @@ import { startNormativeWorker, startAuditWorker, recoverStuckNormatives } from '
 import { startEmailWorker } from './jobs/emailQueue.js';
 import { startStorageReconcileJob } from './jobs/storageReconcileJob.js';
 import { startMaintenanceRemindersJob } from './jobs/maintenanceRemindersJob.js';
+import { startJornadaAvisosJob } from './jobs/jornadaAvisosJob.js';
 import {
   actionsRoutes, stakeholdersRoutes, stakeholderActionRoutes,
   incidentsRoutes,
@@ -143,6 +144,7 @@ import { calibrationsRoutes } from './routes/calibrations.js';
 import { hazardsRoutes } from './routes/hazards.js';
 import { aspectsRoutes } from './routes/aspects.js';
 import flotaRoutes from './routes/flota.js';
+import talleresRoutes from './routes/flota-talleres.js';
 import fleetOpsRoutes from './routes/fleet-ops.js';
 import fleetRecurrenceRoutes from './routes/fleet-recurrence.js';
 import { driverHubRoutes } from './routes/driver-hub.js';
@@ -319,6 +321,7 @@ export async function buildApp() {
   await app.register(prismaPlugin);
   startStorageReconcileJob((app as any).prisma);
   startMaintenanceRemindersJob((app as any).prisma);
+  startJornadaAvisosJob((app as any).prisma);
   await app.register(authPlugin);
   await app.register(seh360AuthPlugin);
   await app.register(audit360AuthPlugin);
@@ -489,6 +492,7 @@ export async function buildApp() {
   await app.register(maintenanceInterventionsRoutes, { prefix: '/maintenance-interventions' });
   await app.register(mecanicoQRRoutes, { prefix: '/mecanico-qr' });
   await app.register(flotaRoutes, { prefix: '/flota' });
+  await app.register(talleresRoutes, { prefix: '/flota' });
   await app.register(fleetRecurrenceRoutes, { prefix: '/fleet-recurrence' });
   await app.register(fleetOpsRoutes, { prefix: '/fleet-ops' });
   await app.register(driverHubRoutes, { prefix: '/driver-hub' });

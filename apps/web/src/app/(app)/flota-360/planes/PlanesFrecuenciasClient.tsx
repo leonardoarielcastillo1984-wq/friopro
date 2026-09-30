@@ -37,9 +37,13 @@ type EventoCelda = {
 type PlanActivo = {
   id: string; plan: string; codigo: string;
   activo: { id: string; dominio: string; tipo: string; status: string } | null;
+  assetId?: string; componentKey?: string | null;
+  triggerKm?: number | null; frecuenciaDias?: number | null;
+  intervaloModo?: string; requiereRevision?: boolean; requiereOdometro?: boolean;
   componente: string | null; frecuencia: string;
-  ultimaEjecucion: string | null; proximaEjecucion: string | null;
+  ultimaEjecucion: string | null; proximaEjecucion: string | null; ultimoOdometro?: number | null;
   proximoKm: number | null; kmRestantes: number | null; diasRestantes: number | null;
+  evaluable?: boolean; motivoVencimiento?: string | null;
   estado: 'VENCIDO' | 'URGENTE' | 'PROXIMO' | 'OK'; estadoPlan: string;
   tecnicoSugerido: string | null; accionVencimiento: string | null; origen: string;
 };
@@ -125,7 +129,7 @@ export default function PlanesFrecuenciasClient() {
   const [celdaDetalle, setCeldaDetalle] = useState<{ fila: Fila; col: Columna; eventos: EventoCelda[] } | null>(null);
   const [moverFecha, setMoverFecha] = useState('');
   const [showNuevoPlan, setShowNuevoPlan] = useState(false);
-  const [nuevoPlanForm, setNuevoPlanForm] = useState<any>({ title: '', assetVehId: '', frequencyUnit: 'DAYS', frequencyValue: '30', triggerKm: '', nextExecutionDate: '' });
+  const [nuevoPlanForm, setNuevoPlanForm] = useState<any>({ title: '', assetVehId: '', triggerKm: '', frecuenciaDias: '', nextExecutionDate: '' });
   const [ajusteRepuesto, setAjusteRepuesto] = useState<RepuestoInv | null>(null);
   const [ajusteDelta, setAjusteDelta] = useState('');
   const [ajusteMotivo, setAjusteMotivo] = useState('');
@@ -133,7 +137,9 @@ export default function PlanesFrecuenciasClient() {
   const [historialMovs, setHistorialMovs] = useState<any[]>([]);
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [showRegMant, setShowRegMant] = useState(false);
-  const [regMantForm, setRegMantForm] = useState<any>({ vehiculoId: '', titulo: '', tipo: 'PREVENTIVE', fecha: '', odometro: '', tecnicoId: '', descripcion: '', laborCost: '', repuestos: [] as { sparePartId: string; cantidad: number }[] });
+  const [regMantForm, setRegMantForm] = useState<any>({ vehiculoId: '', titulo: '', tipo: 'PREVENTIVE', fecha: '', odometro: '', tecnicoId: '', descripcion: '', laborCost: '', planIds: [] as string[], repuestos: [] as { sparePartId: string; cantidad: number }[] });
+  // Clave idempotente por apertura del modal: un retry/doble clic no duplica la OT.
+  const [regMantKey, setRegMantKey] = useState<string>('');
 
   const [form, setForm] = useState<any>(FORM_INICIAL);
   const [saving, setSaving] = useState(false);
@@ -331,6 +337,7 @@ export default function PlanesFrecuenciasClient() {
   const crearPlanManual = async () => {
     const veh = vehiculos.find((v) => v.id === nuevoPlanForm.assetVehId);
     if (!nuevoPlanForm.title || !veh?.maintenanceAssetId) { setError('Título y activo son obligatorios'); return; }
+    if (!nuevoPlanForm.triggerKm && !nuevoPlanForm.frecuenciaDias) { setError('Definí al menos un intervalo: kilómetros y/o días'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -339,14 +346,17 @@ export default function PlanesFrecuenciasClient() {
         json: {
           title: nuevoPlanForm.title,
           assetId: veh.maintenanceAssetId,
-          frequencyUnit: nuevoPlanForm.frequencyUnit,
-          frequencyValue: Number(nuevoPlanForm.frequencyValue) || 30,
+          // frequencyUnit/frequencyValue son columnas de display heredadas; la
+          // lógica real usa triggerKm + frecuenciaDias (vence por el primero).
+          frequencyUnit: nuevoPlanForm.triggerKm ? 'KM' : 'DAYS',
+          frequencyValue: Number(nuevoPlanForm.frecuenciaDias) || 30,
           triggerKm: nuevoPlanForm.triggerKm ? Number(nuevoPlanForm.triggerKm) : undefined,
+          frecuenciaDias: nuevoPlanForm.frecuenciaDias ? Number(nuevoPlanForm.frecuenciaDias) : undefined,
           nextExecutionDate: nuevoPlanForm.nextExecutionDate || undefined,
         },
       });
       setShowNuevoPlan(false);
-      setNuevoPlanForm({ title: '', assetVehId: '', frequencyUnit: 'DAYS', frequencyValue: '30', triggerKm: '', nextExecutionDate: '' });
+      setNuevoPlanForm({ title: '', assetVehId: '', triggerKm: '', frecuenciaDias: '', nextExecutionDate: '' });
       load();
     } catch (e: any) {
       setError(e?.message || 'No se pudo crear el plan');
@@ -370,12 +380,25 @@ export default function PlanesFrecuenciasClient() {
     }
   };
 
-  // "Registrar mantenimiento": crea una OT directamente COMPLETED — el backend descuenta
-  // stock de repuestos, calcula costos y avanza el plan (flujo real existente).
+  // "Registrar mantenimiento": crea una OT directamente COMPLETED vinculada a las
+  // tareas preventivas seleccionadas. Solo esas tareas avanzan su intervalo; una
+  // intervención sin tareas seleccionadas no reinicia ningún plan.
+  const tareasDelVehiculo = (vehiculoId: string): PlanActivo[] => {
+    const veh = vehiculos.find((v) => v.id === vehiculoId);
+    if (!veh?.maintenanceAssetId) return [];
+    return planesActivos.filter((p) => p.assetId === veh.maintenanceAssetId);
+  };
+  const tareasSeleccionadas: PlanActivo[] = tareasDelVehiculo(regMantForm.vehiculoId).filter((p) => (regMantForm.planIds || []).includes(p.id));
+  const requiereOdometroModal = tareasSeleccionadas.some((p) => p.requiereOdometro);
+
   const registrarMantenimiento = async () => {
     const veh = vehiculos.find((v) => v.id === regMantForm.vehiculoId);
     if (!veh?.maintenanceAssetId || !regMantForm.titulo || !regMantForm.fecha) {
       setError('Unidad, trabajo realizado y fecha son obligatorios');
+      return;
+    }
+    if (requiereOdometroModal && !regMantForm.odometro) {
+      setError('Alguna tarea seleccionada tiene intervalo en kilómetros: el odómetro de ejecución es obligatorio para confirmarla.');
       return;
     }
     setSaving(true);
@@ -389,15 +412,19 @@ export default function PlanesFrecuenciasClient() {
           type: regMantForm.tipo,
           status: 'COMPLETED',
           assetId: veh.maintenanceAssetId,
+          planIds: regMantForm.planIds?.length ? regMantForm.planIds : undefined,
           technicianId: regMantForm.tecnicoId || undefined,
           scheduledDate: new Date(regMantForm.fecha + 'T12:00:00').toISOString(),
+          executedAt: new Date(regMantForm.fecha + 'T12:00:00').toISOString(),
+          creationKey: regMantKey || undefined,
           finalOdometer: regMantForm.odometro ? Number(regMantForm.odometro) : undefined,
           laborCost: regMantForm.laborCost ? Number(regMantForm.laborCost) : 0,
           repuestos: (regMantForm.repuestos || []).map((rp: any) => ({ sparePartId: rp.sparePartId, quantity: Number(rp.cantidad) || 1 })),
         },
       });
       setShowRegMant(false);
-      setRegMantForm({ vehiculoId: '', titulo: '', tipo: 'PREVENTIVE', fecha: '', odometro: '', tecnicoId: '', descripcion: '', laborCost: '', repuestos: [] });
+      setRegMantForm({ vehiculoId: '', titulo: '', tipo: 'PREVENTIVE', fecha: '', odometro: '', tecnicoId: '', descripcion: '', laborCost: '', planIds: [], repuestos: [] });
+      setRegMantKey('');
       load();
     } catch (e: any) {
       setError(e?.message || 'No se pudo registrar el mantenimiento');
@@ -571,7 +598,7 @@ export default function PlanesFrecuenciasClient() {
             <Link href="/flota-360/ordenes?nueva=1" className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 shrink-0">
               <Plus className="h-3.5 w-3.5" /> Programar
             </Link>
-            <button onClick={() => { setError(null); setRegMantForm({ ...regMantForm, fecha: fmtFechaInput(new Date()) }); setShowRegMant(true); }} className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 shrink-0">
+            <button onClick={() => { setError(null); setRegMantKey(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `reg-${Date.now()}`); setRegMantForm({ ...regMantForm, fecha: fmtFechaInput(new Date()) }); setShowRegMant(true); }} className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 shrink-0">
               <CheckCircle2 className="h-3.5 w-3.5" /> Registrar mantenimiento
             </button>
             <button onClick={() => setShowModal(true)} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-50 shrink-0" title="Definir un componente del catálogo de frecuencias">
@@ -1103,16 +1130,15 @@ export default function PlanesFrecuenciasClient() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Unidad de frecuencia</label>
-                  <select value={nuevoPlanForm.frequencyUnit} onChange={(e) => setNuevoPlanForm({ ...nuevoPlanForm, frequencyUnit: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
-                    <option value="DAYS">Días</option><option value="KM">Km</option>
-                  </select>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Cada X km</label>
+                  <input type="number" value={nuevoPlanForm.triggerKm} onChange={(e) => setNuevoPlanForm({ ...nuevoPlanForm, triggerKm: e.target.value })} placeholder="Ej: 30000" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Valor</label>
-                  <input type="number" value={nuevoPlanForm.frequencyValue} onChange={(e) => setNuevoPlanForm({ ...nuevoPlanForm, frequencyValue: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Cada X días</label>
+                  <input type="number" value={nuevoPlanForm.frecuenciaDias} onChange={(e) => setNuevoPlanForm({ ...nuevoPlanForm, frecuenciaDias: e.target.value })} placeholder="Ej: 365" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
               </div>
+              <p className="text-[11px] text-neutral-400 -mt-1">Podés combinar ambos: la tarea vence por el límite que se alcance primero (km o días).</p>
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Próxima ejecución</label>
                 <input type="date" value={nuevoPlanForm.nextExecutionDate} onChange={(e) => setNuevoPlanForm({ ...nuevoPlanForm, nextExecutionDate: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
@@ -1193,7 +1219,7 @@ export default function PlanesFrecuenciasClient() {
               {error && <p className="text-xs text-red-600">{error}</p>}
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Unidad *</label>
-                <select value={regMantForm.vehiculoId} onChange={(e) => { const veh = vehiculos.find((v) => v.id === e.target.value); setRegMantForm({ ...regMantForm, vehiculoId: e.target.value, odometro: veh?.currentOdometer != null ? String(veh.currentOdometer) : regMantForm.odometro }); }} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                <select value={regMantForm.vehiculoId} onChange={(e) => { const veh = vehiculos.find((v) => v.id === e.target.value); setRegMantForm({ ...regMantForm, vehiculoId: e.target.value, planIds: [], odometro: veh?.currentOdometer != null ? String(veh.currentOdometer) : regMantForm.odometro }); }} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
                   <option value="">Seleccionar…</option>
                   {vehiculos.filter((v) => v.maintenanceAssetId).map((v) => <option key={v.id} value={v.id}>{v.dominio} · {v.tipo}</option>)}
                 </select>
@@ -1202,6 +1228,45 @@ export default function PlanesFrecuenciasClient() {
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Trabajo realizado *</label>
                 <input value={regMantForm.titulo} onChange={(e) => setRegMantForm({ ...regMantForm, titulo: e.target.value })} placeholder="Ej: Cambio de aceite y filtros" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
               </div>
+              {regMantForm.vehiculoId && (
+                <div className="rounded-md border border-neutral-200 bg-neutral-50/50 p-2">
+                  <label className="block text-xs font-medium text-neutral-600 mb-1.5">Tareas preventivas realizadas</label>
+                  {tareasDelVehiculo(regMantForm.vehiculoId).length === 0 ? (
+                    <p className="text-[11px] text-neutral-500">Esta unidad no tiene tareas preventivas configuradas. El registro no actualizará ningún intervalo.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {tareasDelVehiculo(regMantForm.vehiculoId).map((p) => {
+                        const sel = (regMantForm.planIds || []).includes(p.id);
+                        const ult = p.ultimoOdometro != null ? `${Math.round(p.ultimoOdometro).toLocaleString('es-AR')} km` : null;
+                        const ultFecha = p.ultimaEjecucion ? fmtFecha(p.ultimaEjecucion) : null;
+                        return (
+                          <label key={p.id} className={`flex items-start gap-2 rounded-md border px-2 py-1.5 text-xs cursor-pointer ${sel ? 'border-blue-300 bg-blue-50' : 'border-neutral-200 bg-white hover:bg-neutral-50'}`}>
+                            <input
+                              type="checkbox"
+                              checked={sel}
+                              onChange={(e) => setRegMantForm({ ...regMantForm, planIds: e.target.checked ? [...(regMantForm.planIds || []), p.id] : (regMantForm.planIds || []).filter((x: string) => x !== p.id) })}
+                              className="mt-0.5"
+                            />
+                            <span className="flex-1">
+                              <span className="font-medium text-neutral-800">{p.plan}</span>
+                              <span className="block text-[11px] text-neutral-500">
+                                {p.frecuencia}
+                                {(ult || ultFecha) ? ` · última: ${[ultFecha, ult].filter(Boolean).join(' · ')}` : ' · sin ejecución previa registrada'}
+                                {p.requiereOdometro ? ' · requiere km' : ''}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="mt-1.5 text-[11px] text-neutral-500">
+                    {(regMantForm.planIds || []).length > 0
+                      ? `Se actualizarán los intervalos de: ${tareasSeleccionadas.map((p) => p.plan).join(', ')}.`
+                      : 'Sin tareas seleccionadas, ningún intervalo se reinicia (intervención sin plan).'}
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Fecha real *</label>
@@ -1219,8 +1284,13 @@ export default function PlanesFrecuenciasClient() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Odómetro (km)</label>
-                  <input type="number" value={regMantForm.odometro} onChange={(e) => setRegMantForm({ ...regMantForm, odometro: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">
+                    Odómetro (km){requiereOdometroModal ? ' *' : ''}
+                  </label>
+                  <input type="number" value={regMantForm.odometro} onChange={(e) => setRegMantForm({ ...regMantForm, odometro: e.target.value })} className={`w-full rounded-md border px-2.5 py-1.5 text-sm ${requiereOdometroModal && !regMantForm.odometro ? 'border-amber-400 bg-amber-50' : 'border-neutral-300'}`} />
+                  {requiereOdometroModal && !regMantForm.odometro && (
+                    <p className="mt-0.5 text-[10px] text-amber-600">Obligatorio: hay tareas con intervalo en km.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Responsable</label>
@@ -1259,7 +1329,11 @@ export default function PlanesFrecuenciasClient() {
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Observaciones</label>
                 <textarea value={regMantForm.descripcion} onChange={(e) => setRegMantForm({ ...regMantForm, descripcion: e.target.value })} rows={2} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
               </div>
-              <p className="text-[11px] text-neutral-400">Se crea una OT ejecutada: descuenta el stock de repuestos, calcula costos y avanza el plan de la unidad.</p>
+              <p className="text-[11px] text-neutral-400">
+                {(regMantForm.planIds || []).length > 0
+                  ? `Se registra una OT ejecutada: descuenta stock, calcula costos y actualiza la fecha/km de última ejecución y el próximo vencimiento de ${tareasSeleccionadas.length === 1 ? 'la tarea seleccionada' : `las ${tareasSeleccionadas.length} tareas seleccionadas`}. Las demás tareas no se modifican.`
+                  : 'Se registra una OT ejecutada: descuenta stock y calcula costos. No está vinculada a ninguna tarea preventiva, por lo que ningún intervalo se actualiza.'}
+              </p>
             </div>
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
               <button onClick={() => setShowRegMant(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">Cancelar</button>

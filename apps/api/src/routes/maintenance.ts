@@ -5,6 +5,9 @@ import { notifyWorkOrderAssigned } from '../services/notifyService.js';
 import { evaluarRecurrenciasDeOT } from '../services/fleetRecurrence.js';
 import { syncOdometroYDesgaste } from '../services/fleetTires.js';
 import { registrarCambioVehiculo } from '../services/vehiculoAudit.js';
+import { registrarEjecucionPlan, aplicarEjecucionesOT, pataKmDelPlan, pataDiasDelPlan, evaluarVencimientoPlan } from '../services/fleetExecution.js';
+import { restriccionesActivasDe, marcarReparacionInformadaPorOT } from '../services/defectService.js';
+import { abrirIndisponibilidad, evaluarYCerrarIndisponibilidad } from '../services/unidadEstadoService.js';
 
 // Schemas de validación
 const createWorkOrderSchema = z.object({
@@ -15,13 +18,36 @@ const createWorkOrderSchema = z.object({
   status: z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'ON_HOLD']).default('PENDING'),
   assetId: z.string(),
   planId: z.string().optional().nullable(),
+  // Tareas preventivas explícitas: una OT puede cubrir varios planes.
+  planIds: z.array(z.string()).optional(),
   technicianId: z.string().optional(),
+  // Ejecución externa: ejecutor taller (sin mecánico ficticio) + seguimiento interno
+  ejecutorTipo: z.enum(['INTERNO', 'EXTERNO']).default('INTERNO'),
+  tallerId: z.string().uuid().optional().nullable(),
+  responsableSeguimientoId: z.string().uuid().optional().nullable(),
+  responsableSeguimientoNombre: z.string().max(160).optional().nullable(),
+  trabajoSolicitado: z.string().max(2000).optional().nullable(),
+  fechaEntregaEstimada: z.string().datetime().optional().nullable(),
+  referenciaExterna: z.string().max(120).optional().nullable(),
+  // Si la OT retira la unidad del servicio (default: sí). Una OT programada
+  // a futuro que aún no empezó NO retira nada; el flag cuenta desde que
+  // la OT entra en proceso. Las no bloqueantes pueden crearse con false.
+  retiraDeServicio: z.boolean().optional().default(true),
   scheduledDate: z.string().datetime(),
+  // Fecha real de ejecución física (distinta de scheduledDate y de la fecha de carga).
+  executedAt: z.string().datetime().optional(),
+  // Clave de idempotencia del cliente (doble clic / retry del formulario).
+  creationKey: z.string().optional(),
   estimatedDuration: z.number().default(0),
   laborCost: z.number().default(0),
   partsCost: z.number().default(0),
   finalOdometer: z.number().optional(),
-  repuestos: z.array(z.object({ sparePartId: z.string(), quantity: z.number().int().positive() })).optional(),
+  repuestos: z.array(z.object({
+    sparePartId: z.string(),
+    quantity: z.number().int().positive(),
+    // TALLER = repuesto aportado por el taller externo: informativo, no descuenta stock propio
+    origen: z.enum(['PROPIO', 'TALLER']).default('PROPIO'),
+  })).optional(),
 });
 
 const createTechnicianSchema = z.object({
@@ -72,6 +98,10 @@ const createPlanSchema = z.object({
   frequencyValue: z.number().default(30),
   frequencyUnit: z.enum(['DAYS', 'WEEKS', 'MONTHS', 'YEARS', 'KM']).default('DAYS'),
   triggerKm: z.number().optional(),
+  // Intervalo dual: vence por km O por días, lo primero que ocurra
+  frecuenciaDias: z.number().int().positive().optional().nullable(),
+  componentKey: z.string().optional().nullable(),
+  intervaloModo: z.enum(['DESDE_EJECUCION', 'CALENDARIO_FIJO']).optional(),
   nextExecutionDate: z.string().optional(), // Accept YYYY-MM-DD format
   status: z.enum(['ACTIVE', 'PAUSED', 'INACTIVE']).default('ACTIVE')
 });
@@ -126,7 +156,20 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
 
     const workOrders = await getPrisma(request).workOrder.findMany({
       where,
-      include: { asset: true, technician: true, plan: { select: { id: true, code: true, title: true } } },
+      include: {
+        asset: true, technician: true,
+        // Taller externo asignado (ejecución EXTERNA)
+        taller: { select: { id: true, nombre: true, tipo: true, isActive: true } },
+        plan: { select: { id: true, code: true, title: true } },
+        // Tareas preventivas por estado: el detalle distingue ejecutadas,
+        // pendientes y omitidas (una OT parcial no es cumplimiento total).
+        tareas: {
+          select: {
+            id: true, planId: true, status: true, completedAt: true,
+            plan: { select: { id: true, code: true, title: true, triggerKm: true, frecuenciaDias: true, componentKey: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' }
     });
 
@@ -141,11 +184,46 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
 
     try {
       const validatedData = createWorkOrderSchema.parse(request.body);
-      
+      const prisma = getPrisma(request);
+      const tenantId = request.db.tenantId;
+
+      // Idempotencia de creación: retry/doble clic con la misma creationKey
+      // devuelve la OT ya creada sin repetir efectos (stock, ejecuciones, historial).
+      if (validatedData.creationKey) {
+        const existente = await prisma.workOrder.findFirst({
+          where: { tenantId, creationKey: validatedData.creationKey },
+          include: { asset: true, technician: true },
+        });
+        if (existente) return reply.code(200).send({ workOrder: existente, duplicada: true });
+      }
+
       const code = `OT-${Date.now().toString().slice(-6)}`;
       const esCompletadaAlCrear = validatedData.status === 'COMPLETED';
+      const executedAt = validatedData.executedAt ? new Date(validatedData.executedAt) : null;
 
-      let workOrder = await getPrisma(request).workOrder.create({
+      // planIds: lista explícita de tareas preventivas realizadas/planificadas.
+      // Compatibilidad: planId suelto se pliega a la lista.
+      const planIds = [...new Set([...(validatedData.planIds ?? []), ...(validatedData.planId ? [validatedData.planId] : [])])];
+      const primerPlanId = planIds[0] ?? null;
+
+      // Ejecución externa: validar que el taller exista y acepte asignaciones.
+      // El ejecutor es UNO solo — EXTERNO no admite technicianId (no se crean mecánicos ficticios).
+      const esExterna = validatedData.ejecutorTipo === 'EXTERNO';
+      let taller = null;
+      if (esExterna) {
+        if (!validatedData.tallerId) {
+          return reply.code(400).send({ error: 'Ejecución externa requiere seleccionar un taller' });
+        }
+        taller = await (prisma as any).flotaTaller.findFirst({
+          where: { id: validatedData.tallerId, tenantId, deletedAt: null },
+        });
+        if (!taller) return reply.code(404).send({ error: 'Taller no encontrado' });
+        if (!taller.isActive) {
+          return reply.code(409).send({ error: `El taller "${taller.nombre}" está inactivo y no acepta nuevas asignaciones`, code: 'TALLER_INACTIVO' });
+        }
+      }
+
+      let workOrder = await prisma.workOrder.create({
         data: {
           code,
           title: validatedData.title,
@@ -154,18 +232,35 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
           priority: validatedData.priority,
           status: validatedData.status,
           assetId: validatedData.assetId,
-          planId: validatedData.planId || null,
-          technicianId: validatedData.technicianId,
+          planId: primerPlanId,
+          technicianId: esExterna ? null : validatedData.technicianId,
+          ejecutorTipo: validatedData.ejecutorTipo,
+          tallerId: esExterna ? validatedData.tallerId : null,
+          responsableSeguimientoId: validatedData.responsableSeguimientoId ?? null,
+          responsableSeguimientoNombre: validatedData.responsableSeguimientoNombre ?? null,
+          trabajoSolicitado: esExterna ? validatedData.trabajoSolicitado ?? null : null,
+          fechaEntregaEstimada: esExterna && validatedData.fechaEntregaEstimada ? new Date(validatedData.fechaEntregaEstimada) : null,
+          referenciaExterna: esExterna ? validatedData.referenciaExterna ?? null : null,
           scheduledDate: new Date(validatedData.scheduledDate),
+          retiraDeServicio: validatedData.retiraDeServicio,
           completedAt: esCompletadaAlCrear ? new Date() : undefined,
+          executedAt: esCompletadaAlCrear ? (executedAt ?? new Date(validatedData.scheduledDate)) : executedAt,
+          creationKey: validatedData.creationKey ?? null,
           estimatedDuration: validatedData.estimatedDuration,
           laborCost: validatedData.laborCost,
           partsCost: validatedData.partsCost,
           totalCost: validatedData.laborCost + validatedData.partsCost,
-          tenantId: request.db.tenantId
+          tenantId
         },
-        include: { asset: true, technician: true }
+        include: { asset: true, technician: true, taller: { select: { id: true, nombre: true, tipo: true } } }
       });
+
+      // Vincular explícitamente las tareas preventivas de esta OT
+      for (const pid of planIds) {
+        await prisma.workOrderTask.create({
+          data: { tenantId, workOrderId: workOrder.id, planId: pid, status: 'PENDING' },
+        }).catch((e: any) => { if (e?.code !== 'P2002') throw e; });
+      }
 
       // Asignar repuestos seleccionados a la OT
       if (validatedData.repuestos && validatedData.repuestos.length > 0) {
@@ -181,46 +276,91 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
               sparePartId: parte.id,
               quantity: r.quantity,
               unitCost: parte.unitCost,
+              origen: r.origen ?? 'PROPIO',
             },
           });
         }
       }
 
-      // Actividad puntual creada directamente como completada: descontar stock y avanzar plan ya mismo
+      // Actividad puntual creada directamente como completada: aplicar TODOS
+      // los efectos del cierre en una transacción (stock, tareas realizadas,
+      // planes, odómetro del vehículo, historial). Si algo falla, nada queda a medias.
+      let resumenEjecucion: any = null;
       if (esCompletadaAlCrear) {
-        try {
-          const repuestosAsignados = await (getPrisma(request) as any).workOrderSparePart.findMany({
-            where: { workOrderId: workOrder.id, tenantId: request.db.tenantId, stockDeducted: false },
+        const userId = (request as any).auth?.userId ?? null;
+        const resultadoTx = await prisma.$transaction(async (tx: any) => {
+          // Stock de repuestos (idempotente por stockDeducted).
+          // Solo repuestos PROPIOS descuentan inventario: los aportados por el
+          // taller externo (origen TALLER) son informativos y su costo llega por factura.
+          const repuestosAsignados = await tx.workOrderSparePart.findMany({
+            where: { workOrderId: workOrder.id, tenantId, stockDeducted: false, OR: [{ origen: 'PROPIO' }, { origen: null }] },
           });
           let partsCostTotal = 0;
           for (const r of repuestosAsignados) {
-            await getPrisma(request).maintenanceSparePart.update({
+            await tx.maintenanceSparePart.update({
               where: { id: r.sparePartId },
               data: { currentStock: { decrement: r.quantity } },
             });
-            await (getPrisma(request) as any).workOrderSparePart.update({
-              where: { id: r.id },
-              data: { stockDeducted: true },
-            });
+            await tx.workOrderSparePart.update({ where: { id: r.id }, data: { stockDeducted: true } });
             partsCostTotal += r.quantity * r.unitCost;
           }
           if (partsCostTotal > 0) {
             const nuevoPartsCost = (workOrder.partsCost || 0) + partsCostTotal;
-            workOrder = await getPrisma(request).workOrder.update({
+            await tx.workOrder.update({
               where: { id: workOrder.id },
               data: { partsCost: nuevoPartsCost, totalCost: (workOrder.laborCost || 0) + nuevoPartsCost },
-              include: { asset: true, technician: true },
             });
           }
-          if (workOrder.planId) {
-            await avanzarPlanPorOT(getPrisma(request), request.db.tenantId, workOrder.planId, workOrder.id, workOrder.completedAt || new Date(), validatedData.finalOdometer, `Actividad puntual registrada vía OT ${workOrder.code}`);
+
+          const fechaEjecucion = workOrder.executedAt ?? workOrder.completedAt ?? new Date();
+          const resumen = await aplicarEjecucionesOT(tx, {
+            tenantId, workOrder, executedAt: fechaEjecucion,
+            odometro: validatedData.finalOdometer ?? null, registradoPor: userId,
+          });
+
+          // Odómetro + historial del vehículo (si el asset es de flota)
+          const vehiculo = workOrder.assetId
+            ? await tx.vehiculo.findFirst({ where: { maintenanceAssetId: workOrder.assetId, tenantId } })
+            : null;
+          if (vehiculo) {
+            if (validatedData.finalOdometer != null) {
+              await syncOdometroYDesgaste(tx, tenantId, vehiculo.id, validatedData.finalOdometer);
+            }
+            // Un registro por OT (workOrderId único): reintentos no duplican.
+            await tx.vehiculoHistorialMantenimiento.upsert({
+              where: { workOrderId: workOrder.id },
+              update: {
+                fecha: fechaEjecucion, tipo: workOrder.type, descripcion: workOrder.title,
+                costo: (workOrder.laborCost || 0) + (workOrder.partsCost || 0) + partsCostTotal,
+                odometro: validatedData.finalOdometer ?? null,
+                notas: workOrder.description || '',
+              },
+              create: {
+                tenantId, vehiculoId: vehiculo.id, workOrderId: workOrder.id,
+                fecha: fechaEjecucion, tipo: workOrder.type, descripcion: workOrder.title,
+                costo: (workOrder.laborCost || 0) + (workOrder.partsCost || 0) + partsCostTotal,
+                odometro: validatedData.finalOdometer ?? null,
+                notas: workOrder.description || '',
+              },
+            });
           }
-        } catch (e: any) { console.error('[maintenance] error al completar OT puntual:', e); }
+          return resumen;
+        });
+        resumenEjecucion = resultadoTx;
+
+        // Recurrencias (fuera de la tx: consulta read-heavy, no afecta integridad)
+        workOrder = await prisma.workOrder.findUnique({
+          where: { id: workOrder.id }, include: { asset: true, technician: true, taller: { select: { id: true, nombre: true, tipo: true } } },
+        }) ?? workOrder;
+        if (workOrder.assetId) {
+          evaluarRecurrenciasDeOT(prisma, tenantId, workOrder.id, workOrder.assetId)
+            .catch((e: any) => console.error('[maintenance] evaluarRecurrenciasDeOT error:', e));
+        }
       }
 
       if (workOrder.technician?.email) {
-        notifyWorkOrderAssigned(getPrisma(request), {
-          tenantId: request.db.tenantId,
+        notifyWorkOrderAssigned(prisma, {
+          tenantId,
           technicianEmail: workOrder.technician.email,
           technicianName: workOrder.technician.name,
           otCode: workOrder.code,
@@ -232,7 +372,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
         }).catch((e: any) => console.error('[maintenance] notifyWorkOrderAssigned error:', e));
       }
 
-      return reply.code(201).send({ workOrder });
+      return reply.code(201).send({ workOrder, ejecucion: resumenEjecucion });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return reply.code(400).send({ error: 'Validación fallida', details: error.errors });
@@ -252,11 +392,14 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     const updateData = request.body as any;
 
     try {
-      const result = await applyWorkOrderUpdate(getPrisma(request), request.db.tenantId, id, updateData);
+      // _userId: clave interna para auditar quién registró la ejecución (no es campo del modelo)
+      const result = await applyWorkOrderUpdate(getPrisma(request), request.db.tenantId, id, {
+        ...updateData, _userId: (request as any).auth?.userId ?? null,
+      });
       if ('error' in result) {
         return reply.code(result.status).send({ error: result.error });
       }
-      return reply.send({ workOrder: result.workOrder });
+      return reply.send({ workOrder: result.workOrder, ejecucion: result.ejecucion ?? null });
     } catch (error) {
       console.error('Error updating work order:', error);
       return reply.code(500).send({ error: 'Error al actualizar la orden de trabajo.' });
@@ -286,6 +429,8 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     const schema = z.object({
       sparePartId: z.string().uuid(),
       quantity: z.number().int().positive().default(1),
+      // TALLER = el repuesto lo aporta el taller externo (informativo, no descuenta stock)
+      origen: z.enum(['PROPIO', 'TALLER']).default('PROPIO'),
     });
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'Datos inválidos' });
@@ -319,7 +464,8 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
         workOrderId: id,
         sparePartId: part.id,
         quantity: parsed.data.quantity,
-        unitCost: part.unitCost,
+        unitCost: parsed.data.origen === 'TALLER' ? 0 : part.unitCost,
+        origen: parsed.data.origen,
       },
     });
     return reply.code(201).send({ part: entry });
@@ -698,6 +844,9 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
           frequencyValue: validatedData.frequencyValue,
           frequencyUnit: validatedData.frequencyUnit,
           triggerKm: validatedData.triggerKm ?? null,
+          frecuenciaDias: validatedData.frecuenciaDias ?? null,
+          componentKey: validatedData.componentKey ?? null,
+          ...(validatedData.intervaloModo ? { intervaloModo: validatedData.intervaloModo } : {}),
           nextExecutionDate: validatedData.nextExecutionDate ? new Date(validatedData.nextExecutionDate) : null,
           tenantId: request.db.tenantId
         },
@@ -725,47 +874,45 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
 
     try {
-      const plan = await getPrisma(request).maintenancePlan.findUnique({
+      const plan = await getPrisma(request).maintenancePlan.findFirst({
         where: { id, tenantId: request.db.tenantId }
       });
 
       if (!plan) {
-        return reply.code(404).send({ error: 'Plan not found' });
+        return reply.code(404).send({ error: 'Plan no encontrado' });
       }
 
-      const now = new Date();
-      
-      // Calcular próxima ejecución
-      let nextDate: Date | null = null;
-      if (plan.nextExecutionDate) {
-        nextDate = new Date(plan.nextExecutionDate);
-        switch (plan.frequencyUnit) {
-          case 'DAYS':
-            nextDate.setDate(nextDate.getDate() + plan.frequencyValue);
-            break;
-          case 'WEEKS':
-            nextDate.setDate(nextDate.getDate() + (plan.frequencyValue * 7));
-            break;
-          case 'MONTHS':
-            nextDate.setMonth(nextDate.getMonth() + plan.frequencyValue);
-            break;
-          case 'YEARS':
-            nextDate.setFullYear(nextDate.getFullYear() + plan.frequencyValue);
-            break;
-        }
+      const body = (request.body ?? {}) as any;
+      const executedAt = body.executedAt ? new Date(body.executedAt) : new Date();
+      if (Number.isNaN(executedAt.getTime())) {
+        return reply.code(400).send({ error: 'executedAt inválida' });
       }
+      const odometro = body.odometro != null ? Number(body.odometro) : null;
 
-      const updatedPlan = await getPrisma(request).maintenancePlan.update({
-        where: { id },
-        data: {
-          lastExecutionDate: now,
-          totalExecutions: { increment: 1 },
-          nextExecutionDate: nextDate
-        },
-        include: { asset: true }
-      });
+      // Idempotencia: la clave puede venir del cliente (executionKey) o se
+      // genera por plan+fecha; un retry con la misma clave no duplica el avance.
+      const sourceKey = body.executionKey ? `dir:${body.executionKey}` : `dir:${id}:${executedAt.toISOString().slice(0, 16)}`;
 
-      return reply.send({ plan: updatedPlan });
+      const prisma = getPrisma(request);
+      const tenantId = request.db.tenantId;
+      const resultado = await prisma.$transaction(async (tx: any) =>
+        registrarEjecucionPlan(tx, {
+          tenantId, planId: id, executedAt, odometro,
+          sourceKey, registradoPor: (request as any).auth?.userId ?? null,
+          notes: body.notes ?? null,
+        })
+      );
+
+      if (resultado.status === 'SIN_PLAN') {
+        return reply.code(404).send({ error: resultado.motivo });
+      }
+      if (resultado.status === 'PENDIENTE_KM') {
+        return reply.code(400).send({ error: resultado.motivo, requiereOdometro: true });
+      }
+      if (resultado.status === 'DUPLICADA') {
+        return reply.send({ plan: resultado.plan, duplicada: true });
+      }
+      return reply.send({ plan: resultado.plan, referenciaAplicada: resultado.referenciaAplicada });
     } catch (error) {
       console.error('Error executing plan:', error);
       return reply.code(500).send({ error: 'Error al ejecutar el plan de mantenimiento.' });
@@ -805,6 +952,11 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
         },
         include: { asset: true, technician: true },
       });
+
+      // Materializar la tarea preventiva: el cierre avanza solo esta tarea.
+      await getPrisma(request).workOrderTask.create({
+        data: { tenantId: request.db.tenantId, workOrderId: workOrder.id, planId: plan.id, status: 'PENDING' },
+      }).catch((e: any) => { if (e?.code !== 'P2002') throw e; });
 
       return reply.code(201).send({ workOrder });
     } catch (error: any) {
@@ -1262,7 +1414,7 @@ export default async function maintenanceRoutes(app: FastifyInstance) {
 // Función auxiliar: aplica una actualización de OT (incluye el ciclo de completado: descuento de
 // stock, avance de plan preventivo, actualización del vehículo y auto-estado). Usada tanto por el
 // endpoint autenticado PUT /work-orders/:id como por el flujo público del QR del mecánico.
-export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: string, updateData: any): Promise<{ workOrder: any } | { error: string; status: number }> {
+export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: string, updateData: any): Promise<{ workOrder: any; ejecucion?: any } | { error: string; status: number }> {
   // Obtener orden actual para verificar cambio de estado
   const ordenActual = await prisma.workOrder.findFirst({
     where: { id, tenantId },
@@ -1281,8 +1433,16 @@ export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: st
   // se usan más abajo para los efectos colaterales (flota, planes) pero no son campos del modelo.
   const WORK_ORDER_FIELDS = [
     'title', 'description', 'type', 'priority', 'status', 'assetId', 'planId', 'technicianId',
-    'scheduledDate', 'startedAt', 'estimatedDuration', 'actualDuration', 'laborCost', 'partsCost',
+    'scheduledDate', 'startedAt', 'executedAt', 'estimatedDuration', 'actualDuration', 'laborCost', 'partsCost',
     'activoNombreLibre', 'origen', 'origenId',
+    // Ejecución externa (el flujo dedicado /flota/ots/:id/* valida taller activo y trazabilidad;
+    // acá se admiten también por compatibilidad con ediciones genéricas de la OT)
+    'ejecutorTipo', 'tallerId', 'responsableSeguimientoId', 'responsableSeguimientoNombre',
+    'fechaEntregaEstimada', 'trabajoSolicitado', 'trabajoRealizado', 'referenciaExterna',
+    'observacionesExternas', 'sinCargo',
+    // La OT retira la unidad del servicio al iniciarse (o ya la retiró si
+    // nació directamente en proceso). Programada ≠ retirada.
+    'retiraDeServicio',
   ];
   const dataUpdate: any = {};
   for (const key of WORK_ORDER_FIELDS) {
@@ -1306,10 +1466,15 @@ export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: st
     data: {
       ...dataUpdate,
       scheduledDate: updateData.scheduledDate ? new Date(updateData.scheduledDate) : undefined,
+      // executedAt: fecha real de ejecución; si no se informa, la fecha de cierre
+      // (completedAt) la provee — distinta de la fecha de carga histórica.
+      executedAt: updateData.executedAt ? new Date(updateData.executedAt)
+        : (seCompletaAhora && !ordenActual.executedAt ? (updateData.completedDate ? new Date(updateData.completedDate) : new Date()) : undefined),
       completedAt: seCompletaAhora ? new Date() : (updateData.completedDate ? new Date(updateData.completedDate) : undefined),
-      totalCost: laborCost + partsCost
+      // totalCost = mano de obra + repuestos propios + costo externo (facturas del taller)
+      totalCost: laborCost + partsCost + (ordenActual.costoExterno || 0)
     },
-    include: { asset: true, technician: true }
+    include: { asset: true, technician: true, taller: { select: { id: true, nombre: true, tipo: true } } }
   });
 
   // Si se reasignó a un técnico distinto (o se asignó por primera vez), notificarle
@@ -1329,92 +1494,97 @@ export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: st
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // INTEGRACIÓN OT ↔ FLOTA
+  // INTEGRACIÓN OT ↔ FLOTA — cierre unificado y transaccional
   // ═══════════════════════════════════════════════════════════════
   const seCompleto = ordenActual.status !== 'COMPLETED' && updateData.status === 'COMPLETED';
+  let resumenEjecucion: any = null;
 
-  // Descontar stock de repuestos asignados a la OT
   if (seCompleto) {
-    try {
-      const repuestos = await prisma.workOrderSparePart.findMany({
-        where: { workOrderId: id, tenantId, stockDeducted: false },
+    const odometroOt = updateData.finalOdometer ?? updateData.odometro ?? null;
+    const fechaEjecucion = workOrder.executedAt ?? workOrder.completedAt ?? new Date();
+    const userId = updateData._userId ?? null;
+
+    await prisma.$transaction(async (tx: any) => {
+      // Stock de repuestos (idempotente por renglón: stockDeducted).
+      // Solo PROPIO descuenta inventario; origen TALLER es informativo (lo aporta el taller).
+      const repuestos = await tx.workOrderSparePart.findMany({
+        where: { workOrderId: id, tenantId, stockDeducted: false, OR: [{ origen: 'PROPIO' }, { origen: null }] },
       });
-      if (repuestos.length > 0) {
-        let partsCostTotal = 0;
-        for (const r of repuestos) {
-          await prisma.maintenanceSparePart.update({
-            where: { id: r.sparePartId },
-            data: { currentStock: { decrement: r.quantity } },
-          });
-          await prisma.workOrderSparePart.update({
-            where: { id: r.id },
-            data: { stockDeducted: true },
-          });
-          partsCostTotal += r.quantity * r.unitCost;
-        }
-        // Actualizar partsCost/totalCost de la OT con lo consumido
+      let partsCostTotal = 0;
+      for (const r of repuestos) {
+        await tx.maintenanceSparePart.update({
+          where: { id: r.sparePartId },
+          data: { currentStock: { decrement: r.quantity } },
+        });
+        await tx.workOrderSparePart.update({ where: { id: r.id }, data: { stockDeducted: true } });
+        partsCostTotal += r.quantity * r.unitCost;
+      }
+      if (partsCostTotal > 0) {
         const nuevoPartsCost = (workOrder.partsCost || 0) + partsCostTotal;
-        await prisma.workOrder.update({
+        await tx.workOrder.update({
           where: { id },
-          data: { partsCost: nuevoPartsCost, totalCost: (workOrder.laborCost || 0) + nuevoPartsCost },
+          data: { partsCost: nuevoPartsCost, totalCost: (workOrder.laborCost || 0) + nuevoPartsCost + (workOrder.costoExterno || 0) },
         });
       }
-    } catch (e: any) { console.error('[maintenance] stock deduction error:', e); }
-  }
 
-  // Si la OT está vinculada a un plan preventivo, avanzarlo y dejar registro de ejecución
-  if (seCompleto && workOrder.planId) {
-    await avanzarPlanPorOT(
-      prisma,
-      tenantId,
-      workOrder.planId,
-      workOrder.id,
-      workOrder.completedAt || new Date(),
-      updateData.finalOdometer || updateData.odometro || null,
-      `Completada vía OT ${workOrder.code}`
-    );
-  }
-
-  if (seCompleto && workOrder.assetId) {
-    // Verificar si el asset está vinculado a un vehículo (assetId = maintenanceAssetId)
-    const vehiculo = await prisma.vehiculo.findFirst({
-      where: { maintenanceAssetId: workOrder.assetId, tenantId },
-    });
-
-    if (vehiculo) {
-      // Si se proporcionó odómetro en la OT, actualizar vehículo
-      if (updateData.finalOdometer || updateData.odometro) {
-        const nuevoOdometro = updateData.finalOdometer || updateData.odometro;
-        // Actualiza odómetro + acumula desgaste en cubiertas + propaga al acoplado
-        await syncOdometroYDesgaste(prisma, tenantId, vehiculo.id, nuevoOdometro);
-
-        // Verificar planes de mantenimiento por KM
-        await verificarPlanesKmDespuesDeOt(prisma, tenantId, vehiculo.id, nuevoOdometro);
-      }
-
-      // Registrar en historial de mantenimiento del vehículo
-      await prisma.vehiculoHistorialMantenimiento.create({
-        data: {
-          tenantId,
-          vehiculoId: vehiculo.id,
-          workOrderId: workOrder.id,
-          fecha: new Date(),
-          tipo: workOrder.type,
-          descripcion: workOrder.title,
-          costo: workOrder.totalCost || 0,
-          odometro: updateData.finalOdometer || updateData.odometro || vehiculo.currentOdometer,
-          notas: workOrder.description || '',
-        }
+      // Tareas preventivas: solo las confirmadas como COMPLETED avanzan su
+      // plan; SKIPPED y PENDING no reinician intervalos. Idempotente por
+      // sourceKey ot:{workOrderId}|{planId}.
+      resumenEjecucion = await aplicarEjecucionesOT(tx, {
+        tenantId, workOrder, executedAt: fechaEjecucion,
+        odometro: odometroOt, registradoPor: userId,
+        tareas: Array.isArray(updateData.tareas) ? updateData.tareas : null,
       });
 
-      // Flota 360 — evaluar recurrencias por componente si la OT está clasificada
+      // Vehículo: odómetro (nunca reduce lecturas anteriores) + historial único por OT
+      if (workOrder.assetId) {
+        const vehiculo = await tx.vehiculo.findFirst({
+          where: { maintenanceAssetId: workOrder.assetId, tenantId },
+        });
+        if (vehiculo) {
+          if (odometroOt != null) {
+            await syncOdometroYDesgaste(tx, tenantId, vehiculo.id, odometroOt);
+            await verificarPlanesKmDespuesDeOt(tx, tenantId, vehiculo.id, odometroOt);
+          }
+          await tx.vehiculoHistorialMantenimiento.upsert({
+            where: { workOrderId: workOrder.id },
+            update: {
+              fecha: fechaEjecucion, tipo: workOrder.type, descripcion: workOrder.title,
+              costo: workOrder.totalCost || 0, odometro: odometroOt ?? vehiculo.currentOdometer,
+              notas: workOrder.description || '',
+            },
+            create: {
+              tenantId, vehiculoId: vehiculo.id, workOrderId: workOrder.id,
+              fecha: fechaEjecucion, tipo: workOrder.type, descripcion: workOrder.title,
+              costo: workOrder.totalCost || 0, odometro: odometroOt ?? vehiculo.currentOdometer,
+              notas: workOrder.description || '',
+            },
+          });
+        }
+      }
+    });
+
+    // Recurrencias por componente (fuera de la tx — solo lectura + caso nuevo)
+    if (workOrder.assetId) {
       evaluarRecurrenciasDeOT(prisma, tenantId, workOrder.id, workOrder.assetId)
         .catch((e: any) => console.error('[maintenance] evaluarRecurrenciasDeOT error:', e));
+    }
+
+    // Casos de defecto: completar la OT marca la REPARACIÓN INFORMADA
+    // (no la resolución). La verificación y habilitación son pasos
+    // separados con registro propio — la unidad sigue restringida.
+    if (updateData.status === 'COMPLETED') {
+      marcarReparacionInformadaPorOT(prisma, tenantId, workOrder.id,
+        updateData._userId ? `usuario ${updateData._userId.slice(0, 8)}` : null)
+        .catch((e: any) => console.error('[maintenance] marcarReparacion error:', e));
     }
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // AUTO-ESTADO DEL VEHÍCULO SEGÚN CICLO DE LA OT
+  // EPISODIO DE INDISPONIBILIDAD SEGÚN CICLO DE LA OT
+  // El episodio (unidadEstadoService) es la única fuente de verdad:
+  // estadoOperativo y status quedan derivados. Una OT solo retira la
+  // unidad si retiraDeServicio=true (las programadas/no bloqueantes no).
   // ═══════════════════════════════════════════════════════════════
   if (workOrder.assetId && updateData.status && updateData.status !== ordenActual.status) {
     try {
@@ -1423,93 +1593,75 @@ export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: st
         select: { id: true, status: true },
       });
       if (veh) {
-        const STATUS_LABEL: Record<string, string> = { ACTIVO: 'Activo', EN_TALLER: 'En taller', INACTIVO: 'Inactivo', BAJA: 'Baja' };
-        const registrarAutoEstado = async (estadoNuevo: string, motivo: string) => {
-          // Automático derivado del ciclo de la OT: sin usuario ficticio.
-          // La modificación y su evento se confirman juntos (misma transacción).
+        const otExterna = (workOrder as any).ejecutorTipo === 'EXTERNO';
+        if (updateData.status === 'IN_PROGRESS' && workOrder.retiraDeServicio) {
+          // Inicio de una OT que retira la unidad: abre/engrosa el episodio.
+          // Externa sin ingreso confirmado → pendiente de ingreso; interna →
+          // reparación en curso con ingreso implícito (taller propio).
+          const etapa = otExterna && !(workOrder as any).fechaIngresoTaller
+            ? 'PENDIENTE_INGRESO' : 'REPARACION_EN_CURSO';
           await prisma.$transaction(async (tx: any) => {
-            await tx.vehiculo.update({ where: { id: veh.id }, data: { status: estadoNuevo } });
+            await abrirIndisponibilidad(tx, {
+              tenantId, vehiculoId: veh.id, origen: 'OT',
+              motivo: `OT ${workOrder.code || workOrder.id} en proceso`,
+              etapa, workOrderId: workOrder.id,
+              tallerTipo: otExterna ? 'EXTERNO' : 'INTERNO',
+              tallerNombre: null,
+              fechaIngresoTaller: !otExterna || (workOrder as any).fechaIngresoTaller
+                ? (workOrder as any).startedAt ?? new Date() : null,
+              fechaDevolucionEstimada: (workOrder as any).fechaEntregaEstimada ?? null,
+              responsableNombre: (workOrder as any).responsableSeguimientoNombre ?? null,
+            });
             await registrarCambioVehiculo(tx, {
-              tenantId, vehiculo: veh, accion: 'CAMBIO_ESTADO', origen: 'AUTOMATICO_OT', motivo,
-              cambios: [{
-                campo: 'status', etiqueta: 'Estado administrativo',
-                antes: veh.status, despues: estadoNuevo,
-                antesTxt: STATUS_LABEL[veh.status] ?? veh.status, despuesTxt: STATUS_LABEL[estadoNuevo] ?? estadoNuevo,
-              }],
-              actor: { usuarioId: null, usuarioNombre: null },
+              tenantId, vehiculo: veh, accion: 'CAMBIO_ESTADO', origen: 'AUTOMATICO_OT',
+              motivo: `La OT ${workOrder.code || workOrder.id} pasó a "En proceso" y retira la unidad del servicio`,
+              cambios: [], actor: { usuarioId: null, usuarioNombre: null },
             });
           });
-        };
-        if (updateData.status === 'IN_PROGRESS' && veh.status === 'ACTIVO') {
-          await registrarAutoEstado('EN_TALLER', `La OT ${workOrder.code || workOrder.id} pasó a "En proceso"`);
-        } else if ((updateData.status === 'COMPLETED' || updateData.status === 'CANCELLED') && veh.status === 'EN_TALLER') {
-          const abiertas = await prisma.workOrder.count({
-            where: {
-              tenantId,
-              assetId: workOrder.assetId,
-              status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] },
-              id: { not: id },
-            },
+        } else if (updateData.status === 'COMPLETED' || updateData.status === 'CANCELLED') {
+          const estadoOt = updateData.status === 'COMPLETED' ? 'completada' : 'cancelada';
+          await prisma.$transaction(async (tx: any) => {
+            const res = await evaluarYCerrarIndisponibilidad(tx, {
+              tenantId, vehiculoId: veh.id,
+              motivo: `La OT ${workOrder.code || workOrder.id} fue ${estadoOt}`,
+            });
+            await registrarCambioVehiculo(tx, {
+              tenantId, vehiculo: veh, accion: 'CAMBIO_ESTADO', origen: 'AUTOMATICO_OT',
+              motivo: res.cerrado
+                ? `La OT ${workOrder.code || workOrder.id} fue ${estadoOt} — la unidad vuelve a estar disponible`
+                : `La OT ${workOrder.code || workOrder.id} fue ${estadoOt} pero la unidad sigue no disponible (${res.motivos.join('; ') || 'otras causas'}): requiere verificación/habilitación`,
+              cambios: [], actor: { usuarioId: null, usuarioNombre: null },
+            });
           });
-          if (abiertas === 0) {
-            const estadoOt = updateData.status === 'COMPLETED' ? 'completada' : 'cancelada';
-            await registrarAutoEstado('ACTIVO', `La OT ${workOrder.code || workOrder.id} fue ${estadoOt}`);
-          }
         }
       }
-    } catch (e: any) { console.error('[maintenance] auto-estado vehiculo error:', e); }
+    } catch (e: any) { console.error('[maintenance] episodio indisponibilidad error:', e); }
   }
 
-  return { workOrder };
+  return { workOrder, ejecucion: resumenEjecucion };
 }
 
-// Función auxiliar: al completar una OT vinculada a un plan, avanza el plan y deja registro de ejecución
-async function avanzarPlanPorOT(prisma: any, tenantId: string, planId: string, workOrderId: string, executedAt: Date, finalOdometer?: number | null, notes?: string) {
-  try {
-    const plan = await prisma.maintenancePlan.findFirst({ where: { id: planId, tenantId } });
-    if (!plan) return;
-
-    const data: any = { lastExecutionDate: executedAt, totalExecutions: { increment: 1 } };
-    if (plan.frequencyUnit === 'KM') {
-      if (finalOdometer != null) data.lastOdometerExecution = finalOdometer;
-    } else if (plan.nextExecutionDate) {
-      const next = new Date(plan.nextExecutionDate);
-      switch (plan.frequencyUnit) {
-        case 'DAYS': next.setDate(next.getDate() + plan.frequencyValue); break;
-        case 'WEEKS': next.setDate(next.getDate() + plan.frequencyValue * 7); break;
-        case 'MONTHS': next.setMonth(next.getMonth() + plan.frequencyValue); break;
-        case 'YEARS': next.setFullYear(next.getFullYear() + plan.frequencyValue); break;
-      }
-      data.nextExecutionDate = next;
-    }
-
-    await prisma.maintenancePlan.update({ where: { id: planId }, data });
-    await prisma.maintenancePlanExecution.create({
-      data: { planId, workOrderId, executedAt, notes: notes || null },
-    });
-  } catch (e: any) {
-    console.error('[maintenance] avanzarPlanPorOT error:', e);
-  }
-}
-
-// Función auxiliar para verificar planes por KM después de completar una OT
+// Función auxiliar para verificar planes por KM después de completar una OT.
+// Marca vencimiento por km SOLO en planes sin pata de días: nextExecutionDate
+// ahí funciona como marcador "vencido hoy" (no es una fecha de intervalo real).
+// Los planes con frecuenciaDias guardan una fecha real que no se sobreescribe.
 async function verificarPlanesKmDespuesDeOt(prisma: any, tenantId: string, vehiculoId: string, odometer: number) {
   try {
     // plan.assetId referencia maintenanceAsset.id — resolver desde el vehículo
     const veh = await prisma.vehiculo.findFirst({ where: { id: vehiculoId, tenantId }, select: { maintenanceAssetId: true } });
     if (!veh?.maintenanceAssetId) return;
     const planes = await prisma.maintenancePlan.findMany({
-      where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM', assetId: veh.maintenanceAssetId },
+      where: { tenantId, status: 'ACTIVE', frequencyUnit: 'KM', assetId: veh.maintenanceAssetId, frecuenciaDias: null },
       select: { id: true, triggerKm: true, lastOdometerExecution: true },
     });
-    
+
     for (const plan of planes) {
-      const kmDesdeUltima = plan.lastOdometerExecution 
-        ? odometer - plan.lastOdometerExecution 
+      const kmDesdeUltima = plan.lastOdometerExecution
+        ? odometer - plan.lastOdometerExecution
         : odometer;
       const triggerKm = plan.triggerKm || 0;
-      
-      // Si alcanzó o superó el umbral, actualizar nextExecutionDate
+
+      // Si alcanzó o superó el umbral, actualizar nextExecutionDate (marcador de vencido)
       if (kmDesdeUltima >= triggerKm) {
         await prisma.maintenancePlan.updateMany({
           where: { id: plan.id, tenantId },

@@ -477,7 +477,13 @@ model Tenant {
   conjuntosOperativos           ConjuntoOperativo[]
   conjuntoOperativoEventos      ConjuntoOperativoEvento[]
   maintenanceComponentRules     MaintenanceComponentRule[]
+  maintenanceComponentRuleAudits MaintenanceComponentRuleAudit[]
   maintenanceSparePartMovements MaintenanceSparePartMovement[]
+  workOrderTasks                WorkOrderTask[]
+
+  // Flota 360 — Casos de defecto y restricciones de servicio (inspecciones)
+  defectoCasos          DefectoCaso[]
+  restriccionesServicio RestriccionServicio[]
 
   // Flota 360 — Hub del chofer (QR público)
   flotaIncidentes           FlotaIncidente[]
@@ -485,10 +491,22 @@ model Tenant {
   servicioRegistros         ServicioRegistro[]
   flotaControlesPreServicio FlotaControlPreServicio[]
 
+  // Flota 360 — Jornadas, descansos y política (aditivo)
+  flotaJornadas                 FlotaJornada[]
+  flotaJornadaCorrecciones      FlotaJornadaCorreccion[]
+  flotaJornadaAvisos            FlotaJornadaAviso[]
+  flotaJornadaPolitica          FlotaJornadaPolitica?
+  flotaJornadaPoliticaHistorial FlotaJornadaPoliticaHistorial[]
+  flotaHabilitacionesDescanso   FlotaHabilitacionDescanso[]
+
   // Flota 360 — Mediciones de banda, facturas y multas
   neumaticoMediciones NeumaticoMedicion[]
   flotaFacturas       FlotaFactura[]
   flotaMultas         FlotaMulta[]
+
+  // Flota 360 — Talleres externos / services oficiales
+  flotaTalleres        FlotaTaller[]
+  flotaTallerEventos   FlotaTallerEvento[]
 
   // Digital Twin Relations
   assetDigitalTwins      AssetDigitalTwin[]
@@ -532,6 +550,9 @@ model Tenant {
   // Flota 360 — Proyección: catálogo técnico de referencias y mediciones de condición
   fleetComponentReferences   FleetComponentReference[]
   fleetComponentMeasurements FleetComponentMeasurement[]
+
+  // Flota 360 — Episodios de indisponibilidad de unidades
+  unidadIndisponibilidades   UnidadIndisponibilidad[]
 
   @@index([parentTenantId])
 }
@@ -3475,8 +3496,23 @@ model MaintenancePlan {
   frequencyValue Int    @default(30)
   frequencyUnit  String @default("DAYS") // DAYS, WEEKS, MONTHS, YEARS, KM
 
-  triggerKm             Float? // si frequencyUnit=KM, ejecutar cada N km
+  triggerKm             Float? // intervalo por kilómetros (cada N km)
   lastOdometerExecution Float? // odómetro en la última ejecución
+
+  // Segunda pata del intervalo: días. Permite "cada 30.000 km O 365 días, lo
+  // primero que ocurra" preservando ambos límites desde la regla.
+  frecuenciaDias Int?
+
+  // Vínculo explícito con el catálogo de componentes (FleetComponentReference.componentKey
+  // / COMPONENTES_DEF.key de fleetProjection). Reemplaza el match por regex como
+  // mecanismo de asociación de ejecuciones.
+  componentKey String?
+
+  // Política de cálculo del próximo vencimiento:
+  // DESDE_EJECUCION: próximo = fecha/km real de ejecución + intervalo.
+  // CALENDARIO_FIJO: conserva la periodicidad desde la fecha programada.
+  intervaloModo    String  @default("DESDE_EJECUCION")
+  requiereRevision Boolean @default(false) // ambigüedad de datos heredados, no auto-migrable
 
   nextExecutionDate DateTime?
   lastExecutionDate DateTime?
@@ -3490,9 +3526,11 @@ model MaintenancePlan {
   maintenancePlanExecutions MaintenancePlanExecution[]
   interventions             MaintenanceIntervention[]
   workOrders                WorkOrder[]
+  workOrderTasks            WorkOrderTask[]
 
   @@index([tenantId])
   @@index([assetId])
+  @@index([componentKey])
   @@map("maintenance_plans")
 }
 
@@ -3553,6 +3591,47 @@ model WorkOrder {
   technicianId String?                @db.Uuid
   technician   MaintenanceTechnician? @relation(fields: [technicianId], references: [id], onDelete: SetNull)
 
+  // Ejecución externa: el ejecutor puede ser un taller en vez de un mecánico.
+  // ejecutorTipo = INTERNO (technicianId) | EXTERNO (tallerId). Uno solo define el ejecutor;
+  // responsableSeguimientoId/Nombre es el usuario interno que sigue la OT (opcional, sin FK).
+  ejecutorTipo                  String  @default("INTERNO") // INTERNO | EXTERNO
+  tallerId                      String? @db.Uuid
+  taller                        FlotaTaller? @relation(fields: [tallerId], references: [id], onDelete: SetNull)
+  responsableSeguimientoId      String? @db.Uuid
+  responsableSeguimientoNombre  String?
+
+  // Seguimiento de la intervención externa (sin circuito paralelo: el status de la OT sigue siendo el eje)
+  fechaIngresoTaller    DateTime? // fecha de envío/ingreso efectivo al taller (≠ programación)
+  fechaEntregaEstimada  DateTime?
+  fechaDevolucion       DateTime? // fecha real de devolución de la unidad
+  trabajoSolicitado     String?   // qué se pidió al taller
+  trabajoRealizado      String?   // qué se hizo efectivamente
+  referenciaExterna     String?   // n° de presupuesto / trabajo del taller
+  observacionesExternas String?
+  costoExterno          Float  @default(0) // suma de facturas externas vinculadas (sin repuestos propios)
+
+  // Recepción / conformidad del trabajo externo
+  recepcionAt          DateTime?
+  recepcionUsuarioId   String?  @db.Uuid
+  recepcionUsuarioNombre String?
+  recepcionResultado   String? // CONFORME | OBSERVADO | REQUIERE_CORRECCION
+  recepcionNotas       String?
+  recepcionEvidenciaUrl String?
+
+  // Garantía del trabajo (opcional — no toda reparación la tiene)
+  garantiaAlcance     String?
+  garantiaInicio      DateTime?
+  garantiaFechaLimite DateTime?
+  garantiaKmLimite    Float?
+  garantiaCondiciones String?
+  garantiaDocUrl      String?
+
+  // Reclamo/devolución de garantía: esta OT nace de una OT previa
+  reclamoDeOtId String?    @db.Uuid
+  reclamoDeOt   WorkOrder? @relation("ReclamosOT", fields: [reclamoDeOtId], references: [id], onDelete: SetNull)
+  reclamos      WorkOrder[] @relation("ReclamosOT")
+  sinCargo      Boolean    @default(false) // trabajo en garantía: no suma costo nuevo
+
   scheduledDate DateTime?
   startedAt     DateTime?
   completedAt   DateTime?
@@ -3560,11 +3639,25 @@ model WorkOrder {
   estimatedDuration Int? // hours
   actualDuration    Int? // hours
 
+  // Fecha real de ejecución física del trabajo (distinta de scheduledDate y de
+  // completedAt, que es la fecha de carga/cierre administrativo).
+  executedAt DateTime?
+
+  // Si la intervención retira la unidad del servicio (abre un episodio de
+  // indisponibilidad al ejecutarse). Una OT programada no bloqueante NO
+  // retira la unidad ni afecta su disponibilidad.
+  retiraDeServicio Boolean @default(false)
+
+  // Clave de idempotencia del cliente para POST /work-orders: un retry o doble
+  // clic con la misma clave devuelve la OT existente sin duplicar efectos.
+  creationKey String? @unique
+
   laborCost Float @default(0)
   partsCost Float @default(0)
   totalCost Float @default(0)
 
-  costs MaintenanceCost[]
+  costs  MaintenanceCost[]
+  tareas WorkOrderTask[]
 
   createdAt                 DateTime                         @default(now()) @db.Timestamptz
   updatedAt                 DateTime                         @updatedAt @db.Timestamptz
@@ -3582,6 +3675,8 @@ model WorkOrder {
   interventions             MaintenanceIntervention[]
   sparePartsUsed            WorkOrderSparePart[]
   FleetWorkOrderComponent   FleetWorkOrderComponent[]
+  hallazgosInspeccion       InspeccionHallazgo[]
+  defectoCasos              DefectoCaso[]
 
   @@index([tenantId])
   @@index([assetId])
@@ -3606,6 +3701,11 @@ model WorkOrderSparePart {
 
   quantity Int   @default(1)
   unitCost Float @default(0) // snapshot del costo unitario al asignar
+
+  // Origen del repuesto: PROPIO (sale del inventario de la empresa → stockDeducted)
+  // | TALLER (lo aporta el taller externo → informativo, no descuenta stock ni
+  // suma a partsCost; su costo ya va en la factura del taller).
+  origen String @default("PROPIO") // PROPIO | TALLER
 
   stockDeducted Boolean @default(false) // true cuando se descontó del stock al completar la OT
 
@@ -3650,7 +3750,10 @@ model VehiculoHistorialMantenimiento {
   vehiculoId String   @db.Uuid
   vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
 
-  workOrderId String?    @db.Uuid
+  // @unique: una OT produce una sola entrada de historial (idempotencia de
+  // cierre: reabrir y re-cerrar no duplica la fila). Datos históricos
+  // duplicados se deduplican en la migración.
+  workOrderId String?    @unique @db.Uuid
   workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
 
   fecha       DateTime @default(now())
@@ -4842,8 +4945,22 @@ enum MaintenanceAssetStatus {
 
 model MaintenancePlanExecution {
   id         String   @id @default(uuid()) @db.Uuid
-  executedAt DateTime @default(now())
+  executedAt DateTime @default(now()) // fecha REAL de ejecución
   notes      String?
+
+  // Odómetro real al momento de la ejecución (para tareas con intervalo en km).
+  odometroEjecucion Float?
+
+  // Clave de idempotencia: una misma ejecución de una tarea no puede registrarse
+  // dos veces. Formato: "ot:{workOrderId}" para cierres de OT, "dir:{uuid}" para
+  // ejecuciones directas de plan. NULL solo en datos históricos pre-migración.
+  sourceKey String? @unique
+
+  // false cuando la ejecución quedó registrada pero NO actualizó las referencias
+  // del plan (ej. ejecución histórica anterior a la última referencia válida).
+  referenciaAplicada Boolean @default(true)
+
+  registradoPor String? @db.Uuid // PlatformUser.id que registró la ejecución
 
   // Relaciones
   planId String          @db.Uuid
@@ -4858,6 +4975,33 @@ model MaintenancePlanExecution {
   @@index([planId])
   @@index([workOrderId])
   @@map("maintenance_plan_executions")
+}
+
+// Tareas preventivas de una OT: vincula cada trabajo con el MaintenancePlan
+// (tarea) al que corresponde. Permite ejecución parcial: solo las tareas
+// COMPLETED avanzan su plan; las demás quedan PENDING o SKIPPED.
+model WorkOrderTask {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  workOrderId String    @db.Uuid
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  planId String          @db.Uuid
+  plan   MaintenancePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  status      String    @default("PENDING") // PENDING, COMPLETED, SKIPPED
+  completedAt DateTime?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@unique([workOrderId, planId])
+  @@index([tenantId])
+  @@index([workOrderId])
+  @@index([planId])
+  @@map("work_order_tasks")
 }
 
 enum MaintenancePlanStatus {
@@ -7158,6 +7302,10 @@ model InspeccionPlantilla {
   items      InspeccionItem[]
   instancias InspeccionQR[]
 
+  // Criticidad revisada: false = las reglas de criticidad de este checklist
+  // están PENDIENTES de revisión por un responsable (no implica "apto").
+  criticidadRevisada Boolean @default(false)
+
   createdAt   DateTime @default(now()) @db.Timestamptz
   updatedAt   DateTime @updatedAt @db.Timestamptz
   createdById String?  @db.Uuid
@@ -7181,7 +7329,21 @@ model InspeccionItem {
   triggerHallazgo Boolean @default(false)
   valorUmbral     String?
 
+  // ── Regla de criticidad (configurable por responsable, no inventada) ──
+  // Regla por defecto para "no cumple" (esOk=false) o cualquier valor disparador:
+  severidadHallazgo String?  // LEVE | MODERADO | CRITICO — severidad del DEFECTO
+  bloqueaServicio   Boolean  @default(false) // la respuesta genera restricción de servicio
+  instruccionChofer String?  // texto que ve el chofer al detectar la condición
+  prioridadOt       String?  // LOW | MEDIUM | HIGH | CRITICAL — prioridad de ATENCIÓN de la OT (≠ severidad)
+  tipoDefecto       String?  // clave de agrupación del caso (si null: label+seccion normalizado)
+  componentKey      String?  // vínculo explícito al catálogo de componentes
+  posicion          String?  // posición física cuando aplica (ej: cubierta)
+  // Overrides por respuesta para ítems con opciones:
+  // [{ valor, generaHallazgo?, severidad?, bloqueaServicio?, instruccionChofer?, prioridadOt?, tipoDefecto? }]
+  reglasRespuesta   Json?
+
   respuestas InspeccionRespuestaItem[]
+  hallazgos  InspeccionHallazgo[]
 
   @@index([plantillaId])
   @@map("inspeccion_items")
@@ -7256,6 +7418,12 @@ model Inspeccion {
 
   feedbackToken String? @unique
 
+  // Versión de la plantilla usada al responder (interpretación histórica
+  // estable: cambiar el checklist no reescribe inspecciones anteriores).
+  plantillaVersion Int?
+  // Clave idempotente del envío: reintentos del chofer no duplican la inspección.
+  submissionKey String?
+
   otId   String?
   ncrId  String?
   capaId String?
@@ -7270,6 +7438,7 @@ model Inspeccion {
   @@index([tenantId])
   @@index([tenantId, createdAt])
   @@index([qrId])
+  @@unique([tenantId, submissionKey])
   @@map("inspecciones")
 }
 
@@ -7365,12 +7534,190 @@ model InspeccionHallazgo {
   otGenerada  Boolean @default(false)
   ncrGenerada Boolean @default(false)
 
+  // ── Reporte de defecto (cada hallazgo ES un reporte conservado) ──
+  itemId          String? @db.Uuid // ítem del checklist que lo originó
+  item            InspeccionItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  valorRespuesta  String? // valor que disparó el hallazgo (snapshot de la respuesta)
+  reglaSnapshot   Json?   // regla aplicada en el momento (interpretación histórica estable)
+  reporteKey      String? // @@unique con tenantId — dedup de reintentos
+  bloqueante      Boolean @default(false) // la regla vigente marcaba restricción de servicio
+  prioridadOt     String? // prioridad de atención configurada (≠ severidad del defecto)
+  instruccionChofer String? // instrucción mostrada al chofer en el momento
+
+  // Unidad afectada resuelta en el momento del reporte (no por texto posterior)
+  vehiculoId         String?   @db.Uuid
+  vehiculo           Vehiculo? @relation(fields: [vehiculoId], references: [id], onDelete: SetNull)
+  maintenanceAssetId String?   @db.Uuid
+
+  // Caso de defecto al que pertenece este reporte (nunca se multiplica por re-reporte)
+  casoId String?      @db.Uuid
+  caso   DefectoCaso? @relation(fields: [casoId], references: [id], onDelete: SetNull)
+
+  // OT que gestiona la reparación (una por caso, no por reporte)
+  otId String?     @db.Uuid
+  ot   WorkOrder?  @relation(fields: [otId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
   @@index([tenantId])
   @@index([tenantId, estado])
+  @@index([casoId])
+  @@index([vehiculoId])
+  @@unique([tenantId, reporteKey])
   @@map("inspeccion_hallazgos")
+}
+
+// ─────────────────────────────────────────────
+// FLOTA 360 — CASOS DE DEFECTO DE INSPECCIONES
+// Separación conceptual:
+//  - InspeccionHallazgo = REPORTE (cada detección informada, conservada).
+//  - DefectoCaso = el defecto abierto y su seguimiento (un caso, N reportes).
+//  - WorkOrder = la gestión de la reparación (una por caso).
+// Re-reporte del mismo defecto abierto → se vincula al caso, sin nueva OT.
+// Reaparición tras resolución verificada → caso nuevo, vinculado como
+// posible recurrencia (sin afirmar misma causa).
+// Aditivo: no modifica tablas existentes.
+// ─────────────────────────────────────────────
+model DefectoCaso {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+  maintenanceAssetId String? @db.Uuid
+
+  // Identidad del defecto (matching por identificadores, no por texto libre)
+  itemKey      String  // tipoDefecto configurado o label+sección normalizado
+  itemLabel    String
+  itemId       String? @db.Uuid
+  seccion      String?
+  equipoDestino String? // TRACTOR | SEMI
+  componentKey String?
+  posicion     String?
+
+  severidad  String  @default("MODERADO") // LEVE | MODERADO | CRITICO (del defecto)
+  bloqueante Boolean @default(false)
+
+  estado String @default("ABIERTO")
+  // ABIERTO → EN_TRATAMIENTO (OT asignada) → REPARADO_INFORMADO (OT completada)
+  // → VERIFICADO → RESUELTO (con habilitación si era bloqueante) → CERRADO
+
+  // Seguimiento de reportes
+  primerReporteAt DateTime @default(now()) @db.Timestamptz
+  ultimoReporteAt DateTime @default(now()) @db.Timestamptz
+  reportesCount   Int      @default(1)
+
+  // Gestión
+  workOrderId String?    @db.Uuid
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  responsable String?
+  fechaLimite DateTime?
+
+  // Reparación → verificación → habilitación (separados)
+  reparacionInformadaAt  DateTime?
+  reparacionInformadaPor String?
+  verificadoAt           DateTime?
+  verificadoPorId        String?   @db.Uuid
+  verificadoPorNombre    String?
+  verificacionResultado  String? // OK | FALLA_PERSISTE
+  verificacionNotas      String?
+  habilitadoAt           DateTime?
+  habilitadoPorId        String?   @db.Uuid
+  habilitadoPorNombre    String?
+
+  // Posible recurrencia: caso anterior resuelto con la misma firma.
+  // No afirma misma causa — solo registra la relación para análisis.
+  casoPrevioId String?      @db.Uuid
+  casoPrevio   DefectoCaso? @relation("DefectoRecurrencia", fields: [casoPrevioId], references: [id], onDelete: SetNull)
+  recurrencias DefectoCaso[] @relation("DefectoRecurrencia")
+
+  resueltoAt DateTime?
+  notas      String?
+
+  reportes      InspeccionHallazgo[]
+  restricciones RestriccionServicio[]
+  eventos       DefectoCasoEvento[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, estado])
+  @@index([vehiculoId, itemKey])
+  @@map("flota_defecto_casos")
+}
+
+// Auditoría append-only del caso: creación, reportes, OT, verificación, habilitación, reasignaciones.
+model DefectoCasoEvento {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  casoId   String @db.Uuid
+  caso     DefectoCaso @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  tipo    String // CREADO | REPORTE | OT_VINCULADA | REPARACION_INFORMADA | VERIFICADO | VERIFICACION_FALLIDA | HABILITADO | REASIGNADO | CERRADO | REABIERTO | NOTA
+  detalle String?
+  usuarioId     String? @db.Uuid
+  usuarioNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([casoId])
+  @@map("flota_defecto_caso_eventos")
+}
+
+// Restricción de servicio sobre una unidad (una por caso bloqueante, o manual).
+// La unidad queda restringida aunque la OT o la asignación de mecánico fallen.
+model RestriccionServicio {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  casoId     String?            @db.Uuid
+  caso       DefectoCaso?       @relation(fields: [casoId], references: [id], onDelete: SetNull)
+  hallazgoId String?            @db.Uuid // reporte de origen
+
+  motivo String
+  origen  String @default("CHECKLIST") // CHECKLIST | MANUAL
+  activa  Boolean @default(true)
+
+  // Levantamiento (habilitación): quién, cuándo y motivo
+  levantadaAt       DateTime?
+  levantadaPorId    String?   @db.Uuid
+  levantadaPorNombre String?
+  levantadaMotivo   String?
+
+  createdById    String? @db.Uuid
+  createdByName  String?
+  createdAt      DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId, activa])
+  @@index([vehiculoId, activa])
+  @@map("flota_restricciones_servicio")
+}
+
+// Auditoría de la configuración de criticidad de checklists (quién/qué/cuándo).
+model InspeccionReglaAudit {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @db.Uuid
+  plantillaId String @db.Uuid
+
+  accion           String // UPDATE_REGLAS | CREATE | REVISION_CRITICIDAD
+  plantillaVersion Int
+  cambios          Json // [{ itemLabel, campo, antes, despues }]
+
+  usuarioId     String? @db.Uuid
+  usuarioNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([plantillaId])
+  @@map("inspeccion_regla_audits")
 }
 
 model AIUsageLog {
@@ -7432,13 +7779,23 @@ model Vehiculo {
   valorAdquisicion Float? // costo de compra del vehículo (para TCO / valorización)
 
   // Estado
-  status          String  @default("ACTIVO") // ACTIVO, EN_TALLER, INACTIVO, BAJA
-  // Estado operativo fino (3 estadíos): OPERATIVO (circulando/disponible),
-  // EN_TALLER (en el taller, reparación que puede demorar días),
-  // EN_REPARACION (se le está trabajando en este momento).
-  // Se sincroniza con status: EN_TALLER/EN_REPARACION → status='EN_TALLER'.
+  // Situación administrativa: ACTIVO, INACTIVO, BAJA.
+  // 'EN_TALLER' persiste como valor LEGACY de compatibilidad (espejo del
+  // episodio de indisponibilidad abierto); no se acepta en escritura manual.
+  status          String  @default("ACTIVO") // ACTIVO, INACTIVO, BAJA (+ EN_TALLER legacy)
+  // Estado operativo derivado: OPERATIVO (sin episodio ni restricción activa),
+  // RESTRINGIDA (restricción de servicio activa sin episodio),
+  // EN_TALLER / EN_REPARACION (espejo de la etapa del episodio abierto).
+  // Única fuente de escritura: unidadEstadoService — nunca se edita a mano.
   estadoOperativo String  @default("OPERATIVO")
   notas           String?
+
+  // Ubicación declarada (dimensión separada: no determina disponibilidad).
+  // SIN_DATOS = sin ubicación confiable registrada.
+  ubicacionTipo    String?   // ESTACIONAMIENTO | TALLER_INTERNO | TALLER_EXTERNO | OTRO
+  ubicacionDetalle String?   // nombre/dirección libre
+  ubicacionDesde   DateTime? @db.Timestamptz
+  ubicacionPor     String?   // quién lo registró
 
   // Relaciones
   conductorId String?    @db.Uuid
@@ -7469,6 +7826,15 @@ model Vehiculo {
 
   // Flota 360 — Historial de estadíos operativos (OPERATIVO/EN_TALLER/EN_REPARACION)
   estadoEventos VehiculoEstadoEvento[]
+
+  // Flota 360 — Defectos de inspección y restricciones de servicio
+  defectoCasos          DefectoCaso[]
+  restriccionesServicio RestriccionServicio[]
+  hallazgosReportados   InspeccionHallazgo[]
+
+  // Flota 360 — Episodios de indisponibilidad y ubicaciones declaradas
+  indisponibilidades UnidadIndisponibilidad[]
+  ubicacionEventos   VehiculoUbicacionEvento[]
 
   createdAt                  DateTime                     @default(now()) @db.Timestamptz
   updatedAt                  DateTime                     @updatedAt @db.Timestamptz
@@ -7505,6 +7871,101 @@ model VehiculoEstadoEvento {
   @@index([vehiculoId, createdAt])
   @@index([tenantId])
   @@map("flota_vehiculo_estado_eventos")
+}
+
+// ─────────────────────────────────────────────
+// FLOTA 360 — EPISODIOS DE INDISPONIBILIDAD
+// Un episodio abierto = la unidad está retirada del servicio. Contiene las
+// causas (workOrderIds), etapas/motivos de espera (tabla hija), ingreso y
+// salida efectivos del taller. El contador total nunca se reinicia al
+// cambiar de motivo: las etapas son tramos dentro del episodio.
+// ─────────────────────────────────────────────
+model UnidadIndisponibilidad {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  inicioAt DateTime  @db.Timestamptz
+  finAt    DateTime? @db.Timestamptz // null = abierto
+  estado   String    @default("ABIERTA") // ABIERTA | CERRADA
+
+  origen  String @default("MANUAL") // MANUAL | OT | CHECKLIST | QR_MECANICO | MIGRACION
+  motivo  String? // descripción libre de la causa de salida de servicio
+
+  // Causas relacionadas (una o varias OTs sin duplicar el tiempo; las
+  // restricciones se consultan en vivo por vehiculoId).
+  workOrderIds String[] @default([])
+
+  // Taller (interno o externo) e ingreso/salida efectivos
+  tallerTipo             String?   // INTERNO | EXTERNO
+  tallerId               String?   @db.Uuid
+  tallerNombre           String?
+  fechaIngresoTaller     DateTime? @db.Timestamptz
+  fechaSalidaTaller      DateTime? @db.Timestamptz
+  fechaDevolucionEstimada DateTime? @db.Timestamptz
+
+  responsableSeguimientoNombre String?
+  observaciones                String?
+
+  // Migración: intervalos reconstruidos desde eventos sin otro detalle
+  ambiguo Boolean @default(false)
+
+  cerradaPorNombre String?
+  cierreMotivo     String?
+
+  etapas UnidadIndisponibilidadEtapa[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId, vehiculoId])
+  @@index([tenantId, estado])
+  @@map("flota_unidad_indisponibilidades")
+}
+
+// Etapa/motivo de espera dentro de un episodio (append-only: cada cambio
+// cierra la etapa anterior y abre otra, sin reiniciar el episodio).
+model UnidadIndisponibilidadEtapa {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  tenantId           String                 @db.Uuid
+  indisponibilidadId String                 @db.Uuid
+  indisponibilidad   UnidadIndisponibilidad @relation(fields: [indisponibilidadId], references: [id], onDelete: Cascade)
+
+  etapa       String // PENDIENTE_INGRESO | PENDIENTE_DIAGNOSTICO | ESPERANDO_PRESUPUESTO | ESPERANDO_AUTORIZACION | ESPERANDO_REPUESTO | ESPERANDO_PAGO_REPUESTO | ESPERANDO_TURNO_MANO_OBRA | REPARACION_EN_CURSO | PENDIENTE_VERIFICACION | PENDIENTE_HABILITACION | OTRO
+  comentario  String?
+  inicioAt    DateTime  @db.Timestamptz
+  finAt       DateTime? @db.Timestamptz
+  workOrderId String?   @db.Uuid
+
+  responsableNombre String?
+  registradoPorId   String?  @db.Uuid
+  registradoPorName String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([indisponibilidadId, inicioAt])
+  @@map("flota_unidad_indisponibilidad_etapas")
+}
+
+// Ubicación declarada de la unidad (auditable; no infiere disponibilidad).
+model VehiculoUbicacionEvento {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  tipo      String // ESTACIONAMIENTO | TALLER_INTERNO | TALLER_EXTERNO | OTRO | SIN_DATOS
+  detalle   String?
+  notas     String?
+  createdByName String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([vehiculoId, createdAt])
+  @@index([tenantId])
+  @@map("flota_vehiculo_ubicacion_eventos")
 }
 
 // ─────────────────────────────────────────────
@@ -7578,6 +8039,10 @@ model MaintenanceComponentRule {
   categoria           String @default("GENERAL") // MOTOR, FRENOS, NEUMATICOS, SUSPENSION, LUBRICACION, DOCUMENTACION, GENERAL
   tipoActivoAplicable String @default("TODOS") // TRACTOR, CAMION, UTILITARIO, SEMI, CONJUNTO, TODOS
 
+  // Vínculo explícito con el catálogo de componentes (componentKey de
+  // FleetComponentReference / COMPONENTES_DEF). Los planes generados lo heredan.
+  componentKey String?
+
   frecuenciaKm       Float?
   frecuenciaDias     Int?
   horasMotor         Float?
@@ -7598,12 +8063,39 @@ model MaintenanceComponentRule {
 
   repuestosRequeridos MaintenanceComponentRuleSparePart[]
   aplicaciones        MaintenanceComponentRuleAsset[]
+  auditoria           MaintenanceComponentRuleAudit[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
   @@index([tenantId])
   @@map("maintenance_component_rules")
+}
+
+// Auditoría de cambios en reglas de servicio: usuario, fecha, valores
+// anteriores/nuevos y alcance elegido (solo futuras asignaciones o también
+// planes existentes seleccionados). Nunca modifica ejecuciones históricas.
+model MaintenanceComponentRuleAudit {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  ruleId String                   @db.Uuid
+  rule   MaintenanceComponentRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  accion   String // CREATE, UPDATE, PROPAGAR
+  alcance  String // FUTURAS | PLANES_SELECCIONADOS
+  cambios  Json   // [{ campo, antes, despues }]
+  planIds  String[] @default([]) // planes existentes afectados por la propagación
+
+  usuarioId     String? @db.Uuid
+  usuarioNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([ruleId])
+  @@map("maintenance_component_rule_audits")
 }
 
 model MaintenanceComponentRuleSparePart {
@@ -7965,8 +8457,16 @@ model Conductor {
   status String  @default("ACTIVO") // ACTIVO, INACTIVO, SUSPENDIDO
   notas  String?
 
+  // Identidad verificada para el hub del chofer: PIN asignado por la empresa.
+  // El QR identifica la unidad; el PIN acredita al conductor ante el servidor.
+  pinHash    String?
+  pinSetAt   DateTime? @db.Timestamptz
+  pinSetById String?   @db.Uuid
+
   vehiculos Vehiculo[]
   multas    FlotaMulta[]
+  jornadas  FlotaJornada[]
+  habilitacionesDescanso FlotaHabilitacionDescanso[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -8353,6 +8853,23 @@ model ServicioRegistro {
   // Chofer identificado (scalar, sin relación — patrón aditivo)
   conductorId String? @db.Uuid
 
+  // Jornada explícita a la que pertenece el evento (nulo en registros legacy
+  // o en intentos rechazados — éstos llevan tipo INICIO_RECHAZADO)
+  jornadaId String?       @db.Uuid
+  jornada   FlotaJornada? @relation(fields: [jornadaId], references: [id], onDelete: SetNull)
+
+  // Idempotencia: clave generada por el cliente para que un reintento
+  // (por ejemplo tras un corte de conexión) no duplique el evento.
+  clienteEventoId String?
+
+  // Hora del evento (por ahora = hora del servidor al recibir; separada de
+  // createdAt para permitir correcciones futuras trazables sin reescribir el log)
+  eventoAt DateTime @default(now()) @db.Timestamptz
+
+  // Solo en tipo INICIO_RECHAZADO: por qué se impidió el inicio y con qué regla
+  motivoRechazo String? // JORNADA_ABIERTA, DESCANSO_INSUFICIENTE, SIN_HISTORIAL
+  reglaAplicada Json?   // snapshot de la política usada al rechazar
+
   reportadoPorNombre   String
   reportadoPorTelefono String?
 
@@ -8360,7 +8877,190 @@ model ServicioRegistro {
 
   @@index([tenantId])
   @@index([vehiculoId])
+  @@index([jornadaId])
+  @@index([tenantId, conductorId, tipo])
   @@map("flota_servicio_registros")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// JORNADAS — entidad explícita que vincula INICIO→FIN por conductor.
+// Una jornada abierta por conductor y organización (índice único parcial en
+// migración manual; Prisma no expresa índices parciales).
+// ════════════════════════════════════════════════════════════════════════════
+model FlotaJornada {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  conductorId String    @db.Uuid
+  conductor   Conductor @relation(fields: [conductorId], references: [id], onDelete: Cascade)
+
+  estado  String   @default("ABIERTA") // ABIERTA, CERRADA
+  inicioAt DateTime @db.Timestamptz
+  finAt    DateTime? @db.Timestamptz // null mientras ABIERTA o si se regulariza sin horario
+
+  // Unidades usadas durante la jornada: [{vehiculoId, dominio, desde, hasta}]
+  // Un cambio de unidad se agrega; no reinicia la jornada ni cuenta descanso.
+  unidades Json @default("[]")
+
+  origen  String?
+  destino String?
+  carga   String?
+
+  // Evaluación de descanso previo (al abrir la jornada)
+  descansoPrevioHoras  Float?  // null = SIN_HISTORIAL o jornada previa sin cierre válido
+  evaluacionDescanso   String? // CUMPLE, INSUFICIENTE, SIN_HISTORIAL, JORNADA_PREVIA_ABIERTA
+  // Evaluación recalculada tras correcciones (la original queda en evaluacionDescansoOriginal)
+  evaluacionDescansoOriginal String?
+  descansoPrevioHorasOriginal Float?
+
+  horasTrabajadas Float? // al cerrar: finAt - inicioAt (preciso, sin redondeo previo)
+  jornadaExcesiva Boolean @default(false)
+
+  // Descanso declarado por el chofer en el control pre-servicio vinculado
+  descansoDeclaradoHoras    Float?
+  discrepanciaDeclaradoCalc Boolean @default(false)
+
+  habilitacionInicialId String? @db.Uuid // si se habilitó sin historial (circuito autorizado)
+
+  // Snapshot de la política vigente al abrir la jornada (las correcciones y
+  // cambios de política posteriores no reescriben la evaluación original)
+  politicaVersion  Int?
+  politicaSnapshot Json?
+
+  // Regularización/cierre administrativo
+  cierreTipo       String?  // NORMAL, REGULARIZADO
+  cierreMotivo     String?
+  cerradaPorUserId String?  @db.Uuid
+
+  notas String?
+
+  registros    ServicioRegistro[]
+  correcciones FlotaJornadaCorreccion[]
+  avisos       FlotaJornadaAviso[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId, conductorId, estado])
+  @@index([tenantId, inicioAt])
+  @@map("flota_jornadas")
+}
+
+// Corrección autorizada de horarios de una jornada — trazable, no destructiva
+model FlotaJornadaCorreccion {
+  id        String       @id @default(uuid()) @db.Uuid
+  tenantId  String       @db.Uuid
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  jornadaId String       @db.Uuid
+  jornada   FlotaJornada @relation(fields: [jornadaId], references: [id], onDelete: Cascade)
+
+  campo         String // inicioAt, finAt, cierre_regularizacion
+  valorAnterior String?
+  valorNuevo    String?
+
+  motivo    String
+  evidencia String?
+
+  corregidoPorId String   @db.Uuid
+  corregidoEn    DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId, jornadaId])
+  @@map("flota_jornada_correcciones")
+}
+
+// Avisos de duración de jornada (anticipado y exceso) — uno por tipo por jornada
+model FlotaJornadaAviso {
+  id        String       @id @default(uuid()) @db.Uuid
+  tenantId  String       @db.Uuid
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  jornadaId String       @db.Uuid
+  jornada   FlotaJornada @relation(fields: [jornadaId], references: [id], onDelete: Cascade)
+
+  tipo           String // ANTICIPADO, EXCESO
+  horasAlAviso   Float
+  programadoPara DateTime @db.Timestamptz
+  enviadoAt      DateTime? @db.Timestamptz
+  estadoEntrega  String    @default("PENDIENTE") // PENDIENTE, ENVIADO, FALLIDO
+  detalleError   String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@unique([jornadaId, tipo])
+  @@index([tenantId, estadoEntrega])
+  @@map("flota_jornada_avisos")
+}
+
+// Política de jornada/descanso por organización — una fila por tenant.
+// Los umbrales se evalúan con precisión de milisegundos; los campos Float
+// son solo para configuración/visualización.
+model FlotaJornadaPolitica {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  descansoMinHoras       Float  @default(12)
+  modoAplicacion         String @default("ADVERTENCIA") // ADVERTENCIA, BLOQUEO
+  jornadaAlertaHoras     Float  @default(12) // duración para alertar (no bloquea ni corta)
+  avisoAnticipacionHoras Float  @default(1)  // avisar antes de alcanzar el límite
+  destinatarios          Json   @default("\"ADMINS\"") // "ADMINS" o [userId] de TenantMembership
+
+  // true una vez que un responsable revisó explícitamente la política
+  // (requisito para activar modo BLOQUEO)
+  politicaRevisada Boolean @default(false)
+
+  version      Int      @default(1)
+  updatedById  String?  @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  historial FlotaJornadaPoliticaHistorial[]
+
+  @@map("flota_jornada_politicas")
+}
+
+// Historial de versiones de la política — un cambio de umbral no reescribe
+// evaluaciones históricas porque cada jornada guarda su politicaSnapshot.
+model FlotaJornadaPoliticaHistorial {
+  id         String              @id @default(uuid()) @db.Uuid
+  tenantId   String              @db.Uuid
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  politicaId String              @db.Uuid
+  politica   FlotaJornadaPolitica @relation(fields: [politicaId], references: [id], onDelete: Cascade)
+
+  version Int
+  valores Json // snapshot completo de la versión
+
+  changedById String?  @db.Uuid
+  changedAt   DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("flota_jornada_politica_historial")
+}
+
+// Habilitación de inicio sin historial suficiente (primera jornada del chofer
+// en el sistema o historial no conciliable) — declaración + revisión autorizada.
+// Se consume UNA vez: queda marcada con usadaEnJornadaId.
+model FlotaHabilitacionDescanso {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  conductorId String    @db.Uuid
+  conductor   Conductor @relation(fields: [conductorId], references: [id], onDelete: Cascade)
+
+  tipo                String  @default("SIN_HISTORIAL") // SIN_HISTORIAL, CIERRE_NO_CONFIABLE
+  descansoDeclaradoHoras Float?
+  fundamento          String
+  autorizadoPorId     String  @db.Uuid
+
+  usadaEnJornadaId String?  @db.Uuid
+  usadaAt         DateTime? @db.Timestamptz
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId, conductorId])
+  @@map("flota_habilitaciones_descanso")
 }
 
 // Control de aptitud pre-servicio del chofer (fit-for-duty) — registrado desde el hub QR
@@ -8389,6 +9089,9 @@ model FlotaControlPreServicio {
 
   observaciones String?
 
+  // Chofer identificado (aditivo — el declarado se contrasta con la jornada)
+  conductorId String? @db.Uuid
+
   reportadoPorNombre   String
   reportadoPorTelefono String?
 
@@ -8396,6 +9099,7 @@ model FlotaControlPreServicio {
 
   @@index([tenantId])
   @@index([vehiculoId])
+  @@index([conductorId])
   @@index([createdAt])
   @@map("flota_controles_pre_servicio")
 }
@@ -11226,6 +11930,23 @@ model FlotaFactura {
   neumaticoId    String? @db.Uuid
   sparePartId    String? @db.Uuid
 
+  // Taller emisor (ejecución externa). Las facturas con workOrderId se imputan
+  // al costoExterno de la OT y no se cuentan de nuevo en los agregados sueltos.
+  tallerId String?      @db.Uuid
+  taller   FlotaTaller? @relation(fields: [tallerId], references: [id], onDelete: SetNull)
+
+  moneda String @default("ARS") // sin conversión: agregados solo suman ARS
+
+  // Porción del total que corresponde a repuestos propios ya imputados vía stock
+  // (se excluye de costoExterno para no duplicar el gasto)
+  montoRepuestosPropios Float @default(0)
+
+  // Idempotencia de carga (doble clic / retry): clave única por tenant
+  cargaKey String?
+
+  // Nota de crédito/ajuste vinculada al comprobante original
+  notaCreditoDeId String? @db.Uuid
+
   // Archivo de la factura (PDF/foto)
   fileUrl  String?
   fileName String?
@@ -11286,6 +12007,79 @@ model FlotaMulta {
   @@index([conductorId])
   @@index([estado])
   @@map("flota_multas")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TALLERES EXTERNOS / SERVICES OFICIALES — ejecutores externos de OTs de flota
+// ════════════════════════════════════════════════════════════════════════════
+
+// Taller externo o service oficial. Similar en espíritu a MaintenanceTechnician
+// (ejecutor de OTs) pero entidad jurídica: identificación fiscal, marcas, etc.
+// Si el taller ya existe como proveedor en el catálogo SGI 360 (Supplier),
+// supplierId lo vincula para evitar duplicados — no es obligatorio.
+model FlotaTaller {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nombre              String   // nombre comercial — único obligatorio del alta
+  razonSocial         String?
+  identificacionFiscal String? // CUIT/RUT/etc según el país del tenant
+  tipo                String   @default("TALLER_EXTERNO") // TALLER_EXTERNO | SERVICE_OFICIAL
+
+  marcas        String[] @default([]) // marcas atendidas
+  especialidades String[] @default([]) // servicios/especialidades
+
+  direccion      String?
+  localidad      String?
+  contactoNombre String?
+  telefono       String?
+  email          String?
+  observaciones  String?
+
+  isActive Boolean @default(true) // inactivo = no acepta nuevas asignaciones, conserva historial
+
+  // Vínculo opcional al catálogo de proveedores de SGI 360 (evaluación, minutas, etc.)
+  supplierId String? @db.Uuid
+
+  workOrders WorkOrder[]
+  facturas   FlotaFactura[]
+  eventos    FlotaTallerEvento[]
+
+  deletedAt DateTime? // baja lógica: preserva OTs, facturas y antecedentes
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([identificacionFiscal])
+  @@map("flota_talleres")
+}
+
+// Bitácora de trazabilidad de la relación OT ↔ taller: asignaciones,
+// derivaciones, ingreso/devolución, recepción, facturas, garantía y reclamos.
+model FlotaTallerEvento {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tallerId String      @db.Uuid
+  taller   FlotaTaller @relation(fields: [tallerId], references: [id], onDelete: Cascade)
+
+  workOrderId String? @db.Uuid // OT relacionada, cuando aplica
+
+  tipo    String // ASIGNACION, DERIVACION, INGRESO, DEVOLUCION, RECEPCION, FACTURA, GARANTIA, RECLAMO, EDICION_TALLER, ALTA_TALLER
+  detalle String?
+
+  usuarioId     String? @db.Uuid
+  usuarioNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([tallerId])
+  @@index([workOrderId])
+  @@map("flota_taller_eventos")
 }
 
 // ════════════════════════════════════════════════════════════════════════════

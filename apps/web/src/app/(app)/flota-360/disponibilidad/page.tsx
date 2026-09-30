@@ -74,8 +74,14 @@ export default function DisponibilidadPage() {
   const presu = data?.presupuesto || {};
   const alertas = data?.alertasEstadia || [];
   const ranking = data?.rankingEstadia || [];
+  const porUnidad = data?.porUnidad || [];
+  const inconsistencias = data?.inconsistencias || [];
+  const compuestos = data?.compuestos || {};
   const cumplPorUnidad = data?.cumplimientoPreventivo?.porUnidad || [];
   const maxHoras = Math.max(1, ...ranking.map((r: any) => r.horasNoDisponible));
+
+  const etiquetaDe = (vehiculoId: string, estadoActual: string) =>
+    compuestos[vehiculoId]?.etiqueta ?? (ESTADO_OP[estadoActual]?.label ?? estadoActual);
 
   return (
     <div className="space-y-4">
@@ -123,6 +129,25 @@ export default function DisponibilidadPage() {
         </div>
       </div>
 
+      {/* Inconsistencias explícitas: no se corrigen solas, se muestran */}
+      {inconsistencias.length > 0 && (
+        <div className="rounded-lg border border-red-200 bg-red-50/60 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="h-4 w-4 text-red-600" />
+            <h2 className="text-sm font-semibold text-red-800">Inconsistencias de estado</h2>
+            <span className="text-[11px] text-red-600">requieren revisión manual — el sistema no las corrige solo</span>
+          </div>
+          <div className="space-y-1">
+            {inconsistencias.map((i: any) => (
+              <div key={i.vehiculoId} className="text-xs bg-white/70 rounded-md px-3 py-1.5">
+                <Link href={`/flota-360/vehiculos/${i.vehiculoId}`} className="font-semibold text-red-700 hover:text-red-900">{i.dominio}</Link>
+                <span className="text-red-600 ml-2">{i.advertencias.join(' · ')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Alertas de estadía prolongada */}
       {alertas.length > 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50/60 p-4">
@@ -137,7 +162,8 @@ export default function DisponibilidadPage() {
                 <div className="flex items-center gap-2">
                   <span className={`h-2 w-2 rounded-full ${ESTADO_OP[a.estadoOperativo]?.dot ?? 'bg-neutral-300'}`} />
                   <Link href={`/flota-360/vehiculos/${a.vehiculoId}`} className="font-semibold text-neutral-800 hover:text-blue-700">{a.dominio}</Link>
-                  <span className="text-neutral-500">{ESTADO_OP[a.estadoOperativo]?.label}</span>
+                  <span className="text-neutral-500">{a.etiqueta ?? ESTADO_OP[a.estadoOperativo]?.label}</span>
+                  {a.etapa && <span className="text-neutral-400">· {a.etapa}</span>}
                   <span className="text-neutral-400">desde {fmtFecha(a.desde)}</span>
                 </div>
                 <span className="font-medium text-amber-700">{a.dias} días · {a.turnos} turnos</span>
@@ -151,7 +177,7 @@ export default function DisponibilidadPage() {
         {/* Ranking de estadía */}
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-neutral-800 mb-1">Tiempo no disponible por unidad</h2>
-          <p className="text-[11px] text-neutral-400 mb-3">Horas en taller + reparación en los últimos {dias} días</p>
+          <p className="text-[11px] text-neutral-400 mb-3">Episodios de indisponibilidad + restricciones en los últimos {dias} días (sobre tiempo elegible)</p>
           {ranking.every((r: any) => r.horasNoDisponible === 0) ? (
             <p className="text-xs text-neutral-400 py-4 text-center">Sin estadías registradas en el período — toda la flota operativa</p>
           ) : (
@@ -234,38 +260,48 @@ export default function DisponibilidadPage() {
         )}
       </div>
 
-      {/* Tabla completa por unidad */}
+      {/* Tabla completa por unidad — métricas del período sobre tiempo elegible */}
       <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="bg-neutral-50 text-neutral-500 uppercase tracking-wide">
             <tr>
               <th className="text-left font-medium px-3 py-2">Unidad</th>
-              <th className="text-left font-medium px-3 py-2">Estado actual</th>
-              <th className="text-right font-medium px-3 py-2">Hs taller</th>
-              <th className="text-right font-medium px-3 py-2">Hs reparación</th>
-              <th className="text-right font-medium px-3 py-2">Turnos no disp.</th>
-              <th className="text-right font-medium px-3 py-2">Ingresos</th>
+              <th className="text-left font-medium px-3 py-2">Estado</th>
+              <th className="text-right font-medium px-3 py-2">Hs no disp.</th>
+              <th className="text-right font-medium px-3 py-2">Hs en taller</th>
+              <th className="text-right font-medium px-3 py-2">Hs en servicio</th>
+              <th className="text-right font-medium px-3 py-2">Disponib. %</th>
+              <th className="text-right font-medium px-3 py-2">Utiliz. %</th>
+              <th className="text-right font-medium px-3 py-2">Episodios</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
-            {(data?.rankingEstadia || []).map((u: any) => (
+            {porUnidad.map((u: any) => (
               <tr key={u.vehiculoId} className="hover:bg-neutral-50">
                 <td className="px-3 py-2">
                   <Link href={`/flota-360/vehiculos/${u.vehiculoId}`} className="font-medium text-neutral-800 hover:text-blue-700">{u.dominio}</Link>
                   <span className="text-neutral-400 ml-1.5">{u.tipo}</span>
+                  {u.ambiguo && <span className="ml-1.5 rounded bg-amber-50 px-1 text-[10px] text-amber-600" title="Datos migrados o período ambiguo">~</span>}
                 </td>
                 <td className="px-3 py-2">
-                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium ${ESTADO_OP[u.estadoActual]?.cls ?? 'bg-neutral-100 text-neutral-600'}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${ESTADO_OP[u.estadoActual]?.dot ?? 'bg-neutral-400'}`} />
-                    {ESTADO_OP[u.estadoActual]?.label ?? u.estadoActual}
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium ${compuestos[u.vehiculoId]?.restringida ? 'bg-red-50 text-red-700' : compuestos[u.vehiculoId]?.disponible === false ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
+                    {etiquetaDe(u.vehiculoId, u.estadoActual)}
                   </span>
+                  {u.horasServicioInconsistente > 0 && (
+                    <span className="ml-1.5 rounded bg-red-50 px-1 text-[10px] text-red-600" title={`${u.horasServicioInconsistente} hs en servicio mientras figuraba no disponible`}>⚠</span>
+                  )}
                 </td>
+                <td className="px-3 py-2 text-right text-neutral-600">{u.horasNoDisponible}</td>
                 <td className="px-3 py-2 text-right text-neutral-600">{u.horasTaller}</td>
-                <td className="px-3 py-2 text-right text-neutral-600">{u.horasReparacion}</td>
-                <td className="px-3 py-2 text-right font-medium text-neutral-800">{u.turnosNoDisponible}</td>
-                <td className="px-3 py-2 text-right text-neutral-600">{u.ciclos}</td>
+                <td className="px-3 py-2 text-right text-neutral-600">{u.horasEnServicio}</td>
+                <td className="px-3 py-2 text-right font-medium text-neutral-800">{u.disponibilidadPct != null ? `${u.disponibilidadPct}%` : '—'}</td>
+                <td className="px-3 py-2 text-right font-medium text-neutral-800">{u.utilizacionPct != null ? `${u.utilizacionPct}%` : '—'}</td>
+                <td className="px-3 py-2 text-right text-neutral-600">{u.episodios}</td>
               </tr>
             ))}
+            {porUnidad.length === 0 && !loading && (
+              <tr><td colSpan={8} className="px-3 py-6 text-center text-neutral-400">Sin unidades en el período</td></tr>
+            )}
           </tbody>
         </table>
       </div>
