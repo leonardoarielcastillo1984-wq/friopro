@@ -42,8 +42,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
     return () => window.removeEventListener('impersonation-change', handler);
   }, []);
   
-  // Skip tenant-dependent components for Super Admin without tenant or on select-tenant page
-  const isSelectTenantPage = pathname === '/select-tenant';
+  // Skip tenant-dependent components for Super Admin without tenant or on select-tenant page.
+  // trailingSlash:true en next.config → usePathname devuelve '/select-tenant/' (con barra).
+  const isSelectTenantPage = pathname?.replace(/\/+$/, '') === '/select-tenant';
   const isSuperAdmin = user?.globalRole === 'SUPER_ADMIN';
   const shouldSkipTenantData = isSelectTenantPage || (isSuperAdmin && !tenantId);
   const { status: demoStatus, checklist, allDone } = useDemoMode(shouldSkipTenantData ? null : tenantId);
