@@ -434,7 +434,11 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
   // CONFIG OPERATIVA — alerta de estadía prolongada + presupuesto
   // mensual. Guardada en CompanySettings.flotaOpsConfig / flotaPresupuestoMensual.
   // ─────────────────────────────────────────────────────────────
-  const OPS_DEFAULTS = { diasAlertaEstadia: 5 };
+  // Ventana operativa por empresa (Performance de flota): si está activa, las
+  // métricas "en ventana" solo contabilizan días hábiles dentro de la franja.
+  // diasHabiles: 0=Dom … 6=Sáb (JS getDay). Configurable por el usuario.
+  const VENTANA_DEFAULTS = { activa: false, diasHabiles: [1, 2, 3, 4, 5, 6], horaDesde: '06:00', horaHasta: '20:00' };
+  const OPS_DEFAULTS = { diasAlertaEstadia: 5, ventana: VENTANA_DEFAULTS };
 
   app.get('/config-ops', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -512,17 +516,42 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     return out;
   };
   const sumIv = (ivs: Iv[]) => ivs.reduce((a, iv) => a + (iv[1] - iv[0]), 0);
-  const intersectMs = (a: Iv[], b: Iv[]) => {
-    let ms = 0;
+  const intersectIv = (a: Iv[], b: Iv[]): Iv[] => {
+    const out: Iv[] = [];
     const am = mergeIv(a), bm = mergeIv(b);
     let i = 0, j = 0;
     while (i < am.length && j < bm.length) {
       const s = Math.max(am[i][0], bm[j][0]);
       const e = Math.min(am[i][1], bm[j][1]);
-      if (e > s) ms += e - s;
+      if (e > s) out.push([s, e]);
       if (am[i][1] < bm[j][1]) i++; else j++;
     }
-    return ms;
+    return out;
+  };
+  const intersectMs = (a: Iv[], b: Iv[]) => sumIv(intersectIv(a, b));
+
+  // Construye los intervalos de ventana operativa del período: por cada día
+  // hábil configurado, [día+horaDesde, día+horaHasta] clipeado a [desde,hasta].
+  const buildVentanaIvs = (desde: Date, hasta: Date, ventana: any): Iv[] => {
+    const cfg = { ...VENTANA_DEFAULTS, ...(ventana || {}) };
+    if (!cfg.activa || !Array.isArray(cfg.diasHabiles) || cfg.diasHabiles.length === 0) return [];
+    const [hD, mD] = String(cfg.horaDesde || '00:00').split(':').map(Number);
+    const [hH, mH] = String(cfg.horaHasta || '24:00').split(':').map(Number);
+    const minDia = (hD * 60 + mD) * 60000;
+    const minFin = (hH * 60 + mH) * 60000;
+    if (minFin <= minDia) return []; // franja inválida (no se soportan turnos que cruzan medianoche)
+    const out: Iv[] = [];
+    const cursor = new Date(desde);
+    cursor.setHours(0, 0, 0, 0);
+    while (cursor.getTime() < hasta.getTime()) {
+      if (cfg.diasHabiles.includes(cursor.getDay())) {
+        const base = cursor.getTime();
+        const iv = clipIv(base + minDia, base + minFin, desde.getTime(), hasta.getTime());
+        if (iv) out.push(iv);
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return out;
   };
   const subtractIv = (base: Iv[], subs: Iv[]): Iv[] => {
     let out = mergeIv(base);
@@ -538,7 +567,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     return out;
   };
 
-  async function calcularTiemposPorEstadio(tenantId: string, desde: Date, hasta: Date, horasTurno: number = HORAS_TURNO) {
+  async function calcularTiemposPorEstadio(tenantId: string, desde: Date, hasta: Date, horasTurno: number = HORAS_TURNO, ventanaIvs: Iv[] = []) {
     const desdeMs = desde.getTime();
     const hastaMs = hasta.getTime();
 
@@ -686,11 +715,39 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       const dispMs = sumIv(dispIvs);
 
       const servIvs = mergeIv(servPorVeh.get(v.id) || []);
-      const servElegMs = intersectMs(servIvs, elegibles);
+      const servElegIvs = intersectIv(servIvs, elegibles);
+      const servElegMs = sumIv(servElegIvs);
       const servIncMs = intersectMs(servIvs, noDispIvs); // en servicio mientras no disponible
-      const servNetoMs = Math.max(0, servElegMs - intersectMs(servIvs, noDispIvs));
+      const servNetoMs = Math.max(0, servElegMs - intersectMs(servElegIvs, noDispIvs));
 
       const H = 3600000;
+
+      // Métricas dentro de la ventana operativa (días/horas hábiles) —
+      // solo si la empresa la configuró. Fuera de la ventana no se mide
+      // ni productividad ni improductividad.
+      let ventana: any = null;
+      let servVentNetoMs = 0;
+      if (ventanaIvs.length > 0) {
+        const elegVentIvs = intersectIv(elegibles, ventanaIvs);
+        const elegVentMs = sumIv(elegVentIvs);
+        const noDispVentMs = intersectMs(noDispIvs, elegVentIvs);
+        const dispVentMs = elegVentMs - noDispVentMs;
+        const servElegVentIvs = intersectIv(servIvs, elegVentIvs);
+        servVentNetoMs = Math.max(0, sumIv(servElegVentIvs) - intersectMs(servElegVentIvs, noDispIvs));
+        const estacVentMs = Math.max(0, dispVentMs - servVentNetoMs);
+        ventana = {
+          horasElegibles: Math.round((elegVentMs / H) * 10) / 10,
+          horasDisponibles: Math.round((dispVentMs / H) * 10) / 10,
+          horasNoDisponible: Math.round((noDispVentMs / H) * 10) / 10,
+          horasEnServicio: Math.round((servVentNetoMs / H) * 10) / 10,
+          horasEstacionada: Math.round((estacVentMs / H) * 10) / 10,
+          disponibilidadPct: elegVentMs <= 0 ? null : Math.round((dispVentMs / elegVentMs) * 1000) / 10,
+          utilizacionPct: dispVentMs <= 0 ? null : Math.round((servVentNetoMs / dispVentMs) * 1000) / 10,
+        };
+      }
+      // Servicio fuera de la ventana (trabajo nocturno/fin de semana real):
+      // se informa para que el dueño vea que la unidad SÍ trabajó fuera.
+      const servFueraVentMs = ventanaIvs.length > 0 ? Math.max(0, servNetoMs - servVentNetoMs) : 0;
       const horasElegibles = elegibleMs / H;
       const horasNoDisp = noDispElegMs / H;
       const horasDisp = dispMs / H;
@@ -873,6 +930,145 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         pct: presupuestoMensual && presupuestoMensual > 0 ? Math.round((gastoMes / presupuestoMensual) * 100) : null,
         desglose: { combustible: Math.round(gastoCombustible), mantenimiento: Math.round(gastoMantenimiento), neumaticos: Math.round(gastoNeumaticos) },
       },
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // PERFORMANCE DE FLOTA — reporte de eficacia/eficiencia por unidad
+  // en un período elegible. Filtros: tipos (csv), unidades (csv de ids),
+  // desde/hasta (ISO). Si hay ventana operativa configurada devuelve
+  // métricas "en ventana" + servicio fuera de ventana. Incluye km y
+  // costos del período por unidad.
+  // ─────────────────────────────────────────────────────────────
+  app.get('/performance', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+
+    const q = req.query as any;
+    const hasta = q.hasta ? new Date(q.hasta) : new Date();
+    const desde = q.desde ? new Date(q.desde) : new Date(hasta.getTime() - 30 * 86400000);
+    if (isNaN(desde.getTime()) || isNaN(hasta.getTime()) || desde >= hasta) {
+      return reply.code(400).send({ error: 'Rango de fechas inválido' });
+    }
+    const tiposFilter = q.tipos ? String(q.tipos).split(',').filter(Boolean) : null; // ej: CAMION,SEMI
+    const idsFilter = q.unidades ? String(q.unidades).split(',').filter(Boolean) : null;
+
+    const settings = await prisma().companySettings.findUnique({ where: { tenantId }, select: { flotaOpsConfig: true } }).catch(() => null);
+    const opsCfg = { ...OPS_DEFAULTS, ...((settings?.flotaOpsConfig as any) || {}) };
+    const horasTurno = Number(opsCfg.horasTurno) > 0 ? Number(opsCfg.horasTurno) : HORAS_TURNO;
+    const ventanaCfg = { ...VENTANA_DEFAULTS, ...(opsCfg.ventana || {}) };
+    const ventanaIvs = buildVentanaIvs(desde, hasta, ventanaCfg);
+
+    const { porUnidad } = await calcularTiemposPorEstadio(tenantId, desde, hasta, horasTurno, ventanaIvs);
+
+    // Filtrar por tipo / unidades específicas
+    const unidades = porUnidad.filter((u: any) =>
+      (!tiposFilter || tiposFilter.includes(u.tipo)) &&
+      (!idsFilter || idsFilter.includes(u.vehiculoId)));
+
+    const ids = unidades.map((u: any) => u.vehiculoId);
+    if (ids.length === 0) {
+      return reply.send({ periodo: { desde, hasta }, ventana: ventanaCfg, unidades: [], totales: null });
+    }
+
+    // ── Km recorridos en el período (odómetro: servicios + combustible) ──
+    // Base: última lectura previa al período; tope: última lectura ≤ hasta.
+    const [kmBase, kmTope, kmRango] = await Promise.all([
+      prisma().$queryRawUnsafe(`
+        SELECT src."vehiculoId", MAX(src.odo) AS odo FROM (
+          SELECT "vehiculoId", odometro AS odo, "eventoAt" AS t FROM flota_servicio_registros WHERE "tenantId" = $1 AND odometro IS NOT NULL
+          UNION ALL
+          SELECT "vehiculoId", odometro AS odo, fecha AS t FROM flota_combustible WHERE "tenantId" = $1 AND odometro IS NOT NULL
+        ) src WHERE src.t <= $2 GROUP BY src."vehiculoId"
+      `, tenantId, desde).catch(() => []),
+      prisma().$queryRawUnsafe(`
+        SELECT src."vehiculoId", MAX(src.odo) AS odo FROM (
+          SELECT "vehiculoId", odometro AS odo, "eventoAt" AS t FROM flota_servicio_registros WHERE "tenantId" = $1 AND odometro IS NOT NULL
+          UNION ALL
+          SELECT "vehiculoId", odometro AS odo, fecha AS t FROM flota_combustible WHERE "tenantId" = $1 AND odometro IS NOT NULL
+        ) src WHERE src.t <= $2 GROUP BY src."vehiculoId"
+      `, tenantId, hasta).catch(() => []),
+      prisma().$queryRawUnsafe(`
+        SELECT src."vehiculoId", MIN(src.odo) AS min_odo, MAX(src.odo) AS max_odo FROM (
+          SELECT "vehiculoId", odometro AS odo, "eventoAt" AS t FROM flota_servicio_registros WHERE "tenantId" = $1 AND odometro IS NOT NULL
+          UNION ALL
+          SELECT "vehiculoId", odometro AS odo, fecha AS t FROM flota_combustible WHERE "tenantId" = $1 AND odometro IS NOT NULL
+        ) src WHERE src.t > $2 AND src.t <= $3 GROUP BY src."vehiculoId"
+      `, tenantId, desde, hasta).catch(() => []),
+    ]);
+    const kmBaseMap = new Map<string, number>((kmBase as any[]).map((r) => [r.vehiculoId, Number(r.odo)]));
+    const kmTopeMap = new Map<string, number>((kmTope as any[]).map((r) => [r.vehiculoId, Number(r.odo)]));
+    const kmRangoMap = new Map<string, { min: number; max: number }>((kmRango as any[]).map((r) => [r.vehiculoId, { min: Number(r.min_odo), max: Number(r.max_odo) }]));
+
+    // ── Costos del período por unidad (misma lógica anti-doble-conteo del ejecutivo) ──
+    const costosPorVeh = await prisma().$queryRawUnsafe(`
+      SELECT v.id,
+        COALESCE((SELECT SUM("costoTotal") FROM flota_combustible WHERE "vehiculoId" = v.id AND fecha > $2 AND fecha <= $3), 0) AS combustible,
+        COALESCE((SELECT SUM(CASE WHEN "tipoComprobante" = 'NOTA_CREDITO' THEN -total ELSE total END)
+                  FROM flota_facturas
+                  WHERE "vehiculoId" = v.id AND fecha > $2 AND fecha <= $3
+                    AND "workOrderId" IS NULL AND "tipoComprobante" <> 'PRESUPUESTO' AND (moneda = 'ARS' OR moneda IS NULL)), 0) AS facturas,
+        COALESCE((SELECT SUM(monto) FROM flota_multas WHERE "vehiculoId" = v.id AND estado = 'PAGADA' AND "pagadaAt" > $2 AND "pagadaAt" <= $3), 0) AS multas,
+        COALESCE((SELECT SUM(wo."totalCost") FROM work_orders wo
+                  WHERE wo."assetId" = v."maintenanceAssetId" AND wo.status = 'COMPLETED'
+                    AND wo."completedAt" > $2 AND wo."completedAt" <= $3), 0) AS mantenimiento,
+        v."presupuestoMensual" AS presupuesto,
+        v."estadoComentario" AS comentario
+      FROM flota_vehiculos v
+      WHERE v."tenantId" = $1 AND v.id = ANY($4::uuid[])
+    `, tenantId, desde, hasta, ids).catch(() => []);
+    const costoMap = new Map<string, any>((costosPorVeh as any[]).map((r: any) => [r.id, r]));
+
+    const diasPeriodo = (hasta.getTime() - desde.getTime()) / 86400000;
+    const out = unidades.map((u: any) => {
+      // km: si hay lectura previa y lectura en período → tope - base.
+      // Si no hay base, fallback: max - min dentro del período.
+      const base = kmBaseMap.get(u.vehiculoId);
+      const tope = kmTopeMap.get(u.vehiculoId);
+      const rango = kmRangoMap.get(u.vehiculoId);
+      let kmRecorridos: number | null = null;
+      if (base != null && tope != null && tope >= base) kmRecorridos = Math.round(tope - base);
+      else if (rango && rango.max > rango.min) kmRecorridos = Math.round(rango.max - rango.min);
+
+      const c = costoMap.get(u.vehiculoId) || {};
+      const costoTotal = Math.round(Number(c.combustible || 0) + Number(c.facturas || 0) + Number(c.multas || 0) + Number(c.mantenimiento || 0));
+      // Presupuesto prorrateado a los días del período (mensual → por día)
+      const presMensual = c.presupuesto != null ? Number(c.presupuesto) : null;
+      const presProrrateado = presMensual != null && presMensual > 0 ? Math.round(presMensual * (diasPeriodo / 30.4)) : null;
+      return {
+        ...u,
+        kmRecorridos,
+        costosPeriodo: {
+          total: costoTotal,
+          combustible: Math.round(Number(c.combustible || 0)),
+          mantenimiento: Math.round(Number(c.mantenimiento || 0)),
+          facturas: Math.round(Number(c.facturas || 0)),
+          multas: Math.round(Number(c.multas || 0)),
+          costoPorKm: kmRecorridos && kmRecorridos > 0 ? Math.round((costoTotal / kmRecorridos) * 100) / 100 : null,
+          presupuestoProrrateado: presProrrateado,
+          desvioPresupuestoPct: presProrrateado != null && presProrrateado > 0 ? Math.round(((costoTotal - presProrrateado) / presProrrateado) * 100) : null,
+        },
+        comentario: c.comentario ?? null,
+      };
+    });
+
+    // Totales de la selección
+    const tot = (k: string) => out.reduce((a: number, u: any) => a + (u[k] || 0), 0);
+    const totales = {
+      unidades: out.length,
+      kmRecorridos: Math.round(out.reduce((a: number, u: any) => a + (u.kmRecorridos || 0), 0)),
+      horasEnServicio: Math.round(tot('horasEnServicioNeto') * 10) / 10,
+      horasEstacionada: Math.round(tot('horasEstacionada') * 10) / 10,
+      horasNoDisponible: Math.round(tot('horasNoDisponible') * 10) / 10,
+      horasTaller: Math.round(tot('horasTaller') * 10) / 10,
+      costoTotal: Math.round(out.reduce((a: number, u: any) => a + (u.costosPeriodo?.total || 0), 0)),
+    };
+
+    return reply.send({
+      periodo: { desde, hasta, dias: Math.round(diasPeriodo * 10) / 10 },
+      ventana: ventanaCfg,
+      unidades: out,
+      totales,
     });
   });
 

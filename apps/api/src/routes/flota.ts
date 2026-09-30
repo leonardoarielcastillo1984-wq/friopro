@@ -3214,7 +3214,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     // facturas excluyen las ya imputadas a una OT y presupuestos; NC resta)
     const costosPorVeh = await (app.prisma as any).$queryRaw`
       SELECT v.id, v.dominio, v.tipo, v."presupuestoMensual" as presupuesto,
-        COALESCE((SELECT SUM("costoTotal") FROM flota_registros_combustible WHERE "vehiculoId" = v.id AND fecha >= ${inicioMes}), 0) as combustible,
+        COALESCE((SELECT SUM("costoTotal") FROM flota_combustible WHERE "vehiculoId" = v.id AND fecha >= ${inicioMes}), 0) as combustible,
         COALESCE((SELECT SUM(CASE WHEN "tipoComprobante" = 'NOTA_CREDITO' THEN -total ELSE total END)
                   FROM flota_facturas
                   WHERE "vehiculoId" = v.id AND fecha >= ${inicioMes}

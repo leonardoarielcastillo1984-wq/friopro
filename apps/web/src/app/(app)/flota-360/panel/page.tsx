@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import {
@@ -73,7 +73,7 @@ function fmtMoney(n: number | null | undefined) {
 // ═══════════════════════════════════════════════════════════════
 
 export default function PanelPage() {
-  const [tab, setTab] = useState<'flota' | 'conductores' | 'ejecutivo'>('flota');
+  const [tab, setTab] = useState<'flota' | 'conductores' | 'ejecutivo' | 'performance'>('flota');
 
   return (
     <div className="space-y-3">
@@ -87,6 +87,7 @@ export default function PanelPage() {
           { key: 'flota', label: 'Flota', icon: LayoutDashboard },
           { key: 'conductores', label: 'Ranking de conductores', icon: Users },
           { key: 'ejecutivo', label: 'Ejecutivo', icon: TrendingUp },
+          { key: 'performance', label: 'Performance', icon: Gauge },
         ].map((t) => {
           const Icon = t.icon;
           return (
@@ -103,6 +104,7 @@ export default function PanelPage() {
       {tab === 'flota' && <TabFlota />}
       {tab === 'conductores' && <TabConductores />}
       {tab === 'ejecutivo' && <TabEjecutivo />}
+      {tab === 'performance' && <TabPerformance />}
     </div>
   );
 }
@@ -503,6 +505,331 @@ function TabEjecutivo() {
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
               <button onClick={() => setEditPresupuesto(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
               <button disabled={savingPres} onClick={guardarPresupuesto} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{savingPres ? 'Guardando…' : 'Guardar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Tab Performance: eficacia/eficiencia por unidad en período
+// elegible, con ventana operativa configurable (días/horas hábiles)
+// ═══════════════════════════════════════════════════════════════
+
+type PerfUnidad = {
+  vehiculoId: string; dominio: string; tipo: string; situacion: string; estadoActual: string;
+  kmRecorridos: number | null;
+  horasElegibles: number; horasDisponibles: number; horasEnServicioNeto: number;
+  horasEstacionada: number; horasNoDisponible: number; horasTaller: number; horasReparacion: number;
+  horasServicioFueraVentana: number; ciclos: number;
+  disponibilidadPct: number | null; utilizacionPct: number | null;
+  horasPorEtapa: Record<string, number>;
+  ventana: { horasElegibles: number; horasDisponibles: number; horasNoDisponible: number; horasEnServicio: number; horasEstacionada: number; disponibilidadPct: number | null; utilizacionPct: number | null } | null;
+  costosPeriodo: { total: number; combustible: number; mantenimiento: number; facturas: number; multas: number; costoPorKm: number | null; presupuestoProrrateado: number | null; desvioPresupuestoPct: number | null };
+  comentario: string | null;
+  sinDatos: boolean; ambiguo: boolean;
+};
+
+type PerformanceData = {
+  periodo: { desde: string; hasta: string; dias: number };
+  ventana: { activa: boolean; diasHabiles: number[]; horaDesde: string; horaHasta: string };
+  unidades: PerfUnidad[];
+  totales: { unidades: number; kmRecorridos: number; horasEnServicio: number; horasEstacionada: number; horasNoDisponible: number; horasTaller: number; costoTotal: number } | null;
+};
+
+const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+function TabPerformance() {
+  const [data, setData] = useState<PerformanceData | null>(null);
+  const [vehiculosAll, setVehiculosAll] = useState<{ id: string; dominio: string; tipo: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Filtros
+  const [tipos, setTipos] = useState<string[]>(['CAMION', 'SEMI']);
+  const [selUnidades, setSelUnidades] = useState<string[]>([]);
+  const [preset, setPreset] = useState('30d');
+  const [desdeCustom, setDesdeCustom] = useState('');
+  const [hastaCustom, setHastaCustom] = useState('');
+
+  // Config ventana
+  const [editVentana, setEditVentana] = useState(false);
+  const [ventanaForm, setVentanaForm] = useState({ activa: false, diasHabiles: [1, 2, 3, 4, 5, 6], horaDesde: '06:00', horaHasta: '20:00' });
+  const [savingVent, setSavingVent] = useState(false);
+
+  const rango = (): { desde: Date; hasta: Date } => {
+    const hasta = new Date(); hasta.setHours(23, 59, 59, 999);
+    if (preset === 'custom' && desdeCustom && hastaCustom) {
+      return { desde: new Date(desdeCustom + 'T00:00:00'), hasta: new Date(hastaCustom + 'T23:59:59') };
+    }
+    const dias = preset === '7d' ? 7 : preset === '90d' ? 90 : preset === 'mesAnt' ? 30 : 30;
+    if (preset === 'mesAnt') {
+      const h = new Date(); h.setDate(1); h.setHours(0, 0, 0, 0);
+      return { desde: new Date(h.getFullYear(), h.getMonth() - 1, 1), hasta: new Date(h.getFullYear(), h.getMonth(), 0, 23, 59, 59) };
+    }
+    return { desde: new Date(hasta.getTime() - dias * 86400000), hasta };
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { desde, hasta } = rango();
+      const params = new URLSearchParams({ desde: desde.toISOString(), hasta: hasta.toISOString() });
+      const tiposSel = tipos.length ? tipos.join(',') : '';
+      if (tiposSel) params.set('tipos', tiposSel);
+      if (selUnidades.length) params.set('unidades', selUnidades.join(','));
+      const [perf, veh] = await Promise.all([
+        apiFetch<PerformanceData>(`/fleet-ops/performance?${params.toString()}`),
+        apiFetch<{ vehiculos: any[] }>('/flota/vehiculos'),
+      ]);
+      setData(perf);
+      setVehiculosAll((veh.vehiculos || []).map((v: any) => ({ id: v.id, dominio: v.dominio, tipo: v.tipo })));
+      if (perf.ventana) setVentanaForm({ activa: !!perf.ventana.activa, diasHabiles: perf.ventana.diasHabiles || [1, 2, 3, 4, 5, 6], horaDesde: perf.ventana.horaDesde || '06:00', horaHasta: perf.ventana.horaHasta || '20:00' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [preset, tipos.join(','), selUnidades.join(','), desdeCustom, hastaCustom]);
+
+  const guardarVentana = async () => {
+    setSavingVent(true);
+    try {
+      await apiFetch('/fleet-ops/config-ops', { method: 'PUT', json: { ventana: ventanaForm } });
+      setEditVentana(false);
+      await load();
+    } finally {
+      setSavingVent(false);
+    }
+  };
+
+  const toggleUnidad = (id: string) => setSelUnidades((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  const toggleDia = (d: number) => setVentanaForm((f) => ({ ...f, diasHabiles: f.diasHabiles.includes(d) ? f.diasHabiles.filter((x) => x !== d) : [...f.diasHabiles, d].sort() }));
+
+  const tiposDisponibles = [...new Set(vehiculosAll.map((v) => v.tipo))].sort();
+  const unidadesFiltrables = vehiculosAll.filter((v) => tipos.length === 0 || tipos.includes(v.tipo));
+  const ventanaActiva = data?.ventana?.activa === true;
+
+  if (loading && !data) return <div className="p-8 text-sm text-neutral-500">Cargando performance…</div>;
+
+  return (
+    <div className="space-y-3">
+      {/* Filtros */}
+      <div className="rounded-lg border border-neutral-200 bg-white p-3 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-medium text-neutral-500 uppercase mr-1">Período:</span>
+            {[
+              { k: '7d', l: 'Última semana' }, { k: '30d', l: 'Último mes' },
+              { k: 'mesAnt', l: 'Mes anterior' }, { k: '90d', l: '90 días' }, { k: 'custom', l: 'Personalizado' },
+            ].map((p) => (
+              <button key={p.k} onClick={() => setPreset(p.k)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${preset === p.k ? 'bg-blue-600 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'}`}>
+                {p.l}
+              </button>
+            ))}
+            {preset === 'custom' && (
+              <>
+                <input type="date" value={desdeCustom} onChange={(e) => setDesdeCustom(e.target.value)} className="rounded-md border border-neutral-300 px-2 py-1 text-[11px]" />
+                <span className="text-neutral-400 text-[11px]">a</span>
+                <input type="date" value={hastaCustom} onChange={(e) => setHastaCustom(e.target.value)} className="rounded-md border border-neutral-300 px-2 py-1 text-[11px]" />
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-medium text-neutral-500 uppercase mr-1">Tipo:</span>
+            {tiposDisponibles.map((t) => (
+              <button key={t} onClick={() => setTipos((s) => s.includes(t) ? s.filter((x) => x !== t) : [...s, t])}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${tipos.includes(t) ? 'bg-emerald-600 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'}`}>
+                {t === 'CAMION' ? 'Tractores' : t === 'SEMI' ? 'Semis' : t}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setEditVentana(true)} className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline">
+            <Pencil className="h-3 w-3" /> Ventana operativa {ventanaActiva ? `(${ventanaForm.horaDesde}–${ventanaForm.horaHasta})` : '(24/7)'}
+          </button>
+        </div>
+
+        {/* Selector de unidades */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-medium text-neutral-500 uppercase">Unidades:</span>
+            <button onClick={() => setSelUnidades([])} className={`text-[11px] font-medium ${selUnidades.length === 0 ? 'text-blue-600' : 'text-neutral-400 hover:text-neutral-600'}`}>
+              Todas ({unidadesFiltrables.length})
+            </button>
+            {selUnidades.length > 0 && <span className="text-[10px] text-blue-600 font-medium">{selUnidades.length} seleccionadas</span>}
+          </div>
+          <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+            {unidadesFiltrables.map((v) => (
+              <button key={v.id} onClick={() => toggleUnidad(v.id)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium border ${selUnidades.includes(v.id) ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-neutral-200 text-neutral-600 hover:border-neutral-300'}`}>
+                {v.dominio}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* KPIs de la selección */}
+      {data?.totales && (
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+          {[
+            { l: 'Unidades', v: String(data.totales.unidades) },
+            { l: 'Km recorridos', v: data.totales.kmRecorridos.toLocaleString('es-AR') },
+            { l: 'Hs en servicio', v: data.totales.horasEnServicio.toLocaleString('es-AR') },
+            { l: 'Hs estacionada', v: data.totales.horasEstacionada.toLocaleString('es-AR') },
+            { l: 'Hs en taller', v: data.totales.horasTaller.toLocaleString('es-AR') },
+            { l: 'Costo total', v: fmtMoney(data.totales.costoTotal) },
+          ].map((k) => (
+            <div key={k.l} className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-medium text-neutral-500 uppercase">{k.l}</p>
+              <p className="text-lg font-bold text-neutral-900">{k.v}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Aviso ventana */}
+      {ventanaActiva && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-800">
+          Ventana operativa activa: <strong>{ventanaForm.diasHabiles.map((d) => DIAS_SEMANA[d]).join(', ')}</strong> de <strong>{ventanaForm.horaDesde} a {ventanaForm.horaHasta}</strong>. Las columnas "en ventana" miden solo ese período; la improductividad nocturna/fin de semana no cuenta.
+        </div>
+      )}
+
+      {/* Tabla por unidad */}
+      <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+        <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800">
+          Performance por unidad — {data?.periodo.dias ?? '—'} días
+        </div>
+        {(data?.unidades?.length ?? 0) === 0 ? (
+          <p className="px-3 py-4 text-xs text-neutral-400">Sin unidades para los filtros elegidos</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[10px] font-medium text-neutral-500 uppercase border-b border-neutral-100">
+                  <th className="px-3 py-2">Unidad</th>
+                  <th className="px-2 py-2 text-right">Km</th>
+                  <th className="px-2 py-2 text-right">Hs servicio</th>
+                  <th className="px-2 py-2 text-right">Hs estacionada</th>
+                  <th className="px-2 py-2 text-right">Hs taller</th>
+                  <th className="px-2 py-2 text-right">Hs no disp.</th>
+                  <th className="px-2 py-2 text-right">Disponib. %</th>
+                  <th className="px-2 py-2 text-right">Utiliz. %</th>
+                  <th className="px-2 py-2 text-right">Costo</th>
+                  <th className="px-2 py-2 text-right">$/km</th>
+                  <th className="px-2 py-2 text-right">vs Presup.</th>
+                  <th className="px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {data!.unidades.map((u) => {
+                  const open = expanded === u.vehiculoId;
+                  const m = ventanaActiva && u.ventana ? u.ventana : { horasEnServicio: u.horasEnServicioNeto, horasEstacionada: u.horasEstacionada, horasNoDisponible: u.horasNoDisponible, disponibilidadPct: u.disponibilidadPct, utilizacionPct: u.utilizacionPct };
+                  const desvio = u.costosPeriodo.desvioPresupuestoPct;
+                  return (
+                    <Fragment key={u.vehiculoId}>
+                      <tr className="hover:bg-neutral-50 cursor-pointer" onClick={() => setExpanded(open ? null : u.vehiculoId)}>
+                        <td className="px-3 py-2">
+                          <Link href={`/flota-360/vehiculos/${u.vehiculoId}`} className="font-medium text-neutral-800 hover:text-blue-700" onClick={(e) => e.stopPropagation()}>{u.dominio}</Link>
+                          <span className="text-[10px] text-neutral-400 ml-1.5">{u.tipo === 'CAMION' ? 'Tractor' : u.tipo === 'SEMI' ? 'Semi' : u.tipo}</span>
+                          {u.ambiguo && <span className="ml-1 text-[9px] text-amber-600" title="Datos ambiguos del período">⚠</span>}
+                        </td>
+                        <td className="px-2 py-2 text-right font-medium">{u.kmRecorridos != null ? u.kmRecorridos.toLocaleString('es-AR') : '—'}</td>
+                        <td className="px-2 py-2 text-right">{m.horasEnServicio.toLocaleString('es-AR')}{u.horasServicioFueraVentana > 0 && <span className="block text-[9px] text-neutral-400">+{u.horasServicioFueraVentana} fuera</span>}</td>
+                        <td className="px-2 py-2 text-right text-amber-700">{m.horasEstacionada.toLocaleString('es-AR')}</td>
+                        <td className="px-2 py-2 text-right text-red-700">{u.horasTaller.toLocaleString('es-AR')}</td>
+                        <td className="px-2 py-2 text-right">{m.horasNoDisponible.toLocaleString('es-AR')}</td>
+                        <td className="px-2 py-2 text-right font-semibold">{m.disponibilidadPct != null ? `${m.disponibilidadPct}%` : '—'}</td>
+                        <td className="px-2 py-2 text-right font-semibold text-blue-700">{m.utilizacionPct != null ? `${m.utilizacionPct}%` : '—'}</td>
+                        <td className="px-2 py-2 text-right">{fmtMoney(u.costosPeriodo.total)}</td>
+                        <td className="px-2 py-2 text-right">{u.costosPeriodo.costoPorKm != null ? `$${u.costosPeriodo.costoPorKm.toLocaleString('es-AR')}` : '—'}</td>
+                        <td className={`px-2 py-2 text-right font-semibold ${desvio == null ? 'text-neutral-400' : desvio > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {desvio != null ? `${desvio > 0 ? '+' : ''}${desvio}%` : '—'}
+                        </td>
+                        <td className="px-2 py-2 text-right">{open ? <ChevronUp className="h-3.5 w-3.5 text-neutral-400 inline" /> : <ChevronDown className="h-3.5 w-3.5 text-neutral-400 inline" />}</td>
+                      </tr>
+                      {open && (
+                        <tr className="bg-neutral-50">
+                          <td colSpan={12} className="px-4 py-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+                              <div>
+                                <p className="font-semibold text-neutral-700 mb-1">Tiempos del período</p>
+                                <p>Elegibles: <strong>{u.horasElegibles}h</strong> · Disponibles: <strong>{u.horasDisponibles}h</strong></p>
+                                <p>Reparación efectiva: <strong>{u.horasReparacion}h</strong> · Ciclos taller: <strong>{u.ciclos}</strong></p>
+                                {u.comentario && <p className="mt-1 text-neutral-500 italic">"{u.comentario}"</p>}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-neutral-700 mb-1">Etapas de taller</p>
+                                {Object.keys(u.horasPorEtapa).length === 0 ? <p className="text-neutral-400">Sin etapas en el período</p> :
+                                  Object.entries(u.horasPorEtapa).sort((a, b) => b[1] - a[1]).map(([k, h]) => (
+                                    <p key={k}>{ETAPA_LABEL[k] || k}: <strong>{h}h</strong></p>
+                                  ))}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-neutral-700 mb-1">Costos del período</p>
+                                <p>Combustible: <strong>{fmtMoney(u.costosPeriodo.combustible)}</strong> · Mantenimiento: <strong>{fmtMoney(u.costosPeriodo.mantenimiento)}</strong></p>
+                                <p>Facturas: <strong>{fmtMoney(u.costosPeriodo.facturas)}</strong> · Multas: <strong>{fmtMoney(u.costosPeriodo.multas)}</strong></p>
+                                {u.costosPeriodo.presupuestoProrrateado != null && <p>Presupuesto del período: <strong>{fmtMoney(u.costosPeriodo.presupuestoProrrateado)}</strong></p>}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal ventana operativa */}
+      {editVentana && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <h3 className="text-sm font-semibold flex items-center gap-1.5"><Gauge className="h-4 w-4 text-blue-600" /> Ventana operativa</h3>
+              <button onClick={() => setEditVentana(false)}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={ventanaForm.activa} onChange={(e) => setVentanaForm({ ...ventanaForm, activa: e.target.checked })} className="h-4 w-4" />
+                <span className="font-medium text-neutral-700">Medir solo en horario operativo</span>
+              </label>
+              {ventanaForm.activa && (
+                <>
+                  <div>
+                    <p className="text-xs font-medium text-neutral-600 mb-1">Días hábiles</p>
+                    <div className="flex gap-1">
+                      {DIAS_SEMANA.map((d, i) => (
+                        <button key={i} type="button" onClick={() => toggleDia(i)}
+                          className={`px-2 py-1 rounded text-[11px] font-medium ${ventanaForm.diasHabiles.includes(i) ? 'bg-blue-600 text-white' : 'bg-neutral-100 text-neutral-500'}`}>
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs font-medium text-neutral-600 block mb-1">Desde</label>
+                      <input type="time" value={ventanaForm.horaDesde} onChange={(e) => setVentanaForm({ ...ventanaForm, horaDesde: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs font-medium text-neutral-600 block mb-1">Hasta</label>
+                      <input type="time" value={ventanaForm.horaHasta} onChange={(e) => setVentanaForm({ ...ventanaForm, horaHasta: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-neutral-400">Fuera de esta franja no se contabiliza ni productividad ni improductividad (ej. nocturno, domingos).</p>
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
+              <button onClick={() => setEditVentana(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
+              <button disabled={savingVent} onClick={guardarVentana} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{savingVent ? 'Guardando…' : 'Guardar'}</button>
             </div>
           </div>
         </div>
