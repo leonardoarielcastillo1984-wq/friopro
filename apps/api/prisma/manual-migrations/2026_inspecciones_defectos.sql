@@ -47,7 +47,7 @@ END $$;
 -- ── 4. Casos de defecto ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS flota_defecto_casos (
   "id"                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId"            UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  "tenantId"            UUID NOT NULL REFERENCES "Tenant"(id) ON DELETE CASCADE,
   "vehiculoId"          UUID NOT NULL REFERENCES flota_vehiculos(id) ON DELETE CASCADE,
   "maintenanceAssetId"  UUID,
 
@@ -110,7 +110,7 @@ CREATE INDEX IF NOT EXISTS flota_defecto_caso_eventos_caso_idx ON flota_defecto_
 -- ── 6. Restricciones de servicio por unidad ──────────────────────
 CREATE TABLE IF NOT EXISTS flota_restricciones_servicio (
   "id"          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId"    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  "tenantId"    UUID NOT NULL REFERENCES "Tenant"(id) ON DELETE CASCADE,
   "vehiculoId"  UUID NOT NULL REFERENCES flota_vehiculos(id) ON DELETE CASCADE,
   "casoId"      UUID REFERENCES flota_defecto_casos(id) ON DELETE SET NULL,
   "hallazgoId"  UUID,

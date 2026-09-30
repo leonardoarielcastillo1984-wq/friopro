@@ -30,6 +30,7 @@ const GROUPS: { label: string | null; items: { href: string; label: string; icon
     label: 'Mantenimiento',
     items: [
       { href: '/flota-360/ordenes', label: 'Órdenes de trabajo', icon: Wrench },
+      { href: '/flota-360/talleres', label: 'Talleres', icon: Building2 },
       { href: '/flota-360/mecanicos', label: 'Mecánicos', icon: HardHat },
       { href: '/flota-360/planes', label: 'Planes y frecuencias', icon: CalendarClock },
       { href: '/flota-360/inspecciones', label: 'Inspecciones QR', icon: ScanLine },
