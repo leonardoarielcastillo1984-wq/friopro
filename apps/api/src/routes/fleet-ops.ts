@@ -3,6 +3,7 @@ import { z } from 'zod';
 import XLSX from 'xlsx';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { gastoNeumaticosPeriodo } from '../services/fleetTires.js';
+import { cambiosDeAlta, registrarCambioVehiculo, resolverActor } from '../services/vehiculoAudit.js';
 
 // ═══════════════════════════════════════════════════════════════
 // FLOTA 360 — Rutas NUEVAS y ADITIVAS.
@@ -1897,11 +1898,19 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     ]);
 
     // ── Vehículos + activos de mantenimiento vinculados ──
+    const actorSeed = await resolverActor(app.prisma, req);
     const crearVehiculo = async (data: any, assetCode: string, assetName: string) => {
-      const asset = await prisma().maintenanceAsset.create({
-        data: { tenantId, code: assetCode, name: assetName, category: 'VEHICLE', status: 'ACTIVE', currentOdometer: data.currentOdometer ?? null },
+      return prisma().$transaction(async (tx: any) => {
+        const asset = await tx.maintenanceAsset.create({
+          data: { tenantId, code: assetCode, name: assetName, category: 'VEHICLE', status: 'ACTIVE', currentOdometer: data.currentOdometer ?? null },
+        });
+        const v = await tx.vehiculo.create({ data: { ...data, tenantId, maintenanceAssetId: asset.id } });
+        await registrarCambioVehiculo(tx, {
+          tenantId, vehiculo: v, accion: 'ALTA', origen: 'SEED_DEMO',
+          cambios: cambiosDeAlta(v), actor: actorSeed, req,
+        });
+        return v;
       });
-      return prisma().vehiculo.create({ data: { ...data, tenantId, maintenanceAssetId: asset.id } });
     };
 
     const tractor1 = await crearVehiculo(

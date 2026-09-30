@@ -70,11 +70,19 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
   };
 
   const eliminar = async (v: Vehiculo) => {
-    if (!window.confirm(`¿Dar de baja la unidad ${v.dominio}? Quedará marcada como BAJA (el historial se conserva).`)) return;
+    const motivo = window.prompt(
+      `Dar de baja la unidad ${v.dominio}.\nMotivo de la baja (obligatorio):`
+    );
+    if (motivo === null) return; // canceló
+    if (!motivo.trim()) {
+      setError('El motivo es obligatorio para dar de baja una unidad.');
+      return;
+    }
+    if (!window.confirm(`¿Confirmar baja de ${v.dominio}? Quedará marcada como BAJA (el historial se conserva).`)) return;
     setBusy(true);
     setError(null);
     try {
-      await apiFetch(`/flota/vehiculos/${v.id}`, { method: 'DELETE' });
+      await apiFetch(`/flota/vehiculos/${v.id}?motivo=${encodeURIComponent(motivo.trim())}`, { method: 'DELETE' });
       await load();
     } catch (e: any) {
       setError(e?.message || 'No se pudo dar de baja la unidad');

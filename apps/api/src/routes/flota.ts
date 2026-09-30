@@ -2,6 +2,10 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import { notifyBandaCritica } from '../services/notifyService.js';
+import {
+  ACCION_LABEL, ACCIONES_CON_MOTIVO, ORIGEN_LABEL, accionPorCambios,
+  cambiosDeAlta, diffVehiculo, registrarCambioVehiculo, resolverActor, tzParaPais,
+} from '../services/vehiculoAudit.js';
 import { proyectarVehiculo } from '../services/fleetProjection.js';
 import { syncOdometroYDesgaste, gastoNeumaticosPeriodo } from '../services/fleetTires.js';
 import { existsSync } from 'fs';
@@ -34,26 +38,44 @@ export default async function flotaRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Tiene neumáticos montados. Desmontelos primero.' });
     }
 
-    // Eliminar datos relacionados
-    await (app.prisma as any).neumaticoPosicion.deleteMany({ where: { vehiculoId: id, tenantId } });
-    await (app.prisma as any).vencimientoDocumento.deleteMany({ where: { vehiculoId: id, tenantId } });
-    await (app.prisma as any).vehiculoHistorialMantenimiento.deleteMany({ where: { vehiculoId: id, tenantId } });
-    await (app.prisma as any).garantiaVehiculo.deleteMany({ where: { vehiculoId: id, tenantId } });
+    const actorEliminar = await resolverActor(app.prisma, req);
+    const motivoEliminar = ((req.query as any)?.motivo ?? (req.body as any)?.motivo ?? '').toString().trim() || null;
 
-    // Eliminar activo de mantenimiento si está vacío
-    if (vehiculo.maintenanceAssetId) {
-      const assetData = await (app.prisma as any).maintenanceAsset.findFirst({
-        where: { id: vehiculo.maintenanceAssetId, tenantId },
-        include: { workOrders: { take: 1 }, costs: { take: 1 } }
-      });
-      if (!assetData?.workOrders?.length && !assetData?.costs?.length) {
-        await (app.prisma as any).assetDigitalTwin.deleteMany({ where: { assetId: vehiculo.maintenanceAssetId, tenantId } });
-        await (app.prisma as any).maintenanceAsset.deleteMany({ where: { id: vehiculo.maintenanceAssetId, tenantId } });
+    // Eliminar datos relacionados + registrar el evento de eliminación en la
+    // misma transacción. El registro de auditoría NO tiene FK al vehículo,
+    // por eso sobrevive al borrado físico (requisito de trazabilidad).
+    await (app.prisma as any).$transaction(async (tx: any) => {
+      await tx.neumaticoPosicion.deleteMany({ where: { vehiculoId: id, tenantId } });
+      await tx.vencimientoDocumento.deleteMany({ where: { vehiculoId: id, tenantId } });
+      await tx.vehiculoHistorialMantenimiento.deleteMany({ where: { vehiculoId: id, tenantId } });
+      await tx.garantiaVehiculo.deleteMany({ where: { vehiculoId: id, tenantId } });
+
+      // Eliminar activo de mantenimiento si está vacío
+      if (vehiculo.maintenanceAssetId) {
+        const assetData = await tx.maintenanceAsset.findFirst({
+          where: { id: vehiculo.maintenanceAssetId, tenantId },
+          include: { workOrders: { take: 1 }, costs: { take: 1 } }
+        });
+        if (!assetData?.workOrders?.length && !assetData?.costs?.length) {
+          await tx.assetDigitalTwin.deleteMany({ where: { assetId: vehiculo.maintenanceAssetId, tenantId } });
+          await tx.maintenanceAsset.deleteMany({ where: { id: vehiculo.maintenanceAssetId, tenantId } });
+        }
       }
-    }
 
-    // Eliminar vehículo físicamente
-    await (app.prisma as any).vehiculo.deleteMany({ where: { id, tenantId } });
+      // Evento ANTES del borrado físico, en la misma transacción
+      await registrarCambioVehiculo(tx, {
+        tenantId, vehiculo, accion: 'ELIMINADO_PERMANENTE', origen: 'WEB', motivo: motivoEliminar,
+        cambios: [{
+          campo: 'registro', etiqueta: 'Registro de la unidad',
+          antes: vehiculo.dominio, despues: null,
+          antesTxt: `${vehiculo.dominio} (eliminada físicamente)`, despuesTxt: '—',
+        }],
+        actor: actorEliminar, req,
+      });
+
+      // Eliminar vehículo físicamente
+      await tx.vehiculo.deleteMany({ where: { id, tenantId } });
+    });
 
     return reply.send({ ok: true, mensaje: 'Vehículo eliminado permanentemente' });
   });
@@ -531,9 +553,30 @@ export default async function flotaRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
     const b = req.body as any;
-    const upd = await (app.prisma as any).vehiculo.update({
-      where: { id },
-      data: { perfilUso: b.perfilUso ?? undefined, kmMesEstimado: b.kmMesEstimado ?? undefined },
+
+    const antes = await (app.prisma as any).vehiculo.findFirst({ where: { id, tenantId } });
+    if (!antes) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+
+    const updateData: any = {};
+    if (b.perfilUso !== undefined) updateData.perfilUso = b.perfilUso;
+    if (b.kmMesEstimado !== undefined) updateData.kmMesEstimado = b.kmMesEstimado;
+
+    const despues = { ...antes, ...updateData };
+    const cambios = diffVehiculo(antes, despues, ['perfilUso', 'kmMesEstimado']);
+    if (cambios.length === 0) {
+      return reply.send({ vehiculo: { id: antes.id, perfilUso: antes.perfilUso, kmMesEstimado: antes.kmMesEstimado }, sinCambios: true });
+    }
+
+    const actor = await resolverActor(app.prisma, req);
+    const upd = await (app.prisma as any).$transaction(async (tx: any) => {
+      // updateMany con filtro tenant (el update por id solo podía tocar otro tenant)
+      await tx.vehiculo.updateMany({ where: { id, tenantId }, data: updateData });
+      const actualizado = await tx.vehiculo.findFirst({ where: { id, tenantId } });
+      await registrarCambioVehiculo(tx, {
+        tenantId, vehiculo: antes, accion: 'EDICION', origen: 'WEB',
+        cambios, motivo: b.motivo ?? null, actor, req,
+      });
+      return actualizado;
     });
     return reply.send({ vehiculo: { id: upd.id, perfilUso: upd.perfilUso, kmMesEstimado: upd.kmMesEstimado } });
   });
@@ -704,10 +747,11 @@ export default async function flotaRoutes(app: FastifyInstance) {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // CREAR VEHÍCULO + ACTIVO EN UNA SOLA TRANSACCIÓN
+    // CREAR VEHÍCULO + ACTIVO + EVENTO DE AUDITORÍA EN UNA SOLA TRANSACCIÓN
     // ═══════════════════════════════════════════════════════════════
     let maintenanceAsset: any = null;
     let vehiculo: any;
+    const actor = await resolverActor(app.prisma, req);
 
     const txResult = await (app.prisma as any).$transaction(async (tx: any) => {
       const v = await tx.vehiculo.create({
@@ -747,9 +791,17 @@ export default async function flotaRoutes(app: FastifyInstance) {
           where: { id: v.id },
           data: { maintenanceAssetId: asset.id }
         });
+        await registrarCambioVehiculo(tx, {
+          tenantId, vehiculo: updated, accion: 'ALTA', origen: 'WEB',
+          cambios: cambiosDeAlta(updated), actor, req,
+        });
         return { vehiculo: updated, maintenanceAsset: asset };
       }
 
+      await registrarCambioVehiculo(tx, {
+        tenantId, vehiculo: v, accion: 'ALTA', origen: 'WEB',
+        cambios: cambiosDeAlta(v), actor, req,
+      });
       return { vehiculo: v, maintenanceAsset: null };
     });
 
@@ -809,70 +861,268 @@ export default async function flotaRoutes(app: FastifyInstance) {
       currentOdometer: z.number().optional(),
       valorAdquisicion: z.number().optional().nullable(),
       notas: z.string().optional(),
+      // Motivo/comentario de la modificación para la auditoría (no es columna del vehículo)
+      motivo: z.string().max(500).optional(),
     }).passthrough();
     const body = schema.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
 
+    const {
+      conductorId, crearActivoMantenimiento, acquisitionCost, manufacturer, purchaseDate,
+      maintenanceAssetId, currentOdometer, motivo, ...vehiculoFields
+    } = body.data as any;
+    delete vehiculoFields.motivo; // por si passthrough dejó alguna copia
+
     // ═══════════════════════════════════════════════════════════════
-    // SINCRONIZAR ODÓMETRO CON ACTIVO DE MANTENIMIENTO
+    // AUDITORÍA: snapshot anterior + diff de campos maestros
     // ═══════════════════════════════════════════════════════════════
-    if (body.data.currentOdometer !== undefined) {
-      const vehiculo = await (app.prisma as any).vehiculo.findFirst({
-        where: { id, tenantId },
-        select: { maintenanceAssetId: true }
-      });
-      if (vehiculo?.maintenanceAssetId) {
-        await (app.prisma as any).maintenanceAsset.updateMany({
-          where: { id: vehiculo.maintenanceAssetId, tenantId },
-          data: { currentOdometer: body.data.currentOdometer }
+    const antes = await (app.prisma as any).vehiculo.findFirst({
+      where: { id, tenantId },
+      include: { conductor: { select: { id: true, nombre: true } } },
+    });
+    if (!antes) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+
+    // Snapshot "después" proyectado (campos de vehículo + conductorId)
+    const despues: any = { ...antes, ...vehiculoFields };
+    if (maintenanceAssetId !== undefined) despues.maintenanceAssetId = maintenanceAssetId;
+    if (currentOdometer !== undefined) despues.currentOdometer = currentOdometer;
+    if (conductorId !== undefined) despues.conductorId = conductorId;
+
+    const cambios = diffVehiculo(antes, despues);
+    const accion = accionPorCambios(cambios, antes.status);
+
+    // Motivo obligatorio para bajas, reactivaciones y cambios de estado
+    if (ACCIONES_CON_MOTIVO.has(accion) && !(motivo && String(motivo).trim())) {
+      return reply.code(400).send({ error: `El motivo es obligatorio para ${ACCION_LABEL[accion]?.toLowerCase() || 'cambios de estado'}.` });
+    }
+
+    // Guardar sin cambios reales → no se genera evento ni se escribe
+    if (cambios.length === 0 && conductorId === undefined) {
+      return reply.send({ ok: true, sinCambios: true });
+    }
+
+    // Resolver etiquetas legibles para conductor y activo (antes/después)
+    if (conductorId !== undefined) {
+      const cambio = cambios.find((c) => c.campo === 'conductorId');
+      const nuevoNombre = conductorId
+        ? (await (app.prisma as any).conductor.findFirst({ where: { id: conductorId, tenantId }, select: { nombre: true } }))?.nombre ?? conductorId
+        : null;
+      if (cambio) {
+        cambio.antesTxt = antes.conductor?.nombre ?? '—';
+        cambio.despuesTxt = nuevoNombre ?? '—';
+      } else if (String(antes.conductorId ?? '') !== String(conductorId ?? '')) {
+        cambios.push({
+          campo: 'conductorId', etiqueta: 'Conductor asignado',
+          antes: antes.conductorId, despues: conductorId,
+          antesTxt: antes.conductor?.nombre ?? '—', despuesTxt: nuevoNombre ?? '—',
         });
       }
-      // Acumular desgaste en cubiertas montadas + propagar al acoplado (actualiza el odómetro del vehículo)
-      await syncOdometroYDesgaste(app.prisma, tenantId, id, body.data.currentOdometer);
+    }
+    if (maintenanceAssetId !== undefined && String(antes.maintenanceAssetId ?? '') !== String(maintenanceAssetId ?? '')) {
+      const cambio = cambios.find((c) => c.campo === 'maintenanceAssetId');
+      const ids = [antes.maintenanceAssetId, maintenanceAssetId].filter(Boolean);
+      const assets = ids.length
+        ? await (app.prisma as any).maintenanceAsset.findMany({ where: { id: { in: ids }, tenantId }, select: { id: true, code: true, name: true } })
+        : [];
+      const codeOf = (assetId: string | null) => {
+        if (!assetId) return '—';
+        const a = assets.find((x: any) => x.id === assetId);
+        return a ? `${a.code} — ${a.name}` : assetId;
+      };
+      if (cambio) { cambio.antesTxt = codeOf(antes.maintenanceAssetId); cambio.despuesTxt = codeOf(maintenanceAssetId); }
     }
 
-    const { conductorId, crearActivoMantenimiento, acquisitionCost, manufacturer, purchaseDate, maintenanceAssetId, currentOdometer, ...vehiculoFields } = body.data as any;
-    const updateData: any = { ...vehiculoFields };
-    if (maintenanceAssetId !== undefined) updateData.maintenanceAssetId = maintenanceAssetId;
-    await (app.prisma as any).vehiculo.updateMany({ where: { id, tenantId }, data: updateData });
+    const actor = await resolverActor(app.prisma, req);
 
-    // Sincronizar datos de adquisición al activo de mantenimiento vinculado
-    const valorAdq = (body.data as any).valorAdquisicion;
-    if (acquisitionCost !== undefined || purchaseDate !== undefined || manufacturer !== undefined || valorAdq !== undefined) {
-      const veh = await (app.prisma as any).vehiculo.findFirst({ where: { id, tenantId }, select: { maintenanceAssetId: true } });
-      const assetId = maintenanceAssetId !== undefined ? maintenanceAssetId : veh?.maintenanceAssetId;
-      if (assetId) {
-        const assetData: any = {};
-        const costo = acquisitionCost !== undefined ? acquisitionCost : valorAdq;
-        if (costo !== undefined) assetData.acquisitionCost = Number(costo) || 0;
-        if (purchaseDate !== undefined) assetData.purchaseDate = purchaseDate ? new Date(purchaseDate) : null;
-        if (manufacturer !== undefined) assetData.manufacturer = manufacturer;
-        await (app.prisma as any).maintenanceAsset.updateMany({ where: { id: assetId, tenantId }, data: assetData });
+    // ═══════════════════════════════════════════════════════════════
+    // TRANSACCIÓN ATÓMICA: modificación + sincronizaciones + evento
+    // ═══════════════════════════════════════════════════════════════
+    await (app.prisma as any).$transaction(async (tx: any) => {
+      // Sincronizar odómetro con activo de mantenimiento + desgaste de cubiertas
+      if (currentOdometer !== undefined) {
+        if (antes.maintenanceAssetId) {
+          await tx.maintenanceAsset.updateMany({
+            where: { id: antes.maintenanceAssetId, tenantId },
+            data: { currentOdometer },
+          });
+        }
+        await syncOdometroYDesgaste(tx, tenantId, id, currentOdometer);
       }
-    }
-    // conductorId no está en el cliente Prisma compilado en prod → raw SQL
-    if (conductorId !== undefined) {
-      if (conductorId === null) {
-        await (app.prisma as any).$executeRaw`UPDATE flota_vehiculos SET "conductorId" = NULL WHERE id = ${id}::uuid AND "tenantId" = ${tenantId}::uuid`;
-      } else {
-        await (app.prisma as any).$executeRawUnsafe(`UPDATE flota_vehiculos SET "conductorId" = '${conductorId}'::uuid WHERE id = '${id}'::uuid AND "tenantId" = '${tenantId}'::uuid`);
+
+      const updateData: any = { ...vehiculoFields };
+      if (maintenanceAssetId !== undefined) updateData.maintenanceAssetId = maintenanceAssetId;
+      if (Object.keys(updateData).length > 0) {
+        await tx.vehiculo.updateMany({ where: { id, tenantId }, data: updateData });
       }
-    }
-    return reply.send({ ok: true });
+
+      // Sincronizar datos de adquisición al activo de mantenimiento vinculado
+      const valorAdq = (body.data as any).valorAdquisicion;
+      if (acquisitionCost !== undefined || purchaseDate !== undefined || manufacturer !== undefined || valorAdq !== undefined) {
+        const assetId = maintenanceAssetId !== undefined ? maintenanceAssetId : antes.maintenanceAssetId;
+        if (assetId) {
+          const assetData: any = {};
+          const costo = acquisitionCost !== undefined ? acquisitionCost : valorAdq;
+          if (costo !== undefined) assetData.acquisitionCost = Number(costo) || 0;
+          if (purchaseDate !== undefined) assetData.purchaseDate = purchaseDate ? new Date(purchaseDate) : null;
+          if (manufacturer !== undefined) assetData.manufacturer = manufacturer;
+          if (Object.keys(assetData).length > 0) {
+            await tx.maintenanceAsset.updateMany({ where: { id: assetId, tenantId }, data: assetData });
+          }
+        }
+      }
+
+      // conductorId no está en el cliente Prisma compilado en prod → raw SQL
+      if (conductorId !== undefined) {
+        if (conductorId === null) {
+          await tx.$executeRaw`UPDATE flota_vehiculos SET "conductorId" = NULL WHERE id = ${id}::uuid AND "tenantId" = ${tenantId}::uuid`;
+        } else {
+          await tx.$executeRawUnsafe(`UPDATE flota_vehiculos SET "conductorId" = '${conductorId}'::uuid WHERE id = '${id}'::uuid AND "tenantId" = '${tenantId}'::uuid`);
+        }
+      }
+
+      if (cambios.length > 0) {
+        await registrarCambioVehiculo(tx, {
+          tenantId, vehiculo: { id, dominio: despues.dominio ?? antes.dominio, tipo: despues.tipo ?? antes.tipo },
+          accion, origen: 'WEB', cambios, motivo: motivo ?? null, actor, req,
+        });
+      }
+    });
+
+    return reply.send({ ok: true, sinCambios: false, cambios: cambios.length, accion });
   });
 
-  // DELETE /vehiculos/:id - Marcar como BAJA (eliminación lógica)
+  // DELETE /vehiculos/:id - Marcar como BAJA (eliminación lógica, preserva historial y vínculos)
   app.delete('/vehiculos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
-    
-    await (app.prisma as any).vehiculo.updateMany({ 
-      where: { id, tenantId }, 
-      data: { status: 'BAJA' } 
+    // El motivo llega por query (?motivo=) o body JSON; es obligatorio para la baja.
+    const motivo = ((req.query as any)?.motivo ?? (req.body as any)?.motivo ?? '').toString().trim();
+    if (!motivo) {
+      return reply.code(400).send({ error: 'El motivo es obligatorio para dar de baja una unidad.' });
+    }
+
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({ where: { id, tenantId } });
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+    if (vehiculo.status === 'BAJA') return reply.send({ ok: true, sinCambios: true });
+
+    const actor = await resolverActor(app.prisma, req);
+    await (app.prisma as any).$transaction(async (tx: any) => {
+      await tx.vehiculo.updateMany({ where: { id, tenantId }, data: { status: 'BAJA' } });
+      await registrarCambioVehiculo(tx, {
+        tenantId, vehiculo, accion: 'BAJA', origen: 'WEB', motivo,
+        cambios: [{
+          campo: 'status', etiqueta: 'Estado administrativo',
+          antes: vehiculo.status, despues: 'BAJA',
+          antesTxt: { ACTIVO: 'Activo', EN_TALLER: 'En taller', INACTIVO: 'Inactivo' }[vehiculo.status as string] ?? vehiculo.status,
+          despuesTxt: 'Baja',
+        }],
+        actor, req,
+      });
     });
-    
+
     return reply.send({ ok: true, mensaje: 'Vehículo marcado como BAJA' });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // GET /vehiculos/:id/historial-cambios — Trazabilidad del maestro.
+  // Solo lectura (no existen endpoints de edición/borrado de eventos).
+  // Fusiona dos fuentes sin duplicar:
+  //   - flota_vehiculo_historial_cambios (alta/edición/baja/estado admin)
+  //   - flota_vehiculo_estado_eventos (estadío operativo, historial previo)
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/vehiculos/:id/historial-cambios', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const q = req.query as any;
+    const page = Math.max(1, parseInt(q.page, 10) || 1);
+    const pageSize = Math.min(100, Math.max(5, parseInt(q.pageSize, 10) || 20));
+
+    const vehiculo = await (app.prisma as any).vehiculo.findFirst({
+      where: { id, tenantId },
+      select: { id: true, dominio: true, tipo: true, tenant: { select: { country: true } } },
+    });
+    // El historial debe poder consultarse incluso si la unidad fue eliminada
+    // físicamente (sus eventos sobreviven por diseño — sin FK).
+    const vehiculoInfo = vehiculo
+      ? { id: vehiculo.id, dominio: vehiculo.dominio, tipo: vehiculo.tipo }
+      : await (app.prisma as any).vehiculoHistorialCambio.findFirst({
+          where: { vehiculoId: id, tenantId },
+          select: { vehiculoId: true, dominio: true, tipoActivo: true },
+        }).then((e: any) => e ? { id: e.vehiculoId, dominio: e.dominio, tipo: e.tipoActivo } : null);
+    if (!vehiculoInfo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+
+    // Fuente 1: eventos del maestro (esta tabla)
+    const [eventosMaestro, totalMaestro] = await Promise.all([
+      (app.prisma as any).vehiculoHistorialCambio.findMany({
+        where: { vehiculoId: id, tenantId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      (app.prisma as any).vehiculoHistorialCambio.count({ where: { vehiculoId: id, tenantId } }),
+    ]);
+
+    // Fuente 2: historial de estadíos operativos YA EXISTENTE (no duplicar)
+    const eventosEstadio = await (app.prisma as any).vehiculoEstadoEvento.findMany({
+      where: { vehiculoId: id, tenantId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const unificados = [
+      ...eventosMaestro.map((e: any) => ({
+        id: e.id,
+        fuente: 'MAESTRO' as const,
+        fecha: e.createdAt,
+        accion: e.accion,
+        accionLabel: ACCION_LABEL[e.accion] ?? e.accion,
+        origen: e.origen,
+        origenLabel: ORIGEN_LABEL[e.origen] ?? e.origen,
+        usuarioId: e.usuarioId,
+        usuarioNombre: e.usuarioNombre,
+        dominio: e.dominio,
+        tipoActivo: e.tipoActivo,
+        motivo: e.motivo,
+        cambios: Array.isArray(e.cambios) ? e.cambios : [],
+      })),
+      ...eventosEstadio.map((e: any) => ({
+        id: e.id,
+        fuente: 'ESTADIO' as const,
+        fecha: e.createdAt,
+        accion: 'CAMBIO_ESTADIO',
+        accionLabel: 'Cambio de estadío operativo',
+        origen: e.origen,
+        origenLabel: ORIGEN_LABEL[e.origen] ?? (e.origen === 'QR_MECANICO' ? 'QR del mecánico' : e.origen === 'SISTEMA' ? 'Panel web' : e.origen),
+        usuarioId: null,
+        usuarioNombre: e.createdByName,
+        dominio: vehiculoInfo.dominio,
+        tipoActivo: vehiculoInfo.tipo === 'SEMI' ? 'SEMI' : 'VEHICULO',
+        motivo: e.notas,
+        cambios: [{
+          campo: 'estadoOperativo', etiqueta: 'Estadío operativo',
+          antes: null, despues: e.estado,
+          antesTxt: '—', despuesTxt: { OPERATIVO: 'Operativo', EN_TALLER: 'En taller', EN_REPARACION: 'En reparación' }[e.estado as string] ?? e.estado,
+        }],
+        workOrderId: e.workOrderId ?? null,
+      })),
+    ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+
+    const total = unificados.length;
+    const desde = (page - 1) * pageSize;
+    const pagina = unificados.slice(desde, desde + pageSize);
+
+    return reply.send({
+      vehiculo: vehiculoInfo,
+      eventos: pagina,
+      total,
+      totalMaestro,
+      totalEstadios: eventosEstadio.length,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      timezone: tzParaPais(vehiculo?.tenant?.country),
+      // Fecha de implementación de la trazabilidad (deploy de esta feature)
+      trazabilidadDesde: '2026-09-30',
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════

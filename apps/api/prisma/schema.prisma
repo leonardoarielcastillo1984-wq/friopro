@@ -11596,3 +11596,51 @@ model FleetComponentMeasurement {
   @@index([componentKey])
   @@map("fleet_component_measurements")
 }
+
+// ─────────────────────────────────────────────
+// FLOTA 360 — TRAZABILIDAD DEL REGISTRO MAESTRO
+// Historial de cambios del maestro de vehículos y semirremolques:
+// alta, edición de datos, cambios de estado administrativo, baja,
+// reactivación y eliminación física.
+//
+// Decisiones de diseño:
+// - vehiculoId y usuarioId son escalares SIN relación FK: el registro de
+//   auditoría debe sobrevivir al borrado físico de la unidad
+//   (POST /flota/vehiculos/:id/eliminar) y al borrado del usuario, sin
+//   borrado en cascada ni bloquear esas operaciones.
+// - dominio/tipoActivo son snapshots: el dominio es editable, pero el
+//   historial debe mostrar qué dominio tenía la unidad al momento del evento.
+// - usuarioNombre es snapshot: si el usuario se borra, el historial conserva
+//   quién fue responsable (igual que VehiculoEstadoEvento.createdByName).
+// - cambios: JSON [{campo, etiqueta, antes, despues, antesTxt, despuesTxt}]
+//   con etiquetas en español resueltas en el servidor.
+// - Los cambios de ESTADÍO OPERATIVO (OPERATIVO/EN_TALLER/EN_REPARACION)
+//   siguen en VehiculoEstadoEvento (historial existente con duraciones):
+//   el endpoint de lectura fusiona ambas fuentes para no duplicar eventos.
+// - Append-only por contrato: no hay endpoints de edición/borrado de eventos.
+// ─────────────────────────────────────────────
+model VehiculoHistorialCambio {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  vehiculoId String   @db.Uuid // sin FK: debe sobrevivir al borrado físico de la unidad
+
+  tipoActivo String // VEHICULO | SEMI (snapshot del tipo al momento del evento)
+  dominio    String // dominio al momento del evento (es editable, no sirve como id)
+
+  accion String // ALTA | EDICION | CAMBIO_ESTADO | BAJA | REACTIVACION | ELIMINADO_PERMANENTE
+  origen String @default("WEB") // WEB | QR_MECANICO | AUTOMATICO_OT | SEED_DEMO
+
+  cambios Json? // [{campo, etiqueta, antes, despues, antesTxt, despuesTxt}]
+  motivo  String? // obligatorio en BAJA/REACTIVACION/CAMBIO_ESTADO; opcional (comentario) en el resto
+
+  usuarioId     String? @db.Uuid // sin FK: usuarios también pueden borrarse; null = proceso automático
+  usuarioNombre String? // snapshot del nombre al momento del evento
+  requestId     String?
+  userAgent     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([vehiculoId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("flota_vehiculo_historial_cambios")
+}

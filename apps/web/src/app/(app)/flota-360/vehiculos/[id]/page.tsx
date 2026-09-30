@@ -10,6 +10,7 @@ import FacturasPanel from '../../_components/FacturasPanel';
 import MultasPanel from '../../_components/MultasPanel';
 import RecurrenciasPanel from '../../_components/RecurrenciasPanel';
 import ProyeccionPanel from '../../_components/ProyeccionPanel';
+import HistorialCambiosPanel from '../../_components/HistorialCambiosPanel';
 import { apiFetch } from '@/lib/api';
 import {
   ChevronLeft, Gauge, Wrench, ShieldCheck, ScanLine, AlertTriangle,
@@ -73,6 +74,7 @@ export default function VehiculoFichaPage() {
   const [estadoOp, setEstadoOp] = useState<any>(null);
   const [estadoSaving, setEstadoSaving] = useState<string | null>(null);
   const [showEstadoHist, setShowEstadoHist] = useState(false);
+  const [histRefresh, setHistRefresh] = useState(0);
 
   const load = async () => {
     setLoading(true);
@@ -109,6 +111,7 @@ export default function VehiculoFichaPage() {
       valorAdquisicion: v?.valorAdquisicion ?? '',
       fechaCompra: asset?.purchaseDate ? String(asset.purchaseDate).slice(0, 10) : '',
       notas: v?.notas || '',
+      motivo: '',
     });
     setEditError(null);
     setShowEdit(true);
@@ -141,10 +144,12 @@ export default function VehiculoFichaPage() {
           purchaseDate: editForm.fechaCompra ? new Date(editForm.fechaCompra + 'T00:00:00').toISOString() : undefined,
           conductorId: editForm.conductorId || null,
           notas: editForm.notas || undefined,
+          motivo: editForm.motivo?.trim() || undefined,
         },
       });
       setShowEdit(false);
       await load();
+      setHistRefresh((k) => k + 1);
     } catch (e: any) {
       setEditError(e?.message || 'No se pudo guardar');
     } finally {
@@ -160,6 +165,7 @@ export default function VehiculoFichaPage() {
       setEstadoOp(e);
       const c = await apiFetch<any>(`/flota/vehiculos/${id}/completo`).catch(() => null);
       if (c) setCompleto(c);
+      setHistRefresh((k) => k + 1);
     } finally {
       setEstadoSaving(null);
     }
@@ -526,6 +532,9 @@ export default function VehiculoFichaPage() {
         <MultasPanel vehiculoId={v.id} conductores={conductores} />
       </div>
 
+      {/* Historial de cambios del registro maestro (trazabilidad) */}
+      <HistorialCambiosPanel vehiculoId={v.id} refreshKey={histRefresh} />
+
       {/* Historial de mantenimiento */}
       {Array.isArray(v.historialMantenimiento) && v.historialMantenimiento.length > 0 && (
         <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
@@ -667,6 +676,20 @@ export default function VehiculoFichaPage() {
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Notas</label>
                 <input value={editForm.notas} onChange={(e) => setEditForm({ ...editForm, notas: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">
+                  Motivo del cambio
+                  {editForm.status !== v?.status
+                    ? <span className="text-red-600"> * (obligatorio: cambiás el estado)</span>
+                    : <span className="text-neutral-400 font-normal"> (opcional)</span>}
+                </label>
+                <input
+                  value={editForm.motivo}
+                  onChange={(e) => setEditForm({ ...editForm, motivo: e.target.value })}
+                  placeholder={editForm.status !== v?.status ? 'Ej: unidad vendida, robo, reingreso a flota…' : 'Comentario sobre esta edición'}
+                  className={`w-full rounded-md border px-2.5 py-1.5 text-sm ${editForm.status !== v?.status && !editForm.motivo?.trim() ? 'border-red-300 bg-red-50/40' : 'border-neutral-300'}`}
+                />
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">

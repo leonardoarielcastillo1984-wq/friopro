@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { notifyWorkOrderAssigned } from '../services/notifyService.js';
 import { evaluarRecurrenciasDeOT } from '../services/fleetRecurrence.js';
 import { syncOdometroYDesgaste } from '../services/fleetTires.js';
+import { registrarCambioVehiculo } from '../services/vehiculoAudit.js';
 
 // Schemas de validación
 const createWorkOrderSchema = z.object({
@@ -1422,8 +1423,25 @@ export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: st
         select: { id: true, status: true },
       });
       if (veh) {
+        const STATUS_LABEL: Record<string, string> = { ACTIVO: 'Activo', EN_TALLER: 'En taller', INACTIVO: 'Inactivo', BAJA: 'Baja' };
+        const registrarAutoEstado = async (estadoNuevo: string, motivo: string) => {
+          // Automático derivado del ciclo de la OT: sin usuario ficticio.
+          // La modificación y su evento se confirman juntos (misma transacción).
+          await prisma.$transaction(async (tx: any) => {
+            await tx.vehiculo.update({ where: { id: veh.id }, data: { status: estadoNuevo } });
+            await registrarCambioVehiculo(tx, {
+              tenantId, vehiculo: veh, accion: 'CAMBIO_ESTADO', origen: 'AUTOMATICO_OT', motivo,
+              cambios: [{
+                campo: 'status', etiqueta: 'Estado administrativo',
+                antes: veh.status, despues: estadoNuevo,
+                antesTxt: STATUS_LABEL[veh.status] ?? veh.status, despuesTxt: STATUS_LABEL[estadoNuevo] ?? estadoNuevo,
+              }],
+              actor: { usuarioId: null, usuarioNombre: null },
+            });
+          });
+        };
         if (updateData.status === 'IN_PROGRESS' && veh.status === 'ACTIVO') {
-          await prisma.vehiculo.update({ where: { id: veh.id }, data: { status: 'EN_TALLER' } });
+          await registrarAutoEstado('EN_TALLER', `La OT ${workOrder.code || workOrder.id} pasó a "En proceso"`);
         } else if ((updateData.status === 'COMPLETED' || updateData.status === 'CANCELLED') && veh.status === 'EN_TALLER') {
           const abiertas = await prisma.workOrder.count({
             where: {
@@ -1434,7 +1452,8 @@ export async function applyWorkOrderUpdate(prisma: any, tenantId: string, id: st
             },
           });
           if (abiertas === 0) {
-            await prisma.vehiculo.update({ where: { id: veh.id }, data: { status: 'ACTIVO' } });
+            const estadoOt = updateData.status === 'COMPLETED' ? 'completada' : 'cancelada';
+            await registrarAutoEstado('ACTIVO', `La OT ${workOrder.code || workOrder.id} fue ${estadoOt}`);
           }
         }
       }
