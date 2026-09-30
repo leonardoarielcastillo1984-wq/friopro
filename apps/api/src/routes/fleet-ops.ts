@@ -323,6 +323,46 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     return reply.send({ eventos });
   });
 
+  // Comentario del estado vigente ("estacionada por falta de chofer",
+  // "en taller por embrague"). No cambia el estado — lo documenta.
+  // PUT /vehiculos/:id/estado-comentario { comentario: string | null }
+  app.put('/vehiculos/:id/estado-comentario', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({ comentario: z.string().max(500).nullable() });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+
+    const vehiculo = await prisma().vehiculo.findFirst({ where: { id, tenantId }, select: { id: true, dominio: true, tipo: true, estadoComentario: true } });
+    if (!vehiculo) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+
+    const comentario = body.data.comentario?.trim() || null;
+    const actor = await resolverActor(prisma(), req);
+    const nombre = (req as any).auth?.name ?? (req as any).auth?.email ?? null;
+
+    await prisma().$transaction(async (tx: any) => {
+      await tx.vehiculo.update({
+        where: { id },
+        data: {
+          estadoComentario: comentario,
+          estadoComentarioAt: comentario ? new Date() : null,
+          estadoComentarioPor: comentario ? nombre : null,
+        },
+      });
+      await registrarCambioVehiculo(tx, {
+        tenantId, vehiculo,
+        accion: 'EDICION', origen: 'WEB', motivo: null, actor, req,
+        cambios: [{
+          campo: 'estadoComentario', etiqueta: 'Comentario del estado',
+          antes: vehiculo.estadoComentario, despues: comentario,
+          antesTxt: vehiculo.estadoComentario ?? '—', despuesTxt: comentario ?? '—',
+        }],
+      });
+    });
+    return reply.send({ ok: true });
+  });
+
   // Estado compuesto (una dimensión por vez; nunca un único enum)
   app.get('/vehiculos/:id/estado-compuesto', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);

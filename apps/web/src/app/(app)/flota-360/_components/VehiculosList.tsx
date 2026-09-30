@@ -9,7 +9,7 @@ import { Plus, X, Truck, Container, Trash2 } from 'lucide-react';
 type Vehiculo = {
   id: string; dominio: string; tipo: string; tipoCombustible?: string | null; marca?: string; modelo?: string; anio?: number;
   status: string; currentOdometer?: number | null; conductorId?: string | null;
-  estadoCompuesto?: { etiqueta?: string; disponible?: boolean; restringida?: boolean } | null;
+  estadoCompuesto?: { etiqueta?: string; disponible?: boolean; restringida?: boolean; estadoComentario?: string | null } | null;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -129,7 +129,7 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
         {filtrados.map(v => <Link key={v.id} href={`/flota-360/vehiculos/${v.id}`} className="fleet-panel hover:border-blue-300 transition-colors relative">
           <div className="flex items-center justify-between p-4"><strong className="text-lg">{v.dominio}</strong><span className="flex items-center gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] ${estadoLabel(v).cls}`}>{estadoLabel(v).texto}</span>{v.status !== 'BAJA' && (<button disabled={busy} title="Dar de baja" onClick={(e) => { e.preventDefault(); e.stopPropagation(); eliminar(v); }} className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>)}</span></div>
           <div className="fleet-asset-art"><VehicleArt semi={v.tipo === 'SEMI'} /></div>
-          <div className="p-4"><p className="font-semibold text-sm">{[v.marca, v.modelo].filter(Boolean).join(' ') || v.tipo}</p><p className="text-xs text-slate-500 mt-1">{v.tipo}{v.tipoCombustible === 'GNC' ? ' · GNC' : v.tipoCombustible === 'MIXTO' ? ' · Diésel+GNC' : ''} · {v.anio || 'Año sin informar'}</p><div className="flex justify-between border-t border-slate-100 mt-4 pt-3 text-xs"><span>{v.currentOdometer != null ? `${v.currentOdometer.toLocaleString('es-AR')} km` : 'Sin lectura'}</span><span className="text-blue-600 font-semibold">Ver gemelo digital →</span></div></div>
+          <div className="p-4"><p className="font-semibold text-sm">{[v.marca, v.modelo].filter(Boolean).join(' ') || v.tipo}</p><p className="text-xs text-slate-500 mt-1">{v.tipo}{v.tipoCombustible === 'GNC' ? ' · GNC' : v.tipoCombustible === 'MIXTO' ? ' · Diésel+GNC' : ''} · {v.anio || 'Año sin informar'}</p>{v.estadoCompuesto?.estadoComentario && <p className="mt-1.5 text-[11px] text-blue-700 italic truncate" title={v.estadoCompuesto.estadoComentario}>“{v.estadoCompuesto.estadoComentario}”</p>}<div className="flex justify-between border-t border-slate-100 mt-4 pt-3 text-xs"><span>{v.currentOdometer != null ? `${v.currentOdometer.toLocaleString('es-AR')} km` : 'Sin lectura'}</span><span className="text-blue-600 font-semibold">Ver gemelo digital →</span></div></div>
         </Link>)}
       </div> : <div className="rounded-lg border border-neutral-200 bg-white overflow-x-auto">
         <table className="w-full text-sm">
@@ -161,6 +161,9 @@ export default function VehiculosList({ modo }: { modo: 'flota' | 'semis' }) {
                 <td className="px-3 py-2 text-neutral-600">{v.currentOdometer != null ? `${Math.round(v.currentOdometer).toLocaleString('es-AR')} km` : '—'}</td>
                 <td className="px-3 py-2">
                   <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${estadoLabel(v).cls}`}>{estadoLabel(v).texto}</span>
+                  {v.estadoCompuesto?.estadoComentario && (
+                    <p className="text-[10px] text-blue-700 italic mt-0.5 max-w-[220px] truncate" title={v.estadoCompuesto.estadoComentario}>“{v.estadoCompuesto.estadoComentario}”</p>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <div className="flex items-center justify-end gap-1.5">

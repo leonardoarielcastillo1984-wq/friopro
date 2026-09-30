@@ -80,6 +80,9 @@ export default function VehiculoFichaPage() {
   const [showRetirar, setShowRetirar] = useState(false);
   const [retiroForm, setRetiroForm] = useState({ etapa: 'OTRO', motivo: '' });
   const [histRefresh, setHistRefresh] = useState(0);
+  const [comentario, setComentario] = useState<string | null>(null);
+  const [editComentario, setEditComentario] = useState(false);
+  const [comentarioInput, setComentarioInput] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -97,6 +100,7 @@ export default function VehiculoFichaPage() {
       setTwin(t);
       setEstadoOp(e);
       setEstadoCompuesto(comp && !comp.error ? comp : null);
+      setComentario(comp && !comp.error ? (comp.estadoComentario ?? null) : null);
       setEpisodio(ep?.episodio ?? null);
       setConductores(cond.conductores || []);
       setRestricciones(restr?.restricciones || []);
@@ -178,6 +182,23 @@ export default function VehiculoFichaPage() {
       setHistRefresh((k) => k + 1);
     } catch (e: any) {
       alert(e?.message || 'No se pudo declarar disponible');
+    } finally {
+      setEstadoSaving(null);
+    }
+  };
+
+  // Comentario del estado vigente: documenta el porqué ("estacionada
+  // por falta de chofer", "en taller por embrague") sin cambiar el estado.
+  const guardarComentario = async () => {
+    setEstadoSaving('COMENTARIO');
+    try {
+      await apiFetch(`/fleet-ops/vehiculos/${id}/estado-comentario`, {
+        method: 'PUT', json: { comentario: comentarioInput.trim() || null },
+      });
+      setEditComentario(false);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo guardar el comentario');
     } finally {
       setEstadoSaving(null);
     }
@@ -290,6 +311,13 @@ export default function VehiculoFichaPage() {
             </div>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => { setComentarioInput(comentario ?? ''); setEditComentario((v) => !v); }}
+              disabled={estadoSaving !== null}
+              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-60"
+            >
+              {comentario ? 'Editar comentario' : 'Agregar comentario'}
+            </button>
             {episodio ? (
               <button
                 onClick={declararDisponible}
@@ -311,6 +339,38 @@ export default function VehiculoFichaPage() {
             )}
           </div>
         </div>
+
+        {/* Comentario del estado vigente (disponible estacionada, en taller por X…) */}
+        {(comentario || editComentario) && (
+          <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+            {comentario && !editComentario && (
+              <p className="text-xs text-blue-800">
+                <span className="font-semibold">Comentario:</span> {comentario}
+                {estadoCompuesto?.estadoComentarioPor && (
+                  <span className="text-blue-500"> — {estadoCompuesto.estadoComentarioPor}{estadoCompuesto.estadoComentarioAt ? `, ${fmtFecha(estadoCompuesto.estadoComentarioAt)}` : ''}</span>
+                )}
+              </p>
+            )}
+            {editComentario && (
+              <div className="space-y-2">
+                <label className="block text-[11px] font-medium text-blue-800">Comentario del estado actual (opcional — se muestra junto al estado)</label>
+                <div className="flex gap-2">
+                  <input
+                    value={comentarioInput}
+                    onChange={(e) => setComentarioInput(e.target.value)}
+                    placeholder="Ej: estacionada por falta de chofer · en taller por embrague"
+                    maxLength={500}
+                    className="flex-1 rounded-md border border-blue-200 bg-white px-2.5 py-1.5 text-sm"
+                  />
+                  <button onClick={guardarComentario} disabled={estadoSaving !== null} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60">
+                    {estadoSaving === 'COMENTARIO' ? 'Guardando…' : 'Guardar'}
+                  </button>
+                  <button onClick={() => setEditComentario(false)} className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-xs text-neutral-600 hover:bg-white">Cancelar</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Episodio abierto: etapa actual, taller, OTs causales */}
         {episodio && (

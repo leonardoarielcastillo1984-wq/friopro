@@ -532,6 +532,11 @@ export function componerEstado(args: {
     ubicacionLabel: ubicacion ? (UBICACION_LABEL[ubicacion] ?? ubicacion) : UBICACION_LABEL.SIN_DATOS,
     ubicacionDetalle: vehiculo.ubicacionDetalle ?? null,
     ubicacionDesde: vehiculo.ubicacionDesde ?? null,
+    estadoComentario: vehiculo.estadoComentario ?? null,
+    estadoComentarioAt: vehiculo.estadoComentarioAt ?? null,
+    estadoComentarioPor: vehiculo.estadoComentarioPor ?? null,
+    motivoEpisodio: episodio?.motivo ?? null,
+    comentarioEtapa: etapa?.comentario ?? null,
     etiqueta,
     advertencias,
   };

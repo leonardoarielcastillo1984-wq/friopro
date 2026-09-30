@@ -7790,6 +7790,13 @@ model Vehiculo {
   estadoOperativo String  @default("OPERATIVO")
   notas           String?
 
+  // Comentario del estado vigente: por qué está estacionada sin uso,
+  // motivo del taller, etc. Editable en cualquier momento; se muestra
+  // junto a la etiqueta compuesta. No participa de las reglas de estado.
+  estadoComentario    String?
+  estadoComentarioAt  DateTime? @db.Timestamptz
+  estadoComentarioPor String?
+
   // Ubicación declarada (dimensión separada: no determina disponibilidad).
   // SIN_DATOS = sin ubicación confiable registrada.
   ubicacionTipo    String?   // ESTACIONAMIENTO | TALLER_INTERNO | TALLER_EXTERNO | OTRO
