@@ -8,6 +8,7 @@ import {
   BookOpen, Compass, Target, ScrollText, ClipboardCheck, BrainCircuit,
   FileBarChart, Shield, TrendingUp, BarChart3, CalendarDays, Package,
   FileSpreadsheet, Wind, Settings, Building2, Bell, HelpCircle,
+  Smartphone, QrCode, Wrench,
 } from 'lucide-react';
 
 export type Difficulty = 'Fácil' | 'Medio' | 'Avanzado';
@@ -522,6 +523,91 @@ export const guides: ModuleGuide[] = [
       'Revisá el Centro de trabajo cada mañana: es la cola priorizada del taller.',
     ],
     difficulty: 'Medio', estimatedTime: '30 minutos', isoRef: 'ISO 9001 §7.1',
+  },
+  {
+    id: 'hub-chofer', title: 'Hub del Chofer (celular)', icon: Smartphone, route: '/flota-360/inspecciones',
+    group: 'Flota 360',
+    purpose: 'Pantalla web del conductor en su celular — sin instalar app. Desde el mismo QR pegado en la unidad, el chofer reporta incidentes, carga combustible, hace el control pre-servicio, inicia y cierra su jornada, y consulta la documentación de la unidad.',
+    mainFeatures: [
+      'Menú principal con accesos directos por función',
+      'Reporte de incidentes en ruta con descripción y foto',
+      'Registro de cargas de combustible (litros, km, estación)',
+      'Control pre-servicio: presión, alcoholemia, temperatura, horas de descanso',
+      'Inicio y fin de servicio — alimenta el libro de jornada digital',
+      'Consulta de documentación de la unidad (VTV, seguro, habilitaciones)',
+    ],
+    actions: [
+      { name: 'Generar el acceso', description: 'Flota 360 → Inspecciones → pestaña "Intervenciones QR" → tarjeta del vehículo → "Cartel chofer" (imprime póster) o "Link chofer" (copia la URL para WhatsApp).', detail: 'El QR del activo debe estar vinculado a un vehículo de flota para que el hub resuelva.' },
+    ],
+    steps: [
+      { title: '1. Escanear el QR de la unidad', description: 'El chofer escanea el cartel pegado en el vehículo con la cámara del celular.', image: 'hub-1-menu.png', subSteps: ['Se abre el menú del Hub — no requiere login ni app', 'El mismo QR sirve para el mecánico (otra pantalla, mismo token)'] },
+      { title: '2. Reportar un incidente', description: 'Opción "Reportar incidente".', image: 'hub-2-incidente.png', subSteps: ['Describí qué pasó y adjuntá foto si corresponde', 'Llega como alerta al Centro de trabajo de Flota 360'] },
+      { title: '3. Registrar una carga de combustible', description: 'Opción "Cargué combustible".', image: 'hub-3-combustible.png', subSteps: ['Ingresá litros, km del odómetro y estación', 'Alimenta el rendimiento km/L y los costos del vehículo'] },
+      { title: '4. Hacer el control pre-servicio', description: 'Opción "Control pre-servicio" antes de arrancar.', image: 'hub-4-control.png', subSteps: ['Presión sistólica/diastólica, alcoholemia, temperatura', 'Horas de descanso, fatiga y medicamentos declarados', 'Si no cumple los mínimos, el inicio de servicio queda bloqueado'] },
+      { title: '5. Iniciar y finalizar el servicio', description: 'Opción "Inicio / fin de servicio".', image: 'hub-5-servicio.png', subSteps: ['El inicio valida que la unidad esté disponible y sin restricciones', 'El fin cierra la jornada y registra horas trabajadas', 'Ambos eventos alimentan el Libro de jornada (Documentación → Libro de jornada)'] },
+      { title: '6. Consultar documentación', description: 'Opción "Documentación" para ver vigencias de la unidad.', image: 'hub-6-documentos.png', subSteps: ['VTV, seguro, habilitaciones y vencimientos al día', 'Útil ante un control en ruta'] },
+    ],
+    screenshots: [],
+    related: ['flota-360'],
+    tips: [
+      'El Hub es público por token: el QR de cada unidad es único y no hay que compartirlo fuera de la empresa.',
+      'Si el inicio de servicio se bloquea, el motivo aparece en pantalla (unidad no disponible, restricción activa o descanso insuficiente).',
+    ],
+    difficulty: 'Fácil', estimatedTime: '5 minutos',
+  },
+  {
+    id: 'qr-mecanico', title: 'QR del Mecánico (taller)', icon: Wrench, route: '/flota-360/inspecciones',
+    group: 'Flota 360',
+    purpose: 'Vista móvil del mecánico para ejecutar tareas de mantenimiento sobre la unidad. Comparte el mismo QR físico del Hub del Chofer pero resuelve a una pantalla distinta: tareas asignadas, checklist de trabajo y carga de repuestos usados.',
+    mainFeatures: [
+      'Ficha de la intervención sobre la unidad (encabezado con datos de la OT)',
+      'Lista de tareas a ejecutar con checklist',
+      'Carga de repuestos consumidos y observaciones',
+      'Firma/cierre de la intervención desde el celular',
+    ],
+    actions: [
+      { name: 'Generar el acceso', description: 'Mismo QR que el Hub del Chofer: Flota 360 → Inspecciones → "Intervenciones QR" → "Cartel" / "Link" de la tarjeta del activo.', detail: 'La página /mantenimiento-qr/[token] abre la vista del mecánico; /unidad/[token] abre la del chofer.' },
+    ],
+    steps: [
+      { title: '1. Escanear el QR en el taller', description: 'El mecánico escanea el cartel de la unidad con el celular.', image: 'hub-7-mecanico-top.png', subSteps: ['La cabecera muestra la unidad y la intervención en curso'] },
+      { title: '2. Ejecutar las tareas', description: 'Sección de tareas de la OT.', image: 'hub-8-mecanico-tareas.png', subSteps: ['Marcá cada tarea como realizada a medida que avanza', 'Agregá notas por tarea si hay desvíos'] },
+      { title: '3. Cargar repuestos y cerrar', description: 'Al final de la página: repuestos usados y botón de cierre.', image: 'hub-9-mecanico-repuestos.png', subSteps: ['Cada repuesto descuenta stock del inventario', 'El cierre registra horas y actualiza la OT'] },
+    ],
+    screenshots: [],
+    related: ['flota-360', 'hub-chofer'],
+    tips: [
+      'El mecánico no necesita usuario del sistema: el QR es la credencial. Mantené los carteles controlados.',
+      'Si la unidad está vinculada a un vehículo de flota, la intervención repercute en su salud y episodio de indisponibilidad.',
+    ],
+    difficulty: 'Fácil', estimatedTime: '5 minutos',
+  },
+  {
+    id: 'inspeccion-qr-chofer', title: 'Inspección QR (vista del chofer)', icon: QrCode, route: '/flota-360/inspecciones',
+    group: 'Flota 360',
+    purpose: 'Checklist público de inspección que completa el chofer desde el celular, sin login ni app. Los desvíos quedan como hallazgos y, si el QR está vinculado a un vehículo, generan casos de defecto y OTs automáticamente.',
+    mainFeatures: [
+      'Pantalla de bienvenida con datos del inspector',
+      'Checklist por secciones con respuesta guiada',
+      'Registro de hallazgos con descripción al marcar "No cumple"',
+      'Puntaje estimado y envío con confirmación',
+    ],
+    actions: [
+      { name: 'Crear el QR de inspección', description: 'Flota 360 → Inspecciones QR → pestaña "QR Operativos" → "Nuevo QR".', detail: 'Elegí la plantilla de checklist y vinculalo al vehículo. Imprimí el cartel y pegalo en la unidad.' },
+    ],
+    steps: [
+      { title: '1. Escanear el QR de inspección', description: 'El chofer escanea el QR del checklist pegado en la unidad.', image: 'qr-paso-1-intro.png', subSteps: ['Se abre la pantalla de bienvenida con los datos a completar'] },
+      { title: '2. Completar los datos del inspector', description: 'Nombre, dominio del tractor, kilometraje actual y ruta.', image: 'qr-paso-2-datos.png', subSteps: ['El kilometraje actualiza el odómetro del vehículo (base de los planes por km)', 'Tocá "Comenzar inspección" para avanzar'] },
+      { title: '3. Recorrer el checklist', description: 'Respondé ítem por ítem: Cumple / No cumple / No aplica.', image: 'qr-paso-3-checklist.png', subSteps: ['Los ítems vienen de la plantilla configurada', 'Navegá por las secciones hasta completar todo'] },
+      { title: '4. Reportar un hallazgo', description: 'Al marcar "No cumple" se habilita la descripción del problema.', image: 'qr-paso-4-hallazgo.png', subSteps: ['Describí el problema con precisión (dónde y qué)', 'Si el ítem es bloqueante, la unidad puede quedar restringida para servicio'] },
+      { title: '5. Enviar la inspección', description: 'Al final: puntaje estimado y botón de envío.', image: 'qr-paso-5-enviar.png', subSteps: ['El envío guarda la inspección y genera los hallazgos', 'Los hallazgos alimentan la pestaña "Casos de defecto" y las OTs'] },
+    ],
+    screenshots: [],
+    related: ['flota-360', 'hub-chofer'],
+    tips: [
+      'Vinculá siempre el QR al vehículo: sin vínculo, los hallazgos no generan OT automática.',
+      'La inspección es pública por token — no requiere que el chofer tenga usuario en el sistema.',
+    ],
+    difficulty: 'Fácil', estimatedTime: '10 minutos',
   },
 
   /* ───────── 9. Administración y otros ───────── */
