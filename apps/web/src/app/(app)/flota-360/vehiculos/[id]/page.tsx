@@ -124,6 +124,7 @@ export default function VehiculoFichaPage() {
       status: v?.status || 'ACTIVO',
       currentOdometer: v?.currentOdometer ?? '', conductorId: v?.conductorId || '',
       valorAdquisicion: v?.valorAdquisicion ?? '',
+      presupuestoMensual: v?.presupuestoMensual ?? '',
       fechaCompra: asset?.purchaseDate ? String(asset.purchaseDate).slice(0, 10) : '',
       notas: v?.notas || '',
       motivo: '',
@@ -156,6 +157,7 @@ export default function VehiculoFichaPage() {
           status: editForm.status || undefined,
           currentOdometer: editForm.currentOdometer !== '' ? Number(editForm.currentOdometer) : undefined,
           valorAdquisicion: editForm.valorAdquisicion !== '' ? Number(editForm.valorAdquisicion) : undefined,
+          presupuestoMensual: editForm.presupuestoMensual !== '' ? Number(editForm.presupuestoMensual) : null,
           purchaseDate: editForm.fechaCompra ? new Date(editForm.fechaCompra + 'T00:00:00').toISOString() : undefined,
           conductorId: editForm.conductorId || null,
           notas: editForm.notas || undefined,
@@ -514,6 +516,9 @@ export default function VehiculoFichaPage() {
           {v.valorAdquisicion != null && (
             <div className="fleet-fact"><p className="fleet-fact-label">Valor de adquisición</p><p className="fleet-fact-value">$ {Number(v.valorAdquisicion).toLocaleString('es-AR')}</p></div>
           )}
+          {v.presupuestoMensual != null && (
+            <div className="fleet-fact"><p className="fleet-fact-label">Presupuesto mensual</p><p className="fleet-fact-value">$ {Number(v.presupuestoMensual).toLocaleString('es-AR')}</p></div>
+          )}
           {mant.asset?.purchaseDate && (
             <div className="fleet-fact"><p className="fleet-fact-label">Fecha de compra</p><p className="fleet-fact-value">{fmtFecha(mant.asset.purchaseDate)}</p></div>
           )}
@@ -841,6 +846,11 @@ export default function VehiculoFichaPage() {
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Valor de adquisición ($)</label>
                 <input type="number" min={0} step="0.01" value={editForm.valorAdquisicion} onChange={(e) => setEditForm({ ...editForm, valorAdquisicion: e.target.value })} placeholder="Costo de compra del vehículo" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Presupuesto mensual ($)</label>
+                <input type="number" min={0} step="0.01" value={editForm.presupuestoMensual} onChange={(e) => setEditForm({ ...editForm, presupuestoMensual: e.target.value })} placeholder="Tope de gasto mensual de la unidad" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                <p className="text-[10px] text-neutral-400 mt-0.5">Se compara contra el gasto real del mes en Panel → Ejecutivo.</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Conductor asignado</label>

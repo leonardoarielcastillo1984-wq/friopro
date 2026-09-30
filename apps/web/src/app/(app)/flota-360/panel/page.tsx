@@ -49,7 +49,7 @@ type PanelEjecutivo = {
   mes: string; costoRealMes: number;
   desglose: { combustible: number; mantenimiento: number; facturas: number; multas: number };
   presupuesto: number | null; desvioPresupuesto: number | null;
-  rankingUnidades: { id: string; dominio: string; tipo: string; combustible: number; facturas: number }[];
+  rankingUnidades: { id: string; dominio: string; tipo: string; presupuesto: number | null; combustible: number; facturas: number }[];
 };
 
 const RATING_COLOR: Record<string, string> = {
@@ -459,14 +459,29 @@ function TabEjecutivo() {
             <p className="px-3 py-4 text-xs text-neutral-400">Sin costos registrados</p>
           ) : (
             <ul className="divide-y divide-neutral-100">
-              {data.rankingUnidades.map((v, i) => (
+              {data.rankingUnidades.map((v, i) => {
+                const real = Number(v.combustible) + Number(v.facturas);
+                const pres = v.presupuesto != null ? Number(v.presupuesto) : null;
+                const desvio = pres != null && pres > 0 ? Math.round(((real - pres) / pres) * 100) : null;
+                return (
                 <li key={v.id} className="flex items-center gap-2.5 px-3 py-2">
                   <span className="w-5 text-center text-[11px] font-bold text-neutral-400">{i + 1}</span>
                   <Truck className="h-3.5 w-3.5 text-neutral-400 shrink-0" />
-                  <Link href={`/flota-360/vehiculos/${v.id}`} className="flex-1 text-xs font-medium text-neutral-800 hover:text-blue-700 truncate">{v.dominio}</Link>
-                  <span className="text-xs font-semibold text-neutral-800">{fmtMoney(Number(v.combustible) + Number(v.facturas))}</span>
+                  <div className="flex-1 min-w-0">
+                    <Link href={`/flota-360/vehiculos/${v.id}`} className="text-xs font-medium text-neutral-800 hover:text-blue-700 truncate block">{v.dominio}</Link>
+                    {pres != null && <span className="text-[10px] text-neutral-400">presupuesto {fmtMoney(pres)}</span>}
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-semibold text-neutral-800">{fmtMoney(real)}</span>
+                    {desvio != null && (
+                      <p className={`text-[10px] font-semibold ${desvio > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {desvio > 0 ? '+' : ''}{desvio}% vs pres.
+                      </p>
+                    )}
+                  </div>
                 </li>
-              ))}
+              );
+              })}
             </ul>
           )}
         </div>

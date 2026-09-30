@@ -7797,6 +7797,10 @@ model Vehiculo {
   estadoComentarioAt  DateTime? @db.Timestamptz
   estadoComentarioPor String?
 
+  // Presupuesto mensual asignado a la unidad (ARS). Se compara contra
+  // el gasto real del mes (combustible + OTs + facturas + multas).
+  presupuestoMensual  Float?
+
   // Ubicación declarada (dimensión separada: no determina disponibilidad).
   // SIN_DATOS = sin ubicación confiable registrada.
   ubicacionTipo    String?   // ESTACIONAMIENTO | TALLER_INTERNO | TALLER_EXTERNO | OTRO
