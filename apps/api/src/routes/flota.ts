@@ -882,10 +882,16 @@ export default async function flotaRoutes(app: FastifyInstance) {
     });
     if (!antes) return reply.code(404).send({ error: 'Vehículo no encontrado' });
 
-    // Snapshot "después" proyectado (campos de vehículo + conductorId)
+    // Snapshot "después" proyectado (campos de vehículo + conductorId).
+    // OJO odómetro: syncOdometroYDesgaste solo aplica si el nuevo km es mayor
+    // que el previo (o si no había previo). El evento debe registrar lo que
+    // efectivamente va a quedar, no lo pedido.
     const despues: any = { ...antes, ...vehiculoFields };
     if (maintenanceAssetId !== undefined) despues.maintenanceAssetId = maintenanceAssetId;
-    if (currentOdometer !== undefined) despues.currentOdometer = currentOdometer;
+    if (currentOdometer !== undefined) {
+      const previoKm = antes.currentOdometer;
+      despues.currentOdometer = (previoKm == null || currentOdometer > previoKm) ? currentOdometer : previoKm;
+    }
     if (conductorId !== undefined) despues.conductorId = conductorId;
 
     const cambios = diffVehiculo(antes, despues);
