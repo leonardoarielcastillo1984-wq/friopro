@@ -1334,7 +1334,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     if (estado) vehiculoWhere.status = estado;
     if (vehiculoId) vehiculoWhere.id = vehiculoId;
 
-    const [vehiculos, workOrders, inspecciones, otsVencidasGlobal, inspPendRevisionGlobal, planesActivos] = await Promise.all([
+    const [vehiculos, workOrders, otsVencidasGlobal, inspPendRevisionGlobal, planesActivos] = await Promise.all([
       prisma().vehiculo.findMany({
         where: vehiculoWhere,
         select: { id: true, dominio: true, tipo: true, status: true, currentOdometer: true, maintenanceAssetId: true },
@@ -1349,11 +1349,9 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
           _count: { select: { evidencePhotos: true } },
         },
       }),
-      prisma().inspeccion.findMany({
-        where: { tenantId, createdAt: { gte: rangoConsultaDesde, lte: rangoConsultaHasta } },
-        include: { qr: { select: { maintenanceAssetId: true } }, hallazgos: { select: { id: true, severidad: true, equipoDestino: true } } },
-      }),
-      // KPIs globales (no limitados al rango visible): OT vencidas e inspecciones con hallazgos sin derivar
+      // KPIs globales (no limitados al rango visible): OT vencidas e inspecciones con hallazgos sin derivar.
+      // Las inspecciones QR son registros operativos ya ocurridos (no planificación), por eso no se
+      // consultan como eventos del cronograma — solo se cuentan las pendientes de revisión como KPI.
       prisma().workOrder.count({
         where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] }, scheduledDate: { lt: now } },
       }),
@@ -1382,18 +1380,11 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
 
     let filas = vehiculos.map((v: any) => {
       const ots = v.maintenanceAssetId ? (otsPorAsset.get(v.maintenanceAssetId) || []) : [];
-      const esSemi = v.tipo === 'SEMI';
-      const inspMatched = inspecciones.filter((insp: any) => {
-        if (v.maintenanceAssetId && insp.qr?.maintenanceAssetId === v.maintenanceAssetId) return true;
-        const dominioMatch = esSemi ? insp.dominioSemi : insp.dominioTractor;
-        return dominioMatch && dominioMatch.toUpperCase() === v.dominio.toUpperCase();
-      });
 
       const planesVeh = v.maintenanceAssetId ? (planesPorAsset.get(v.maintenanceAssetId) || []) : [];
 
       const celdas = columnas.map((col) => {
         const otsEnCol = ots.filter((o: any) => { const d = new Date(o.scheduledDate); return d >= col.desde && d <= col.hasta; });
-        const inspEnCol = inspMatched.filter((i: any) => { const d = new Date(i.createdAt); return d >= col.desde && d <= col.hasta; });
 
         const eventos: any[] = [];
         for (const o of otsEnCol) {
@@ -1407,16 +1398,6 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
             responsable: o.technician?.name ?? null,
             evidencias: o._count?.evidencePhotos ?? 0,
             duracionEst: o.estimatedDuration ?? null, duracionReal: o.actualDuration ?? null,
-          });
-        }
-        for (const i of inspEnCol) {
-          const hallazgosRol = i.hallazgos.filter((h: any) => !h.equipoDestino || (esSemi ? h.equipoDestino === 'SEMI' : h.equipoDestino === 'TRACTOR'));
-          const derivada = !!(i.otId || i.ncrId || i.capaId);
-          eventos.push({
-            tipo: 'QR', id: i.id,
-            estado: hallazgosRol.length > 0 && !derivada ? 'PENDIENTE_REVISION' : 'QR',
-            hallazgos: hallazgosRol.length, criticos: hallazgosRol.filter((h: any) => h.severidad === 'CRITICO').length,
-            fecha: i.createdAt, inspector: i.inspectorNombre ?? null,
           });
         }
         // Proyección de planes: marca ámbar cuando el próximo servicio cae dentro de la columna

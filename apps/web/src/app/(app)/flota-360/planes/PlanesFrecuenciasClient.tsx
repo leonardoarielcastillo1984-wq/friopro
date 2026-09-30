@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { VehicleArt } from '../_components/FleetVisual';
 import { apiFetch } from '@/lib/api';
 import {
-  Plus, X, Wrench, Zap, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, ScanLine, CalendarClock,
+  Plus, X, Wrench, Zap, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, CalendarClock,
   Pencil, PackageSearch, Users2, ExternalLink, RotateCcw, History, Filter, Trash2, Download,
 } from 'lucide-react';
 
@@ -28,11 +28,10 @@ type Alerta = {
 };
 
 type EventoCelda = {
-  tipo: 'OT' | 'QR' | 'PLAN'; id: string; codigo?: string; titulo?: string; estado: string;
-  prioridad?: string; origen?: string | null; hallazgos?: number; criticos?: number;
+  tipo: 'OT' | 'PLAN'; id: string; codigo?: string; titulo?: string; estado: string;
+  prioridad?: string; origen?: string | null;
   fecha?: string | null; fechaReal?: string | null; responsable?: string | null;
   evidencias?: number; duracionEst?: number | null; duracionReal?: number | null;
-  inspector?: string | null;
 };
 
 type PlanActivo = {
@@ -67,12 +66,10 @@ const REPUESTO_COLOR: Record<string, string> = { OK: 'bg-green-50 text-green-700
 
 // Color + etiqueta por estado de evento en la grilla (azul/rojo/verde/amarillo/violeta según spec)
 const EVENTO_COLOR: Record<string, string> = {
-  PROGRAMADO: 'blue', EJECUTADO: 'green', VENCIDO: 'red',
-  PENDIENTE_REVISION: 'amber', QR: 'violet', PROXIMO: 'plan',
+  PROGRAMADO: 'blue', EJECUTADO: 'green', VENCIDO: 'red', PROXIMO: 'plan',
 };
 const EVENTO_LABEL: Record<string, string> = {
-  PROGRAMADO: 'Programado', EJECUTADO: 'Ejecutado', VENCIDO: 'Vencido',
-  PENDIENTE_REVISION: 'Pendiente revisión', QR: 'Inspección QR', PROXIMO: 'Previsto',
+  PROGRAMADO: 'Programado', EJECUTADO: 'Ejecutado', VENCIDO: 'Vencido', PROXIMO: 'Previsto',
 };
 
 function fmtFecha(d: string | null) {
@@ -417,7 +414,7 @@ export default function PlanesFrecuenciasClient() {
     const lineas = filas.map((f) => [
       f.dominio, f.tipo, f.planResumen ? `${f.planResumen.titulo} (${f.planResumen.frecuencia})` : 'Sin plan',
       f.odometro != null ? String(f.odometro) : '',
-      ...f.celdas.map((c) => (c?.eventos || []).map((e) => `${e.codigo || e.titulo || 'Inspección QR'} [${EVENTO_LABEL[e.estado] || e.estado}] ${fmtD(e.fecha)}`).join(' | ')),
+      ...f.celdas.map((c) => (c?.eventos || []).map((e) => `${e.codigo || e.titulo || 'Evento'} [${EVENTO_LABEL[e.estado] || e.estado}] ${fmtD(e.fecha)}`).join(' | ')),
     ]);
     const csv = [header, ...lineas].map((l) => l.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(sep)).join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
@@ -603,11 +600,11 @@ export default function PlanesFrecuenciasClient() {
             OTs pendientes pasadas de fecha{(resumen?.sinEvaluar ?? 0) > 0 ? ` · ${resumen!.sinEvaluar} sin evaluar` : ''}
           </p>
         </div>
-        <div className={`rounded-xl border p-3 ${(resumen?.pendientesRevision ?? 0) > 0 ? 'border-amber-200 bg-amber-50/55' : 'border-neutral-200 bg-white'}`}>
+        <Link href="/flota-360/inspecciones" className={`block rounded-xl border p-3 transition hover:shadow-sm ${(resumen?.pendientesRevision ?? 0) > 0 ? 'border-amber-200 bg-amber-50/55' : 'border-neutral-200 bg-white'}`}>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Pendientes de revisión</p>
           <p className="mt-1 text-xl font-bold text-neutral-900">{resumen?.pendientesRevision ?? '—'}</p>
-          <p className="mt-1 text-[11px] text-neutral-500">inspecciones con hallazgos sin derivar</p>
-        </div>
+          <p className="mt-1 text-[11px] text-neutral-500">inspecciones con hallazgos sin derivar →</p>
+        </Link>
       </div>
 
       {/* Fila 1: Catálogo + Próximas alertas */}
@@ -807,29 +804,18 @@ export default function PlanesFrecuenciasClient() {
                         </td>
                       );
                     }
-                    // Agrupar inspecciones QR de la misma celda en un solo ítem
-                    const qrs = c.eventos.filter((e) => e.tipo === 'QR');
-                    const otros = c.eventos.filter((e) => e.tipo !== 'QR');
-                    const items: { ev?: EventoCelda; qrGroup?: EventoCelda[] }[] = otros.map((ev) => ({ ev }));
-                    if (qrs.length === 1) items.push({ ev: qrs[0] });
-                    else if (qrs.length > 1) items.push({ qrGroup: qrs });
                     const MAX_VISIBLES = 2;
-                    const visibles = items.slice(0, MAX_VISIBLES);
-                    const ocultos = items.length - visibles.length;
+                    const visibles = c.eventos.slice(0, MAX_VISIBLES);
+                    const ocultos = c.eventos.length - visibles.length;
                     return (
                       <td key={ci} className={`px-1.5 py-1.5 relative ${esHoyCol ? 'fleet-col-hoy' : ''}`}>
                         {lineaHoy}
-                        {visibles.map((item, i) => item.qrGroup ? (
-                          <button key={`qrg-${i}`} onClick={() => setCeldaDetalle({ fila: f, col, eventos: c.eventos })} className="fleet-event fleet-event-violet">
-                            <strong className="block">{item.qrGroup.length} inspecciones QR</strong>
-                            <span>Ver registros</span>
+                        {visibles.map((ev, i) => (
+                          <button key={`${ev.tipo}-${ev.id}-${i}`} onClick={() => setCeldaDetalle({ fila: f, col, eventos: c.eventos })} className={`fleet-event fleet-event-${EVENTO_COLOR[ev.estado] || 'blue'}`} title={ev.titulo || ev.codigo}>
+                            <strong className="block">{ev.titulo || ev.codigo || 'Mantenimiento'}</strong>
+                            <span>{EVENTO_LABEL[ev.estado] || ev.estado}{ev.fecha ? ` · ${fmtFecha(ev.fecha)}` : ''}</span>
                           </button>
-                        ) : item.ev ? (
-                          <button key={`${item.ev.tipo}-${item.ev.id}-${i}`} onClick={() => setCeldaDetalle({ fila: f, col, eventos: c.eventos })} className={`fleet-event fleet-event-${EVENTO_COLOR[item.ev.estado] || 'blue'}`} title={item.ev.titulo || item.ev.codigo}>
-                            <strong className="block">{item.ev.titulo || item.ev.codigo || 'Mantenimiento'}</strong>
-                            <span>{EVENTO_LABEL[item.ev.estado] || item.ev.estado}{item.ev.fecha ? ` · ${fmtFecha(item.ev.fecha)}` : ''}</span>
-                          </button>
-                        ) : null)}
+                        ))}
                         {ocultos > 0 && (
                           <button onClick={() => setCeldaDetalle({ fila: f, col, eventos: c.eventos })} className="mt-0.5 block w-full text-center text-[10px] font-medium text-blue-600 hover:underline">
                             Ver {ocultos} más
@@ -847,8 +833,6 @@ export default function PlanesFrecuenciasClient() {
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500 inline-block" /> Programado</span>
           <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-600" /> Ejecutado</span>
           <span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3 text-red-600" /> Vencido</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500 inline-block" /> Pendiente de revisión</span>
-          <span className="flex items-center gap-1"><ScanLine className="h-3 w-3 text-purple-600" /> Inspección QR</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded border border-dashed border-neutral-400 inline-block" /> Previsto por plan</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-amber-100 border border-amber-300 inline-block" /> Sin plan asignado</span>
         </div>
@@ -1189,25 +1173,7 @@ export default function PlanesFrecuenciasClient() {
                       <p className="text-xs text-neutral-500">Vencimiento previsto del plan{ev.fecha ? `: ${fmtFecha(ev.fecha)}` : ' en este período'}. Podés generar la OT con fecha programada.</p>
                       <Link href={`/flota-360/ordenes?nueva=1&vehiculoId=${celdaDetalle.fila.vehiculoId}&titulo=${encodeURIComponent(ev.titulo || 'Servicio planificado')}&fecha=${ev.fecha ? fmtFechaInput(new Date(ev.fecha)) : celdaDetalle.col ? fmtFechaInput(new Date(celdaDetalle.col.desde)) : ''}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1 w-fit"><ExternalLink className="h-3 w-3" /> Crear OT programada</Link>
                     </>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-neutral-800 flex items-center gap-1"><ScanLine className="h-3.5 w-3.5 text-purple-600" /> Inspección QR</span>
-                        {ev.estado === 'PENDIENTE_REVISION' && <span className="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700 shrink-0">Pendiente revisión</span>}
-                      </div>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-neutral-600">
-                        <span>Fecha: <strong className="font-medium">{fmtFecha(ev.fecha ?? null)}</strong></span>
-                        <span>Inspector: <strong className="font-medium">{ev.inspector || '—'}</strong></span>
-                      </div>
-                      <p className="text-xs text-neutral-500">{ev.hallazgos || 0} hallazgo(s) registrado(s){ev.criticos ? `, ${ev.criticos} crítico(s)` : ''}</p>
-                      <div className="flex items-center gap-3">
-                        <Link href="/flota-360/inspecciones" className="text-xs text-blue-600 hover:underline flex items-center gap-1 w-fit"><ExternalLink className="h-3 w-3" /> Ver inspecciones QR</Link>
-                        {ev.estado === 'PENDIENTE_REVISION' && (
-                          <Link href={`/flota-360/ordenes?nueva=1&vehiculoId=${celdaDetalle.fila.vehiculoId}&titulo=${encodeURIComponent('Hallazgo inspección QR')}`} className="text-xs text-amber-700 hover:underline flex items-center gap-1 w-fit"><Plus className="h-3 w-3" /> Derivar a OT</Link>
-                        )}
-                      </div>
-                    </>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>
