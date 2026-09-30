@@ -20,7 +20,21 @@ type PanelFlota = {
     cumplimientoPlanes: number | null; multasPendientes: number; montoMultasPend: number;
     cubiertasCriticas: number; cubiertasBajas: number; incidentesMes: number; docsPorVencer: number;
   };
+  situacionFlota?: {
+    enServicio: number; disponibleSinServicio: number; enTaller: number;
+    noDisponibleOtro: number; restringida: number; inactiva: number; baja: number;
+    porEtapa: Record<string, number>;
+  };
   alertas: { tipo: string; severidad: string; titulo: string; detalle: string; link: string }[];
+};
+
+const ETAPA_LABEL: Record<string, string> = {
+  PENDIENTE_INGRESO: 'Pend. ingreso a taller', PENDIENTE_DIAGNOSTICO: 'Pend. diagnóstico',
+  ESPERANDO_PRESUPUESTO: 'Esperando presupuesto', ESPERANDO_AUTORIZACION: 'Esperando autorización',
+  ESPERANDO_REPUESTO: 'Esperando repuesto', ESPERANDO_PAGO_REPUESTO: 'Esperando pago repuesto',
+  ESPERANDO_TURNO_MANO_OBRA: 'Esperando turno/MO', REPARACION_EN_CURSO: 'Reparación en curso',
+  PENDIENTE_VERIFICACION: 'Pend. verificación', PENDIENTE_HABILITACION: 'Pend. habilitación',
+  OTRO: 'Otro motivo',
 };
 
 type ScoreItem = {
@@ -118,6 +132,18 @@ function TabFlota() {
     { label: 'Incidentes del mes', value: kpis.incidentesMes, sub: 'reportados en ruta', icon: AlertTriangle, alert: kpis.incidentesMes > 0 },
   ];
 
+  const { situacionFlota: sf } = data;
+  const segmentos = sf ? ([
+    { key: 'enServicio', label: 'En servicio', n: sf.enServicio, cls: 'bg-emerald-500', txt: 'text-emerald-700' },
+    { key: 'disponibleSinServicio', label: 'Disponible · sin servicio', n: sf.disponibleSinServicio, cls: 'bg-sky-400', txt: 'text-sky-700' },
+    { key: 'enTaller', label: 'En taller / reparación', n: sf.enTaller, cls: 'bg-amber-500', txt: 'text-amber-700' },
+    { key: 'restringida', label: 'Restringida (bloqueada)', n: sf.restringida, cls: 'bg-red-500', txt: 'text-red-700' },
+    { key: 'noDisponibleOtro', label: 'No disponible · otra etapa', n: sf.noDisponibleOtro, cls: 'bg-orange-400', txt: 'text-orange-700' },
+    { key: 'inactiva', label: 'Inactiva', n: sf.inactiva, cls: 'bg-neutral-400', txt: 'text-neutral-600' },
+    { key: 'baja', label: 'Baja', n: sf.baja, cls: 'bg-neutral-700', txt: 'text-neutral-800' },
+  ].filter((s) => s.n > 0)) : [];
+  const etapasDetalle = sf ? Object.entries(sf.porEtapa) : [];
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2.5">
@@ -132,6 +158,38 @@ function TabFlota() {
           );
         })}
       </div>
+
+      {sf && kpis.totalUnidades > 0 && (
+        <div className="rounded-lg border border-neutral-200 bg-white p-3">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-semibold text-neutral-800 flex items-center gap-1.5">
+              <Gauge className="h-3.5 w-3.5 text-blue-600" /> Situación de la flota — ahora
+            </h2>
+            <span className="text-[10px] text-neutral-400">{kpis.totalUnidades} unidades</span>
+          </div>
+          {/* Barra apilada */}
+          <div className="flex h-3 w-full overflow-hidden rounded-full bg-neutral-100 mb-2.5">
+            {segmentos.map((s) => (
+              <div key={s.key} className={s.cls} style={{ width: `${(s.n / kpis.totalUnidades) * 100}%` }}
+                title={`${s.label}: ${s.n}`} />
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {segmentos.map((s) => (
+              <span key={s.key} className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${s.txt}`}>
+                <span className={`h-2 w-2 rounded-full ${s.cls}`} />
+                {s.label}: <strong>{s.n}</strong>
+                <span className="text-neutral-400 font-normal">({Math.round((s.n / kpis.totalUnidades) * 100)}%)</span>
+              </span>
+            ))}
+          </div>
+          {etapasDetalle.length > 0 && (
+            <p className="mt-2 text-[10px] text-neutral-500">
+              Detalle no disponibles: {etapasDetalle.map(([e, n]) => `${ETAPA_LABEL[e] ?? e} (${n})`).join(' · ')}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
         <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800 flex items-center gap-1.5">

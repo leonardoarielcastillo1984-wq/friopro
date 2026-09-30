@@ -3105,7 +3105,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const en7dias = new Date(ahora.getTime() + 7 * 86400000);
 
     const [vehiculos, otsAbiertas, otsVencidas, planes, docsVto, multasPend, neumaticos, incidentesMes] = await Promise.all([
-      (app.prisma as any).vehiculo.findMany({ where: { tenantId }, select: { id: true, dominio: true, tipo: true, status: true, currentOdometer: true } }),
+      (app.prisma as any).vehiculo.findMany({ where: { tenantId }, select: { id: true, dominio: true, tipo: true, status: true, currentOdometer: true, ubicacionTipo: true, ubicacionDetalle: true, ubicacionDesde: true } }),
       (app.prisma as any).workOrder.count({ where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] } } }),
       (app.prisma as any).workOrder.count({ where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS'] }, scheduledDate: { lt: ahora } } }),
       (app.prisma as any).maintenancePlan.findMany({ where: { tenantId, status: 'ACTIVE' }, select: { id: true, nextExecutionDate: true, lastExecutionDate: true } }),
@@ -3135,6 +3135,35 @@ export default async function flotaRoutes(app: FastifyInstance) {
     const ordenSev: Record<string, number> = { CRITICA: 0, ALTA: 1, MEDIA: 2, BAJA: 3 };
     alertas.sort((a, b) => (ordenSev[a.severidad] ?? 9) - (ordenSev[b.severidad] ?? 9));
 
+    // Desglose por estado compuesto (fuente de verdad: episodios + restricciones + jornadas).
+    // "Disponible sin servicio" = unidad apta pero estacionada — el dato que la dirección pide.
+    const compuestos = await estadoCompuestoBatch(app.prisma, tenantId, vehiculos);
+    const desglose = {
+      enServicio: 0,
+      disponibleSinServicio: 0,
+      enTaller: 0,        // episodio con etapa de taller o reparación
+      noDisponibleOtro: 0, // episodio abierto sin ingreso a taller (custodia, espera, etc.)
+      restringida: 0,     // apta de papeles pero bloqueada por restricción activa
+      inactiva: 0,
+      baja: 0,
+    };
+    const porEtapa: Record<string, number> = {};
+    for (const v of vehiculos) {
+      const c: any = compuestos.get(v.id);
+      if (!c) continue;
+      if (c.situacion === 'BAJA') { desglose.baja++; continue; }
+      if (c.situacion === 'INACTIVA') { desglose.inactiva++; continue; }
+      if (c.etapa) {
+        porEtapa[c.etapa] = (porEtapa[c.etapa] ?? 0) + 1;
+        if (c.enTallerEfectivo || c.etapa === 'REPARACION_EN_CURSO') desglose.enTaller++;
+        else desglose.noDisponibleOtro++;
+        continue;
+      }
+      if (c.restringida) { desglose.restringida++; continue; }
+      if (c.utilizacion === 'EN_SERVICIO') desglose.enServicio++;
+      else desglose.disponibleSinServicio++;
+    }
+
     return reply.send({
       kpis: {
         totalUnidades: vehiculos.length, activos, enTaller, disponibilidad,
@@ -3143,6 +3172,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
         cubiertasCriticas: cubiertasCriticas.length, cubiertasBajas: cubiertasBajas.length,
         incidentesMes, docsPorVencer: docsVto.length,
       },
+      situacionFlota: { ...desglose, porEtapa },
       alertas,
     });
   });
