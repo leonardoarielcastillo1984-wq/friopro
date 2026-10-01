@@ -1827,6 +1827,150 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
   });
 
   // ─────────────────────────────────────────────────────────────
+  // SERVICIOS COMERCIALES — rentabilidad por servicio (Toyota, etc.)
+  // Ingreso teórico por tarifa × días asignados + ingresos reales
+  // vinculados (servicioId o mismo cliente) vs costos prorrateados
+  // de las unidades asignadas. No requiere cargar cada viaje.
+  // ─────────────────────────────────────────────────────────────
+  app.get('/servicios-rentabilidad', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { desde, hasta } = req.query as any;
+    const hastaD = hasta ? new Date(hasta) : new Date();
+    const desdeD = desde ? new Date(desde) : new Date(hastaD.getTime() - 90 * 86400000);
+    const diasPeriodo = Math.max(1, (hastaD.getTime() - desdeD.getTime()) / 86400000);
+
+    const servicios = await (app.prisma as any).flotaServicio.findMany({
+      where: { tenantId },
+      include: {
+        unidades: {
+          include: {
+            vehiculo: {
+              select: { id: true, dominio: true, tipo: true, maintenanceAssetId: true, conductorId: true, cuotaMensual: true },
+            },
+          },
+        },
+      },
+      orderBy: { nombre: 'asc' },
+    });
+    if (!servicios.length) return reply.send({ servicios: [], periodo: { desde: desdeD, hasta: hastaD } });
+
+    // Costos variables del período por unidad (combustible + facturas + multas + OTs)
+    const costosRows = await prisma().$queryRawUnsafe(`
+      SELECT vid, SUM(c) AS c FROM (
+        SELECT "vehiculoId" AS vid, "costoTotal" AS c FROM flota_combustible
+          WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3 AND "costoTotal" IS NOT NULL
+        UNION ALL
+        SELECT "vehiculoId", CASE WHEN "tipoComprobante" = 'NOTA_CREDITO' THEN -total ELSE total END
+          FROM flota_facturas WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3
+          AND "workOrderId" IS NULL AND "tipoComprobante" <> 'PRESUPUESTO' AND (moneda = 'ARS' OR moneda IS NULL)
+        UNION ALL
+        SELECT "vehiculoId", monto FROM flota_multas
+          WHERE "tenantId" = $1 AND estado = 'PAGADA' AND "pagadaAt" > $2 AND "pagadaAt" <= $3
+          AND ("responsablePago" IS NULL OR "responsablePago" = 'EMPRESA')
+        UNION ALL
+        SELECT v.id, wo."totalCost" FROM work_orders wo
+          JOIN flota_vehiculos v ON v."maintenanceAssetId" = wo."assetId"
+          WHERE wo."tenantId" = $1 AND wo.status = 'COMPLETED' AND wo."completedAt" > $2 AND wo."completedAt" <= $3
+      ) x GROUP BY vid`, tenantId, desdeD, hastaD).catch(() => []);
+    const costoMap = new Map((costosRows as any[]).map((r: any) => [r.vid, Number(r.c || 0)]));
+
+    // Sueldos de conductores (costo fijo) y km reales del período por unidad
+    const conductoresDb = await (app.prisma as any).conductor.findMany({
+      where: { tenantId }, select: { id: true, costoMensual: true },
+    }).catch(() => []);
+    const sueldoMap = new Map((conductoresDb as any[]).map((c: any) => [c.id, Number(c.costoMensual || 0)]));
+
+    const kmRows = await prisma().$queryRawUnsafe(`
+      SELECT "vehiculoId" AS vid, MAX(odometro) - MIN(odometro) AS km
+      FROM flota_combustible
+      WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3 AND odometro IS NOT NULL
+      GROUP BY "vehiculoId"`, tenantId, desdeD, hastaD).catch(() => []);
+    const kmMap = new Map((kmRows as any[]).map((r: any) => [r.vid, Number(r.km || 0)]));
+
+    // Ingresos reales del período (para atribuir por servicioId o por cliente)
+    const ingresos = await (app.prisma as any).flotaIngreso.findMany({
+      where: { tenantId, fecha: { gt: desdeD, lte: hastaD } },
+      select: { vehiculoId: true, servicioId: true, cliente: true, monto: true, fecha: true },
+    }).catch(() => []);
+
+    // Cuenta días calendario dentro de un rango que caen en diasSemana (1=lun..7=dom)
+    const diasEnRango = (ini: Date, fin: Date, diasSemana: number[] | null) => {
+      if (!diasSemana?.length) return Math.max(0, (fin.getTime() - ini.getTime()) / 86400000);
+      let n = 0;
+      for (let t = ini.getTime(); t < fin.getTime(); t += 86400000) {
+        const dow = ((new Date(t).getDay() + 6) % 7) + 1; // 1=lun
+        if (diasSemana.includes(dow)) n++;
+      }
+      return n;
+    };
+
+    const out = servicios.map((s: any) => {
+      const uniRows = s.unidades
+        .filter((a: any) => (!a.hasta || new Date(a.hasta) > desdeD) && new Date(a.desde) < hastaD)
+        .map((a: any) => {
+          const ini = new Date(Math.max(desdeD.getTime(), new Date(a.desde).getTime()));
+          const fin = new Date(Math.min(hastaD.getTime(), a.hasta ? new Date(a.hasta).getTime() : hastaD.getTime()));
+          const diasCal = Math.max(0, (fin.getTime() - ini.getTime()) / 86400000);
+          const diasAsignados = Math.round(diasEnRango(ini, fin, s.diasSemana as number[] | null) * 10) / 10;
+          const share = diasCal / diasPeriodo;
+
+          // Costo atribuido: variables prorrateados + fijo (cuota + sueldo) prorrateado
+          const costoVar = (costoMap.get(a.vehiculoId) || 0) * share;
+          const fijoMes = Number(a.vehiculo.cuotaMensual || 0) + (a.vehiculo.conductorId ? sueldoMap.get(a.vehiculo.conductorId) || 0 : 0);
+          const costoFijo = fijoMes * (diasCal / 30.44);
+          const costo = Math.round(costoVar + costoFijo);
+
+          const kmEst = s.kmEstimadosDia ? Math.round(s.kmEstimadosDia * diasAsignados) : Math.round((kmMap.get(a.vehiculoId) || 0) * share);
+
+          let ingresoTeorico: number | null = null;
+          if (s.monto) {
+            if (s.modalidadCobro === 'POR_DIA') ingresoTeorico = Math.round(s.monto * diasAsignados);
+            else if (s.modalidadCobro === 'POR_MES') ingresoTeorico = Math.round(s.monto * (diasCal / 30.44));
+            else if (s.modalidadCobro === 'POR_KM') ingresoTeorico = Math.round(s.monto * kmEst);
+          }
+
+          // Ingresos reales: vinculados al servicio, o del cliente del servicio en la unidad
+          const cli = (s.cliente || '').toLowerCase();
+          const ingresoReal = Math.round((ingresos as any[])
+            .filter((i: any) =>
+              i.vehiculoId === a.vehiculoId &&
+              new Date(i.fecha) >= ini && new Date(i.fecha) <= fin &&
+              (i.servicioId === s.id || (cli && (i.cliente || '').toLowerCase() === cli)))
+            .reduce((acc: number, i: any) => acc + Number(i.monto || 0), 0));
+
+          const base = ingresoReal > 0 ? ingresoReal : (ingresoTeorico ?? 0);
+          return {
+            vehiculoId: a.vehiculoId, dominio: a.vehiculo.dominio, tipo: a.vehiculo.tipo,
+            desde: a.desde, hasta: a.hasta, vigente: !a.hasta,
+            diasAsignados, kmEstimados: kmEst,
+            ingresoTeorico, ingresoReal,
+            costo, margen: Math.round(base - costo),
+          };
+        });
+
+      const totales = {
+        diasAsignados: Math.round(uniRows.reduce((a: number, u: any) => a + u.diasAsignados, 0) * 10) / 10,
+        kmEstimados: Math.round(uniRows.reduce((a: number, u: any) => a + u.kmEstimados, 0)),
+        ingresoTeorico: uniRows.every((u: any) => u.ingresoTeorico == null) ? null
+          : Math.round(uniRows.reduce((a: number, u: any) => a + (u.ingresoTeorico || 0), 0)),
+        ingresoReal: Math.round(uniRows.reduce((a: number, u: any) => a + u.ingresoReal, 0)),
+        costos: Math.round(uniRows.reduce((a: number, u: any) => a + u.costo, 0)),
+        margen: Math.round(uniRows.reduce((a: number, u: any) => a + u.margen, 0)),
+      };
+      return {
+        id: s.id, nombre: s.nombre, cliente: s.cliente, tipo: s.tipo,
+        modalidadCobro: s.modalidadCobro, monto: s.monto,
+        kmEstimadosDia: s.kmEstimadosDia, diasSemana: s.diasSemana,
+        origen: s.origen, destino: s.destino, activo: s.activo,
+        unidades: uniRows, totales,
+      };
+    }).filter((s: any) => s.unidades.length > 0 || s.activo);
+
+    return reply.send({ periodo: { desde: desdeD, hasta: hastaD, dias: Math.round(diasPeriodo * 10) / 10 }, servicios: out });
+  });
+
+  // ─────────────────────────────────────────────────────────────
   // CASH FLOW PROYECTADO — egresos comprometidos a 90 días:
   // vencimientos (con monto), cuotas de préstamos, cubiertas que
   // llegan al mínimo legal, preventivos vencidos del cronograma.

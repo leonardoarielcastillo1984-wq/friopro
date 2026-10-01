@@ -7848,6 +7848,9 @@ model Vehiculo {
   multas   FlotaMulta[]
   ingresos FlotaIngreso[]
 
+  // Flota 360 — Asignaciones a servicios comerciales (FIJO/PUNTUAL)
+  servicioUnidades FlotaServicioUnidad[]
+
   // Flota 360 — Historial de estadíos operativos (OPERATIVO/EN_TALLER/EN_REPARACION)
   estadoEventos VehiculoEstadoEvento[]
 
@@ -12067,13 +12070,81 @@ model FlotaIngreso {
   cobradoAt          DateTime? @db.Timestamptz
   fechaCobroEstimada DateTime? @db.Timestamptz
 
+  // Servicio comercial al que pertenece el ingreso (Toyota diario, etc.)
+  servicioId String?        @db.Uuid
+  servicio   FlotaServicio? @relation(fields: [servicioId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([tenantId])
   @@index([vehiculoId])
   @@index([fecha])
   @@index([cliente])
+  @@index([servicioId])
   @@map("flota_ingresos")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SERVICIOS COMERCIALES — contratos/servicios recurrentes o puntuales
+// (ej. "Toyota — distribución diaria"). Permite medir rentabilidad por
+// servicio sin cargar cada viaje: la asignación unidad↔servicio ya dice
+// qué días trabajó para ese cliente.
+// ════════════════════════════════════════════════════════════════════════════
+model FlotaServicio {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nombre  String
+  cliente String?
+
+  // FIJO = recurrente (todos los días/días hábiles); PUNTUAL = viaje o evento
+  tipo           String @default("FIJO")
+  // POR_DIA: monto por día asignado · POR_MES: mensual prorrateado ·
+  // POR_KM: tarifa por km (usa kmEstimadosDia) · VIAJE: se mide por ingresos reales
+  modalidadCobro String @default("POR_DIA")
+  monto          Float? // tarifa según modalidad
+
+  kmEstimadosDia Float? // km típicos por día (para POR_KM y proyección de costo)
+  origen         String?
+  destino        String?
+  diasSemana     Json? // [1..7] días que corre el servicio (null = todos)
+
+  activo Boolean @default(true)
+  notas  String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  unidades FlotaServicioUnidad[]
+  ingresos FlotaIngreso[]
+
+  @@index([tenantId])
+  @@index([activo])
+  @@map("flota_servicios")
+}
+
+// Asignación unidad↔servicio con vigencia. El historial queda: permite
+// reconstruir qué días trabajó cada unidad para cada servicio.
+model FlotaServicioUnidad {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  servicioId String        @db.Uuid
+  servicio   FlotaServicio @relation(fields: [servicioId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  desde DateTime  @default(now()) @db.Timestamptz
+  hasta DateTime? @db.Timestamptz // null = asignación vigente
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([servicioId])
+  @@index([vehiculoId])
+  @@map("flota_servicio_unidades")
 }
 
 // ════════════════════════════════════════════════════════════════════════════

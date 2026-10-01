@@ -84,13 +84,14 @@ export default function VehiculoFichaPage() {
   const [editComentario, setEditComentario] = useState(false);
   const [comentarioInput, setComentarioInput] = useState('');
   const [ingresos, setIngresos] = useState<any[]>([]);
-  const [ingresoForm, setIngresoForm] = useState({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '', cliente: '', fechaCobroEstimada: '', cobrado: false });
+  const [servicios, setServicios] = useState<any[]>([]);
+  const [ingresoForm, setIngresoForm] = useState({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '', cliente: '', servicioId: '', fechaCobroEstimada: '', cobrado: false });
   const [ingresoSaving, setIngresoSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [c, t, e, cond, restr, comp, ep, ing] = await Promise.all([
+      const [c, t, e, cond, restr, comp, ep, ing, srv] = await Promise.all([
         apiFetch<any>(`/flota/vehiculos/${id}/completo`),
         apiFetch<any>(`/flota/vehiculos/${id}/twin`).catch(() => null),
         apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-historial`).catch(() => null),
@@ -99,10 +100,12 @@ export default function VehiculoFichaPage() {
         apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-compuesto`).catch(() => null),
         apiFetch<any>(`/fleet-ops/vehiculos/${id}/indisponibilidad`).catch(() => null),
         apiFetch<{ ingresos: any[] }>(`/flota/vehiculos/${id}/ingresos`).catch(() => ({ ingresos: [] })),
+        apiFetch<{ servicios: any[] }>('/flota/servicios?activos=1').catch(() => ({ servicios: [] })),
       ]);
       setCompleto(c);
       setTwin(t);
       setIngresos(ing?.ingresos || []);
+      setServicios(srv?.servicios || []);
       setEstadoOp(e);
       setEstadoCompuesto(comp && !comp.error ? comp : null);
       setComentario(comp && !comp.error ? (comp.estadoComentario ?? null) : null);
@@ -752,7 +755,7 @@ export default function VehiculoFichaPage() {
         <section className="fleet-panel">
           <header className="fleet-panel-heading">
             <h2>Ingresos</h2>
-            <button onClick={() => setIngresoForm({ abierto: true, fecha: new Date().toISOString().slice(0, 10), monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '', cliente: '', fechaCobroEstimada: '', cobrado: false })}
+            <button onClick={() => setIngresoForm({ abierto: true, fecha: new Date().toISOString().slice(0, 10), monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '', cliente: '', servicioId: '', fechaCobroEstimada: '', cobrado: false })}
               className="text-[11px] font-medium text-green-700 hover:underline" title="Facturación de la unidad: viajes, contratos o períodos. Alimenta el margen en Panel → Rentabilidad.">+ Registrar</button>
           </header>
           {ingresos.length === 0 ? (
@@ -1058,6 +1061,15 @@ export default function VehiculoFichaPage() {
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Cliente</label>
                 <input value={ingresoForm.cliente} onChange={(e) => setIngresoForm({ ...ingresoForm, cliente: e.target.value })} placeholder="Para margen por cliente en Rentabilidad" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
               </div>
+              {servicios.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Servicio</label>
+                  <select value={ingresoForm.servicioId} onChange={(e) => setIngresoForm({ ...ingresoForm, servicioId: e.target.value })} title="Servicio comercial al que pertenece este ingreso (ej. Toyota diario) — alimenta la rentabilidad por servicio" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                    <option value="">Sin servicio</option>
+                    {servicios.map((sv: any) => <option key={sv.id} value={sv.id}>{sv.nombre}{sv.cliente ? ` · ${sv.cliente}` : ''}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3 items-end">
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Cobro estimado</label>
@@ -1084,11 +1096,12 @@ export default function VehiculoFichaPage() {
                       origen: ingresoForm.origen || undefined,
                       destino: ingresoForm.destino || undefined,
                       cliente: ingresoForm.cliente || undefined,
+                      servicioId: ingresoForm.servicioId || undefined,
                       fechaCobroEstimada: ingresoForm.fechaCobroEstimada || undefined,
                       cobradoAt: ingresoForm.cobrado ? new Date().toISOString() : undefined,
                     },
                   });
-                  setIngresoForm({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '', cliente: '', fechaCobroEstimada: '', cobrado: false });
+                  setIngresoForm({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '', cliente: '', servicioId: '', fechaCobroEstimada: '', cobrado: false });
                   await load();
                 } finally { setIngresoSaving(false); }
               }} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">{ingresoSaving ? 'Guardando…' : 'Registrar'}</button>

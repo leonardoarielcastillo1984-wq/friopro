@@ -1319,6 +1319,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       origen: z.string().optional(),
       destino: z.string().optional(),
       cliente: z.string().optional(),
+      servicioId: z.string().uuid().optional().nullable(),
       fechaCobroEstimada: z.string().optional().nullable(),
       cobradoAt: z.string().optional().nullable(),
       conductorId: z.string().uuid().optional().nullable(),
@@ -1372,6 +1373,131 @@ export default async function flotaRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
     await (app.prisma as any).flotaIngreso.deleteMany({ where: { id, tenantId } });
+    return reply.send({ ok: true });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // SERVICIOS COMERCIALES — contratos/servicios recurrentes o
+  // puntuales con unidades asignadas (rentabilidad por servicio)
+  // ═══════════════════════════════════════════════════════════════
+
+  app.get('/servicios', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { activos } = req.query as any;
+    const servicios = await (app.prisma as any).flotaServicio.findMany({
+      where: { tenantId, ...(activos === '1' ? { activo: true } : {}) },
+      include: {
+        unidades: {
+          include: { vehiculo: { select: { id: true, dominio: true, tipo: true, marca: true, modelo: true } } },
+          orderBy: { desde: 'desc' },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return reply.send({ servicios });
+  });
+
+  app.post('/servicios', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      nombre: z.string().min(1),
+      cliente: z.string().optional().nullable(),
+      tipo: z.enum(['FIJO', 'PUNTUAL']).default('FIJO'),
+      modalidadCobro: z.enum(['POR_DIA', 'POR_MES', 'POR_KM', 'VIAJE']).default('POR_DIA'),
+      monto: z.number().positive().optional().nullable(),
+      kmEstimadosDia: z.number().positive().optional().nullable(),
+      origen: z.string().optional().nullable(),
+      destino: z.string().optional().nullable(),
+      diasSemana: z.array(z.number().int().min(1).max(7)).optional().nullable(),
+      notas: z.string().optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const servicio = await (app.prisma as any).flotaServicio.create({
+      data: { ...body.data, tenantId, diasSemana: body.data.diasSemana ?? undefined },
+    });
+    return reply.code(201).send({ servicio });
+  });
+
+  app.patch('/servicios/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      nombre: z.string().min(1).optional(),
+      cliente: z.string().optional().nullable(),
+      tipo: z.enum(['FIJO', 'PUNTUAL']).optional(),
+      modalidadCobro: z.enum(['POR_DIA', 'POR_MES', 'POR_KM', 'VIAJE']).optional(),
+      monto: z.number().positive().optional().nullable(),
+      kmEstimadosDia: z.number().positive().optional().nullable(),
+      origen: z.string().optional().nullable(),
+      destino: z.string().optional().nullable(),
+      diasSemana: z.array(z.number().int().min(1).max(7)).optional().nullable(),
+      activo: z.boolean().optional(),
+      notas: z.string().optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    await (app.prisma as any).flotaServicio.updateMany({
+      where: { id, tenantId },
+      data: { ...body.data, diasSemana: body.data.diasSemana === null ? null : body.data.diasSemana ?? undefined },
+    });
+    return reply.send({ ok: true });
+  });
+
+  app.delete('/servicios/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    // Soft-delete: conserva historial de asignaciones e ingresos vinculados
+    await (app.prisma as any).flotaServicio.updateMany({ where: { id, tenantId }, data: { activo: false } });
+    return reply.send({ ok: true });
+  });
+
+  // Asignar una unidad al servicio (vigente hasta que se cierre)
+  app.post('/servicios/:id/unidades', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      vehiculoId: z.string().uuid(),
+      desde: z.string().optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const existe = await (app.prisma as any).flotaServicio.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!existe) return reply.code(404).send({ error: 'Servicio no encontrado' });
+    // Cierra asignación vigente anterior de esa unidad en ese servicio
+    await (app.prisma as any).flotaServicioUnidad.updateMany({
+      where: { tenantId, servicioId: id, vehiculoId: body.data.vehiculoId, hasta: null },
+      data: { hasta: new Date() },
+    });
+    const asignacion = await (app.prisma as any).flotaServicioUnidad.create({
+      data: {
+        tenantId,
+        servicioId: id,
+        vehiculoId: body.data.vehiculoId,
+        desde: body.data.desde ? new Date(body.data.desde) : new Date(),
+      },
+      include: { vehiculo: { select: { id: true, dominio: true, tipo: true } } },
+    });
+    return reply.code(201).send({ asignacion });
+  });
+
+  // Cerrar una asignación (la unidad deja de cubrir el servicio)
+  app.patch('/servicios/asignaciones/:asignacionId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { asignacionId } = req.params as any;
+    const schema = z.object({ hasta: z.string().optional() });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    await (app.prisma as any).flotaServicioUnidad.updateMany({
+      where: { id: asignacionId, tenantId },
+      data: { hasta: body.data.hasta ? new Date(body.data.hasta) : new Date() },
+    });
     return reply.send({ ok: true });
   });
 
