@@ -279,6 +279,9 @@ export default function MapaProcesosContent() {
   const [showGeneral, setShowGeneral] = useState(false);
   // Vista principal del tab: 'general' = Mapa General (vista corporativa unificada); 'maps' = mapas individuales
   const [mainView, setMainView] = useState<'general' | 'maps'>('general');
+  // Pestañas de norma del Mapa General: 'ISO9001' | 'IATF16949' | '' (completo).
+  // Solo se muestran cuando el tenant tiene al menos un mapa con norma asignada.
+  const [generalNormTab, setGeneralNormTab] = useState<'' | 'ISO9001' | 'IATF16949'>('ISO9001');
 
   // Navegación de 2 niveles: null = Mapa de Macroprocesos; con id = Desglose (subprocesos) de ese macroproceso
   const [viewMacroId, setViewMacroId] = useState<string | null>(null);
@@ -1261,6 +1264,30 @@ export default function MapaProcesosContent() {
   return (
     <div className="min-h-[500px]">
       {mainView === 'general' ? (
+        <>
+        {/* Pestañas por norma: solo si el tenant tagueó mapas (ISO 9001 / IATF 16949). */}
+        {maps.some(m => m.norm) && (
+          <div className="flex items-center gap-1 mb-3 border-b border-neutral-200" role="tablist">
+            {([
+              { v: 'ISO9001', l: 'ISO 9001' },
+              { v: 'IATF16949', l: 'IATF 16949' },
+              { v: '', l: 'Completo' },
+            ] as const).map(t => (
+              <button
+                key={t.v}
+                role="tab"
+                aria-selected={generalNormTab === t.v}
+                onClick={() => setGeneralNormTab(t.v)}
+                className={`px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition-colors ${generalNormTab === t.v ? 'border-brand-500 text-brand-700' : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}
+              >
+                {t.l}
+                <span className="ml-1.5 text-[10px] font-normal text-neutral-400">
+                  {t.v ? maps.filter(m => m.norm === t.v).length : maps.length}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         <MapaGeneralView
           maps={maps}
           employees={employees}
@@ -1276,7 +1303,9 @@ export default function MapaProcesosContent() {
           onNewMap={() => { setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '', norm: '' }); setShowMapForm(true); }}
           onEditMap={m => { setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI', mapBand: m.mapBand ?? '', norm: m.norm ?? '' }); setShowMapForm(true); }}
           onDeleteMap={m => deleteMap(m.id)}
+          normLock={maps.some(m => m.norm) ? (generalNormTab || null) : null}
         />
+        </>
       ) : (
       <div className="flex gap-6 min-h-[500px]">
       {/* Sidebar: lista de mapas */}

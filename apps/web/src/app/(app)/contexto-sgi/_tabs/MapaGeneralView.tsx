@@ -132,6 +132,7 @@ export default function MapaGeneralView({
   onNewMap,
   onEditMap,
   onDeleteMap,
+  normLock,
 }: {
   maps: GenMap[];
   employees: { id: string; firstName: string; lastName: string; email: string }[];
@@ -147,13 +148,17 @@ export default function MapaGeneralView({
   onNewMap: () => void;
   onEditMap: (m: GenMap) => void;
   onDeleteMap: (m: GenMap) => void;
+  // Cuando viene seteado, la vista muestra SOLO mapas de esa norma (pestañas ISO/IATF)
+  // y se oculta el selector interno de norma.
+  normLock?: 'ISO9001' | 'IATF16949' | null;
 }) {
   const router = useRouter();
   const [sel, setSel] = useState<Sel>(null);
   const [panelTab, setPanelTab] = useState<PanelTab>('subs');
   const [query, setQuery] = useState('');
   const [site, setSite] = useState('');
-  // Filtro por norma: '' = todas | 'ISO9001' | 'IATF16949' (mapas sin norma pasan todos los filtros)
+  // Filtro por norma: '' = todas | 'ISO9001' | 'IATF16949' (mapas sin norma pasan todos los filtros).
+  // Con normLock (pestañas ISO/IATF) el filtro es ESTRICTO: solo mapas con esa norma exacta.
   const [normScope, setNormScope] = useState('');
 
   // ── Índices derivados ────────────────────────────────────────────────────
@@ -190,7 +195,8 @@ export default function MapaGeneralView({
     const mapNameSet = new Set<string>();
     maps.forEach(m => {
       // Filtro por norma: un mapa tagueado solo aparece en su vista; sin norma = aplica a todas.
-      if (normScope && m.norm && m.norm !== normScope) return;
+      // Con normLock (pestaña dedicada) el mapa DEBE tener esa norma exacta.
+      if (normLock ? m.norm !== normLock : (normScope && m.norm && m.norm !== normScope)) return;
       if (!m.processes.some(matchesSite)) return;
       const nameHit = q && normalize(m.name).includes(q);
       if (nameHit) mapNameSet.add(m.id);
@@ -200,7 +206,7 @@ export default function MapaGeneralView({
     });
     return { bands, matchSet, mapNameSet, totalMatches: matchSet.size + mapNameSet.size };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maps, q, site, normScope]);
+  }, [maps, q, site, normScope, normLock]);
 
   // Selección resuelta contra datos frescos: si el elemento ya no existe tras recargar, queda sin panel.
   const selMap = sel?.kind === 'map' ? maps.find(m => m.id === sel.mapId) ?? null : null;
@@ -790,7 +796,9 @@ export default function MapaGeneralView({
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Título + buscador + filtro sede */}
         <div className="mb-3">
-          <h2 className="text-base font-bold text-neutral-900">Mapa general de procesos</h2>
+          <h2 className="text-base font-bold text-neutral-900">
+            Mapa general de procesos{normLock === 'ISO9001' ? ' — ISO 9001' : normLock === 'IATF16949' ? ' — IATF 16949' : ''}
+          </h2>
           <p className="text-xs text-neutral-400">Operaciones independientes, procesos conectados</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -810,6 +818,7 @@ export default function MapaGeneralView({
               </button>
             )}
           </div>
+          {!normLock && (
           <div className="relative">
             <BookOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-400 pointer-events-none" aria-hidden />
             <select
@@ -823,6 +832,7 @@ export default function MapaGeneralView({
               <option value="IATF16949">IATF 16949</option>
             </select>
           </div>
+          )}
           {allSites.length > 0 && (
             <div className="relative">
               <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-400 pointer-events-none" aria-hidden />
@@ -864,7 +874,11 @@ export default function MapaGeneralView({
           <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-neutral-200 rounded-xl py-16 text-center">
             <AlertTriangle className="h-8 w-8 text-neutral-300 mb-3" aria-hidden />
             <p className="text-sm font-medium text-neutral-500">Sin resultados</p>
-            <p className="text-xs text-neutral-400 mt-1 mb-3">Ningún mapa o proceso coincide con los filtros actuales.</p>
+            <p className="text-xs text-neutral-400 mt-1 mb-3">
+              {normLock
+                ? `No hay mapas asignados a ${normLock === 'IATF16949' ? 'IATF 16949' : 'ISO 9001'}. Editá un mapa y asignale la norma.`
+                : 'Ningún mapa o proceso coincide con los filtros actuales.'}
+            </p>
             <button type="button" onClick={() => { setQuery(''); setSite(''); setNormScope(''); }} className="text-xs text-indigo-600 underline hover:text-indigo-700">
               Limpiar filtros
             </button>
