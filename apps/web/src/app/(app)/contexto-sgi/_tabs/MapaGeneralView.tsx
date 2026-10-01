@@ -894,7 +894,7 @@ export default function MapaGeneralView({
               Crear primer mapa
             </button>
           </div>
-        ) : filteredEmpty ? (
+        ) : filteredEmpty && (!normLock || q || site) ? (
           <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-neutral-200 rounded-xl py-16 text-center">
             <AlertTriangle className="h-8 w-8 text-neutral-300 mb-3" aria-hidden />
             <p className="text-sm font-medium text-neutral-500">Sin resultados</p>
