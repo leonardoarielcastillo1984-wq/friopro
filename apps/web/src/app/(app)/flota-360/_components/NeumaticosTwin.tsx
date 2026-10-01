@@ -131,6 +131,10 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
   // Control de presión (ronda de toda la unidad)
   const [control, setControl] = useState<{ abierto: boolean; observador: string; notas: string; mediciones: Record<string, string> }>({ abierto: false, observador: '', notas: '', mediciones: {} });
   const [ultimoControl, setUltimoControl] = useState<{ fecha: string; cubiertasRevisadas: number; cubiertasInfladas: number } | null>(null);
+  // cantEjes local: el prop viene del padre y no se refresca con load(),
+  // así que al +/- un eje lo actualizamos en estado para repintar al instante.
+  const [ejesCount, setEjesCount] = useState<number | null>(null);
+  useEffect(() => { setEjesCount(cantEjes ?? null); }, [cantEjes]);
 
   const load = async () => {
     setLoading(true);
@@ -155,7 +159,7 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
   const ejesMontados = useMemo(() => [...new Set(posiciones.filter(p => p.posicion !== 'AUXILIO').map(p => p.eje))], [posiciones]);
   const maxMontado = ejesMontados.length ? Math.max(...ejesMontados) : 0;
   // cantEjes del vehículo manda; si no está seteado, default 2 (delantero+trasero). Nunca menos que los ejes con cubiertas montadas.
-  const totalEjes = Math.max(cantEjes ?? 2, maxMontado);
+  const totalEjes = Math.max(ejesCount ?? cantEjes ?? 2, maxMontado);
   const ejes = useMemo(() => Array.from({ length: totalEjes }, (_, i) => i + 1), [totalEjes]);
   const auxilios = posiciones.filter(p => p.posicion === 'AUXILIO');
   const posDe = (eje: number, lado: string, pos: string) => posiciones.find(p => p.eje === eje && p.lado === lado && p.posicion === pos);
@@ -309,6 +313,7 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
     setBusy(true); setError(null);
     try {
       await apiFetch(`/flota/vehiculos/${vehiculoId}`, { method: 'PATCH', json: { cantEjes: nuevo } });
+      setEjesCount(nuevo);
       flash(`${nuevo} ejes`);
       await load();
     } catch (e: any) { setError(e?.message || 'No se pudo actualizar los ejes'); } finally { setBusy(false); }
