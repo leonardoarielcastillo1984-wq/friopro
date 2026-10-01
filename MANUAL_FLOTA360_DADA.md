@@ -29,8 +29,8 @@ linkcolor: blue
 |---|---|
 | Título oficial | Instructivo Integral y Manual Operativo: Módulo Flota 360 — SGI360 |
 | Autor | Dirección de Tecnología — SGI360 |
-| Versión | 1.1 |
-| Fecha de emisión | Septiembre 2026 |
+| Versión | 1.2 |
+| Fecha de emisión | Octubre 2026 |
 | Dirigido a | Dirección / C-Level |
 | Clasificación | Uso interno — Documento ejecutivo |
 | Ambiente documentado | Producción — https://logismart.ar |
@@ -41,6 +41,7 @@ linkcolor: blue
 |---|---|---|---|
 | 1.0 | Sep 2026 | Dirección de Tecnología | Emisión inicial del instructivo integral del módulo Flota 360 |
 | 1.1 | Sep 2026 | Dirección de Tecnología | QR personal del mecánico (agenda de tareas y evidencia de cierre) y ranking de desempeño del taller |
+| 1.2 | Oct 2026 | Dirección de Tecnología | Rentabilidad integral de flota: financiación y payback por unidad, margen por cliente con DSO, semáforo de alertas, cotizador de viaje mínimo, simulador de compra por tipo, Performance con detalle día por día y cash flow proyectado |
 
 \newpage
 
@@ -69,6 +70,10 @@ El módulo opera bajo un principio de **cadena operativa cerrada**: una inspecci
 | ¿Los conductores operan seguro? | Ranking de conductores por desempeño, multas, incidentes y rendimiento |
 | ¿Se cumple el mantenimiento? | Cumplimiento de planes preventivos, alertas de servicio, programa semanal |
 | ¿Cómo rinde el taller? | Ranking de mecánicos: cumplimiento, puntualidad, tiempos de resolución y costos por técnico |
+| ¿Cuánto cobrar un viaje? | Cotizador de viaje mínimo: costo/km real de la unidad + costo fijo diario + margen deseado |
+| ¿Qué cliente tarda en pagar? | DSO (días promedio de cobro) y montos vencidos por cliente en Rentabilidad |
+| ¿Compro otra unidad? | Simulador por tipo: margen, facturación y costo fijo mensual esperados sobre datos reales |
+| ¿Qué atender ya? | Semáforo de alertas: cobros vencidos, renovación, consumo anómalo, declive y equilibrio |
 
 \newpage
 
@@ -76,7 +81,7 @@ El módulo opera bajo un principio de **cadena operativa cerrada**: una inspecci
 
 ## 3.1 Acceso al módulo
 
-El módulo se accede desde el menú principal de SGI360. Al ingresar, se despliega una **barra lateral propia** (fondo azul institucional `#0d1b3d`) que reemplaza la navegación general, con dos accesos permanentes en la parte superior:
+El módulo se accede desde el menú principal de SGI360, donde el ítem **Flota 360** aparece **resaltado con un halo amarillo** para identificarlo de inmediato entre las demás opciones. Al ingresar, se despliega una **barra lateral propia** (fondo azul institucional `#0d1b3d`) que reemplaza la navegación general, con dos accesos permanentes en la parte superior:
 
 - **Volver al SGI** — regresa al dashboard general de SGI360.
 - **Guía de uso** — abre el Centro de Ayuda (`/modo-de-uso?guide=flota-360`) con la guía interactiva del módulo.
@@ -208,7 +213,9 @@ Al incorporar un camión nuevo, el administrativo lo da de alta con dominio y od
 - **Proyección — "¿qué pasa si recorro…?"**: se ingresa un kilometraje futuro (ej. +20.000 km) y el sistema estima qué servicios y componentes requerirán atención, con salud actual → proyectada por componente y costos estimados.
 - **Alertas activas** por componente.
 - **OTs recientes** e **Historial de mantenimiento** completos.
-- **Editar vehículo**: actualización de datos de la unidad incluyendo estado.
+- **Financiación de la compra** *(nuevo v1.2)*: fecha de compra, valor de adquisición, anticipo, cuota mensual, cantidad de cuotas, fecha de la primera cuota y valor residual estimado de reventa. Las cuotas pagadas se derivan de los meses transcurridos. Alimenta el **payback**, el **costo fijo mensual** de la unidad y el **cash flow** de salidas.
+- **Ingresos de la unidad** *(nuevo v1.2)*: registro de facturación con monto, descripción, **cliente**, **fecha de cobro estimada** y marca de **cobrado** (toggle en la tabla). Alimenta el margen por cliente, el DSO, las entradas del cash flow y las alertas de cobranza del semáforo.
+- **Editar vehículo**: actualización de datos de la unidad incluyendo estado, financiación y presupuesto mensual propio.
 
 ### Caso de uso
 
@@ -432,6 +439,7 @@ Con dos o más mediciones de profundidad por cubierta, el sistema calcula el des
 ### Funcionalidad
 
 - **"Nuevo conductor" / "Editar"**: nombre, categoría de licencia (C, D1, E…), datos de contacto.
+- **Costo mensual (sueldo + cargas)** *(nuevo v1.2)*: campo opcional que alimenta el costo fijo de la unidad asignada y habilita el indicador **"Produce"** del Panel → Rentabilidad (ingresos de la unidad ÷ sueldo del período).
 - **Carga de documentos** del chofer (upload de archivos).
 - **Eliminar** con confirmación.
 - Base del **ranking de conductores** del Panel (score por desempeño, multas, incidentes y rendimiento).
@@ -449,7 +457,7 @@ Con dos o más mediciones de profundidad por cubierta, el sistema calcula el des
 
 | Pestaña | Función |
 |---|---|
-| **Vencimientos** | VTV, seguros, habilitaciones y sus fechas de vencimiento por unidad — "Nuevo vencimiento" |
+| **Vencimientos** | VTV, seguros, habilitaciones y sus fechas de vencimiento por unidad — "Nuevo vencimiento" con **monto estimado** opcional *(v1.2)*, que alimenta las salidas del cash flow proyectado |
 | **Docs chofer** | Documentación de conductores por unidad |
 | **Incidentes** | Registro de incidentes en ruta (tipo, gravedad) |
 | **Bitácora** | Registro de viajes/eventos por vehículo |
@@ -490,6 +498,34 @@ Scorecard por conductor: desempeño, multas, incidentes y rendimiento de combust
 ### Pestaña Ejecutivo
 
 Costo real del mes con desglose (combustible / mantenimiento / facturas / multas) y desvío contra presupuesto.
+
+### Pestaña Performance *(v1.2)*
+
+Utilización real de la flota contra la ventana operativa configurable (días hábiles y horario de referencia):
+
+- **Filtros**: presets de período (7/30/90 días y personalizado), filtro por tipo de unidad y selección de unidades específicas.
+- **Ventana operativa**: desde *"Configurar ventana"* se definen los días y el horario en que la flota debería operar (ej. lunes a viernes 8–18 h). Las horas se miden contra esa ventana, no contra 24 h.
+- **Tabla por unidad**: horas en servicio, estacionada (disponible sin viaje), no disponible (taller/administrativa) y % de utilización dentro de la ventana.
+- **Expansión de primer nivel**: desglose de costos y tiempos del período por unidad.
+- **Detalle día por día** *(segundo nivel, carga diferida)*: expandiendo una unidad se habilita *"Ver detalle diario"*, que muestra para cada día los **rangos horarios exactos** de servicio, estacionamiento y taller — con la **etapa** de cada episodio de taller (ingreso, en reparación, espera de repuesto, etc.) y su origen.
+
+### Pestaña Rentabilidad *(v1.2)*
+
+Analítica financiera completa de la flota (`GET /fleet-ops/rentabilidad` + `GET /fleet-ops/cash-flow`), con selector de período (30/60/90/180 días):
+
+- **Botón "Cotizar viaje"**: abre el **cotizador de viaje mínimo** — se elige unidad, km del viaje, días ocupados y margen deseado; el sistema calcula el costo real del viaje (km × costo variable real + días × costo fijo diario con cuota, sueldo y documentos) y devuelve el **precio mínimo a cobrar** con el margen aplicado, más el $/km facturado equivalente.
+- **Semáforo — qué atender ya**: alertas automáticas accionables ordenadas por severidad (rojo/amarillo): cobros vencidos con monto, unidades candidatas a renovar, caída anómala de rendimiento de combustible, unidades 3 meses en declive y unidades bajo su punto de equilibrio. Cada alerta enlaza a la ficha de la unidad.
+- **KPIs de flota**: ingresos, costos, margen, km recorridos, pendiente de cobro, deuda total de flota y unidades en declive.
+- **Tabla por unidad** (ordenada por margen): km, ingresos (con pendiente de cobro), costos desglosados (combustible + mantenimiento + facturas + multas + cuotas + sueldo del chofer), margen, **punto de equilibrio mensual** (cuánto debe facturar para cubrir sus costos), utilización, **payback** (% del valor de compra ya recuperado vía margen acumulado) y cuotas pagadas. Badges: **EN DECLIVE** (3 meses de margen en caída), **RENOVAR?** (inversión recuperada + declive, o correctivo dominante), **CONSUMO −X%** (últimas cargas rinden 20%+ menos que el histórico — posible desperfecto o carga sospechosa) y **% vs tipo** (margen/día contra la mediana de unidades del mismo tipo — la "unidad espejo").
+- **Ingresos por cliente**: participación de cada cliente sobre lo facturado, **DSO** (días promedio de cobro, con semáforo de color) y **monto vencido** adeudado.
+- **Ranking de talleres externos**: OTs, costo total, demora promedio en horas y reclamos.
+- **Desempeño de conductores**: horas trabajadas, km/L promedio, jornadas excesivas, multas y **"Produce"** — ingresos de su unidad asignada ÷ su sueldo del período (ej. 3× = cada peso de sueldo genera $3 de facturación).
+- **"Si compro otra unidad…"**: simulador por tipo que proyecta facturación prom/mes, margen esperado, km típicos, $/km variable y fijo mensual de una unidad nueva, calculado sobre el promedio real de la flota.
+- **Cash flow proyectado a 90 días**: salidas comprometidas (cuotas de préstamos, vencimientos con monto, cubiertas bajo mínimo legal, preventivos vencidos) contra entradas (cobros pendientes de ingresos), con neto cobros−egresos y deuda total de flota.
+
+### Caso de uso (Rentabilidad)
+
+El dueño abre el cotizador antes de responder una cotización: el viaje de 800 km y 2 días en el tractor cuesta $X reales → cobra como mínimo el precio sugerido con 20% de margen. En el semáforo ve que un cliente supera los 45 días de DSO y tiene saldo vencido, y que una unidad ya recuperó su inversión y está en declive → candidata a renovar antes de que el correctivo se coma el margen.
 
 ---
 
