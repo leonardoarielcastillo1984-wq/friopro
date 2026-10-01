@@ -1950,7 +1950,6 @@ export default function MapaProcesosContent() {
                 <option value="">Automática (según nombre)</option>
                 <option value="STRATEGIC">Estratégicos</option>
                 <option value="OPERATIONAL">Operaciones</option>
-                <option value="COMMERCIAL">Comercial</option>
                 <option value="SUPPORT">Soporte</option>
               </select>
             </div>

@@ -66,12 +66,13 @@ function normalize(s?: string | null) {
 
 // Clasifica el mapa en su banda del Mapa General. Prioriza el campo `mapBand`
 // (editable desde "Editar mapa"); sin valor → heurística por nombre + capa dominante.
+// COMMERCIAL quedó deprecado: los mapas comerciales caen en OPERATIONAL.
 function classifyMapBand(map: GenMap): Band {
-  if (map.mapBand === 'STRATEGIC' || map.mapBand === 'OPERATIONAL' || map.mapBand === 'COMMERCIAL' || map.mapBand === 'SUPPORT') {
+  if (map.mapBand === 'STRATEGIC' || map.mapBand === 'OPERATIONAL' || map.mapBand === 'SUPPORT') {
     return map.mapBand;
   }
   const n = normalize(map.name);
-  if (/(comercial|ventas?|cotizaci|marketing|clientes)/.test(n)) return 'COMMERCIAL';
+  if (/(comercial|ventas?|cotizaci|marketing|clientes)/.test(n)) return 'OPERATIONAL';
   if (/(direcci|gerenc|estrateg|planeam|gobern|comit)/.test(n)) return 'STRATEGIC';
   if (/(rrhh|recurso|compra|sistema|tecnolog|calidad|document|manten|administ|finanz|legal|seguridad|capacit|soporte|contratac)/.test(n)) return 'SUPPORT';
   const counts: Record<Band, number> = { STRATEGIC: 0, OPERATIONAL: 0, COMMERCIAL: 0, SUPPORT: 0 };
@@ -928,15 +929,6 @@ export default function MapaGeneralView({
                       <div className="space-y-1.5">
                         {bands.OPERATIONAL.map((m, i) => (
                           <Fragment key={m.id}>{MapBranch({ map: m, band: 'OPERATIONAL', tint: BRANCH_TINTS[i % BRANCH_TINTS.length] })}</Fragment>
-                        ))}
-                      </div>
-                    )}
-                  </BandSection>
-                  <BandSection band="COMMERCIAL">
-                    {bands.COMMERCIAL.length === 0 ? <BandEmpty band="COMMERCIAL" /> : (
-                      <div className="space-y-1.5">
-                        {bands.COMMERCIAL.map(m => (
-                          <Fragment key={m.id}>{MapBranch({ map: m, band: 'COMMERCIAL', tint: '' })}</Fragment>
                         ))}
                       </div>
                     )}
