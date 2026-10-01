@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import {
   CheckCircle2, AlertCircle, Truck, Gauge, ClipboardCheck, AlertTriangle,
   Fuel, PlayCircle, StopCircle, FileText, ArrowLeft, Send,
-  Camera, Loader2, MapPin, Wrench, ChevronRight, X, HeartPulse, Clock,
+  Camera, Loader2, MapPin, Wrench, ChevronRight, X, HeartPulse, Clock, Briefcase,
 } from 'lucide-react';
 
 const API = process.env.NEXT_PUBLIC_API_BASE || '/api';
@@ -59,7 +59,7 @@ export default function UnidadHubPage() {
   const unComb = tipoComb === 'GNC' ? 'm³' : 'L';
   // servicio — clienteEventoId por intento: si se reintenta (timeout/offline)
   // el servidor devuelve el registro existente en vez de duplicar.
-  const [sTipo, setSTipo] = useState<'INICIO_SERVICIO' | 'FIN_SERVICIO' | 'CAMBIO_UNIDAD'>('INICIO_SERVICIO');
+  const [sTipo, setSTipo] = useState<'INICIO_SERVICIO' | 'FIN_SERVICIO' | 'CAMBIO_UNIDAD' | 'CAMBIO_SERVICIO'>('INICIO_SERVICIO');
   const [sKm, setSKm] = useState(''); const [sNotas, setSNotas] = useState('');
   const [sOrigen, setSOrigen] = useState(''); const [sDestino, setSDestino] = useState(''); const [sCarga, setSCarga] = useState('');
   const [sServicioId, setSServicioId] = useState('');
@@ -172,7 +172,7 @@ export default function UnidadHubPage() {
       origen: sTipo === 'INICIO_SERVICIO' ? sOrigen.trim() || undefined : undefined,
       destino: sTipo === 'INICIO_SERVICIO' ? sDestino.trim() || undefined : undefined,
       carga: sTipo === 'INICIO_SERVICIO' ? sCarga.trim() || undefined : undefined,
-      flotaServicioId: sTipo === 'INICIO_SERVICIO' && sServicioId ? sServicioId : undefined,
+      flotaServicioId: sTipo === 'INICIO_SERVICIO' && sServicioId ? sServicioId : sTipo === 'CAMBIO_SERVICIO' ? (sServicioId || null) : undefined,
       reportadoPorNombre: nombre.trim(), reportadoPorTelefono: telefono.trim() || undefined,
     });
     if (ok) { eventoId.current = ''; setEstadoServ(null); }
@@ -410,11 +410,14 @@ export default function UnidadHubPage() {
             {estadoServ?.jornadaAbierta && (
               <button type="button" onClick={() => setSTipo('CAMBIO_UNIDAD')} style={{ flex: 1, minWidth: 140, padding: '10px 0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, border: sTipo === 'CAMBIO_UNIDAD' ? '2px solid #2563EB' : '1px solid #D1D5DB', background: sTipo === 'CAMBIO_UNIDAD' ? '#EFF6FF' : '#fff', color: sTipo === 'CAMBIO_UNIDAD' ? '#2563EB' : '#6B7280' }}><Truck size={15} /> Cambio de unidad</button>
             )}
+            {estadoServ?.jornadaAbierta && data?.serviciosComerciales?.length > 0 && (
+              <button type="button" onClick={() => setSTipo('CAMBIO_SERVICIO')} style={{ flex: 1, minWidth: 140, padding: '10px 0', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, border: sTipo === 'CAMBIO_SERVICIO' ? '2px solid #7C3AED' : '1px solid #D1D5DB', background: sTipo === 'CAMBIO_SERVICIO' ? '#7C3AED12' : '#fff', color: sTipo === 'CAMBIO_SERVICIO' ? '#7C3AED' : '#6B7280' }}><Briefcase size={15} /> Cambiar servicio</button>
+            )}
           </div>
           <div style={{ display: 'grid', gap: 10 }}>
-            {sTipo === 'INICIO_SERVICIO' && (data?.serviciosComerciales?.length > 0) && (
+            {(sTipo === 'INICIO_SERVICIO' || sTipo === 'CAMBIO_SERVICIO') && (data?.serviciosComerciales?.length > 0) && (
               <div>
-                <label style={S.label}>¿A qué servicio tomás la unidad?</label>
+                <label style={S.label}>{sTipo === 'CAMBIO_SERVICIO' ? '¿A qué servicio pasás?' : '¿A qué servicio tomás la unidad?'}</label>
                 <select style={S.input} value={sServicioId} onChange={e => {
                   setSServicioId(e.target.value);
                   const sv = data.serviciosComerciales.find((x: any) => x.id === e.target.value);
@@ -434,6 +437,7 @@ export default function UnidadHubPage() {
                 <input style={{ ...S.input, gridColumn: '1 / -1' }} placeholder="Carga / mercadería (opc.)" value={sCarga} onChange={e => setSCarga(e.target.value)} />
               </div>
             )}
+            {sTipo === 'CAMBIO_SERVICIO' && <p style={{ ...S.muted, fontSize: 12, background: '#7C3AED12', padding: 10, borderRadius: 8 }}>Tu jornada sigue abierta — solo cambia el servicio que cubre la unidad desde ahora. Podés hacerlo las veces que necesites en el día.</p>}
             {sTipo === 'CAMBIO_UNIDAD' && <p style={{ ...S.muted, fontSize: 12, background: '#EFF6FF', padding: 10, borderRadius: 8 }}>Registra que ahora conducís <strong>{veh?.dominio}</strong> dentro de tu jornada abierta — no la reinicia ni cuenta descanso.</p>}
             <div><label style={S.label}>Kilometraje actual</label><input style={S.input} type="number" min="0" placeholder="km" value={sKm} onChange={e => setSKm(e.target.value)} /></div>
             <textarea style={{ ...S.input, minHeight: 60, resize: 'vertical' }} placeholder="Observaciones (opcional)" value={sNotas} onChange={e => setSNotas(e.target.value)} />
@@ -442,8 +446,8 @@ export default function UnidadHubPage() {
           </div>
           {Err}
           <button onClick={envServ} disabled={Env || !conductorId || !pin.trim()}
-            style={{ ...S.btn, background: sTipo === 'FIN_SERVICIO' ? '#DC2626' : sTipo === 'CAMBIO_UNIDAD' ? '#2563EB' : '#16A34A', width: '100%', marginTop: 14, opacity: (Env || !conductorId || !pin.trim()) ? 0.6 : 1 }}>
-            <Send size={16} style={{ marginRight: 8, verticalAlign: -3 }} />{Env ? 'Registrando…' : sTipo === 'INICIO_SERVICIO' ? 'Registrar inicio' : sTipo === 'FIN_SERVICIO' ? 'Registrar fin' : 'Registrar cambio de unidad'}</button>
+            style={{ ...S.btn, background: sTipo === 'FIN_SERVICIO' ? '#DC2626' : sTipo === 'CAMBIO_UNIDAD' ? '#2563EB' : sTipo === 'CAMBIO_SERVICIO' ? '#7C3AED' : '#16A34A', width: '100%', marginTop: 14, opacity: (Env || !conductorId || !pin.trim()) ? 0.6 : 1 }}>
+            <Send size={16} style={{ marginRight: 8, verticalAlign: -3 }} />{Env ? 'Registrando…' : sTipo === 'INICIO_SERVICIO' ? 'Registrar inicio' : sTipo === 'FIN_SERVICIO' ? 'Registrar fin' : sTipo === 'CAMBIO_SERVICIO' ? 'Cambiar de servicio' : 'Registrar cambio de unidad'}</button>
         </div>
       )}
 

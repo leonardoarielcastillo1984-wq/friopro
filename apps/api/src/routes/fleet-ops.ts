@@ -1894,6 +1894,72 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       select: { vehiculoId: true, servicioId: true, cliente: true, monto: true, fecha: true },
     }).catch(() => []);
 
+    // ── Tramos de servicio por unidad ──────────────────────────────────────
+    // El chofer puede cubrir varios servicios en la misma jornada: cada
+    // INICIO_SERVICIO / CAMBIO_SERVICIO con flotaServicioId abre un tramo que
+    // cierra el próximo evento de esa unidad o el fin de la jornada.
+    const regRows = await prisma().$queryRawUnsafe(`
+      SELECT r."vehiculoId" AS vid, r.tipo, r."flotaServicioId" AS sid,
+             r."eventoAt" AS ev, j."finAt" AS jfin
+      FROM flota_servicio_registros r
+      LEFT JOIN flota_jornadas j ON j.id = r."jornadaId"
+      WHERE r."tenantId" = $1
+        AND r.tipo IN ('INICIO_SERVICIO','CAMBIO_SERVICIO','FIN_SERVICIO','CAMBIO_UNIDAD')
+        AND r."eventoAt" > $2 - INTERVAL '2 days' AND r."eventoAt" <= $3
+      ORDER BY r."vehiculoId", r."eventoAt"`, tenantId, desdeD, hastaD).catch(() => []);
+
+    // tramoData: vid -> sid -> Map<dia 'YYYY-MM-DD', horas>
+    // tramoTotales: vid -> Map<dia, horas totales trabajadas (todos los tramos)>
+    const tramoData = new Map<string, Map<string, Map<string, number>>>();
+    const tramoTotales = new Map<string, Map<string, number>>();
+    {
+      const porVid = new Map<string, any[]>();
+      for (const r of regRows as any[]) {
+        const arr = porVid.get(r.vid) || []; arr.push(r); porVid.set(r.vid, arr);
+      }
+      const addHoras = (vid: string, sid: string, dIni: Date, dFin: Date) => {
+        // reparte el tramo por días calendario
+        let t = dIni.getTime();
+        while (t < dFin.getTime()) {
+          const dia = new Date(t).toISOString().slice(0, 10);
+          const finDia = new Date(`${dia}T23:59:59.999Z`).getTime() + 1;
+          const h = (Math.min(finDia, dFin.getTime()) - t) / 3600000;
+          if (h > 0) {
+            const sv = tramoData.get(vid) || new Map();
+            const mm = sv.get(sid) || new Map();
+            mm.set(dia, (mm.get(dia) || 0) + h);
+            sv.set(sid, mm); tramoData.set(vid, sv);
+            const tot = tramoTotales.get(vid) || new Map();
+            tot.set(dia, (tot.get(dia) || 0) + h);
+            tramoTotales.set(vid, tot);
+          }
+          t = finDia;
+        }
+      };
+      for (const [vid, evs] of porVid) {
+        let activo: string | null = null;
+        let desdeTramo: Date | null = null;
+        let jfin: Date | null = null;
+        const cerrar = (hasta: Date) => {
+          if (activo && desdeTramo && hasta > desdeTramo) addHoras(vid, activo, desdeTramo, hasta);
+          desdeTramo = null;
+        };
+        for (const e of evs) {
+          if (e.jfin) jfin = new Date(e.jfin);
+          if (e.tipo === 'INICIO_SERVICIO' || e.tipo === 'CAMBIO_SERVICIO') {
+            cerrar(new Date(e.ev));
+            activo = e.sid || null;
+            desdeTramo = activo ? new Date(e.ev) : null;
+          } else if (e.tipo === 'FIN_SERVICIO' || e.tipo === 'CAMBIO_UNIDAD') {
+            cerrar(new Date(e.ev));
+            activo = null;
+          }
+        }
+        // tramo abierto: cierra al fin de la jornada o al fin del período
+        if (activo && desdeTramo) addHoras(vid, activo, desdeTramo, jfin ?? hastaD);
+      }
+    }
+
     // Cuenta días calendario dentro de un rango que caen en diasSemana (1=lun..7=dom)
     const diasEnRango = (ini: Date, fin: Date, diasSemana: number[] | null) => {
       if (!diasSemana?.length) return Math.max(0, (fin.getTime() - ini.getTime()) / 86400000);
@@ -1912,13 +1978,36 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
           const ini = new Date(Math.max(desdeD.getTime(), new Date(a.desde).getTime()));
           const fin = new Date(Math.min(hastaD.getTime(), a.hasta ? new Date(a.hasta).getTime() : hastaD.getTime()));
           const diasCal = Math.max(0, (fin.getTime() - ini.getTime()) / 86400000);
-          const diasAsignados = Math.round(diasEnRango(ini, fin, s.diasSemana as number[] | null) * 10) / 10;
-          const share = diasCal / diasPeriodo;
+
+          // Tramos reales del chofer (INICIO/CAMBIO_SERVICIO): si existen para
+          // esta unidad+servicio mandan sobre la vigencia — miden qué días y
+          // qué fracción del día la unidad cubrió ese servicio.
+          const tramosServ = tramoData.get(a.vehiculoId)?.get(s.id);
+          let diasAsignados: number;
+          let horasServicio: number | null = null;
+          let share: number;
+          if (tramosServ && tramosServ.size > 0) {
+            const totales = tramoTotales.get(a.vehiculoId) || new Map();
+            let frac = 0, horas = 0;
+            for (const [dia, h] of tramosServ) {
+              const d = new Date(`${dia}T12:00:00Z`);
+              if (d < desdeD || d > hastaD) continue;
+              const totDia = totales.get(dia) || h;
+              frac += h / Math.max(totDia, 0.0001);
+              horas += h;
+            }
+            diasAsignados = tramosServ.size;
+            horasServicio = Math.round(horas * 10) / 10;
+            share = frac / diasPeriodo;
+          } else {
+            diasAsignados = Math.round(diasEnRango(ini, fin, s.diasSemana as number[] | null) * 10) / 10;
+            share = diasCal / diasPeriodo;
+          }
 
           // Costo atribuido: variables prorrateados + fijo (cuota + sueldo) prorrateado
           const costoVar = (costoMap.get(a.vehiculoId) || 0) * share;
           const fijoMes = Number(a.vehiculo.cuotaMensual || 0) + (a.vehiculo.conductorId ? sueldoMap.get(a.vehiculo.conductorId) || 0 : 0);
-          const costoFijo = fijoMes * (diasCal / 30.44);
+          const costoFijo = fijoMes * (diasCal / 30.44) * (tramosServ?.size ? Math.min(1, share * diasPeriodo / Math.max(diasCal, 0.01)) : 1);
           const costo = Math.round(costoVar + costoFijo);
 
           const kmEst = s.kmEstimadosDia ? Math.round(s.kmEstimadosDia * diasAsignados) : Math.round((kmMap.get(a.vehiculoId) || 0) * share);
@@ -1943,7 +2032,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
           return {
             vehiculoId: a.vehiculoId, dominio: a.vehiculo.dominio, tipo: a.vehiculo.tipo,
             desde: a.desde, hasta: a.hasta, vigente: !a.hasta,
-            diasAsignados, kmEstimados: kmEst,
+            diasAsignados, horasServicio, kmEstimados: kmEst,
             ingresoTeorico, ingresoReal,
             costo, margen: Math.round(base - costo),
           };

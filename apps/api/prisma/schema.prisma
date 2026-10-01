@@ -8887,6 +8887,11 @@ model ServicioRegistro {
   destino String?
   carga   String?
 
+  // Servicio comercial que cubre la unidad desde este evento
+  // (seteado en INICIO_SERVICIO y CAMBIO_SERVICIO; null = sin servicio).
+  // Escalar sin relación — patrón aditivo, igual que conductorId.
+  flotaServicioId String? @db.Uuid
+
   // Chofer identificado (scalar, sin relación — patrón aditivo)
   conductorId String? @db.Uuid
 
@@ -8915,6 +8920,7 @@ model ServicioRegistro {
   @@index([tenantId])
   @@index([vehiculoId])
   @@index([jornadaId])
+  @@index([flotaServicioId])
   @@index([tenantId, conductorId, tipo])
   @@map("flota_servicio_registros")
 }

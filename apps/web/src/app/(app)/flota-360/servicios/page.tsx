@@ -21,10 +21,10 @@ type ServicioRent = {
   diasSemana: number[] | null; origen: string | null; destino: string | null; activo: boolean;
   unidades: {
     vehiculoId: string; dominio: string; tipo: string; desde: string; hasta: string | null;
-    vigente: boolean; diasAsignados: number; kmEstimados: number;
+    vigente: boolean; diasAsignados: number; horasServicio: number | null; kmEstimados: number;
     ingresoTeorico: number | null; ingresoReal: number; costo: number; margen: number;
   }[];
-  totales: { diasAsignados: number; kmEstimados: number; ingresoTeorico: number | null; ingresoReal: number; costos: number; margen: number };
+  totales: { diasAsignados: number; horasServicio: number | null; kmEstimados: number; ingresoTeorico: number | null; ingresoReal: number; costos: number; margen: number };
 };
 
 type Servicio = {
@@ -219,7 +219,9 @@ export default function ServiciosPage() {
                           {new Date(u.desde).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
                           {' → '}{u.hasta ? new Date(u.hasta).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : 'hoy'}
                         </td>
-                        <td className="px-3 py-2 text-right">{ru?.diasAsignados ?? '—'}</td>
+                        <td className="px-3 py-2 text-right" title={ru?.horasServicio != null ? `${ru.horasServicio}h de tramo reales en el servicio` : undefined}>
+                          {ru?.diasAsignados ?? '—'}{ru?.horasServicio != null ? ` (${ru.horasServicio}h)` : ''}
+                        </td>
                         <td className="px-3 py-2 text-right">{ru?.kmEstimados ? ru.kmEstimados.toLocaleString('es-AR') : '—'}</td>
                         <td className="px-3 py-2 text-right text-blue-700">{ru?.ingresoTeorico != null ? fmtMoney(ru.ingresoTeorico) : '—'}</td>
                         <td className="px-3 py-2 text-right text-green-700">{ru ? fmtMoney(ru.ingresoReal) : '—'}</td>

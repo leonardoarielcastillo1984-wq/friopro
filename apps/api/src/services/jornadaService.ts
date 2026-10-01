@@ -191,6 +191,7 @@ export interface IniciarJornadaInput {
   notas?: string | null;
   lat?: number | null; lng?: number | null;
   origen?: string | null; destino?: string | null; carga?: string | null;
+  flotaServicioId?: string | null; // servicio comercial que toma la unidad
   reportadoPorTelefono?: string | null;
 }
 
@@ -328,6 +329,7 @@ export async function iniciarJornada(prisma: any, input: IniciarJornadaInput): P
         horasDescanso: jornada.descansoPrevioHoras,
         descansoInsuficiente: evaluacion === 'INSUFICIENTE',
         origen: input.origen || null, destino: input.destino || null, carga: input.carga || null,
+        flotaServicioId: input.flotaServicioId || null,
         conductorId: conductor.id,
         reportadoPorNombre: conductor.nombre,
         reportadoPorTelefono: input.reportadoPorTelefono || null,
@@ -399,6 +401,38 @@ export async function registrarCambioUnidad(prisma: any, args: {
       data: {
         tenantId, vehiculoId: vehiculo.id, jornadaId: abierta.id,
         tipo: 'CAMBIO_UNIDAD',
+        odometro: args.odometro ?? null, notas: args.notas || null,
+        clienteEventoId: args.clienteEventoId ?? null,
+        eventoAt: ahora,
+        conductorId: conductor.id,
+        reportadoPorNombre: conductor.nombre,
+      },
+    });
+    return { ok: true, jornada: abierta, registro };
+  });
+}
+
+// ── Cambio de servicio comercial dentro de la jornada abierta ────────────────
+// El chofer puede cubrir varios servicios en la misma jornada (Toyota a la
+// mañana, otra cosa a la tarde). No toca la jornada: solo marca el tramo con
+// un registro CAMBIO_SERVICIO; flotaServicioId null = queda sin servicio.
+
+export async function registrarCambioServicio(prisma: any, args: {
+  tenantId: string; conductor: any; vehiculo: any; ahora: Date;
+  flotaServicioId: string | null;
+  clienteEventoId?: string; odometro?: number | null; notas?: string | null;
+}) {
+  const { tenantId, conductor, vehiculo, ahora } = args;
+  return prisma.$transaction(async (tx: any) => {
+    const abierta = await tx.flotaJornada.findFirst({
+      where: { tenantId, conductorId: conductor.id, estado: 'ABIERTA' },
+    });
+    if (!abierta) return { ok: false, code: 'SIN_JORNADA' };
+    const registro = await tx.servicioRegistro.create({
+      data: {
+        tenantId, vehiculoId: vehiculo.id, jornadaId: abierta.id,
+        tipo: 'CAMBIO_SERVICIO',
+        flotaServicioId: args.flotaServicioId || null,
         odometro: args.odometro ?? null, notas: args.notas || null,
         clienteEventoId: args.clienteEventoId ?? null,
         eventoAt: ahora,

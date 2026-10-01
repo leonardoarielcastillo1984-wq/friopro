@@ -7,7 +7,7 @@ import { restriccionesDelConjunto } from '../services/defectService.js';
 import { impedimentosParaServicio } from '../services/unidadEstadoService.js';
 import {
   verificarConductor, estadoServicioChofer, iniciarJornada, cerrarJornada,
-  registrarCambioUnidad, corregirJornada, vincularControlConJornada,
+  registrarCambioUnidad, registrarCambioServicio, corregirJornada, vincularControlConJornada,
   procesarAvisosJornada, getPoliticaJornada, POLITICA_DEFAULT, hashPin,
 } from '../services/jornadaService.js';
 import { existsSync, mkdirSync } from 'fs';
@@ -363,7 +363,7 @@ export async function driverHubRoutes(app: FastifyInstance) {
     if (!vehiculo) return reply.code(400).send({ error: 'La unidad no está vinculada a un vehículo de flota' });
 
     const schema = z.object({
-      tipo: z.enum(['INICIO_SERVICIO', 'FIN_SERVICIO', 'BITACORA', 'CAMBIO_UNIDAD']),
+      tipo: z.enum(['INICIO_SERVICIO', 'FIN_SERVICIO', 'BITACORA', 'CAMBIO_UNIDAD', 'CAMBIO_SERVICIO']),
       odometro: z.number().positive().optional(),
       notas: z.string().max(2000).optional(),
       lat: z.number().optional(),
@@ -374,7 +374,7 @@ export async function driverHubRoutes(app: FastifyInstance) {
       carga: z.string().max(300).optional(),
       conductorId: z.string().uuid().optional(),
       pin: z.string().min(1).max(20).optional(),
-      flotaServicioId: z.string().uuid().optional(),
+      flotaServicioId: z.string().uuid().optional().nullable(),
       clienteEventoId: z.string().uuid().optional(),
       reportadoPorNombre: z.string().min(1).max(200).optional(),
       reportadoPorTelefono: z.string().max(50).optional(),
@@ -438,6 +438,7 @@ export async function driverHubRoutes(app: FastifyInstance) {
         tenantId: qr.tenantId, conductor, vehiculo, ahora,
         clienteEventoId: d.clienteEventoId, odometro: d.odometro, notas: d.notas,
         lat: d.lat, lng: d.lng, origen: d.origen, destino: d.destino, carga: d.carga,
+        flotaServicioId: d.flotaServicioId,
         reportadoPorTelefono: d.reportadoPorTelefono,
       });
 
@@ -586,6 +587,41 @@ export async function driverHubRoutes(app: FastifyInstance) {
       return reply.code(201).send({
         ok: true, registroId: res.registro.id, jornadaId: res.jornada?.id,
         mensaje: `Cambio de unidad registrado (${vehiculo.dominio}). Tu jornada sigue abierta.`,
+      });
+    }
+
+    // ── CAMBIO_SERVICIO — la unidad pasa a cubrir otro servicio comercial
+    // dentro de la misma jornada (sin cerrarla). null = queda sin servicio.
+    if (d.tipo === 'CAMBIO_SERVICIO') {
+      const res = await registrarCambioServicio(prisma(), {
+        tenantId: qr.tenantId, conductor, vehiculo, ahora,
+        flotaServicioId: d.flotaServicioId || null,
+        clienteEventoId: d.clienteEventoId, odometro: d.odometro, notas: d.notas,
+      });
+      if (!res.ok) {
+        return reply.code(409).send({ error: 'Sin jornada abierta', mensaje: 'No tenés una jornada abierta. Iniciá servicio primero.' });
+      }
+      // Auto-asigna la unidad al servicio elegido (contrato vigente)
+      if (d.flotaServicioId) {
+        (async () => {
+          const srv = await (prisma() as any).flotaServicio.findFirst({ where: { id: d.flotaServicioId, tenantId: qr.tenantId, activo: true }, select: { id: true, nombre: true } });
+          if (!srv) return;
+          const vigente = await (prisma() as any).flotaServicioUnidad.findFirst({
+            where: { tenantId: qr.tenantId, servicioId: srv.id, vehiculoId: vehiculo.id, hasta: null },
+            select: { id: true },
+          });
+          if (vigente) return;
+          await (prisma() as any).flotaServicioUnidad.create({
+            data: { tenantId: qr.tenantId, servicioId: srv.id, vehiculoId: vehiculo.id, desde: ahora },
+          });
+        })().catch((e: any) => console.error('[driver-hub] auto-assign cambio servicio:', e));
+      }
+      if (d.odometro && (vehiculo.currentOdometer == null || d.odometro > vehiculo.currentOdometer)) {
+        await syncOdometroYDesgaste(prisma(), qr.tenantId, vehiculo.id, d.odometro).catch(() => {});
+      }
+      return reply.code(201).send({
+        ok: true, registroId: res.registro.id, jornadaId: res.jornada?.id,
+        mensaje: d.flotaServicioId ? 'Servicio registrado — la unidad quedó asignada.' : 'Quedaste sin servicio asignado.',
       });
     }
 
