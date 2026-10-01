@@ -98,13 +98,13 @@ export default function SelectTenantPage() {
           <p className="text-neutral-500">No tenés sistemas de gestión asignados</p>
         </div>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-wrap justify-center gap-6">
           {tenants.map((t) => (
             <button
               key={t.tenantId}
               onClick={() => switchTenant(t.tenantId)}
               disabled={switching !== null}
-              className="group relative flex flex-col items-center rounded-2xl border-2 border-neutral-200 bg-white px-6 py-8 text-center transition-all hover:border-brand-500 hover:shadow-xl hover:-translate-y-1 disabled:opacity-60 disabled:hover:translate-y-0"
+              className="group relative flex w-full flex-col items-center rounded-2xl border-2 border-neutral-200 bg-white px-6 py-8 text-center transition-all hover:border-brand-500 hover:shadow-xl hover:-translate-y-1 disabled:opacity-60 disabled:hover:translate-y-0 sm:w-60"
             >
               {/* Avatar con logo o iniciales + bandera del país */}
               <div className="relative mb-5">
