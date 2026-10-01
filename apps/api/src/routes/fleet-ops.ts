@@ -1413,6 +1413,48 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3 AND cliente IS NOT NULL
       GROUP BY cliente ORDER BY ingresos DESC`, tenantId, desde, hasta).catch(() => []);
 
+    // DSO por cliente: días promedio de cobro + pendiente y vencido.
+    // Si no hay fechaCobroEstimada se asume plazo estándar de 30 días.
+    const dsoRows = await prisma().$queryRawUnsafe(`
+      SELECT cliente,
+             AVG(EXTRACT(EPOCH FROM ("cobradoAt" - fecha)) / 86400.0)
+               FILTER (WHERE "cobradoAt" IS NOT NULL) AS dso_dias,
+             COUNT(*) FILTER (WHERE "cobradoAt" IS NULL)::int AS pendientes,
+             SUM(monto) FILTER (WHERE "cobradoAt" IS NULL) AS pend_monto,
+             SUM(monto) FILTER (WHERE "cobradoAt" IS NULL
+               AND COALESCE("fechaCobroEstimada", fecha + INTERVAL '30 days') < NOW()) AS vencido_monto
+      FROM flota_ingresos
+      WHERE "tenantId" = $1 AND cliente IS NOT NULL
+        AND (fecha > $2 OR "cobradoAt" IS NULL)
+      GROUP BY cliente`, tenantId, new Date(hasta.getTime() - 180 * 86400000), hasta).catch(() => []);
+    const dsoMap = new Map((dsoRows as any[]).map((r: any) => [r.cliente, r]));
+
+    // Anomalía de consumo: promedio de las últimas 2 cargas vs histórico.
+    // Caída >20% sin OT asociada puede indicar robo/fuga o desperfecto.
+    const consumoRows = await prisma().$queryRawUnsafe(`
+      SELECT "vehiculoId",
+             AVG(rendimiento) AS prom,
+             AVG(rendimiento) FILTER (WHERE rn <= 2) AS reciente,
+             COUNT(*)::int AS cargas
+      FROM (
+        SELECT "vehiculoId", rendimiento,
+               ROW_NUMBER() OVER (PARTITION BY "vehiculoId" ORDER BY fecha DESC) AS rn
+        FROM flota_combustible
+        WHERE "tenantId" = $1 AND rendimiento IS NOT NULL
+      ) t
+      GROUP BY "vehiculoId"
+      HAVING COUNT(*) >= 4`, tenantId).catch(() => []);
+    const consumoMap = new Map((consumoRows as any[]).map((r: any) => [r.vehiculoId, r]));
+
+    // Cobros vencidos de toda la flota (para el semáforo)
+    const cobrosVencidosRows = await prisma().$queryRawUnsafe(`
+      SELECT COUNT(*)::int AS n, SUM(monto) AS monto
+      FROM flota_ingresos
+      WHERE "tenantId" = $1 AND "cobradoAt" IS NULL
+        AND COALESCE("fechaCobroEstimada", fecha + INTERVAL '30 days') < NOW()`,
+      tenantId).catch(() => []);
+    const cobrosVencidos = (cobrosVencidosRows as any[])[0] || { n: 0, monto: 0 };
+
     // Buckets mensuales (últimos ~3 meses calendario) para detectar declive
     const mesesDesde = new Date(hasta.getTime() - 100 * 86400000);
     const bucketsRows = await prisma().$queryRawUnsafe(`
@@ -1577,13 +1619,77 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         valorAdquisicion: v.valorAdquisicion,
         valorResidual: v.valorResidual,
         puntoEquilibrioMes, bajoEquilibrio,
+        costoFijoMes: Math.round(costoFijoMes),
+        costoVarPorKm: km && km > 0 ? Math.round((costoVariablePeriodo / km) * 100) / 100 : null,
         pendienteCobro: Math.round(Number(ing?.pend_cobro || 0)),
         payback,
         enDeclive,
         diasFacturados, diasSinFacturar,
         margenMeses: margenMeses.map((m) => Math.round(m)),
+        // Consumo anómalo: últimas cargas rinden <80% del histórico
+        consumoAnomalo: (() => {
+          const cx = consumoMap.get(v.id);
+          if (!cx || !cx.reciente || !cx.prom || Number(cx.prom) <= 0) return null;
+          const rec = Number(cx.reciente), prom = Number(cx.prom);
+          if (rec < prom * 0.8) {
+            return { reciente: Math.round(rec * 100) / 100, historico: Math.round(prom * 100) / 100, caidaPct: Math.round((1 - rec / prom) * 100) };
+          }
+          return null;
+        })(),
       };
     }).sort((a: any, b: any) => b.margen - a.margen);
+
+    // ── Unidad espejo: mediana de margen/día por tipo + renovación ──
+    const mediana = (arr: number[]) => {
+      if (!arr.length) return null;
+      const s = [...arr].sort((a, b) => a - b);
+      return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+    };
+    const porTipoMap = new Map<string, any[]>();
+    for (const u of unidades) {
+      const arr = porTipoMap.get(u.tipo) || [];
+      arr.push(u);
+      porTipoMap.set(u.tipo, arr);
+    }
+    const medianaTipo = new Map<string, number | null>();
+    for (const [tipo, arr] of porTipoMap) {
+      medianaTipo.set(tipo, mediana(arr.map((x: any) => x.margen / diasPeriodo)));
+    }
+    for (const u of unidades as any[]) {
+      const med = medianaTipo.get(u.tipo);
+      const grupo = porTipoMap.get(u.tipo) || [];
+      const margenDia = u.margen / diasPeriodo;
+      u.vsMedianaTipo = med != null && med !== 0 && grupo.length >= 2
+        ? Math.round(((margenDia - med) / Math.abs(med)) * 100) : null;
+      // Sugerencia de renovación: payback casi cumplido y en declive,
+      // o correctivo dominando con margen lifetime ya recuperado.
+      let renov = null;
+      if (u.payback && u.payback.pct >= 80 && u.enDeclive) {
+        renov = { recomendada: true, motivo: 'Ya recuperó la inversión y lleva 3 meses en declive' };
+      } else if (u.enDeclive && u.correctivo.costo > u.preventivo.costo * 1.5 && u.correctivo.n >= 3) {
+        renov = { recomendada: true, motivo: 'Correctivo dominante y margen en caída sostenida' };
+      } else if (u.vsMedianaTipo != null && u.vsMedianaTipo <= -40) {
+        renov = { recomendada: false, motivo: 'Rinde 40%+ por debajo de la mediana de su tipo — revisar antes de decidir' };
+      }
+      u.renovacion = renov;
+    }
+
+    // Promedios por tipo (para simulador "si compro otra unidad")
+    const porTipo = [...porTipoMap.entries()].map(([tipo, arr]) => ({
+      tipo,
+      unidades: arr.length,
+      margenMesProm: Math.round(arr.reduce((a, x) => a + x.margen, 0) / arr.length / diasPeriodo * 30.44),
+      ingresoMesProm: Math.round(arr.reduce((a, x) => a + x.ingresos, 0) / arr.length / diasPeriodo * 30.44),
+      costoFijoMesProm: Math.round(arr.reduce((a, x) => a + (x.costoFijoMes || 0), 0) / arr.length),
+      costoVarKmProm: (() => {
+        const xs = arr.filter((x) => x.costoVarPorKm != null);
+        return xs.length ? Math.round(xs.reduce((a, x) => a + x.costoVarPorKm, 0) / xs.length * 100) / 100 : null;
+      })(),
+      kmMesProm: (() => {
+        const xs = arr.filter((x) => x.kmRecorridos != null && x.kmRecorridos > 0);
+        return xs.length ? Math.round(xs.reduce((a, x) => a + x.kmRecorridos, 0) / xs.length / diasPeriodo * 30.44) : null;
+      })(),
+    }));
 
     // ── Ranking de talleres externos (demora, costo, retrabajo) ──
     const talleresRows = await prisma().$queryRawUnsafe(`
@@ -1624,21 +1730,54 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       HAVING (SELECT COUNT(*) FROM flota_servicio_registros sr2 WHERE sr2."conductorId" = c.id AND sr2."eventoAt" > $2 AND sr2."eventoAt" <= $3) > 0
          OR (SELECT COUNT(*) FROM flota_combustible rc2 WHERE rc2."conductorId" = c.id AND rc2.fecha > $2 AND rc2.fecha <= $3) > 0
       ORDER BY horas DESC`, tenantId, desde, hasta).catch(() => []);
-    const conductores = (conductoresRows as any[]).map((r: any) => ({
-      conductorId: r.id, nombre: r.nombre,
-      horasTrabajadas: Math.round(Number(r.horas || 0) * 10) / 10,
-      jornadasExcesivas: Number(r.jornadas_excesivas || 0),
-      rendimientoPromKmL: r.rend_prom != null ? Math.round(Number(r.rend_prom) * 100) / 100 : null,
-      litrosCargados: Math.round(Number(r.litros || 0)),
-      multasPagadas: Math.round(Number(r.multas || 0)),
-    }));
+    // Conductor → unidad asignada: margen que produce y retorno sobre sueldo
+    const unidadPorConductor = new Map<string, any>();
+    for (const v of vehiculos) if (v.conductorId) unidadPorConductor.set(v.conductorId, v.id);
+    const unidadById = new Map<string, any>(unidades.map((u: any) => [u.vehiculoId, u]));
+
+    const conductores = (conductoresRows as any[]).map((r: any) => {
+      const unidad = unidadById.get(unidadPorConductor.get(r.id) || '');
+      const sueldo = Number(conductorCostoMap.get(r.id) || 0);
+      const sueldoPeriodo = Math.round(sueldo * (diasPeriodo / 30.44));
+      return {
+        conductorId: r.id, nombre: r.nombre,
+        horasTrabajadas: Math.round(Number(r.horas || 0) * 10) / 10,
+        jornadasExcesivas: Number(r.jornadas_excesivas || 0),
+        rendimientoPromKmL: r.rend_prom != null ? Math.round(Number(r.rend_prom) * 100) / 100 : null,
+        litrosCargados: Math.round(Number(r.litros || 0)),
+        multasPagadas: Math.round(Number(r.multas || 0)),
+        sueldoPeriodo: sueldoPeriodo || null,
+        unidadDominio: unidad?.dominio || null,
+        margenUnidad: unidad?.margen ?? null,
+        retornoSueldo: sueldoPeriodo > 0 && unidad ? Math.round((unidad.ingresos / sueldoPeriodo) * 10) / 10 : null,
+      };
+    });
 
     // Ingresos por cliente en el período (participación sobre facturado)
     const totalIngClientes = (clientesRows as any[]).reduce((a: number, r: any) => a + Number(r.ingresos || 0), 0);
-    const clientes = (clientesRows as any[]).map((r: any) => ({
-      cliente: r.cliente, ingresos: Math.round(Number(r.ingresos || 0)), viajes: r.n,
-      share: totalIngClientes > 0 ? Math.round((Number(r.ingresos) / totalIngClientes) * 1000) / 10 : 0,
-    }));
+    const clientes = (clientesRows as any[]).map((r: any) => {
+      const d = dsoMap.get(r.cliente);
+      return {
+        cliente: r.cliente, ingresos: Math.round(Number(r.ingresos || 0)), viajes: r.n,
+        share: totalIngClientes > 0 ? Math.round((Number(r.ingresos) / totalIngClientes) * 1000) / 10 : 0,
+        dsoDias: d?.dso_dias != null ? Math.round(Number(d.dso_dias)) : null,
+        pendiente: Math.round(Number(d?.pend_monto || 0)),
+        vencido: Math.round(Number(d?.vencido_monto || 0)),
+      };
+    });
+    // Clientes con solo pendiente y ningún cobro en el período no salen
+    // en clientesRows (que filtra por fecha) — los agrego con ingreso 0.
+    for (const d of dsoRows as any[]) {
+      if (!clientes.find((c) => c.cliente === d.cliente)) {
+        clientes.push({
+          cliente: d.cliente, ingresos: 0, viajes: 0, share: 0,
+          dsoDias: d.dso_dias != null ? Math.round(Number(d.dso_dias)) : null,
+          pendiente: Math.round(Number(d.pend_monto || 0)),
+          vencido: Math.round(Number(d.vencido_monto || 0)),
+        });
+      }
+    }
+    clientes.sort((a, b) => b.ingresos - a.ingresos);
 
     const totales = {
       unidades: unidades.length,
@@ -1652,10 +1791,30 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       unidadesEnDeclive: unidades.filter((u: any) => u.enDeclive).length,
     };
 
+    // ── Semáforo: alertas accionables para dirección ──
+    const alertas: { tipo: string; severidad: 'ROJO' | 'AMARILLO'; titulo: string; detalle: string; vehiculoId?: string }[] = [];
+    if (Number(cobrosVencidos.n) > 0) {
+      alertas.push({ tipo: 'COBRANZA', severidad: 'ROJO', titulo: `${cobrosVencidos.n} cobro${Number(cobrosVencidos.n) === 1 ? '' : 's'} vencido${Number(cobrosVencidos.n) === 1 ? '' : 's'}`, detalle: `${Math.round(Number(cobrosVencidos.monto || 0)).toLocaleString('es-AR')} ARS pasados de la fecha de cobro (o +30d sin fecha estimada)` });
+    }
+    for (const u of unidades as any[]) {
+      if (u.renovacion?.recomendada) {
+        alertas.push({ tipo: 'RENOVACION', severidad: 'ROJO', titulo: `${u.dominio}: evaluar renovación`, detalle: u.renovacion.motivo, vehiculoId: u.vehiculoId });
+      } else if (u.enDeclive) {
+        alertas.push({ tipo: 'DECLIVE', severidad: 'AMARILLO', titulo: `${u.dominio} en declive`, detalle: '3 meses seguidos con margen negativo o en caída', vehiculoId: u.vehiculoId });
+      }
+      if (u.consumoAnomalo) {
+        alertas.push({ tipo: 'CONSUMO', severidad: 'ROJO', titulo: `${u.dominio}: rendimiento cayó ${u.consumoAnomalo.caidaPct}%`, detalle: `Últimas cargas ${u.consumoAnomalo.reciente} km/L vs histórico ${u.consumoAnomalo.historico} km/L — revisar desperfecto o carga sospechosa`, vehiculoId: u.vehiculoId });
+      }
+      if (u.bajoEquilibrio && u.puntoEquilibrioMes > 0 && u.ingresos > 0) {
+        alertas.push({ tipo: 'EQUILIBRIO', severidad: 'AMARILLO', titulo: `${u.dominio} bajo punto de equilibrio`, detalle: `Factura menos de ${Math.round(u.puntoEquilibrioMes).toLocaleString('es-AR')} ARS/mes que necesita para cubrir sus costos`, vehiculoId: u.vehiculoId });
+      }
+    }
+    alertas.sort((a, b) => (a.severidad === 'ROJO' ? 0 : 1) - (b.severidad === 'ROJO' ? 0 : 1));
+
     return reply.send({
       periodo: { desde, hasta, dias: Math.round(diasPeriodo * 10) / 10 },
       ingresoHoraFlota: ingresoHoraFlota != null ? Math.round(ingresoHoraFlota) : null,
-      unidades, talleres, conductores, clientes, totales,
+      unidades, talleres, conductores, clientes, totales, porTipo, alertas,
     });
   });
 

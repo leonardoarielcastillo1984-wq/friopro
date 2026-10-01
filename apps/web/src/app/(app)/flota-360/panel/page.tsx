@@ -984,16 +984,22 @@ type RentabilidadData = {
     financiacion: { cuotaMensual: number; cuotasTotales: number; cuotasPagadas: number; cuotasRestantes: number; saldoPendiente: number; costoPeriodo: number } | null;
     valorAdquisicion: number | null; valorResidual: number | null;
     puntoEquilibrioMes: number; bajoEquilibrio: boolean;
+    costoFijoMes: number; costoVarPorKm: number | null;
     pendienteCobro: number;
     payback: { recuperado: number; pct: number; mesesEstimado: number | null } | null;
     enDeclive: boolean;
     diasFacturados: number; diasSinFacturar: number;
     margenMeses: number[];
+    consumoAnomalo: { reciente: number; historico: number; caidaPct: number } | null;
+    vsMedianaTipo: number | null;
+    renovacion: { recomendada: boolean; motivo: string } | null;
   }[];
   talleres: { tallerId: string; nombre: string; ots: number; costoTotal: number; demoraPromHs: number | null; reclamos: number }[];
-  conductores: { conductorId: string; nombre: string; horasTrabajadas: number; jornadasExcesivas: number; rendimientoPromKmL: number | null; litrosCargados: number; multasPagadas: number }[];
-  clientes: { cliente: string; ingresos: number; viajes: number; share: number }[];
+  conductores: { conductorId: string; nombre: string; horasTrabajadas: number; jornadasExcesivas: number; rendimientoPromKmL: number | null; litrosCargados: number; multasPagadas: number; sueldoPeriodo?: number | null; unidadDominio?: string | null; margenUnidad?: number | null; retornoSueldo?: number | null }[];
+  clientes: { cliente: string; ingresos: number; viajes: number; share: number; dsoDias?: number | null; pendiente?: number; vencido?: number }[];
   totales: { unidades: number; ingresos: number; costos: number; margen: number; km: number; costoOportunidad: number; pendienteCobro?: number; deudaFlota?: number; unidadesEnDeclive?: number };
+  porTipo?: { tipo: string; unidades: number; margenMesProm: number; ingresoMesProm: number; costoFijoMesProm: number; costoVarKmProm: number | null; kmMesProm: number | null }[];
+  alertas?: { tipo: string; severidad: 'ROJO' | 'AMARILLO'; titulo: string; detalle: string; vehiculoId?: string }[];
 };
 
 type CashFlowData = {
@@ -1007,6 +1013,7 @@ function TabRentabilidad() {
   const [cashFlow, setCashFlow] = useState<CashFlowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [dias, setDias] = useState(90);
+  const [cotizador, setCotizador] = useState<{ abierto: boolean; unidadId: string; km: string; diasViaje: string; margenPct: string } | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -1030,8 +1037,8 @@ function TabRentabilidad() {
 
   return (
     <div className="space-y-3">
-      {/* Selector de período */}
-      <div className="flex items-center gap-2">
+      {/* Selector de período + cotizador */}
+      <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-neutral-500">Período:</span>
         {[30, 60, 90, 180].map((d) => (
           <button key={d} onClick={() => setDias(d)}
@@ -1039,7 +1046,36 @@ function TabRentabilidad() {
             {d}d
           </button>
         ))}
+        <button onClick={() => setCotizador({ abierto: true, unidadId: '', km: '', diasViaje: '1', margenPct: '20' })}
+          title="Cuánto cobrar mínimo un viaje: costo/km real de la unidad + costo fijo diario + margen"
+          className="ml-auto rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 inline-flex items-center gap-1">
+          <DollarSign className="h-3.5 w-3.5" /> Cotizar viaje
+        </button>
       </div>
+
+      {/* Semáforo de alertas accionables */}
+      {(data.alertas || []).length > 0 && (
+        <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+          <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800 flex items-center gap-1">
+            Semáforo — qué atender ya
+            <Hint text="Alertas automáticas: cobros vencidos, unidades para renovar, consumo sospechoso, declive y unidades bajo el punto de equilibrio." />
+          </div>
+          <ul className="divide-y divide-neutral-50">
+            {(data.alertas || []).slice(0, 12).map((a, i) => (
+              <li key={i} className="px-3 py-2 flex items-start gap-2 text-xs">
+                <span className={`mt-0.5 h-2.5 w-2.5 rounded-full shrink-0 ${a.severidad === 'ROJO' ? 'bg-red-500' : 'bg-amber-400'}`} />
+                <div className="flex-1">
+                  <span className="font-medium text-neutral-800">
+                    {a.vehiculoId ? <Link href={`/flota-360/vehiculos/${a.vehiculoId}`} className="text-blue-700 hover:underline">{a.titulo}</Link> : a.titulo}
+                  </span>
+                  <span className="text-neutral-500"> — {a.detalle}</span>
+                </div>
+                <span className="text-[9px] uppercase text-neutral-400 shrink-0">{a.tipo}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* KPIs de flota */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -1098,7 +1134,11 @@ function TabRentabilidad() {
                   <td className="px-3 py-2">
                     <Link href={`/flota-360/vehiculos/${u.vehiculoId}`} className="font-semibold text-blue-700 hover:underline">{u.dominio}</Link>
                     {u.enDeclive && <span title="3 meses seguidos con margen negativo o en caída" className="ml-1 rounded bg-red-100 px-1 py-0.5 text-[9px] font-semibold text-red-700">EN DECLIVE</span>}
-                    <p className="text-[10px] text-neutral-400">{u.tipo}{u.anio ? ` · ${u.anio}` : ''}</p>
+                    {u.renovacion?.recomendada && <span title={u.renovacion.motivo} className="ml-1 rounded bg-orange-100 px-1 py-0.5 text-[9px] font-semibold text-orange-700">RENOVAR?</span>}
+                    {u.consumoAnomalo && <span title={`Últimas cargas ${u.consumoAnomalo.reciente} km/L vs histórico ${u.consumoAnomalo.historico} km/L`} className="ml-1 rounded bg-purple-100 px-1 py-0.5 text-[9px] font-semibold text-purple-700">CONSUMO −{u.consumoAnomalo.caidaPct}%</span>}
+                    <p className="text-[10px] text-neutral-400">{u.tipo}{u.anio ? ` · ${u.anio}` : ''}
+                      {u.vsMedianaTipo != null && <span className={u.vsMedianaTipo < -20 ? 'text-red-500 font-medium' : 'text-neutral-400'} title="Vs mediana de margen/día de unidades del mismo tipo"> · {u.vsMedianaTipo > 0 ? '+' : ''}{u.vsMedianaTipo}% vs tipo</span>}
+                    </p>
                   </td>
                   <td className="px-3 py-2 text-right">{u.kmRecorridos != null ? u.kmRecorridos.toLocaleString('es-AR') : '—'}</td>
                   <td className="px-3 py-2 text-right text-green-700">{u.ingresos > 0 ? fmtMoney(u.ingresos) : '—'}
@@ -1162,7 +1202,8 @@ function TabRentabilidad() {
                 <tr className="text-left text-[10px] font-medium text-neutral-500 uppercase border-b border-neutral-100">
                   <th className="px-3 py-2">Cliente</th>
                   <th className="px-3 py-2 text-right">Ingresos</th>
-                  <th className="px-3 py-2 text-right">Registros</th>
+                  <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-0.5">DSO <Hint text="Días promedio de cobro: cuánto tarda en pagar este cliente desde que se registra el ingreso. Menor = mejor." /></span></th>
+                  <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-0.5">Vencido <Hint text="Plata que este cliente adeuda pasada la fecha de cobro" /></span></th>
                   <th className="px-3 py-2 text-right">%</th>
                 </tr>
               </thead>
@@ -1170,8 +1211,19 @@ function TabRentabilidad() {
                 {data.clientes.map((c) => (
                   <tr key={c.cliente} className="border-b border-neutral-50">
                     <td className="px-3 py-2 font-medium">{c.cliente}</td>
-                    <td className="px-3 py-2 text-right text-green-700">{fmtMoney(c.ingresos)}</td>
-                    <td className="px-3 py-2 text-right">{c.viajes}</td>
+                    <td className="px-3 py-2 text-right text-green-700">{fmtMoney(c.ingresos)}
+                      {(c.pendiente ?? 0) > 0 && <p className="text-[9px] text-blue-500">{fmtMoney(c.pendiente!)} s/cobrar</p>}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {c.dsoDias != null ? (
+                        <span className={c.dsoDias > 45 ? 'text-red-600 font-semibold' : c.dsoDias > 30 ? 'text-amber-600' : 'text-emerald-600'} title="Días promedio que tarda en pagar">
+                          {c.dsoDias}d
+                        </span>
+                      ) : <span className="text-neutral-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {(c.vencido ?? 0) > 0 ? <span className="text-red-600 font-semibold">{fmtMoney(c.vencido!)}</span> : <span className="text-neutral-300">—</span>}
+                    </td>
                     <td className="px-3 py-2 text-right">
                       <span className="inline-block rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">{c.share}%</span>
                     </td>
@@ -1229,6 +1281,7 @@ function TabRentabilidad() {
                   <th className="px-3 py-2">Conductor</th>
                   <th className="px-3 py-2 text-right">Hs trab.</th>
                   <th className="px-3 py-2 text-right">km/L prom.</th>
+                  <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-0.5">Produce <Hint text="Ingresos de su unidad asignada ÷ su sueldo del período. Ej: 3x = cada $ de sueldo genera $3 de facturación" /></span></th>
                   <th className="px-3 py-2 text-right">Litros</th>
                   <th className="px-3 py-2 text-right">Jornadas &gt;12h</th>
                   <th className="px-3 py-2 text-right">Multas</th>
@@ -1237,9 +1290,19 @@ function TabRentabilidad() {
               <tbody>
                 {data.conductores.map((c) => (
                   <tr key={c.conductorId} className="border-b border-neutral-50">
-                    <td className="px-3 py-2 font-medium">{c.nombre}</td>
+                    <td className="px-3 py-2 font-medium">{c.nombre}
+                      {c.unidadDominio && <p className="text-[9px] text-neutral-400">{c.unidadDominio}</p>}
+                    </td>
                     <td className="px-3 py-2 text-right">{c.horasTrabajadas}</td>
                     <td className="px-3 py-2 text-right">{c.rendimientoPromKmL ?? '—'}</td>
+                    <td className="px-3 py-2 text-right">
+                      {c.retornoSueldo != null ? (
+                        <span className={c.retornoSueldo < 2 ? 'text-red-600 font-semibold' : c.retornoSueldo < 3 ? 'text-amber-600' : 'text-emerald-600'}
+                          title={c.unidadDominio ? `Margen de ${c.unidadDominio}: ${fmtMoney(c.margenUnidad ?? 0)} — sueldo período ${fmtMoney(c.sueldoPeriodo ?? 0)}` : undefined}>
+                          {c.retornoSueldo}x
+                        </span>
+                      ) : <span className="text-neutral-300">—</span>}
+                    </td>
                     <td className="px-3 py-2 text-right">{c.litrosCargados || '—'}</td>
                     <td className={`px-3 py-2 text-right ${c.jornadasExcesivas > 0 ? 'text-amber-600 font-semibold' : ''}`}>{c.jornadasExcesivas || '—'}</td>
                     <td className="px-3 py-2 text-right">{c.multasPagadas > 0 ? fmtMoney(c.multasPagadas) : '—'}</td>
@@ -1250,6 +1313,43 @@ function TabRentabilidad() {
           )}
         </div>
       </div>
+
+      {/* Simulador: si compro otra unidad */}
+      {(data.porTipo || []).length > 0 && (
+        <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+          <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800 flex items-center gap-1">
+            Si compro otra unidad…
+            <Hint text="Proyección basada en el promedio real de tus unidades de cada tipo: qué margen mensual esperaría una unidad nueva del mismo tipo, su fijo mensual y km típicos." />
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[10px] font-medium text-neutral-500 uppercase border-b border-neutral-100">
+                <th className="px-3 py-2">Tipo</th>
+                <th className="px-3 py-2 text-right">Tienes</th>
+                <th className="px-3 py-2 text-right">Factura prom/mes</th>
+                <th className="px-3 py-2 text-right">Margen prom/mes</th>
+                <th className="px-3 py-2 text-right">Km prom/mes</th>
+                <th className="px-3 py-2 text-right">$/km variable</th>
+                <th className="px-3 py-2 text-right">Fijo mensual</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.porTipo!.map((t) => (
+                <tr key={t.tipo} className="border-b border-neutral-50">
+                  <td className="px-3 py-2 font-medium">{t.tipo === 'CAMION' ? 'Tractor' : t.tipo === 'SEMI' ? 'Semi' : t.tipo}</td>
+                  <td className="px-3 py-2 text-right">{t.unidades}</td>
+                  <td className="px-3 py-2 text-right text-green-700">{fmtMoney(t.ingresoMesProm)}</td>
+                  <td className={`px-3 py-2 text-right font-semibold ${t.margenMesProm >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(t.margenMesProm)}</td>
+                  <td className="px-3 py-2 text-right">{t.kmMesProm != null ? t.kmMesProm.toLocaleString('es-AR') : '—'}</td>
+                  <td className="px-3 py-2 text-right">{t.costoVarKmProm != null ? `$${t.costoVarKmProm}` : '—'}</td>
+                  <td className="px-3 py-2 text-right">{fmtMoney(t.costoFijoMesProm)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="px-3 py-2 text-[10px] text-neutral-400">Promedios reales de tu flota por tipo. El margen estimado ya descuenta combustible, mantenimiento, cuotas y sueldo.</p>
+        </div>
+      )}
 
       {/* Cash flow proyectado */}
       <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
@@ -1294,6 +1394,66 @@ function TabRentabilidad() {
           </table>
         )}
       </div>
+
+      {/* Modal cotizador de viaje mínimo */}
+      {cotizador?.abierto && (() => {
+        const u = data.unidades.find((x) => x.vehiculoId === cotizador.unidadId);
+        const km = Number(cotizador.km) || 0;
+        const dViaje = Number(cotizador.diasViaje) || 1;
+        const margenPct = Number(cotizador.margenPct) || 0;
+        const fijoDia = u ? u.costoFijoMes / 30.44 : 0;
+        const varKm = u?.costoVarPorKm ?? null;
+        const costoViaje = u ? Math.round((varKm ?? 0) * km + fijoDia * dViaje) : null;
+        const precioSugerido = costoViaje != null ? Math.round(costoViaje * (1 + margenPct / 100)) : null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setCotizador(null)}>
+            <div className="w-full max-w-md rounded-lg bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5"><DollarSign className="h-4 w-4 text-green-600" /> Cotizar viaje mínimo</h3>
+                <button onClick={() => setCotizador(null)}><X className="h-4 w-4 text-neutral-400" /></button>
+              </div>
+              <div className="p-4 space-y-3 text-sm">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Unidad</label>
+                  <select value={cotizador.unidadId} onChange={(e) => setCotizador({ ...cotizador, unidadId: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                    <option value="">Elegir unidad…</option>
+                    {data.unidades.map((x) => <option key={x.vehiculoId} value={x.vehiculoId}>{x.dominio} — {x.tipo === 'CAMION' ? 'Tractor' : x.tipo}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Km del viaje</label>
+                    <input type="number" min={0} value={cotizador.km} onChange={(e) => setCotizador({ ...cotizador, km: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Días</label>
+                    <input type="number" min={1} step={0.5} value={cotizador.diasViaje} onChange={(e) => setCotizador({ ...cotizador, diasViaje: e.target.value })} title="Días que la unidad queda ocupada (cubre su costo fijo: cuota, sueldo, seguro)" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Margen %</label>
+                    <input type="number" min={0} value={cotizador.margenPct} onChange={(e) => setCotizador({ ...cotizador, margenPct: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                  </div>
+                </div>
+                {u && (
+                  <div className="rounded-lg bg-neutral-50 p-3 space-y-1.5 text-xs">
+                    <p className="text-neutral-500">Costo variable: <b>${varKm ?? '—'}/km</b> · Fijo diario: <b>{fmtMoney(Math.round(fijoDia))}</b> (cuota + sueldo + documentos)</p>
+                    {costoViaje != null && km > 0 ? (
+                      <>
+                        <p className="text-neutral-700">Costo del viaje: <b>{fmtMoney(costoViaje)}</b> ({km.toLocaleString('es-AR')} km × ${varKm} + {dViaje}d × {fmtMoney(Math.round(fijoDia))})</p>
+                        <p className="text-green-700 font-bold text-base">Cobrar mínimo: {fmtMoney(precioSugerido!)} <span className="text-xs font-normal text-neutral-500">(+{margenPct}% margen)</span></p>
+                        <p className="text-neutral-500">Equivale a ${Math.round((precioSugerido! / km) * 100) / 100}/km facturado</p>
+                        {varKm == null && <p className="text-amber-600">Sin km medidos aún — el cálculo usa solo el costo fijo diario.</p>}
+                      </>
+                    ) : (
+                      <p className="text-neutral-400">Ingresá los km del viaje para calcular.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
