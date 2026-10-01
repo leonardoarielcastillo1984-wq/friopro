@@ -49,7 +49,7 @@ export default function ServiciosPage() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(FORM_VACIO);
-  const [asignar, setAsignar] = useState<{ servicioId: string; vehiculoId: string } | null>(null);
+  const [asignar, setAsignar] = useState<{ servicioId: string; vehiculoIds: string[] } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -93,11 +93,11 @@ export default function ServiciosPage() {
   };
 
   const asignarUnidad = async () => {
-    if (!asignar?.vehiculoId) return;
+    if (!asignar || !asignar.vehiculoIds.length) return;
     setSaving(true);
     await apiFetch(`/flota/servicios/${asignar.servicioId}/unidades`, {
       method: 'POST',
-      body: JSON.stringify({ vehiculoId: asignar.vehiculoId }),
+      body: JSON.stringify({ vehiculoIds: asignar.vehiculoIds }),
     });
     setSaving(false);
     setAsignar(null);
@@ -178,7 +178,7 @@ export default function ServiciosPage() {
                   </span>
                 </div>
               )}
-              <button onClick={() => setAsignar({ servicioId: s.id, vehiculoId: '' })}
+              <button onClick={() => setAsignar({ servicioId: s.id, vehiculoIds: [] })}
                 className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] font-medium text-neutral-600 hover:bg-neutral-50 inline-flex items-center gap-1">
                 <Truck className="h-3 w-3" /> Asignar unidad
               </button>
@@ -327,18 +327,27 @@ export default function ServiciosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setAsignar(null)}>
           <div className="w-full max-w-sm rounded-lg bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-              <h3 className="text-sm font-semibold flex items-center gap-1.5"><Truck className="h-4 w-4 text-blue-600" /> Asignar unidad</h3>
+              <h3 className="text-sm font-semibold flex items-center gap-1.5"><Truck className="h-4 w-4 text-blue-600" /> Asignar unidades</h3>
               <button onClick={() => setAsignar(null)}><X className="h-4 w-4 text-neutral-400" /></button>
             </div>
             <div className="p-4 space-y-3 text-sm">
-              <select value={asignar.vehiculoId} onChange={(e) => setAsignar({ ...asignar, vehiculoId: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
-                <option value="">Elegir unidad…</option>
-                {vehiculos.map((v: any) => <option key={v.id} value={v.id}>{v.dominio} — {v.tipo === 'CAMION' ? 'Tractor' : v.tipo}</option>)}
-              </select>
-              <p className="text-xs text-neutral-500">La asignación queda vigente desde hoy y registra el historial de días trabajados para el servicio.</p>
-              <button onClick={asignarUnidad} disabled={saving || !asignar.vehiculoId}
+              <div className="max-h-64 overflow-y-auto rounded-md border border-neutral-200 divide-y divide-neutral-100">
+                {vehiculos.map((v: any) => {
+                  const sel = asignar.vehiculoIds.includes(v.id);
+                  return (
+                    <label key={v.id} className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer text-xs ${sel ? 'bg-blue-50' : 'hover:bg-neutral-50'}`}>
+                      <input type="checkbox" checked={sel} className="rounded"
+                        onChange={() => setAsignar({ ...asignar, vehiculoIds: sel ? asignar.vehiculoIds.filter((x) => x !== v.id) : [...asignar.vehiculoIds, v.id] })} />
+                      <span className="font-medium text-neutral-800">{v.dominio}</span>
+                      <span className="text-neutral-400">{v.tipo === 'CAMION' ? 'Tractor' : v.tipo}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-neutral-500">Podés elegir varias. Cada asignación queda vigente desde hoy y registra el historial de días trabajados para el servicio. El chofer también puede tomarla solo desde su QR al iniciar la jornada.</p>
+              <button onClick={asignarUnidad} disabled={saving || !asignar.vehiculoIds.length}
                 className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40">
-                {saving ? 'Asignando…' : 'Asignar'}
+                {saving ? 'Asignando…' : `Asignar ${asignar.vehiculoIds.length || ''} unidad${asignar.vehiculoIds.length === 1 ? '' : 'es'}`}
               </button>
             </div>
           </div>

@@ -105,6 +105,14 @@ export async function driverHubRoutes(app: FastifyInstance) {
       tienePin: !!c.pinHash,
     }));
 
+    // Servicios comerciales activos: el chofer puede elegir a qué servicio
+    // toma la unidad al iniciar la jornada (auto-asigna la unidad al servicio).
+    const serviciosComerciales = await (prisma() as any).flotaServicio.findMany({
+      where: { tenantId: qr.tenantId, activo: true },
+      select: { id: true, nombre: true, cliente: true, origen: true, destino: true },
+      orderBy: { nombre: 'asc' },
+    }).catch(() => []);
+
     return reply.send({
       activo: {
         nombre: qr.activoNombre,
@@ -124,6 +132,7 @@ export async function driverHubRoutes(app: FastifyInstance) {
       checklistUrl: inspeccionQR ? `/inspeccionar/${inspeccionQR.token}` : null,
       intervencionUrl: `/mantenimiento-qr/${token}`,
       choferes,
+      serviciosComerciales,
       empresa: empresa ? {
         nombre: empresa.companyName,
         logo: empresa.logoUrl,
@@ -365,6 +374,7 @@ export async function driverHubRoutes(app: FastifyInstance) {
       carga: z.string().max(300).optional(),
       conductorId: z.string().uuid().optional(),
       pin: z.string().min(1).max(20).optional(),
+      flotaServicioId: z.string().uuid().optional(),
       clienteEventoId: z.string().uuid().optional(),
       reportadoPorNombre: z.string().min(1).max(200).optional(),
       reportadoPorTelefono: z.string().max(50).optional(),
@@ -456,6 +466,23 @@ export async function driverHubRoutes(app: FastifyInstance) {
       if (d.odometro && (vehiculo.currentOdometer == null || d.odometro > vehiculo.currentOdometer)) {
         await syncOdometroYDesgaste(prisma(), qr.tenantId, vehiculo.id, d.odometro).catch(() => {});
         await prisma().maintenanceAsset.update({ where: { id: qr.maintenanceAssetId }, data: { currentOdometer: d.odometro } }).catch(() => {});
+      }
+
+      // Servicio comercial elegido por el chofer: auto-asigna la unidad
+      // (si ya tiene asignación vigente en ese servicio no hace nada).
+      if (d.flotaServicioId) {
+        (async () => {
+          const srv = await (prisma() as any).flotaServicio.findFirst({ where: { id: d.flotaServicioId, tenantId: qr.tenantId, activo: true }, select: { id: true } });
+          if (!srv) return;
+          const vigente = await (prisma() as any).flotaServicioUnidad.findFirst({
+            where: { tenantId: qr.tenantId, servicioId: srv.id, vehiculoId: vehiculo.id, hasta: null },
+            select: { id: true },
+          });
+          if (vigente) return;
+          await (prisma() as any).flotaServicioUnidad.create({
+            data: { tenantId: qr.tenantId, servicioId: srv.id, vehiculoId: vehiculo.id, desde: ahora },
+          });
+        })().catch((e: any) => console.error('[driver-hub] auto-assign servicio:', e));
       }
 
       const minDescanso = res.jornada?.politicaSnapshot?.descansoMinHoras ?? 12;

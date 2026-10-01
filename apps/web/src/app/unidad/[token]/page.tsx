@@ -62,6 +62,7 @@ export default function UnidadHubPage() {
   const [sTipo, setSTipo] = useState<'INICIO_SERVICIO' | 'FIN_SERVICIO' | 'CAMBIO_UNIDAD'>('INICIO_SERVICIO');
   const [sKm, setSKm] = useState(''); const [sNotas, setSNotas] = useState('');
   const [sOrigen, setSOrigen] = useState(''); const [sDestino, setSDestino] = useState(''); const [sCarga, setSCarga] = useState('');
+  const [sServicioId, setSServicioId] = useState('');
   const eventoId = useRef<string>('');
   // control pre-servicio (aptitud)
   const [pSis, setPSis] = useState(''); const [pDia, setPDia] = useState('');
@@ -171,6 +172,7 @@ export default function UnidadHubPage() {
       origen: sTipo === 'INICIO_SERVICIO' ? sOrigen.trim() || undefined : undefined,
       destino: sTipo === 'INICIO_SERVICIO' ? sDestino.trim() || undefined : undefined,
       carga: sTipo === 'INICIO_SERVICIO' ? sCarga.trim() || undefined : undefined,
+      flotaServicioId: sTipo === 'INICIO_SERVICIO' && sServicioId ? sServicioId : undefined,
       reportadoPorNombre: nombre.trim(), reportadoPorTelefono: telefono.trim() || undefined,
     });
     if (ok) { eventoId.current = ''; setEstadoServ(null); }
@@ -410,6 +412,21 @@ export default function UnidadHubPage() {
             )}
           </div>
           <div style={{ display: 'grid', gap: 10 }}>
+            {sTipo === 'INICIO_SERVICIO' && (data?.serviciosComerciales?.length > 0) && (
+              <div>
+                <label style={S.label}>¿A qué servicio tomás la unidad?</label>
+                <select style={S.input} value={sServicioId} onChange={e => {
+                  setSServicioId(e.target.value);
+                  const sv = data.serviciosComerciales.find((x: any) => x.id === e.target.value);
+                  if (sv) { if (sv.origen && !sOrigen) setSOrigen(sv.origen); if (sv.destino && !sDestino) setSDestino(sv.destino); }
+                }}>
+                  <option value="">Sin servicio asignado</option>
+                  {data.serviciosComerciales.map((sv: any) => (
+                    <option key={sv.id} value={sv.id}>{sv.nombre}{sv.cliente ? ` · ${sv.cliente}` : ''}{sv.origen && sv.destino ? ` (${sv.origen}→${sv.destino})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             {sTipo === 'INICIO_SERVICIO' && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <input style={S.input} placeholder="Origen (opc.)" value={sOrigen} onChange={e => setSOrigen(e.target.value)} />

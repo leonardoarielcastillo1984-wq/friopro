@@ -1456,34 +1456,38 @@ export default async function flotaRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
-  // Asignar una unidad al servicio (vigente hasta que se cierre)
+  // Asignar unidad(es) al servicio (vigente hasta que se cierre).
+  // Acepta vehiculoId suelto o vehiculoIds[] para asignación masiva.
   app.post('/servicios/:id/unidades', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
     const schema = z.object({
-      vehiculoId: z.string().uuid(),
+      vehiculoId: z.string().uuid().optional(),
+      vehiculoIds: z.array(z.string().uuid()).max(100).optional(),
       desde: z.string().optional(),
     });
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+    const vehIds = [...new Set([...(body.data.vehiculoIds || []), ...(body.data.vehiculoId ? [body.data.vehiculoId] : [])])];
+    if (!vehIds.length) return reply.code(400).send({ error: 'Indicá al menos una unidad' });
     const existe = await (app.prisma as any).flotaServicio.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!existe) return reply.code(404).send({ error: 'Servicio no encontrado' });
-    // Cierra asignación vigente anterior de esa unidad en ese servicio
-    await (app.prisma as any).flotaServicioUnidad.updateMany({
-      where: { tenantId, servicioId: id, vehiculoId: body.data.vehiculoId, hasta: null },
-      data: { hasta: new Date() },
-    });
-    const asignacion = await (app.prisma as any).flotaServicioUnidad.create({
-      data: {
-        tenantId,
-        servicioId: id,
-        vehiculoId: body.data.vehiculoId,
-        desde: body.data.desde ? new Date(body.data.desde) : new Date(),
-      },
-      include: { vehiculo: { select: { id: true, dominio: true, tipo: true } } },
-    });
-    return reply.code(201).send({ asignacion });
+    const ahora = new Date();
+    const desde = body.data.desde ? new Date(body.data.desde) : ahora;
+    const asignaciones = [];
+    for (const vehiculoId of vehIds) {
+      // Cierra asignación vigente anterior de esa unidad en ese servicio
+      await (app.prisma as any).flotaServicioUnidad.updateMany({
+        where: { tenantId, servicioId: id, vehiculoId, hasta: null },
+        data: { hasta: ahora },
+      });
+      asignaciones.push(await (app.prisma as any).flotaServicioUnidad.create({
+        data: { tenantId, servicioId: id, vehiculoId, desde },
+        include: { vehiculo: { select: { id: true, dominio: true, tipo: true } } },
+      }));
+    }
+    return reply.code(201).send({ asignacion: asignaciones[0], asignaciones });
   });
 
   // Cerrar una asignación (la unidad deja de cubrir el servicio)

@@ -14,7 +14,7 @@ import HistorialCambiosPanel from '../../_components/HistorialCambiosPanel';
 import { apiFetch } from '@/lib/api';
 import {
   ChevronLeft, Gauge, Wrench, ShieldCheck, ScanLine, AlertTriangle,
-  CalendarClock, DollarSign, Activity, Pencil, Fuel, X, History, TrendingUp, Disc,
+  CalendarClock, DollarSign, Activity, Pencil, Fuel, X, History, TrendingUp, Disc, Briefcase,
 } from 'lucide-react';
 
 const ESTADO_LABEL: Record<string, string> = {
@@ -529,6 +529,41 @@ export default function VehiculoFichaPage() {
           <div className="fleet-fact"><p className="fleet-fact-label"><CalendarClock size={16} /> Próximo servicio</p><p className="font-semibold text-sm">{proxServicio?.plan || 'Sin plan asignado'}</p><p className="text-xs text-slate-500 mt-2">{proxServicio?.tipo === 'KM' ? `${proxServicio.kmRestantes?.toLocaleString('es-AR')} km restantes` : proxServicio?.fecha ? fmtFecha(proxServicio.fecha) : 'Configurá las frecuencias por componente.'}</p><Link className="text-xs text-blue-600 inline-block mt-3" href={`/flota-360/planes?vehiculoId=${v.id}`}>Ver planificación →</Link></div>
           <div className="fleet-fact"><p className="fleet-fact-label"><Wrench size={16} /> Órdenes abiertas</p><p className="fleet-fact-value">{twinData?.otAbiertas ?? kpis.otsPendientes ?? 0}</p></div>
           <div className="fleet-fact"><p className="fleet-fact-label"><ScanLine size={16} /> Última inspección QR</p><p className="text-sm font-semibold">{ultimaInsp ? fmtFecha(ultimaInsp.createdAt) : 'Sin registros'}</p><p className="text-xs text-slate-500 mt-2">{ultimaInsp ? `${ultimaInsp.hallazgosCount ?? 0} hallazgos registrados` : 'Las inspecciones existentes se conservan.'}</p></div>
+          {/* Servicio comercial vigente de la unidad */}
+          {(() => {
+            const vigentes = servicios.filter((sv: any) => sv.unidades?.some((u: any) => u.vehiculoId === v.id && !u.hasta));
+            const asignables = servicios.filter((sv: any) => !vigentes.some((x: any) => x.id === sv.id));
+            return (
+              <div className="fleet-fact">
+                <p className="fleet-fact-label"><Briefcase size={16} /> Servicio asignado</p>
+                {vigentes.length === 0 ? (
+                  <p className="text-xs text-slate-500">Sin servicio — el chofer también puede tomarlo desde su QR al iniciar la jornada.</p>
+                ) : vigentes.map((sv: any) => {
+                  const asig = sv.unidades.find((u: any) => u.vehiculoId === v.id && !u.hasta);
+                  return (
+                    <p key={sv.id} className="text-sm font-semibold flex items-center justify-between gap-2">
+                      <span>{sv.nombre}{sv.cliente ? ` · ${sv.cliente}` : ''} <span className="text-[10px] font-normal text-green-600">desde {fmtFecha(asig?.desde)}</span></span>
+                      <button title="Cerrar asignación (deja de cubrir el servicio)" className="text-[10px] text-neutral-400 hover:text-red-500 font-normal"
+                        onClick={async () => { if (window.confirm(`¿Cerrar asignación de esta unidad a "${sv.nombre}"?`)) { await apiFetch(`/flota/servicios/asignaciones/${asig.id}`, { method: 'PATCH', json: {} }); load(); } }}>cerrar</button>
+                    </p>
+                  );
+                })}
+                {asignables.length > 0 && (
+                  <select className="mt-2 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-xs" defaultValue=""
+                    onChange={async (e) => {
+                      const sid = e.target.value;
+                      e.target.value = '';
+                      if (!sid) return;
+                      await apiFetch(`/flota/servicios/${sid}/unidades`, { method: 'POST', json: { vehiculoId: v.id } });
+                      load();
+                    }}>
+                    <option value="">Asignar a servicio…</option>
+                    {asignables.map((sv: any) => <option key={sv.id} value={sv.id}>{sv.nombre}{sv.cliente ? ` · ${sv.cliente}` : ''}</option>)}
+                  </select>
+                )}
+              </div>
+            );
+          })()}
         </section>
         <section className="fleet-panel">
           <header className="fleet-panel-heading"><h2>Costos del activo</h2><span className="fleet-caption">Últimos 6 meses</span></header>
