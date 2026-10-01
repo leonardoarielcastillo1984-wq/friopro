@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Lightbulb, X, Send, CheckCircle2, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { useDraggableFab } from '@/hooks/useDraggableFab';
 
 const TIPOS = [
   { value: 'SUGERENCIA', label: 'Sugerencia', desc: 'Idea para mejorar el sistema' },
@@ -11,6 +12,7 @@ const TIPOS = [
 ];
 
 export default function FeedbackBot() {
+  const fab = useDraggableFab('feedback');
   const [open, setOpen] = useState(false);
   const [tipo, setTipo] = useState('SUGERENCIA');
   const [mensaje, setMensaje] = useState('');
@@ -37,8 +39,13 @@ export default function FeedbackBot() {
   };
 
   return (
-    // Entre GlobalExportFAB (right-6) y SugerenciaBot (right-44)
-    <div className="fixed bottom-6 right-24 z-50 flex flex-col items-end gap-3">
+    // Default: esquina inferior izquierda (los FAB de la derecha ya están ocupados).
+    // Arrastrable: la posición elegida se guarda en localStorage.
+    <div
+      ref={fab.ref}
+      className={`fixed z-50 flex flex-col items-end gap-3 ${fab.style ? '' : 'bottom-6 left-6'}`}
+      style={fab.style}
+    >
       {open && (
         <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-80 overflow-hidden">
           <div className="bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-3 flex items-center justify-between">
@@ -85,8 +92,10 @@ export default function FeedbackBot() {
         </div>
       )}
 
-      <button onClick={() => (open ? reset() : setOpen(true))}
-        title="Sugerencias al desarrollador"
+      <button
+        {...fab.dragProps}
+        onClick={() => { if (fab.wasDrag()) return; open ? reset() : setOpen(true); }}
+        title="Sugerencias al desarrollador (arrastrá para mover)"
         className={`w-12 h-12 rounded-full shadow-xl flex items-center justify-center transition-all duration-200 ${open ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gradient-to-br from-amber-400 to-orange-500 hover:scale-105'}`}>
         {open ? <X className="w-5 h-5 text-white" /> : <Lightbulb className="w-5 h-5 text-white" />}
       </button>

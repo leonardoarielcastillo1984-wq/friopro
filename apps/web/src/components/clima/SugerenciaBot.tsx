@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { MessageSquarePlus, X, Send, CheckCircle, CalendarPlus, ClipboardList, Wallet, ChevronLeft, Loader2, AlertTriangle, Check } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { useDraggableFab } from '@/hooks/useDraggableFab';
 
 const TIPOS = [
   { value: 'SUGERENCIA', label: '💡 Sugerencia', desc: 'Idea para mejorar algo' },
@@ -22,6 +23,7 @@ const PRIORIDADES = [
 type Step = 'closed' | 'menu' | 'type' | 'form' | 'done' | 'portal';
 
 export function SugerenciaBot() {
+  const fab = useDraggableFab('sugerencias');
   const [step, setStep] = useState<Step>('closed');
   const [tipo, setTipo] = useState('SUGERENCIA');
   const [form, setForm] = useState({ title: '', content: '', priority: 'MEDIA', isAnonymous: true });
@@ -54,7 +56,11 @@ export function SugerenciaBot() {
   return (
     // Desplazado a la izquierda del botón "Exportar" (GlobalExportFAB) para que no queden
     // montados: ambos widgets flotantes globales comparten el mismo rincón de la pantalla.
-    <div className="fixed bottom-6 right-44 z-50 flex flex-col items-end gap-3">
+    <div
+      ref={fab.ref}
+      className={`fixed z-50 flex flex-col items-end gap-3 ${fab.style ? '' : 'bottom-6 right-44'}`}
+      style={fab.style}
+    >
 
       {/* Panel */}
       {step !== 'closed' && (
@@ -215,9 +221,10 @@ export function SugerenciaBot() {
 
       {/* FAB Button */}
       <button
-        onClick={() => step === 'closed' ? setStep('menu') : reset()}
+        {...fab.dragProps}
+        onClick={() => { if (fab.wasDrag()) return; step === 'closed' ? setStep('menu') : reset(); }}
         className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-200 ${step !== 'closed' ? 'bg-gray-600 hover:bg-gray-700 rotate-0' : 'bg-gradient-to-br from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 hover:scale-105'}`}
-        title="Buzón de sugerencias"
+        title="Buzón de sugerencias (arrastrá para mover)"
       >
         {step !== 'closed'
           ? <X className="w-5 h-5 text-white" />

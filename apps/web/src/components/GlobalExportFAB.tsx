@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { FileDown, Loader2, Shield, ShieldOff, X, ChevronDown, FileSpreadsheet } from 'lucide-react';
+import { useDraggableFab } from '@/hooks/useDraggableFab';
 
 const SKIP_PATHS = ['/login', '/register', '/validate-doc', '/select-tenant', '/onboarding', '/plan-selection', '/plans', '/billing'];
 
@@ -370,6 +371,7 @@ function capturePageContent(path?: string): string {
 }
 
 export default function GlobalExportFAB() {
+  const fab = useDraggableFab('export');
   const pathname = usePathname();
   const [showMenu, setShowMenu] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -434,7 +436,11 @@ export default function GlobalExportFAB() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2" ref={menuRef}>
+    <div
+      className={`fixed z-40 flex flex-col items-end gap-2 ${fab.style ? '' : 'bottom-6 right-6'}`}
+      style={fab.style}
+      ref={(el) => { (menuRef as any).current = el; (fab.ref as any).current = el; }}
+    >
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 shadow max-w-xs flex items-start gap-2">
           <X className="h-3 w-3 shrink-0 mt-0.5" onClick={() => setError(null)} />
@@ -483,9 +489,10 @@ export default function GlobalExportFAB() {
       )}
 
       <button
-        onClick={() => setShowMenu(!showMenu)}
+        {...fab.dragProps}
+        onClick={() => { if (fab.wasDrag()) return; setShowMenu(!showMenu); }}
         disabled={loading}
-        title="Exportar esta página"
+        title="Exportar esta página (arrastrá para mover)"
         className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-full shadow-lg px-4 py-2.5 text-sm font-medium transition-all"
       >
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
