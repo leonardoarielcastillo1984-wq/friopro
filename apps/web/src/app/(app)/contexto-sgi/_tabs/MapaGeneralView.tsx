@@ -307,7 +307,7 @@ export default function MapaGeneralView({
         onClick={() => selectProc(p)}
         aria-pressed={isSel}
         title={p.description || p.name}
-        className={`flex flex-col justify-center rounded-lg border bg-white pl-2 pr-1.5 py-1.5 min-w-[110px] max-w-[190px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`flex flex-col justify-center rounded-lg border bg-white pl-2 pr-1.5 py-2 min-w-[110px] max-w-[160px] min-h-[52px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
             : isParent
@@ -317,11 +317,11 @@ export default function MapaGeneralView({
                 : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
         } ${dimIf(p.id)}`}
       >
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${isSel ? 'text-indigo-600' : 'text-neutral-400'}`} aria-hidden />
-          <span className={`text-[11px] font-medium truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{p.name}</span>
+        <div className="flex items-start gap-1.5 min-w-0">
+          <Icon className={`h-3.5 w-3.5 flex-shrink-0 mt-px ${isSel ? 'text-indigo-600' : 'text-neutral-400'}`} aria-hidden />
+          <span className={`text-[11px] font-medium leading-tight break-words min-w-0 flex-1 ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{p.name}</span>
           <StatusDot status={p.status} />
-          <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />
+          <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0 mt-0.5" aria-hidden />
         </div>
         {SiteLine({ sites: p.sites })}
       </button>
@@ -348,22 +348,22 @@ export default function MapaGeneralView({
           onClick={() => (head ? selectProc(head) : selectMap(map))}
           aria-pressed={headSel}
           title={head?.description || map.description || map.name}
-          className={`flex flex-col rounded-lg border bg-white px-2.5 py-1.5 min-w-[130px] max-w-[170px] flex-shrink-0 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+          className={`flex flex-col rounded-lg border bg-white px-2.5 py-2 min-w-[130px] max-w-[170px] min-h-[56px] flex-shrink-0 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
             headSel
               ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
               : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
           }`}
         >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <HeadIcon className={`h-3.5 w-3.5 flex-shrink-0 ${BAND_META[band].text}`} aria-hidden />
-            <span className={`text-[11px] font-semibold truncate ${headSel ? 'text-indigo-800' : 'text-neutral-800'}`}>
+          <div className="flex items-start gap-1.5 min-w-0">
+            <HeadIcon className={`h-3.5 w-3.5 flex-shrink-0 mt-px ${BAND_META[band].text}`} aria-hidden />
+            <span className={`text-[11px] font-semibold leading-tight break-words min-w-0 flex-1 ${headSel ? 'text-indigo-800' : 'text-neutral-800'}`}>
               {head?.name || map.name}
             </span>
             <StatusDot status={head?.status} />
-            <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />
+            <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0 mt-0.5" aria-hidden />
           </div>
           {head && map.name !== head.name && (
-            <span className={`text-[9px] mt-0.5 truncate ${nameHit ? 'text-amber-600 font-medium' : 'text-neutral-400'}`}>{map.name}</span>
+            <span className={`text-[9px] mt-0.5 leading-tight break-words ${nameHit ? 'text-amber-600 font-medium' : 'text-neutral-400'}`}>{map.name}</span>
           )}
           <span className="flex items-center gap-1 mt-0.5 min-w-0">
             {head?.code && <span className="text-[9px] font-mono text-neutral-400 truncate">{head.code}</span>}
@@ -428,7 +428,7 @@ export default function MapaGeneralView({
         onClick={() => selectMap(map)}
         aria-pressed={isSel}
         title={map.description || map.name}
-        className={`flex items-center gap-2 rounded-lg border bg-white pl-2.5 pr-2 py-2 min-w-[150px] max-w-[210px] w-full text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`flex items-start gap-2 rounded-lg border bg-white pl-2.5 pr-2 py-2 min-w-[150px] max-w-[230px] min-h-[52px] w-full text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
             : mapHasMatch
@@ -436,14 +436,13 @@ export default function MapaGeneralView({
               : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
         }`}
       >
-        <Icon className={`h-4 w-4 flex-shrink-0 ${meta.text}`} aria-hidden />
+        <Icon className={`h-4 w-4 flex-shrink-0 mt-0.5 ${meta.text}`} aria-hidden />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1 min-w-0">
-            <span className={`text-xs font-semibold truncate ${isSel ? 'text-indigo-800' : 'text-neutral-800'} ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
+          <div className="flex items-start gap-1 min-w-0">
+            <span className={`text-xs font-semibold leading-tight break-words min-w-0 flex-1 ${isSel ? 'text-indigo-800' : 'text-neutral-800'} ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
               {map.name}
             </span>
             <StatusDot />
-            <NormChip norm={map.norm} />
           </div>
           {SiteLine({ sites: sitesOf(map) })}
         </div>
