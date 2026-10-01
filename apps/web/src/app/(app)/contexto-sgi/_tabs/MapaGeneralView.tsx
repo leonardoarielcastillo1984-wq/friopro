@@ -6,7 +6,7 @@ import {
   Target, Cog, Users, Layers, Network, FileText, Shield, BarChart3,
   LogIn, LogOut, ArrowLeft, ExternalLink, ListTree, ShoppingCart,
   Truck, Package, Boxes, Wrench, Monitor, Landmark, Compass, ClipboardCheck,
-  Plus, Pencil, Trash2, TrendingUp,
+  Plus, Pencil, Trash2, TrendingUp, BookOpen,
 } from 'lucide-react';
 
 // ── Tipos (mínimos, alineados al shape de GET /process-maps) ──────────────────
@@ -39,6 +39,8 @@ export type GenMap = {
   inputLabel?: string | null;
   outputLabel?: string | null;
   mapBand?: string | null;
+  // Norma a la que aplica el mapa: 'ISO9001' | 'IATF16949' | null (= ambas)
+  norm?: string | null;
   processes: GenProcess[];
 };
 
@@ -128,6 +130,8 @@ export default function MapaGeneralView({
   onNewProcess,
   onOpenLinks,
   onNewMap,
+  onEditMap,
+  onDeleteMap,
 }: {
   maps: GenMap[];
   employees: { id: string; firstName: string; lastName: string; email: string }[];
@@ -141,12 +145,16 @@ export default function MapaGeneralView({
   onNewProcess: (mapId: string, parentId: string | null) => void;
   onOpenLinks: () => void;
   onNewMap: () => void;
+  onEditMap: (m: GenMap) => void;
+  onDeleteMap: (m: GenMap) => void;
 }) {
   const router = useRouter();
   const [sel, setSel] = useState<Sel>(null);
   const [panelTab, setPanelTab] = useState<PanelTab>('subs');
   const [query, setQuery] = useState('');
   const [site, setSite] = useState('');
+  // Filtro por norma: '' = todas | 'ISO9001' | 'IATF16949' (mapas sin norma pasan todos los filtros)
+  const [normScope, setNormScope] = useState('');
 
   // ── Índices derivados ────────────────────────────────────────────────────
   const byId = useMemo(() => {
@@ -181,6 +189,8 @@ export default function MapaGeneralView({
     const matchSet = new Set<string>();
     const mapNameSet = new Set<string>();
     maps.forEach(m => {
+      // Filtro por norma: un mapa tagueado solo aparece en su vista; sin norma = aplica a todas.
+      if (normScope && m.norm && m.norm !== normScope) return;
       if (!m.processes.some(matchesSite)) return;
       const nameHit = q && normalize(m.name).includes(q);
       if (nameHit) mapNameSet.add(m.id);
@@ -190,7 +200,7 @@ export default function MapaGeneralView({
     });
     return { bands, matchSet, mapNameSet, totalMatches: matchSet.size + mapNameSet.size };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maps, q, site]);
+  }, [maps, q, site, normScope]);
 
   // Selección resuelta contra datos frescos: si el elemento ya no existe tras recargar, queda sin panel.
   const selMap = sel?.kind === 'map' ? maps.find(m => m.id === sel.mapId) ?? null : null;
@@ -239,6 +249,43 @@ export default function MapaGeneralView({
     );
   }
 
+  // Mini-toolbar lápiz/tacho que aparece al hover sobre una card (hermano del botón,
+  // no hijo — HTML no permite botones anidados).
+  function CardActions({ onEdit, onDelete, title }: { onEdit: () => void; onDelete: () => void; title: string }) {
+    return (
+      <div className="absolute -top-1.5 -right-1.5 z-10 hidden group-hover:flex gap-0.5">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          title={`Editar ${title}`}
+          aria-label={`Editar ${title}`}
+          className="h-5 w-5 rounded-md border border-neutral-200 bg-white shadow-sm flex items-center justify-center text-neutral-400 hover:text-indigo-600 hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <Pencil className="h-3 w-3" aria-hidden />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          title={`Eliminar ${title}`}
+          aria-label={`Eliminar ${title}`}
+          className="h-5 w-5 rounded-md border border-neutral-200 bg-white shadow-sm flex items-center justify-center text-neutral-400 hover:text-red-600 hover:border-red-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+        >
+          <Trash2 className="h-3 w-3" aria-hidden />
+        </button>
+      </div>
+    );
+  }
+
+  // Chip de norma: solo se muestra cuando el mapa está tagueado (ISO9001 / IATF16949).
+  function NormChip({ norm }: { norm?: string | null }) {
+    if (!norm) return null;
+    return (
+      <span className="text-[8px] font-bold px-1 py-px rounded bg-indigo-50 text-indigo-600 border border-indigo-100 flex-shrink-0">
+        {norm === 'IATF16949' ? 'IATF' : 'ISO 9001'}
+      </span>
+    );
+  }
+
   // Nodo de flujo del mockup: card blanca con icono + nombre + dot + chevron.
   function NodeCard({ p }: { p: GenProcess }) {
     const isSel = selProc?.id === p.id;
@@ -246,12 +293,13 @@ export default function MapaGeneralView({
     const matched = matchSet.has(p.id);
     const Icon = iconFor(p.name);
     return (
+      <div className="relative group flex-shrink-0">
       <button
         type="button"
         onClick={() => selectProc(p)}
         aria-pressed={isSel}
         title={p.description || p.name}
-        className={`group flex flex-col justify-center rounded-lg border bg-white pl-2 pr-1.5 py-1.5 min-w-[110px] max-w-[190px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`flex flex-col justify-center rounded-lg border bg-white pl-2 pr-1.5 py-1.5 min-w-[110px] max-w-[190px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
             : isParent
@@ -269,6 +317,8 @@ export default function MapaGeneralView({
         </div>
         {SiteLine({ sites: p.sites })}
       </button>
+      {CardActions({ onEdit: () => onEditProcess(p), onDelete: () => onDeleteProcess(p), title: p.name })}
+      </div>
     );
   }
 
@@ -284,6 +334,7 @@ export default function MapaGeneralView({
       <div className={`flex items-center gap-1.5 rounded-lg ${tint} px-2 py-1.5 min-w-0`}>
         <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
         {/* Card head: raíz única → el macro; varias raíces → el mapa */}
+        <div className="relative group flex-shrink-0">
         <button
           type="button"
           onClick={() => (head ? selectProc(head) : selectMap(map))}
@@ -306,9 +357,16 @@ export default function MapaGeneralView({
           {head && map.name !== head.name && (
             <span className={`text-[9px] mt-0.5 truncate ${nameHit ? 'text-amber-600 font-medium' : 'text-neutral-400'}`}>{map.name}</span>
           )}
-          {head?.code && <span className="text-[9px] font-mono text-neutral-400 truncate">{head.code}</span>}
+          <span className="flex items-center gap-1 mt-0.5 min-w-0">
+            {head?.code && <span className="text-[9px] font-mono text-neutral-400 truncate">{head.code}</span>}
+            <NormChip norm={map.norm} />
+          </span>
           {SiteLine({ sites: head ? head.sites : sitesOf(map) })}
         </button>
+        {head
+          ? CardActions({ onEdit: () => onEditProcess(head), onDelete: () => onDeleteProcess(head), title: head.name })
+          : CardActions({ onEdit: () => onEditMap(map), onDelete: () => onDeleteMap(map), title: map.name })}
+        </div>
         {visibleNodes.length > 0 && (
           <>
             <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
@@ -356,12 +414,13 @@ export default function MapaGeneralView({
     const nameHit = mapNameSet.has(map.id);
     const mapHasMatch = q && (nameHit || map.processes.some(p => matchSet.has(p.id)));
     return (
+      <div className="relative group">
       <button
         type="button"
         onClick={() => selectMap(map)}
         aria-pressed={isSel}
         title={map.description || map.name}
-        className={`flex items-center gap-2 rounded-lg border bg-white pl-2.5 pr-2 py-2 min-w-[150px] max-w-[210px] text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`flex items-center gap-2 rounded-lg border bg-white pl-2.5 pr-2 py-2 min-w-[150px] max-w-[210px] w-full text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
             : mapHasMatch
@@ -376,11 +435,14 @@ export default function MapaGeneralView({
               {map.name}
             </span>
             <StatusDot />
+            <NormChip norm={map.norm} />
           </div>
           {SiteLine({ sites: sitesOf(map) })}
         </div>
         <ChevronRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0 ml-auto" aria-hidden />
       </button>
+      {CardActions({ onEdit: () => onEditMap(map), onDelete: () => onDeleteMap(map), title: map.name })}
+      </div>
     );
   }
 
@@ -453,6 +515,11 @@ export default function MapaGeneralView({
               <h3 className="text-sm font-bold text-neutral-900 truncate">{selMap.name}</h3>
             </div>
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badge}`}>{meta.label}</span>
+            {selMap.norm && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 ml-1">
+                {selMap.norm === 'IATF16949' ? 'IATF 16949' : 'ISO 9001'}
+              </span>
+            )}
             {selMap.scope && <p className="text-[11px] text-neutral-500 mt-1.5"><span className="font-medium">Alcance:</span> {selMap.scope}</p>}
             {selMap.description && <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">{selMap.description}</p>}
           </div>
@@ -743,6 +810,19 @@ export default function MapaGeneralView({
               </button>
             )}
           </div>
+          <div className="relative">
+            <BookOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-400 pointer-events-none" aria-hidden />
+            <select
+              value={normScope}
+              onChange={e => setNormScope(e.target.value)}
+              aria-label="Filtrar por norma"
+              className="pl-7 pr-6 py-2 text-xs border border-neutral-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
+            >
+              <option value="">Todas las normas</option>
+              <option value="ISO9001">ISO 9001</option>
+              <option value="IATF16949">IATF 16949</option>
+            </select>
+          </div>
           {allSites.length > 0 && (
             <div className="relative">
               <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-400 pointer-events-none" aria-hidden />
@@ -785,7 +865,7 @@ export default function MapaGeneralView({
             <AlertTriangle className="h-8 w-8 text-neutral-300 mb-3" aria-hidden />
             <p className="text-sm font-medium text-neutral-500">Sin resultados</p>
             <p className="text-xs text-neutral-400 mt-1 mb-3">Ningún mapa o proceso coincide con los filtros actuales.</p>
-            <button type="button" onClick={() => { setQuery(''); setSite(''); }} className="text-xs text-indigo-600 underline hover:text-indigo-700">
+            <button type="button" onClick={() => { setQuery(''); setSite(''); setNormScope(''); }} className="text-xs text-indigo-600 underline hover:text-indigo-700">
               Limpiar filtros
             </button>
           </div>

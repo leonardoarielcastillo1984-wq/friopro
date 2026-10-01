@@ -5453,6 +5453,10 @@ model ProcessMap {
   // null = se deduce por heurística de nombre. Campo aditivo, editable desde "Editar mapa".
   mapBand     String?
 
+  // Norma a la que aplica el mapa: ISO9001 | IATF16949. null = ambas/sin especificar.
+  // Permite al tenant con doble alcance (ej. ISO 9001 + IATF) ver el mapa general por norma.
+  norm        String?
+
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
   deletedAt DateTime? @db.Timestamptz

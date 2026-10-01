@@ -15,6 +15,11 @@ const mapSchema = z.object({
     (v) => (v === '' ? null : v),
     z.enum(['STRATEGIC', 'OPERATIONAL', 'COMMERCIAL', 'SUPPORT']).nullable().optional()
   ),
+  // Norma del mapa: ISO9001 | IATF16949 (null/vacío = aplica a todas)
+  norm: z.preprocess(
+    (v) => (v === '' ? null : v),
+    z.enum(['ISO9001', 'IATF16949']).nullable().optional()
+  ),
 });
 
 const emptyToUndefined = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((val) => (val === '' || val === null ? undefined : val), schema);

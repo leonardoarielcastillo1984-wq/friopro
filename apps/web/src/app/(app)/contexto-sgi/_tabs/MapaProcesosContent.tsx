@@ -61,6 +61,8 @@ interface ProcessMap {
   outputLabel?: string;
   // Banda en el Mapa General (STRATEGIC | OPERATIONAL | COMMERCIAL | SUPPORT); null = heurística
   mapBand?: string | null;
+  // Norma del mapa: 'ISO9001' | 'IATF16949' | null (= ambas)
+  norm?: string | null;
   processes: Process[];
 }
 
@@ -249,7 +251,7 @@ export default function MapaProcesosContent() {
 
   // Map form
   const [showMapForm, setShowMapForm] = useState(false);
-  const [mapForm, setMapForm] = useState({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '' });
+  const [mapForm, setMapForm] = useState({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '', norm: '' });
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
 
   // Process drawer
@@ -975,7 +977,7 @@ export default function MapaProcesosContent() {
       }
       setShowMapForm(false);
       setEditingMapId(null);
-      setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '' });
+      setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '', norm: '' });
       await load();
     } catch { setError('Error guardando mapa'); }
     finally { setSaving(false); }
@@ -1271,7 +1273,9 @@ export default function MapaProcesosContent() {
           onDeleteProcess={p => deleteProcessFromGeneral(p as Process)}
           onNewProcess={(mapId, parentId) => newProcessFromGeneral(mapId, parentId)}
           onOpenLinks={() => setShowGeneral(true)}
-          onNewMap={() => { setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '' }); setShowMapForm(true); }}
+          onNewMap={() => { setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '', norm: '' }); setShowMapForm(true); }}
+          onEditMap={m => { setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI', mapBand: m.mapBand ?? '', norm: m.norm ?? '' }); setShowMapForm(true); }}
+          onDeleteMap={m => deleteMap(m.id)}
         />
       ) : (
       <div className="flex gap-6 min-h-[500px]">
@@ -1279,7 +1283,7 @@ export default function MapaProcesosContent() {
       <div ref={sidebarRef} data-no-export="true" className="w-56 flex-shrink-0 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Mapas</span>
-          <button onClick={() => { setShowMapForm(true); setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '' }); }} className="p-1 rounded hover:bg-neutral-100">
+          <button onClick={() => { setShowMapForm(true); setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '', norm: '' }); }} className="p-1 rounded hover:bg-neutral-100">
             <Plus className="h-4 w-4 text-neutral-500" />
           </button>
         </div>
@@ -1311,7 +1315,7 @@ export default function MapaProcesosContent() {
             </div>
             <p className="text-xs text-neutral-400 mt-0.5 truncate pl-6">{m.processes.filter(p => !p.parentId).length} macroprocesos</p>
             <div className="absolute right-1 top-1 hidden group-hover:flex gap-0.5">
-              <button onClick={e => { e.stopPropagation(); setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI', mapBand: m.mapBand ?? '' }); setShowMapForm(true); }} className="p-1 rounded hover:bg-white"><Pencil className="h-3 w-3 text-neutral-400" /></button>
+              <button onClick={e => { e.stopPropagation(); setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI', mapBand: m.mapBand ?? '', norm: m.norm ?? '' }); setShowMapForm(true); }} className="p-1 rounded hover:bg-white"><Pencil className="h-3 w-3 text-neutral-400" /></button>
               <button onClick={e => { e.stopPropagation(); deleteMap(m.id); }} className="p-1 rounded hover:bg-white"><Trash2 className="h-3 w-3 text-red-400" /></button>
             </div>
           </div>
@@ -1920,6 +1924,15 @@ export default function MapaProcesosContent() {
                 <option value="COMMERCIAL">Comercial</option>
                 <option value="SUPPORT">Soporte</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Norma (alcance del mapa)</label>
+              <select value={mapForm.norm} onChange={e => setMapForm(p => ({ ...p, norm: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white">
+                <option value="">Todas las normas</option>
+                <option value="ISO9001">ISO 9001</option>
+                <option value="IATF16949">IATF 16949</option>
+              </select>
+              <p className="text-[10px] text-neutral-400 mt-1">Define en qué vista del Mapa General aparece este mapa (filtro por norma arriba del mapa).</p>
             </div>
             {error && <p className="text-xs text-red-500">{error}</p>}
             <div className="flex gap-2 justify-end pt-2">
