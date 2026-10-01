@@ -2,9 +2,9 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Search, MapPin, X, ArrowRight, ChevronRight, AlertTriangle,
+  Search, MapPin, X, ArrowRight, ArrowDown, ArrowUp, ChevronRight, AlertTriangle,
   Target, Cog, Users, Layers, Network, FileText, Shield, BarChart3,
-  LogIn, LogOut, ArrowLeft, ExternalLink, ListTree, ShoppingCart,
+  ArrowLeft, ExternalLink, ListTree, ShoppingCart,
   Truck, Package, Boxes, Wrench, Monitor, Landmark, Compass, ClipboardCheck,
   Plus, Pencil, Trash2, TrendingUp, BookOpen,
 } from 'lucide-react';
@@ -49,16 +49,13 @@ type Sel = { kind: 'map'; mapId: string } | { kind: 'process'; processId: string
 type PanelTab = 'subs' | 'docs' | 'kpis' | 'risks';
 
 const BAND_META: Record<Band, { label: string; desc: string; band: string; border: string; text: string; badge: string; icon: any }> = {
-  STRATEGIC:   { label: 'Estratégicos', desc: 'Definen el rumbo de la organización', band: 'bg-blue-50/80', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700', icon: Target },
-  OPERATIONAL: { label: 'Operativos', desc: 'ramas en paralelo — operaciones independientes que generan valor para el cliente', band: 'bg-emerald-50/70', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700', icon: Cog },
+  STRATEGIC:   { label: 'Estratégicos', desc: 'Definen el rumbo, aseguran recursos y la mejora del sistema', band: 'bg-blue-50/80', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700', icon: Target },
+  OPERATIONAL: { label: 'Operativos', desc: 'Transforman requisitos en ruedas conformes para el cliente', band: 'bg-emerald-50/70', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700', icon: Cog },
   COMMERCIAL:  { label: 'Comercial', desc: 'Gestión de solicitudes y requisitos', band: 'bg-violet-50/80', border: 'border-violet-200', text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700', icon: ShoppingCart },
-  SUPPORT:     { label: 'Soporte', desc: 'Brindan los recursos para el funcionamiento', band: 'bg-neutral-50', border: 'border-neutral-200', text: 'text-neutral-600', badge: 'bg-neutral-100 text-neutral-600', icon: Users },
+  SUPPORT:     { label: 'Soporte', desc: 'Proveen recursos, controles y servicios para el funcionamiento del sistema', band: 'bg-neutral-50', border: 'border-neutral-200', text: 'text-neutral-600', badge: 'bg-neutral-100 text-neutral-600', icon: Users },
 };
 
 const LAYER_LABEL: Record<string, string> = { STRATEGIC: 'Estratégico', OPERATIONAL: 'Operativo', SUPPORT: 'Soporte' };
-
-// Tintes pastel alternados para las ramas paralelas (solo cosmético, como en el mockup).
-const BRANCH_TINTS = ['bg-white/60', 'bg-sky-50/80', 'bg-amber-50/60', 'bg-rose-50/70', 'bg-indigo-50/60'];
 
 function normalize(s?: string | null) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -236,23 +233,9 @@ export default function MapaGeneralView({
     setPanelTab(p.parentId ? 'docs' : 'subs');
   }
 
-  const dimIf = (id: string) => (q && !matchSet.has(id) ? 'opacity-40 saturate-50' : '');
-
   // Sedes únicas donde se ejecutan los procesos del mapa (para cards de banda).
   const sitesOf = (map: GenMap): string[] =>
     [...new Set(map.processes.flatMap(p => p.sites || []))];
-
-  // Chip de sede con pin, visible en cada card del mapa (mockup: "en qué sitio se desarrolla").
-  function SiteLine({ sites }: { sites?: string[] }) {
-    if (!sites || sites.length === 0) return null;
-    const label = sites.length <= 2 ? sites.join(' · ') : `${sites.slice(0, 2).join(' · ')} +${sites.length - 2}`;
-    return (
-      <span className="flex items-center gap-0.5 mt-0.5 text-[9px] text-neutral-400 leading-none min-w-0">
-        <MapPin className="h-2.5 w-2.5 flex-shrink-0 text-neutral-300" aria-hidden />
-        <span className="truncate">{label}</span>
-      </span>
-    );
-  }
 
   function StatusDot({ status }: { status?: string }) {
     return (
@@ -300,142 +283,143 @@ export default function MapaGeneralView({
     );
   }
 
-  // Nodo de flujo del mockup: card blanca con icono + nombre + dot + chevron.
-  function NodeCard({ p }: { p: GenProcess }) {
-    const isSel = selProc?.id === p.id;
-    const isParent = selParent?.id === p.id;
-    const matched = matchSet.has(p.id);
-    const Icon = iconFor(p.name);
+  // Bullets de una card "tortuga": nombres de los subprocesos del mapa.
+  const bulletsOf = (map: GenMap, limit = 8) => {
+    const names = map.processes
+      .filter(p => p.parentId)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
+      .map(p => p.name);
+    return names.slice(0, limit).join(' · ') + (names.length > limit ? '…' : '');
+  };
+
+  // Chip de sede estilo manual ("Casa central / Córdoba" | "Sede por confirmar").
+  function SiteChip({ sites }: { sites: string[] }) {
+    const label = sites.length ? sites.join(' / ') : 'Sede por confirmar';
     return (
-      <div className="relative group flex-shrink-0">
-      <button
-        type="button"
-        onClick={() => selectProc(p)}
-        aria-pressed={isSel}
-        title={p.description || p.name}
-        className={`flex flex-col justify-center rounded-lg border bg-white pl-2 pr-1.5 py-2 min-w-[110px] max-w-[160px] min-h-[52px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-          isSel
-            ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
-            : isParent
-              ? 'border-indigo-300 bg-indigo-50/50 shadow-sm'
-              : matched
-                ? 'border-amber-300 ring-1 ring-amber-300 bg-amber-50/60 hover:border-indigo-300'
-                : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
-        } ${dimIf(p.id)}`}
-      >
-        <div className="flex items-start gap-1.5 min-w-0">
-          <Icon className={`h-3.5 w-3.5 flex-shrink-0 mt-px ${isSel ? 'text-indigo-600' : 'text-neutral-400'}`} aria-hidden />
-          <span className={`text-[11px] font-medium leading-tight break-words min-w-0 flex-1 ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{p.name}</span>
-          <StatusDot status={p.status} />
-          <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0 mt-0.5" aria-hidden />
-        </div>
-        {SiteLine({ sites: p.sites })}
-      </button>
-      {CardActions({ onEdit: () => onEditProcess(p), onDelete: () => onDeleteProcess(p), title: p.name })}
-      </div>
+      <span className="inline-flex items-center gap-1 text-[9px] font-medium text-blue-600 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5">
+        <MapPin className="h-2.5 w-2.5" aria-hidden />{label}
+      </span>
     );
   }
 
-  // Rama horizontal del mockup: flecha de entrada → card head (mapa o macro raíz)
-  // → cadena de nodos conectados por flechas → flecha hacia Resultados.
-  function MapBranch({ map, band, tint }: { map: GenMap; band: Band; tint: string }) {
+  // Nodo de la cadena operativa: card "tortuga" del mapa (o de su macro raíz)
+  // con bullets de subprocesos y chip de sede.
+  function OpCard({ map }: { map: GenMap }) {
     const { head, nodes } = flowNodesOf(map);
-    const visibleNodes = nodes.filter(n => matchesSite(n) || subsOf(map.id, n.id).some(matchesSite));
-    const HeadIcon = iconFor(head?.name || map.name);
-    const headSel = head ? selProc?.id === head.id : selMap?.id === map.id;
+    const isSel = head ? selProc?.id === head.id : selMap?.id === map.id;
     const nameHit = mapNameSet.has(map.id);
+    const Icon = iconFor(head?.name || map.name);
+    const title = head?.name || map.name;
+    const bullets = nodes.map(n => n.name).join(' · ');
+    const dim = !!(q && !nameHit && !map.processes.some(p => matchSet.has(p.id)));
     return (
       <div
-        className={`flex items-center gap-1.5 rounded-lg ${tint} px-2 py-1.5 min-w-0 ${dragMapId === map.id ? 'opacity-40' : ''}`}
+        className={`relative group flex-1 min-w-[150px] max-w-[210px] ${dragMapId === map.id || dim ? 'opacity-40 saturate-50' : ''}`}
         draggable
         onDragStart={startMapDrag(map)}
         onDragEnd={endMapDrag}
         title="Arrastrar para cambiar de franja"
       >
-        <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
-        {/* Card head: raíz única → el macro; varias raíces → el mapa */}
-        <div className="relative group flex-shrink-0">
-        <button
-          type="button"
-          onClick={() => (head ? selectProc(head) : selectMap(map))}
-          aria-pressed={headSel}
-          title={head?.description || map.description || map.name}
-          className={`flex flex-col rounded-lg border bg-white px-2.5 py-2 min-w-[130px] max-w-[170px] min-h-[56px] flex-shrink-0 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-            headSel
-              ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
-              : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
-          }`}
-        >
-          <div className="flex items-start gap-1.5 min-w-0">
-            <HeadIcon className={`h-3.5 w-3.5 flex-shrink-0 mt-px ${BAND_META[band].text}`} aria-hidden />
-            <span className={`text-[11px] font-semibold leading-tight break-words min-w-0 flex-1 ${headSel ? 'text-indigo-800' : 'text-neutral-800'}`}>
-              {head?.name || map.name}
-            </span>
-            <StatusDot status={head?.status} />
-            <ChevronRight className="h-3 w-3 text-neutral-300 flex-shrink-0 mt-0.5" aria-hidden />
-          </div>
-          {head && map.name !== head.name && (
-            <span className={`text-[9px] mt-0.5 leading-tight break-words ${nameHit ? 'text-amber-600 font-medium' : 'text-neutral-400'}`}>{map.name}</span>
-          )}
-          <span className="flex items-center gap-1 mt-0.5 min-w-0">
-            {head?.code && <span className="text-[9px] font-mono text-neutral-400 truncate">{head.code}</span>}
-            <NormChip norm={map.norm} />
-          </span>
-          {SiteLine({ sites: head ? head.sites : sitesOf(map) })}
-        </button>
-        {head
-          ? CardActions({ onEdit: () => onEditProcess(head), onDelete: () => onDeleteProcess(head), title: head.name })
-          : CardActions({ onEdit: () => onEditMap(map), onDelete: () => onDeleteMap(map), title: map.name })}
+      <button
+        type="button"
+        onClick={() => (head ? selectProc(head) : selectMap(map))}
+        aria-pressed={isSel}
+        title={head?.description || map.description || map.name}
+        className={`w-full h-full text-left bg-white border rounded-lg px-3 py-2.5 min-h-[64px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+          isSel
+            ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
+            : 'border-emerald-300/80 hover:border-indigo-300 hover:shadow-sm'
+        }`}
+      >
+        <div className="flex items-start gap-1.5 min-w-0">
+          <Icon className="h-4 w-4 flex-shrink-0 mt-px text-emerald-600" aria-hidden />
+          <span className={`text-[11px] font-bold leading-tight break-words flex-1 ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{title}</span>
+          <StatusDot status={head?.status} />
         </div>
-        {visibleNodes.length > 0 && (
+        {bullets && <p className="text-[9px] text-neutral-500 mt-1 leading-snug break-words">{bullets}</p>}
+        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+          <SiteChip sites={head?.sites?.length ? head.sites : sitesOf(map)} />
+          <NormChip norm={map.norm} />
+        </div>
+      </button>
+      {head
+        ? CardActions({ onEdit: () => onEditProcess(head), onDelete: () => onDeleteProcess(head), title: head.name })
+        : CardActions({ onEdit: () => onEditMap(map), onDelete: () => onDeleteMap(map), title: map.name })}
+      </div>
+    );
+  }
+
+  // Flecha de la cadena con etiqueta (lo que "viaja" entre procesos).
+  function ChainArrow({ label }: { label?: string }) {
+    return (
+      <div className="flex flex-col items-center justify-center self-center w-14 sm:w-16 flex-shrink-0 px-0.5">
+        <span className="text-[8px] text-neutral-500 text-center leading-tight mb-0.5 min-h-[16px] break-words w-full">{label || ''}</span>
+        <div className="flex items-center w-full">
+          <div className="h-px flex-1 bg-neutral-300" />
+          <ArrowRight className="h-3 w-3 text-neutral-400 -ml-0.5 flex-shrink-0" aria-hidden />
+        </div>
+      </div>
+    );
+  }
+
+  // Caja de extremo de la cadena: CLIENTE / ENTRADAS y CLIENTE / RESULTADOS.
+  function EndBox({ kind }: { kind: 'in' | 'out' }) {
+    const isIn = kind === 'in';
+    const labels = [...new Set(bands.OPERATIONAL.map(m => ((isIn ? m.inputLabel : m.outputLabel) || '').trim()).filter(Boolean))];
+    return (
+      <div className="flex-shrink-0 w-28 self-stretch flex">
+        <div className="bg-white border border-neutral-300 rounded-md px-2 py-2.5 w-full flex flex-col justify-center text-center shadow-sm">
+          <p className="text-[9px] font-bold text-neutral-700 uppercase leading-tight">{isIn ? 'Cliente / Entradas' : 'Cliente / Resultados'}</p>
+          <p className="text-[8px] text-neutral-400 mt-1 leading-snug break-words">
+            {labels.length ? labels.join(' · ') : (isIn ? 'Requisitos, especificaciones, programas de entrega' : 'Productos conformes, entregas, trazabilidad')}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Barra conectora entre bandas (flechas de interacción del mapa tipo tortuga).
+  function BandConnector({ kind }: { kind: 'strategic' | 'support' }) {
+    const s = kind === 'strategic';
+    const color = s ? 'text-blue-600' : 'text-neutral-500';
+    return (
+      <div className={`flex items-center justify-center gap-6 py-1.5 text-[9px] font-semibold ${color}`}>
+        {s ? (
           <>
-            <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
-            <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto">
-              {visibleNodes.map((n, i) => (
-                <Fragment key={n.id}>
-                  {i > 0 && <ArrowRight className="h-3 w-3 text-neutral-300 flex-shrink-0" aria-hidden />}
-                  {NodeCard({ p: n })}
-                </Fragment>
-              ))}
-              {/* + agregar nodo a la rama: hijo del head si existe, si no raíz del mapa */}
-              <button
-                type="button"
-                onClick={() => onNewProcess(map.id, head?.id ?? null)}
-                title={head ? `Agregar subproceso a ${head.name}` : `Agregar proceso a ${map.name}`}
-                aria-label="Agregar proceso"
-                className="flex-shrink-0 h-6 w-6 rounded-lg border border-dashed border-neutral-300 text-neutral-400 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-              >
-                <Plus className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            </div>
-            <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
+            <span className="flex items-center gap-1"><ArrowDown className="h-3 w-3" aria-hidden /> Objetivos, decisiones y recursos</span>
+            <span className="flex items-center gap-1"><ArrowUp className="h-3 w-3" aria-hidden /> Indicadores y resultados</span>
           </>
-        )}
-        {visibleNodes.length === 0 && (
-          <button
-            type="button"
-            onClick={() => onNewProcess(map.id, head?.id ?? null)}
-            title={head ? `Agregar subproceso a ${head.name}` : `Agregar proceso a ${map.name}`}
-            className="flex items-center gap-1 text-[10px] text-neutral-400 hover:text-indigo-600 px-2 focus:outline-none focus-visible:underline"
-          >
-            <Plus className="h-3 w-3" aria-hidden />
-            {nodes.length > 0 ? 'Sin procesos en esta sede — agregar' : 'Agregar proceso'}
-          </button>
+        ) : (
+          <>
+            <span className="flex items-center gap-1"><ArrowDown className="h-3 w-3" aria-hidden /> Recursos y controles</span>
+            <span className="flex items-center gap-1"><ArrowUp className="h-3 w-3" aria-hidden /> Necesidades y resultados</span>
+          </>
         )}
       </div>
     );
   }
 
-  // Card de mapa para bandas simples (Estratégicos / Soporte): icono + nombre + dot + chevron.
+  // Caja punteada "Procesos externalizados" dentro de Soporte (del manual).
+  function ExtBox() {
+    return (
+      <div className="flex-1 min-w-[170px] max-w-[220px] rounded-lg border-2 border-dashed border-neutral-300 bg-white/50 px-3 py-2.5 text-center flex flex-col justify-center">
+        <p className="text-[9px] font-bold text-neutral-500 uppercase leading-tight">Procesos externalizados, si aplican</p>
+        <p className="text-[8px] text-neutral-400 mt-1 leading-snug">Identificar proveedor, proceso, controles e interfaces</p>
+      </div>
+    );
+  }
+
+  // Card "tortuga" para Estratégicos/Soporte: nombre + bullets de subprocesos + chip de sede.
   function MapCard({ map, band }: { map: GenMap; band: Band }) {
     const meta = BAND_META[band];
     const Icon = iconFor(map.name);
     const isSel = selMap?.id === map.id;
     const nameHit = mapNameSet.has(map.id);
     const mapHasMatch = q && (nameHit || map.processes.some(p => matchSet.has(p.id)));
+    const bullets = bulletsOf(map);
     return (
       <div
-        className={`relative group ${dragMapId === map.id ? 'opacity-40' : ''}`}
+        className={`relative group flex-1 min-w-[180px] max-w-[280px] ${dragMapId === map.id ? 'opacity-40' : ''}`}
         draggable
         onDragStart={startMapDrag(map)}
         onDragEnd={endMapDrag}
@@ -446,25 +430,26 @@ export default function MapaGeneralView({
         onClick={() => selectMap(map)}
         aria-pressed={isSel}
         title={map.description || map.name}
-        className={`flex items-start gap-2 rounded-lg border bg-white pl-2.5 pr-2 py-2 min-w-[150px] max-w-[230px] min-h-[52px] w-full text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`w-full h-full text-left bg-white border rounded-lg px-3 py-2.5 min-h-[56px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
             : mapHasMatch
               ? 'border-amber-300 ring-1 ring-amber-300 hover:border-indigo-300'
-              : 'border-neutral-200 hover:border-indigo-300 hover:shadow-sm'
+              : 'border-neutral-300 hover:border-indigo-300 hover:shadow-sm'
         }`}
       >
-        <Icon className={`h-4 w-4 flex-shrink-0 mt-0.5 ${meta.text}`} aria-hidden />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-1 min-w-0">
-            <span className={`text-xs font-semibold leading-tight break-words min-w-0 flex-1 ${isSel ? 'text-indigo-800' : 'text-neutral-800'} ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
-              {map.name}
-            </span>
-            <StatusDot />
-          </div>
-          {SiteLine({ sites: sitesOf(map) })}
+        <div className="flex items-start gap-1.5 min-w-0">
+          <Icon className={`h-4 w-4 flex-shrink-0 mt-px ${meta.text}`} aria-hidden />
+          <span className={`text-[11px] font-bold leading-tight break-words flex-1 ${isSel ? 'text-indigo-800' : 'text-neutral-800'} ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
+            {map.name}
+          </span>
+          <StatusDot />
         </div>
-        <ChevronRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0 ml-auto" aria-hidden />
+        {bullets && <p className="text-[9px] text-neutral-500 mt-1 leading-snug break-words">{bullets}</p>}
+        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+          <SiteChip sites={sitesOf(map)} />
+          <NormChip norm={map.norm} />
+        </div>
       </button>
       {CardActions({ onEdit: () => onEditMap(map), onDelete: () => onDeleteMap(map), title: map.name })}
       </div>
@@ -502,7 +487,8 @@ export default function MapaGeneralView({
     };
   }
 
-  // Contenedor de banda con header (icono + label + desc) y contenido arbitrario.
+  // Contenedor de banda estilo "tortuga": riel de color a la izquierda con el
+  // nombre + descripción de la franja; contenido a la derecha. Zona de drop DnD.
   function BandSection({ band, children }: { band: Band; children: React.ReactNode }) {
     const meta = BAND_META[band];
     const Icon = meta.icon;
@@ -513,23 +499,27 @@ export default function MapaGeneralView({
         onDragOver={onBandDragOver(band)}
         onDragLeave={e => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setDropBand(null); }}
         onDrop={onBandDrop(band)}
-        className={`rounded-xl border ${meta.border} ${meta.band} p-3 transition-shadow ${isTarget ? 'ring-2 ring-indigo-400 shadow-md' : ''}`}
+        className={`flex items-stretch rounded-xl border ${meta.border} overflow-hidden transition-shadow ${isTarget ? 'ring-2 ring-indigo-400 shadow-md' : ''}`}
       >
-        <div className="flex items-center gap-2 mb-2.5 px-0.5">
-          <Icon className={`h-4 w-4 ${meta.text}`} aria-hidden />
-          <span className={`text-xs font-bold ${meta.text}`}>{meta.label}</span>
-          <span className="text-[11px] text-neutral-400">{meta.desc}</span>
+        <div className={`w-24 lg:w-28 flex-shrink-0 ${meta.band} px-2.5 py-3 flex flex-col`}>
+          <div className={`flex items-center gap-1 ${meta.text}`}>
+            <Icon className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+            <span className="text-[10px] font-extrabold uppercase tracking-wide leading-tight">{meta.label}</span>
+          </div>
+          <p className={`text-[8px] leading-snug mt-1 ${meta.text} opacity-80`}>{meta.desc}</p>
           <button
             type="button"
             onClick={() => onNewMap({ mapBand: band })}
             title={`Agregar mapa a ${meta.label}`}
             aria-label={`Agregar mapa a ${meta.label}`}
-            className="ml-auto h-6 w-6 rounded-md border border-neutral-300/70 bg-white/80 flex items-center justify-center text-neutral-400 hover:text-indigo-600 hover:border-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="mt-auto self-start h-6 w-6 rounded-md border border-neutral-300/70 bg-white/80 flex items-center justify-center text-neutral-400 hover:text-indigo-600 hover:border-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
           </button>
         </div>
-        {children}
+        <div className="flex-1 min-w-0 bg-white/40 p-2.5 flex flex-col justify-center">
+          {children}
+        </div>
       </section>
     );
   }
@@ -548,22 +538,6 @@ export default function MapaGeneralView({
     );
   }
 
-  // Raíl vertical Entradas / Resultados del mockup: flanquea solo el área de flujo.
-  function FlowRail({ kind }: { kind: 'in' | 'out' }) {
-    const isIn = kind === 'in';
-    const Icon = isIn ? LogIn : LogOut;
-    const title = isIn ? 'Entradas' : 'Resultados';
-    const sub = isIn ? 'Requisitos, materiales, solicitudes' : 'Productos, servicios, satisfacción del cliente';
-    return (
-      <div aria-label={title} className="w-28 lg:w-32 flex-shrink-0 self-stretch flex">
-        <div className="bg-white border border-neutral-200 rounded-xl px-3 py-4 w-full flex flex-col items-center justify-center text-center shadow-sm">
-          <Icon className={`h-4 w-4 mb-1.5 ${isIn ? 'text-blue-500' : 'text-emerald-500'}`} aria-hidden />
-          <p className="text-[11px] font-bold text-neutral-700 leading-tight">{title}</p>
-          <p className="text-[9px] text-neutral-400 mt-1 leading-snug">{sub}</p>
-        </div>
-      </div>
-    );
-  }
 
   // ── Panel lateral de detalle ─────────────────────────────────────────────
   const PANEL_TABS: { id: PanelTab; label: string; icon: any }[] = [
@@ -965,38 +939,51 @@ export default function MapaGeneralView({
           </div>
         ) : (
           <div className="flex-1 overflow-auto">
-            <div className="space-y-3 min-w-[960px] pb-4">
-              {/* Banda 1: Estratégicos — cards simples full-width */}
+            <div className="min-w-[960px] pb-4">
+              {/* Franja Estratégicos */}
               <BandSection band="STRATEGIC">
                 {bands.STRATEGIC.length === 0 ? <BandEmpty band="STRATEGIC" /> : (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-stretch gap-2">
                     {bands.STRATEGIC.map(m => <Fragment key={m.id}>{MapCard({ map: m, band: 'STRATEGIC' })}</Fragment>)}
                   </div>
                 )}
               </BandSection>
 
-              {/* Área de flujo: Entradas | Operativos + Comercial | Resultados */}
-              <div className="flex items-stretch gap-3">
-                {FlowRail({ kind: 'in' })}
-                <div className="flex-1 space-y-3 min-w-0">
-                  <BandSection band="OPERATIONAL">
-                    {bands.OPERATIONAL.length === 0 ? <BandEmpty band="OPERATIONAL" /> : (
-                      <div className="space-y-1.5">
-                        {bands.OPERATIONAL.map((m, i) => (
-                          <Fragment key={m.id}>{MapBranch({ map: m, band: 'OPERATIONAL', tint: BRANCH_TINTS[i % BRANCH_TINTS.length] })}</Fragment>
-                        ))}
-                      </div>
-                    )}
-                  </BandSection>
-                </div>
-                {FlowRail({ kind: 'out' })}
-              </div>
+              {/* Conector Estratégicos ↔ Operativos */}
+              <BandConnector kind="strategic" />
 
-              {/* Banda 4: Soporte — cards simples full-width */}
+              {/* Franja Operativos: cadena única Entradas → mapas → Resultados */}
+              <BandSection band="OPERATIONAL">
+                {bands.OPERATIONAL.length === 0 ? <BandEmpty band="OPERATIONAL" /> : (
+                  <div className="flex items-stretch gap-1 overflow-x-auto py-1">
+                    {EndBox({ kind: 'in' })}
+                    {bands.OPERATIONAL.map((m, i) => {
+                      const prev = bands.OPERATIONAL[i - 1];
+                      const label = prev
+                        ? toBullets(flowNodesOf(prev).head?.outputs)[0] || ''
+                        : toBullets(flowNodesOf(m).head?.inputs)[0] || '';
+                      return (
+                        <Fragment key={m.id}>
+                          <ChainArrow label={label} />
+                          {OpCard({ map: m })}
+                        </Fragment>
+                      );
+                    })}
+                    <ChainArrow label={toBullets(flowNodesOf(bands.OPERATIONAL[bands.OPERATIONAL.length - 1]).head?.outputs)[0] || ''} />
+                    {EndBox({ kind: 'out' })}
+                  </div>
+                )}
+              </BandSection>
+
+              {/* Conector Operativos ↔ Soporte */}
+              <BandConnector kind="support" />
+
+              {/* Franja Soporte + procesos externalizados */}
               <BandSection band="SUPPORT">
                 {bands.SUPPORT.length === 0 ? <BandEmpty band="SUPPORT" /> : (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-stretch gap-2">
                     {bands.SUPPORT.map(m => <Fragment key={m.id}>{MapCard({ map: m, band: 'SUPPORT' })}</Fragment>)}
+                    {ExtBox()}
                   </div>
                 )}
               </BandSection>
