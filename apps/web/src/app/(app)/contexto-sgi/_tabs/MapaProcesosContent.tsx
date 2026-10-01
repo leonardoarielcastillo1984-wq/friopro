@@ -1004,6 +1004,27 @@ export default function MapaProcesosContent() {
     await load();
   }
 
+  // Drag & drop en el Mapa General: cambia la banda del mapa (STRATEGIC | OPERATIONAL | SUPPORT)
+  async function moveMapToBand(id: string, band: string) {
+    try {
+      const m = maps.find(x => x.id === id);
+      if (!m) return;
+      await apiFetch(`/process-maps/${id}`, {
+        method: 'PUT',
+        json: {
+          name: m.name,
+          description: m.description ?? null,
+          scope: m.scope ?? '',
+          inputLabel: m.inputLabel,
+          outputLabel: m.outputLabel,
+          mapBand: band,
+          norm: m.norm ?? '',
+        },
+      });
+      await load();
+    } catch { setError('No se pudo mover el mapa de franja'); }
+  }
+
   async function saveProcess() {
     if (!selected || !drawer?.name) return;
     setSaving(true);
@@ -1303,6 +1324,7 @@ export default function MapaProcesosContent() {
           onNewMap={opts => { setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: opts?.mapBand ?? '', norm: generalNormTab }); setShowMapForm(true); }}
           onEditMap={m => { setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI', mapBand: m.mapBand ?? '', norm: m.norm ?? '' }); setShowMapForm(true); }}
           onDeleteMap={m => deleteMap(m.id)}
+          onMoveMap={(m, band) => moveMapToBand(m.id, band)}
           normLock={maps.some(m => m.norm) ? (generalNormTab || null) : null}
         />
         </>

@@ -133,6 +133,7 @@ export default function MapaGeneralView({
   onNewMap,
   onEditMap,
   onDeleteMap,
+  onMoveMap,
   normLock,
 }: {
   maps: GenMap[];
@@ -150,6 +151,8 @@ export default function MapaGeneralView({
   onNewMap: (opts?: { mapBand?: Band | null }) => void;
   onEditMap: (m: GenMap) => void;
   onDeleteMap: (m: GenMap) => void;
+  // Drag & drop: mover un mapa a otra banda (persiste mapBand)
+  onMoveMap: (m: GenMap, band: Band) => void;
   // Cuando viene seteado, la vista muestra SOLO mapas de esa norma (pestañas ISO/IATF)
   // y se oculta el selector interno de norma.
   normLock?: 'ISO9001' | 'IATF16949' | null;
@@ -161,7 +164,10 @@ export default function MapaGeneralView({
   const [site, setSite] = useState('');
   // Filtro por norma: '' = todas | 'ISO9001' | 'IATF16949' (mapas sin norma pasan todos los filtros).
   // Con normLock (pestañas ISO/IATF) el filtro es ESTRICTO: solo mapas con esa norma exacta.
-  const [normScope, setNormScope] = useState('');
+  const [normScope, setNormScope] = useState<string>('');
+  // Drag & drop entre bandas: id del mapa arrastrado + banda destino resaltada
+  const [dragMapId, setDragMapId] = useState<string | null>(null);
+  const [dropBand, setDropBand] = useState<Band | null>(null);
 
   // ── Índices derivados ────────────────────────────────────────────────────
   const byId = useMemo(() => {
@@ -339,7 +345,13 @@ export default function MapaGeneralView({
     const headSel = head ? selProc?.id === head.id : selMap?.id === map.id;
     const nameHit = mapNameSet.has(map.id);
     return (
-      <div className={`flex items-center gap-1.5 rounded-lg ${tint} px-2 py-1.5 min-w-0`}>
+      <div
+        className={`flex items-center gap-1.5 rounded-lg ${tint} px-2 py-1.5 min-w-0 ${dragMapId === map.id ? 'opacity-40' : ''}`}
+        draggable
+        onDragStart={startMapDrag(map)}
+        onDragEnd={endMapDrag}
+        title="Arrastrar para cambiar de franja"
+      >
         <ArrowRight className="h-3.5 w-3.5 text-neutral-300 flex-shrink-0" aria-hidden />
         {/* Card head: raíz única → el macro; varias raíces → el mapa */}
         <div className="relative group flex-shrink-0">
@@ -422,7 +434,13 @@ export default function MapaGeneralView({
     const nameHit = mapNameSet.has(map.id);
     const mapHasMatch = q && (nameHit || map.processes.some(p => matchSet.has(p.id)));
     return (
-      <div className="relative group">
+      <div
+        className={`relative group ${dragMapId === map.id ? 'opacity-40' : ''}`}
+        draggable
+        onDragStart={startMapDrag(map)}
+        onDragEnd={endMapDrag}
+        title="Arrastrar para cambiar de franja"
+      >
       <button
         type="button"
         onClick={() => selectMap(map)}
@@ -453,12 +471,50 @@ export default function MapaGeneralView({
     );
   }
 
+  // Drag & drop: helpers de arrastre/soltar entre bandas.
+  function startMapDrag(map: GenMap) {
+    return (e: React.DragEvent) => {
+      e.dataTransfer.setData('text/plain', map.id);
+      e.dataTransfer.effectAllowed = 'move';
+      setDragMapId(map.id);
+    };
+  }
+  function endMapDrag() {
+    setDragMapId(null);
+    setDropBand(null);
+  }
+  function onBandDragOver(band: Band) {
+    return (e: React.DragEvent) => {
+      if (!dragMapId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropBand(band);
+    };
+  }
+  function onBandDrop(band: Band) {
+    return (e: React.DragEvent) => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData('text/plain') || dragMapId;
+      const m = maps.find(x => x.id === id);
+      const cur = m ? classifyMapBand(m) : null;
+      if (m && cur !== band) onMoveMap(m, band);
+      endMapDrag();
+    };
+  }
+
   // Contenedor de banda con header (icono + label + desc) y contenido arbitrario.
   function BandSection({ band, children }: { band: Band; children: React.ReactNode }) {
     const meta = BAND_META[band];
     const Icon = meta.icon;
+    const isTarget = dropBand === band;
     return (
-      <section aria-label={meta.label} className={`rounded-xl border ${meta.border} ${meta.band} p-3`}>
+      <section
+        aria-label={meta.label}
+        onDragOver={onBandDragOver(band)}
+        onDragLeave={e => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setDropBand(null); }}
+        onDrop={onBandDrop(band)}
+        className={`rounded-xl border ${meta.border} ${meta.band} p-3 transition-shadow ${isTarget ? 'ring-2 ring-indigo-400 shadow-md' : ''}`}
+      >
         <div className="flex items-center gap-2 mb-2.5 px-0.5">
           <Icon className={`h-4 w-4 ${meta.text}`} aria-hidden />
           <span className={`text-xs font-bold ${meta.text}`}>{meta.label}</span>
