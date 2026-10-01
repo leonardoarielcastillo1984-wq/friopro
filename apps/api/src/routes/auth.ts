@@ -31,8 +31,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     });
 
     // Restrict refresh cookie to refresh endpoint.
+    // El frontend llama /api/auth/refresh vía Nginx: el path de la cookie tiene
+    // que matchear ESA url, no la interna del backend (bug: con '/auth/refresh'
+    // el browser nunca la enviaba → refresh siempre 401 → logout a la hora).
     reply.setCookie('refresh_token', args.refreshToken, {
-      path: '/auth/refresh',
+      path: '/api/auth',
       httpOnly: true,
       sameSite: 'lax',
       secure: isProd,
@@ -41,7 +44,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   function clearAuthCookies(reply: FastifyReply) {
     reply.clearCookie('access_token', { path: '/' });
-    reply.clearCookie('refresh_token', { path: '/auth/refresh' });
+    reply.clearCookie('refresh_token', { path: '/api/auth' });
+    reply.clearCookie('refresh_token', { path: '/auth/refresh' }); // legacy
   }
 
   app.get('/csrf', async (_req: FastifyRequest, reply: FastifyReply) => {

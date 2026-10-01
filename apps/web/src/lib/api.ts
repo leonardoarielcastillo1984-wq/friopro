@@ -107,6 +107,11 @@ async function tryRefreshToken(): Promise<boolean> {
     });
     if (res.ok) {
       const data = await res.json().catch(() => null);
+      // El Bearer viejo vencido tiene prioridad sobre la cookie: hay que
+      // pisarlo con el access token nuevo o cada request sigue pegando 401.
+      if (data?.accessToken && typeof window !== 'undefined') {
+        window.localStorage.setItem('accessToken', data.accessToken);
+      }
       if (data?.csrfToken) {
         csrfToken = data.csrfToken;
         if (typeof window !== 'undefined') {
