@@ -1000,6 +1000,7 @@ type RentabilidadData = {
   totales: { unidades: number; ingresos: number; costos: number; margen: number; km: number; costoOportunidad: number; pendienteCobro?: number; deudaFlota?: number; unidadesEnDeclive?: number };
   porTipo?: { tipo: string; unidades: number; margenMesProm: number; ingresoMesProm: number; costoFijoMesProm: number; costoVarKmProm: number | null; kmMesProm: number | null }[];
   alertas?: { tipo: string; severidad: 'ROJO' | 'AMARILLO'; titulo: string; detalle: string; vehiculoId?: string }[];
+  margenFlotaMeses?: { mes: string; margen: number }[];
 };
 
 type CashFlowData = {
@@ -1076,6 +1077,43 @@ function TabRentabilidad() {
           </ul>
         </div>
       )}
+
+      {/* Tendencia de margen de flota mes a mes */}
+      {(data.margenFlotaMeses || []).length >= 2 && (() => {
+        const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        const arr = data.margenFlotaMeses!;
+        const maxAbs = Math.max(...arr.map((m) => Math.abs(m.margen)), 1);
+        const ultimo = arr[arr.length - 1].margen;
+        const anterior = arr.length > 1 ? arr[arr.length - 2].margen : null;
+        const varPct = anterior !== null && anterior !== 0 ? Math.round(((ultimo - anterior) / Math.abs(anterior)) * 100) : null;
+        return (
+          <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-neutral-800 flex items-center gap-1">
+                Tendencia del negocio — margen de flota por mes
+                <Hint text="Margen total (ingresos − costos) de toda la flota por mes calendario. Verde = ganó, rojo = perdió. Mirá si los últimos meses suben o bajan." />
+              </span>
+              {varPct != null && (
+                <span className={`text-[10px] font-semibold ${ultimo >= anterior! ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {ultimo >= anterior! ? '▲' : '▼'} {Math.abs(varPct)}% vs mes anterior
+                </span>
+              )}
+            </div>
+            <div className="mt-2 flex items-end gap-1 h-14">
+              {arr.map((m) => {
+                const [y, mo] = m.mes.split('-');
+                const h = Math.max(4, Math.round((Math.abs(m.margen) / maxAbs) * 48));
+                return (
+                  <div key={m.mes} className="flex-1 flex flex-col items-center justify-end gap-0.5" title={`${MESES[+mo - 1]} ${y}: ${fmtMoney(m.margen)}`}>
+                    <div className={`w-full rounded-t ${m.margen >= 0 ? 'bg-emerald-500/80' : 'bg-red-500/80'}`} style={{ height: `${h}px` }} />
+                    <span className="text-[8px] text-neutral-400 leading-none">{MESES[+mo - 1]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* KPIs de flota */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">

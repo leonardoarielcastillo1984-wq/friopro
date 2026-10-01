@@ -1493,6 +1493,14 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       const arr = [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v.ing - v.cost);
       margenMesMap.set(vid, arr);
     }
+    // Flota completa: margen por mes calendario para el gráfico de tendencia
+    const fleetMesAcc = new Map<string, number>();
+    for (const r of bucketsRows as any[]) {
+      const k = new Date(r.mes).toISOString().slice(0, 7);
+      fleetMesAcc.set(k, (fleetMesAcc.get(k) || 0) + Number(r.ing || 0) - Number(r.cost || 0));
+    }
+    const margenFlotaMeses = [...fleetMesAcc.entries()].sort(([a], [b]) => a.localeCompare(b))
+      .map(([mes, margen]) => ({ mes, margen: Math.round(margen) }));
 
     // ── Financiación: cuotas pagadas/restantes derivadas de primerCuotaAt ──
     const cuotasInfo = (v: any) => {
@@ -1814,7 +1822,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     return reply.send({
       periodo: { desde, hasta, dias: Math.round(diasPeriodo * 10) / 10 },
       ingresoHoraFlota: ingresoHoraFlota != null ? Math.round(ingresoHoraFlota) : null,
-      unidades, talleres, conductores, clientes, totales, porTipo, alertas,
+      unidades, talleres, conductores, clientes, totales, porTipo, alertas, margenFlotaMeses,
     });
   });
 
