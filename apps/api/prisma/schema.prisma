@@ -505,6 +505,10 @@ model Tenant {
   flotaMultas         FlotaMulta[]
   flotaIngresos       FlotaIngreso[]
 
+  // Flota 360 — Servicios comerciales y asignaciones de unidades
+  flotaServicios        FlotaServicio[]
+  flotaServicioUnidades FlotaServicioUnidad[]
+
   // Flota 360 — Talleres externos / services oficiales
   flotaTalleres        FlotaTaller[]
   flotaTallerEventos   FlotaTallerEvento[]
