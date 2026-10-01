@@ -503,6 +503,7 @@ model Tenant {
   neumaticoMediciones NeumaticoMedicion[]
   flotaFacturas       FlotaFactura[]
   flotaMultas         FlotaMulta[]
+  flotaIngresos       FlotaIngreso[]
 
   // Flota 360 — Talleres externos / services oficiales
   flotaTalleres        FlotaTaller[]
@@ -7778,6 +7779,17 @@ model Vehiculo {
   // Valorización
   valorAdquisicion Float? // costo de compra del vehículo (para TCO / valorización)
 
+  // Financiación de la compra: anticipo (desembolso inicial) + cuotas
+  // mensuales del préstamo/prenda. cuotasPagadas se deriva de los meses
+  // transcurridos desde primerCuotaAt; la cuota mensual entra como costo
+  // fijo de la unidad en rentabilidad y cash flow.
+  fechaCompra    DateTime? @db.Timestamptz
+  anticipoCompra Float? // entrega inicial (puede ser mucho menor que valorAdquisicion)
+  cuotaMensual   Float?
+  cuotasTotales  Int?
+  primerCuotaAt  DateTime? @db.Timestamptz
+  valorResidual  Float? // reventa estimada — ROI / decisión de reemplazo
+
   // Estado
   // Situación administrativa: ACTIVO, INACTIVO, BAJA.
   // 'EN_TALLER' persiste como valor LEGACY de compatibilidad (espejo del
@@ -7834,6 +7846,7 @@ model Vehiculo {
   // Flota 360 — Facturas de gastos y multas
   facturas FlotaFactura[]
   multas   FlotaMulta[]
+  ingresos FlotaIngreso[]
 
   // Flota 360 — Historial de estadíos operativos (OPERATIVO/EN_TALLER/EN_REPARACION)
   estadoEventos VehiculoEstadoEvento[]
@@ -8499,6 +8512,7 @@ model VencimientoDocumento {
   fechaVto    DateTime
   alertaDias  Int      @default(30) // alertar N días antes
   renovado    Boolean  @default(false)
+  monto       Float? // costo estimado del trámite (para cash flow proyectado)
   notas       String?
 
   createdAt DateTime @default(now()) @db.Timestamptz
@@ -12018,6 +12032,35 @@ model FlotaMulta {
   @@index([conductorId])
   @@index([estado])
   @@map("flota_multas")
+}
+
+// Ingreso facturado por una unidad (viaje, contrato, período u otro).
+// Es la contraparte de los costos: habilita margen por unidad,
+// ingreso/km e ingreso/hora (base del costo de oportunidad por
+// indisponibilidad) en el reporte de rentabilidad.
+model FlotaIngreso {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehiculoId String   @db.Uuid
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  conductorId String? @db.Uuid
+
+  fecha       DateTime @default(now()) @db.Timestamptz
+  monto       Float
+  concepto    String   @default("VIAJE") // VIAJE, CONTRATO, PERIODO, OTRO
+  descripcion String?
+  origen      String?
+  destino     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([vehiculoId])
+  @@index([fecha])
+  @@map("flota_ingresos")
 }
 
 // ════════════════════════════════════════════════════════════════════════════

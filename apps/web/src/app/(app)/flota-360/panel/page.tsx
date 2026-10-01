@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import {
   LayoutDashboard, Users, TrendingUp, AlertTriangle, CheckCircle2,
   Truck, Wrench, CalendarClock, Disc, FileWarning, AlertOctagon,
-  DollarSign, Gauge, Medal, ChevronDown, ChevronUp, Fuel, Pencil, X,
+  DollarSign, Gauge, Medal, ChevronDown, ChevronUp, Fuel, Pencil, X, Landmark,
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════
@@ -73,7 +73,7 @@ function fmtMoney(n: number | null | undefined) {
 // ═══════════════════════════════════════════════════════════════
 
 export default function PanelPage() {
-  const [tab, setTab] = useState<'flota' | 'conductores' | 'ejecutivo' | 'performance'>('flota');
+  const [tab, setTab] = useState<'flota' | 'conductores' | 'ejecutivo' | 'performance' | 'rentabilidad'>('flota');
 
   return (
     <div className="space-y-3">
@@ -88,6 +88,7 @@ export default function PanelPage() {
           { key: 'conductores', label: 'Ranking de conductores', icon: Users },
           { key: 'ejecutivo', label: 'Ejecutivo', icon: TrendingUp },
           { key: 'performance', label: 'Performance', icon: Gauge },
+          { key: 'rentabilidad', label: 'Rentabilidad', icon: Landmark },
         ].map((t) => {
           const Icon = t.icon;
           return (
@@ -105,6 +106,7 @@ export default function PanelPage() {
       {tab === 'conductores' && <TabConductores />}
       {tab === 'ejecutivo' && <TabEjecutivo />}
       {tab === 'performance' && <TabPerformance />}
+      {tab === 'rentabilidad' && <TabRentabilidad />}
     </div>
   );
 }
@@ -834,6 +836,260 @@ function TabPerformance() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Tab Rentabilidad: margen por unidad, L/100km, preventivo vs
+// correctivo, fallas repetidas, costo de oportunidad, financiación,
+// talleres, conductores y cash flow proyectado.
+// ═══════════════════════════════════════════════════════════════
+
+type RentabilidadData = {
+  periodo: { desde: string; hasta: string; dias: number };
+  ingresoHoraFlota: number | null;
+  unidades: {
+    vehiculoId: string; dominio: string; tipo: string; marca: string | null; modelo: string | null; anio: number | null;
+    kmRecorridos: number | null; ingresos: number; ingresosCount: number;
+    costos: { total: number; combustible: number; mantenimiento: number; facturas: number; multas: number; cuotas: number };
+    margen: number; margenPorKm: number | null; ingresoPorKm: number | null;
+    lts100km: number | null; rendimientoPromKmL: number | null;
+    preventivo: { n: number; costo: number }; correctivo: { n: number; costo: number };
+    ratioPreventivo: number | null;
+    fallasRecurrentes: number; casosDefecto: number; episodios: number;
+    horasNoDisponible: number; horasEnServicio: number;
+    costoOportunidad: number | null;
+    financiacion: { cuotaMensual: number; cuotasTotales: number; cuotasPagadas: number; cuotasRestantes: number; saldoPendiente: number; costoPeriodo: number } | null;
+    valorAdquisicion: number | null; valorResidual: number | null;
+  }[];
+  talleres: { tallerId: string; nombre: string; ots: number; costoTotal: number; demoraPromHs: number | null; reclamos: number }[];
+  conductores: { conductorId: string; nombre: string; horasTrabajadas: number; jornadasExcesivas: number; rendimientoPromKmL: number | null; litrosCargados: number; multasPagadas: number }[];
+  totales: { unidades: number; ingresos: number; costos: number; margen: number; km: number; costoOportunidad: number };
+};
+
+type CashFlowData = {
+  horizonte: { desde: string; hasta: string; dias: number };
+  items: { tipo: string; fecha: string; vehiculo?: string; descripcion: string; monto: number | null; estimado: boolean }[];
+  total: number; sinMonto: number;
+};
+
+function TabRentabilidad() {
+  const [data, setData] = useState<RentabilidadData | null>(null);
+  const [cashFlow, setCashFlow] = useState<CashFlowData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [dias, setDias] = useState(90);
+
+  useEffect(() => {
+    setLoading(true);
+    const hasta = new Date();
+    const desde = new Date(hasta.getTime() - dias * 86400000);
+    Promise.all([
+      apiFetch<RentabilidadData>(`/fleet-ops/rentabilidad?desde=${desde.toISOString()}&hasta=${hasta.toISOString()}`),
+      apiFetch<CashFlowData>('/fleet-ops/cash-flow?dias=90').catch(() => null),
+    ]).then(([r, cf]) => { setData(r); setCashFlow(cf); }).finally(() => setLoading(false));
+  }, [dias]);
+
+  if (loading) return <div className="p-8 text-sm text-neutral-500">Cargando rentabilidad…</div>;
+  if (!data) return <div className="p-8 text-sm text-neutral-500">Sin datos</div>;
+
+  const fmtPct = (n: number | null) => n != null ? `${n}%` : '—';
+  const TIPO_ITEM: Record<string, { label: string; cls: string }> = {
+    VENCIMIENTO: { label: 'Vencimiento', cls: 'bg-amber-100 text-amber-700' },
+    CUOTA: { label: 'Cuota préstamo', cls: 'bg-blue-100 text-blue-700' },
+    NEUMATICO: { label: 'Neumático', cls: 'bg-violet-100 text-violet-700' },
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Selector de período */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-neutral-500">Período:</span>
+        {[30, 60, 90, 180].map((d) => (
+          <button key={d} onClick={() => setDias(d)}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium ${dias === d ? 'bg-blue-600 text-white' : 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50'}`}>
+            {d}d
+          </button>
+        ))}
+      </div>
+
+      {/* KPIs de flota */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[
+          { label: 'Ingresos', value: fmtMoney(data.totales.ingresos), cls: 'text-green-700' },
+          { label: 'Costos', value: fmtMoney(data.totales.costos), cls: 'text-red-600' },
+          { label: 'Margen', value: fmtMoney(data.totales.margen), cls: data.totales.margen >= 0 ? 'text-green-700' : 'text-red-600' },
+          { label: 'Km recorridos', value: data.totales.km.toLocaleString('es-AR'), cls: 'text-neutral-800' },
+          { label: 'Costo oportunidad (taller)', value: data.totales.costoOportunidad ? fmtMoney(data.totales.costoOportunidad) : '—', cls: 'text-amber-600' },
+        ].map((k) => (
+          <div key={k.label} className="rounded-lg border border-neutral-200 bg-white p-3">
+            <p className="text-[10px] font-medium text-neutral-500 uppercase tracking-wide">{k.label}</p>
+            <p className={`text-lg font-bold mt-1 ${k.cls}`}>{k.value}</p>
+          </div>
+        ))}
+      </div>
+      {data.totales.ingresos === 0 && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Sin ingresos cargados en el período. Registrá facturación por unidad en la ficha del vehículo (sección "Ingresos") para habilitar margen y costo de oportunidad.
+        </p>
+      )}
+
+      {/* Tabla por unidad */}
+      <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+        <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800">
+          Rentabilidad por unidad — {data.periodo.dias} días
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[10px] font-medium text-neutral-500 uppercase border-b border-neutral-100">
+                <th className="px-3 py-2">Unidad</th>
+                <th className="px-3 py-2 text-right">Km</th>
+                <th className="px-3 py-2 text-right">Ingresos</th>
+                <th className="px-3 py-2 text-right">Costos</th>
+                <th className="px-3 py-2 text-right">Margen</th>
+                <th className="px-3 py-2 text-right">$/km</th>
+                <th className="px-3 py-2 text-right">L/100km</th>
+                <th className="px-3 py-2 text-right">Prev/Corr</th>
+                <th className="px-3 py-2 text-right">Fallas rep.</th>
+                <th className="px-3 py-2 text-right">Hs no disp.</th>
+                <th className="px-3 py-2 text-right">Costo oport.</th>
+                <th className="px-3 py-2 text-right">Cuotas</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.unidades.map((u) => (
+                <tr key={u.vehiculoId} className="border-b border-neutral-50 hover:bg-neutral-50/50">
+                  <td className="px-3 py-2">
+                    <Link href={`/flota-360/vehiculos/${u.vehiculoId}`} className="font-semibold text-blue-700 hover:underline">{u.dominio}</Link>
+                    <p className="text-[10px] text-neutral-400">{u.tipo}{u.anio ? ` · ${u.anio}` : ''}</p>
+                  </td>
+                  <td className="px-3 py-2 text-right">{u.kmRecorridos != null ? u.kmRecorridos.toLocaleString('es-AR') : '—'}</td>
+                  <td className="px-3 py-2 text-right text-green-700">{u.ingresos > 0 ? fmtMoney(u.ingresos) : '—'}</td>
+                  <td className="px-3 py-2 text-right">{fmtMoney(u.costos.total)}</td>
+                  <td className={`px-3 py-2 text-right font-bold ${u.margen >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(u.margen)}</td>
+                  <td className="px-3 py-2 text-right">{u.margenPorKm != null ? `$${u.margenPorKm}` : '—'}</td>
+                  <td className="px-3 py-2 text-right">{u.lts100km != null ? u.lts100km : '—'}</td>
+                  <td className="px-3 py-2 text-right">
+                    <span className="text-green-700">{u.preventivo.n}</span>
+                    <span className="text-neutral-400"> / </span>
+                    <span className={u.correctivo.n > u.preventivo.n ? 'text-red-600 font-semibold' : 'text-neutral-600'}>{u.correctivo.n}</span>
+                  </td>
+                  <td className={`px-3 py-2 text-right ${u.fallasRecurrentes > 0 ? 'text-amber-600 font-semibold' : ''}`}>{u.fallasRecurrentes || '—'}</td>
+                  <td className="px-3 py-2 text-right">{u.horasNoDisponible}</td>
+                  <td className="px-3 py-2 text-right text-amber-600">{u.costoOportunidad ? fmtMoney(u.costoOportunidad) : '—'}</td>
+                  <td className="px-3 py-2 text-right">
+                    {u.financiacion ? (
+                      <span title={`Cuota ${fmtMoney(u.financiacion.cuotaMensual)} — saldo ${fmtMoney(u.financiacion.saldoPendiente)}`}>
+                        {u.financiacion.cuotasPagadas}/{u.financiacion.cuotasTotales}
+                        <p className="text-[9px] text-neutral-400">{fmtMoney(u.financiacion.costoPeriodo)} período</p>
+                      </span>
+                    ) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Talleres */}
+        <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+          <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800">Talleres externos</div>
+          {data.talleres.length === 0 ? (
+            <p className="px-3 py-4 text-xs text-neutral-400">Sin OTs externas completadas en el período</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[10px] font-medium text-neutral-500 uppercase border-b border-neutral-100">
+                  <th className="px-3 py-2">Taller</th>
+                  <th className="px-3 py-2 text-right">OTs</th>
+                  <th className="px-3 py-2 text-right">Costo</th>
+                  <th className="px-3 py-2 text-right">Demora prom.</th>
+                  <th className="px-3 py-2 text-right">Reclamos</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.talleres.map((t) => (
+                  <tr key={t.tallerId} className="border-b border-neutral-50">
+                    <td className="px-3 py-2 font-medium">{t.nombre}</td>
+                    <td className="px-3 py-2 text-right">{t.ots}</td>
+                    <td className="px-3 py-2 text-right">{fmtMoney(t.costoTotal)}</td>
+                    <td className="px-3 py-2 text-right">{t.demoraPromHs != null ? `${Math.round(t.demoraPromHs / 24)}d` : '—'}</td>
+                    <td className={`px-3 py-2 text-right ${t.reclamos > 0 ? 'text-red-600 font-semibold' : ''}`}>{t.reclamos || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Conductores */}
+        <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+          <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800">Conductores</div>
+          {data.conductores.length === 0 ? (
+            <p className="px-3 py-4 text-xs text-neutral-400">Sin registros de jornada ni cargas en el período</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[10px] font-medium text-neutral-500 uppercase border-b border-neutral-100">
+                  <th className="px-3 py-2">Conductor</th>
+                  <th className="px-3 py-2 text-right">Hs trab.</th>
+                  <th className="px-3 py-2 text-right">km/L prom.</th>
+                  <th className="px-3 py-2 text-right">Litros</th>
+                  <th className="px-3 py-2 text-right">Jornadas &gt;12h</th>
+                  <th className="px-3 py-2 text-right">Multas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.conductores.map((c) => (
+                  <tr key={c.conductorId} className="border-b border-neutral-50">
+                    <td className="px-3 py-2 font-medium">{c.nombre}</td>
+                    <td className="px-3 py-2 text-right">{c.horasTrabajadas}</td>
+                    <td className="px-3 py-2 text-right">{c.rendimientoPromKmL ?? '—'}</td>
+                    <td className="px-3 py-2 text-right">{c.litrosCargados || '—'}</td>
+                    <td className={`px-3 py-2 text-right ${c.jornadasExcesivas > 0 ? 'text-amber-600 font-semibold' : ''}`}>{c.jornadasExcesivas || '—'}</td>
+                    <td className="px-3 py-2 text-right">{c.multasPagadas > 0 ? fmtMoney(c.multasPagadas) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* Cash flow proyectado */}
+      <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+        <div className="px-3 py-2 border-b border-neutral-200 flex items-center justify-between">
+          <span className="text-xs font-semibold text-neutral-800">Cash flow proyectado — próximos {cashFlow?.horizonte.dias ?? 90} días</span>
+          {cashFlow && (
+            <span className="text-xs">
+              <b className="text-red-600">{fmtMoney(cashFlow.total)}</b>
+              {cashFlow.sinMonto > 0 && <span className="text-neutral-400"> · {cashFlow.sinMonto} sin monto estimado</span>}
+            </span>
+          )}
+        </div>
+        {!cashFlow || cashFlow.items.length === 0 ? (
+          <p className="px-3 py-4 text-xs text-neutral-400">Sin egresos comprometidos en el horizonte</p>
+        ) : (
+          <table className="w-full text-xs">
+            <tbody>
+              {cashFlow.items.slice(0, 30).map((it, i) => {
+                const t = TIPO_ITEM[it.tipo] || { label: it.tipo, cls: 'bg-neutral-100 text-neutral-600' };
+                return (
+                  <tr key={i} className="border-b border-neutral-50">
+                    <td className="px-3 py-1.5 w-24 text-neutral-500">{new Date(it.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}</td>
+                    <td className="px-3 py-1.5 w-28"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${t.cls}`}>{t.label}</span></td>
+                    <td className="px-3 py-1.5">{it.vehiculo && <b className="mr-1">{it.vehiculo}</b>}{it.descripcion}</td>
+                    <td className="px-3 py-1.5 text-right font-medium">{it.monto != null ? fmtMoney(it.monto) : <span className="text-neutral-400">s/est.</span>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }

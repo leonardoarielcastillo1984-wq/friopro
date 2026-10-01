@@ -83,11 +83,14 @@ export default function VehiculoFichaPage() {
   const [comentario, setComentario] = useState<string | null>(null);
   const [editComentario, setEditComentario] = useState(false);
   const [comentarioInput, setComentarioInput] = useState('');
+  const [ingresos, setIngresos] = useState<any[]>([]);
+  const [ingresoForm, setIngresoForm] = useState({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '' });
+  const [ingresoSaving, setIngresoSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [c, t, e, cond, restr, comp, ep] = await Promise.all([
+      const [c, t, e, cond, restr, comp, ep, ing] = await Promise.all([
         apiFetch<any>(`/flota/vehiculos/${id}/completo`),
         apiFetch<any>(`/flota/vehiculos/${id}/twin`).catch(() => null),
         apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-historial`).catch(() => null),
@@ -95,9 +98,11 @@ export default function VehiculoFichaPage() {
         apiFetch<any>(`/fleet-ops/vehiculos/${id}/restricciones`).catch(() => null),
         apiFetch<any>(`/fleet-ops/vehiculos/${id}/estado-compuesto`).catch(() => null),
         apiFetch<any>(`/fleet-ops/vehiculos/${id}/indisponibilidad`).catch(() => null),
+        apiFetch<{ ingresos: any[] }>(`/flota/vehiculos/${id}/ingresos`).catch(() => ({ ingresos: [] })),
       ]);
       setCompleto(c);
       setTwin(t);
+      setIngresos(ing?.ingresos || []);
       setEstadoOp(e);
       setEstadoCompuesto(comp && !comp.error ? comp : null);
       setComentario(comp && !comp.error ? (comp.estadoComentario ?? null) : null);
@@ -125,7 +130,12 @@ export default function VehiculoFichaPage() {
       currentOdometer: v?.currentOdometer ?? '', conductorId: v?.conductorId || '',
       valorAdquisicion: v?.valorAdquisicion ?? '',
       presupuestoMensual: v?.presupuestoMensual ?? '',
-      fechaCompra: asset?.purchaseDate ? String(asset.purchaseDate).slice(0, 10) : '',
+      fechaCompra: v?.fechaCompra ? String(v.fechaCompra).slice(0, 10) : (asset?.purchaseDate ? String(asset.purchaseDate).slice(0, 10) : ''),
+      anticipoCompra: v?.anticipoCompra ?? '',
+      cuotaMensual: v?.cuotaMensual ?? '',
+      cuotasTotales: v?.cuotasTotales ?? '',
+      primerCuotaAt: v?.primerCuotaAt ? String(v.primerCuotaAt).slice(0, 10) : '',
+      valorResidual: v?.valorResidual ?? '',
       notas: v?.notas || '',
       motivo: '',
     });
@@ -159,6 +169,12 @@ export default function VehiculoFichaPage() {
           valorAdquisicion: editForm.valorAdquisicion !== '' ? Number(editForm.valorAdquisicion) : undefined,
           presupuestoMensual: editForm.presupuestoMensual !== '' ? Number(editForm.presupuestoMensual) : null,
           purchaseDate: editForm.fechaCompra ? new Date(editForm.fechaCompra + 'T00:00:00').toISOString() : undefined,
+          fechaCompra: editForm.fechaCompra ? new Date(editForm.fechaCompra + 'T00:00:00').toISOString() : null,
+          anticipoCompra: editForm.anticipoCompra !== '' ? Number(editForm.anticipoCompra) : null,
+          cuotaMensual: editForm.cuotaMensual !== '' ? Number(editForm.cuotaMensual) : null,
+          cuotasTotales: editForm.cuotasTotales !== '' ? Number(editForm.cuotasTotales) : null,
+          primerCuotaAt: editForm.primerCuotaAt ? new Date(editForm.primerCuotaAt + 'T00:00:00').toISOString() : null,
+          valorResidual: editForm.valorResidual !== '' ? Number(editForm.valorResidual) : null,
           conductorId: editForm.conductorId || null,
           notas: editForm.notas || undefined,
           motivo: editForm.motivo?.trim() || undefined,
@@ -519,8 +535,32 @@ export default function VehiculoFichaPage() {
           {v.presupuestoMensual != null && (
             <div className="fleet-fact"><p className="fleet-fact-label">Presupuesto mensual</p><p className="fleet-fact-value">$ {Number(v.presupuestoMensual).toLocaleString('es-AR')}</p></div>
           )}
-          {mant.asset?.purchaseDate && (
-            <div className="fleet-fact"><p className="fleet-fact-label">Fecha de compra</p><p className="fleet-fact-value">{fmtFecha(mant.asset.purchaseDate)}</p></div>
+          {(mant.asset?.purchaseDate || v.fechaCompra) && (
+            <div className="fleet-fact"><p className="fleet-fact-label">Fecha de compra</p><p className="fleet-fact-value">{fmtFecha(v.fechaCompra || mant.asset?.purchaseDate)}</p></div>
+          )}
+          {/* Financiación de la compra (si aplica) */}
+          {v.cuotaMensual != null && v.cuotasTotales != null && (() => {
+            const pagadas = v.primerCuotaAt
+              ? Math.min(v.cuotasTotales, Math.max(0, Math.floor((Date.now() - new Date(v.primerCuotaAt).getTime()) / (30.44 * 86400000)) + 1))
+              : 0;
+            const restantes = Math.max(0, v.cuotasTotales - pagadas);
+            return (
+              <>
+                {v.anticipoCompra != null && (
+                  <div className="fleet-fact"><p className="fleet-fact-label">Anticipo / entrega</p><p className="fleet-fact-value">$ {Number(v.anticipoCompra).toLocaleString('es-AR')}</p></div>
+                )}
+                <div className="fleet-fact">
+                  <p className="fleet-fact-label">Préstamo</p>
+                  <p className="fleet-fact-value">$ {Number(v.cuotaMensual).toLocaleString('es-AR')}/mes</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {pagadas}/{v.cuotasTotales} cuotas pagadas{restantes > 0 ? ` — restan ${restantes} (saldo ≈ $ ${(restantes * v.cuotaMensual).toLocaleString('es-AR')})` : ' — cancelado'}
+                  </p>
+                </div>
+              </>
+            );
+          })()}
+          {v.valorResidual != null && (
+            <div className="fleet-fact"><p className="fleet-fact-label">Valor residual</p><p className="fleet-fact-value">$ {Number(v.valorResidual).toLocaleString('es-AR')}</p></div>
           )}
           <div className="fleet-fact"><p className="fleet-fact-label">Costo por kilómetro</p><p className="text-4xl font-bold text-blue-700">{twinData?.costoPorKm != null ? `$ ${twinData.costoPorKm.toLocaleString('es-AR')}` : 'Sin datos'}</p></div>
           <div className="fleet-fact"><p className="fleet-fact-label">Costo acumulado registrado</p><p className="fleet-fact-value">{twinData?.costos6m != null ? `$ ${twinData.costos6m.toLocaleString('es-AR')}` : 'Sin datos'}</p></div>
@@ -705,10 +745,41 @@ export default function VehiculoFichaPage() {
       {/* Neumáticos: diagrama de ejes + montar/desmontar/presión/medición */}
       <NeumaticosTwin vehiculoId={v.id} odometro={v.currentOdometer ?? null} tipo={v.tipo} cantEjes={v.cantEjes} configEjes={v.configEjes} />
 
-      {/* Facturas y multas de la unidad */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Facturas, multas e ingresos de la unidad */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <FacturasPanel vehiculoId={v.id} />
         <MultasPanel vehiculoId={v.id} conductores={conductores} />
+        <section className="fleet-panel">
+          <header className="fleet-panel-heading">
+            <h2>Ingresos</h2>
+            <button onClick={() => setIngresoForm({ abierto: true, fecha: new Date().toISOString().slice(0, 10), monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '' })}
+              className="text-[11px] font-medium text-green-700 hover:underline">+ Registrar</button>
+          </header>
+          {ingresos.length === 0 ? (
+            <p className="text-xs text-neutral-400 px-1 pb-3">Sin ingresos registrados. Necesarios para el margen en Panel → Rentabilidad.</p>
+          ) : (
+            <div className="max-h-64 overflow-y-auto">
+              <table className="w-full text-xs">
+                <tbody>
+                  {ingresos.map((i) => (
+                    <tr key={i.id} className="border-b border-neutral-50">
+                      <td className="px-1 py-1.5 text-neutral-500 w-20">{new Date(i.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}</td>
+                      <td className="px-1 py-1.5">
+                        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 mr-1">{i.concepto}</span>
+                        {i.descripcion || [i.origen, i.destino].filter(Boolean).join(' → ') || '—'}
+                      </td>
+                      <td className="px-1 py-1.5 text-right font-semibold text-green-700 w-24">$ {Number(i.monto).toLocaleString('es-AR')}</td>
+                      <td className="px-1 py-1.5 w-6">
+                        <button onClick={async () => { if (window.confirm('¿Eliminar este ingreso?')) { await apiFetch(`/flota/ingresos/${i.id}`, { method: 'DELETE' }); load(); } }}
+                          className="text-neutral-300 hover:text-red-500"><X className="h-3 w-3" /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
 
       {/* Historial de cambios del registro maestro (trazabilidad) */}
@@ -852,6 +923,43 @@ export default function VehiculoFichaPage() {
                 <input type="number" min={0} step="0.01" value={editForm.presupuestoMensual} onChange={(e) => setEditForm({ ...editForm, presupuestoMensual: e.target.value })} placeholder="Tope de gasto mensual de la unidad" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 <p className="text-[10px] text-neutral-400 mt-0.5">Se compara contra el gasto real del mes en Panel → Ejecutivo.</p>
               </div>
+              {/* Financiación de la compra: si la unidad se pagó en cuotas,
+                  el anticipo es el desembolso inicial y cada cuota mensual
+                  entra como costo fijo en Rentabilidad y Cash flow. */}
+              <div className="col-span-2 rounded-md border border-neutral-200 bg-neutral-50/60 p-3">
+                <p className="text-[11px] font-semibold text-neutral-600 mb-2">Financiación (si la compró en cuotas)</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Anticipo / entrega ($)</label>
+                    <input type="number" min={0} step="0.01" value={editForm.anticipoCompra} onChange={(e) => setEditForm({ ...editForm, anticipoCompra: e.target.value })} placeholder="Desembolso inicial" className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Cuota mensual ($)</label>
+                    <input type="number" min={0} step="0.01" value={editForm.cuotaMensual} onChange={(e) => setEditForm({ ...editForm, cuotaMensual: e.target.value })} className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Cant. cuotas</label>
+                    <input type="number" min={0} step={1} value={editForm.cuotasTotales} onChange={(e) => setEditForm({ ...editForm, cuotasTotales: e.target.value })} placeholder="Ej: 24" className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Vence 1ra cuota</label>
+                    <input type="date" value={editForm.primerCuotaAt} onChange={(e) => setEditForm({ ...editForm, primerCuotaAt: e.target.value })} className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Valor residual ($)</label>
+                    <input type="number" min={0} step="0.01" value={editForm.valorResidual} onChange={(e) => setEditForm({ ...editForm, valorResidual: e.target.value })} placeholder="Reventa estimada" className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm" />
+                  </div>
+                </div>
+                {editForm.cuotaMensual !== '' && editForm.cuotasTotales !== '' && editForm.primerCuotaAt && (() => {
+                  const pagadas = Math.min(Number(editForm.cuotasTotales), Math.max(0, Math.floor((Date.now() - new Date(editForm.primerCuotaAt).getTime()) / (30.44 * 86400000)) + 1));
+                  const restantes = Math.max(0, Number(editForm.cuotasTotales) - pagadas);
+                  return (
+                    <p className="text-[10px] text-neutral-500 mt-2">
+                      Pagadas {pagadas} de {editForm.cuotasTotales} — restan <b>{restantes}</b> · saldo pendiente ≈ <b>$ {(restantes * Number(editForm.cuotaMensual)).toLocaleString('es-AR')}</b>
+                    </p>
+                  );
+                })()}
+              </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Conductor asignado</label>
                 <select value={editForm.conductorId} onChange={(e) => setEditForm({ ...editForm, conductorId: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
@@ -893,6 +1001,74 @@ export default function VehiculoFichaPage() {
           onClose={() => setShowCarga(false)}
           onSaved={load}
         />
+      )}
+
+      {/* Modal registrar ingreso */}
+      {ingresoForm.abierto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <h3 className="text-sm font-semibold flex items-center gap-1.5"><DollarSign className="h-4 w-4 text-green-600" /> Registrar ingreso</h3>
+              <button onClick={() => setIngresoForm({ ...ingresoForm, abierto: false })}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Fecha</label>
+                  <input type="date" value={ingresoForm.fecha} onChange={(e) => setIngresoForm({ ...ingresoForm, fecha: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Monto ($)</label>
+                  <input type="number" min={0} step="0.01" value={ingresoForm.monto} onChange={(e) => setIngresoForm({ ...ingresoForm, monto: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" autoFocus />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Concepto</label>
+                <select value={ingresoForm.concepto} onChange={(e) => setIngresoForm({ ...ingresoForm, concepto: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm">
+                  <option value="VIAJE">Viaje</option>
+                  <option value="CONTRATO">Contrato</option>
+                  <option value="PERIODO">Período</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Descripción</label>
+                <input value={ingresoForm.descripcion} onChange={(e) => setIngresoForm({ ...ingresoForm, descripcion: e.target.value })} placeholder="Ej: flete CABA → Rosario" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Origen</label>
+                  <input value={ingresoForm.origen} onChange={(e) => setIngresoForm({ ...ingresoForm, origen: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Destino</label>
+                  <input value={ingresoForm.destino} onChange={(e) => setIngresoForm({ ...ingresoForm, destino: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
+              <button onClick={() => setIngresoForm({ ...ingresoForm, abierto: false })} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
+              <button disabled={ingresoSaving || !ingresoForm.monto} onClick={async () => {
+                setIngresoSaving(true);
+                try {
+                  await apiFetch(`/flota/vehiculos/${v.id}/ingresos`, {
+                    method: 'POST',
+                    json: {
+                      fecha: ingresoForm.fecha || undefined,
+                      monto: Number(ingresoForm.monto),
+                      concepto: ingresoForm.concepto,
+                      descripcion: ingresoForm.descripcion || undefined,
+                      origen: ingresoForm.origen || undefined,
+                      destino: ingresoForm.destino || undefined,
+                    },
+                  });
+                  setIngresoForm({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '' });
+                  await load();
+                } finally { setIngresoSaving(false); }
+              }} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">{ingresoSaving ? 'Guardando…' : 'Registrar'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

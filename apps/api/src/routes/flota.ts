@@ -875,6 +875,13 @@ export default async function flotaRoutes(app: FastifyInstance) {
       maintenanceAssetId: z.string().uuid().optional().nullable(),
       currentOdometer: z.number().optional(),
       valorAdquisicion: z.number().optional().nullable(),
+      // Financiación de la compra (cuotas del préstamo/prenda)
+      fechaCompra: z.string().optional().nullable(),
+      anticipoCompra: z.number().nonnegative().optional().nullable(),
+      cuotaMensual: z.number().nonnegative().optional().nullable(),
+      cuotasTotales: z.number().int().min(0).optional().nullable(),
+      primerCuotaAt: z.string().optional().nullable(),
+      valorResidual: z.number().nonnegative().optional().nullable(),
       presupuestoMensual: z.number().nonnegative().optional().nullable(),
       notas: z.string().optional(),
       // Motivo/comentario de la modificación para la auditoría (no es columna del vehículo)
@@ -888,6 +895,14 @@ export default async function flotaRoutes(app: FastifyInstance) {
       maintenanceAssetId, currentOdometer, motivo, ...vehiculoFields
     } = body.data as any;
     delete vehiculoFields.motivo; // por si passthrough dejó alguna copia
+
+    // Fechas de financiación llegan como ISO string: normalizar a Date|null
+    // (diff de auditoría compara contra el valor previo que es Date).
+    for (const f of ['fechaCompra', 'primerCuotaAt']) {
+      if (vehiculoFields[f] !== undefined) {
+        vehiculoFields[f] = vehiculoFields[f] ? new Date(vehiculoFields[f]) : null;
+      }
+    }
 
     // El status manual es solo administrativo (ACTIVO/INACTIVO): 'EN_TALLER'
     // es un espejo derivado del episodio de indisponibilidad — se alcanza
@@ -1246,6 +1261,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       descripcion: z.string().optional(),
       fechaVto: z.string().min(1),
       alertaDias: z.number().int().default(30),
+      monto: z.number().nonnegative().optional().nullable(),
       notas: z.string().optional(),
     });
     const body = schema.safeParse(req.body);
@@ -1271,6 +1287,51 @@ export default async function flotaRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const { id } = req.params as any;
     await (app.prisma as any).vencimientoDocumento.deleteMany({ where: { id, tenantId } });
+    return reply.send({ ok: true });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // INGRESOS — facturación por unidad (viaje/contrato/período)
+  // ═══════════════════════════════════════════════════════════════
+
+  app.get('/vehiculos/:vehiculoId/ingresos', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { vehiculoId } = req.params as any;
+    const ingresos = await (app.prisma as any).flotaIngreso.findMany({
+      where: { tenantId, vehiculoId },
+      orderBy: { fecha: 'desc' },
+      take: 200,
+    });
+    return reply.send({ ingresos });
+  });
+
+  app.post('/vehiculos/:vehiculoId/ingresos', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { vehiculoId } = req.params as any;
+    const schema = z.object({
+      fecha: z.string().optional(),
+      monto: z.number().positive(),
+      concepto: z.enum(['VIAJE', 'CONTRATO', 'PERIODO', 'OTRO']).default('VIAJE'),
+      descripcion: z.string().optional(),
+      origen: z.string().optional(),
+      destino: z.string().optional(),
+      conductorId: z.string().uuid().optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const ingreso = await (app.prisma as any).flotaIngreso.create({
+      data: { ...body.data, vehiculoId, tenantId, fecha: body.data.fecha ? new Date(body.data.fecha) : new Date() },
+    });
+    return reply.code(201).send({ ingreso });
+  });
+
+  app.delete('/ingresos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    await (app.prisma as any).flotaIngreso.deleteMany({ where: { id, tenantId } });
     return reply.send({ ok: true });
   });
 
