@@ -23,7 +23,7 @@ ALTER TABLE flota_vehiculos ADD COLUMN IF NOT EXISTS "valorResidual" float8;  --
 -- ── 2) Ingresos por unidad ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS flota_ingresos (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenantId"    uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  "tenantId"    uuid NOT NULL REFERENCES "Tenant"(id) ON DELETE CASCADE,
   "vehiculoId"  uuid NOT NULL REFERENCES flota_vehiculos(id) ON DELETE CASCADE,
   "conductorId" uuid,
 
