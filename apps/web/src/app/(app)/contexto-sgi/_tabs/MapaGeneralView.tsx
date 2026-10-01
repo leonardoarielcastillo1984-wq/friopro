@@ -145,7 +145,8 @@ export default function MapaGeneralView({
   onDeleteProcess: (p: GenProcess) => void;
   onNewProcess: (mapId: string, parentId: string | null) => void;
   onOpenLinks: () => void;
-  onNewMap: () => void;
+  // opts.mapBand pre-setea la banda del mapa nuevo (botón "+" del header de cada banda)
+  onNewMap: (opts?: { mapBand?: Band | null }) => void;
   onEditMap: (m: GenMap) => void;
   onDeleteMap: (m: GenMap) => void;
   // Cuando viene seteado, la vista muestra SOLO mapas de esa norma (pestañas ISO/IATF)
@@ -462,6 +463,15 @@ export default function MapaGeneralView({
           <Icon className={`h-4 w-4 ${meta.text}`} aria-hidden />
           <span className={`text-xs font-bold ${meta.text}`}>{meta.label}</span>
           <span className="text-[11px] text-neutral-400">{meta.desc}</span>
+          <button
+            type="button"
+            onClick={() => onNewMap({ mapBand: band })}
+            title={`Agregar mapa a ${meta.label}`}
+            aria-label={`Agregar mapa a ${meta.label}`}
+            className="ml-auto h-6 w-6 rounded-md border border-neutral-300/70 bg-white/80 flex items-center justify-center text-neutral-400 hover:text-indigo-600 hover:border-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+          </button>
         </div>
         {children}
       </section>
@@ -866,7 +876,7 @@ export default function MapaGeneralView({
             <Layers className="h-10 w-10 text-neutral-300 mb-3" aria-hidden />
             <p className="text-sm font-medium text-neutral-500">Todavía no hay mapas de procesos</p>
             <p className="text-xs text-neutral-400 mt-1 mb-4">Creá mapas para ver el mapa general de la organización.</p>
-            <button type="button" onClick={onNewMap} className="px-4 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
+            <button type="button" onClick={() => onNewMap()} className="px-4 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
               Crear primer mapa
             </button>
           </div>

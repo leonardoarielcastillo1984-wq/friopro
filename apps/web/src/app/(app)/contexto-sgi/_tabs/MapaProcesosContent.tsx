@@ -1300,7 +1300,7 @@ export default function MapaProcesosContent() {
           onDeleteProcess={p => deleteProcessFromGeneral(p as Process)}
           onNewProcess={(mapId, parentId) => newProcessFromGeneral(mapId, parentId)}
           onOpenLinks={() => setShowGeneral(true)}
-          onNewMap={() => { setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '', norm: '' }); setShowMapForm(true); }}
+          onNewMap={opts => { setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: opts?.mapBand ?? '', norm: generalNormTab }); setShowMapForm(true); }}
           onEditMap={m => { setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI', mapBand: m.mapBand ?? '', norm: m.norm ?? '' }); setShowMapForm(true); }}
           onDeleteMap={m => deleteMap(m.id)}
           normLock={maps.some(m => m.norm) ? (generalNormTab || null) : null}
