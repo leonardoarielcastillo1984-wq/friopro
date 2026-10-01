@@ -478,6 +478,20 @@ export default function MapaGeneralView({
     );
   }
 
+  // Placeholder de banda vacía: mantiene la franja visible con CTA para agregar un mapa.
+  function BandEmpty({ band }: { band: Band }) {
+    const meta = BAND_META[band];
+    return (
+      <button
+        type="button"
+        onClick={() => onNewMap({ mapBand: band })}
+        className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-neutral-300 bg-white/40 py-3 text-xs text-neutral-400 hover:text-indigo-600 hover:border-indigo-300 hover:bg-white/70 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      >
+        <Plus className="h-3.5 w-3.5" aria-hidden /> Agregar mapa a {meta.label}
+      </button>
+    );
+  }
+
   // Raíl vertical Entradas / Resultados del mockup: flanquea solo el área de flujo.
   function FlowRail({ kind }: { kind: 'in' | 'out' }) {
     const isIn = kind === 'in';
@@ -897,48 +911,48 @@ export default function MapaGeneralView({
           <div className="flex-1 overflow-auto">
             <div className="space-y-3 min-w-[960px] pb-4">
               {/* Banda 1: Estratégicos — cards simples full-width */}
-              {bands.STRATEGIC.length > 0 && (
-                <BandSection band="STRATEGIC">
+              <BandSection band="STRATEGIC">
+                {bands.STRATEGIC.length === 0 ? <BandEmpty band="STRATEGIC" /> : (
                   <div className="flex flex-wrap gap-2">
                     {bands.STRATEGIC.map(m => <Fragment key={m.id}>{MapCard({ map: m, band: 'STRATEGIC' })}</Fragment>)}
                   </div>
-                </BandSection>
-              )}
+                )}
+              </BandSection>
 
               {/* Área de flujo: Entradas | Operativos + Comercial | Resultados */}
               <div className="flex items-stretch gap-3">
                 {FlowRail({ kind: 'in' })}
                 <div className="flex-1 space-y-3 min-w-0">
-                  {bands.OPERATIONAL.length > 0 && (
-                    <BandSection band="OPERATIONAL">
+                  <BandSection band="OPERATIONAL">
+                    {bands.OPERATIONAL.length === 0 ? <BandEmpty band="OPERATIONAL" /> : (
                       <div className="space-y-1.5">
                         {bands.OPERATIONAL.map((m, i) => (
                           <Fragment key={m.id}>{MapBranch({ map: m, band: 'OPERATIONAL', tint: BRANCH_TINTS[i % BRANCH_TINTS.length] })}</Fragment>
                         ))}
                       </div>
-                    </BandSection>
-                  )}
-                  {bands.COMMERCIAL.length > 0 && (
-                    <BandSection band="COMMERCIAL">
+                    )}
+                  </BandSection>
+                  <BandSection band="COMMERCIAL">
+                    {bands.COMMERCIAL.length === 0 ? <BandEmpty band="COMMERCIAL" /> : (
                       <div className="space-y-1.5">
                         {bands.COMMERCIAL.map(m => (
                           <Fragment key={m.id}>{MapBranch({ map: m, band: 'COMMERCIAL', tint: '' })}</Fragment>
                         ))}
                       </div>
-                    </BandSection>
-                  )}
+                    )}
+                  </BandSection>
                 </div>
                 {FlowRail({ kind: 'out' })}
               </div>
 
               {/* Banda 4: Soporte — cards simples full-width */}
-              {bands.SUPPORT.length > 0 && (
-                <BandSection band="SUPPORT">
+              <BandSection band="SUPPORT">
+                {bands.SUPPORT.length === 0 ? <BandEmpty band="SUPPORT" /> : (
                   <div className="flex flex-wrap gap-2">
                     {bands.SUPPORT.map(m => <Fragment key={m.id}>{MapCard({ map: m, band: 'SUPPORT' })}</Fragment>)}
                   </div>
-                </BandSection>
-              )}
+                )}
+              </BandSection>
             </div>
           </div>
         )}
