@@ -18,6 +18,7 @@ import { SugerenciaBot } from '@/components/clima/SugerenciaBot';
 import { BackButton } from './BackButton';
 import ImpersonationBanner, { getImpersonationState } from '@/components/ImpersonationBanner';
 import GlobalExportFAB from '@/components/GlobalExportFAB';
+import FeedbackBot from '@/components/FeedbackBot';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -141,8 +142,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
         </>
       )}
 
-      {/* Buzón de sugerencias global */}
+      {/* Buzón de sugerencias interno (RRHH) */}
       <SugerenciaBot />
+
+      {/* Sugerencias al desarrollador (llega por mail a soporte) */}
+      <FeedbackBot />
 
       {/* Botón flotante de exportación PDF — disponible en todos los módulos */}
       <GlobalExportFAB />

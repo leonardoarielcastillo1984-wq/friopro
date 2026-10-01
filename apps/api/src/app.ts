@@ -128,6 +128,7 @@ import { registerCompanyRoutes } from './routes/register-company.js';
 import { workspacesRoutes } from './routes/workspaces.js';
 import { registerSupplierRoutes } from './routes/suppliers.js';
 import { registerHelpRoutes } from './routes/help.js';
+import { registerFeedbackRoutes } from './routes/feedback.js';
 import { demoRoutes } from './routes/demo.js';
 import { startNormativeWorker, startAuditWorker, recoverStuckNormatives } from './jobs/queue.js';
 import { startEmailWorker } from './jobs/emailQueue.js';
@@ -523,6 +524,7 @@ await app.register(digitalTwinRoutes, { prefix: '/digital-twin' });
   await app.register(calendarRoutes, { prefix: '/calendar' });
   await app.register(gestionCambiosRoutes, { prefix: '/gestion-cambios' });
   await app.register(registerHelpRoutes, { prefix: '/help' });
+  await app.register(registerFeedbackRoutes, { prefix: '/feedback' });
   await app.register(demoRoutes);
   // SEH360 independent routes
   await registerSeh360AuthRoutes(app);

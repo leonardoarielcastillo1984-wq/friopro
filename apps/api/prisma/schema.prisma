@@ -12586,3 +12586,30 @@ model VehiculoHistorialCambio {
   @@index([tenantId, createdAt])
   @@map("flota_vehiculo_historial_cambios")
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// FEEDBACK — sugerencias al desarrollador desde cualquier usuario (ícono 💡).
+// Se guardan acá Y se reenvían por mail a soporte.
+// ════════════════════════════════════════════════════════════════════════════
+model FeedbackSugerencia {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid // escalar, sin relación — patrón aditivo
+
+  tipo    String // SUGERENCIA, ERROR, PREGUNTA
+  mensaje String
+  pagina  String? // URL donde estaba el usuario
+
+  usuarioId     String?  @db.Uuid
+  usuarioNombre String?
+  usuarioEmail  String?
+
+  leido      Boolean   @default(false)
+  respondida Boolean   @default(false) // si se le contestó al usuario por mail
+  notasDev   String?   // anotaciones internas del desarrollador
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("feedback_sugerencias")
+}
