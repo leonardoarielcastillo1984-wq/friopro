@@ -1133,24 +1133,33 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const kmTopeMap = new Map((kmTope as any[]).map((r: any) => [r.vehiculoId, Number(r.odo)]));
     const kmRangoMap = new Map((kmRango as any[]).map((r: any) => [r.vehiculoId, { min: Number(r.min_odo), max: Number(r.max_odo) }]));
 
-    // ── Agregados del período: ingresos, litros, costos, OTs, defectos ──
+    // ── Agregados: período (FILTER fecha>$2) + lifetime (≤$3) para payback ──
     const [ingresosRows, combustRows, otsRows, defectosRows, episodiosRows] = await Promise.all([
       prisma().$queryRawUnsafe(`
-        SELECT "vehiculoId", SUM(monto) AS total, COUNT(*)::int AS n
-        FROM flota_ingresos WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3
+        SELECT "vehiculoId",
+               SUM(monto) FILTER (WHERE fecha > $2) AS total,
+               COUNT(*) FILTER (WHERE fecha > $2)::int AS n,
+               COUNT(DISTINCT fecha::date) FILTER (WHERE fecha > $2)::int AS dias_facturados,
+               SUM(monto) FILTER (WHERE fecha > $2 AND "cobradoAt" IS NULL) AS pend_cobro,
+               SUM(monto) AS total_lt
+        FROM flota_ingresos WHERE "tenantId" = $1 AND fecha <= $3
         GROUP BY "vehiculoId"`, tenantId, desde, hasta).catch(() => []),
       prisma().$queryRawUnsafe(`
         SELECT "vehiculoId",
-               SUM(litros) AS litros, SUM("costoTotal") AS costo,
-               AVG(rendimiento) AS rendimiento_prom
-        FROM flota_combustible WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3
+               SUM(litros) FILTER (WHERE fecha > $2) AS litros,
+               SUM("costoTotal") FILTER (WHERE fecha > $2) AS costo,
+               SUM("costoTotal") AS costo_lt,
+               AVG(rendimiento) FILTER (WHERE fecha > $2) AS rendimiento_prom
+        FROM flota_combustible WHERE "tenantId" = $1 AND fecha <= $3
         GROUP BY "vehiculoId"`, tenantId, desde, hasta).catch(() => []),
       assetIds.length ? prisma().$queryRawUnsafe(`
         SELECT "assetId", type,
-               COUNT(*)::int AS n, SUM("totalCost") AS costo
+               COUNT(*) FILTER (WHERE "completedAt" > $2)::int AS n,
+               SUM("totalCost") FILTER (WHERE "completedAt" > $2) AS costo,
+               SUM("totalCost") AS costo_lt
         FROM work_orders
         WHERE "tenantId" = $1 AND "assetId" = ANY($4::uuid[]) AND status = 'COMPLETED'
-          AND "completedAt" > $2 AND "completedAt" <= $3
+          AND "completedAt" <= $3
         GROUP BY "assetId", type`, tenantId, desde, hasta, assetIds).catch(() => []) : [],
       prisma().$queryRawUnsafe(`
         SELECT "vehiculoId", COUNT(*)::int AS casos,
@@ -1169,26 +1178,96 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const defectoMap = new Map((defectosRows as any[]).map((r: any) => [r.vehiculoId, r]));
     const episodioMap = new Map((episodiosRows as any[]).map((r: any) => [r.vehiculoId, r]));
 
-    // OTs por vehículo: preventive vs corrective
-    const otPorAsset = new Map<string, { preventivo: number; correctivo: number; costoPrev: number; costoCorr: number }>();
+    // OTs por vehículo: preventive vs corrective (período) + costo lifetime
+    const otPorAsset = new Map<string, { preventivo: number; correctivo: number; costoPrev: number; costoCorr: number; costoLt: number }>();
     for (const r of otsRows as any[]) {
-      const acc = otPorAsset.get(r.assetId) || { preventivo: 0, correctivo: 0, costoPrev: 0, costoCorr: 0 };
+      const acc = otPorAsset.get(r.assetId) || { preventivo: 0, correctivo: 0, costoPrev: 0, costoCorr: 0, costoLt: 0 };
       const esPrev = r.type === 'PREVENTIVE' || r.type === 'PREDICTIVE';
       if (esPrev) { acc.preventivo += r.n; acc.costoPrev += Number(r.costo || 0); }
       else { acc.correctivo += r.n; acc.costoCorr += Number(r.costo || 0); }
+      acc.costoLt += Number(r.costo_lt || 0);
       otPorAsset.set(r.assetId, acc);
     }
 
-    // ── Costos variables del período (anti-doble-conteo, igual que /performance) ──
+    // ── Costos: período + lifetime + fijos documentales mensuales ──
+    // Multas: solo las que paga la EMPRESA entran al costo de la unidad
+    // (responsablePago = 'CONDUCTOR' se le descuenta al chofer).
     const costosPorVeh = await prisma().$queryRawUnsafe(`
       SELECT v.id,
         COALESCE((SELECT SUM(CASE WHEN "tipoComprobante" = 'NOTA_CREDITO' THEN -total ELSE total END)
                   FROM flota_facturas WHERE "vehiculoId" = v.id AND fecha > $2 AND fecha <= $3
                     AND "workOrderId" IS NULL AND "tipoComprobante" <> 'PRESUPUESTO' AND (moneda = 'ARS' OR moneda IS NULL)), 0) AS facturas,
-        COALESCE((SELECT SUM(monto) FROM flota_multas WHERE "vehiculoId" = v.id AND estado = 'PAGADA' AND "pagadaAt" > $2 AND "pagadaAt" <= $3), 0) AS multas
+        COALESCE((SELECT SUM(monto) FROM flota_multas WHERE "vehiculoId" = v.id AND estado = 'PAGADA' AND "pagadaAt" > $2 AND "pagadaAt" <= $3
+                    AND ("responsablePago" IS NULL OR "responsablePago" = 'EMPRESA')), 0) AS multas,
+        COALESCE((SELECT SUM(CASE WHEN "tipoComprobante" = 'NOTA_CREDITO' THEN -total ELSE total END)
+                  FROM flota_facturas WHERE "vehiculoId" = v.id AND fecha <= $3
+                    AND "workOrderId" IS NULL AND "tipoComprobante" <> 'PRESUPUESTO' AND (moneda = 'ARS' OR moneda IS NULL)), 0) AS facturas_lt,
+        COALESCE((SELECT SUM(monto) FROM flota_multas WHERE "vehiculoId" = v.id AND estado = 'PAGADA' AND "pagadaAt" <= $3
+                    AND ("responsablePago" IS NULL OR "responsablePago" = 'EMPRESA')), 0) AS multas_lt
       FROM flota_vehiculos v WHERE v."tenantId" = $1 AND v.id = ANY($4::uuid[])`,
       tenantId, desde, hasta, ids).catch(() => []);
     const costoMap = new Map((costosPorVeh as any[]).map((r: any) => [r.id, r]));
+
+    // Costo fijo documental mensual: vencimientos con monto (seguro, VTV,
+    // habilitaciones — gastos anuales/semestrales prorrateados a mes).
+    const fijosRows = await prisma().$queryRawUnsafe(`
+      SELECT "vehiculoId", SUM(monto) / 12.0 AS fijo_mes
+      FROM flota_vencimientos
+      WHERE "tenantId" = $1 AND renovado = false AND monto IS NOT NULL
+      GROUP BY "vehiculoId"`, tenantId).catch(() => []);
+    const fijoMap = new Map((fijosRows as any[]).map((r: any) => [r.vehiculoId, Number(r.fijo_mes || 0)]));
+
+    // Sueldo + cargas del conductor asignado (costo fijo de personal)
+    const conductoresDb = await (app.prisma as any).conductor.findMany({
+      where: { tenantId }, select: { id: true, costoMensual: true },
+    }).catch(() => []);
+    const conductorCostoMap = new Map((conductoresDb as any[]).map((c: any) => [c.id, Number(c.costoMensual || 0)]));
+
+    // Margen por cliente en el período
+    const clientesRows = await prisma().$queryRawUnsafe(`
+      SELECT cliente, SUM(monto) AS ingresos, COUNT(*)::int AS n
+      FROM flota_ingresos
+      WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3 AND cliente IS NOT NULL
+      GROUP BY cliente ORDER BY ingresos DESC`, tenantId, desde, hasta).catch(() => []);
+
+    // Buckets mensuales (últimos ~3 meses calendario) para detectar declive
+    const mesesDesde = new Date(hasta.getTime() - 100 * 86400000);
+    const bucketsRows = await prisma().$queryRawUnsafe(`
+      SELECT vid, mes, SUM(ing) AS ing, SUM(cost) AS cost FROM (
+        SELECT "vehiculoId" AS vid, date_trunc('month', fecha) AS mes, monto AS ing, 0::float8 AS cost
+          FROM flota_ingresos WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3
+        UNION ALL
+        SELECT "vehiculoId", date_trunc('month', fecha), 0, "costoTotal"
+          FROM flota_combustible WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3 AND "costoTotal" IS NOT NULL
+        UNION ALL
+        SELECT "vehiculoId", date_trunc('month', fecha), 0,
+               CASE WHEN "tipoComprobante" = 'NOTA_CREDITO' THEN -total ELSE total END
+          FROM flota_facturas WHERE "tenantId" = $1 AND fecha > $2 AND fecha <= $3
+            AND "workOrderId" IS NULL AND "tipoComprobante" <> 'PRESUPUESTO' AND (moneda = 'ARS' OR moneda IS NULL)
+        UNION ALL
+        SELECT "vehiculoId", date_trunc('month', "pagadaAt"), 0, monto
+          FROM flota_multas WHERE "tenantId" = $1 AND estado = 'PAGADA' AND "pagadaAt" > $2 AND "pagadaAt" <= $3
+            AND ("responsablePago" IS NULL OR "responsablePago" = 'EMPRESA')
+        UNION ALL
+        SELECT v.id, date_trunc('month', wo."completedAt"), 0, wo."totalCost"
+          FROM work_orders wo JOIN flota_vehiculos v ON v."maintenanceAssetId" = wo."assetId"
+          WHERE wo."tenantId" = $1 AND wo.status = 'COMPLETED' AND wo."completedAt" > $2 AND wo."completedAt" <= $3
+      ) src GROUP BY vid, mes`, tenantId, mesesDesde, hasta).catch(() => []);
+    // Por unidad: array de márgenes mensuales ordenado (más viejo → más nuevo)
+    const margenMesMap = new Map<string, number[]>();
+    const bucketAcc = new Map<string, Map<string, { ing: number; cost: number }>>();
+    for (const r of bucketsRows as any[]) {
+      const m = bucketAcc.get(r.vid) || new Map();
+      const k = new Date(r.mes).toISOString().slice(0, 7);
+      const acc = m.get(k) || { ing: 0, cost: 0 };
+      acc.ing += Number(r.ing || 0); acc.cost += Number(r.cost || 0);
+      m.set(k, acc);
+      bucketAcc.set(r.vid, m);
+    }
+    for (const [vid, m] of bucketAcc) {
+      const arr = [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v.ing - v.cost);
+      margenMesMap.set(vid, arr);
+    }
 
     // ── Financiación: cuotas pagadas/restantes derivadas de primerCuotaAt ──
     const cuotasInfo = (v: any) => {
@@ -1245,11 +1324,45 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       const costoFacturas = Math.round(Number(c.facturas || 0));
       const costoMultas = Math.round(Number(c.multas || 0));
       const costoCuotas = fin?.costoPeriodo || 0;
-      const costoTotal = costoCombustible + costoMant + costoFacturas + costoMultas + costoCuotas;
+      // Personal: sueldo+cargas del conductor asignado, prorrateado al período
+      const personalMes = v.conductorId ? (conductorCostoMap.get(v.conductorId) || 0) : 0;
+      const costoPersonal = Math.round(personalMes * (diasPeriodo / 30.44));
+      const costoTotal = costoCombustible + costoMant + costoFacturas + costoMultas + costoCuotas + costoPersonal;
       const margen = ingresos - costoTotal;
       const litros = Number(comb?.litros || 0);
       const lts100km = km && km > 0 && litros > 0 ? Math.round((litros / km) * 1000) / 10 : null;
       const horasNoDisp = Number(t.horasNoDisponible || 0);
+
+      // Punto de equilibrio mensual: cuánto debe facturar la unidad por
+      // mes para no perder plata (fijos + variable mensualizado).
+      const costoFijoMes = (fin && fin.cuotasRestantes > 0 ? fin.cuotaMensual : 0) + personalMes + (fijoMap.get(v.id) || 0);
+      const costoVariablePeriodo = costoCombustible + costoMant + costoFacturas + costoMultas;
+      const puntoEquilibrioMes = Math.round(costoFijoMes + costoVariablePeriodo / diasPeriodo * 30.44);
+      const bajoEquilibrio = (ingresos > 0 || costoTotal > 0) && (ingresos / diasPeriodo * 30.44) < puntoEquilibrioMes;
+
+      // Payback: margen operativo acumulado lifetime vs valor de compra
+      const ingresosLt = Math.round(Number(ing?.total_lt || 0));
+      const costosLt = Math.round(Number(comb?.costo_lt || 0) + (ot?.costoLt || 0) + Number(c.facturas_lt || 0) + Number(c.multas_lt || 0)
+        + (fin ? fin.cuotasPagadas * fin.cuotaMensual : 0) + Number(v.anticipoCompra || 0));
+      const margenLt = ingresosLt - costosLt;
+      const mesesDesdeCompra = v.fechaCompra ? Math.max(1, (hasta.getTime() - new Date(v.fechaCompra).getTime()) / (30.44 * 86400000)) : null;
+      const margenMesLt = mesesDesdeCompra ? margenLt / mesesDesdeCompra : null;
+      const payback = v.valorAdquisicion ? {
+        recuperado: Math.round(margenLt),
+        pct: Math.round((margenLt / v.valorAdquisicion) * 1000) / 10,
+        mesesEstimado: margenMesLt && margenMesLt > 0 ? Math.round(v.valorAdquisicion / margenMesLt) : null,
+      } : null;
+
+      // Declive: últimos 3 meses con margen negativo o en caída
+      const margenMeses = margenMesMap.get(v.id) || [];
+      const ultimos3 = margenMeses.slice(-3);
+      const enDeclive = ultimos3.length >= 3 && (ultimos3.every((m) => m < 0) || (ultimos3[0] > ultimos3[1] && ultimos3[1] > ultimos3[2] && ultimos3[2] < 0));
+
+      // Utilización comercial: días que facturó vs días hábiles
+      const diasHabiles = Math.round(diasPeriodo * 5 / 7);
+      const diasFacturados = Number(ing?.dias_facturados || 0);
+      const diasEnTaller = Math.round(horasNoDisp / 24);
+      const diasSinFacturar = Math.max(0, diasHabiles - diasFacturados - diasEnTaller);
 
       return {
         vehiculoId: v.id, dominio: v.dominio, tipo: v.tipo,
@@ -1260,6 +1373,7 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         costos: {
           total: costoTotal, combustible: costoCombustible, mantenimiento: costoMant,
           facturas: costoFacturas, multas: costoMultas, cuotas: costoCuotas,
+          personal: costoPersonal,
         },
         margen,
         margenPorKm: km && km > 0 ? Math.round((margen / km) * 100) / 100 : null,
@@ -1279,6 +1393,12 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
         financiacion: fin,
         valorAdquisicion: v.valorAdquisicion,
         valorResidual: v.valorResidual,
+        puntoEquilibrioMes, bajoEquilibrio,
+        pendienteCobro: Math.round(Number(ing?.pend_cobro || 0)),
+        payback,
+        enDeclive,
+        diasFacturados, diasSinFacturar,
+        margenMeses: margenMeses.map((m) => Math.round(m)),
       };
     }).sort((a: any, b: any) => b.margen - a.margen);
 
@@ -1330,6 +1450,13 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       multasPagadas: Math.round(Number(r.multas || 0)),
     }));
 
+    // Ingresos por cliente en el período (participación sobre facturado)
+    const totalIngClientes = (clientesRows as any[]).reduce((a: number, r: any) => a + Number(r.ingresos || 0), 0);
+    const clientes = (clientesRows as any[]).map((r: any) => ({
+      cliente: r.cliente, ingresos: Math.round(Number(r.ingresos || 0)), viajes: r.n,
+      share: totalIngClientes > 0 ? Math.round((Number(r.ingresos) / totalIngClientes) * 1000) / 10 : 0,
+    }));
+
     const totales = {
       unidades: unidades.length,
       ingresos: Math.round(unidades.reduce((a: number, u: any) => a + u.ingresos, 0)),
@@ -1337,12 +1464,15 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       margen: Math.round(unidades.reduce((a: number, u: any) => a + u.margen, 0)),
       km: Math.round(unidades.reduce((a: number, u: any) => a + (u.kmRecorridos || 0), 0)),
       costoOportunidad: Math.round(unidades.reduce((a: number, u: any) => a + (u.costoOportunidad || 0), 0)),
+      pendienteCobro: Math.round(unidades.reduce((a: number, u: any) => a + (u.pendienteCobro || 0), 0)),
+      deudaFlota: Math.round(unidades.reduce((a: number, u: any) => a + (u.financiacion?.saldoPendiente || 0), 0)),
+      unidadesEnDeclive: unidades.filter((u: any) => u.enDeclive).length,
     };
 
     return reply.send({
       periodo: { desde, hasta, dias: Math.round(diasPeriodo * 10) / 10 },
       ingresoHoraFlota: ingresoHoraFlota != null ? Math.round(ingresoHoraFlota) : null,
-      unidades, talleres, conductores, totales,
+      unidades, talleres, conductores, clientes, totales,
     });
   });
 
@@ -1375,19 +1505,40 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
       });
     }
 
-    // Cuotas de préstamos vigentes
+    // Cuotas de préstamos vigentes + deuda total de flota
     const financiados = await (app.prisma as any).vehiculo.findMany({
       where: { tenantId, cuotaMensual: { not: null }, cuotasTotales: { not: null } },
       select: { id: true, dominio: true, cuotaMensual: true, cuotasTotales: true, primerCuotaAt: true },
     }).catch(() => []);
+    let deudaFlota = 0;
     for (const v of financiados) {
       if (!v.primerCuotaAt || !v.cuotaMensual || !v.cuotasTotales) continue;
       const primera = new Date(v.primerCuotaAt);
+      const pagadas = Math.min(v.cuotasTotales, Math.max(0, Math.floor((hoy.getTime() - primera.getTime()) / (30.44 * 86400000)) + 1));
+      deudaFlota += Math.max(0, v.cuotasTotales - pagadas) * v.cuotaMensual;
       for (let i = 0; i < v.cuotasTotales; i++) {
         const vto = new Date(primera.getTime() + i * 30.44 * 86400000);
         if (vto < hoy || vto > limite) continue;
-        items.push({ tipo: 'CUOTA', fecha: vto, vehiculo: v.dominio, descripcion: `Cuota préstamo ${i + 1}/${v.cuotasTotales}`, monto: v.cuotaMensual, estimado: false });
+        items.push({ tipo: 'CUOTA', fecha: vto, vehiculo: v.dominio, descripcion: `Cuota préstamo ${i + 1}/${v.cuotasTotales}`, monto: v.cuotaMensual, estimado: false, entrada: false });
       }
+    }
+
+    // Cobros pendientes: ingresos registrados sin cobradoAt. Si no hay
+    // fecha de cobro estimada, se asume fecha + 30 días (plazo habitual).
+    const cobrosPend = await (app.prisma as any).flotaIngreso.findMany({
+      where: { tenantId, cobradoAt: null },
+      include: { vehiculo: { select: { dominio: true } } },
+      take: 500,
+    }).catch(() => []);
+    for (const c of cobrosPend) {
+      const fechaCobro = c.fechaCobroEstimada ? new Date(c.fechaCobroEstimada) : new Date(new Date(c.fecha).getTime() + 30 * 86400000);
+      if (fechaCobro > limite) continue;
+      items.push({
+        tipo: 'COBRO', fecha: fechaCobro, vehiculo: c.vehiculo?.dominio,
+        descripcion: `Cobro pendiente — ${c.cliente || c.descripcion || c.concepto}`,
+        monto: c.monto, estimado: !c.fechaCobroEstimada, entrada: true,
+        vencido: fechaCobro < hoy,
+      });
     }
 
     // Cubiertas por debajo del mínimo legal (2mm) montadas — reposición próxima
@@ -1407,11 +1558,16 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     }
 
     items.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
-    const totalEstimado = items.reduce((a, i) => a + (i.monto || 0), 0);
+    const totalEgresos = items.filter(i => !i.entrada).reduce((a, i) => a + (i.monto || 0), 0);
+    const totalCobros = items.filter(i => i.entrada).reduce((a, i) => a + (i.monto || 0), 0);
 
     return reply.send({
       horizonte: { desde: hoy, hasta: limite, dias: diasNum },
-      items, total: Math.round(totalEstimado),
+      items,
+      total: Math.round(totalEgresos),
+      totalCobros: Math.round(totalCobros),
+      neto: Math.round(totalCobros - totalEgresos),
+      deudaFlota: Math.round(deudaFlota),
       sinMonto: items.filter(i => i.monto == null).length,
     });
   });

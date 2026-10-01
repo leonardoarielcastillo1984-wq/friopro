@@ -84,7 +84,7 @@ export default function VehiculoFichaPage() {
   const [editComentario, setEditComentario] = useState(false);
   const [comentarioInput, setComentarioInput] = useState('');
   const [ingresos, setIngresos] = useState<any[]>([]);
-  const [ingresoForm, setIngresoForm] = useState({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '' });
+  const [ingresoForm, setIngresoForm] = useState({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '', cliente: '', fechaCobroEstimada: '', cobrado: false });
   const [ingresoSaving, setIngresoSaving] = useState(false);
 
   const load = async () => {
@@ -752,8 +752,8 @@ export default function VehiculoFichaPage() {
         <section className="fleet-panel">
           <header className="fleet-panel-heading">
             <h2>Ingresos</h2>
-            <button onClick={() => setIngresoForm({ abierto: true, fecha: new Date().toISOString().slice(0, 10), monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '' })}
-              className="text-[11px] font-medium text-green-700 hover:underline">+ Registrar</button>
+            <button onClick={() => setIngresoForm({ abierto: true, fecha: new Date().toISOString().slice(0, 10), monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '', cliente: '', fechaCobroEstimada: '', cobrado: false })}
+              className="text-[11px] font-medium text-green-700 hover:underline" title="Facturación de la unidad: viajes, contratos o períodos. Alimenta el margen en Panel → Rentabilidad.">+ Registrar</button>
           </header>
           {ingresos.length === 0 ? (
             <p className="text-xs text-neutral-400 px-1 pb-3">Sin ingresos registrados. Necesarios para el margen en Panel → Rentabilidad.</p>
@@ -767,6 +767,15 @@ export default function VehiculoFichaPage() {
                       <td className="px-1 py-1.5">
                         <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 mr-1">{i.concepto}</span>
                         {i.descripcion || [i.origen, i.destino].filter(Boolean).join(' → ') || '—'}
+                        {i.cliente && <p className="text-[9px] text-blue-600">{i.cliente}</p>}
+                      </td>
+                      <td className="px-1 py-1.5 w-16">
+                        <button
+                          title={i.cobradoAt ? `Cobrado el ${new Date(i.cobradoAt).toLocaleDateString('es-AR')}` : 'Pendiente de cobro — clic para marcar cobrado'}
+                          onClick={async () => { await apiFetch(`/flota/ingresos/${i.id}`, { method: 'PATCH', json: { cobrado: !i.cobradoAt } }); load(); }}
+                          className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${i.cobradoAt ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {i.cobradoAt ? '✓ cobrado' : 'pendiente'}
+                        </button>
                       </td>
                       <td className="px-1 py-1.5 text-right font-semibold text-green-700 w-24">$ {Number(i.monto).toLocaleString('es-AR')}</td>
                       <td className="px-1 py-1.5 w-6">
@@ -1045,6 +1054,20 @@ export default function VehiculoFichaPage() {
                   <input value={ingresoForm.destino} onChange={(e) => setIngresoForm({ ...ingresoForm, destino: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Cliente</label>
+                <input value={ingresoForm.cliente} onChange={(e) => setIngresoForm({ ...ingresoForm, cliente: e.target.value })} placeholder="Para margen por cliente en Rentabilidad" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Cobro estimado</label>
+                  <input type="date" value={ingresoForm.fechaCobroEstimada} onChange={(e) => setIngresoForm({ ...ingresoForm, fechaCobroEstimada: e.target.value })} title="Si se deja vacío se asume fecha + 30 días" className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-neutral-600 pb-1.5">
+                  <input type="checkbox" checked={ingresoForm.cobrado} onChange={(e) => setIngresoForm({ ...ingresoForm, cobrado: e.target.checked })} className="rounded" />
+                  Ya cobrado
+                </label>
+              </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
               <button onClick={() => setIngresoForm({ ...ingresoForm, abierto: false })} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
@@ -1060,9 +1083,12 @@ export default function VehiculoFichaPage() {
                       descripcion: ingresoForm.descripcion || undefined,
                       origen: ingresoForm.origen || undefined,
                       destino: ingresoForm.destino || undefined,
+                      cliente: ingresoForm.cliente || undefined,
+                      fechaCobroEstimada: ingresoForm.fechaCobroEstimada || undefined,
+                      cobradoAt: ingresoForm.cobrado ? new Date().toISOString() : undefined,
                     },
                   });
-                  setIngresoForm({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '' });
+                  setIngresoForm({ abierto: false, fecha: '', monto: '', concepto: 'VIAJE', descripcion: '', origen: '', destino: '', cliente: '', fechaCobroEstimada: '', cobrado: false });
                   await load();
                 } finally { setIngresoSaving(false); }
               }} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">{ingresoSaving ? 'Guardando…' : 'Registrar'}</button>

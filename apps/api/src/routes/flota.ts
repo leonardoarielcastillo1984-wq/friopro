@@ -1201,6 +1201,7 @@ export default async function flotaRoutes(app: FastifyInstance) {
       licenciaVto: z.string().optional(),
       psicofisicoVto: z.string().optional(),
       notas: z.string().optional(),
+      costoMensual: z.number().nonnegative().optional().nullable(),
     });
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
@@ -1317,14 +1318,53 @@ export default async function flotaRoutes(app: FastifyInstance) {
       descripcion: z.string().optional(),
       origen: z.string().optional(),
       destino: z.string().optional(),
+      cliente: z.string().optional(),
+      fechaCobroEstimada: z.string().optional().nullable(),
+      cobradoAt: z.string().optional().nullable(),
       conductorId: z.string().uuid().optional().nullable(),
     });
     const body = schema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const { fecha, fechaCobroEstimada, cobradoAt, ...rest } = body.data;
     const ingreso = await (app.prisma as any).flotaIngreso.create({
-      data: { ...body.data, vehiculoId, tenantId, fecha: body.data.fecha ? new Date(body.data.fecha) : new Date() },
+      data: {
+        ...rest,
+        vehiculoId,
+        tenantId,
+        fecha: fecha ? new Date(fecha) : new Date(),
+        fechaCobroEstimada: fechaCobroEstimada ? new Date(fechaCobroEstimada) : null,
+        cobradoAt: cobradoAt ? new Date(cobradoAt) : null,
+      },
     });
     return reply.code(201).send({ ingreso });
+  });
+
+  // Marcar cobrado / editar datos de cobranza de un ingreso
+  app.patch('/ingresos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      cobrado: z.boolean().optional(), // true → cobradoAt=now, false → desmarcar
+      cobradoAt: z.string().optional().nullable(),
+      fechaCobroEstimada: z.string().optional().nullable(),
+      cliente: z.string().optional().nullable(),
+      descripcion: z.string().optional().nullable(),
+      monto: z.number().positive().optional(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos', details: body.error.errors });
+    const d = body.data as any;
+    const data: any = {};
+    if (d.cobrado === true && d.cobradoAt === undefined) data.cobradoAt = new Date();
+    else if (d.cobrado === false) data.cobradoAt = null;
+    if (d.cobradoAt !== undefined) data.cobradoAt = d.cobradoAt ? new Date(d.cobradoAt) : null;
+    if (d.fechaCobroEstimada !== undefined) data.fechaCobroEstimada = d.fechaCobroEstimada ? new Date(d.fechaCobroEstimada) : null;
+    if (d.cliente !== undefined) data.cliente = d.cliente || null;
+    if (d.descripcion !== undefined) data.descripcion = d.descripcion || null;
+    if (d.monto !== undefined) data.monto = d.monto;
+    await (app.prisma as any).flotaIngreso.updateMany({ where: { id, tenantId }, data });
+    return reply.send({ ok: true });
   });
 
   app.delete('/ingresos/:id', async (req: FastifyRequest, reply: FastifyReply) => {

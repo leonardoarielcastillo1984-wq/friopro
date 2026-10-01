@@ -8481,6 +8481,11 @@ model Conductor {
   status String  @default("ACTIVO") // ACTIVO, INACTIVO, SUSPENDIDO
   notas  String?
 
+  // Costo de personal: sueldo + cargas sociales mensuales. Se prorratea
+  // a la unidad asignada como costo fijo en el reporte de rentabilidad
+  // (es el componente de costo más grande de una unidad de transporte).
+  costoMensual Float?
+
   // Identidad verificada para el hub del chofer: PIN asignado por la empresa.
   // El QR identifica la unidad; el PIN acredita al conductor ante el servidor.
   pinHash    String?
@@ -12054,12 +12059,20 @@ model FlotaIngreso {
   descripcion String?
   origen      String?
   destino     String?
+  cliente     String? // habilita margen por cliente en rentabilidad
+
+  // Cobranza: un ingreso registrado no es ingreso cobrado. cobradoAt
+  // marca el cobro efectivo; fechaCobroEstimada alimenta el cash flow
+  // de entradas mientras esté pendiente.
+  cobradoAt          DateTime? @db.Timestamptz
+  fechaCobroEstimada DateTime? @db.Timestamptz
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([tenantId])
   @@index([vehiculoId])
   @@index([fecha])
+  @@index([cliente])
   @@map("flota_ingresos")
 }
 

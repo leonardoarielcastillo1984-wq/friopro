@@ -8,6 +8,7 @@ import {
   Truck, Wrench, CalendarClock, Disc, FileWarning, AlertOctagon,
   DollarSign, Gauge, Medal, ChevronDown, ChevronUp, Fuel, Pencil, X, Landmark,
 } from 'lucide-react';
+import { Hint } from '../_components/Hint';
 
 // ═══════════════════════════════════════════════════════════════
 // Tipos
@@ -84,15 +85,15 @@ export default function PanelPage() {
 
       <div className="flex items-center gap-0.5 border border-neutral-200 bg-white rounded-lg px-1 w-fit">
         {[
-          { key: 'flota', label: 'Flota', icon: LayoutDashboard },
-          { key: 'conductores', label: 'Ranking de conductores', icon: Users },
-          { key: 'ejecutivo', label: 'Ejecutivo', icon: TrendingUp },
-          { key: 'performance', label: 'Performance', icon: Gauge },
-          { key: 'rentabilidad', label: 'Rentabilidad', icon: Landmark },
+          { key: 'flota', label: 'Flota', icon: LayoutDashboard, hint: 'KPIs operativos y alertas activas de toda la flota' },
+          { key: 'conductores', label: 'Ranking de conductores', icon: Users, hint: 'Scorecard por chofer: infracciones, incidentes, presiones y rating' },
+          { key: 'ejecutivo', label: 'Ejecutivo', icon: TrendingUp, hint: 'Costo real del mes vs presupuesto y ranking de unidades por gasto' },
+          { key: 'performance', label: 'Performance', icon: Gauge, hint: 'Eficacia/eficiencia por unidad en la ventana operativa configurable' },
+          { key: 'rentabilidad', label: 'Rentabilidad', icon: Landmark, hint: 'Margen por unidad, punto de equilibrio, payback, clientes, talleres, conductores y cash flow' },
         ].map((t) => {
           const Icon = t.icon;
           return (
-            <button key={t.key} onClick={() => setTab(t.key as any)}
+            <button key={t.key} title={t.hint} onClick={() => setTab(t.key as any)}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md my-1 transition-colors ${
                 tab === t.key ? 'bg-blue-600 text-white' : 'text-neutral-500 hover:text-neutral-800'
               }`}>
@@ -852,7 +853,7 @@ type RentabilidadData = {
   unidades: {
     vehiculoId: string; dominio: string; tipo: string; marca: string | null; modelo: string | null; anio: number | null;
     kmRecorridos: number | null; ingresos: number; ingresosCount: number;
-    costos: { total: number; combustible: number; mantenimiento: number; facturas: number; multas: number; cuotas: number };
+    costos: { total: number; combustible: number; mantenimiento: number; facturas: number; multas: number; cuotas: number; personal?: number };
     margen: number; margenPorKm: number | null; ingresoPorKm: number | null;
     lts100km: number | null; rendimientoPromKmL: number | null;
     preventivo: { n: number; costo: number }; correctivo: { n: number; costo: number };
@@ -862,16 +863,23 @@ type RentabilidadData = {
     costoOportunidad: number | null;
     financiacion: { cuotaMensual: number; cuotasTotales: number; cuotasPagadas: number; cuotasRestantes: number; saldoPendiente: number; costoPeriodo: number } | null;
     valorAdquisicion: number | null; valorResidual: number | null;
+    puntoEquilibrioMes: number; bajoEquilibrio: boolean;
+    pendienteCobro: number;
+    payback: { recuperado: number; pct: number; mesesEstimado: number | null } | null;
+    enDeclive: boolean;
+    diasFacturados: number; diasSinFacturar: number;
+    margenMeses: number[];
   }[];
   talleres: { tallerId: string; nombre: string; ots: number; costoTotal: number; demoraPromHs: number | null; reclamos: number }[];
   conductores: { conductorId: string; nombre: string; horasTrabajadas: number; jornadasExcesivas: number; rendimientoPromKmL: number | null; litrosCargados: number; multasPagadas: number }[];
-  totales: { unidades: number; ingresos: number; costos: number; margen: number; km: number; costoOportunidad: number };
+  clientes: { cliente: string; ingresos: number; viajes: number; share: number }[];
+  totales: { unidades: number; ingresos: number; costos: number; margen: number; km: number; costoOportunidad: number; pendienteCobro?: number; deudaFlota?: number; unidadesEnDeclive?: number };
 };
 
 type CashFlowData = {
   horizonte: { desde: string; hasta: string; dias: number };
-  items: { tipo: string; fecha: string; vehiculo?: string; descripcion: string; monto: number | null; estimado: boolean }[];
-  total: number; sinMonto: number;
+  items: { tipo: string; fecha: string; vehiculo?: string; descripcion: string; monto: number | null; estimado: boolean; entrada?: boolean; vencido?: boolean }[];
+  total: number; totalCobros?: number; neto?: number; deudaFlota?: number; sinMonto: number;
 };
 
 function TabRentabilidad() {
@@ -893,11 +901,11 @@ function TabRentabilidad() {
   if (loading) return <div className="p-8 text-sm text-neutral-500">Cargando rentabilidad…</div>;
   if (!data) return <div className="p-8 text-sm text-neutral-500">Sin datos</div>;
 
-  const fmtPct = (n: number | null) => n != null ? `${n}%` : '—';
-  const TIPO_ITEM: Record<string, { label: string; cls: string }> = {
-    VENCIMIENTO: { label: 'Vencimiento', cls: 'bg-amber-100 text-amber-700' },
-    CUOTA: { label: 'Cuota préstamo', cls: 'bg-blue-100 text-blue-700' },
-    NEUMATICO: { label: 'Neumático', cls: 'bg-violet-100 text-violet-700' },
+  const TIPO_ITEM: Record<string, { label: string; cls: string; hint: string }> = {
+    VENCIMIENTO: { label: 'Vencimiento', cls: 'bg-amber-100 text-amber-700', hint: 'Documento que vence: VTV, seguro, habilitación…' },
+    CUOTA: { label: 'Cuota préstamo', cls: 'bg-blue-100 text-blue-700', hint: 'Cuota mensual del préstamo/prenda de la unidad' },
+    NEUMATICO: { label: 'Neumático', cls: 'bg-violet-100 text-violet-700', hint: 'Cubierta bajo mínimo legal — reposición próxima' },
+    COBRO: { label: 'Cobro', cls: 'bg-green-100 text-green-700', hint: 'Facturación registrada pendiente de cobro (entrada de plata)' },
   };
 
   return (
@@ -914,20 +922,27 @@ function TabRentabilidad() {
       </div>
 
       {/* KPIs de flota */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         {[
-          { label: 'Ingresos', value: fmtMoney(data.totales.ingresos), cls: 'text-green-700' },
-          { label: 'Costos', value: fmtMoney(data.totales.costos), cls: 'text-red-600' },
-          { label: 'Margen', value: fmtMoney(data.totales.margen), cls: data.totales.margen >= 0 ? 'text-green-700' : 'text-red-600' },
-          { label: 'Km recorridos', value: data.totales.km.toLocaleString('es-AR'), cls: 'text-neutral-800' },
-          { label: 'Costo oportunidad (taller)', value: data.totales.costoOportunidad ? fmtMoney(data.totales.costoOportunidad) : '—', cls: 'text-amber-600' },
+          { label: 'Ingresos', value: fmtMoney(data.totales.ingresos), cls: 'text-green-700', hint: 'Facturación registrada de todas las unidades en el período (ficha → Ingresos)' },
+          { label: 'Costos', value: fmtMoney(data.totales.costos), cls: 'text-red-600', hint: 'Combustible + mantenimiento + facturas + multas (empresa) + cuotas + sueldo del chofer' },
+          { label: 'Margen', value: fmtMoney(data.totales.margen), cls: data.totales.margen >= 0 ? 'text-green-700' : 'text-red-600', hint: 'Ingresos − costos del período. Negativo = la flota pierde plata' },
+          { label: 'Km recorridos', value: data.totales.km.toLocaleString('es-AR'), cls: 'text-neutral-800', hint: 'Km estimados por odómetro (cargas de combustible y bitácora)' },
+          { label: 'Por cobrar', value: fmtMoney(data.totales.pendienteCobro ?? 0), cls: 'text-blue-700', hint: 'Ingresos registrados aún no cobrados' },
+          { label: 'Deuda flota', value: data.totales.deudaFlota ? fmtMoney(data.totales.deudaFlota) : '—', cls: 'text-red-700', hint: 'Saldo pendiente de todos los préstamos/prendas de unidades' },
+          { label: 'Costo oportunidad', value: data.totales.costoOportunidad ? fmtMoney(data.totales.costoOportunidad) : '—', cls: 'text-amber-600', hint: 'Plata que dejó de entrar por unidades paradas en taller (ingreso/hora promedio × horas no disponibles)' },
         ].map((k) => (
-          <div key={k.label} className="rounded-lg border border-neutral-200 bg-white p-3">
-            <p className="text-[10px] font-medium text-neutral-500 uppercase tracking-wide">{k.label}</p>
+          <div key={k.label} className="rounded-lg border border-neutral-200 bg-white p-3" title={k.hint}>
+            <p className="text-[10px] font-medium text-neutral-500 uppercase tracking-wide flex items-center gap-1">{k.label} <Hint text={k.hint} /></p>
             <p className={`text-lg font-bold mt-1 ${k.cls}`}>{k.value}</p>
           </div>
         ))}
       </div>
+      {(data.totales.unidadesEnDeclive ?? 0) > 0 && (
+        <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <b>{data.totales.unidadesEnDeclive}</b> unidad{data.totales.unidadesEnDeclive === 1 ? '' : 'es'} en declive — 3 meses seguidos con margen negativo o en caída. Candidata{data.totales.unidadesEnDeclive === 1 ? '' : 's'} a vender o reasignar.
+        </p>
+      )}
       {data.totales.ingresos === 0 && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           Sin ingresos cargados en el período. Registrá facturación por unidad en la ficha del vehículo (sección "Ingresos") para habilitar margen y costo de oportunidad.
@@ -945,16 +960,16 @@ function TabRentabilidad() {
               <tr className="text-left text-[10px] font-medium text-neutral-500 uppercase border-b border-neutral-100">
                 <th className="px-3 py-2">Unidad</th>
                 <th className="px-3 py-2 text-right">Km</th>
-                <th className="px-3 py-2 text-right">Ingresos</th>
-                <th className="px-3 py-2 text-right">Costos</th>
-                <th className="px-3 py-2 text-right">Margen</th>
+                <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-1">Ingresos <Hint text="Facturación de la unidad en el período (ficha → Ingresos)" /></span></th>
+                <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-1">Costos <Hint text="Combustible + mantenimiento + facturas + multas (empresa) + cuotas préstamo + sueldo chofer" /></span></th>
+                <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-1">Margen <Hint text="Ingresos − costos. Rojo = la unidad pierde plata" /></span></th>
+                <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-1">Equilibrio <Hint text="Facturación mensual mínima para no perder: fijos (cuota+sueldo+documentos) + variable estimado por km" /></span></th>
                 <th className="px-3 py-2 text-right">$/km</th>
-                <th className="px-3 py-2 text-right">L/100km</th>
-                <th className="px-3 py-2 text-right">Prev/Corr</th>
-                <th className="px-3 py-2 text-right">Fallas rep.</th>
-                <th className="px-3 py-2 text-right">Hs no disp.</th>
-                <th className="px-3 py-2 text-right">Costo oport.</th>
-                <th className="px-3 py-2 text-right">Cuotas</th>
+                <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-1">L/100km <Hint text="Consumo: litros cargados ÷ km × 100. Menor = mejor" /></span></th>
+                <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-1">Prev/Corr <Hint text="OTs preventivas vs correctivas. Lo ideal: más verde que rojo" /></span></th>
+                <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-1">Uso <Hint text="Días que facturó vs días hábiles sin facturar (sin carga) del período" /></span></th>
+                <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-1">Payback <Hint text="% del valor de compra ya recuperado vía margen acumulado desde la compra" /></span></th>
+                <th className="px-3 py-2 text-right"><span className="inline-flex items-center gap-1">Cuotas <Hint text="Cuotas de préstamo pagadas/totales y costo del período" /></span></th>
               </tr>
             </thead>
             <tbody>
@@ -962,12 +977,23 @@ function TabRentabilidad() {
                 <tr key={u.vehiculoId} className="border-b border-neutral-50 hover:bg-neutral-50/50">
                   <td className="px-3 py-2">
                     <Link href={`/flota-360/vehiculos/${u.vehiculoId}`} className="font-semibold text-blue-700 hover:underline">{u.dominio}</Link>
+                    {u.enDeclive && <span title="3 meses seguidos con margen negativo o en caída" className="ml-1 rounded bg-red-100 px-1 py-0.5 text-[9px] font-semibold text-red-700">EN DECLIVE</span>}
                     <p className="text-[10px] text-neutral-400">{u.tipo}{u.anio ? ` · ${u.anio}` : ''}</p>
                   </td>
                   <td className="px-3 py-2 text-right">{u.kmRecorridos != null ? u.kmRecorridos.toLocaleString('es-AR') : '—'}</td>
-                  <td className="px-3 py-2 text-right text-green-700">{u.ingresos > 0 ? fmtMoney(u.ingresos) : '—'}</td>
-                  <td className="px-3 py-2 text-right">{fmtMoney(u.costos.total)}</td>
+                  <td className="px-3 py-2 text-right text-green-700">{u.ingresos > 0 ? fmtMoney(u.ingresos) : '—'}
+                    {u.pendienteCobro > 0 && <p className="text-[9px] text-blue-500">{fmtMoney(u.pendienteCobro)} s/cobrar</p>}
+                  </td>
+                  <td className="px-3 py-2 text-right" title={`Comb ${fmtMoney(u.costos.combustible)} · Mant ${fmtMoney(u.costos.mantenimiento)} · Fact ${fmtMoney(u.costos.facturas)} · Multas ${fmtMoney(u.costos.multas)} · Cuotas ${fmtMoney(u.costos.cuotas)} · Personal ${fmtMoney(u.costos.personal || 0)}`}>{fmtMoney(u.costos.total)}</td>
                   <td className={`px-3 py-2 text-right font-bold ${u.margen >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(u.margen)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {u.puntoEquilibrioMes > 0 ? (
+                      <span className={u.bajoEquilibrio ? 'text-red-600 font-semibold' : 'text-neutral-600'} title={u.bajoEquilibrio ? 'Está facturando por debajo del punto de equilibrio' : 'Factura por encima del equilibrio'}>
+                        {fmtMoney(u.puntoEquilibrioMes)}
+                        {u.bajoEquilibrio && <p className="text-[9px] text-red-500">bajo equilibrio</p>}
+                      </span>
+                    ) : '—'}
+                  </td>
                   <td className="px-3 py-2 text-right">{u.margenPorKm != null ? `$${u.margenPorKm}` : '—'}</td>
                   <td className="px-3 py-2 text-right">{u.lts100km != null ? u.lts100km : '—'}</td>
                   <td className="px-3 py-2 text-right">
@@ -975,9 +1001,18 @@ function TabRentabilidad() {
                     <span className="text-neutral-400"> / </span>
                     <span className={u.correctivo.n > u.preventivo.n ? 'text-red-600 font-semibold' : 'text-neutral-600'}>{u.correctivo.n}</span>
                   </td>
-                  <td className={`px-3 py-2 text-right ${u.fallasRecurrentes > 0 ? 'text-amber-600 font-semibold' : ''}`}>{u.fallasRecurrentes || '—'}</td>
-                  <td className="px-3 py-2 text-right">{u.horasNoDisponible}</td>
-                  <td className="px-3 py-2 text-right text-amber-600">{u.costoOportunidad ? fmtMoney(u.costoOportunidad) : '—'}</td>
+                  <td className="px-3 py-2 text-right" title={`${u.diasFacturados} días facturó · ${u.horasNoDisponible}h en taller`}>
+                    {u.diasFacturados}<span className="text-neutral-400"> fact.</span>
+                    {u.diasSinFacturar > 0 && <p className="text-[9px] text-amber-600">{u.diasSinFacturar} sin carga</p>}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {u.payback ? (
+                      <span title={`Recuperó ${fmtMoney(u.payback.recuperado)} de ${fmtMoney(u.valorAdquisicion)}${u.payback.mesesEstimado ? ` — payback estimado en ${u.payback.mesesEstimado} meses` : ''}`}>
+                        <span className={`font-semibold ${u.payback.pct >= 100 ? 'text-green-700' : u.payback.pct >= 50 ? 'text-blue-700' : 'text-neutral-600'}`}>{u.payback.pct}%</span>
+                        {u.payback.mesesEstimado && u.payback.pct < 100 && <p className="text-[9px] text-neutral-400">~{u.payback.mesesEstimado}m restantes</p>}
+                      </span>
+                    ) : '—'}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     {u.financiacion ? (
                       <span title={`Cuota ${fmtMoney(u.financiacion.cuotaMensual)} — saldo ${fmtMoney(u.financiacion.saldoPendiente)}`}>
@@ -993,10 +1028,45 @@ function TabRentabilidad() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* Clientes */}
+        <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+          <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800 flex items-center gap-1">
+            Ingresos por cliente <Hint text="Qué cliente aporta más facturación. Se lee del campo 'Cliente' al registrar ingresos en la ficha de la unidad." />
+          </div>
+          {(data.clientes || []).length === 0 ? (
+            <p className="px-3 py-4 text-xs text-neutral-400">Cargá el campo "Cliente" al registrar ingresos para ver este ranking</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[10px] font-medium text-neutral-500 uppercase border-b border-neutral-100">
+                  <th className="px-3 py-2">Cliente</th>
+                  <th className="px-3 py-2 text-right">Ingresos</th>
+                  <th className="px-3 py-2 text-right">Registros</th>
+                  <th className="px-3 py-2 text-right">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.clientes.map((c) => (
+                  <tr key={c.cliente} className="border-b border-neutral-50">
+                    <td className="px-3 py-2 font-medium">{c.cliente}</td>
+                    <td className="px-3 py-2 text-right text-green-700">{fmtMoney(c.ingresos)}</td>
+                    <td className="px-3 py-2 text-right">{c.viajes}</td>
+                    <td className="px-3 py-2 text-right">
+                      <span className="inline-block rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">{c.share}%</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
         {/* Talleres */}
         <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
-          <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800">Talleres externos</div>
+          <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800 flex items-center gap-1">
+            Talleres externos <Hint text="Ranking de talleres por OTs completadas: cuánto cobran, cuánto demoran y cuántas veces hubo que volver (reclamos)." />
+          </div>
           {data.talleres.length === 0 ? (
             <p className="px-3 py-4 text-xs text-neutral-400">Sin OTs externas completadas en el período</p>
           ) : (
@@ -1027,7 +1097,9 @@ function TabRentabilidad() {
 
         {/* Conductores */}
         <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
-          <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800">Conductores</div>
+          <div className="px-3 py-2 border-b border-neutral-200 text-xs font-semibold text-neutral-800 flex items-center gap-1">
+            Conductores <Hint text="Horas trabajadas, eficiencia de combustible (km/L), litros cargados, jornadas >12h y multas del período. El sueldo se carga en la ficha del conductor." />
+          </div>
           {data.conductores.length === 0 ? (
             <p className="px-3 py-4 text-xs text-neutral-400">Sin registros de jornada ni cargas en el período</p>
           ) : (
@@ -1061,12 +1133,24 @@ function TabRentabilidad() {
 
       {/* Cash flow proyectado */}
       <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
-        <div className="px-3 py-2 border-b border-neutral-200 flex items-center justify-between">
-          <span className="text-xs font-semibold text-neutral-800">Cash flow proyectado — próximos {cashFlow?.horizonte.dias ?? 90} días</span>
+        <div className="px-3 py-2 border-b border-neutral-200 flex items-center justify-between flex-wrap gap-2">
+          <span className="text-xs font-semibold text-neutral-800 flex items-center gap-1">
+            Cash flow proyectado — próximos {cashFlow?.horizonte.dias ?? 90} días
+            <Hint text="Egresos comprometidos (cuotas, vencimientos, cubiertas) vs cobros pendientes de ingresos registrados. Neto = cobros − egresos." />
+          </span>
           {cashFlow && (
-            <span className="text-xs">
-              <b className="text-red-600">{fmtMoney(cashFlow.total)}</b>
-              {cashFlow.sinMonto > 0 && <span className="text-neutral-400"> · {cashFlow.sinMonto} sin monto estimado</span>}
+            <span className="text-xs flex items-center gap-3">
+              {cashFlow.totalCobros != null && cashFlow.totalCobros > 0 && (
+                <span>Entradas <b className="text-green-700">+{fmtMoney(cashFlow.totalCobros)}</b></span>
+              )}
+              <span>Salidas <b className="text-red-600">−{fmtMoney(cashFlow.total)}</b></span>
+              {cashFlow.neto != null && (
+                <span>Neto <b className={cashFlow.neto >= 0 ? 'text-green-700' : 'text-red-600'}>{fmtMoney(cashFlow.neto)}</b></span>
+              )}
+              {cashFlow.deudaFlota != null && cashFlow.deudaFlota > 0 && (
+                <span className="text-neutral-400" title="Saldo total pendiente de préstamos de flota">deuda {fmtMoney(cashFlow.deudaFlota)}</span>
+              )}
+              {cashFlow.sinMonto > 0 && <span className="text-neutral-400">{cashFlow.sinMonto} sin monto</span>}
             </span>
           )}
         </div>
@@ -1076,13 +1160,13 @@ function TabRentabilidad() {
           <table className="w-full text-xs">
             <tbody>
               {cashFlow.items.slice(0, 30).map((it, i) => {
-                const t = TIPO_ITEM[it.tipo] || { label: it.tipo, cls: 'bg-neutral-100 text-neutral-600' };
+                const t = TIPO_ITEM[it.tipo] || { label: it.tipo, cls: 'bg-neutral-100 text-neutral-600', hint: it.tipo };
                 return (
-                  <tr key={i} className="border-b border-neutral-50">
-                    <td className="px-3 py-1.5 w-24 text-neutral-500">{new Date(it.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}</td>
-                    <td className="px-3 py-1.5 w-28"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${t.cls}`}>{t.label}</span></td>
+                  <tr key={i} className={`border-b border-neutral-50 ${it.vencido ? 'bg-red-50/40' : ''}`}>
+                    <td className="px-3 py-1.5 w-24 text-neutral-500">{new Date(it.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}{it.vencido && <p className="text-[9px] text-red-600 font-semibold">vencido</p>}</td>
+                    <td className="px-3 py-1.5 w-28"><span title={t.hint} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${t.cls}`}>{t.label}</span></td>
                     <td className="px-3 py-1.5">{it.vehiculo && <b className="mr-1">{it.vehiculo}</b>}{it.descripcion}</td>
-                    <td className="px-3 py-1.5 text-right font-medium">{it.monto != null ? fmtMoney(it.monto) : <span className="text-neutral-400">s/est.</span>}</td>
+                    <td className={`px-3 py-1.5 text-right font-medium ${it.entrada ? 'text-green-700' : ''}`}>{it.monto != null ? `${it.entrada ? '+' : '−'}${fmtMoney(it.monto)}` : <span className="text-neutral-400">s/est.</span>}</td>
                   </tr>
                 );
               })}

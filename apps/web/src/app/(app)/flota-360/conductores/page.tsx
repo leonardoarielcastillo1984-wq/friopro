@@ -20,7 +20,7 @@ function toDateInput(fecha: string | null) {
   return fecha ? new Date(fecha).toISOString().slice(0, 10) : '';
 }
 
-const FORM_VACIO = { nombre: '', dni: '', categoria: '', licenciaVto: '', psicofisicoVto: '', licenciaFileUrl: '', psicofisicoFileUrl: '', telefono: '', email: '', status: 'ACTIVO' };
+const FORM_VACIO = { nombre: '', dni: '', categoria: '', licenciaVto: '', psicofisicoVto: '', licenciaFileUrl: '', psicofisicoFileUrl: '', telefono: '', email: '', status: 'ACTIVO', costoMensual: '' };
 
 export default function ConductoresPage() {
   const [conductores, setConductores] = useState<Conductor[]>([]);
@@ -74,6 +74,7 @@ export default function ConductoresPage() {
       licenciaVto: toDateInput(c.licenciaVto), psicofisicoVto: toDateInput(c.psicofisicoVto),
       licenciaFileUrl: c.licenciaFileUrl || '', psicofisicoFileUrl: c.psicofisicoFileUrl || '',
       telefono: c.telefono || '', email: c.email || '', status: c.status,
+      costoMensual: (c as any).costoMensual ?? '',
     });
     setError(null);
     setShowForm(true);
@@ -95,6 +96,7 @@ export default function ConductoresPage() {
         telefono: form.telefono || undefined,
         email: form.email || undefined,
         status: form.status,
+        costoMensual: form.costoMensual !== '' ? Number(form.costoMensual) : null,
       };
       if (editando) {
         await apiFetch(`/flota/conductores/${editando.id}`, { method: 'PATCH', json: payload });
@@ -285,6 +287,10 @@ export default function ConductoresPage() {
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Teléfono</label>
                   <input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Sueldo + cargas ($/mes)</label>
+                  <input type="number" min={0} step="0.01" value={form.costoMensual} onChange={(e) => setForm({ ...form, costoMensual: e.target.value })} placeholder="Costo mensual de personal" title="Sueldo bruto + cargas sociales. Se suma como costo fijo a la unidad asignada en Panel → Rentabilidad." className="w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-neutral-600 mb-1">Estado</label>
