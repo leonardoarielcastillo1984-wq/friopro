@@ -8,7 +8,7 @@ import {
   BookOpen, Compass, Target, ScrollText, ClipboardCheck, BrainCircuit,
   FileBarChart, Shield, TrendingUp, BarChart3, CalendarDays, Package,
   FileSpreadsheet, Wind, Settings, Building2, Bell, HelpCircle,
-  Smartphone, QrCode, Wrench,
+  Smartphone, QrCode, Wrench, Lightbulb,
 } from 'lucide-react';
 
 export type Difficulty = 'Fácil' | 'Medio' | 'Avanzado';
@@ -79,6 +79,29 @@ export const guides: ModuleGuide[] = [
     related: ['dashboard', 'indicadores'],
     tips: ['Ideal para una vista ejecutiva rápida del SGI.'],
     difficulty: 'Medio', estimatedTime: '10 minutos',
+  },
+  {
+    id: 'botones-flotantes', title: 'Botones flotantes', icon: Lightbulb, route: '/dashboard',
+    group: 'Visión general',
+    purpose: 'Accesos rápidos siempre visibles: lamparita para reportar al equipo de desarrollo, buzón interno de RRHH y exportación de la página.',
+    mainFeatures: [
+      'Lamparita: enviá sugerencias, errores o preguntas al equipo de soporte',
+      'Buzón de sugerencias interno (RRHH)',
+      'Botón Exportar: descarga la página actual en PDF/Excel',
+      'Todos los íconos se pueden arrastrar y recuerdan su posición',
+    ],
+    actions: [
+      { name: 'Enviar feedback', description: 'Clic en la lamparita (abajo a la izquierda).', detail: 'Elegí Sugerencia, Reporte de error o Pregunta, escribí el mensaje y enviá. Llega al equipo de soporte junto con la página donde estabas.' },
+      { name: 'Mover un botón', description: 'Mantené presionado el ícono y arrastralo.', detail: 'Funciona con mouse o dedo; la posición se guarda automáticamente.' },
+    ],
+    steps: [
+      { title: 'Reportar un problema o idea', description: 'Clic en la lamparita de la esquina inferior izquierda.', subSteps: ['Elegí el tipo: Sugerencia, Reporte de error o Pregunta', 'Describí el caso y presioná Enviar', 'Soporte recibe el mensaje con tu usuario, empresa y la página exacta'] },
+      { title: 'Reacomodar los íconos', description: 'Mantené presionado un botón flotante y arrastralo a donde prefieras.', subSteps: ['Si te tapa contenido, movelo a otra esquina', 'La posición queda guardada para tu usuario'] },
+    ],
+    screenshots: [{ label: 'Botones flotantes', caption: 'Lamparita a la izquierda; buzón RRHH y Exportar a la derecha — todos arrastrables', route: '/dashboard' }],
+    related: ['dashboard', 'clima', 'modo-de-uso'],
+    tips: ['La lamparita es el canal directo con el equipo de desarrollo: cuanto más contexto des, más rápido se resuelve.'],
+    difficulty: 'Fácil', estimatedTime: '1 minuto',
   },
   {
     id: 'documents', title: 'Documentos', icon: FileText, route: '/documents',
