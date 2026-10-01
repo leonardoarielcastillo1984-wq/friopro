@@ -386,12 +386,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   active
                     ? 'bg-brand-600 text-white'
-                    : isLocked 
+                    : isLocked
                       ? 'text-slate-500 hover:bg-slate-800/50 cursor-not-allowed'
-                      : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white'
+                      : item.href === '/flota-360'
+                        ? 'text-amber-300 hover:text-amber-100 ring-1 ring-amber-400/60 bg-amber-400/10 shadow-[0_0_14px_rgba(251,191,36,0.35)]'
+                        : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white'
                 }`}
               >
-                <Icon className={`h-[18px] w-[18px] flex-shrink-0 ${isLocked ? 'opacity-50' : ''}`} />
+                <Icon className={`h-[18px] w-[18px] flex-shrink-0 ${isLocked ? 'opacity-50' : ''} ${item.href === '/flota-360' && !isLocked ? 'text-amber-400' : ''}`} />
                 <span className={isLocked ? 'opacity-70' : ''}>{item.label}</span>
                 {isLocked ? (
                   <Lock className="h-3.5 w-3.5 ml-auto text-slate-500" />

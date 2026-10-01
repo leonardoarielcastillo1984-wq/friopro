@@ -1076,6 +1076,189 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
   });
 
   // ─────────────────────────────────────────────────────────────
+  // DETALLE DIARIO — desglose día por día de una unidad: en qué
+  // rangos horarios estuvo en servicio, estacionada y en taller,
+  // con las etapas del taller (ingreso, diagnóstico, reparación…).
+  // Sirve para entender "por qué" los totales de Performance.
+  // ─────────────────────────────────────────────────────────────
+  app.get('/vehiculos/:id/detalle-diario', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as { id: string };
+    const q = req.query as any;
+    const hasta = q.hasta ? new Date(q.hasta) : new Date();
+    const desde = q.desde ? new Date(q.desde) : new Date(hasta.getTime() - 30 * 86400000);
+    if (isNaN(desde.getTime()) || isNaN(hasta.getTime()) || desde >= hasta) {
+      return reply.code(400).send({ error: 'Rango de fechas inválido' });
+    }
+    const desdeMs = desde.getTime();
+    const hastaMs = hasta.getTime();
+
+    const v = await prisma().vehiculo.findFirst({
+      where: { id, tenantId },
+      select: { id: true, dominio: true, tipo: true, createdAt: true, status: true },
+    });
+    if (!v) return reply.code(404).send({ error: 'Vehículo no encontrado' });
+
+    const [episodios, restricciones, jornadas, eventosAdmin] = await Promise.all([
+      prisma().unidadIndisponibilidad.findMany({
+        where: { tenantId, vehiculoId: id, inicioAt: { lte: hasta }, OR: [{ finAt: null }, { finAt: { gte: desde } }] },
+        include: { etapas: { orderBy: { inicioAt: 'asc' } } },
+      }),
+      prisma().restriccionServicio.findMany({
+        where: { tenantId, vehiculoId: id, createdAt: { lte: hasta }, OR: [{ activa: true }, { levantadaAt: { gte: desde } }] },
+      }),
+      prisma().flotaJornada.findMany({
+        where: { tenantId, inicioAt: { lte: hasta }, OR: [{ finAt: null }, { finAt: { gte: desde } }] },
+        select: { id: true, inicioAt: true, finAt: true, unidades: true },
+      }),
+      prisma().vehiculoHistorialCambio.findMany({
+        where: { tenantId, vehiculoId: id, accion: { in: ['CAMBIO_ESTADO', 'BAJA', 'REACTIVACION'] } },
+        select: { cambios: true, accion: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }).catch(() => []),
+    ]);
+
+    // Tramos INACTIVO + BAJA (para el tiempo elegible por día)
+    const inactivos: Iv[] = [];
+    let bajaAt: number | null = null;
+    let cursorStatus = 'ACTIVO';
+    let cursorT = new Date(v.createdAt).getTime();
+    for (const ev of eventosAdmin) {
+      const t = new Date(ev.createdAt).getTime();
+      if (ev.accion === 'BAJA') {
+        if (cursorStatus !== 'BAJA') {
+          if (cursorStatus === 'INACTIVO') inactivos.push([cursorT, t]);
+          cursorStatus = 'BAJA'; cursorT = t;
+          if (bajaAt == null) bajaAt = t;
+        }
+        continue;
+      }
+      const cambios = Array.isArray(ev.cambios) ? ev.cambios : [];
+      const cambioStatus = cambios.find((c: any) => c?.campo === 'status');
+      if (!cambioStatus?.despues) continue;
+      const nuevo = String(cambioStatus.despues);
+      if (cursorStatus === 'INACTIVO' && nuevo !== 'INACTIVO') inactivos.push([cursorT, t]);
+      if (nuevo === 'BAJA' && bajaAt == null) bajaAt = t;
+      cursorStatus = nuevo;
+      cursorT = t;
+    }
+    if (cursorStatus === 'INACTIVO') inactivos.push([cursorT, bajaAt ?? hastaMs]);
+
+    // Intervalos por categoría (raw, para cortar por día)
+    const servIvs: Iv[] = [];
+    for (const j of jornadas) {
+      const jInicio = new Date(j.inicioAt).getTime();
+      const jFin = j.finAt ? new Date(j.finAt).getTime() : hastaMs;
+      for (const u of (Array.isArray(j.unidades) ? j.unidades : []) as any[]) {
+        if (u?.vehiculoId !== id) continue;
+        const s = u.desde ? new Date(u.desde).getTime() : jInicio;
+        const e = u.hasta ? new Date(u.hasta).getTime() : jFin;
+        const iv = clipIv(s, e, desdeMs, hastaMs);
+        if (iv) servIvs.push(iv);
+      }
+    }
+    const servMerged = mergeIv(servIvs);
+
+    // Episodios con sus etapas de taller (para el detalle horario)
+    const tallerEventos: { desde: number; hasta: number; motivo: string; etapas: { etapa: string; desde: number; hasta: number }[] }[] = [];
+    const noDispIvs: Iv[] = [];
+    for (const ep of episodios) {
+      const ini = new Date(ep.inicioAt).getTime();
+      const fin = ep.finAt ? new Date(ep.finAt).getTime() : hastaMs;
+      const iv = clipIv(ini, fin, desdeMs, hastaMs);
+      if (iv) noDispIvs.push(iv);
+      const tIni = ep.fechaIngresoTaller ? new Date(ep.fechaIngresoTaller).getTime() : null;
+      const tFin = ep.fechaSalidaTaller ? new Date(ep.fechaSalidaTaller).getTime() : null;
+      if (tIni) {
+        const tiv = clipIv(tIni, tFin ?? fin, desdeMs, hastaMs);
+        if (tiv) {
+          tallerEventos.push({
+            desde: tiv[0], hasta: tiv[1],
+            motivo: ep.motivo || ep.tallerNombre || 'Taller',
+            etapas: (ep.etapas || []).map((et: any) => {
+              const s = new Date(et.inicioAt).getTime();
+              const e = et.finAt ? new Date(et.finAt).getTime() : fin;
+              const eiv = clipIv(s, e, desdeMs, hastaMs);
+              return eiv ? { etapa: et.etapa, desde: eiv[0], hasta: eiv[1] } : null;
+            }).filter(Boolean),
+          });
+        }
+      }
+    }
+    for (const r of restricciones) {
+      const s = new Date(r.createdAt).getTime();
+      const e = r.activa ? hastaMs : (r.levantadaAt ? new Date(r.levantadaAt).getTime() : s);
+      const iv = clipIv(s, e, desdeMs, hastaMs);
+      if (iv) noDispIvs.push(iv);
+    }
+    const noDispMerged = mergeIv(noDispIvs);
+
+    // Recorrer día por día y cortar cada categoría a ese día
+    const H = 3600000;
+    const dias: any[] = [];
+    const cursor = new Date(desde);
+    cursor.setHours(0, 0, 0, 0);
+    while (cursor.getTime() < hastaMs) {
+      const dIni = Math.max(cursor.getTime(), desdeMs);
+      const dFin = Math.min(cursor.getTime() + 86400000, hastaMs);
+      cursor.setDate(cursor.getDate() + 1);
+
+      // Elegible del día = [createdAt/baja clip] − inactivos
+      const eBase = Math.max(new Date(v.createdAt).getTime(), dIni);
+      const eFin = Math.min(bajaAt ?? hastaMs, dFin);
+      const elegiblesDia = eBase < eFin ? subtractIv([[eBase, eFin] as Iv], inactivos) : [];
+      const elegibleMs = sumIv(elegiblesDia);
+      if (elegibleMs <= 0) continue; // día fuera de vida útil / inactivo
+
+      const noDispDia = intersectIv(noDispMerged, elegiblesDia);
+      const servDia = mergeIv(intersectIv(servMerged, elegiblesDia).map((iv) => iv));
+      // servicio neto = servicio del día − lo que cayó sobre no disponible
+      const servNetoDia = subtractIv(servDia, noDispDia);
+      const servNetoMs = sumIv(servNetoDia);
+      const noDispMs = sumIv(noDispDia);
+      const dispMs = elegibleMs - noDispMs;
+      const estacMs = Math.max(0, dispMs - servNetoMs);
+
+      // Taller del día (eventos que pisan el día, recortados)
+      const tallerDia = tallerEventos
+        .map((t) => {
+          const s = Math.max(t.desde, dIni), e = Math.min(t.hasta, dFin);
+          if (e <= s) return null;
+          return {
+            desde: s, hasta: e, motivo: t.motivo,
+            etapas: t.etapas
+              .map((et) => {
+                const es = Math.max(et.desde, dIni), ee = Math.min(et.hasta, dFin);
+                return ee > es ? { etapa: et.etapa, desde: es, hasta: ee } : null;
+              })
+              .filter(Boolean),
+          };
+        })
+        .filter(Boolean);
+
+      // Servicio del día con horarios (para mostrar "de X a Y")
+      const servicioDia = servNetoDia.map(([s, e]) => ({ desde: s, hasta: e }));
+
+      dias.push({
+        fecha: new Date(dIni).toISOString().slice(0, 10),
+        horasServicio: Math.round((servNetoMs / H) * 10) / 10,
+        horasEstacionada: Math.round((estacMs / H) * 10) / 10,
+        horasNoDisponible: Math.round((noDispMs / H) * 10) / 10,
+        horasTaller: Math.round((sumIv(tallerDia.flatMap((t: any) => [[t.desde, t.hasta]])) / H) * 10) / 10,
+        servicio: servicioDia,
+        taller: tallerDia,
+      });
+    }
+
+    return reply.send({
+      vehiculoId: v.id, dominio: v.dominio, tipo: v.tipo,
+      periodo: { desde, hasta, dias: Math.round((hastaMs - desdeMs) / 864000) / 10 },
+      dias,
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
   // RENTABILIDAD — reporte para dueño: margen por unidad, L/100km,
   // preventivo vs correctivo, fallas repetidas, costo de oportunidad,
   // financiación (cuotas), ranking de talleres y conductores.

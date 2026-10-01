@@ -549,6 +549,9 @@ function TabPerformance() {
   const [vehiculosAll, setVehiculosAll] = useState<{ id: string; dominio: string; tipo: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [detOpen, setDetOpen] = useState<Record<string, boolean>>({});
+  const [detData, setDetData] = useState<Record<string, any>>({});
+  const [detLoading, setDetLoading] = useState<string | null>(null);
 
   // Filtros
   const [tipos, setTipos] = useState<string[]>(['CAMION', 'SEMI']);
@@ -605,6 +608,23 @@ function TabPerformance() {
       await load();
     } finally {
       setSavingVent(false);
+    }
+  };
+
+  // Segundo nivel de expansión: detalle día por día (lazy fetch)
+  const toggleDetalle = async (vehiculoId: string) => {
+    const next = !detOpen[vehiculoId];
+    setDetOpen((p) => ({ ...p, [vehiculoId]: next }));
+    if (next && !detData[vehiculoId]) {
+      setDetLoading(vehiculoId);
+      try {
+        const { desde, hasta } = rango();
+        const params = new URLSearchParams({ desde: desde.toISOString(), hasta: hasta.toISOString() });
+        const d = await apiFetch<any>(`/fleet-ops/vehiculos/${vehiculoId}/detalle-diario?${params.toString()}`);
+        setDetData((p) => ({ ...p, [vehiculoId]: d }));
+      } finally {
+        setDetLoading(null);
+      }
     }
   };
 
@@ -778,6 +798,24 @@ function TabPerformance() {
                                 {u.costosPeriodo.presupuestoProrrateado != null && <p>Presupuesto del período: <strong>{fmtMoney(u.costosPeriodo.presupuestoProrrateado)}</strong></p>}
                               </div>
                             </div>
+                            {/* Segundo nivel: detalle día por día con horarios */}
+                            <div className="mt-3 border-t border-neutral-200 pt-2">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleDetalle(u.vehiculoId); }}
+                                className="flex items-center gap-1 text-[11px] font-medium text-blue-700 hover:underline"
+                              >
+                                {detOpen[u.vehiculoId] ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                {detOpen[u.vehiculoId] ? 'Ocultar detalle por día' : 'Ver detalle por día — en qué horarios estuvo en servicio / estacionada / taller'}
+                              </button>
+                              {detOpen[u.vehiculoId] && (
+                                <div className="mt-2 rounded-md border border-neutral-200 bg-white">
+                                  {detLoading === u.vehiculoId && <p className="px-3 py-3 text-[11px] text-neutral-400">Cargando detalle…</p>}
+                                  {detData[u.vehiculoId] && (
+                                    <DetalleDiario data={detData[u.vehiculoId]} />
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -837,6 +875,88 @@ function TabPerformance() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Detalle día por día de una unidad (segundo nivel de expansión
+// en Performance): rangos horarios de servicio, estacionada y
+// taller con motivo + etapas. Datos de /detalle-diario.
+// ═══════════════════════════════════════════════════════════════
+
+function DetalleDiario({ data }: { data: any }) {
+  const fmtHora = (ms: number) => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  const fmtDia = (iso: string) => {
+    const d = new Date(iso + 'T12:00:00');
+    return d.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' });
+  };
+  const dias = [...(data.dias || [])].reverse(); // más reciente primero
+  if (dias.length === 0) return <p className="px-3 py-3 text-[11px] text-neutral-400">Sin actividad en el período</p>;
+  return (
+    <div className="max-h-72 overflow-y-auto">
+      <table className="w-full text-[11px]">
+        <thead className="sticky top-0 bg-white">
+          <tr className="text-left text-[9px] font-semibold text-neutral-400 uppercase border-b border-neutral-100">
+            <th className="px-3 py-1.5 w-24">Día</th>
+            <th className="px-3 py-1.5">En servicio</th>
+            <th className="px-3 py-1.5">Estacionada</th>
+            <th className="px-3 py-1.5">Taller / no disponible</th>
+          </tr>
+        </thead>
+        <tbody>
+          {dias.map((d: any) => {
+            const sinNada = d.horasServicio === 0 && d.horasTaller === 0 && d.horasNoDisponible === 0;
+            return (
+              <tr key={d.fecha} className={`border-b border-neutral-50 align-top ${d.horasTaller > 0 || d.horasNoDisponible > 0 ? 'bg-red-50/40' : ''}`}>
+                <td className="px-3 py-1.5 whitespace-nowrap font-medium text-neutral-700">{fmtDia(d.fecha)}</td>
+                <td className="px-3 py-1.5">
+                  {d.servicio.length === 0 ? <span className="text-neutral-300">—</span> : (
+                    <div className="space-y-0.5">
+                      {d.servicio.map((s: any, i: number) => (
+                        <p key={i} className="text-blue-700">
+                          {fmtHora(s.desde)} → {fmtHora(s.hasta)}
+                          <span className="text-neutral-400"> ({Math.round((s.hasta - s.desde) / 360000) / 10}h)</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </td>
+                <td className="px-3 py-1.5">
+                  {d.horasEstacionada > 0 ? (
+                    <span className={sinNada ? 'text-amber-700 font-medium' : 'text-neutral-600'}>{d.horasEstacionada}h{sinNada ? ' sin trabajo' : ''}</span>
+                  ) : <span className="text-neutral-300">—</span>}
+                </td>
+                <td className="px-3 py-1.5">
+                  {d.taller.length === 0 && d.horasNoDisponible === 0 ? <span className="text-neutral-300">—</span> : (
+                    <div className="space-y-1">
+                      {d.taller.map((t: any, i: number) => (
+                        <div key={i}>
+                          <p className="text-red-700 font-medium">
+                            {fmtHora(t.desde)} → {fmtHora(t.hasta)} · {t.motivo}
+                          </p>
+                          {t.etapas.length > 0 && (
+                            <div className="ml-3 space-y-0.5">
+                              {t.etapas.map((et: any, j: number) => (
+                                <p key={j} className="text-[10px] text-neutral-500">
+                                  {ETAPA_LABEL[et.etapa] || et.etapa}: {fmtHora(et.desde)} → {fmtHora(et.hasta)}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {d.taller.length === 0 && d.horasNoDisponible > 0 && (
+                        <p className="text-red-600">{d.horasNoDisponible}h no disponible (restricción/episodio sin taller)</p>
+                      )}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
