@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import {
   CircleDot, ArrowDownToLine, ArrowUpFromLine, Gauge, Repeat, Ruler,
-  X, AlertTriangle, TrendingDown, Sparkles, Move,
+  X, AlertTriangle, TrendingDown, Sparkles, Move, SlidersHorizontal,
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════
@@ -135,6 +135,10 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
   // así que al +/- un eje lo actualizamos en estado para repintar al instante.
   const [ejesCount, setEjesCount] = useState<number | null>(null);
   useEffect(() => { setEjesCount(cantEjes ?? null); }, [cantEjes]);
+  const [cfgState, setCfgState] = useState<string | null>(null);
+  useEffect(() => { setCfgState(configEjes ?? null); }, [configEjes]);
+  // Modal configurar ejes: cantidad + preset de tracción
+  const [ejesModal, setEjesModal] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -155,7 +159,7 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
 
   // ── Layout sobre la imagen real ──
   const esSemi = (tipo || '').toUpperCase() === 'SEMI';
-  const numSteering = esSemi ? 0 : ((configEjes || '').trim().startsWith('8') ? 2 : 1);
+  const numSteering = esSemi ? 0 : ((cfgState ?? configEjes ?? '').trim().startsWith('8') ? 2 : 1);
   const ejesMontados = useMemo(() => [...new Set(posiciones.filter(p => p.posicion !== 'AUXILIO').map(p => p.eje))], [posiciones]);
   const maxMontado = ejesMontados.length ? Math.max(...ejesMontados) : 0;
   // cantEjes del vehículo manda; si no está seteado, default 2 (delantero+trasero). Nunca menos que los ejes con cubiertas montadas.
@@ -302,19 +306,22 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
   };
   const diasDesdeControl = ultimoControl ? Math.floor((Date.now() - new Date(ultimoControl.fecha).getTime()) / 86400000) : null;
 
-  // ── Agregar / quitar eje (persiste cantEjes en el vehículo) ──
-  const cambiarEjes = async (delta: number) => {
-    const nuevo = totalEjes + delta;
+  // ── Configurar ejes (persiste cantEjes + configEjes en el vehículo) ──
+  const guardarEjes = async (nuevo: number, cfg: string | null) => {
     if (nuevo < 1 || nuevo > 10) return;
-    if (delta < 0) {
-      const ocupado = posiciones.some(p => p.eje === totalEjes && p.posicion !== 'AUXILIO' && p.neumatico);
-      if (ocupado) { setError(`El eje ${totalEjes} tiene cubiertas montadas — desmontalas primero`); return; }
+    if (nuevo < maxMontado) { setError(`Hay cubiertas montadas hasta el eje ${maxMontado} — desmontalas primero`); return; }
+    for (let e = nuevo + 1; e <= totalEjes; e++) {
+      if (posiciones.some(p => p.eje === e && p.posicion !== 'AUXILIO' && p.neumatico)) {
+        setError(`El eje ${e} tiene cubiertas montadas — desmontalas primero`); return;
+      }
     }
     setBusy(true); setError(null);
     try {
-      await apiFetch(`/flota/vehiculos/${vehiculoId}`, { method: 'PATCH', json: { cantEjes: nuevo } });
+      await apiFetch(`/flota/vehiculos/${vehiculoId}`, { method: 'PATCH', json: { cantEjes: nuevo, configEjes: cfg ?? undefined } });
       setEjesCount(nuevo);
-      flash(`${nuevo} ejes`);
+      setCfgState(cfg);
+      setEjesModal(false);
+      flash(`${nuevo} ejes${cfg ? ` (${cfg})` : ''}`);
       await load();
     } catch (e: any) { setError(e?.message || 'No se pudo actualizar los ejes'); } finally { setBusy(false); }
   };
@@ -355,13 +362,12 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
             <input type="range" min={0} max={100000} step={5000} value={proyKm} onChange={e => setProyKm(Number(e.target.value))} className="w-24 accent-violet-600" />
             <span className="font-mono w-14 text-violet-700 font-semibold">{proyKm > 0 ? `+${(proyKm / 1000).toLocaleString('es-AR')}k` : 'hoy'}</span>
           </div>
-          {/* Stepper de ejes: suma/quita una fila de ruedas */}
-          <div className="flex items-center gap-0.5 rounded-md border border-neutral-200 px-1 py-0.5" title="Cantidad de ejes del vehículo">
-            <span className="text-[9px] font-medium text-neutral-400 px-0.5">Ejes</span>
-            <button disabled={busy || totalEjes <= 1} onClick={() => cambiarEjes(-1)} className="h-4 w-4 rounded text-neutral-500 hover:bg-neutral-100 disabled:opacity-30 text-xs leading-none">−</button>
-            <span className="w-4 text-center text-[11px] font-bold text-neutral-700">{totalEjes}</span>
-            <button disabled={busy || totalEjes >= 10} onClick={() => cambiarEjes(1)} className="h-4 w-4 rounded text-neutral-500 hover:bg-neutral-100 disabled:opacity-30 text-xs leading-none">+</button>
-          </div>
+          {/* Configurar ejes del vehículo */}
+          <button onClick={() => setEjesModal(true)} disabled={busy}
+            className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
+            title="Cantidad de ejes y configuración de tracción">
+            <SlidersHorizontal className="h-3 w-3 text-neutral-500" /> Ejes: <b>{totalEjes}</b>{cfgState ? ` · ${cfgState}` : ''}
+          </button>
           <button onClick={() => setControl({ abierto: true, observador: '', notas: '', mediciones: {} })} disabled={montadas.length === 0} className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline disabled:opacity-40" title={montadas.length === 0 ? 'No hay cubiertas montadas' : 'Registrar control de presión de toda la unidad'}><Gauge className="h-3 w-3" /> Control PSI</button>
           <button onClick={() => setMontar({ abierto: true, eje: 1, lado: 'IZQ', posicion: 'SIMPLE' })} className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline"><ArrowDownToLine className="h-3 w-3" /> Montar</button>
         </div>
@@ -597,6 +603,71 @@ export default function NeumaticosTwin({ vehiculoId, odometro, tipo, cantEjes, c
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
               <button onClick={() => setControl({ ...control, abierto: false })} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
               <button disabled={busy} onClick={guardarControl} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">{busy ? 'Guardando…' : 'Registrar control'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal configurar ejes */}
+      {ejesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <h3 className="text-sm font-semibold flex items-center gap-1.5"><SlidersHorizontal className="h-4 w-4 text-neutral-500" /> Configurar ejes</h3>
+              <button onClick={() => setEjesModal(false)}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              {(() => {
+                // Presets de configuración: cantidad de ejes y cuántos son direccionales.
+                // configEjes "8x4" → 2 ejes direccionales adelante.
+                const presets = esSemi
+                  ? [
+                      { label: '2 ejes', ejes: 2, cfg: null, desc: 'tándem trasero' },
+                      { label: '3 ejes', ejes: 3, cfg: null, desc: 'tridem — típico semi' },
+                      { label: '4 ejes', ejes: 4, cfg: null, desc: 'tridem + levadizo' },
+                    ]
+                  : [
+                      { label: '4x2', ejes: 2, cfg: '4x2', desc: '1 dir + 1 tracción' },
+                      { label: '6x2', ejes: 3, cfg: '6x2', desc: '1 dir + 2 atrás (1 tracción)' },
+                      { label: '6x4', ejes: 3, cfg: '6x4', desc: '1 dir + 2 tracción — típico tractor' },
+                      { label: '8x4', ejes: 4, cfg: '8x4', desc: '2 dir + 2 tracción' },
+                    ];
+                return (
+                  <>
+                    <p className="text-[11px] text-neutral-500">
+                      {esSemi ? 'Cantidad de ejes del tren trasero:' : 'Configuración de tracción (ejes totales × ejes motrices):'}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {presets.map((p) => {
+                        const activo = totalEjes === p.ejes && (p.cfg == null || (cfgState || '') === p.cfg);
+                        return (
+                          <button key={p.label} disabled={busy} onClick={() => guardarEjes(p.ejes, p.cfg)}
+                            className={`rounded-md border px-2.5 py-2 text-left transition-colors ${activo ? 'border-violet-500 bg-violet-50' : 'border-neutral-200 hover:border-violet-300 hover:bg-violet-50/50'}`}>
+                            <p className="text-xs font-bold text-neutral-800">{p.label}</p>
+                            <p className="text-[9px] text-neutral-400">{p.desc}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 px-3 py-2">
+                      <span className="text-[11px] text-neutral-600">Otra cantidad:</span>
+                      <div className="flex items-center gap-1.5">
+                        <button disabled={busy || totalEjes <= Math.max(1, maxMontado)} onClick={() => guardarEjes(totalEjes - 1, cfgState)} className="h-6 w-6 rounded border border-neutral-300 text-sm hover:bg-neutral-100 disabled:opacity-30">−</button>
+                        <span className="w-6 text-center text-sm font-bold">{totalEjes}</span>
+                        <button disabled={busy || totalEjes >= 10} onClick={() => guardarEjes(totalEjes + 1, cfgState)} className="h-6 w-6 rounded border border-neutral-300 text-sm hover:bg-neutral-100 disabled:opacity-30">+</button>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-neutral-400">
+                      {esSemi
+                        ? 'Todos los ejes se dibujan en el tren trasero, con ruedas duales.'
+                        : `Los primeros ${numSteering} eje${numSteering > 1 ? 's' : ''} son direccionales (rueda simple); los demás van atrás con ruedas duales.`}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+            <div className="flex justify-end border-t border-neutral-200 px-4 py-3">
+              <button onClick={() => setEjesModal(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cerrar</button>
             </div>
           </div>
         </div>
