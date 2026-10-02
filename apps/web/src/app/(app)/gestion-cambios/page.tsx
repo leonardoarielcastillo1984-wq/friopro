@@ -38,6 +38,8 @@ interface Cambio {
   motivoRechazo?: string;
   recursosNecesarios?: string;
   capacitacionRequerida: boolean;
+  requiresCoreToolsReview?: boolean;
+  coreToolsReviewNotes?: string;
   documentosAfectados?: string;
   riesgosIdentificados?: string;
   verificacion?: string;
@@ -97,6 +99,7 @@ const emptyForm = {
   impactoCalidad: 'BAJO', impactoSST: 'BAJO', impactoAmbiental: 'BAJO',
   responsableId: '', aprobadorId: '', fechaPrevista: '',
   recursosNecesarios: '', capacitacionRequerida: false,
+  requiresCoreToolsReview: false, coreToolsReviewNotes: '',
   documentosAfectados: '', riesgosIdentificados: '',
 };
 
@@ -482,6 +485,21 @@ export default function GestionCambiosPage() {
                   <label htmlFor="capReq" className="text-sm text-gray-700">Requiere capacitación</label>
                 </div>
               </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 space-y-2">
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" id="ctReq" checked={form.requiresCoreToolsReview}
+                    onChange={e => setForm({ ...form, requiresCoreToolsReview: e.target.checked })}
+                    className="rounded border-gray-300 text-amber-600" />
+                  <label htmlFor="ctReq" className="text-sm text-amber-800 font-medium">
+                    Requiere revisión de Core Tools <span className="text-xs font-normal text-amber-600">IATF 8.5.6.1</span>
+                  </label>
+                </div>
+                {form.requiresCoreToolsReview && (
+                  <input value={form.coreToolsReviewNotes} onChange={e => setForm({ ...form, coreToolsReviewNotes: e.target.value })}
+                    className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white"
+                    placeholder="Qué revisar: PFMEA, Plan de Control, instrucciones de trabajo..." />
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Documentos afectados</label>
                 <input value={form.documentosAfectados} onChange={e => setForm({ ...form, documentosAfectados: e.target.value })}
@@ -577,6 +595,7 @@ export default function GestionCambiosPage() {
                 <span className="px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-600">{TIPO_LABELS[showDetail.tipo]}</span>
                 <span className="px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-600">{ORIGEN_LABELS[showDetail.origen]}</span>
                 {showDetail.capacitacionRequerida && <span className="px-3 py-1 rounded-full text-sm bg-orange-100 text-orange-700">Requiere capacitación</span>}
+                {showDetail.requiresCoreToolsReview && <span className="px-3 py-1 rounded-full text-sm bg-amber-100 text-amber-800" title={showDetail.coreToolsReviewNotes || ''}>Revisar Core Tools</span>}
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-1">Descripción</h3>

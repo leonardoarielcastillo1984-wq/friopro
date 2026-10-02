@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Ruler, TrendingUp, AlertTriangle, ClipboardCheck,
-  FolderKanban, PackageCheck, Wrench, Layers, ArrowLeft, Menu, X, LayoutGrid,
+  FolderKanban, PackageCheck, Wrench, Layers, ArrowLeft, Menu, X, LayoutGrid, ShieldCheck,
 } from 'lucide-react';
 
 const GROUPS: { label: string | null; items: { href: string; label: string; icon: any; exact?: boolean }[] }[] = [
@@ -39,6 +39,7 @@ const GROUPS: { label: string | null; items: { href: string; label: string; icon
     items: [
       { href: '/core-tools/8d', label: 'Reportes 8D', icon: Wrench },
       { href: '/core-tools/lpa', label: 'LPA — Auditorías por capas', icon: Layers },
+      { href: '/core-tools/poka-yoke', label: 'Poka-Yoke', icon: ShieldCheck },
     ],
   },
 ];

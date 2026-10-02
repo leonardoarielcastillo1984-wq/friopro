@@ -192,9 +192,26 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
       verificationNotes: z.string().optional(),
       dueDate: z.string().datetime().optional().nullable(),
       assignedToId: z.string().uuid().optional().nullable(),
+      // IATF 8.7.1.1/8.7.1.4-5 — disposición del producto no conforme
+      disposition: z.enum(['CONCESSION', 'REWORK', 'REPAIR', 'SCRAP', 'REJECT_RETURN', 'USE_AS_IS']).optional().nullable(),
+      dispositionNotes: z.string().optional().nullable(),
+      concessionRef: z.string().optional().nullable(),
+      concessionApprovedBy: z.string().optional().nullable(),
+      concessionApprovedAt: z.string().optional().nullable(),
+      concessionExpiry: z.string().optional().nullable(),
+      reworkInstruction: z.string().optional().nullable(),
+      reworkVerifiedAt: z.string().optional().nullable(),
+      customerNotifiedAt: z.string().optional().nullable(),
     });
 
     const body = updateSchema.parse(req.body);
+    // Parsear fechas de disposición (vienen como string ISO o dd/mm/yyyy)
+    const toDate = (v?: string | null) => v ? new Date(v) : (v === null ? null : undefined);
+    const dispositionData: Record<string, any> = {};
+    for (const k of ['concessionApprovedAt', 'concessionExpiry', 'reworkVerifiedAt', 'customerNotifiedAt'] as const) {
+      const d = toDate((body as any)[k]);
+      if (d !== undefined) dispositionData[k] = d;
+    }
 
     const { ncr, prevAssignedToId } = await app.runWithDbContext(req, async (tx: any) => {
       const existing = await tx.nonConformity.findFirst({
@@ -210,6 +227,7 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
         where: { id },
         data: {
           ...body,
+          ...dispositionData,
           closedAt,
           updatedById: req.auth?.userId ?? null,
         },

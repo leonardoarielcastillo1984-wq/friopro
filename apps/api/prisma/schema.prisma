@@ -30,6 +30,18 @@ model NonConformity {
   verificationDate  DateTime? @db.Timestamptz
   isEffective       Boolean?
 
+  // IATF 16949 §8.7.1.1/§8.7.1.4-5 — disposición documentada del producto NC:
+  // concesión del cliente (waiver), reproceso con instrucción, reparación, rechazo.
+  disposition              String?   // CONCESSION | REWORK | REPAIR | SCRAP | REJECT_RETURN | USE_AS_IS
+  dispositionNotes         String?   @db.Text
+  concessionRef            String?   // nº de aprobación/waiver del cliente
+  concessionApprovedBy     String?   // quién aprobó (cliente)
+  concessionApprovedAt     DateTime? @db.Timestamptz
+  concessionExpiry         DateTime? @db.Timestamptz // vigencia de la concesión
+  reworkInstruction        String?   @db.Text // instrucción de reproceso/reparación
+  reworkVerifiedAt         DateTime? @db.Timestamptz
+  customerNotifiedAt       DateTime? @db.Timestamptz
+
   assignedToId String?       @db.Uuid
   assignedTo   PlatformUser? @relation("NcrAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
@@ -55,6 +67,9 @@ model NonConformity {
 
   // Trazabilidad desde Clientes
   customerLinks Customer[] @relation("CustomerNCR")
+
+  // Reclamos de cliente / fallas de campo asociados (IATF 10.2.5)
+  customerClaims CustomerClaim[]
 
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
@@ -395,6 +410,10 @@ model Tenant {
   // Customer & Survey Relations
   customers Customer[]
   surveys   Survey[]
+  customerClaims              CustomerClaim[]
+  customerScorecards          CustomerScorecard[]
+  customerSpecificRequirements CustomerSpecificRequirement[]
+  pokaYokeDevices             PokaYokeDevice[]
 
   // Clima y Cultura Relations
   climaSurveys     ClimaSurvey[]
@@ -3149,6 +3168,14 @@ model ContingencyPlan {
   reviewDate     DateTime? @db.Timestamptz
   nextReviewDate DateTime? @db.Timestamptz
 
+  // IATF 16949 §6.1.2.3 — prueba periódica de eficacia del plan
+  // (simulacro ciberseguridad/fallas incl.) + notificación al cliente.
+  lastTestedAt                 DateTime? @db.Timestamptz
+  testResult                   String?   // EFFECTIVE | PARTIAL | INEFFECTIVE
+  testNotes                    String?   @db.Text
+  customerNotificationRequired Boolean   @default(false)
+  customerNotificationContact  String?
+
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
@@ -3259,11 +3286,177 @@ model Customer {
   deletedAt                DateTime?                 @db.Timestamptz
   customerImprovementPlans CustomerImprovementPlan[]
 
+  // IATF — reclamos, scorecards y requisitos específicos del cliente
+  claims               CustomerClaim[]
+  scorecards           CustomerScorecard[]
+  specificRequirements CustomerSpecificRequirement[]
+
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, type])
   @@map("customers")
+}
+
+// IATF 16949 §10.2.5 Reclamos de cliente y análisis de fallas de campo
+// Warranty / field-failure tracking vinculado a NCR y 8D.
+model CustomerClaim {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code      String  // RCL-{YYYY}-{NNN}
+  type      String  @default("COMPLAINT") // COMPLAINT | WARRANTY | FIELD_FAILURE | RETURN | OTHER
+  status    String  @default("OPEN")     // OPEN | IN_ANALYSIS | RESOLVED | CLOSED
+  productName   String?
+  partNumber    String?
+  quantity      Int?
+  description   String  @db.Text
+  detectedAt    DateTime @default(now()) @db.Timestamptz
+
+  // Análisis de falla de campo (10.2.5: análisis de piezas devueltas)
+  returnedPartsAnalysis String?  @db.Text
+  rootCause             String?  @db.Text
+  analysisMethod        String?  // 8D, Ishikawa, 5 Porqués…
+  costAmount            Float?
+
+  customerId String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // Trazabilidad a NCR / 8D (FK escalar — EightDReport vive en core tools)
+  ncrId       String?        @db.Uuid
+  ncr         NonConformity? @relation(fields: [ncrId], references: [id], onDelete: SetNull)
+  eightDCode  String? // código del reporte 8D si existe
+
+  closedAt    DateTime? @db.Timestamptz
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+  createdById String?   @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([status])
+  @@map("customer_claims")
+}
+
+// IATF 16949 §9.1.2.1 — Scorecard de cliente por período:
+// PPM entregados, disrupciones/paradas, fletes premium, retornos, special status.
+model CustomerScorecard {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  customerId String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  period String // YYYY-MM
+
+  deliveredPpm                  Float?
+  customerDisruptions           Int   @default(0) // paradas de línea / plant shutdowns
+  fieldFailures                 Int   @default(0)
+  returns                       Int   @default(0)
+  premiumFreightIncidents       Int   @default(0)
+  specialStatusNotifications    Int   @default(0) // new business hold, etc.
+  deliveryPerformance           Float? // % OTIF
+  qualityScore                  Float? // % o puntaje reportado por el cliente
+  overallScore                  Float?
+  notes                         String? @db.Text
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdById String?  @db.Uuid
+
+  @@unique([customerId, period])
+  @@index([tenantId])
+  @@index([customerId])
+  @@map("customer_scorecards")
+}
+
+// IATF 16949 §4.3.2 — Requisitos específicos del cliente (CSR):
+// registro, revisión y difusión al proceso.
+model CustomerSpecificRequirement {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  customerId String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String? @db.Text
+  source      String? // contrato, manual del proveedor, portal del cliente…
+  status      String  @default("PENDING_REVIEW") // PENDING_REVIEW | REVIEWED | DISSEMINATED | IMPLEMENTED | NOT_APPLICABLE
+
+  documentId    String? @db.Uuid // evidencia documental vinculada
+  responsibleId String? @db.Uuid
+
+  reviewedAt     DateTime? @db.Timestamptz
+  disseminatedAt DateTime? @db.Timestamptz
+  disseminationNotes String? @db.Text // a quiénes / qué procesos se difundió
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdById String?  @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([status])
+  @@map("customer_specific_requirements")
+}
+
+// IATF 16949 §10.2.4 — Error-proofing (poka-yoke):
+// dispositivos/métodos a prueba de error con verificación periódica documentada.
+model PokaYokeDevice {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code        String // PKY-{NNN}
+  name        String
+  type        String @default("CONTROL") // CONTROL (impide el error) | WARNING (alerta)
+  location    String? // línea / estación / máquina
+  process     String? // proceso donde aplica
+  defectPrevented String? // qué defecto/error previene
+
+  // Verificación periódica (la organización debe verificar que sigue funcionando)
+  verificationFrequencyDays Int @default(30)
+  lastVerifiedAt            DateTime? @db.Timestamptz
+  nextVerificationAt        DateTime? @db.Timestamptz
+  verificationMethod        String?   @db.Text // cómo se verifica (pieza maestra, challenge test…)
+  lastVerificationResult    String?   // PASS | FAIL
+
+  status    String @default("ACTIVE") // ACTIVE | FAILED | OUT_OF_SERVICE
+  isActive  Boolean @default(true)
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdById String?  @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz
+
+  verifications PokaYokeVerification[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("poka_yoke_devices")
+}
+
+model PokaYokeVerification {
+  id           String @id @default(uuid()) @db.Uuid
+  deviceId     String @db.Uuid
+  device       PokaYokeDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  tenantId     String @db.Uuid
+
+  verifiedAt   DateTime @default(now()) @db.Timestamptz
+  result       String   // PASS | FAIL
+  verifiedBy   String?  // nombre del verificador
+  notes        String?  @db.Text
+
+  @@index([deviceId])
+  @@index([tenantId])
+  @@map("poka_yoke_verifications")
 }
 
 // Survey / Encuesta model
@@ -4660,6 +4853,10 @@ model GestionCambio {
   requiereComunicacion  Boolean   @default(false)
   documentosAfectados   String?
   riesgosIdentificados  String?
+  // IATF 16949 §8.5.6.1 — el cambio exige revisión de documentación
+  // de producción: PFMEA / Plan de Control / instrucciones de trabajo.
+  requiresCoreToolsReview Boolean @default(false)
+  coreToolsReviewNotes    String?
   verificacion          String?
   creadoPor             String?
   // Planificación del cambio (aditivo)
@@ -6946,8 +7143,9 @@ model Supplier {
   createdAt          DateTime  @default(now()) @db.Timestamptz
   updatedAt          DateTime  @updatedAt @db.Timestamptz
 
-  evaluations SupplierEvaluation[]
-  minutas     Minuta[]
+  evaluations      SupplierEvaluation[]
+  minutas          Minuta[]
+  developmentPlans SupplierDevelopmentPlan[]
 
   @@index([tenantId])
   @@map("suppliers")
@@ -6994,9 +7192,44 @@ model SupplierEvaluation {
   serviceScore       Float @default(0) // servicio
   documentationScore Float @default(0) // documentacion
 
+  // IATF 16949 §8.4.2.4 — monitoreo suplementario del desempeño del proveedor:
+  // conformidad de piezas entregadas, disrupciones al cliente (incl. retornos),
+  // desempeño de entregas con fletes premium y notificaciones de estatus especial.
+  deliveredPpm            Float?
+  customerDisruptions     Int   @default(0)
+  premiumFreightIncidents Int   @default(0)
+  specialStatusNotifications Int @default(0)
+  specialStatusNotes      String? @db.Text
+
   @@index([supplierId])
   @@index([tenantId])
   @@map("supplier_evaluations")
+}
+
+// IATF 16949 §8.4.2.5 — Desarrollo de proveedores:
+// plan con acciones, objetivos de desempeño y evidencias de avance.
+model SupplierDevelopmentPlan {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  supplierId String   @db.Uuid
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  title       String
+  objective   String? @db.Text // meta de desempeño (ej. reducir PPM a <50)
+  actions     Json?            // [{action, responsable, dueDate, status, evidence}]
+  status      String  @default("ACTIVE") // ACTIVE | COMPLETED | CANCELLED
+  targetDate  DateTime? @db.Timestamptz
+  completedAt DateTime? @db.Timestamptz
+  evidence    String?   @db.Text
+
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  createdById String?  @db.Uuid
+  deletedAt   DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([supplierId])
+  @@map("supplier_development_plans")
 }
 
 model EvaluationScore {

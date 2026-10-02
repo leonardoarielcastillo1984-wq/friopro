@@ -33,6 +33,9 @@ const createSchema = z.object({
   requiereComunicacion: z.boolean().optional(),
   documentosAfectados: z.string().optional(),
   riesgosIdentificados: z.string().optional(),
+  // IATF 8.5.6.1 — el cambio obliga a revisar PFMEA / Plan de Control / instrucciones
+  requiresCoreToolsReview: z.boolean().optional(),
+  coreToolsReviewNotes: z.string().optional(),
 });
 
 // Recalcula el nivel global a partir de las columnas resumen de un registro.

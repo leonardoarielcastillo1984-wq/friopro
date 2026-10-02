@@ -53,6 +53,12 @@ interface ContingencyPlan {
     testResults: string | null;
     nextTestDate: string | null;
   };
+  // IATF 6.1.2.3
+  lastTestedAt?: string | null;
+  testResult?: string | null;
+  testNotes?: string | null;
+  customerNotificationRequired?: boolean;
+  customerNotificationContact?: string | null;
   version: string;
   createdAt: string;
   updatedAt: string;
@@ -68,6 +74,31 @@ export default function ContingencyPlanDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedPlan, setEditedPlan] = useState<Partial<ContingencyPlan>>({});
+  // IATF 6.1.2.3 — prueba de eficacia
+  const [showTestModal, setShowTestModal] = useState(false);
+  const [testForm, setTestForm] = useState({ testResult: 'EFFECTIVE', testNotes: '', lastTestedAt: new Date().toISOString().slice(0, 10) });
+  const [testSaving, setTestSaving] = useState(false);
+
+  const handleRegisterTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTestSaving(true);
+    try {
+      const res = await apiFetch(`/emergency/contingency-plans/${planId}/test`, {
+        method: 'POST',
+        json: testForm,
+      }) as any;
+      if (res?.plan) {
+        setPlan((prev) => prev ? { ...prev, ...res.plan } : prev);
+        setEditedPlan((prev) => ({ ...prev, ...res.plan }));
+        setShowTestModal(false);
+        setTestForm({ testResult: 'EFFECTIVE', testNotes: '', lastTestedAt: new Date().toISOString().slice(0, 10) });
+      }
+    } catch {
+      alert('Error al registrar la prueba');
+    } finally {
+      setTestSaving(false);
+    }
+  };
 
   useEffect(() => {
     loadPlan();
@@ -208,7 +239,7 @@ export default function ContingencyPlanDetailPage() {
                   </select>
                   <select
                     value={editedPlan.status || plan.status}
-                    onChange={(e) => setEditedPlan({ ...editedPlan, status: e.target.value })}
+                    onChange={(e) => setEditedPlan({ ...editedPlan, status: e.target.value as ContingencyPlan['status'] })}
                     className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="DRAFT">Borrador</option>
@@ -442,12 +473,71 @@ export default function ContingencyPlanDetailPage() {
             </div>
           </div>
 
-          {/* Testing */}
+          {/* Testing — IATF 6.1.2.3 */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              Pruebas
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <CheckCircle className="w-5 h-5" />
+                Pruebas <span className="text-xs font-normal text-gray-400">IATF 6.1.2.3</span>
+              </h2>
+              {!isEditing && plan.status === 'ACTIVE' && (
+                <button
+                  onClick={() => setShowTestModal(true)}
+                  className="text-xs px-2.5 py-1.5 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 font-medium"
+                >
+                  Registrar prueba
+                </button>
+              )}
+            </div>
+
+            {/* Resultado de última prueba IATF */}
+            {plan.lastTestedAt && (
+              <div className={`mb-3 rounded-lg p-3 text-sm border ${
+                plan.testResult === 'EFFECTIVE' ? 'bg-green-50 border-green-200' :
+                plan.testResult === 'PARTIAL' ? 'bg-amber-50 border-amber-200' :
+                'bg-red-50 border-red-200'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">
+                    {plan.testResult === 'EFFECTIVE' ? '✓ Eficaz' : plan.testResult === 'PARTIAL' ? 'Parcialmente eficaz' : 'Ineficaz'}
+                  </span>
+                  <span className="text-xs text-gray-500">{new Date(plan.lastTestedAt).toLocaleDateString('es-AR')}</span>
+                </div>
+                {plan.testNotes && <p className="text-xs text-gray-600 mt-1">{plan.testNotes}</p>}
+              </div>
+            )}
+
+            {/* Notificación al cliente */}
+            <div className="mb-3 text-sm">
+              {isEditing ? (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={editedPlan.customerNotificationRequired ?? false}
+                      onChange={(e) => setEditedPlan({ ...editedPlan, customerNotificationRequired: e.target.checked })}
+                    />
+                    Requiere notificación al cliente
+                  </label>
+                  {(editedPlan.customerNotificationRequired) && (
+                    <input
+                      type="text"
+                      value={editedPlan.customerNotificationContact || ''}
+                      onChange={(e) => setEditedPlan({ ...editedPlan, customerNotificationContact: e.target.value })}
+                      placeholder="Contacto del cliente a notificar"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Notif. al cliente</span>
+                  <span className="font-medium text-gray-900">
+                    {plan.customerNotificationRequired ? `Sí${plan.customerNotificationContact ? ` — ${plan.customerNotificationContact}` : ''}` : 'No'}
+                  </span>
+                </div>
+              )}
+            </div>
             {isEditing ? (
               <div className="space-y-3">
                 <div>
@@ -515,6 +605,66 @@ export default function ContingencyPlanDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal registrar prueba — IATF 6.1.2.3 */}
+      {showTestModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md">
+            <div className="border-b border-gray-200 p-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Registrar prueba de eficacia</h2>
+              <button onClick={() => setShowTestModal(false)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleRegisterTest} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de la prueba *</label>
+                <input
+                  type="date" required
+                  value={testForm.lastTestedAt}
+                  onChange={(e) => setTestForm({ ...testForm, lastTestedAt: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Resultado *</label>
+                <select
+                  value={testForm.testResult}
+                  onChange={(e) => setTestForm({ ...testForm, testResult: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="EFFECTIVE">Eficaz</option>
+                  <option value="PARTIAL">Parcialmente eficaz</option>
+                  <option value="INEFFECTIVE">Ineficaz</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+                <textarea
+                  rows={3}
+                  value={testForm.testNotes}
+                  onChange={(e) => setTestForm({ ...testForm, testNotes: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="Ej: simulacro de corte de suministro eléctrico, tiempo real de respuesta 12min..."
+                />
+              </div>
+              {testForm.testResult !== 'EFFECTIVE' && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                  Un resultado no eficaz debe derivar en revisión del plan y acciones correctivas.
+                </p>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowTestModal(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={testSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+                  {testSaving ? 'Guardando…' : 'Registrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

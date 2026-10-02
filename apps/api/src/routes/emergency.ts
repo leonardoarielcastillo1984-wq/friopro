@@ -587,12 +587,57 @@ export const emergencyRoutes: FastifyPluginAsync = async (app) => {
     if (!existing) return reply.code(404).send({ error: 'Registro no encontrado.' });
 
     const data: any = {};
-    ['name','description','type','status','version','responsibleId','reviewDate','nextReviewDate','objectives','triggers','responsibilities','procedures','resources','communications','timeline'].forEach((k) => {
+    ['name','description','type','status','version','responsibleId','reviewDate','nextReviewDate','objectives','triggers','responsibilities','procedures','resources','communications','timeline','customerNotificationRequired','customerNotificationContact'].forEach((k) => {
       if (body[k] !== undefined) data[k] = body[k];
     });
 
     const updated = await app.runWithDbContext(req, async (tx: any) => {
       return tx.contingencyPlan.update({ where: { id }, data });
+    });
+    return reply.send({ success: true, plan: updated });
+  });
+
+  // POST /emergency/contingency-plans/:id/test — IATF 6.1.2.3: registrar prueba de eficacia
+  app.post('/contingency-plans/:id/test', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tId = tenantId(req);
+    if (!tId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+    let body = parseBody(req);
+    if (!body) return reply.code(400).send({ error: 'El cuerpo de la solicitud es inválido.' });
+
+    const result = z.enum(['EFFECTIVE', 'PARTIAL', 'INEFFECTIVE']).safeParse(body.testResult);
+    if (!result.success) return reply.code(400).send({ error: 'testResult debe ser EFFECTIVE | PARTIAL | INEFFECTIVE' });
+
+    const existing = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.contingencyPlan.findFirst({ where: { id, tenantId: tId, deletedAt: null } });
+    });
+    if (!existing) return reply.code(404).send({ error: 'Registro no encontrado.' });
+
+    const testedAt = body.lastTestedAt ? new Date(body.lastTestedAt) : new Date();
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      // Guardar snapshot de la prueba en el versionado del plan
+      try {
+        await tx.contingencyPlanVersion.create({
+          data: {
+            tenantId: tId,
+            planId: id,
+            version: `test-${testedAt.toISOString().slice(0, 10)}`,
+            snapshot: { testedAt, testResult: body.testResult, testNotes: body.testNotes || null },
+            createdById: (req as any).auth?.userId ?? null,
+          },
+        });
+      } catch { /* el versionado es best-effort */ }
+
+      return tx.contingencyPlan.update({
+        where: { id },
+        data: {
+          lastTestedAt: testedAt,
+          testResult: body.testResult,
+          testNotes: body.testNotes || null,
+          customerNotificationRequired: body.customerNotificationRequired ?? existing.customerNotificationRequired,
+          customerNotificationContact: body.customerNotificationContact ?? existing.customerNotificationContact,
+        },
+      });
     });
     return reply.send({ success: true, plan: updated });
   });

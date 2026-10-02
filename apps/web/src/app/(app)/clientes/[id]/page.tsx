@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   Building2, Mail, Phone, MapPin, ArrowLeft, Edit2, Trash2,
   User, Briefcase, Globe, FileText, Star, ClipboardList,
-  MessageSquare, CheckCircle2, X, Save, Send
+  MessageSquare, CheckCircle2, X, Save, Send, AlertTriangle, BarChart3, ScrollText
 } from 'lucide-react';
 
 interface Customer {
@@ -86,6 +86,66 @@ interface Survey {
   isActive: boolean;
 }
 
+interface Claim {
+  id: string;
+  code: string;
+  type: string;
+  status: string;
+  productName?: string | null;
+  partNumber?: string | null;
+  quantity?: number | null;
+  description: string;
+  detectedAt: string;
+  costAmount?: number | null;
+  returnedPartsAnalysis?: string | null;
+  rootCause?: string | null;
+  eightDCode?: string | null;
+  ncr?: { id: string; code: string; status: string } | null;
+}
+
+interface Scorecard {
+  id: string;
+  period: string;
+  deliveredPpm?: number | null;
+  customerDisruptions: number;
+  fieldFailures: number;
+  returns: number;
+  premiumFreightIncidents: number;
+  specialStatusNotifications: number;
+  deliveryPerformance?: number | null;
+  qualityScore?: number | null;
+  overallScore?: number | null;
+  notes?: string | null;
+}
+
+interface CSR {
+  id: string;
+  title: string;
+  description?: string | null;
+  source?: string | null;
+  status: string;
+  reviewedAt?: string | null;
+  disseminatedAt?: string | null;
+  disseminationNotes?: string | null;
+}
+
+const CLAIM_TYPE_LABELS: Record<string, string> = {
+  COMPLAINT: 'Reclamo', WARRANTY: 'Garantía', FIELD_FAILURE: 'Falla de campo', RETURN: 'Devolución', OTHER: 'Otro',
+};
+const CLAIM_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  OPEN: { label: 'Abierto', cls: 'bg-red-100 text-red-700' },
+  IN_ANALYSIS: { label: 'En análisis', cls: 'bg-amber-100 text-amber-700' },
+  RESOLVED: { label: 'Resuelto', cls: 'bg-blue-100 text-blue-700' },
+  CLOSED: { label: 'Cerrado', cls: 'bg-green-100 text-green-700' },
+};
+const CSR_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  PENDING_REVIEW: { label: 'Pend. revisión', cls: 'bg-amber-100 text-amber-700' },
+  REVIEWED: { label: 'Revisado', cls: 'bg-blue-100 text-blue-700' },
+  DISSEMINATED: { label: 'Difundido', cls: 'bg-purple-100 text-purple-700' },
+  IMPLEMENTED: { label: 'Implementado', cls: 'bg-green-100 text-green-700' },
+  NOT_APPLICABLE: { label: 'No aplica', cls: 'bg-gray-100 text-gray-600' },
+};
+
 export default function CustomerDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -102,11 +162,114 @@ export default function CustomerDetailPage() {
   const [showCreatePlan, setShowCreatePlan] = useState(false);
   const [planForm, setPlanForm] = useState({ title: '', description: '', responsible: '', dueDate: '' });
 
+  // IATF: reclamos, scorecards, CSR
+  const [claims, setClaims] = useState<Claim[]>([]);
+  const [scorecards, setScorecards] = useState<Scorecard[]>([]);
+  const [csrs, setCsrs] = useState<CSR[]>([]);
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [showScorecardModal, setShowScorecardModal] = useState(false);
+  const [showCsrModal, setShowCsrModal] = useState(false);
+  const [claimForm, setClaimForm] = useState({ type: 'COMPLAINT', productName: '', partNumber: '', quantity: '', description: '', detectedAt: '', costAmount: '', createNcr: true });
+  const [scorecardForm, setScorecardForm] = useState({ period: '', deliveredPpm: '', customerDisruptions: '0', fieldFailures: '0', returns: '0', premiumFreightIncidents: '0', specialStatusNotifications: '0', deliveryPerformance: '', qualityScore: '', overallScore: '', notes: '' });
+  const [csrForm, setCsrForm] = useState({ title: '', description: '', source: '' });
+
   useEffect(() => {
     loadCustomer();
     loadSatisfactionHistory();
     loadImprovementPlans();
+    loadIatf();
   }, [customerId]);
+
+  const loadIatf = async () => {
+    try {
+      const [c, s, r] = await Promise.all([
+        apiFetch<{ claims: Claim[] }>(`/customers/${customerId}/claims`),
+        apiFetch<{ scorecards: Scorecard[] }>(`/customers/${customerId}/scorecards`),
+        apiFetch<{ requirements: CSR[] }>(`/customers/${customerId}/specific-requirements`),
+      ]);
+      setClaims(c?.claims || []);
+      setScorecards(s?.scorecards || []);
+      setCsrs(r?.requirements || []);
+    } catch (err) {
+      console.error('Error loading IATF data:', err);
+    }
+  };
+
+  const handleCreateClaim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiFetch(`/customers/${customerId}/claims`, {
+        method: 'POST',
+        json: {
+          type: claimForm.type,
+          productName: claimForm.productName || null,
+          partNumber: claimForm.partNumber || null,
+          quantity: claimForm.quantity ? parseInt(claimForm.quantity) : null,
+          description: claimForm.description,
+          detectedAt: claimForm.detectedAt || null,
+          costAmount: claimForm.costAmount ? parseFloat(claimForm.costAmount) : null,
+          createNcr: claimForm.createNcr,
+        },
+      });
+      setShowClaimModal(false);
+      setClaimForm({ type: 'COMPLAINT', productName: '', partNumber: '', quantity: '', description: '', detectedAt: '', costAmount: '', createNcr: true });
+      await loadIatf();
+      await loadCustomer();
+    } catch { alert('Error al registrar el reclamo'); }
+  };
+
+  const handleClaimStatus = async (claimId: string, status: string) => {
+    try {
+      await apiFetch(`/customers/claims/${claimId}`, { method: 'PATCH', json: { status } });
+      await loadIatf();
+    } catch { alert('Error al actualizar el reclamo'); }
+  };
+
+  const handleSaveScorecard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const num = (v: string) => v === '' ? null : parseFloat(v);
+      const int = (v: string) => parseInt(v) || 0;
+      await apiFetch(`/customers/${customerId}/scorecards`, {
+        method: 'POST',
+        json: {
+          period: scorecardForm.period,
+          deliveredPpm: num(scorecardForm.deliveredPpm),
+          customerDisruptions: int(scorecardForm.customerDisruptions),
+          fieldFailures: int(scorecardForm.fieldFailures),
+          returns: int(scorecardForm.returns),
+          premiumFreightIncidents: int(scorecardForm.premiumFreightIncidents),
+          specialStatusNotifications: int(scorecardForm.specialStatusNotifications),
+          deliveryPerformance: num(scorecardForm.deliveryPerformance),
+          qualityScore: num(scorecardForm.qualityScore),
+          overallScore: num(scorecardForm.overallScore),
+          notes: scorecardForm.notes || null,
+        },
+      });
+      setShowScorecardModal(false);
+      await loadIatf();
+    } catch { alert('Error al guardar el scorecard (periodo YYYY-MM)'); }
+  };
+
+  const handleCreateCsr = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiFetch(`/customers/${customerId}/specific-requirements`, {
+        method: 'POST',
+        json: { title: csrForm.title, description: csrForm.description || null, source: csrForm.source || null },
+      });
+      setShowCsrModal(false);
+      setCsrForm({ title: '', description: '', source: '' });
+      await loadIatf();
+    } catch { alert('Error al crear el requisito'); }
+  };
+
+  const handleCsrStatus = async (reqId: string, status: string) => {
+    try {
+      await apiFetch(`/customers/specific-requirements/${reqId}`, { method: 'PATCH', json: { status } });
+      await loadIatf();
+    } catch { alert('Error al actualizar el requisito'); }
+  };
 
   const loadCustomer = async () => {
     try {
@@ -599,6 +762,161 @@ export default function CustomerDetailPage() {
             )}
           </div>
 
+          {/* IATF §10.2.5 — Reclamos / garantía / fallas de campo */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-orange-500" /> Reclamos y fallas de campo
+                <span className="text-xs font-normal text-gray-400">IATF 10.2.5</span>
+              </h2>
+              <button onClick={() => setShowClaimModal(true)}
+                className="inline-flex items-center gap-1 text-sm px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100">
+                <AlertTriangle className="w-4 h-4" /> Registrar reclamo
+              </button>
+            </div>
+            {claims.length === 0 ? (
+              <p className="text-gray-600 text-sm">Sin reclamos registrados</p>
+            ) : (
+              <div className="space-y-3">
+                {claims.map((cl) => (
+                  <div key={cl.id} className="border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-gray-500">{cl.code}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{CLAIM_TYPE_LABELS[cl.type] || cl.type}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${CLAIM_STATUS_LABELS[cl.status]?.cls || 'bg-gray-100'}`}>
+                          {CLAIM_STATUS_LABELS[cl.status]?.label || cl.status}
+                        </span>
+                      </div>
+                      {(cl.status === 'OPEN' || cl.status === 'IN_ANALYSIS') && (
+                        <select value={cl.status} onChange={(e) => handleClaimStatus(cl.id, e.target.value)}
+                          className="text-xs border border-gray-300 rounded px-2 py-1">
+                          <option value="OPEN">Abierto</option>
+                          <option value="IN_ANALYSIS">En análisis</option>
+                          <option value="RESOLVED">Resuelto</option>
+                          <option value="CLOSED">Cerrado</option>
+                        </select>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-900 mt-1">{cl.description}</p>
+                    <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
+                      {cl.productName && <span>Producto: {cl.productName}{cl.partNumber ? ` (${cl.partNumber})` : ''}</span>}
+                      {cl.quantity != null && <span>Cantidad: {cl.quantity}</span>}
+                      {cl.costAmount != null && <span>Costo: ${cl.costAmount.toLocaleString('es-AR')}</span>}
+                      <span>{new Date(cl.detectedAt).toLocaleDateString('es-AR')}</span>
+                      {cl.ncr && (
+                        <Link href={`/no-conformidades/${cl.ncr.id}`} className="text-blue-600 hover:underline">
+                          NCR {cl.ncr.code}
+                        </Link>
+                      )}
+                      {cl.eightDCode && <span>8D: {cl.eightDCode}</span>}
+                    </div>
+                    {cl.returnedPartsAnalysis && (
+                      <p className="mt-2 text-xs text-gray-600 bg-gray-50 rounded p-2"><strong>Análisis piezas devueltas:</strong> {cl.returnedPartsAnalysis}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* IATF §9.1.2.1 — Scorecards del cliente */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-blue-500" /> Scorecards
+                <span className="text-xs font-normal text-gray-400">IATF 9.1.2.1</span>
+              </h2>
+              <button onClick={() => {
+                setScorecardForm({ ...scorecardForm, period: new Date().toISOString().slice(0, 7) });
+                setShowScorecardModal(true);
+              }}
+                className="inline-flex items-center gap-1 text-sm px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100">
+                <BarChart3 className="w-4 h-4" /> Nuevo período
+              </button>
+            </div>
+            {scorecards.length === 0 ? (
+              <p className="text-gray-600 text-sm">Sin scorecards registrados</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 border-b">
+                      <th className="py-2 pr-3">Período</th>
+                      <th className="py-2 pr-3">PPM</th>
+                      <th className="py-2 pr-3">Disrupc.</th>
+                      <th className="py-2 pr-3">Fallas campo</th>
+                      <th className="py-2 pr-3">Devol.</th>
+                      <th className="py-2 pr-3">Flete prem.</th>
+                      <th className="py-2 pr-3">OTIF %</th>
+                      <th className="py-2">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scorecards.map((s) => (
+                      <tr key={s.id} className="border-b border-gray-100">
+                        <td className="py-2 pr-3 font-medium">{s.period}</td>
+                        <td className={`py-2 pr-3 ${(s.deliveredPpm ?? 0) > 200 ? 'text-red-600 font-semibold' : ''}`}>{s.deliveredPpm ?? '—'}</td>
+                        <td className={`py-2 pr-3 ${s.customerDisruptions > 0 ? 'text-red-600 font-semibold' : ''}`}>{s.customerDisruptions}</td>
+                        <td className="py-2 pr-3">{s.fieldFailures}</td>
+                        <td className="py-2 pr-3">{s.returns}</td>
+                        <td className={`py-2 pr-3 ${s.premiumFreightIncidents > 0 ? 'text-amber-600 font-semibold' : ''}`}>{s.premiumFreightIncidents}</td>
+                        <td className="py-2 pr-3">{s.deliveryPerformance != null ? `${s.deliveryPerformance}%` : '—'}</td>
+                        <td className="py-2 font-medium">{s.overallScore ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* IATF §4.3.2 — Requisitos específicos del cliente */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <ScrollText className="w-5 h-5 text-purple-500" /> Requisitos específicos (CSR)
+                <span className="text-xs font-normal text-gray-400">IATF 4.3.2</span>
+              </h2>
+              <button onClick={() => setShowCsrModal(true)}
+                className="inline-flex items-center gap-1 text-sm px-3 py-1.5 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100">
+                <ScrollText className="w-4 h-4" /> Nuevo CSR
+              </button>
+            </div>
+            {csrs.length === 0 ? (
+              <p className="text-gray-600 text-sm">Sin requisitos específicos registrados</p>
+            ) : (
+              <div className="space-y-2">
+                {csrs.map((r) => (
+                  <div key={r.id} className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-gray-900">{r.title}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${CSR_STATUS_LABELS[r.status]?.cls || 'bg-gray-100'}`}>
+                          {CSR_STATUS_LABELS[r.status]?.label || r.status}
+                        </span>
+                      </div>
+                      {r.description && <p className="text-sm text-gray-600 mt-1">{r.description}</p>}
+                      <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
+                        {r.source && <span>Fuente: {r.source}</span>}
+                        {r.reviewedAt && <span>Revisado: {new Date(r.reviewedAt).toLocaleDateString('es-AR')}</span>}
+                        {r.disseminatedAt && <span>Difundido: {new Date(r.disseminatedAt).toLocaleDateString('es-AR')}</span>}
+                      </div>
+                    </div>
+                    <select value={r.status} onChange={(e) => handleCsrStatus(r.id, e.target.value)}
+                      className="text-xs border border-gray-300 rounded px-2 py-1 flex-shrink-0">
+                      <option value="PENDING_REVIEW">Pend. revisión</option>
+                      <option value="REVIEWED">Revisado</option>
+                      <option value="DISSEMINATED">Difundido</option>
+                      <option value="IMPLEMENTED">Implementado</option>
+                      <option value="NOT_APPLICABLE">No aplica</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Improvement Plans */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
@@ -806,6 +1124,199 @@ export default function CustomerDetailPage() {
                 </button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                   Crear Plan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Reclamo (IATF 10.2.5) */}
+      {showClaimModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="border-b border-gray-200 p-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Registrar reclamo / falla de campo</h2>
+              <button onClick={() => setShowClaimModal(false)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateClaim} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo *</label>
+                  <select value={claimForm.type} onChange={(e) => setClaimForm({ ...claimForm, type: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="COMPLAINT">Reclamo</option>
+                    <option value="WARRANTY">Garantía</option>
+                    <option value="FIELD_FAILURE">Falla de campo</option>
+                    <option value="RETURN">Devolución</option>
+                    <option value="OTHER">Otro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha detección</label>
+                  <input type="date" value={claimForm.detectedAt} onChange={(e) => setClaimForm({ ...claimForm, detectedAt: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
+                  <input type="text" value={claimForm.productName} onChange={(e) => setClaimForm({ ...claimForm, productName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nº de parte</label>
+                  <input type="text" value={claimForm.partNumber} onChange={(e) => setClaimForm({ ...claimForm, partNumber: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                  <input type="number" min="0" value={claimForm.quantity} onChange={(e) => setClaimForm({ ...claimForm, quantity: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Costo estimado ($)</label>
+                  <input type="number" step="0.01" min="0" value={claimForm.costAmount} onChange={(e) => setClaimForm({ ...claimForm, costAmount: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción *</label>
+                <textarea required rows={3} value={claimForm.description} onChange={(e) => setClaimForm({ ...claimForm, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="Qué reporta el cliente, síntomas, lote afectado..." />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={claimForm.createNcr} onChange={(e) => setClaimForm({ ...claimForm, createNcr: e.target.checked })} />
+                Generar NCR automáticamente (origen: reclamo de cliente)
+              </label>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowClaimModal(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                  Cancelar
+                </button>
+                <button type="submit" className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+                  Registrar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Scorecard (IATF 9.1.2.1) */}
+      {showScorecardModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="border-b border-gray-200 p-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Scorecard del cliente</h2>
+              <button onClick={() => setShowScorecardModal(false)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveScorecard} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Período (AAAA-MM) *</label>
+                <input type="month" required value={scorecardForm.period} onChange={(e) => setScorecardForm({ ...scorecardForm, period: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">PPM entregados</label>
+                  <input type="number" step="0.01" value={scorecardForm.deliveredPpm} onChange={(e) => setScorecardForm({ ...scorecardForm, deliveredPpm: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Score global</label>
+                  <input type="number" step="0.01" value={scorecardForm.overallScore} onChange={(e) => setScorecardForm({ ...scorecardForm, overallScore: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Disrupciones al cliente</label>
+                  <input type="number" min="0" value={scorecardForm.customerDisruptions} onChange={(e) => setScorecardForm({ ...scorecardForm, customerDisruptions: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fallas de campo</label>
+                  <input type="number" min="0" value={scorecardForm.fieldFailures} onChange={(e) => setScorecardForm({ ...scorecardForm, fieldFailures: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Devoluciones</label>
+                  <input type="number" min="0" value={scorecardForm.returns} onChange={(e) => setScorecardForm({ ...scorecardForm, returns: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fletes premium</label>
+                  <input type="number" min="0" value={scorecardForm.premiumFreightIncidents} onChange={(e) => setScorecardForm({ ...scorecardForm, premiumFreightIncidents: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Special status</label>
+                  <input type="number" min="0" value={scorecardForm.specialStatusNotifications} onChange={(e) => setScorecardForm({ ...scorecardForm, specialStatusNotifications: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">OTIF %</label>
+                  <input type="number" step="0.1" min="0" max="100" value={scorecardForm.deliveryPerformance} onChange={(e) => setScorecardForm({ ...scorecardForm, deliveryPerformance: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                <textarea rows={2} value={scorecardForm.notes} onChange={(e) => setScorecardForm({ ...scorecardForm, notes: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowScorecardModal(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                  Cancelar
+                </button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                  Guardar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal CSR (IATF 4.3.2) */}
+      {showCsrModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg">
+            <div className="border-b border-gray-200 p-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Requisito específico del cliente</h2>
+              <button onClick={() => setShowCsrModal(false)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateCsr} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Requisito *</label>
+                <input type="text" required value={csrForm.title} onChange={(e) => setCsrForm({ ...csrForm, title: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="Ej: PPAP nivel 3, etiquetado específico, CQI-9…" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                <textarea rows={3} value={csrForm.description} onChange={(e) => setCsrForm({ ...csrForm, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fuente</label>
+                <input type="text" value={csrForm.source} onChange={(e) => setCsrForm({ ...csrForm, source: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="Manual del proveedor, contrato, portal del cliente…" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowCsrModal(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                  Cancelar
+                </button>
+                <button type="submit" className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                  Crear
                 </button>
               </div>
             </form>

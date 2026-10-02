@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import {
   Ruler, TrendingUp, AlertTriangle, ClipboardCheck, FolderKanban,
-  PackageCheck, Wrench, Layers, ArrowRight,
+  PackageCheck, Wrench, Layers, ArrowRight, ShieldCheck,
 } from 'lucide-react';
 
 const TOOLS = [
@@ -57,6 +57,12 @@ const TOOLS = [
     desc: 'Auditorías de proceso por capas con checklists, frecuencias y registro de ejecuciones con hallazgos.',
     tag: 'CQI-8 / IATF',
   },
+  {
+    href: '/core-tools/poka-yoke', icon: ShieldCheck, color: 'bg-teal-500',
+    title: 'Poka-Yoke — A prueba de error',
+    desc: 'Dispositivos y métodos error-proofing con verificación periódica y registro de resultados.',
+    tag: 'IATF 10.2.4',
+  },
 ];
 
 export default function CoreToolsHub() {
@@ -73,13 +79,14 @@ export default function CoreToolsHub() {
         '/core-tools/ppap': '/core-tools/ppap',
         '/core-tools/8d': '/core-tools/eight-d',
         '/core-tools/lpa': '/core-tools/lpa/plans',
+        '/core-tools/poka-yoke': '/poka-yoke',
       };
       const out: Record<string, number> = {};
       await Promise.all(
         Object.entries(eps).map(async ([k, ep]) => {
           try {
-            const res = await apiFetch<{ items: any[] }>(ep);
-            out[k] = res.items?.length ?? 0;
+            const res = await apiFetch<{ items?: any[]; devices?: any[] }>(ep);
+            out[k] = res.items?.length ?? res.devices?.length ?? 0;
           } catch {
             out[k] = 0;
           }

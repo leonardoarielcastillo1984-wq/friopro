@@ -32,6 +32,7 @@ import { registerAuditRoutes } from './routes/audits.js';
 import { registerManagementReviewRoutes } from './routes/managementReview.js';
 import { coreToolsRoutes } from './routes/coreTools.js';
 import { ncrRoutes } from './routes/ncr.js';
+import { pokaYokeRoutes } from './routes/pokaYoke.js';
 import { settingsRoutes } from './routes/settings.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { indicadoresRoutes } from './routes/indicators.js';
@@ -407,6 +408,7 @@ export async function buildApp() {
   await app.register(registerAuditRoutes);
   await app.register(registerManagementReviewRoutes);
   await app.register(coreToolsRoutes, { prefix: '/core-tools' });
+  await app.register(pokaYokeRoutes, { prefix: '/poka-yoke' });
   await app.register(ncrRoutes, { prefix: '/ncr' });
   await app.register(actionPlanRoutes, { prefix: '/action-plans' });
   await app.register(portalAccionRoutes, { prefix: '/portal-accion' });

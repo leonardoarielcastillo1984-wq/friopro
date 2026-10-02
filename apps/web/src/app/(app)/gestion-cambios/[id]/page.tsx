@@ -263,7 +263,14 @@ export default function FichaCambioPage() {
               <Field label="Fecha cierre" value={fmt(cambio.fechaCierre)} />
               <Field label="Requiere capacitación" value={cambio.capacitacionRequerida ? 'Sí' : 'No'} />
               <Field label="Requiere comunicación" value={cambio.requiereComunicacion ? 'Sí' : 'No'} />
+              <Field label="Revisión Core Tools (IATF 8.5.6.1)" value={cambio.requiresCoreToolsReview ? 'Sí' : 'No'} />
             </div>
+            {cambio.requiresCoreToolsReview && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+                <h3 className="text-sm font-semibold text-amber-800 mb-2">⚠ Revisión de Core Tools requerida — IATF 8.5.6.1</h3>
+                <p className="text-sm text-amber-700">{cambio.coreToolsReviewNotes || 'Revisar PFMEA, Plan de Control e instrucciones de trabajo afectadas por este cambio antes de la implementación.'}</p>
+              </div>
+            )}
             {cambio.recursosNecesarios && (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <h3 className="text-sm font-semibold text-gray-700 mb-2">Recursos necesarios</h3>

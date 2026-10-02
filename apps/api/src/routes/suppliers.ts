@@ -195,6 +195,12 @@ export async function registerSupplierRoutes(app: FastifyInstance) {
           overallScore,
           result,
           comments: body.comments || null,
+          // IATF 8.4.2.4 — monitoreo suplementario
+          deliveredPpm: body.deliveredPpm != null ? Number(body.deliveredPpm) : null,
+          customerDisruptions: Number(body.customerDisruptions ?? 0),
+          premiumFreightIncidents: Number(body.premiumFreightIncidents ?? 0),
+          specialStatusNotifications: Number(body.specialStatusNotifications ?? 0),
+          specialStatusNotes: body.specialStatusNotes || null,
           evaluatedById: req.auth?.userId ?? null,
         },
       });
@@ -598,6 +604,94 @@ export async function registerSupplierRoutes(app: FastifyInstance) {
   });
 
   // DELETE /suppliers/:id - Soft delete
+  // ════════════════════════════════════════════════════════════════════════
+  // IATF 16949 §8.4.2.5 — Planes de desarrollo de proveedores
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get('/:id/development-plans', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const plans = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.supplierDevelopmentPlan.findMany({
+        where: { supplierId: id, tenantId, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+    return reply.send({ plans });
+  });
+
+  app.post('/:id/development-plans', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      title: z.string().min(2),
+      objective: z.string().optional().nullable(),
+      actions: z.array(z.any()).optional().nullable(), // [{action, responsable, dueDate, status, evidence}]
+      targetDate: z.string().optional().nullable(),
+    });
+    const body = schema.parse(req.body);
+
+    const plan = await app.runWithDbContext(req, async (tx: any) => {
+      const supplier = await tx.supplier.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!supplier) return null;
+      return tx.supplierDevelopmentPlan.create({
+        data: {
+          tenantId,
+          supplierId: id,
+          title: body.title,
+          objective: body.objective || null,
+          actions: body.actions ?? [],
+          targetDate: body.targetDate ? new Date(body.targetDate) : null,
+          createdById: req.auth?.userId ?? null,
+        },
+      });
+    });
+    if (!plan) return reply.code(404).send({ error: 'Proveedor no encontrado' });
+    return reply.code(201).send({ plan });
+  });
+
+  app.patch('/development-plans/:planId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { planId } = z.object({ planId: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      title: z.string().min(2).optional(),
+      objective: z.string().optional().nullable(),
+      actions: z.array(z.any()).optional().nullable(),
+      status: z.enum(['ACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
+      targetDate: z.string().optional().nullable(),
+      evidence: z.string().optional().nullable(),
+    });
+    const body = schema.parse(req.body);
+    const data: any = { ...body };
+    if (body.targetDate !== undefined) data.targetDate = body.targetDate ? new Date(body.targetDate) : null;
+    if (body.status === 'COMPLETED') data.completedAt = new Date();
+    Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);
+
+    const plan = await app.runWithDbContext(req, async (tx: any) => {
+      const res = await tx.supplierDevelopmentPlan.updateMany({ where: { id: planId, tenantId, deletedAt: null }, data });
+      if (res.count === 0) return null;
+      return tx.supplierDevelopmentPlan.findFirst({ where: { id: planId } });
+    });
+    if (!plan) return reply.code(404).send({ error: 'Plan no encontrado' });
+    return reply.send({ plan });
+  });
+
+  app.delete('/development-plans/:planId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { planId } = z.object({ planId: z.string().uuid() }).parse(req.params);
+    const res = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.supplierDevelopmentPlan.updateMany({ where: { id: planId, tenantId, deletedAt: null }, data: { deletedAt: new Date() } });
+    });
+    if (res.count === 0) return reply.code(404).send({ error: 'Plan no encontrado' });
+    return reply.send({ success: true });
+  });
+
   app.delete('/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });

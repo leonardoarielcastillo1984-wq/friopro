@@ -891,4 +891,324 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
     return reply.send({ analysis });
   });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // IATF 16949 — §10.2.5 Reclamos de cliente / warranty / field failures
+  // ════════════════════════════════════════════════════════════════════════
+
+  // GET /customers/claims — todos los reclamos del tenant
+  app.get('/claims', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const q = req.query as any;
+    const where: any = { tenantId, deletedAt: null };
+    if (q?.status) where.status = q.status;
+    if (q?.customerId) where.customerId = q.customerId;
+    const claims = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.customerClaim.findMany({
+        where,
+        orderBy: { detectedAt: 'desc' },
+        include: { customer: { select: { id: true, name: true, code: true } }, ncr: { select: { id: true, code: true, status: true } } },
+      });
+    });
+    return reply.send({ claims });
+  });
+
+  // GET /customers/:id/claims — reclamos de un cliente
+  app.get('/:id/claims', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const claims = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.customerClaim.findMany({
+        where: { customerId: id, tenantId, deletedAt: null },
+        orderBy: { detectedAt: 'desc' },
+        include: { ncr: { select: { id: true, code: true, status: true } } },
+      });
+    });
+    return reply.send({ claims });
+  });
+
+  // POST /customers/:id/claims — registrar reclamo/warranty/field failure
+  app.post('/:id/claims', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      type: z.enum(['COMPLAINT', 'WARRANTY', 'FIELD_FAILURE', 'RETURN', 'OTHER']).default('COMPLAINT'),
+      productName: z.string().optional().nullable(),
+      partNumber: z.string().optional().nullable(),
+      quantity: z.number().int().positive().optional().nullable(),
+      description: z.string().min(3),
+      detectedAt: z.string().optional().nullable(),
+      costAmount: z.number().optional().nullable(),
+      createNcr: z.boolean().optional(), // auto-generar NCR vinculada (CUSTOMER_COMPLAINT)
+    });
+    const body = schema.parse(req.body);
+
+    const result = await app.runWithDbContext(req, async (tx: any) => {
+      const customer = await tx.customer.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!customer) return { kind: 'not_found' as const };
+
+      const year = new Date().getFullYear();
+      const count = await tx.customerClaim.count({ where: { tenantId, code: { startsWith: `RCL-${year}-` } } });
+      const code = `RCL-${year}-${String(count + 1).padStart(3, '0')}`;
+
+      let ncrId: string | null = null;
+      if (body.createNcr) {
+        const nCount = await tx.nonConformity.count({ where: { tenantId, code: { startsWith: `NCR-${year}-` } } });
+        const nCode = `NCR-${year}-${String(nCount + 1).padStart(3, '0')}`;
+        const ncr = await tx.nonConformity.create({
+          data: {
+            tenantId,
+            code: nCode,
+            title: `Reclamo ${code} — ${customer.name}`,
+            description: body.description,
+            severity: 'MAJOR',
+            source: 'CUSTOMER_COMPLAINT',
+            status: 'OPEN',
+            detectedAt: body.detectedAt ? new Date(body.detectedAt) : new Date(),
+            customerLinks: { connect: { id } },
+          },
+        });
+        ncrId = ncr.id;
+      }
+
+      const claim = await tx.customerClaim.create({
+        data: {
+          tenantId,
+          code,
+          type: body.type,
+          productName: body.productName || null,
+          partNumber: body.partNumber || null,
+          quantity: body.quantity ?? null,
+          description: body.description,
+          detectedAt: body.detectedAt ? new Date(body.detectedAt) : new Date(),
+          costAmount: body.costAmount ?? null,
+          customerId: id,
+          ncrId,
+          createdById: req.auth?.userId ?? null,
+        },
+        include: { customer: { select: { id: true, name: true } }, ncr: { select: { id: true, code: true } } },
+      });
+      return { kind: 'ok' as const, claim };
+    });
+
+    if (result.kind === 'not_found') return reply.code(404).send({ error: 'Cliente no encontrado' });
+    return reply.code(201).send({ claim: result.claim });
+  });
+
+  // PATCH /customers/claims/:claimId — análisis de falla de campo / estado
+  app.patch('/claims/:claimId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { claimId } = z.object({ claimId: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      status: z.enum(['OPEN', 'IN_ANALYSIS', 'RESOLVED', 'CLOSED']).optional(),
+      returnedPartsAnalysis: z.string().optional().nullable(),
+      rootCause: z.string().optional().nullable(),
+      analysisMethod: z.string().optional().nullable(),
+      costAmount: z.number().optional().nullable(),
+      ncrId: z.string().uuid().optional().nullable(),
+      eightDCode: z.string().optional().nullable(),
+    });
+    const body = schema.parse(req.body);
+    const data: any = { ...body };
+    if (body.status === 'CLOSED' || body.status === 'RESOLVED') data.closedAt = new Date();
+
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      const res = await tx.customerClaim.updateMany({ where: { id: claimId, tenantId, deletedAt: null }, data });
+      if (res.count === 0) return null;
+      return tx.customerClaim.findFirst({
+        where: { id: claimId },
+        include: { customer: { select: { id: true, name: true } }, ncr: { select: { id: true, code: true, status: true } } },
+      });
+    });
+    if (!updated) return reply.code(404).send({ error: 'Reclamo no encontrado' });
+    return reply.send({ claim: updated });
+  });
+
+  // DELETE /customers/claims/:claimId
+  app.delete('/claims/:claimId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { claimId } = z.object({ claimId: z.string().uuid() }).parse(req.params);
+    const res = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.customerClaim.updateMany({ where: { id: claimId, tenantId, deletedAt: null }, data: { deletedAt: new Date() } });
+    });
+    if (res.count === 0) return reply.code(404).send({ error: 'Reclamo no encontrado' });
+    return reply.send({ success: true });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // IATF 16949 — §9.1.2.1 Scorecards de cliente (PPM, disrupciones, fletes…)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get('/:id/scorecards', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const scorecards = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.customerScorecard.findMany({
+        where: { customerId: id, tenantId },
+        orderBy: { period: 'desc' },
+      });
+    });
+    return reply.send({ scorecards });
+  });
+
+  // POST upsert por (customerId, period)
+  app.post('/:id/scorecards', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      period: z.string().regex(/^\d{4}-\d{2}$/, 'period debe ser YYYY-MM'),
+      deliveredPpm: z.number().optional().nullable(),
+      customerDisruptions: z.number().int().optional(),
+      fieldFailures: z.number().int().optional(),
+      returns: z.number().int().optional(),
+      premiumFreightIncidents: z.number().int().optional(),
+      specialStatusNotifications: z.number().int().optional(),
+      deliveryPerformance: z.number().optional().nullable(),
+      qualityScore: z.number().optional().nullable(),
+      overallScore: z.number().optional().nullable(),
+      notes: z.string().optional().nullable(),
+    });
+    const body = schema.parse(req.body);
+    const { period, ...rest } = body;
+    const data: any = {};
+    for (const [k, v] of Object.entries(rest)) if (v !== undefined) data[k] = v;
+
+    const scorecard = await app.runWithDbContext(req, async (tx: any) => {
+      const customer = await tx.customer.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!customer) return null;
+      return tx.customerScorecard.upsert({
+        where: { customerId_period: { customerId: id, period } },
+        create: { tenantId, customerId: id, period, ...data, createdById: req.auth?.userId ?? null },
+        update: data,
+      });
+    });
+    if (!scorecard) return reply.code(404).send({ error: 'Cliente no encontrado' });
+    return reply.send({ scorecard });
+  });
+
+  app.delete('/scorecards/:scorecardId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { scorecardId } = z.object({ scorecardId: z.string().uuid() }).parse(req.params);
+    const res = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.customerScorecard.deleteMany({ where: { id: scorecardId, tenantId } });
+    });
+    if (res.count === 0) return reply.code(404).send({ error: 'Scorecard no encontrado' });
+    return reply.send({ success: true });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // IATF 16949 — §4.3.2 Requisitos específicos del cliente (CSR)
+  // ════════════════════════════════════════════════════════════════════════
+
+  app.get('/:id/specific-requirements', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const requirements = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.customerSpecificRequirement.findMany({
+        where: { customerId: id, tenantId, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+    return reply.send({ requirements });
+  });
+
+  // GET /customers/specific-requirements/pending — CSR sin revisar/difundir (dashboard)
+  app.get('/specific-requirements/pending', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const requirements = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.customerSpecificRequirement.findMany({
+        where: { tenantId, deletedAt: null, status: { in: ['PENDING_REVIEW', 'REVIEWED'] } },
+        orderBy: { createdAt: 'desc' },
+        include: { customer: { select: { id: true, name: true, code: true } } },
+      });
+    });
+    return reply.send({ requirements });
+  });
+
+  app.post('/:id/specific-requirements', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      title: z.string().min(2),
+      description: z.string().optional().nullable(),
+      source: z.string().optional().nullable(),
+      documentId: z.string().uuid().optional().nullable(),
+      responsibleId: z.string().uuid().optional().nullable(),
+    });
+    const body = schema.parse(req.body);
+
+    const created = await app.runWithDbContext(req, async (tx: any) => {
+      const customer = await tx.customer.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!customer) return null;
+      return tx.customerSpecificRequirement.create({
+        data: {
+          tenantId,
+          customerId: id,
+          title: body.title,
+          description: body.description || null,
+          source: body.source || null,
+          documentId: body.documentId || null,
+          responsibleId: body.responsibleId || null,
+          createdById: req.auth?.userId ?? null,
+        },
+      });
+    });
+    if (!created) return reply.code(404).send({ error: 'Cliente no encontrado' });
+    return reply.code(201).send({ requirement: created });
+  });
+
+  // PATCH /customers/specific-requirements/:reqId — revisión y difusión
+  app.patch('/specific-requirements/:reqId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { reqId } = z.object({ reqId: z.string().uuid() }).parse(req.params);
+
+    const schema = z.object({
+      title: z.string().min(2).optional(),
+      description: z.string().optional().nullable(),
+      source: z.string().optional().nullable(),
+      status: z.enum(['PENDING_REVIEW', 'REVIEWED', 'DISSEMINATED', 'IMPLEMENTED', 'NOT_APPLICABLE']).optional(),
+      documentId: z.string().uuid().optional().nullable(),
+      responsibleId: z.string().uuid().optional().nullable(),
+      disseminationNotes: z.string().optional().nullable(),
+    });
+    const body = schema.parse(req.body);
+    const data: any = { ...body };
+    if (body.status === 'REVIEWED') data.reviewedAt = new Date();
+    if (body.status === 'DISSEMINATED' || body.status === 'IMPLEMENTED') data.disseminatedAt = new Date();
+
+    const updated = await app.runWithDbContext(req, async (tx: any) => {
+      const res = await tx.customerSpecificRequirement.updateMany({ where: { id: reqId, tenantId, deletedAt: null }, data });
+      if (res.count === 0) return null;
+      return tx.customerSpecificRequirement.findFirst({ where: { id: reqId } });
+    });
+    if (!updated) return reply.code(404).send({ error: 'Requisito no encontrado' });
+    return reply.send({ requirement: updated });
+  });
+
+  app.delete('/specific-requirements/:reqId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { reqId } = z.object({ reqId: z.string().uuid() }).parse(req.params);
+    const res = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.customerSpecificRequirement.updateMany({ where: { id: reqId, tenantId, deletedAt: null }, data: { deletedAt: new Date() } });
+    });
+    if (res.count === 0) return reply.code(404).send({ error: 'Requisito no encontrado' });
+    return reply.send({ success: true });
+  });
 }

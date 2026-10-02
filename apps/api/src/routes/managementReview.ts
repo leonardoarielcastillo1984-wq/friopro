@@ -620,17 +620,59 @@ async function buildSectionSystemData(params: {
     const complaintNcrs = periodNcrsAll.filter((n: any) => n.source === 'CUSTOMER_COMPLAINT');
     const portalNcrs = periodNcrsAll.filter((n: any) => n.source === 'PORTAL_EXTERNAL' || n.portalAccessTokenId);
 
+    // Scorecards reales del período (IATF 9.1.2.1) + reclamos/warranty (10.2.5)
+    const scorecards = await tx.customerScorecard.findMany({
+      where: {
+        tenantId,
+        createdAt: { gte: periodStart, lte: periodEnd },
+      },
+      include: { customer: { select: { id: true, name: true, code: true } } },
+    }).catch(() => [] as any[]);
+    const claims = await tx.customerClaim.findMany({
+      where: { tenantId, deletedAt: null, detectedAt: { gte: periodStart, lte: periodEnd } },
+      include: { customer: { select: { id: true, name: true } } },
+      orderBy: { detectedAt: 'desc' },
+    }).catch(() => [] as any[]);
+    const claimCostTotal = claims.reduce((s: number, c: any) => s + (c.costAmount ?? 0), 0);
+    const fieldFailures = claims.filter((c: any) => c.type === 'FIELD_FAILURE' || c.type === 'WARRANTY');
+    const totalPpm = scorecards.filter((s: any) => s.deliveredPpm != null);
+    const avgPpm = totalPpm.length ? Math.round(totalPpm.reduce((a: number, s: any) => a + (s.deliveredPpm ?? 0), 0) / totalPpm.length) : null;
+
     data.customer_scorecards = {
       customerComplaints: complaintNcrs.length,
+      claimsTotal: claims.length,
+      claimsOpen: claims.filter((c: any) => c.status === 'OPEN' || c.status === 'IN_ANALYSIS').length,
+      claimsCostTotal: claimCostTotal,
       portalNcrs: portalNcrs.length,
       portalAccesses,
       avgNps: data.stakeholder_communications?.avgNps ?? null,
       avgSatisfaction: data.stakeholder_communications?.avgSatisfaction ?? null,
       qrFeedbacks: data.stakeholder_communications?.qrFeedbacks ?? 0,
       activeCustomers,
+      avgDeliveredPpm: avgPpm,
+      scorecards: scorecards.map((s: any) => ({
+        customer: s.customer?.name, period: s.period, deliveredPpm: s.deliveredPpm,
+        customerDisruptions: s.customerDisruptions, fieldFailures: s.fieldFailures,
+        returns: s.returns, premiumFreightIncidents: s.premiumFreightIncidents,
+        specialStatusNotifications: s.specialStatusNotifications,
+        deliveryPerformance: s.deliveryPerformance, overallScore: s.overallScore,
+      })),
       items: [...complaintNcrs, ...portalNcrs].slice(0, 10).map((n: any) => ({ code: n.code, title: n.title, source: n.source, severity: n.severity, status: n.status })),
-      nota: 'Completar manualmente: desempeño en scorecards de clientes, entregas a tiempo y ppm reportados por clientes.',
+      nota: 'Revisar scorecards del período (PPM, disrupciones, fletes premium, special status) y reclamos registrados.',
     };
+
+    // Fallas de campo alimentan conformidad de producto (9.3.2.1)
+    data.product_conformity = {
+      ...(data.product_conformity || {}),
+      fieldFailuresCount: fieldFailures.length,
+      warrantyClaims: claims.filter((c: any) => c.type === 'WARRANTY').length,
+      claims: claims.slice(0, 15).map((c: any) => ({
+        code: c.code, type: c.type, customer: c.customer?.name, status: c.status,
+        productName: c.productName, costAmount: c.costAmount,
+      })),
+      nota: 'Análisis de piezas devueltas y fallas de campo del período (IATF 10.2.5).',
+    };
+    data.copq.claimCostTotal = claimCostTotal;
   } catch {
     data.copq = { nota: 'Completar manualmente: costo de la mala calidad del período.' };
     data.customer_scorecards = { nota: 'Completar manualmente: desempeño en scorecards de clientes.' };

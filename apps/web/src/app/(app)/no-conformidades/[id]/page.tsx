@@ -34,6 +34,15 @@ const SOURCE_LABELS: Record<string, string> = {
   SUPPLIER_ISSUE: 'Problema de proveedor', AI_FINDING: 'Hallazgo IA', OTHER: 'Otro',
 };
 
+const DISPOSITION_LABELS: Record<string, string> = {
+  CONCESSION: 'Concesión (waiver del cliente)',
+  REWORK: 'Reproceso',
+  REPAIR: 'Reparación',
+  SCRAP: 'Scrap / destrucción',
+  REJECT_RETURN: 'Rechazo / devolución',
+  USE_AS_IS: 'Usar tal cual',
+};
+
 type NCRDetail = NonConformity & {
   rootCause?: string | null;
   correctiveAction?: string | null;
@@ -44,6 +53,16 @@ type NCRDetail = NonConformity & {
   closedAt?: string | null;
   dueDate?: string | null;
   createdBy?: { id: string; email: string } | null;
+  // IATF 8.7.1.1/8.7.1.4-5
+  disposition?: string | null;
+  dispositionNotes?: string | null;
+  concessionRef?: string | null;
+  concessionApprovedBy?: string | null;
+  concessionApprovedAt?: string | null;
+  concessionExpiry?: string | null;
+  reworkInstruction?: string | null;
+  reworkVerifiedAt?: string | null;
+  customerNotifiedAt?: string | null;
 };
 
 export default function NCRDetailPage() {
@@ -84,6 +103,15 @@ export default function NCRDetailPage() {
     preventiveAction: '',
     verificationNotes: '',
     isEffective: null as boolean | null,
+    disposition: '',
+    dispositionNotes: '',
+    concessionRef: '',
+    concessionApprovedBy: '',
+    concessionApprovedAt: '',
+    concessionExpiry: '',
+    reworkInstruction: '',
+    reworkVerifiedAt: '',
+    customerNotifiedAt: '',
   });
 
   const [aiSuggestion, setAiSuggestion] = useState<{
@@ -105,6 +133,7 @@ export default function NCRDetailPage() {
     try {
       const res = await apiFetch<{ ncr: NCRDetail }>(`/ncr/${id}`);
       setNcr(res.ncr);
+      const dstr = (v?: string | null) => v ? new Date(v).toISOString().slice(0, 10) : '';
       setEditForm({
         status: res.ncr.status,
         severity: res.ncr.severity,
@@ -113,6 +142,15 @@ export default function NCRDetailPage() {
         preventiveAction: res.ncr.preventiveAction || '',
         verificationNotes: res.ncr.verificationNotes || '',
         isEffective: res.ncr.isEffective ?? null,
+        disposition: res.ncr.disposition || '',
+        dispositionNotes: res.ncr.dispositionNotes || '',
+        concessionRef: res.ncr.concessionRef || '',
+        concessionApprovedBy: res.ncr.concessionApprovedBy || '',
+        concessionApprovedAt: dstr(res.ncr.concessionApprovedAt),
+        concessionExpiry: dstr(res.ncr.concessionExpiry),
+        reworkInstruction: res.ncr.reworkInstruction || '',
+        reworkVerifiedAt: dstr(res.ncr.reworkVerifiedAt),
+        customerNotifiedAt: dstr(res.ncr.customerNotifiedAt),
       });
 
       // Si es NCR grave, analizar con IA para sugerir riesgo
@@ -190,9 +228,14 @@ export default function NCRDetailPage() {
     setSaving(true);
     setError(null);
     try {
+      const payload: any = { ...editForm };
+      // Normalizar campos de disposición: '' → null para limpiar en BD
+      for (const k of ['disposition', 'dispositionNotes', 'concessionRef', 'concessionApprovedBy', 'concessionApprovedAt', 'concessionExpiry', 'reworkInstruction', 'reworkVerifiedAt', 'customerNotifiedAt']) {
+        if (payload[k] === '') payload[k] = null;
+      }
       const res = await apiFetch<{ ncr: NCRDetail }>(`/ncr/${id}`, {
         method: 'PATCH',
-        json: editForm,
+        json: payload,
       });
       setNcr(res.ncr);
       setEditing(false);
@@ -483,6 +526,71 @@ export default function NCRDetailPage() {
               </div>
             </div>
           ) : null}
+          {/* IATF 8.7 — Disposición del producto no conforme */}
+          <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-4 space-y-4">
+            <h3 className="text-sm font-semibold text-orange-900">Disposición del producto NC (IATF 8.7.1.1 / 8.7.1.4-5)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Disposición</label>
+                <select
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm bg-white"
+                  value={editForm.disposition}
+                  onChange={(e) => setEditForm({ ...editForm, disposition: e.target.value })}
+                >
+                  <option value="">Sin disposición definida</option>
+                  {Object.entries(DISPOSITION_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Cliente notificado</label>
+                <input type="date" className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm"
+                  value={editForm.customerNotifiedAt} onChange={(e) => setEditForm({ ...editForm, customerNotifiedAt: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Notas de disposición</label>
+              <textarea className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm bg-white" rows={2}
+                value={editForm.dispositionNotes} onChange={(e) => setEditForm({ ...editForm, dispositionNotes: e.target.value })}
+                placeholder="Cantidad afectada, lote, condiciones de la disposición..." />
+            </div>
+            {(editForm.disposition === 'CONCESSION' || editForm.disposition === 'USE_AS_IS') && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div>
+                  <label className="block text-xs font-medium text-amber-800 mb-1">Nº de concesión / waiver *</label>
+                  <input type="text" className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm bg-white"
+                    value={editForm.concessionRef} onChange={(e) => setEditForm({ ...editForm, concessionRef: e.target.value })}
+                    placeholder="Ref. aprobación del cliente" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-amber-800 mb-1">Aprobada por (cliente)</label>
+                  <input type="text" className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm bg-white"
+                    value={editForm.concessionApprovedBy} onChange={(e) => setEditForm({ ...editForm, concessionApprovedBy: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-amber-800 mb-1">Vigencia hasta</label>
+                  <input type="date" className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm bg-white"
+                    value={editForm.concessionExpiry} onChange={(e) => setEditForm({ ...editForm, concessionExpiry: e.target.value })} />
+                </div>
+              </div>
+            )}
+            {(editForm.disposition === 'REWORK' || editForm.disposition === 'REPAIR') && (
+              <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <div>
+                  <label className="block text-xs font-medium text-blue-800 mb-1">Instrucción de reproceso / reparación *</label>
+                  <textarea className="w-full rounded-lg border border-blue-300 px-3 py-2 text-sm bg-white" rows={2}
+                    value={editForm.reworkInstruction} onChange={(e) => setEditForm({ ...editForm, reworkInstruction: e.target.value })}
+                    placeholder="Instrucción de trabajo para el reproceso (IATF exige instrucción documentada + reverificación)" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-blue-800 mb-1">Reverificación realizada</label>
+                  <input type="date" className="w-full rounded-lg border border-blue-300 px-3 py-2 text-sm bg-white"
+                    value={editForm.reworkVerifiedAt} onChange={(e) => setEditForm({ ...editForm, reworkVerifiedAt: e.target.value })} />
+                </div>
+              </div>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               onClick={handleSave}
@@ -522,6 +630,34 @@ export default function NCRDetailPage() {
               <p className="text-sm text-neutral-400 italic">Sin acción preventiva registrada</p>
             )}
           </div>
+          {/* Disposición IATF — vista */}
+          {ncr.disposition && (
+            <div className="lg:col-span-2 bg-white rounded-xl border border-orange-200 p-6">
+              <h2 className="font-semibold text-neutral-900 mb-3 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-orange-500" /> Disposición del producto NC
+                <span className="rounded-full bg-orange-100 text-orange-700 px-3 py-0.5 text-xs font-medium">
+                  {DISPOSITION_LABELS[ncr.disposition] || ncr.disposition}
+                </span>
+              </h2>
+              {ncr.dispositionNotes && <p className="text-sm text-neutral-700 whitespace-pre-wrap mb-3">{ncr.dispositionNotes}</p>}
+              <div className="flex flex-wrap gap-4 text-xs text-neutral-500">
+                {ncr.concessionRef && (
+                  <span>Concesión <strong className="text-neutral-700">{ncr.concessionRef}</strong>
+                    {ncr.concessionApprovedBy && ` aprobada por ${ncr.concessionApprovedBy}`}
+                    {ncr.concessionExpiry && ` — vigente hasta ${new Date(ncr.concessionExpiry).toLocaleDateString('es-AR')}`}
+                  </span>
+                )}
+                {ncr.reworkVerifiedAt && <span>Reverificado: {new Date(ncr.reworkVerifiedAt).toLocaleDateString('es-AR')}</span>}
+                {ncr.customerNotifiedAt && <span>Cliente notificado: {new Date(ncr.customerNotifiedAt).toLocaleDateString('es-AR')}</span>}
+              </div>
+              {ncr.reworkInstruction && (
+                <div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 p-3">
+                  <p className="text-xs font-medium text-blue-800 mb-1">Instrucción de reproceso/reparación</p>
+                  <p className="text-sm text-neutral-700 whitespace-pre-wrap">{ncr.reworkInstruction}</p>
+                </div>
+              )}
+            </div>
+          )}
           {(ncr.status === 'VERIFICATION' || ncr.status === 'CLOSED') && (
             <div className="lg:col-span-2 bg-white rounded-xl border border-neutral-200 p-6">
               <h2 className="font-semibold text-neutral-900 mb-3 flex items-center gap-2">
