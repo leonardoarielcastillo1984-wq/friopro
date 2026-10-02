@@ -288,7 +288,7 @@ const moduleList = [
   { id: 'objetivos', name: 'Objetivos', icon: 'Target' },
   { id: 'infraestructura', name: 'Infraestructura', icon: 'Package' },
   { id: 'calidad', name: 'Calidad / Mejora', icon: 'Award' },
-  { id: 'seguridad', name: 'Seguridad & Ambiente', icon: 'ShieldAlert' },
+  { id: 'seguridad', name: 'Gestión de Riesgos', icon: 'ShieldAlert' },
   { id: 'activos', name: 'Activos', icon: 'Box' },
   { id: 'calibraciones', name: 'Calibraciones', icon: 'Gauge' },
   { id: 'iperc', name: 'IPERC', icon: 'Search' },

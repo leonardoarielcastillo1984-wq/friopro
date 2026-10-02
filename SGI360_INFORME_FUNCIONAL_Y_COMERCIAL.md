@@ -279,7 +279,7 @@ SGI360 contiene módulos nativos del SGI y también productos standalone con su 
 - Estados: DRAFT → FINAL
 - Período de revisión, normas aplicables
 
-### 2.15 Módulo: Seguridad & Ambiente
+### 2.15 Módulo: Gestión de Riesgos
 **Ruta frontend**: `/seguridad` (5 subcarpetas: tabs riesgos, iperc, ambientales, simulacros)
 **Rutas API**: `/risks`, `/hazards`, `/aspects`, `/emergency`
 **Plan**: BASIC

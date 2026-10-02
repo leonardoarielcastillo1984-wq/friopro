@@ -71,8 +71,8 @@ const mainNav = [
   { label: 'Revisión por la Dirección', icon: FileBarChart, href: '/revision-direccion' },
   { label: 'Core Tools IATF', icon: Wrench, href: '/core-tools' },
 
-  // 6. Seguridad & Ambiente
-  { label: 'Seguridad & Ambiente', icon: Shield, href: '/seguridad' },
+  // 6. Gestión de Riesgos
+  { label: 'Gestión de Riesgos', icon: Shield, href: '/seguridad' },
   { label: 'Indicadores', icon: TrendingUp, href: '/indicadores' },
 
   // 7. Proyectos y acciones

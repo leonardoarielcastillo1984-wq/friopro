@@ -367,11 +367,11 @@ export const guides: ModuleGuide[] = [
     tips: ['Realizá la revisión al menos una vez al año.'],
     difficulty: 'Avanzado', estimatedTime: '2 horas', isoRef: 'ISO 9001 §9.3',
   },
-  /* ───────── 6. Seguridad & Ambiente ───────── */
+  /* ───────── 6. Gestión de Riesgos ───────── */
   {
-    id: 'seguridad', title: 'Seguridad & Ambiente', icon: Shield, route: '/seguridad',
-    group: 'Seguridad & Ambiente',
-    purpose: 'Riesgos, peligros SST (IPERC), aspectos ambientales y simulacros (ISO 14001 / 45001).',
+    id: 'seguridad', title: 'Gestión de Riesgos', icon: Shield, route: '/seguridad',
+    group: 'Gestión de Riesgos',
+    purpose: 'Riesgos y oportunidades, peligros SST (IPERC), aspectos ambientales y simulacros (ISO 9001 §6.1 / 14001 / 45001).',
     tabs: [
       { key: 'riesgos', label: 'Riesgos' },
       { key: 'iperc', label: 'IPERC — Peligros SST' },
@@ -401,7 +401,7 @@ export const guides: ModuleGuide[] = [
   },
   {
     id: 'indicadores', title: 'Indicadores', icon: TrendingUp, route: '/indicadores',
-    group: 'Seguridad & Ambiente',
+    group: 'Gestión de Riesgos',
     purpose: 'Indicadores y KPIs de desempeño del SGI con tendencias y metas.',
     mainFeatures: ['Biblioteca de indicadores', 'Mediciones periódicas', 'Gráficos de tendencia', 'Alertas por desvío'],
     actions: [

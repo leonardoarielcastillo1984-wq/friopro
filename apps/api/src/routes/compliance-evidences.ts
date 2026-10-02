@@ -577,7 +577,7 @@ export const complianceEvidenceRoutes: FastifyPluginAsync = async (app) => {
       { key: 'management_reviews', label: 'Revisión por la Dirección', icon: 'Clipboard' },
       { key: 'stakeholders', label: 'Contexto del SGI / Partes interesadas', icon: 'UsersRound' },
       { key: 'organization_contexts', label: 'Contexto del SGI / FODA-PESTEL', icon: 'Globe' },
-      { key: 'environmental_aspects', label: 'Seguridad & Ambiente / Aspectos ambientales', icon: 'Leaf' },
+      { key: 'environmental_aspects', label: 'Gestión de Riesgos / Aspectos ambientales', icon: 'Leaf' },
     ];
 
     return reply.send({ modules });

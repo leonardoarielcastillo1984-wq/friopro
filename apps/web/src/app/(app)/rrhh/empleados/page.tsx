@@ -623,7 +623,7 @@ export default function EmployeesPage() {
     { key: 'calidad', label: 'No Conformidades y Plan de acción', icon: '✅' },
     { key: 'auditoria', label: 'Auditorías', icon: '🤖' },
     { key: 'revision-direccion', label: 'Revisión por la Dirección', icon: '📋' },
-    { key: 'seguridad', label: 'Seguridad & Ambiente', icon: '🛡️' },
+    { key: 'seguridad', label: 'Gestión de Riesgos', icon: '🛡️' },
     { key: 'indicadores', label: 'Indicadores', icon: '📈' },
     { key: 'proyectos', label: 'Proyectos', icon: '📊' },
     { key: 'calendario', label: 'Calendario', icon: '📅' },

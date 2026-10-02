@@ -69,8 +69,8 @@ export const MODULE_DESCRIPTIONS: Record<string, ModuleInfo> = {
     description: 'Revisiones por la dirección y análisis del desempeño del SGI (ISO §9.3).',
   },
   '/seguridad': {
-    title: 'Seguridad & Ambiente',
-    description: 'Gestión de seguridad, salud ocupacional y medio ambiente (matriz de riesgos, EPP, incidentes).',
+    title: 'Gestión de Riesgos',
+    description: 'Riesgos y oportunidades del SGI, matriz IPERC, aspectos ambientales y simulacros (ISO §6.1).',
   },
   '/indicadores': {
     title: 'Indicadores',

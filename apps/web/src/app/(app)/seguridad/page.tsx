@@ -21,8 +21,8 @@ export default function SeguridadPage() {
     <Suspense>
       <div className="space-y-2">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Seguridad &amp; Ambiente <PageTitleHelp moduleHref="/seguridad" /></h1>
-          <p className="mt-1 text-sm text-neutral-500">Riesgos, peligros SST, aspectos ambientales y simulacros — ISO 14001 / 45001</p>
+          <h1 className="text-2xl font-semibold text-neutral-900">Gestión de Riesgos <PageTitleHelp moduleHref="/seguridad" /></h1>
+          <p className="mt-1 text-sm text-neutral-500">Riesgos y oportunidades, IPERC, aspectos ambientales y simulacros — ISO 9001 §6.1 / 14001 / 45001</p>
         </div>
         <PageTabs tabs={TABS}>
           {(active) => (
