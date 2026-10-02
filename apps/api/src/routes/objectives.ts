@@ -39,6 +39,18 @@ const objectiveSchema = z.object({
   responsiblePositionId: emptyToUndefined(z.string().optional()),
   involvedProcessIds: z.array(z.string()).optional(),
   policyIds: z.array(z.string()).optional(),
+  // Cumplimiento IATF 16949 §6.2.1/6.2.1.1 (aditivo)
+  parentObjectiveId: emptyToUndefined(z.string().optional()),
+  level: emptyToUndefined(z.string().optional()),
+  reviewFrequency: emptyToUndefined(z.string().optional()),
+  nextReviewDate: emptyToUndefined(z.string().optional()),
+  communicatedAt: emptyToUndefined(z.string().optional()),
+  communicatedTo: emptyToUndefined(z.string().optional()),
+  measurementFrequency: emptyToUndefined(z.string().optional()),
+  stakeholderId: emptyToUndefined(z.string().optional()),
+  customerRequirement: emptyToUndefined(z.string().optional()),
+  finalValue: z.number().optional(),
+  evaluationComment: emptyToUndefined(z.string().optional()),
 });
 
 const activitySchema = z.object({
@@ -119,6 +131,8 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
           process: { select: { id: true, name: true } },
           primaryIndicator: KPI_INCLUDE,
           responsiblePosition: { select: { id: true, name: true, code: true } },
+          parentObjective: { select: { id: true, code: true, title: true } },
+          _count: { select: { childObjectives: true } },
           activities: true,
           indicators: true,
           audits: true,
@@ -160,6 +174,11 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
           startDate: data.startDate ? parseDate(data.startDate) : null,
           endDate: data.endDate ? parseDate(data.endDate) : null,
           sites: data.sites ?? [],
+          // IATF: cascada/nivel/cliente/revisión/comunicación
+          parentObjectiveId: cleanUUID((data as any).parentObjectiveId) ?? null,
+          stakeholderId: cleanUUID((data as any).stakeholderId) ?? null,
+          nextReviewDate: (data as any).nextReviewDate ? parseDate((data as any).nextReviewDate) : null,
+          communicatedAt: (data as any).communicatedAt ? parseDate((data as any).communicatedAt) : null,
         },
         include: { policy: true, process: true, primaryIndicator: KPI_INCLUDE, responsiblePosition: { select: { id: true, name: true, code: true } }, activities: true },
       });
@@ -297,6 +316,9 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
           process: true,
           primaryIndicator: KPI_INCLUDE,
           responsiblePosition: { select: { id: true, name: true, code: true } },
+          // Despliegue en cascada (IATF 6.2.1.1)
+          parentObjective: { select: { id: true, code: true, title: true, level: true } },
+          childObjectives: { select: { id: true, code: true, title: true, status: true, progress: true, level: true } },
           activities: true,
           indicators: true,
           audits: true,
@@ -306,9 +328,9 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
         },
       });
       if (!found) return null;
-      // Enriquecer relaciones débiles (auditId/capaId/riskId/indicatorId son escalares,
+      // Enriquecer relaciones débiles (auditId/capaId/riskId/indicatorId/stakeholderId son escalares,
       // sin FK real hacia otros módulos) con el nombre/título correspondiente.
-      const [indicatorRows, auditRows, capaRows, riskRows] = await Promise.all([
+      const [indicatorRows, auditRows, capaRows, riskRows, stakeholderRow] = await Promise.all([
         found.indicators?.length
           ? tx.indicator.findMany({ where: { id: { in: found.indicators.map((i: any) => i.indicatorId) } }, select: { id: true, name: true } })
           : [],
@@ -321,6 +343,9 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
         found.risks?.length
           ? tx.risk.findMany({ where: { id: { in: found.risks.map((r: any) => r.riskId) } }, select: { id: true, title: true, description: true } })
           : [],
+        found.stakeholderId
+          ? tx.stakeholder.findUnique({ where: { id: found.stakeholderId }, select: { id: true, name: true, type: true, category: true } }).catch(() => null)
+          : null,
       ]);
       const indicatorMap = new Map(indicatorRows.map((r: any) => [r.id, r]));
       const auditMap = new Map(auditRows.map((r: any) => [r.id, r]));
@@ -328,6 +353,7 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
       const riskMap = new Map(riskRows.map((r: any) => [r.id, r]));
       return {
         ...found,
+        stakeholder: stakeholderRow ?? null,
         indicators: found.indicators?.map((i: any) => ({ ...i, indicator: indicatorMap.get(i.indicatorId) ?? null })),
         audits: found.audits?.map((a: any) => ({ ...a, audit: auditMap.get(a.auditId) ?? null })),
         capas: found.capas?.map((c: any) => {
@@ -350,11 +376,22 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const body = objectiveSchema.partial().parse(req.body);
+    const raw = req.body as any;
     // Convert empty policyId to null to prevent Prisma errors
     if (body.policyId === '') body.policyId = null;
     const userId = (req as any).auth?.userId ?? null;
+    const TERMINAL = ['ACHIEVED', 'NOT_ACHIEVED', 'CANCELLED'];
+    // Campos cuyo cambio debe quedar auditado (IATF §7.5 — información documentada)
+    const CRITICAL_FIELDS: [string, string][] = [
+      ['code', 'Código'], ['title', 'Título'], ['target', 'Meta'],
+      ['targetValue', 'Valor meta'], ['unit', 'Unidad'], ['endDate', 'Fecha fin'],
+      ['standard', 'Norma'], ['year', 'Año'],
+    ];
     const item = await app.runWithDbContext(req, async (tx: any) => {
-      const prev = await tx.sgiObjective.findFirst({ where: { id, tenantId }, select: { progress: true, status: true } });
+      const prev = await tx.sgiObjective.findFirst({
+        where: { id, tenantId },
+        select: { progress: true, status: true, code: true, title: true, target: true, targetValue: true, unit: true, endDate: true, year: true, standard: true },
+      });
       const data: any = {
         ...body,
         startDate: body.startDate !== undefined ? parseDate(body.startDate) : undefined,
@@ -367,6 +404,17 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
       if ((body as any).responsiblePositionId !== undefined) data.responsiblePositionId = cleanUUID((body as any).responsiblePositionId) ?? null;
       if ((body as any).involvedProcessIds !== undefined) data.involvedProcessIds = ((body as any).involvedProcessIds ?? []).filter((v: string) => UUID_RE.test(v));
       if ((body as any).policyIds !== undefined) data.policyIds = ((body as any).policyIds ?? []).filter((v: string) => UUID_RE.test(v));
+      // Vínculos limpiables: el body crudo trae '' y debe quedar en null (el schema
+      // convierte '' → undefined y se perdería la intención de limpiar).
+      if (raw && Object.prototype.hasOwnProperty.call(raw, 'parentObjectiveId')) data.parentObjectiveId = cleanUUID(raw.parentObjectiveId) ?? null;
+      if (raw && Object.prototype.hasOwnProperty.call(raw, 'stakeholderId')) data.stakeholderId = cleanUUID(raw.stakeholderId) ?? null;
+      if (raw && Object.prototype.hasOwnProperty.call(raw, 'nextReviewDate')) data.nextReviewDate = raw.nextReviewDate ? parseDate(raw.nextReviewDate) : null;
+      if (raw && Object.prototype.hasOwnProperty.call(raw, 'communicatedAt')) data.communicatedAt = raw.communicatedAt ? parseDate(raw.communicatedAt) : null;
+      // Cierre verificable: marcar closedAt al pasar a estado terminal, limpiarlo si se reabre
+      if (body.status !== undefined && prev) {
+        if (TERMINAL.includes(body.status) && !TERMINAL.includes(prev.status ?? '')) data.closedAt = new Date();
+        if (!TERMINAL.includes(body.status) && TERMINAL.includes(prev.status ?? '')) data.closedAt = null;
+      }
       const updated = await tx.sgiObjective.update({ where: { id }, data });
       // Historial: registrar cambios de progreso/estado desde edición
       const progressChanged = body.progress !== undefined && prev && body.progress !== prev.progress;
@@ -387,8 +435,90 @@ export const objectivesRoutes: FastifyPluginAsync = async (app) => {
           },
         });
       }
+      // Historial: auditoría de cambios en campos críticos (meta, título, fechas…)
+      if (prev) {
+        const fmt = (f: string, v: any) => f === 'endDate' && v ? new Date(v).toISOString().slice(0, 10) : String(v ?? '');
+        const changes = CRITICAL_FIELDS
+          .filter(([f]) => (body as any)[f] !== undefined && fmt(f, (body as any)[f]) !== fmt(f, (prev as any)[f]))
+          .map(([f, label]) => `${label}: '${fmt(f, (prev as any)[f]) || '—'}' → '${fmt(f, (body as any)[f]) || '—'}'`);
+        if (changes.length) {
+          await tx.objectiveProgressLog.create({
+            data: {
+              tenantId,
+              objectiveId: id,
+              userId,
+              userName: await resolveUserName(tx, userId),
+              previousProgress: prev.progress ?? null,
+              newProgress: prev.progress ?? null,
+              previousStatus: prev.status ?? null,
+              newStatus: prev.status ?? null,
+              source: 'EDIT',
+              justification: `Editó ${changes.join('; ')}`,
+            },
+          });
+        }
+      }
       return updated;
     });
+    return reply.send({ item });
+  });
+
+  // === APROBACIÓN (IATF 6.2.1.1 — alta dirección asegura los objetivos) ===
+  // Endpoint dedicado: la aprobación queda registrada en el historial con usuario y fecha.
+  app.post('/:id/approve', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+    const userId = (req as any).auth?.userId ?? null;
+    const item = await app.runWithDbContext(req, async (tx: any) => {
+      const prev = await tx.sgiObjective.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!prev) return null;
+      const name = await resolveUserName(tx, userId);
+      const updated = await tx.sgiObjective.update({
+        where: { id },
+        data: { approvedById: userId, approvedByName: name, approvedAt: new Date() },
+      });
+      await tx.objectiveProgressLog.create({
+        data: {
+          tenantId, objectiveId: id, userId, userName: name,
+          previousProgress: prev.progress ?? null, newProgress: prev.progress ?? null,
+          previousStatus: prev.status ?? null, newStatus: prev.status ?? null,
+          source: 'APPROVAL',
+          justification: `Objetivo aprobado por ${name || 'alta dirección'}`,
+        },
+      });
+      return updated;
+    });
+    if (!item) return reply.code(404).send({ error: 'Not found' });
+    return reply.send({ item });
+  });
+
+  // Revocar aprobación (re-apertura del ciclo de definición del objetivo)
+  app.post('/:id/revoke-approval', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+    const userId = (req as any).auth?.userId ?? null;
+    const item = await app.runWithDbContext(req, async (tx: any) => {
+      const prev = await tx.sgiObjective.findFirst({ where: { id, tenantId, deletedAt: null } });
+      if (!prev) return null;
+      const name = await resolveUserName(tx, userId);
+      const updated = await tx.sgiObjective.update({
+        where: { id },
+        data: { approvedById: null, approvedByName: null, approvedAt: null },
+      });
+      await tx.objectiveProgressLog.create({
+        data: {
+          tenantId, objectiveId: id, userId, userName: name,
+          previousProgress: prev.progress ?? null, newProgress: prev.progress ?? null,
+          previousStatus: prev.status ?? null, newStatus: prev.status ?? null,
+          source: 'APPROVAL',
+          justification: `Aprobación revocada por ${name || 'usuario'}`,
+        },
+      });
+      return updated;
+    });
+    if (!item) return reply.code(404).send({ error: 'Not found' });
     return reply.send({ item });
   });
 

@@ -163,6 +163,26 @@ interface Objective {
   policyIds?: string[];
   progressLogs?: ObjectiveProgressLogEntry[];
   _assessment?: ObjectiveAssessment;
+  // Cumplimiento IATF 16949 §6.2.1/6.2.1.1
+  parentObjectiveId?: string;
+  parentObjective?: { id: string; code: string; title: string; level?: string } | null;
+  childObjectives?: { id: string; code: string; title: string; status: string; progress: number; level?: string }[];
+  level?: string;
+  approvedById?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  finalValue?: number;
+  evaluationComment?: string;
+  closedAt?: string;
+  reviewFrequency?: string;
+  nextReviewDate?: string;
+  communicatedAt?: string;
+  communicatedTo?: string;
+  measurementFrequency?: string;
+  stakeholderId?: string;
+  stakeholder?: { id: string; name: string; type?: string; category?: string } | null;
+  customerRequirement?: string;
+  _count?: { childObjectives: number };
   createdAt: string;
   updatedAt: string;
 }
@@ -297,6 +317,23 @@ const PROGRESS_SOURCE_LABELS: Record<string, string> = {
   KPI: 'KPI',
   ACTIONS: 'Acciones/Hitos',
   SYSTEM: 'Sistema',
+  EDIT: 'Edición',
+  APPROVAL: 'Aprobación',
+};
+
+// Nivel dentro del despliegue de objetivos (IATF 6.2.1.1 — funciones, procesos y niveles)
+const LEVEL_LABELS: Record<string, string> = {
+  CORPORATE: 'Corporativo',
+  DEPARTMENTAL: 'Departamental',
+  INDIVIDUAL: 'Individual',
+};
+
+// Frecuencias de medición / revisión del objetivo
+const FREQUENCY_LABELS: Record<string, string> = {
+  MONTHLY: 'Mensual',
+  QUARTERLY: 'Trimestral',
+  SEMIANNUAL: 'Semestral',
+  ANNUAL: 'Anual',
 };
 
 /* ─── Component ─── */
@@ -321,6 +358,8 @@ export default function Objectives360Page() {
   const [contextStrategies, setContextStrategies] = useState<{id: string; label: string}[]>([]);
   const [kpis, setKpis] = useState<KpiOption[]>([]);
   const [positions, setPositions] = useState<PositionOption[]>([]);
+  const [stakeholders, setStakeholders] = useState<{ id: string; name: string; type?: string; category?: string }[]>([]);
+  const [approving, setApproving] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingObjective, setEditingObjective] = useState<Objective | null>(null);
@@ -402,6 +441,14 @@ export default function Objectives360Page() {
     } catch { setKpis([]); }
   }, []);
 
+  const loadStakeholders = useCallback(async () => {
+    try {
+      const res = await apiFetch('/stakeholders') as { items?: any[] } | any[];
+      const items = Array.isArray(res) ? res : (res.items ?? []);
+      setStakeholders(items.map((s: any) => ({ id: s.id, name: s.name, type: s.type, category: s.category })));
+    } catch { setStakeholders([]); }
+  }, []);
+
   const loadPositions = useCallback(async () => {
     try {
       const res = await apiFetch('/objectives/positions') as PositionOption[];
@@ -452,10 +499,11 @@ export default function Objectives360Page() {
     loadProcesses();
     loadKpis();
     loadPositions();
+    loadStakeholders();
     loadAvailableAudits();
     loadAvailableCapas();
     loadAvailableRisks();
-  }, [loadObjectives, loadPolicies, loadStats, loadProcesses, loadKpis, loadPositions, loadAvailableAudits, loadAvailableCapas, loadAvailableRisks]);
+  }, [loadObjectives, loadPolicies, loadStats, loadProcesses, loadKpis, loadPositions, loadStakeholders, loadAvailableAudits, loadAvailableCapas, loadAvailableRisks]);
 
   // URL params pre-fill desde módulo Contexto
   useEffect(() => {
@@ -520,6 +568,18 @@ export default function Objectives360Page() {
       responsiblePositionId: '',
       involvedProcessIds: [],
       policyIds: [],
+      // IATF
+      level: '',
+      parentObjectiveId: '',
+      stakeholderId: '',
+      customerRequirement: '',
+      reviewFrequency: '',
+      nextReviewDate: '',
+      measurementFrequency: '',
+      communicatedTo: '',
+      communicatedAt: '',
+      finalValue: undefined,
+      evaluationComment: '',
     });
     setShowForm(true);
   };
@@ -579,6 +639,29 @@ export default function Objectives360Page() {
       payload.baselineValue = payload.baselineValue !== undefined && payload.baselineValue !== '' ? Number(payload.baselineValue) : undefined;
       payload.involvedProcessIds = Array.isArray(payload.involvedProcessIds) ? payload.involvedProcessIds : [];
       payload.policyIds = Array.isArray(payload.policyIds) ? payload.policyIds : [];
+      // IATF: cascada / nivel / revisión / comunicación / cliente / cierre
+      // parentObjectiveId y stakeholderId NO se normalizan a undefined: '' llega al body
+      // crudo y el backend lo persiste como null (permite desvincular).
+      payload.parentObjectiveId = payload.parentObjectiveId ?? '';
+      payload.stakeholderId = payload.stakeholderId ?? '';
+      payload.level = normalize(payload.level);
+      payload.reviewFrequency = normalize(payload.reviewFrequency);
+      payload.nextReviewDate = normalize(payload.nextReviewDate);
+      payload.communicatedTo = normalize(payload.communicatedTo);
+      payload.communicatedAt = normalize(payload.communicatedAt);
+      payload.measurementFrequency = normalize(payload.measurementFrequency);
+      payload.customerRequirement = normalize(payload.customerRequirement);
+      payload.evaluationComment = normalize(payload.evaluationComment);
+      payload.finalValue = payload.finalValue !== '' && payload.finalValue !== undefined ? Number(payload.finalValue) : undefined;
+      // Campos gestionados por endpoints dedicados / relaciones enriquecidas
+      delete payload.approvedById;
+      delete payload.approvedByName;
+      delete payload.approvedAt;
+      delete payload.closedAt;
+      delete payload.parentObjective;
+      delete payload.childObjectives;
+      delete payload.stakeholder;
+      delete payload._count;
       // Convert numeric fields from strings to numbers for Zod schema
       payload.year = payload.year ? Number(payload.year) : undefined;
       payload.targetValue = payload.targetValue !== '' && payload.targetValue !== undefined ? Number(payload.targetValue) : undefined;
@@ -603,6 +686,39 @@ export default function Objectives360Page() {
       console.error(e);
       alert('Error al guardar objetivo: ' + (e?.message || ''));
     }
+  };
+
+  // Aprobación / revocación por alta dirección (IATF 6.2.1.1) — endpoint dedicado, queda en historial.
+  const handleApprove = async () => {
+    if (!detailObjective) return;
+    setApproving(true);
+    try {
+      const action = detailObjective.approvedAt ? 'revoke-approval' : 'approve';
+      await apiFetch(`/objectives/${detailObjective.id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      await refreshDetail(detailObjective.id);
+      loadObjectives();
+      loadStats();
+    } catch (e) { console.error(e); } finally { setApproving(false); }
+  };
+
+  // Marcar el objetivo como comunicado al personal afectado (ISO 6.2.1 f)
+  const handleMarkCommunicated = async () => {
+    if (!detailObjective) return;
+    const to = prompt('¿A quién se comunicó el objetivo?', detailObjective.communicatedTo || 'Personal de los procesos involucrados');
+    if (to === null) return;
+    try {
+      await apiFetch(`/objectives/${detailObjective.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ communicatedAt: new Date().toISOString().slice(0, 10), communicatedTo: to }),
+      });
+      await refreshDetail(detailObjective.id);
+      loadObjectives();
+    } catch (e) { console.error(e); }
   };
 
   const handleDelete = async (id: string) => {
@@ -974,6 +1090,15 @@ export default function Objectives360Page() {
                 <td className="px-4 py-3">
                   <div className="font-medium">{obj.title}</div>
                   <div className="text-xs text-muted-foreground">{obj.standard}</div>
+                  <div className="flex gap-1 mt-0.5">
+                    {obj.parentObjective && (
+                      <span className="text-[10px] px-1 rounded bg-emerald-100 text-emerald-700" title={`Despliega de: ${obj.parentObjective.title}`}>↳ {obj.parentObjective.code}</span>
+                    )}
+                    {(obj._count?.childObjectives ?? 0) > 0 && (
+                      <span className="text-[10px] px-1 rounded bg-indigo-100 text-indigo-700" title="Objetivos desplegados desde este">+{obj._count!.childObjectives} despliegues</span>
+                    )}
+                    {obj.approvedAt && <span className="text-[10px] px-1 rounded bg-green-100 text-green-700">Aprobado</span>}
+                  </div>
                 </td>
                 <td className="px-4 py-3">{obj.policy?.name || '—'}</td>
                 <td className="px-4 py-3">{obj.process?.name || '—'}</td>
@@ -1035,11 +1160,12 @@ export default function Objectives360Page() {
           </DialogHeader>
           <div className="w-full">
             <Tabs defaultValue="basic">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="basic">Información</TabsTrigger>
                 <TabsTrigger value="indicators">Indicadores</TabsTrigger>
                 <TabsTrigger value="owner">Responsable</TabsTrigger>
                 <TabsTrigger value="details">Detalles</TabsTrigger>
+                <TabsTrigger value="compliance">Cumplimiento</TabsTrigger>
               </TabsList>
             <TabsContent value="basic" className="space-y-4 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1391,6 +1517,159 @@ export default function Objectives360Page() {
                 </div>
               </div>
             </TabsContent>
+            <TabsContent value="compliance" className="space-y-4 py-4">
+              {/* Despliegue en cascada — IATF 6.2.1.1: funciones, procesos y niveles */}
+              <div className="border rounded-lg p-4 space-y-3 bg-emerald-50/50">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-600" />
+                  Despliegue por niveles (IATF 6.2.1.1)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Nivel del objetivo</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      value={formData.level || ''}
+                      onChange={(e) => update('level', e.target.value)}
+                    >
+                      <option value="">— Sin definir —</option>
+                      {Object.entries(LEVEL_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Objetivo padre (despliegue)</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      value={formData.parentObjectiveId || ''}
+                      onChange={(e) => update('parentObjectiveId', e.target.value)}
+                    >
+                      <option value="">— Sin objetivo padre —</option>
+                      {objectives
+                        .filter((o) => o.id !== editingObjective?.id)
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>[{o.code}] {o.title}</option>
+                        ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">Vinculá este objetivo a uno de nivel superior para evidenciar la cascada corporativo → departamental → individual.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Requisito de cliente — IATF 6.2.1.1 */}
+              <div className="border rounded-lg p-4 space-y-3 bg-sky-50/50">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-sky-600" />
+                  Alineación a requisitos del cliente
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Cliente / parte interesada</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      value={formData.stakeholderId || ''}
+                      onChange={(e) => update('stakeholderId', e.target.value)}
+                    >
+                      <option value="">— Sin vínculo —</option>
+                      {stakeholders.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}{s.category ? ` (${s.category})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Requisito específico (CSR / scorecard)</Label>
+                    <Input
+                      value={formData.customerRequirement || ''}
+                      onChange={(e) => update('customerRequirement', e.target.value)}
+                      placeholder="Ej: PPM ≤ 50, OTIF ≥ 98%, scorecard mensual"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Revisión y medición */}
+              <div className="border rounded-lg p-4 space-y-3 bg-amber-50/50">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-amber-600" />
+                  Seguimiento y revisión
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Frecuencia de medición</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      value={formData.measurementFrequency || ''}
+                      onChange={(e) => update('measurementFrequency', e.target.value)}
+                    >
+                      <option value="">— Sin definir —</option>
+                      {Object.entries(FREQUENCY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Frecuencia de revisión</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      value={formData.reviewFrequency || ''}
+                      onChange={(e) => update('reviewFrequency', e.target.value)}
+                    >
+                      <option value="">— Sin definir —</option>
+                      {Object.entries(FREQUENCY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Próxima revisión</Label>
+                    <Input type="date" value={formData.nextReviewDate || ''} onChange={(e) => update('nextReviewDate', e.target.value)} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Comunicado a</Label>
+                    <Input
+                      value={formData.communicatedTo || ''}
+                      onChange={(e) => update('communicatedTo', e.target.value)}
+                      placeholder="Ej: Jefes de área, operarios de producción"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Fecha de comunicación</Label>
+                    <Input type="date" value={formData.communicatedAt || ''} onChange={(e) => update('communicatedAt', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Cierre verificable — solo visible al cerrar el objetivo */}
+              {['ACHIEVED', 'NOT_ACHIEVED', 'CANCELLED'].includes(formData.status || '') && (
+                <div className="border rounded-lg p-4 space-y-3 bg-violet-50/50">
+                  <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-violet-600" />
+                    Cierre y evaluación del resultado (ISO 6.2.2)
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Valor final medido</Label>
+                      <Input
+                        type="number"
+                        value={formData.finalValue ?? ''}
+                        onChange={(e) => update('finalValue', e.target.value === '' ? undefined : Number(e.target.value))}
+                        placeholder="Resultado real al cierre"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Evaluación del resultado</Label>
+                      <Input
+                        value={formData.evaluationComment || ''}
+                        onChange={(e) => update('evaluationComment', e.target.value)}
+                        placeholder="Conclusión: se cumplió porque… / no se cumplió por…"
+                      />
+                    </div>
+                  </div>
+                  {(formData.status === 'NOT_ACHIEVED') && (
+                    <p className="text-xs text-amber-700 bg-amber-100 border border-amber-200 rounded p-2">
+                      Objetivo no logrado: recordá vincular un Plan de acción desde la pestaña Vínculos del detalle.
+                    </p>
+                  )}
+                </div>
+              )}
+            </TabsContent>
           </Tabs>
           </div>
           <DialogFooter>
@@ -1490,6 +1769,116 @@ export default function Objectives360Page() {
                   </div>
                 </div>
               )}
+              {/* ── Panel de cumplimiento IATF 6.2.1 / 6.2.1.1 ── */}
+              <div className="border rounded-lg p-4 space-y-3 bg-emerald-50/40">
+                <h4 className="text-sm font-semibold text-emerald-800 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4" /> Cumplimiento IATF / control del objetivo
+                </h4>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="font-medium">Nivel:</span>{' '}
+                    {obj.level ? (LEVEL_LABELS[obj.level] || obj.level) : '—'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Aprobación:</span>{' '}
+                    {obj.approvedAt
+                      ? <span className="text-green-700">✓ {obj.approvedByName || 'Alta dirección'} · {new Date(obj.approvedAt).toLocaleDateString()}</span>
+                      : <span className="text-amber-600">Pendiente</span>}
+                  </div>
+                  <div>
+                    <span className="font-medium">Comunicado:</span>{' '}
+                    {obj.communicatedAt
+                      ? <span>a {obj.communicatedTo || 'personal afectado'} · {new Date(obj.communicatedAt).toLocaleDateString()}</span>
+                      : <span className="text-amber-600">Sin registrar</span>}
+                  </div>
+                  <div>
+                    <span className="font-medium">Revisión:</span>{' '}
+                    {obj.reviewFrequency ? (FREQUENCY_LABELS[obj.reviewFrequency] || obj.reviewFrequency) : '—'}
+                    {obj.nextReviewDate && (
+                      <span className={new Date(obj.nextReviewDate) < new Date() && !['ACHIEVED','NOT_ACHIEVED','CANCELLED'].includes(obj.status) ? ' text-red-600 font-semibold' : ''}>
+                        {' '}· próx: {new Date(obj.nextReviewDate).toLocaleDateString()}
+                        {new Date(obj.nextReviewDate) < new Date() && !['ACHIEVED','NOT_ACHIEVED','CANCELLED'].includes(obj.status) && ' (vencida)'}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="font-medium">Medición:</span>{' '}
+                    {obj.measurementFrequency ? (FREQUENCY_LABELS[obj.measurementFrequency] || obj.measurementFrequency) : (obj.primaryIndicator ? `Por KPI (${obj.primaryIndicator.frequency || '—'})` : '—')}
+                  </div>
+                  <div>
+                    <span className="font-medium">Cliente / parte interesada:</span>{' '}
+                    {obj.stakeholder?.name || '—'}
+                  </div>
+                </div>
+                {obj.customerRequirement && (
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium">Requisito del cliente:</span> {obj.customerRequirement}
+                  </p>
+                )}
+                {/* Despliegue en cascada */}
+                {(obj.parentObjective || (obj.childObjectives && obj.childObjectives.length > 0)) && (
+                  <div className="text-xs space-y-1 pt-1 border-t border-emerald-100">
+                    {obj.parentObjective && (
+                      <p>
+                        <span className="font-medium">Despliega de:</span>{' '}
+                        <button
+                          type="button"
+                          className="text-blue-600 underline"
+                          onClick={() => handleOpenDetail({ id: obj.parentObjective!.id } as Objective)}
+                        >
+                          [{obj.parentObjective.code}] {obj.parentObjective.title}
+                        </button>
+                      </p>
+                    )}
+                    {obj.childObjectives && obj.childObjectives.length > 0 && (
+                      <div>
+                        <span className="font-medium">Se despliega en:</span>
+                        <ul className="mt-0.5 space-y-0.5">
+                          {obj.childObjectives.map((c) => (
+                            <li key={c.id}>
+                              <button
+                                type="button"
+                                className="text-blue-600 underline"
+                                onClick={() => handleOpenDetail({ id: c.id } as Objective)}
+                              >
+                                [{c.code}] {c.title}
+                              </button>
+                              <span className="text-muted-foreground"> — {STATUS_LABELS[c.status] || c.status} ({c.progress}%){c.level ? ` · ${LEVEL_LABELS[c.level] || c.level}` : ''}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Cierre verificable */}
+                {obj.closedAt && (
+                  <div className="text-xs pt-1 border-t border-emerald-100">
+                    <p>
+                      <span className="font-medium">Cerrado:</span> {new Date(obj.closedAt).toLocaleDateString()}
+                      {obj.finalValue !== undefined && obj.finalValue !== null && ` · resultado: ${obj.finalValue}${obj.unit || ''}`}
+                    </p>
+                    {obj.evaluationComment && <p className="text-muted-foreground mt-0.5">Evaluación: {obj.evaluationComment}</p>}
+                  </div>
+                )}
+                {/* Acciones rápidas de cumplimiento */}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button size="sm" variant={obj.approvedAt ? 'outline' : 'default'} onClick={handleApprove} disabled={approving}>
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                    {obj.approvedAt ? 'Revocar aprobación' : 'Aprobar (alta dirección)'}
+                  </Button>
+                  {!obj.communicatedAt && (
+                    <Button size="sm" variant="outline" onClick={handleMarkCommunicated}>
+                      Marcar como comunicado
+                    </Button>
+                  )}
+                  {obj.status === 'NOT_ACHIEVED' && (!obj.capas || obj.capas.length === 0) && (
+                    <span className="text-xs text-amber-700 bg-amber-100 border border-amber-200 rounded px-2 py-1.5 inline-flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Sin Plan de acción vinculado — ver pestaña Vínculos
+                    </span>
+                  )}
+                </div>
+              </div>
               {obj.description && (
                 <div className="text-sm">
                   <span className="font-medium">Descripción:</span>
@@ -1646,14 +2035,14 @@ export default function Objectives360Page() {
                   )) : <p className="text-xs text-muted-foreground">Sin auditorías</p>}
                 </div>
                 <div className="space-y-2">
-                  <h4 className="text-sm font-medium">CAPA ({obj.capas?.length ?? 0})</h4>
+                  <h4 className="text-sm font-medium">Planes de acción ({obj.capas?.length ?? 0})</h4>
                   <div className="flex gap-1">
                     <select
                       className="h-8 flex-1 rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
                       value={linkCapaId}
                       onChange={(e) => setLinkCapaId(e.target.value)}
                     >
-                      <option value="">— CAPA —</option>
+                      <option value="">— Plan de acción —</option>
                       {availableCapas.map((c) => (
                         <option key={c.id} value={c.id}>{c.code ? `[${c.code}] ` : ''}{(c.plannedAction || c.findingDescription || c.id).slice(0, 60)}</option>
                       ))}
@@ -1667,7 +2056,7 @@ export default function Objectives360Page() {
                       <span>{c.capa?.title || c.capaId}</span>
                       <button onClick={() => handleUnlinkCapa(c.id)} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
                     </div>
-                  )) : <p className="text-xs text-muted-foreground">Sin CAPA</p>}
+                  )) : <p className="text-xs text-muted-foreground">Sin planes de acción</p>}
                 </div>
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium">Riesgos ({obj.risks?.length ?? 0})</h4>

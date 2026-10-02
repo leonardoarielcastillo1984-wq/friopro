@@ -6643,6 +6643,32 @@ model SgiObjective {
   // Políticas múltiples (aditivo; policyId singular se conserva por retrocompat)
   policyIds             String[]   @default([])
 
+  // ── Cumplimiento IATF 16949 §6.2.1 / 6.2.1.1 (aditivo Oct 2026) ──
+  // Despliegue en cascada: corporativo → departamental → individual
+  parentObjectiveId String?        @db.Uuid
+  parentObjective   SgiObjective?  @relation("ObjectiveDeployment", fields: [parentObjectiveId], references: [id], onDelete: SetNull)
+  childObjectives   SgiObjective[] @relation("ObjectiveDeployment")
+  level             String? // CORPORATE | DEPARTMENTAL | INDIVIDUAL
+  // Aprobación por alta dirección (auditable — se setea vía POST /objectives/:id/approve)
+  approvedById   String?   @db.Uuid
+  approvedByName String?
+  approvedAt     DateTime?
+  // Cierre verificable (ISO 6.2.2 e): resultado medido + evaluación del resultado
+  finalValue        Float?
+  evaluationComment String?
+  closedAt          DateTime?
+  // Revisión periódica del objetivo (IATF 6.2.1.1 — revisión al menos anual)
+  reviewFrequency String? // MONTHLY | QUARTERLY | SEMIANNUAL | ANNUAL
+  nextReviewDate  DateTime?
+  // Comunicación del objetivo al personal afectado (ISO 6.2.1 f)
+  communicatedAt DateTime?
+  communicatedTo String?
+  // Frecuencia de medición propia (cuando no depende del KPI vinculado)
+  measurementFrequency String?
+  // Alineación a requisitos del cliente / parte interesada (IATF 6.2.1.1)
+  stakeholderId       String? @db.Uuid // weak link a Stakeholder (mismo patrón que auditId/capaId)
+  customerRequirement String? // requisito específico del cliente (CSR) que respalda el objetivo
+
   progressLogs ObjectiveProgressLog[]
 
   @@index([tenantId])
