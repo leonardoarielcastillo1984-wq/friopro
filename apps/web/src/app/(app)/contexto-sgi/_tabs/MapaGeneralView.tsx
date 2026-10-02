@@ -4,10 +4,12 @@ import { useRouter } from 'next/navigation';
 import {
   Search, MapPin, X, ArrowRight, ArrowDown, ArrowUp, ChevronRight, AlertTriangle,
   Target, Cog, Users, Layers, Network, FileText, Shield, BarChart3,
-  ArrowLeft, ExternalLink, ListTree, ShoppingCart, PanelRightClose, PanelRightOpen,
+  ArrowLeft, ArrowLeftRight, ExternalLink, ListTree, ShoppingCart, PanelRightClose, PanelRightOpen,
   Truck, Package, Boxes, Wrench, Monitor, Landmark, Compass, ClipboardCheck,
   Plus, Pencil, Trash2, TrendingUp, BookOpen,
 } from 'lucide-react';
+import type { Interaction } from './InteraccionesModal';
+import type { OutsourcedProcess } from './ExternalizadosModal';
 
 // ── Tipos (mínimos, alineados al shape de GET /process-maps) ──────────────────
 export type GenProcess = {
@@ -29,6 +31,7 @@ export type GenProcess = {
   indicators?: string | null;
   documents?: string | null;
   risks?: string | null;
+  controls?: string | null;
 };
 
 export type GenMap = {
@@ -41,6 +44,14 @@ export type GenMap = {
   mapBand?: string | null;
   // Norma a la que aplica el mapa: 'ISO9001' | 'IATF16949' | null (= ambas)
   norm?: string | null;
+  // Posición en la cadena operativa (0 = sin orden explícito → heurística por etapa)
+  order?: number;
+  // Control documental del mapa
+  docCode?: string | null;
+  docVersion?: string | null;
+  docStatus?: string | null;
+  docApprovedBy?: string | null;
+  docReviewDate?: string | null;
   processes: GenProcess[];
 };
 
@@ -56,6 +67,29 @@ const BAND_META: Record<Band, { label: string; desc: string; band: string; borde
 };
 
 const LAYER_LABEL: Record<string, string> = { STRATEGIC: 'Estratégico', OPERATIONAL: 'Operativo', SUPPORT: 'Soporte' };
+
+// Etiquetas de estado del control documental del mapa.
+const DOC_STATUS_LABEL: Record<string, string> = {
+  BORRADOR: 'Borrador', EN_REVISION: 'En revisión', APROBADO: 'Aprobado', VIGENTE: 'Vigente', OBSOLETO: 'Obsoleto',
+};
+
+// Etapas canónicas de la secuencia operativa (flujo de producción de conjuntos de ruedas).
+// Un proceso/mapa cae en la primera etapa cuyas keywords aparecen en su nombre.
+const OP_STAGES: RegExp[] = [
+  /(recepci|abastec|almacen|insumo|materia|compra)/,                    // 0 Recepción y abastecimiento
+  /(planific|programa|orden)/,                                        // 1 Planificación
+  /(mecaniz|maquin|cnc|torno|fresa|punzon)/,                          // 2 Mecanizado
+  /(ensamble|armado|montaje|soldad|conjunto|producc|fabric)/,         // 3 Producción / ensamble
+  /(tratamiento|termic|pintura|recubr|zinc|galvan|acabad)/,           // 4 Tratamiento superficial
+  /(inspecc|ensayo|metrolog|calidad|laboratorio)/,                    // 5 Inspección y ensayos
+  /(despacho|expedic|entrega|distribu|logist|embalaje|liberac|transporte)/, // 6 Liberación / despacho y entrega
+];
+const opStageOf = (name?: string | null): number => {
+  const n = normalize(name);
+  if (!n) return -1;
+  for (let i = 0; i < OP_STAGES.length; i++) if (OP_STAGES[i].test(n)) return i;
+  return -1;
+};
 
 function normalize(s?: string | null) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -126,7 +160,10 @@ export default function MapaGeneralView({
   onEditProcess,
   onDeleteProcess,
   onNewProcess,
-  onOpenLinks,
+  onOpenInteractions,
+  onOpenOutsourced,
+  interactions = [],
+  outsourced = [],
   onNewMap,
   onEditMap,
   onDeleteMap,
@@ -143,7 +180,14 @@ export default function MapaGeneralView({
   onEditProcess: (p: GenProcess) => void;
   onDeleteProcess: (p: GenProcess) => void;
   onNewProcess: (mapId: string, parentId: string | null) => void;
-  onOpenLinks: () => void;
+  // Abre el modal "Interacciones entre procesos" (flechas etiquetadas persistidas)
+  onOpenInteractions: () => void;
+  // Abre el editor de la sección "Procesos externalizados"
+  onOpenOutsourced: () => void;
+  // Interacciones reales configuradas (origen → destino entre procesos)
+  interactions?: Interaction[];
+  // Procesos externalizados configurados por el tenant
+  outsourced?: OutsourcedProcess[];
   // opts.mapBand pre-setea la banda del mapa nuevo (botón "+" del header de cada banda)
   onNewMap: (opts?: { mapBand?: Band | null }) => void;
   onEditMap: (m: GenMap) => void;
@@ -248,6 +292,75 @@ export default function MapaGeneralView({
   const opChain = opChainRest.length ? opChainRest : bands.OPERATIONAL;
   const opTop = opChainRest.length ? opEnablers : [];
 
+  // ── Secuencia operativa ─────────────────────────────────────────────────
+  // Ítem de la cadena: un mapa entero o un subconjunto de sus nodos cuando el
+  // mapa abarca etapas distintas (ej. "Logística y entrega" = recepción + despacho).
+  type ChainItem = { map: GenMap; head: GenProcess | null; nodes: GenProcess[]; stage: number; origIdx: number };
+
+  const chainItems: ChainItem[] = [];
+  opChain.forEach((m, origIdx) => {
+    const { head, nodes } = flowNodesOf(m);
+    if (!nodes.length) {
+      chainItems.push({ map: m, head, nodes, stage: opStageOf(m.name), origIdx });
+      return;
+    }
+    const mapStage = opStageOf(m.name);
+    const groups = new Map<number, GenProcess[]>();
+    nodes.forEach(n => {
+      const st = opStageOf(n.name);
+      const eff = st >= 0 ? st : mapStage;
+      groups.set(eff, [...(groups.get(eff) ?? []), n]);
+    });
+    if (groups.size <= 1) {
+      chainItems.push({ map: m, head, nodes, stage: groups.keys().next().value ?? -1, origIdx });
+      return;
+    }
+    // El mapa cubre varias etapas: se divide para respetar la secuencia real.
+    groups.forEach((ns, st) => chainItems.push({ map: m, head: ns.length === 1 ? ns[0] : null, nodes: ns, stage: st, origIdx }));
+  });
+
+  // Posición efectiva: etapa inferida > orden explícito del mapa (order-0.5 queda
+  // entre etapas) > zona media del flujo según posición original.
+  const chainPos = (it: ChainItem) =>
+    it.stage >= 0 ? it.stage : ((it.map.order ?? 0) > 0 ? (it.map.order ?? 0) - 0.5 : 3.5 + it.origIdx / 100);
+  const chainSorted = [...chainItems].sort(
+    (a, b) => chainPos(a) - chainPos(b) || (a.map.order ?? 0) - (b.map.order ?? 0) || a.origIdx - b.origIdx
+  );
+
+  // IDs de procesos que representa un ítem de la cadena (head + nodos).
+  const procIdsOf = (it: ChainItem) => {
+    const ids = new Set(it.nodes.map(n => n.id));
+    if (it.head) ids.add(it.head.id);
+    return ids;
+  };
+  const chainIds = new Set(chainSorted.flatMap(it => [...procIdsOf(it)]));
+
+  // Etiqueta de flecha desde una interacción REAL configurada (origen → destino).
+  const interLabel = (from: ChainItem, to: ChainItem): string | null => {
+    const f = procIdsOf(from), t = procIdsOf(to);
+    const hit = interactions.find(i => f.has(i.fromId) && t.has(i.toId));
+    return hit ? (hit.label ?? '') : null;
+  };
+  // Interacción que ENTRA a la cadena desde afuera (cliente/estrategia/soporte).
+  const interLabelIn = (to: ChainItem): string | null => {
+    const t = procIdsOf(to);
+    const hit = interactions.find(i => t.has(i.toId) && !chainIds.has(i.fromId));
+    return hit ? (hit.label ?? '') : null;
+  };
+  // Primer bullet de inputs/outputs de un ítem (fallback cuando no hay interacción).
+  const firstIO = (it: ChainItem, field: 'inputs' | 'outputs'): string => {
+    const cand = ([it.head, ...it.nodes].filter(Boolean) as GenProcess[]);
+    for (const p of cand) { const b = toBullets(p[field])[0]; if (b) return b; }
+    return '';
+  };
+  // Etiqueta del conector habilitador → cadena (interacción real o outputs).
+  const enablerOutLabel = (m: GenMap): string => {
+    const ids = new Set(m.processes.map(p => p.id));
+    const hit = interactions.find(i => ids.has(i.fromId) && chainIds.has(i.toId));
+    if (hit) return hit.label || 'Proceso validado';
+    return toBullets(flowNodesOf(m).head?.outputs)[0] || 'Proceso validado';
+  };
+
   function StatusDot({ status }: { status?: string }) {
     return (
       <span
@@ -305,7 +418,7 @@ export default function MapaGeneralView({
 
   // Chip de sede estilo manual ("Casa central / Córdoba" | "Sede por confirmar").
   function SiteChip({ sites }: { sites: string[] }) {
-    const label = sites.length ? sites.join(' / ') : 'Sede por confirmar';
+    const label = sites.length ? sites.join(' / ') : 'Sede pendiente de definir';
     return (
       <span className="inline-flex items-center gap-1 text-[9px] font-medium text-blue-600 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5">
         <MapPin className="h-2.5 w-2.5" aria-hidden />{label}
@@ -314,14 +427,19 @@ export default function MapaGeneralView({
   }
 
   // Nodo de la cadena operativa: card "tortuga" del mapa (o de su macro raíz)
-  // con bullets de subprocesos y chip de sede.
-  function OpCard({ map }: { map: GenMap }) {
-    const { head, nodes } = flowNodesOf(map);
+  // con bullets de subprocesos y chip de sede. `nodes` permite renderizar solo
+  // un subconjunto cuando el mapa se divide entre etapas de la secuencia.
+  function OpCard({ map, nodes }: { map: GenMap; nodes?: GenProcess[] }) {
+    const flow = flowNodesOf(map);
+    const itemNodes = nodes ?? flow.nodes;
+    const head = nodes ? (itemNodes.length === 1 ? itemNodes[0] : null) : flow.head;
     const isSel = head ? selProc?.id === head.id : selMap?.id === map.id;
     const nameHit = mapNameSet.has(map.id);
     const Icon = iconFor(head?.name || map.name);
     const title = head?.name || map.name;
-    const bullets = nodes.map(n => n.name).join(' · ');
+    const childNames = (p: GenProcess) => subsOf(map.id, p.id).map(s => s.name).join(' · ');
+    const bullets = head ? childNames(head) : itemNodes.map(n => n.name).join(' · ');
+    const itemSites = [...new Set(itemNodes.flatMap(n => n.sites || []))];
     const dim = !!(q && !nameHit && !map.processes.some(p => matchSet.has(p.id)));
     return (
       <div
@@ -349,7 +467,7 @@ export default function MapaGeneralView({
         </div>
         {bullets && <p className="text-[9px] text-neutral-500 mt-1 leading-snug break-words text-center">{bullets}</p>}
         <div className="flex flex-wrap items-center justify-center gap-1 mt-1.5">
-          <SiteChip sites={head?.sites?.length ? head.sites : sitesOf(map)} />
+          <SiteChip sites={head?.sites?.length ? head.sites : (itemSites.length ? itemSites : sitesOf(map))} />
           <NormChip norm={map.norm} />
         </div>
       </button>
@@ -438,13 +556,31 @@ export default function MapaGeneralView({
     );
   }
 
-  // Caja punteada "Procesos externalizados" dentro de Soporte (del manual).
-  function ExtBox() {
+  // Caja punteada "Procesos externalizados" dentro de Soporte: lista los
+  // externalizados configurados por el tenant y abre el editor al hacer click.
+  function OutsourcedBox() {
     return (
-      <div className="flex-1 min-w-[170px] max-w-[220px] rounded-lg border-2 border-dashed border-neutral-300 bg-white/50 px-3 py-2.5 text-center flex flex-col justify-center">
-        <p className="text-[9px] font-bold text-neutral-500 uppercase leading-tight">Procesos externalizados, si aplican</p>
-        <p className="text-[8px] text-neutral-400 mt-1 leading-snug">Identificar proveedor, proceso, controles e interfaces</p>
-      </div>
+      <button
+        type="button"
+        onClick={onOpenOutsourced}
+        title="Configurar procesos externalizados"
+        className="flex-1 min-w-[170px] max-w-[240px] rounded-lg border-2 border-dashed border-neutral-300 bg-white/50 px-3 py-2.5 text-center flex flex-col justify-center hover:border-indigo-300 hover:bg-white/80 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      >
+        <p className="text-[9px] font-bold text-neutral-500 uppercase leading-tight">Procesos externalizados</p>
+        {outsourced.length === 0 ? (
+          <p className="text-[8px] text-neutral-400 mt-1 leading-snug">Identificar proveedor, proceso, controles e interfaces</p>
+        ) : (
+          <ul className="mt-1 space-y-0.5">
+            {outsourced.slice(0, 3).map(o => (
+              <li key={o.id} className="text-[8px] text-neutral-600 leading-snug break-words">
+                {o.name}{o.supplier ? ` — ${o.supplier}` : ''}
+              </li>
+            ))}
+            {outsourced.length > 3 && <li className="text-[8px] text-neutral-400">+{outsourced.length - 3} más</li>}
+          </ul>
+        )}
+        <span className="text-[8px] text-indigo-500 font-medium mt-1">Configurar</span>
+      </button>
     );
   }
 
@@ -622,6 +758,16 @@ export default function MapaGeneralView({
             {selMap.scope && <p className="text-[11px] text-neutral-500 mt-1.5"><span className="font-medium">Alcance:</span> {selMap.scope}</p>}
             {selMap.description && <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">{selMap.description}</p>}
           </div>
+          {(selMap.docCode || selMap.docVersion || selMap.docStatus || selMap.docApprovedBy || selMap.docReviewDate) && (
+            <dl className="grid grid-cols-2 gap-2 text-[11px] border-t border-neutral-100 pt-3">
+              <p className="col-span-2 text-[10px] font-semibold text-neutral-500 uppercase tracking-wide">Control documental</p>
+              {selMap.docCode && <div><dt className="text-neutral-400">Código</dt><dd className="text-neutral-700 font-medium">{selMap.docCode}</dd></div>}
+              {selMap.docVersion && <div><dt className="text-neutral-400">Versión</dt><dd className="text-neutral-700 font-medium">{selMap.docVersion}</dd></div>}
+              {selMap.docStatus && <div><dt className="text-neutral-400">Estado doc.</dt><dd className="text-neutral-700 font-medium">{DOC_STATUS_LABEL[selMap.docStatus] || selMap.docStatus}</dd></div>}
+              {selMap.docApprovedBy && <div><dt className="text-neutral-400">Aprobó</dt><dd className="text-neutral-700 font-medium truncate">{selMap.docApprovedBy}</dd></div>}
+              {selMap.docReviewDate && <div><dt className="text-neutral-400">Próx. revisión</dt><dd className="text-neutral-700 font-medium">{new Date(selMap.docReviewDate).toLocaleDateString('es-AR')}</dd></div>}
+            </dl>
+          )}
           <div className="flex flex-wrap gap-1.5">
             {(Object.entries(bandCounts) as [string, number][]).map(([layer, n]) => (
               <span key={layer} className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600">
@@ -739,9 +885,15 @@ export default function MapaGeneralView({
             <div>
               <dt className="text-neutral-400">Sede</dt>
               <dd className="text-neutral-700 font-medium truncate">
-                {selProc.sites?.length ? selProc.sites.join(', ') : 'Todas'}
+                {selProc.sites?.length ? selProc.sites.join(', ') : 'Pendiente de definir'}
               </dd>
             </div>
+            {selProc.controls && (
+              <div className="col-span-2">
+                <dt className="text-neutral-400">Controles / reacción ante desvíos</dt>
+                <dd className="text-neutral-700">{selProc.controls}</dd>
+              </div>
+            )}
           </dl>
           {selParent && (
             <button
@@ -947,10 +1099,10 @@ export default function MapaGeneralView({
           )}
           <button
             type="button"
-            onClick={onOpenLinks}
+            onClick={onOpenInteractions}
             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-600 border border-neutral-200 rounded-lg hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
-            <Network className="h-3.5 w-3.5" aria-hidden /> Vínculos entre áreas
+            <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden /> Interacciones entre procesos
           </button>
           <button
             type="button"
@@ -1023,7 +1175,7 @@ export default function MapaGeneralView({
                               <span key={m.id} className="flex flex-col items-center w-24">
                                 <ArrowDown className="h-4 w-4 text-emerald-600" strokeWidth={2.5} aria-hidden />
                                 <span className="text-[8px] text-neutral-500 leading-tight text-center">
-                                  {toBullets(flowNodesOf(m).head?.outputs)[0] || 'Proceso validado'}
+                                  {enablerOutLabel(m)}
                                 </span>
                               </span>
                             ))}
@@ -1035,19 +1187,21 @@ export default function MapaGeneralView({
                     {/* Cadena: Entradas → mapas → Resultados */}
                     <div className="flex items-stretch gap-1 overflow-x-auto py-1">
                       {EndBox({ kind: 'in' })}
-                      {opChain.map((m, i) => {
-                        const prev = opChain[i - 1];
+                      {chainSorted.map((it, i) => {
+                        const prev = chainSorted[i - 1];
+                        // La etiqueta prioriza la interacción real configurada;
+                        // si no existe, muestra el primer output/entrada de los procesos.
                         const label = prev
-                          ? toBullets(flowNodesOf(prev).head?.outputs)[0] || ''
-                          : toBullets(flowNodesOf(m).head?.inputs)[0] || '';
+                          ? (interLabel(prev, it) ?? firstIO(prev, 'outputs'))
+                          : (interLabelIn(it) ?? firstIO(it, 'inputs'));
                         return (
-                          <Fragment key={m.id}>
+                          <Fragment key={`${it.map.id}-${it.stage}-${i}`}>
                             <ChainArrow label={label} />
-                            {OpCard({ map: m })}
+                            {OpCard({ map: it.map, nodes: it.nodes })}
                           </Fragment>
                         );
                       })}
-                      <ChainArrow label={toBullets(flowNodesOf(opChain[opChain.length - 1]).head?.outputs)[0] || ''} />
+                      <ChainArrow label={chainSorted.length ? firstIO(chainSorted[chainSorted.length - 1], 'outputs') : ''} />
                       {EndBox({ kind: 'out' })}
                     </div>
                     {/* Línea de retroalimentación bajo la cadena */}
@@ -1065,19 +1219,20 @@ export default function MapaGeneralView({
               {/* Conector Operativos ↔ Soporte */}
               <BandConnector kind="support" />
 
-              {/* Franja Soporte + procesos externalizados */}
+              {/* Franja Soporte + procesos externalizados (sección configurable) */}
               <BandSection band="SUPPORT">
-                {bands.SUPPORT.length === 0 ? <BandEmpty band="SUPPORT" /> : (
+                <div className="flex flex-col gap-2">
+                  {bands.SUPPORT.length === 0 && <BandEmpty band="SUPPORT" />}
                   <div className="flex flex-wrap items-stretch gap-2">
                     {bands.SUPPORT.map(m => <Fragment key={m.id}>{MapCard({ map: m, band: 'SUPPORT' })}</Fragment>)}
-                    {ExtBox()}
+                    {OutsourcedBox()}
                   </div>
-                )}
+                </div>
               </BandSection>
 
               {/* Leyenda al pie (como en el manual) */}
               <div className="flex items-start justify-between gap-6 px-1 pt-2">
-                <p className="text-[8px] text-neutral-400 leading-snug">* Ubicación presunta: validar por planta.</p>
+                <p className="text-[8px] text-neutral-400 leading-snug">Procesos e interacciones del sistema de gestión.</p>
                 <p className="text-[8px] text-neutral-400 leading-snug text-right">Cada proceso se vincula a su ficha: responsable, entradas/salidas, riesgos, controles e indicadores.</p>
               </div>
             </div>

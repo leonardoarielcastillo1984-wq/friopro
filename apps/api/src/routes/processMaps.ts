@@ -20,6 +20,20 @@ const mapSchema = z.object({
     (v) => (v === '' ? null : v),
     z.enum(['ISO9001', 'IATF16949']).nullable().optional()
   ),
+  // Posición del mapa en la cadena operativa del Mapa General (0 = sin orden explícito)
+  order: z.number().int().optional(),
+  // Control documental del mapa (documento controlado del SGI)
+  docCode: z.string().nullable().optional(),
+  docVersion: z.string().nullable().optional(),
+  docStatus: z.preprocess(
+    (v) => (v === '' ? null : v),
+    z.enum(['BORRADOR', 'EN_REVISION', 'APROBADO', 'VIGENTE', 'OBSOLETO']).nullable().optional()
+  ),
+  docApprovedBy: z.string().nullable().optional(),
+  docReviewDate: z.preprocess(
+    (v) => (v === '' || v === null ? null : v),
+    z.coerce.date().nullable().optional()
+  ),
 });
 
 const emptyToUndefined = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((val) => (val === '' || val === null ? undefined : val), schema);
@@ -28,6 +42,8 @@ const activitySchema = z.object({
   name: z.string().min(1),
   description: z.string().optional().default(''),
   responsible: z.string().optional().default(''),
+  // Sede donde se ejecuta la actividad (multi-sede por proceso)
+  site: z.string().optional().default(''),
 });
 
 const processSchema = z.object({
@@ -49,6 +65,7 @@ const processSchema = z.object({
   // Enfoque por procesos (Jul 2026)
   objective: emptyToUndefined(z.string().optional()),
   observations: emptyToUndefined(z.string().optional()),
+  controls: emptyToUndefined(z.string().optional()), // controles y reacción ante desvíos
   clientsInternal: z.array(z.string()).optional(),
   suppliersInternal: z.array(z.string()).optional(),
   receivesFrom: z.array(z.string()).optional(),
@@ -172,10 +189,115 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
         include: {
           processes: { where: { deletedAt: null }, orderBy: [{ order: 'asc' }, { layer: 'asc' }], include: processInclude },
         },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
       });
     });
     return reply.send(maps);
+  });
+
+  // ── Interacciones entre procesos (flechas etiquetadas del Mapa General) ──
+  const interactionSchema = z.object({
+    fromId: z.string().uuid(),
+    toId: z.string().uuid(),
+    label: z.string().nullable().optional(), // qué se transfiere entre los procesos
+    fromSite: z.string().nullable().optional(),
+    toSite: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+  });
+
+  app.get('/interactions', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const items = await app.runWithDbContext(req, async (tx: any) =>
+      tx.processInteraction.findMany({ where: { tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' } })
+    );
+    return reply.send(items);
+  });
+
+  app.post('/interactions', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const body = interactionSchema.parse(req.body);
+    if (body.fromId === body.toId) return reply.code(400).send({ error: 'El proceso origen y destino no pueden ser el mismo' });
+    const item = await app.runWithDbContext(req, async (tx: any) =>
+      tx.processInteraction.create({ data: { ...body, tenantId } })
+    );
+    return reply.code(201).send(item);
+  });
+
+  app.patch('/interactions/:iid', async (req: FastifyRequest<{ Params: { iid: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const body = interactionSchema.partial().parse(req.body);
+    if (body.fromId && body.toId && body.fromId === body.toId) {
+      return reply.code(400).send({ error: 'El proceso origen y destino no pueden ser el mismo' });
+    }
+    const item = await app.runWithDbContext(req, async (tx: any) => {
+      const { count } = await tx.processInteraction.updateMany({ where: { id: req.params.iid, tenantId, deletedAt: null }, data: body });
+      if (!count) return null;
+      return tx.processInteraction.findFirst({ where: { id: req.params.iid } });
+    });
+    if (!item) return reply.code(404).send({ error: 'Interacción no encontrada' });
+    return reply.send(item);
+  });
+
+  app.delete('/interactions/:iid', async (req: FastifyRequest<{ Params: { iid: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    await app.runWithDbContext(req, async (tx: any) =>
+      tx.processInteraction.updateMany({ where: { id: req.params.iid, tenantId }, data: { deletedAt: new Date() } })
+    );
+    return reply.code(204).send();
+  });
+
+  // ── Procesos externalizados (sección configurable del Mapa General) ──────
+  const outsourcedSchema = z.object({
+    name: z.string().min(1),
+    supplier: z.string().nullable().optional(),
+    scope: z.string().nullable().optional(),
+    control: z.string().nullable().optional(),
+    order: z.number().int().optional(),
+  });
+
+  app.get('/outsourced', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const items = await app.runWithDbContext(req, async (tx: any) =>
+      tx.outsourcedProcess.findMany({ where: { tenantId, deletedAt: null }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] })
+    );
+    return reply.send(items);
+  });
+
+  app.post('/outsourced', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const body = outsourcedSchema.parse(req.body);
+    const item = await app.runWithDbContext(req, async (tx: any) =>
+      tx.outsourcedProcess.create({ data: { ...body, tenantId } })
+    );
+    return reply.code(201).send(item);
+  });
+
+  app.patch('/outsourced/:oid', async (req: FastifyRequest<{ Params: { oid: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const body = outsourcedSchema.partial().parse(req.body);
+    const item = await app.runWithDbContext(req, async (tx: any) => {
+      const { count } = await tx.outsourcedProcess.updateMany({ where: { id: req.params.oid, tenantId, deletedAt: null }, data: body });
+      if (!count) return null;
+      return tx.outsourcedProcess.findFirst({ where: { id: req.params.oid } });
+    });
+    if (!item) return reply.code(404).send({ error: 'Proceso externalizado no encontrado' });
+    return reply.send(item);
+  });
+
+  app.delete('/outsourced/:oid', async (req: FastifyRequest<{ Params: { oid: string } }>, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    await app.runWithDbContext(req, async (tx: any) =>
+      tx.outsourcedProcess.updateMany({ where: { id: req.params.oid, tenantId }, data: { deletedAt: new Date() } })
+    );
+    return reply.code(204).send();
   });
 
   // ── GET /process-maps/base-templates — Catálogo de plantillas base ──

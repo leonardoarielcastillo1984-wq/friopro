@@ -5392,11 +5392,12 @@ model Process {
   // Enfoque por procesos (Jul 2026): flujo secuencial del subproceso y su contexto.
   objective         String?
   observations      String?
+  controls          String? // Controles del proceso y reacción ante desvíos
   clientsInternal   String[] @default([]) // IDs de procesos considerados clientes internos
   suppliersInternal String[] @default([]) // IDs de procesos considerados proveedores internos
   receivesFrom      String[] @default([]) // IDs de subprocesos de los que recibe información
   deliversTo        String[] @default([]) // IDs de subprocesos a los que entrega información
-  activities        Json? // [{ name, description, responsible }]
+  activities        Json? // [{ name, description, responsible, site? }] — site = sede donde se ejecuta la actividad
 
   // Relaciones con entidades reales
   processIndicators ProcessIndicator[]
@@ -5457,6 +5458,16 @@ model ProcessMap {
   // Permite al tenant con doble alcance (ej. ISO 9001 + IATF) ver el mapa general por norma.
   norm        String?
 
+  // Orden de la etapa dentro de la cadena operativa del Mapa General (0 = sin orden explícito → heurística).
+  order       Int      @default(0)
+
+  // Control documental del mapa (doc. controlado del SGI)
+  docCode       String?
+  docVersion    String?
+  docStatus     String? // BORRADOR | EN_REVISION | APROBADO | VIGENTE | OBSOLETO
+  docApprovedBy String?
+  docReviewDate DateTime? @db.Timestamptz
+
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
   deletedAt DateTime? @db.Timestamptz
@@ -5468,6 +5479,51 @@ model ProcessMap {
 
   @@index([tenantId])
   @@map("process_maps")
+}
+
+// Interacción etiquetada entre dos procesos (origen → destino) del Mapa General.
+// `label` describe qué se transfiere (materiales, información, decisiones, recursos).
+// Las sedes de origen/destino permiten documentar interacciones entre plantas
+// (ej. Casa Central → Planta Córdoba) cuando el soporte es remoto.
+model ProcessInteraction {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  fromId   String  @db.Uuid // Process origen
+  toId     String  @db.Uuid // Process destino
+  label    String?
+  fromSite String?
+  toSite   String?
+  notes    String?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([fromId])
+  @@index([toId])
+  @@map("process_interactions")
+}
+
+// Proceso externalizado del SGI (reemplaza la caja fija "Procesos externalizados, si aplican").
+// Configurable por el tenant: nombre del proceso, proveedor, qué se externaliza y cómo se controla.
+model OutsourcedProcess {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  name     String
+  supplier String?
+  scope    String? // qué parte del proceso se externaliza
+  control  String? // tipo de control ejercido (auditorías, indicadores, etc.)
+  order    Int     @default(0)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@map("outsourced_processes")
 }
 
 model ProcessRisk {

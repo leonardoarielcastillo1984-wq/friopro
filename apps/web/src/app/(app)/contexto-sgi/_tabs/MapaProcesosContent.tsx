@@ -5,6 +5,8 @@ import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
 import MapaGeneralModal from './MapaGeneralModal';
 import MapaGeneralView from './MapaGeneralView';
+import InteraccionesModal, { type Interaction, type InteractionDraft } from './InteraccionesModal';
+import ExternalizadosModal, { type OutsourcedProcess, type OutsourcedDraft } from './ExternalizadosModal';
 import ProcessTemplateWizard from './ProcessTemplateWizard';
 import ProcessAIWizard from './ProcessAIWizard';
 import {
@@ -45,7 +47,8 @@ interface Process {
   suppliersInternal?: string[];
   receivesFrom?: string[];
   deliversTo?: string[];
-  activities?: { name: string; description?: string; responsible?: string }[];
+  activities?: { name: string; description?: string; responsible?: string; site?: string }[];
+  controls?: string; // controles del proceso y reacción ante desvíos
   // UI-only: IDs seleccionados para sincronizar relaciones al guardar
   indicatorIds?: string[];
   documentIds?: string[];
@@ -63,6 +66,14 @@ interface ProcessMap {
   mapBand?: string | null;
   // Norma del mapa: 'ISO9001' | 'IATF16949' | null (= ambas)
   norm?: string | null;
+  // Posición en la cadena operativa del Mapa General (0 = sin orden explícito)
+  order?: number;
+  // Control documental del mapa
+  docCode?: string | null;
+  docVersion?: string | null;
+  docStatus?: string | null;
+  docApprovedBy?: string | null;
+  docReviewDate?: string | null;
   processes: Process[];
 }
 
@@ -192,8 +203,8 @@ function MultiSelectChips({ options, selectedIds, onChange, emptyText }: { optio
   );
 }
 
-// Editor de actividades: nombre, descripción y responsable por fila.
-function ActivitiesEditor({ activities, onChange }: { activities: { name: string; description?: string; responsible?: string }[]; onChange: (a: { name: string; description?: string; responsible?: string }[]) => void }) {
+// Editor de actividades: nombre, descripción, responsable y sede por fila.
+function ActivitiesEditor({ activities, onChange, siteOptions = [] }: { activities: { name: string; description?: string; responsible?: string; site?: string }[]; onChange: (a: { name: string; description?: string; responsible?: string; site?: string }[]) => void; siteOptions?: string[] }) {
   const update = (i: number, patch: any) => onChange(activities.map((a, j) => (j === i ? { ...a, ...patch } : a)));
   return (
     <div className="space-y-2">
@@ -204,12 +215,61 @@ function ActivitiesEditor({ activities, onChange }: { activities: { name: string
             <button type="button" onClick={() => onChange(activities.filter((_, j) => j !== i))} className="p-1.5 text-neutral-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
           </div>
           <textarea value={a.description ?? ''} onChange={e => update(i, { description: e.target.value })} rows={2} placeholder="Descripción" className="w-full border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white resize-none" />
-          <input value={a.responsible ?? ''} onChange={e => update(i, { responsible: e.target.value })} placeholder="Responsable" className="w-full border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+          <div className="grid grid-cols-2 gap-2">
+            <input value={a.responsible ?? ''} onChange={e => update(i, { responsible: e.target.value })} placeholder="Responsable" className="w-full border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+            <input
+              value={a.site ?? ''}
+              onChange={e => update(i, { site: e.target.value })}
+              placeholder="Sede (opcional)"
+              list="activity-site-options"
+              className="w-full border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+            />
+          </div>
         </div>
       ))}
-      <button type="button" onClick={() => onChange([...activities, { name: '', description: '', responsible: '' }])} className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700">
+      <datalist id="activity-site-options">
+        {siteOptions.map(s => <option key={s} value={s} />)}
+      </datalist>
+      <button type="button" onClick={() => onChange([...activities, { name: '', description: '', responsible: '', site: '' }])} className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700">
         <Plus className="h-3.5 w-3.5" /> Agregar actividad
       </button>
+    </div>
+  );
+}
+
+// Editor de sedes del proceso: chips removibles + alta manual con sugerencias.
+function SitesEditor({ sites, onChange, suggestions }: { sites: string[]; onChange: (s: string[]) => void; suggestions: string[] }) {
+  const [v, setV] = useState('');
+  const add = (raw?: string) => {
+    const t = (raw ?? v).trim();
+    if (t && !sites.includes(t)) onChange([...sites, t]);
+    setV('');
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5 mb-1.5">
+        {sites.length === 0 && <span className="text-xs text-neutral-400 italic">Sede pendiente de definir</span>}
+        {sites.map(s => (
+          <span key={s} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-100 rounded-full px-2.5 py-1">
+            <MapPin className="h-3 w-3" /> {s}
+            <button type="button" onClick={() => onChange(sites.filter(x => x !== s))} className="text-blue-400 hover:text-blue-700" aria-label={`Quitar ${s}`}><X className="h-3 w-3" /></button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          value={v}
+          onChange={e => setV(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          placeholder="Ej: Planta Córdoba, Casa Central"
+          list="process-site-options"
+          className="flex-1 border border-neutral-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
+        />
+        <button type="button" onClick={() => add()} className="px-3 py-1.5 text-xs font-medium text-brand-700 bg-brand-50 border border-brand-200 rounded-lg hover:bg-brand-100">Agregar</button>
+      </div>
+      <datalist id="process-site-options">
+        {suggestions.map(s => <option key={s} value={s} />)}
+      </datalist>
     </div>
   );
 }
@@ -220,6 +280,14 @@ const TABS = [
   { key: 'documents', label: 'Documentos', icon: FileText },
   { key: 'risks', label: 'Riesgos', icon: Shield },
 ];
+
+const EMPTY_MAP_FORM = {
+  name: '', description: '', scope: '',
+  inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI',
+  mapBand: '', norm: '', order: 0,
+  // Control documental del mapa
+  docCode: '', docVersion: '', docStatus: '', docApprovedBy: '', docReviewDate: '',
+};
 
 const EMPTY_PROCESS: Partial<Process> = {
   layer: 'OPERATIONAL', name: '', code: '', status: 'active', description: '', owner: '',
@@ -251,8 +319,14 @@ export default function MapaProcesosContent() {
 
   // Map form
   const [showMapForm, setShowMapForm] = useState(false);
-  const [mapForm, setMapForm] = useState({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '', norm: '' });
+  const [mapForm, setMapForm] = useState(EMPTY_MAP_FORM);
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
+
+  // Interacciones entre procesos (flechas etiquetadas) + externalizados
+  const [interactions, setInteractions] = useState<Interaction[]>([]);
+  const [outsourced, setOutsourced] = useState<OutsourcedProcess[]>([]);
+  const [showInteractions, setShowInteractions] = useState(false);
+  const [showOutsourced, setShowOutsourced] = useState(false);
 
   // Process drawer
   const [drawer, setDrawer] = useState<Partial<Process> | null>(null);
@@ -416,6 +490,60 @@ export default function MapaProcesosContent() {
       }
     } catch { setError('Error cargando mapas'); }
     finally { setLoading(false); }
+  }
+
+  // Carga interacciones entre procesos y procesos externalizados (módulo aditivo).
+  async function loadAux() {
+    try {
+      const [ints, outs] = await Promise.all([
+        apiFetch<Interaction[]>('/process-maps/interactions').catch(() => []),
+        apiFetch<OutsourcedProcess[]>('/process-maps/outsourced').catch(() => []),
+      ]);
+      setInteractions(Array.isArray(ints) ? ints : []);
+      setOutsourced(Array.isArray(outs) ? outs : []);
+    } catch { /* módulo aditivo: sin endpoint todavía */ }
+  }
+
+  async function saveInteraction(draft: InteractionDraft, id?: string) {
+    const body = {
+      fromId: draft.fromId,
+      toId: draft.toId,
+      label: draft.label || null,
+      fromSite: draft.fromSite || null,
+      toSite: draft.toSite || null,
+      notes: draft.notes || null,
+    };
+    if (id) {
+      await apiFetch(`/process-maps/interactions/${id}`, { method: 'PATCH', json: body });
+    } else {
+      await apiFetch('/process-maps/interactions', { method: 'POST', json: body });
+    }
+    await loadAux();
+  }
+
+  async function deleteInteraction(id: string) {
+    await apiFetch(`/process-maps/interactions/${id}`, { method: 'DELETE' });
+    await loadAux();
+  }
+
+  async function saveOutsourced(draft: OutsourcedDraft, id?: string) {
+    const body = {
+      name: draft.name.trim(),
+      supplier: draft.supplier || null,
+      scope: draft.scope || null,
+      control: draft.control || null,
+    };
+    if (id) {
+      await apiFetch(`/process-maps/outsourced/${id}`, { method: 'PATCH', json: body });
+    } else {
+      await apiFetch('/process-maps/outsourced', { method: 'POST', json: body });
+    }
+    await loadAux();
+  }
+
+  async function deleteOutsourced(id: string) {
+    await apiFetch(`/process-maps/outsourced/${id}`, { method: 'DELETE' });
+    await loadAux();
   }
 
   async function loadDocOutput(mapId: string) {
@@ -980,7 +1108,7 @@ export default function MapaProcesosContent() {
       }
       setShowMapForm(false);
       setEditingMapId(null);
-      setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '', norm: '' });
+      setMapForm(EMPTY_MAP_FORM);
       await load();
     } catch { setError('Error guardando mapa'); }
     finally { setSaving(false); }
@@ -1320,9 +1448,12 @@ export default function MapaProcesosContent() {
           onEditProcess={p => editProcessFromGeneral(p as Process)}
           onDeleteProcess={p => deleteProcessFromGeneral(p as Process)}
           onNewProcess={(mapId, parentId) => newProcessFromGeneral(mapId, parentId)}
-          onOpenLinks={() => setShowGeneral(true)}
-          onNewMap={opts => { setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: opts?.mapBand ?? '', norm: generalNormTab }); setShowMapForm(true); }}
-          onEditMap={m => { setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI', mapBand: m.mapBand ?? '', norm: m.norm ?? '' }); setShowMapForm(true); }}
+          onOpenInteractions={() => setShowInteractions(true)}
+          onOpenOutsourced={() => setShowOutsourced(true)}
+          interactions={interactions}
+          outsourced={outsourced}
+          onNewMap={opts => { setEditingMapId(null); setMapForm({ ...EMPTY_MAP_FORM, mapBand: opts?.mapBand ?? '', norm: generalNormTab }); setShowMapForm(true); }}
+          onEditMap={m => { setEditingMapId(m.id); setMapForm({ ...EMPTY_MAP_FORM, name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? EMPTY_MAP_FORM.inputLabel, outputLabel: m.outputLabel ?? EMPTY_MAP_FORM.outputLabel, mapBand: m.mapBand ?? '', norm: m.norm ?? '', order: m.order ?? 0, docCode: m.docCode ?? '', docVersion: m.docVersion ?? '', docStatus: m.docStatus ?? '', docApprovedBy: m.docApprovedBy ?? '', docReviewDate: m.docReviewDate ? m.docReviewDate.slice(0, 10) : '' }); setShowMapForm(true); }}
           onDeleteMap={m => deleteMap(m.id)}
           onMoveMap={(m, band) => moveMapToBand(m.id, band)}
           normLock={maps.some(m => m.norm) ? (generalNormTab || null) : null}
@@ -1334,7 +1465,7 @@ export default function MapaProcesosContent() {
       <div ref={sidebarRef} data-no-export="true" className="w-56 flex-shrink-0 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Mapas</span>
-          <button onClick={() => { setShowMapForm(true); setEditingMapId(null); setMapForm({ name: '', description: '', scope: '', inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI', mapBand: '', norm: '' }); }} className="p-1 rounded hover:bg-neutral-100">
+          <button onClick={() => { setShowMapForm(true); setEditingMapId(null); setMapForm(EMPTY_MAP_FORM); }} className="p-1 rounded hover:bg-neutral-100">
             <Plus className="h-4 w-4 text-neutral-500" />
           </button>
         </div>
@@ -1346,7 +1477,7 @@ export default function MapaProcesosContent() {
         )}
 
         {maps.length === 0 && (
-          <button onClick={() => setShowMapForm(true)} className="w-full text-left px-3 py-3 rounded-lg border-2 border-dashed border-neutral-200 text-sm text-neutral-400 hover:border-brand-300 hover:text-brand-600 transition-colors">
+          <button onClick={() => { setMapForm(EMPTY_MAP_FORM); setShowMapForm(true); }} className="w-full text-left px-3 py-3 rounded-lg border-2 border-dashed border-neutral-200 text-sm text-neutral-400 hover:border-brand-300 hover:text-brand-600 transition-colors">
             + Crear primer mapa
           </button>
         )}
@@ -1366,7 +1497,7 @@ export default function MapaProcesosContent() {
             </div>
             <p className="text-xs text-neutral-400 mt-0.5 truncate pl-6">{m.processes.filter(p => !p.parentId).length} macroprocesos</p>
             <div className="absolute right-1 top-1 hidden group-hover:flex gap-0.5">
-              <button onClick={e => { e.stopPropagation(); setEditingMapId(m.id); setMapForm({ name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? 'Requisitos del cliente / PI', outputLabel: m.outputLabel ?? 'Satisfacción del cliente / PI', mapBand: m.mapBand ?? '', norm: m.norm ?? '' }); setShowMapForm(true); }} className="p-1 rounded hover:bg-white"><Pencil className="h-3 w-3 text-neutral-400" /></button>
+              <button onClick={e => { e.stopPropagation(); setEditingMapId(m.id); setMapForm({ ...EMPTY_MAP_FORM, name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? EMPTY_MAP_FORM.inputLabel, outputLabel: m.outputLabel ?? EMPTY_MAP_FORM.outputLabel, mapBand: m.mapBand ?? '', norm: m.norm ?? '', order: m.order ?? 0, docCode: m.docCode ?? '', docVersion: m.docVersion ?? '', docStatus: m.docStatus ?? '', docApprovedBy: m.docApprovedBy ?? '', docReviewDate: m.docReviewDate ? m.docReviewDate.slice(0, 10) : '' }); setShowMapForm(true); }} className="p-1 rounded hover:bg-white"><Pencil className="h-3 w-3 text-neutral-400" /></button>
               <button onClick={e => { e.stopPropagation(); deleteMap(m.id); }} className="p-1 rounded hover:bg-white"><Trash2 className="h-3 w-3 text-red-400" /></button>
             </div>
           </div>
@@ -1949,7 +2080,7 @@ export default function MapaProcesosContent() {
       {/* Modal: crear/editar mapa */}
       {showMapForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-neutral-900">{editingMapId ? 'Editar mapa' : 'Nuevo mapa de procesos'}</h3>
               <button onClick={() => setShowMapForm(false)}><X className="h-5 w-5 text-neutral-400" /></button>
@@ -1975,6 +2106,19 @@ export default function MapaProcesosContent() {
                 <option value="SUPPORT">Soporte</option>
               </select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Orden en la cadena operativa</label>
+                <input
+                  type="number" min={0}
+                  value={mapForm.order}
+                  onChange={e => setMapForm(p => ({ ...p, order: parseInt(e.target.value, 10) || 0 }))}
+                  title="Posición del mapa en la secuencia del Mapa General (0 = automática por nombre)"
+                  className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
+                />
+                <p className="text-[10px] text-neutral-400 mt-0.5">0 = automática por nombre</p>
+              </div>
+            </div>
             <div>
               <label className="block text-xs font-medium text-neutral-600 mb-1">Norma (alcance del mapa)</label>
               <select value={mapForm.norm} onChange={e => setMapForm(p => ({ ...p, norm: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white">
@@ -1983,6 +2127,39 @@ export default function MapaProcesosContent() {
                 <option value="IATF16949">IATF 16949</option>
               </select>
               <p className="text-[10px] text-neutral-400 mt-1">Define en qué vista del Mapa General aparece este mapa (filtro por norma arriba del mapa).</p>
+            </div>
+            {/* Control documental del mapa (documento controlado del SGI) */}
+            <div className="pt-3 border-t border-neutral-100">
+              <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-2">Control documental</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Código</label>
+                  <input value={mapForm.docCode} onChange={e => setMapForm(p => ({ ...p, docCode: e.target.value }))} placeholder="Ej: MAP-CAL-001" className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Versión</label>
+                  <input value={mapForm.docVersion} onChange={e => setMapForm(p => ({ ...p, docVersion: e.target.value }))} placeholder="Ej: 1.0" className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Estado documental</label>
+                  <select value={mapForm.docStatus} onChange={e => setMapForm(p => ({ ...p, docStatus: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white">
+                    <option value="">Sin estado</option>
+                    <option value="BORRADOR">Borrador</option>
+                    <option value="EN_REVISION">En revisión</option>
+                    <option value="APROBADO">Aprobado</option>
+                    <option value="VIGENTE">Vigente</option>
+                    <option value="OBSOLETO">Obsoleto</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Aprobado por</label>
+                  <input value={mapForm.docApprovedBy} onChange={e => setMapForm(p => ({ ...p, docApprovedBy: e.target.value }))} placeholder="Nombre / rol" className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Próxima revisión</label>
+                  <input type="date" value={mapForm.docReviewDate} onChange={e => setMapForm(p => ({ ...p, docReviewDate: e.target.value }))} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+                </div>
+              </div>
             </div>
             {error && <p className="text-xs text-red-500">{error}</p>}
             <div className="flex gap-2 justify-end pt-2">
@@ -2074,12 +2251,18 @@ export default function MapaProcesosContent() {
                           <span className="text-sm text-neutral-700">{getEmployeeName(drawer.owner)}</span>
                         </div>
                       )}
-                      {drawer.sites && drawer.sites.length > 0 && (
+                      <div className="flex items-start gap-3">
+                        <span className="text-xs text-neutral-400 w-28 flex-shrink-0 pt-0.5">Sede(s)</span>
+                        <div className="flex flex-wrap gap-1">
+                          {drawer.sites && drawer.sites.length > 0
+                            ? drawer.sites.map((s, i) => <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded">{s}</span>)
+                            : <span className="text-xs text-neutral-400 italic">Sede pendiente de definir</span>}
+                        </div>
+                      </div>
+                      {drawer.controls && (
                         <div className="flex items-start gap-3">
-                          <span className="text-xs text-neutral-400 w-28 flex-shrink-0 pt-0.5">Sede(s)</span>
-                          <div className="flex flex-wrap gap-1">
-                            {drawer.sites.map((s, i) => <span key={i} className="text-xs bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded">{s}</span>)}
-                          </div>
+                          <span className="text-xs text-neutral-400 w-28 flex-shrink-0 pt-0.5">Controles / desvíos</span>
+                          <span className="text-sm text-neutral-700 whitespace-pre-line">{drawer.controls}</span>
                         </div>
                       )}
                       {drawer.description && (
@@ -2147,7 +2330,10 @@ export default function MapaProcesosContent() {
                             <div key={i} className="rounded-lg bg-neutral-50 px-3 py-2">
                               <p className="text-sm font-medium text-neutral-800">{a.name}</p>
                               {a.description && <p className="text-xs text-neutral-500 mt-0.5">{a.description}</p>}
-                              {a.responsible && <p className="text-[11px] text-neutral-400 mt-0.5">Responsable: {getEmployeeName(a.responsible)}</p>}
+                              <p className="text-[11px] text-neutral-400 mt-0.5">
+                                {a.responsible && <>Responsable: {getEmployeeName(a.responsible)}</>}
+                                {a.site && <span className={`inline-flex items-center gap-0.5 ${a.responsible ? 'ml-2' : ''}`}><MapPin className="h-2.5 w-2.5" /> {a.site}</span>}
+                              </p>
                             </div>
                           ))}
                         </div>
@@ -2384,6 +2570,14 @@ export default function MapaProcesosContent() {
                       <option value="inactive">Inactivo</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> Sedes donde se ejecuta</label>
+                    <SitesEditor
+                      sites={drawer.sites ?? []}
+                      onChange={s => setDrawer(p => ({ ...p, sites: s }))}
+                      suggestions={[...new Set(maps.flatMap(m => m.processes.flatMap(x => x.sites ?? [])))].sort()}
+                    />
+                  </div>
 
                   {/* ── Entradas / Salidas ── */}
                   <div className="pt-3 border-t border-neutral-100">
@@ -2422,7 +2616,7 @@ export default function MapaProcesosContent() {
                   {/* ── Actividades ── */}
                   <div className="pt-3 border-t border-neutral-100">
                     <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Actividades</label>
-                    <ActivitiesEditor activities={drawer.activities ?? []} onChange={a => setDrawer(p => ({ ...p, activities: a }))} />
+                    <ActivitiesEditor activities={drawer.activities ?? []} onChange={a => setDrawer(p => ({ ...p, activities: a }))} siteOptions={drawer.sites ?? []} />
                   </div>
 
                   {/* ── Interacciones ── */}
@@ -2432,6 +2626,12 @@ export default function MapaProcesosContent() {
                     <MultiSelectChips options={siblingOptions} selectedIds={drawer.receivesFrom ?? []} onChange={ids => setDrawer(p => ({ ...p, receivesFrom: ids }))} emptyText="No hay otros subprocesos" />
                     <label className="block text-[11px] font-medium text-neutral-500 mb-1 mt-2 flex items-center gap-1"><Send className="h-3 w-3" /> Entrega información a</label>
                     <MultiSelectChips options={siblingOptions} selectedIds={drawer.deliversTo ?? []} onChange={ids => setDrawer(p => ({ ...p, deliversTo: ids }))} emptyText="No hay otros subprocesos" />
+                  </div>
+
+                  {/* ── Controles / reacción ante desvíos ── */}
+                  <div className="pt-3 border-t border-neutral-100">
+                    <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> Controles y reacción ante desvíos</label>
+                    <textarea value={drawer.controls ?? ''} onChange={e => setDrawer(p => ({ ...p, controls: e.target.value }))} rows={2} placeholder="Ej: Control en línea, parada de proceso, segregación y análisis de la NC…" className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-300" />
                   </div>
 
                   {/* ── Observaciones ── */}
@@ -2589,6 +2789,30 @@ export default function MapaProcesosContent() {
       {/* Modal: Mapa General (toda la empresa) */}
       {showGeneral && (
         <MapaGeneralModal maps={maps} onClose={() => setShowGeneral(false)} />
+      )}
+
+      {/* Modal: Interacciones entre procesos (flechas etiquetadas del Mapa General) */}
+      {showInteractions && (
+        <InteraccionesModal
+          maps={maps}
+          interactions={interactions}
+          saving={saving}
+          onSave={saveInteraction}
+          onDelete={deleteInteraction}
+          onClose={() => setShowInteractions(false)}
+          onOpenDiagram={() => { setShowInteractions(false); setShowGeneral(true); }}
+        />
+      )}
+
+      {/* Modal: Procesos externalizados (sección configurable de la franja Soporte) */}
+      {showOutsourced && (
+        <ExternalizadosModal
+          items={outsourced}
+          saving={saving}
+          onSave={saveOutsourced}
+          onDelete={deleteOutsourced}
+          onClose={() => setShowOutsourced(false)}
+        />
       )}
 
       {/* Wizard: Crear desde plantilla */}
