@@ -2095,6 +2095,10 @@ enum AuditType {
   CERTIFICATION
   RECERTIFICATION
   SURVEILLANCE
+  // IATF 16949 §9.2.2.1-3 (aditivo Oct 2026)
+  SYSTEM                // auditoría del sistema de gestión de calidad (ciclo anual)
+  MANUFACTURING_PROCESS // auditoría de proceso de manufactura (cada turno, ciclo 3 años)
+  PRODUCT               // auditoría de producto (dimensional/funcional/empaque por fase)
 }
 
 enum AuditStatus {
@@ -2231,6 +2235,10 @@ model AuditProgram {
   description String?
   status      ProgramStatus @default(ACTIVE)
 
+  // IATF 9.2.2.1 — base de priorización del programa (riesgo, desempeño de procesos,
+  // reclamos de clientes, resultados de auditorías anteriores)
+  priorityBasis String? @db.Text
+
   // Metadata
   createdById String    @db.Uuid
   createdAt   DateTime  @default(now()) @db.Timestamptz
@@ -2303,6 +2311,22 @@ model Audit {
   cancelReason             String?   @map("cancelreason") @db.Text
   rescheduleCount          Int       @default(0) @map("reschedulecount")
 
+  // ── Cumplimiento IATF 16949 §9.2.2 / §7.2.3 (aditivo Oct 2026) ──
+  // Turnos cubiertos por la auditoría (9.2.2.2: manufactura debe cubrir cada turno)
+  shifts String[] @default([]) // MORNING | AFTERNOON | NIGHT
+  // Proceso auditado vinculado al Mapa de Procesos (FK débil — habilita matriz
+  // proceso×año; `process` string se conserva por retrocompatibilidad)
+  processId String? @db.Uuid
+  // Disparador basado en riesgo/desempeño (9.2.2.1)
+  triggerSource      String? // SCHEDULED | SCORECARD | CUSTOMER_COMPLAINT | EXTERNAL_NC | PROCESS_CHANGE | PERFORMANCE_TREND
+  triggerDescription String? @db.Text
+  // Plazo de emisión del informe (alerta de demora)
+  reportDueDate DateTime? @db.Timestamptz
+  // Auditoría de producto (9.2.2.3)
+  productName     String? // producto/muestra auditada
+  productionPhase String? // fase del proceso productivo donde se tomó la muestra
+  sampleSize      String? // tamaño o referencia de la muestra
+
   // Metadata
   createdById    String               @db.Uuid
   createdAt      DateTime             @default(now()) @db.Timestamptz
@@ -2338,6 +2362,12 @@ model Auditor {
   // Competencies
   normativeCompetencies IsoStandard[]
   isActive              Boolean       @default(true)
+
+  // Competencia de auditor interno IATF §7.2.3 (aditivo Oct 2026)
+  coreTools             String[]   @default([]) // APQP | PPAP | FMEA | SPC | MSA | VDA63 | FORMEL_Q
+  processApproach       Boolean    @default(false) // formado en auditoría con enfoque por procesos
+  competenceEvaluatedAt DateTime?  @db.Timestamptz // última evaluación documentada de competencia
+  competenceNotes       String?    @db.Text
 
   // Relations
   documents AuditorDocument[]

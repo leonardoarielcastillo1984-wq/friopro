@@ -3,15 +3,55 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
-import { Plus, Calendar, ChevronLeft, Edit2, Trash2, CheckCircle } from 'lucide-react';
+import { Plus, Calendar, ChevronLeft, Edit2, Trash2, CheckCircle, AlertTriangle, Grid3X3 } from 'lucide-react';
 
 type AuditProgram = {
   id: string;
   year: number;
   name: string;
   description: string | null;
+  priorityBasis: string | null;
   status: 'ACTIVE' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   createdAt: string;
+};
+
+type CoverageRow = {
+  processId: string;
+  processName: string;
+  processCode?: string;
+  auditsCount: number;
+  completedCount: number;
+  plannedCount: number;
+  audited: boolean;
+  typesCovered: string[];
+  shiftsCovered: string[];
+  missingShifts: string[];
+  lastAuditDate: string | null;
+};
+
+type CoverageData = {
+  program: { id: string; year: number; name: string; priorityBasis: string | null } | null;
+  matrix: CoverageRow[];
+  summary: {
+    totalProcesses: number;
+    auditedProcesses: number;
+    coveragePercent: number;
+    mfgAuditedProcesses: number;
+    mfgAllShiftsCovered: number;
+  };
+  unlinkedAudits: { id: string; code: string; title: string; process: string | null }[];
+};
+
+const SHIFT_LABELS: Record<string, string> = {
+  MORNING: 'Mañana',
+  AFTERNOON: 'Tarde',
+  NIGHT: 'Noche',
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  INTERNAL: 'Interna', EXTERNAL: 'Externa', SUPPLIER: 'Proveedor', CUSTOMER: 'Cliente',
+  CERTIFICATION: 'Certificación', RECERTIFICATION: 'Recertificación', SURVEILLANCE: 'Vigilancia',
+  SYSTEM: 'Sistema', MANUFACTURING_PROCESS: 'Manufactura', PRODUCT: 'Producto',
 };
 
 type Audit = {
@@ -32,7 +72,9 @@ export default function ProgramaAnualPage() {
   const [audits, setAudits] = useState<Audit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProgram, setNewProgram] = useState({ year: new Date().getFullYear(), name: '', description: '' });
+  const [newProgram, setNewProgram] = useState({ year: new Date().getFullYear(), name: '', description: '', priorityBasis: '' });
+  const [coverage, setCoverage] = useState<CoverageData | null>(null);
+  const [showCoverage, setShowCoverage] = useState(false);
 
   useEffect(() => {
     loadPrograms();
@@ -79,12 +121,23 @@ export default function ProgramaAnualPage() {
         setPrograms([...programs, res.program]);
         setSelectedProgram(res.program);
         setShowCreateModal(false);
-        setNewProgram({ year: new Date().getFullYear(), name: '', description: '' });
+        setNewProgram({ year: new Date().getFullYear(), name: '', description: '', priorityBasis: '' });
       }
     } catch (err) {
       console.error('Error creating program:', err);
     }
   }
+
+  async function loadCoverage(year: number) {
+    try {
+      const res = await apiFetch(`/audit/coverage?year=${year}`) as CoverageData;
+      setCoverage(res);
+    } catch { setCoverage(null); }
+  }
+
+  useEffect(() => {
+    if (selectedProgram) loadCoverage(selectedProgram.year);
+  }, [selectedProgram?.id]);
 
   function getStatusColor(status: string) {
     switch (status) {
@@ -199,13 +252,101 @@ export default function ProgramaAnualPage() {
                 {selectedProgram.description && (
                   <p className="text-gray-600 mb-4">{selectedProgram.description}</p>
                 )}
+
+                {selectedProgram.priorityBasis && (
+                  <div className="mb-4 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <span className="font-medium text-amber-800">Base de priorización (IATF 9.2.2.1): </span>
+                    <span className="text-amber-900">{selectedProgram.priorityBasis}</span>
+                  </div>
+                )}
                 
                 <div className="flex items-center gap-2">
                   <span className={`px-3 py-1 rounded-full text-sm ${getStatusColor(selectedProgram.status)}`}>
                     {getStatusLabel(selectedProgram.status)}
                   </span>
+                  <button
+                    onClick={() => setShowCoverage(!showCoverage)}
+                    className="inline-flex items-center gap-1 px-3 py-1 text-sm border border-gray-300 rounded-full hover:bg-gray-50"
+                  >
+                    <Grid3X3 className="w-3.5 h-3.5" />
+                    Matriz de cobertura
+                  </button>
                 </div>
               </div>
+
+              {/* Matriz de cobertura proceso × año (IATF 9.2.2.1/9.2.2.2) */}
+              {showCoverage && coverage && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                  <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900">Cobertura de procesos {coverage.program?.year}</h3>
+                    <div className="flex gap-4 text-sm">
+                      <span className="text-gray-600">Procesos auditados: <b>{coverage.summary.auditedProcesses}/{coverage.summary.totalProcesses}</b> ({coverage.summary.coveragePercent}%)</span>
+                      <span className="text-gray-600">Manufactura con todos los turnos: <b>{coverage.summary.mfgAllShiftsCovered}/{coverage.summary.mfgAuditedProcesses}</b></span>
+                    </div>
+                  </div>
+                  {!coverage.program && (
+                    <p className="px-6 py-4 text-sm text-amber-700 bg-amber-50">No hay programa creado para este año — la matriz muestra la cobertura esperada.</p>
+                  )}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium text-gray-600">Proceso</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-600">Estado</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-600">Tipos</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-600">Turnos</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-600">Última auditoría</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {coverage.matrix.map((row) => (
+                          <tr key={row.processId} className={row.audited ? '' : 'bg-red-50/40'}>
+                            <td className="px-4 py-2.5">
+                              <span className="font-medium text-gray-900">{row.processCode ? `[${row.processCode}] ` : ''}{row.processName}</span>
+                            </td>
+                            <td className="px-4 py-2.5 text-center">
+                              {row.audited ? (
+                                <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle className="w-3.5 h-3.5" /> Auditado</span>
+                              ) : row.plannedCount > 0 ? (
+                                <span className="text-blue-600">Planificado ({row.plannedCount})</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-red-600"><AlertTriangle className="w-3.5 h-3.5" /> Sin cubrir</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-center text-xs text-gray-600">
+                              {row.typesCovered.length ? row.typesCovered.map((t) => TYPE_LABELS[t] || t).join(', ') : '—'}
+                            </td>
+                            <td className="px-4 py-2.5 text-center">
+                              {row.typesCovered.includes('MANUFACTURING_PROCESS') ? (
+                                <span className="text-xs">
+                                  {row.shiftsCovered.map((s) => SHIFT_LABELS[s] || s).join(', ') || '—'}
+                                  {row.missingShifts.length > 0 && (
+                                    <span className="text-red-600" title="IATF 9.2.2.2: todos los turnos deben auditarse en el ciclo">
+                                      {' '}(falta: {row.missingShifts.map((s) => SHIFT_LABELS[s] || s).join(', ')})
+                                    </span>
+                                  )}
+                                </span>
+                              ) : <span className="text-xs text-gray-400">—</span>}
+                            </td>
+                            <td className="px-4 py-2.5 text-center text-xs text-gray-600">
+                              {row.lastAuditDate ? new Date(row.lastAuditDate).toLocaleDateString() : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                        {coverage.matrix.length === 0 && (
+                          <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">No hay procesos cargados en el Mapa de Procesos</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {coverage.unlinkedAudits.length > 0 && (
+                    <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-600">
+                      <span className="font-medium">Auditorías sin proceso vinculado al mapa:</span>{' '}
+                      {coverage.unlinkedAudits.map((a) => a.code).join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Auditorías del Programa */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200">
@@ -287,6 +428,18 @@ export default function ProgramaAnualPage() {
                 <textarea
                   value={newProgram.description}
                   onChange={(e) => setNewProgram({ ...newProgram, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Base de priorización <span className="text-xs text-gray-500">(IATF 9.2.2.1)</span>
+                </label>
+                <textarea
+                  value={newProgram.priorityBasis}
+                  onChange={(e) => setNewProgram({ ...newProgram, priorityBasis: e.target.value })}
+                  placeholder="Ej: frecuencia según criticidad del proceso, resultados de auditorías previas, reclamos de clientes, scorecards y cambios significativos"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                 />

@@ -17,6 +17,12 @@ type Auditor = {
   employeeId: string | null;
   createdAt: string;
   documents?: AuditorDocument[];
+  // IATF §7.2.3
+  coreTools: string[];
+  processApproach: boolean;
+  competenceEvaluatedAt: string | null;
+  competenceNotes: string | null;
+  auditsCount?: number;
 };
 
 type AuditorDocument = {
@@ -30,6 +36,17 @@ type AuditorDocument = {
   issuer?: string;
   createdAt: string;
 };
+
+// Core tools exigidas para auditor interno IATF 16949 §7.2.3
+const CORE_TOOL_OPTIONS = [
+  { value: 'APQP', label: 'APQP' },
+  { value: 'PPAP', label: 'PPAP' },
+  { value: 'FMEA', label: 'FMEA' },
+  { value: 'SPC', label: 'SPC' },
+  { value: 'MSA', label: 'MSA' },
+  { value: 'VDA63', label: 'VDA 6.3' },
+  { value: 'FORMEL_Q', label: 'Formel Q' },
+];
 
 const COMPETENCY_OPTIONS = [
   { value: 'ISO_9001', label: 'ISO 9001', color: 'bg-blue-100 text-blue-800' },
@@ -63,6 +80,10 @@ export default function AuditorsPage() {
     company: '',
     employeeId: '',
     normativeCompetencies: [] as string[],
+    coreTools: [] as string[],
+    processApproach: false,
+    competenceEvaluatedAt: '',
+    competenceNotes: '',
   });
   const [newAuditorFiles, setNewAuditorFiles] = useState<File[]>([]);
 
@@ -94,6 +115,8 @@ export default function AuditorsPage() {
         phone: newAuditor.phone?.trim() ? newAuditor.phone.trim() : undefined,
         company: newAuditor.company?.trim() ? newAuditor.company.trim() : undefined,
         employeeId: newAuditor.employeeId?.trim() ? newAuditor.employeeId.trim() : undefined,
+        competenceEvaluatedAt: newAuditor.competenceEvaluatedAt ? new Date(`${newAuditor.competenceEvaluatedAt}T00:00:00.000Z`).toISOString() : undefined,
+        competenceNotes: newAuditor.competenceNotes?.trim() || undefined,
       };
 
       const res = await apiFetch('/audit/auditors', {
@@ -145,6 +168,10 @@ export default function AuditorsPage() {
           company: '',
           employeeId: '',
           normativeCompetencies: [],
+          coreTools: [],
+          processApproach: false,
+          competenceEvaluatedAt: '',
+          competenceNotes: '',
         });
         setNewAuditorFiles([]);
       }
@@ -161,6 +188,26 @@ export default function AuditorsPage() {
       normativeCompetencies: prev.normativeCompetencies.includes(value)
         ? prev.normativeCompetencies.filter(c => c !== value)
         : [...prev.normativeCompetencies, value],
+    }));
+  }
+
+  function toggleCoreTool(value: string) {
+    setNewAuditor(prev => ({
+      ...prev,
+      coreTools: prev.coreTools.includes(value)
+        ? prev.coreTools.filter(c => c !== value)
+        : [...prev.coreTools, value],
+    }));
+  }
+
+  function toggleEditCoreTool(value: string) {
+    if (!editingAuditor) return;
+    const current = editingAuditor.coreTools || [];
+    setEditingAuditor(prev => ({
+      ...prev!,
+      coreTools: current.includes(value)
+        ? current.filter(c => c !== value)
+        : [...current, value],
     }));
   }
 
@@ -194,6 +241,10 @@ export default function AuditorsPage() {
         isActive: editingAuditor.isActive,
         employeeId: editingAuditor.employeeId?.trim() || null,
         normativeCompetencies: editingAuditor.normativeCompetencies,
+        coreTools: editingAuditor.coreTools || [],
+        processApproach: !!editingAuditor.processApproach,
+        competenceEvaluatedAt: editingAuditor.competenceEvaluatedAt ? new Date(editingAuditor.competenceEvaluatedAt).toISOString() : null,
+        competenceNotes: editingAuditor.competenceNotes?.trim() || null,
       };
 
       const res = await apiFetch(`/audit/auditors/${editingAuditor.id}`, {
@@ -466,6 +517,25 @@ export default function AuditorsPage() {
                   <span className="text-xs text-gray-400">Sin competencias registradas</span>
                 )}
               </div>
+              {/* IATF §7.2.3 — core tools + enfoque por procesos + auditorías ejecutadas */}
+              {(auditor.coreTools?.length > 0 || auditor.processApproach || (auditor.auditsCount ?? 0) > 0 || auditor.competenceEvaluatedAt) && (
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  {(auditor.coreTools || []).map((t) => (
+                    <span key={t} className="px-2 py-0.5 text-xs rounded bg-emerald-100 text-emerald-800">{t}</span>
+                  ))}
+                  {auditor.processApproach && (
+                    <span className="px-2 py-0.5 text-xs rounded bg-indigo-100 text-indigo-800" title="Formado en auditoría con enfoque por procesos (IATF 7.2.3)">Enfoque procesos</span>
+                  )}
+                  {(auditor.auditsCount ?? 0) > 0 && (
+                    <span className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700" title="Auditorías ejecutadas (líder + equipo)">{auditor.auditsCount} auditorías</span>
+                  )}
+                  {auditor.competenceEvaluatedAt && (
+                    <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800" title={auditor.competenceNotes || ''}>
+                      Eval. competencia: {new Date(auditor.competenceEvaluatedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -602,6 +672,57 @@ export default function AuditorsPage() {
                       <span className="text-sm">{comp.label}</span>
                     </label>
                   ))}
+                </div>
+              </div>
+
+              {/* Competencia auditor interno — IATF 16949 §7.2.3 */}
+              <div className="border border-emerald-200 bg-emerald-50/50 rounded-lg p-3 space-y-3">
+                <p className="text-xs font-semibold text-emerald-800">Competencia auditor interno (IATF 7.2.3)</p>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1.5">Core tools demostradas</label>
+                  <div className="flex flex-wrap gap-2">
+                    {CORE_TOOL_OPTIONS.map((ct) => (
+                      <label key={ct.value} className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newAuditor.coreTools.includes(ct.value)}
+                          onChange={() => toggleCoreTool(ct.value)}
+                          className="w-3.5 h-3.5 text-emerald-600 rounded"
+                        />
+                        <span className="text-xs">{ct.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newAuditor.processApproach}
+                    onChange={(e) => setNewAuditor({ ...newAuditor, processApproach: e.target.checked })}
+                    className="w-4 h-4 text-emerald-600 rounded"
+                  />
+                  <span className="text-xs text-gray-700">Formado en auditoría con enfoque por procesos</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Última evaluación de competencia</label>
+                    <input
+                      type="date"
+                      value={newAuditor.competenceEvaluatedAt}
+                      onChange={(e) => setNewAuditor({ ...newAuditor, competenceEvaluatedAt: e.target.value })}
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Notas de evaluación</label>
+                    <input
+                      type="text"
+                      value={newAuditor.competenceEvaluatedAt ? newAuditor.competenceNotes : newAuditor.competenceNotes}
+                      onChange={(e) => setNewAuditor({ ...newAuditor, competenceNotes: e.target.value })}
+                      placeholder="Método / resultado"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -785,6 +906,60 @@ export default function AuditorsPage() {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              {/* Competencia auditor interno — IATF 16949 §7.2.3 */}
+              <div className="border border-emerald-200 bg-emerald-50/50 rounded-lg p-3 space-y-3">
+                <p className="text-xs font-semibold text-emerald-800">Competencia auditor interno (IATF 7.2.3)</p>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1.5">Core tools demostradas</label>
+                  <div className="flex flex-wrap gap-2">
+                    {CORE_TOOL_OPTIONS.map((ct) => (
+                      <label key={ct.value} className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={(editingAuditor.coreTools || []).includes(ct.value)}
+                          onChange={() => toggleEditCoreTool(ct.value)}
+                          className="w-3.5 h-3.5 text-emerald-600 rounded"
+                        />
+                        <span className="text-xs">{ct.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!editingAuditor.processApproach}
+                    onChange={(e) => setEditingAuditor({ ...editingAuditor, processApproach: e.target.checked })}
+                    className="w-4 h-4 text-emerald-600 rounded"
+                  />
+                  <span className="text-xs text-gray-700">Formado en auditoría con enfoque por procesos</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Última evaluación de competencia</label>
+                    <input
+                      type="date"
+                      value={editingAuditor.competenceEvaluatedAt ? editingAuditor.competenceEvaluatedAt.split('T')[0] : ''}
+                      onChange={(e) => setEditingAuditor({ ...editingAuditor, competenceEvaluatedAt: e.target.value ? `${e.target.value}T00:00:00.000Z` : null })}
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Notas de evaluación</label>
+                    <input
+                      type="text"
+                      value={editingAuditor.competenceNotes || ''}
+                      onChange={(e) => setEditingAuditor({ ...editingAuditor, competenceNotes: e.target.value })}
+                      placeholder="Método / resultado"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+                {(editingAuditor.auditsCount ?? 0) > 0 && (
+                  <p className="text-xs text-gray-500">Auditorías ejecutadas (mantenimiento de competencia): <b>{editingAuditor.auditsCount}</b></p>
+                )}
               </div>
 
               {/* Certificados PDF */}

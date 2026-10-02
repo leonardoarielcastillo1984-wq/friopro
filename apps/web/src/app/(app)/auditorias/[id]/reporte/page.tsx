@@ -104,6 +104,9 @@ const TYPE_LABELS: Record<string, string> = {
   'CERTIFICATION': 'Certificación',
   'RECERTIFICATION': 'Recertificación',
   'SURVEILLANCE': 'Vigilancia',
+  'SYSTEM': 'De Sistema (IATF 9.2.2.1)',
+  'MANUFACTURING_PROCESS': 'Proceso de Manufactura (IATF 9.2.2.2)',
+  'PRODUCT': 'De Producto (IATF 9.2.2.3)',
 };
 
 const STATUS_LABELS: Record<string, string> = {

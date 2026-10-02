@@ -131,6 +131,9 @@ export default function AuditoriasPage() {
       'CERTIFICATION': 'Certificación',
       'RECERTIFICATION': 'Recertificación',
       'SURVEILLANCE': 'Vigilancia',
+      'SYSTEM': 'De Sistema (IATF)',
+      'MANUFACTURING_PROCESS': 'Proceso de Manufactura (IATF)',
+      'PRODUCT': 'De Producto (IATF)',
     };
     return labels[type] || type;
   }

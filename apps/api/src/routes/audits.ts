@@ -122,6 +122,8 @@ const CreateProgramSchema = z.object({
   year: z.number().int().min(2000).max(2100),
   name: z.string().min(3),
   description: z.string().optional(),
+  // IATF 9.2.2.1 — base de priorización (riesgo, desempeño, reclamos)
+  priorityBasis: z.string().optional(),
 });
 
 const CreateAuditSchema = z.object({
@@ -129,7 +131,7 @@ const CreateAuditSchema = z.object({
   code: z.string().min(3),
   title: z.string().min(3),
   description: z.string().optional(),
-  type: z.enum(['INTERNAL', 'EXTERNAL', 'SUPPLIER', 'CUSTOMER', 'CERTIFICATION', 'RECERTIFICATION', 'SURVEILLANCE']),
+  type: z.enum(['INTERNAL', 'EXTERNAL', 'SUPPLIER', 'CUSTOMER', 'CERTIFICATION', 'RECERTIFICATION', 'SURVEILLANCE', 'SYSTEM', 'MANUFACTURING_PROCESS', 'PRODUCT']),
   plannedStartDate: z.string().datetime().optional(),
   plannedEndDate: z.string().datetime().optional(),
   duration: z.number().int().positive().optional(),
@@ -154,6 +156,15 @@ const CreateAuditSchema = z.object({
   specialInstructions: z.string().optional(),
   requiresOpeningMeeting: z.boolean().optional(),
   requiresClosingMeeting: z.boolean().optional(),
+  // IATF 16949 §9.2.2 / §7.2.3
+  shifts: z.array(z.enum(['MORNING', 'AFTERNOON', 'NIGHT'])).optional(),
+  processId: z.string().uuid().optional(),
+  triggerSource: z.enum(['SCHEDULED', 'SCORECARD', 'CUSTOMER_COMPLAINT', 'EXTERNAL_NC', 'PROCESS_CHANGE', 'PERFORMANCE_TREND']).optional(),
+  triggerDescription: z.string().optional(),
+  reportDueDate: z.string().datetime().optional(),
+  productName: z.string().optional(),
+  productionPhase: z.string().optional(),
+  sampleSize: z.string().optional(),
 });
 
 const CreateAuditorSchema = z.object({
@@ -166,6 +177,11 @@ const CreateAuditorSchema = z.object({
   normativeCompetencies: z
     .array(z.enum(['ISO_9001', 'ISO_14001', 'ISO_45001', 'ISO_39001', 'IATF_16949', 'ISO_27001', 'ISO_50001', 'CUSTOM']))
     .optional(),
+  // Competencia auditor interno IATF §7.2.3
+  coreTools: z.array(z.enum(['APQP', 'PPAP', 'FMEA', 'SPC', 'MSA', 'VDA63', 'FORMEL_Q'])).optional(),
+  processApproach: z.boolean().optional(),
+  competenceEvaluatedAt: z.string().datetime().optional(),
+  competenceNotes: z.string().optional(),
 });
 
 // Routes for ISO Audits module
@@ -196,7 +212,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Validación fallida', details: validation.error.errors });
       }
 
-      const { year, name, description } = validation.data;
+      const { year, name, description, priorityBasis } = validation.data;
 
       const program = await app.runWithDbContext(req, async (tx) => {
         return tx.auditProgram.create({
@@ -205,6 +221,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
             year,
             name,
             description,
+            priorityBasis,
             createdById: req.auth!.userId,
           },
         });
@@ -213,21 +230,6 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       return reply.code(201).send({ program });
     },
   );
-
-  // AUDITORS
-  app.get('/audit/auditors', async (req: FastifyRequest, reply: FastifyReply) => {
-    const tenantId = await getEffectiveTenantId(req, app.prisma);
-    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-
-    const auditors = await app.runWithDbContext(req, async (tx) => {
-      return tx.auditor.findMany({
-        where: { tenantId, deletedAt: null, isActive: true },
-        orderBy: { name: 'asc' },
-      });
-    });
-
-    return reply.send({ auditors });
-  });
 
   app.post(
     '/audit/auditors',
@@ -241,10 +243,12 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       }
 
       const auditor = await app.runWithDbContext(req, async (tx) => {
+        const { competenceEvaluatedAt, ...rest } = validation.data;
         return tx.auditor.create({
           data: {
             tenantId,
-            ...validation.data,
+            ...rest,
+            competenceEvaluatedAt: competenceEvaluatedAt ? new Date(competenceEvaluatedAt) : null,
             createdById: req.auth!.userId,
           },
         });
@@ -276,6 +280,11 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       setIfDefined('isActive');
       setIfDefined('employeeId');
       if ('normativeCompetencies' in body) data.normativeCompetencies = body.normativeCompetencies;
+      // IATF §7.2.3 — core tools y evaluación de competencia
+      if ('coreTools' in body) data.coreTools = Array.isArray(body.coreTools) ? body.coreTools : [];
+      if ('processApproach' in body) data.processApproach = !!body.processApproach;
+      if ('competenceNotes' in body) data.competenceNotes = body.competenceNotes || null;
+      if ('competenceEvaluatedAt' in body) data.competenceEvaluatedAt = body.competenceEvaluatedAt ? new Date(body.competenceEvaluatedAt) : null;
 
       if (Object.keys(data).length === 0) {
         return reply.code(400).send({ error: 'No updatable fields provided' });
@@ -526,9 +535,22 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       });
       if (!found) return null;
       const leadAuditor = found.leadAuditorId
-        ? await tx.auditor.findUnique({ where: { id: found.leadAuditorId }, select: { id: true, name: true, type: true } })
+        ? await tx.auditor.findUnique({ where: { id: found.leadAuditorId }, select: { id: true, name: true, type: true, employeeId: true } })
         : null;
-      return { ...found, leadAuditor };
+      // Proceso auditado vinculado al Mapa de Procesos (weak link)
+      const linkedProcess = found.processId
+        ? await tx.process.findUnique({ where: { id: found.processId }, select: { id: true, name: true, code: true, owner: true } }).catch(() => null)
+        : null;
+      // §9.2.2 a): el auditor no debe auditar su propio trabajo — alerta si el líder
+      // es dueño (empleado responsable) del proceso auditado.
+      const independenceWarning = Boolean(
+        linkedProcess?.owner && leadAuditor?.employeeId && String(linkedProcess.owner) === String(leadAuditor.employeeId),
+      );
+      // Informe pendiente vencido
+      const reportOverdue = Boolean(
+        found.status === 'PENDING_REPORT' && found.reportDueDate && new Date(found.reportDueDate).getTime() < Date.now(),
+      );
+      return { ...found, leadAuditor, linkedProcess, independenceWarning, reportOverdue };
     });
 
     if (!audit) return reply.code(404).send({ error: 'Audit not found' });
@@ -574,6 +596,15 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       setIfDefined('requiresOpeningMeeting');
       setIfDefined('requiresClosingMeeting');
       setIfDefined('notificationStatus');
+      // IATF 16949 §9.2.2 — turnos, proceso, disparador, plazo de informe, auditoría de producto
+      if ('shifts' in body) data.shifts = Array.isArray(body.shifts) ? body.shifts : [];
+      if ('processId' in body) data.processId = body.processId || null;
+      setIfDefined('triggerSource');
+      setIfDefined('triggerDescription');
+      setIfDefined('productName');
+      setIfDefined('productionPhase');
+      setIfDefined('sampleSize');
+      if ('reportDueDate' in body) data.reportDueDate = body.reportDueDate ? new Date(body.reportDueDate) : null;
       if ('isoStandard' in body) data.isoStandard = Array.isArray(body.isoStandard) ? body.isoStandard : undefined;
       if (body.leadAuditorId) data.leadAuditorId = body.leadAuditorId; // requerido en schema: solo actualizar con UUID válido
 
@@ -656,6 +687,7 @@ export async function registerAuditRoutes(app: FastifyInstance) {
             ...data,
             plannedStartDate: data.plannedStartDate ? new Date(data.plannedStartDate) : null,
             plannedEndDate: data.plannedEndDate ? new Date(data.plannedEndDate) : null,
+            reportDueDate: data.reportDueDate ? new Date(data.reportDueDate) : null,
             createdById: req.auth!.userId,
           },
         });
@@ -664,6 +696,101 @@ export async function registerAuditRoutes(app: FastifyInstance) {
       return reply.code(201).send({ audit });
     },
   );
+
+  // === MATRIZ DE COBERTURA (IATF 9.2.2.1/9.2.2.2) ===
+  // GET /audit/coverage?year=YYYY — cruza los procesos del Mapa de Procesos con las
+  // auditorías del programa del año, mostrando qué procesos y turnos quedan sin cubrir.
+  app.get('/audit/coverage', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const yearParam = (req.query as Record<string, string>)?.year;
+    const year = yearParam ? Number(yearParam) : new Date().getFullYear();
+
+    const result = await app.runWithDbContext(req, async (tx) => {
+      const program = await tx.auditProgram.findFirst({
+        where: { tenantId, year, deletedAt: null },
+        select: { id: true, year: true, name: true, priorityBasis: true },
+      });
+
+      const processes = await tx.process.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { id: true, name: true, code: true, layer: true, sites: true, status: true },
+        orderBy: { name: 'asc' },
+      }).catch(() => []);
+
+      const audits = program
+        ? await tx.audit.findMany({
+            where: {
+              tenantId,
+              deletedAt: null,
+              programId: program.id,
+              status: { notIn: ['CANCELLED'] },
+            },
+            select: {
+              id: true, code: true, title: true, type: true, status: true,
+              processId: true, process: true, shifts: true,
+              plannedStartDate: true, actualStartDate: true,
+            },
+          })
+        : [];
+
+      // Normalizar nombre para match legacy (auditorías viejas sin processId, solo texto)
+      const norm = (s?: string | null) => (s || '').trim().toLowerCase();
+
+      const matrix = processes.map((p: any) => {
+        const linked = audits.filter((a: any) =>
+          (a.processId && a.processId === p.id) || (!a.processId && norm(a.process) === norm(p.name)),
+        );
+        const shiftsCovered = [...new Set(linked.flatMap((a: any) => a.shifts || []))];
+        const done = linked.filter((a: any) => ['COMPLETED', 'CLOSED'].includes(a.status));
+        const planned = linked.filter((a: any) => !['COMPLETED', 'CLOSED'].includes(a.status));
+        const lastAudit = linked
+          .map((a: any) => a.actualStartDate || a.plannedStartDate)
+          .filter(Boolean)
+          .sort()
+          .pop();
+        return {
+          processId: p.id,
+          processName: p.name,
+          processCode: p.code,
+          layer: p.layer,
+          sites: p.sites ?? [],
+          auditsCount: linked.length,
+          completedCount: done.length,
+          plannedCount: planned.length,
+          audited: done.length > 0,
+          typesCovered: [...new Set(linked.map((a: any) => a.type))],
+          shiftsCovered,
+          missingShifts: ['MORNING', 'AFTERNOON', 'NIGHT'].filter((s) => !shiftsCovered.includes(s)),
+          lastAuditDate: lastAudit ?? null,
+          audits: linked.map((a: any) => ({ id: a.id, code: a.code, title: a.title, type: a.type, status: a.status, shifts: a.shifts })),
+        };
+      });
+
+      const total = matrix.length;
+      const audited = matrix.filter((m: any) => m.audited).length;
+      // Turnos: solo cuentan los procesos que tuvieron alguna auditoría de proceso de manufactura
+      const mfgProcesses = matrix.filter((m: any) => m.typesCovered.includes('MANUFACTURING_PROCESS'));
+      const allShiftsCovered = mfgProcesses.filter((m: any) => m.missingShifts.length === 0).length;
+
+      return {
+        program: program ?? null,
+        matrix,
+        summary: {
+          totalProcesses: total,
+          auditedProcesses: audited,
+          coveragePercent: total ? Math.round((audited / total) * 100) : 0,
+          mfgAuditedProcesses: mfgProcesses.length,
+          mfgAllShiftsCovered: allShiftsCovered,
+        },
+        unlinkedAudits: audits
+          .filter((a: any) => !a.processId && !matrix.some((m: any) => norm(m.processName) === norm(a.process)))
+          .map((a: any) => ({ id: a.id, code: a.code, title: a.title, process: a.process })),
+      };
+    });
+
+    return reply.send(result);
+  });
 
   // FINDINGS (per ISO audit)
   app.get(

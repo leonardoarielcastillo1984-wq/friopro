@@ -53,7 +53,27 @@ const AUDIT_TYPES = [
   { value: 'CERTIFICATION', label: 'Certificación' },
   { value: 'RECERTIFICATION', label: 'Recertificación' },
   { value: 'SURVEILLANCE', label: 'Vigilancia' },
+  { value: 'SYSTEM', label: 'De Sistema (IATF 9.2.2.1)' },
+  { value: 'MANUFACTURING_PROCESS', label: 'Proceso de Manufactura (IATF 9.2.2.2)' },
+  { value: 'PRODUCT', label: 'De Producto (IATF 9.2.2.3)' },
 ];
+
+const SHIFT_OPTIONS = [
+  { value: 'MORNING', label: 'Turno mañana' },
+  { value: 'AFTERNOON', label: 'Turno tarde' },
+  { value: 'NIGHT', label: 'Turno noche' },
+];
+
+const TRIGGER_SOURCES = [
+  { value: 'SCHEDULED', label: 'Programada (plan anual)' },
+  { value: 'SCORECARD', label: 'Scorecard / desempeño de cliente' },
+  { value: 'CUSTOMER_COMPLAINT', label: 'Reclamo de cliente' },
+  { value: 'EXTERNAL_NC', label: 'NC externa / auditoría previa' },
+  { value: 'PROCESS_CHANGE', label: 'Cambio en el proceso' },
+  { value: 'PERFORMANCE_TREND', label: 'Tendencia de desempeño adversa' },
+];
+
+type ProcessOption = { id: string; name: string; code?: string; layer?: string };
 
 export default function NuevaAuditoriaPage() {
   const router = useRouter();
@@ -61,6 +81,7 @@ export default function NuevaAuditoriaPage() {
   const [auditors, setAuditors] = useState<Auditor[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [normativeStandards, setNormativeStandards] = useState<NormativeStandard[]>([]);
+  const [processes, setProcesses] = useState<ProcessOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -94,6 +115,15 @@ export default function NuevaAuditoriaPage() {
     specialInstructions: '',
     requiresOpeningMeeting: true,
     requiresClosingMeeting: true,
+    // IATF
+    processId: '',
+    shifts: [] as string[],
+    triggerSource: '',
+    triggerDescription: '',
+    reportDueDate: '',
+    productName: '',
+    productionPhase: '',
+    sampleSize: '',
   });
   const [showPlanningSection, setShowPlanningSection] = useState(false);
 
@@ -103,17 +133,19 @@ export default function NuevaAuditoriaPage() {
 
   async function loadProgramsAndAuditors() {
     try {
-      const [programsRes, auditorsRes, departmentsRes, normativesRes] = await Promise.all([
+      const [programsRes, auditorsRes, departmentsRes, normativesRes, processesRes] = await Promise.all([
         apiFetch('/audit/programs') as Promise<{ programs: AuditProgram[] }>,
         apiFetch('/audit/auditors') as Promise<{ auditors: Auditor[] }>,
         apiFetch('/hr/departments') as Promise<{ departments: Department[] }>,
         apiFetch('/audit/normative-standards') as Promise<{ standards: NormativeStandard[] }>,
+        apiFetch('/objectives/processes').catch(() => [] as ProcessOption[]),
       ]);
 
       if (programsRes.programs) setPrograms(programsRes.programs);
       if (auditorsRes.auditors) setAuditors(auditorsRes.auditors);
       if (departmentsRes.departments) setDepartments(departmentsRes.departments);
       if (normativesRes.standards) setNormativeStandards(normativesRes.standards);
+      setProcesses(Array.isArray(processesRes) ? processesRes : []);
     } catch (err) {
       console.error('Error loading data:', err);
     }
@@ -154,6 +186,15 @@ export default function NuevaAuditoriaPage() {
         additionalAuditTeam: trimOrUndef(formData.additionalAuditTeam),
         logisticObservations: trimOrUndef(formData.logisticObservations),
         specialInstructions: trimOrUndef(formData.specialInstructions),
+        // IATF
+        processId: formData.processId || undefined,
+        shifts: formData.shifts.length ? formData.shifts : undefined,
+        triggerSource: formData.triggerSource || undefined,
+        triggerDescription: trimOrUndef(formData.triggerDescription),
+        reportDueDate: toIsoDateTime(formData.reportDueDate),
+        productName: trimOrUndef(formData.productName),
+        productionPhase: trimOrUndef(formData.productionPhase),
+        sampleSize: trimOrUndef(formData.sampleSize),
       };
 
       const res = await apiFetch('/audit/audits', {
@@ -180,6 +221,18 @@ export default function NuevaAuditoriaPage() {
         : [...prev.isoStandard, value],
     }));
   }
+
+  function handleShiftChange(value: string) {
+    setFormData(prev => ({
+      ...prev,
+      shifts: prev.shifts.includes(value)
+        ? prev.shifts.filter(s => s !== value)
+        : [...prev.shifts, value],
+    }));
+  }
+
+  const isMfgProcess = formData.type === 'MANUFACTURING_PROCESS';
+  const isProduct = formData.type === 'PRODUCT';
 
   return (
     <div className="space-y-6">
@@ -355,7 +408,29 @@ export default function NuevaAuditoriaPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Proceso Específico
+                Proceso del Mapa (IATF — cobertura)
+              </label>
+              <select
+                value={formData.processId}
+                onChange={(e) => {
+                  const pid = e.target.value;
+                  const proc = processes.find((p) => p.id === pid);
+                  setFormData({ ...formData, processId: pid, process: proc ? proc.name : formData.process });
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">— Sin vincular al mapa —</option>
+                {processes.map((p) => (
+                  <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ''}{p.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Proceso Específico (texto libre)
               </label>
               <input
                 type="text"
@@ -365,7 +440,108 @@ export default function NuevaAuditoriaPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Plazo de emisión del informe
+              </label>
+              <input
+                type="date"
+                value={formData.reportDueDate}
+                onChange={(e) => setFormData({ ...formData, reportDueDate: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
+
+          {/* Disparador basado en riesgo (IATF 9.2.2.1) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Origen / disparador (IATF 9.2.2.1)
+              </label>
+              <select
+                value={formData.triggerSource}
+                onChange={(e) => setFormData({ ...formData, triggerSource: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">— Sin definir —</option>
+                {TRIGGER_SOURCES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Justificación del disparador
+              </label>
+              <input
+                type="text"
+                value={formData.triggerDescription}
+                onChange={(e) => setFormData({ ...formData, triggerDescription: e.target.value })}
+                placeholder="Ej: 3 reclamos de cliente en Q3, scorecard < 90"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Turnos (IATF 9.2.2.2) — solo proceso de manufactura */}
+          {isMfgProcess && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+              <label className="block text-sm font-semibold text-emerald-800 mb-2">
+                Turnos cubiertos por la auditoría (IATF 9.2.2.2 — cada turno debe auditarse en el ciclo de 3 años)
+              </label>
+              <div className="flex gap-4">
+                {SHIFT_OPTIONS.map((s) => (
+                  <label key={s.value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.shifts.includes(s.value)}
+                      onChange={() => handleShiftChange(s.value)}
+                      className="w-4 h-4 text-emerald-600 rounded"
+                    />
+                    <span className="text-sm text-gray-700">{s.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Auditoría de producto (IATF 9.2.2.3) */}
+          {isProduct && (
+            <div className="bg-sky-50 border border-sky-200 rounded-lg p-4 space-y-4">
+              <p className="text-sm font-semibold text-sky-800">Auditoría de producto (IATF 9.2.2.3)</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Producto / muestra auditada</label>
+                  <input
+                    type="text"
+                    value={formData.productName}
+                    onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                    placeholder="Ej: Pieza P-1000 lote 4521"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Fase de producción</label>
+                  <input
+                    type="text"
+                    value={formData.productionPhase}
+                    onChange={(e) => setFormData({ ...formData, productionPhase: e.target.value })}
+                    placeholder="Ej: post-mecanizado, pre-empaque"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Tamaño de muestra</label>
+                  <input
+                    type="text"
+                    value={formData.sampleSize}
+                    onChange={(e) => setFormData({ ...formData, sampleSize: e.target.value })}
+                    placeholder="Ej: 5 unidades"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Normas ISO */}
           <div>

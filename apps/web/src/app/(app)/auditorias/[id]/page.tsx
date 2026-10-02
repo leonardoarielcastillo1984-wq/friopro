@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import { ChevronLeft, Edit2, FileText, CheckCircle, Clock, AlertCircle, Calendar, Play } from 'lucide-react';
+import { ChevronLeft, Edit2, FileText, CheckCircle, Clock, AlertCircle, Calendar, Play, AlertTriangle } from 'lucide-react';
 
 type Audit = {
   id: string;
@@ -46,6 +46,19 @@ type Audit = {
   cancelledAt: string | null;
   cancelReason: string | null;
   rescheduleCount: number;
+  // IATF 16949
+  shifts: string[];
+  processId: string | null;
+  triggerSource: string | null;
+  triggerDescription: string | null;
+  reportDueDate: string | null;
+  productName: string | null;
+  productionPhase: string | null;
+  sampleSize: string | null;
+  // Enriquecidos por el backend
+  linkedProcess?: { id: string; name: string; code: string | null; owner?: string | null } | null;
+  independenceWarning?: boolean;
+  reportOverdue?: boolean;
 };
 
 type Finding = {
@@ -68,7 +81,27 @@ const TYPE_LABELS: Record<string, string> = {
   'CERTIFICATION': 'Certificación',
   'RECERTIFICATION': 'Recertificación',
   'SURVEILLANCE': 'Vigilancia',
+  'SYSTEM': 'De Sistema (IATF 9.2.2.1)',
+  'MANUFACTURING_PROCESS': 'Proceso de Manufactura (IATF 9.2.2.2)',
+  'PRODUCT': 'De Producto (IATF 9.2.2.3)',
 };
+
+const SHIFT_LABELS: Record<string, string> = {
+  MORNING: 'Mañana',
+  AFTERNOON: 'Tarde',
+  NIGHT: 'Noche',
+};
+
+const TRIGGER_LABELS: Record<string, string> = {
+  SCHEDULED: 'Programada (plan anual)',
+  SCORECARD: 'Scorecard / desempeño de cliente',
+  CUSTOMER_COMPLAINT: 'Reclamo de cliente',
+  EXTERNAL_NC: 'NC externa / auditoría previa',
+  PROCESS_CHANGE: 'Cambio en el proceso',
+  PERFORMANCE_TREND: 'Tendencia de desempeño adversa',
+};
+
+type ProcessOption = { id: string; name: string; code?: string };
 
 const STATUS_LABELS: Record<string, string> = {
   'DRAFT': 'Borrador',
@@ -128,8 +161,19 @@ export default function AuditDetailPage() {
     specialInstructions: '',
     requiresOpeningMeeting: true,
     requiresClosingMeeting: true,
+    // IATF
+    processId: '',
+    shifts: [] as string[],
+    triggerSource: '',
+    triggerDescription: '',
+    reportDueDate: '',
+    productName: '',
+    productionPhase: '',
+    sampleSize: '',
   });
   const [showPlanningEdit, setShowPlanningEdit] = useState(false);
+  const [showIatfEdit, setShowIatfEdit] = useState(false);
+  const [processes, setProcesses] = useState<ProcessOption[]>([]);
 
   useEffect(() => {
     if (auditId) {
@@ -144,9 +188,14 @@ export default function AuditDetailPage() {
         apiFetch(`/audit/audits/${auditId}`) as Promise<{ audit: Audit }>,
         apiFetch(`/audit/audits/${auditId}/findings`) as Promise<{ findings: Finding[] }>,
       ]);
-      
+
       if (auditRes.audit) setAudit(auditRes.audit);
       if (findingsRes.findings) setFindings(findingsRes.findings);
+
+      // Procesos del mapa para el selector IATF en el modal de edición
+      apiFetch('/objectives/processes')
+        .then((res) => setProcesses(Array.isArray(res) ? res as ProcessOption[] : []))
+        .catch(() => setProcesses([]));
     } catch (err) {
       setError('Error al cargar la auditoría');
     } finally {
@@ -166,6 +215,7 @@ export default function AuditDetailPage() {
     setError(null);
     const hasPlanning = !!(audit.plannedStartTime || audit.modality || audit.auditLocation || audit.auditedProcessOwner);
     setShowPlanningEdit(hasPlanning);
+    setShowIatfEdit(!!(audit.processId || (audit.shifts || []).length || audit.triggerSource || audit.reportDueDate || audit.productName));
     setEditForm({
       title: audit.title || '',
       description: audit.description || '',
@@ -193,6 +243,14 @@ export default function AuditDetailPage() {
       specialInstructions: audit.specialInstructions || '',
       requiresOpeningMeeting: audit.requiresOpeningMeeting ?? true,
       requiresClosingMeeting: audit.requiresClosingMeeting ?? true,
+      processId: audit.processId || '',
+      shifts: audit.shifts || [],
+      triggerSource: audit.triggerSource || '',
+      triggerDescription: audit.triggerDescription || '',
+      reportDueDate: toDateInputValue(audit.reportDueDate),
+      productName: audit.productName || '',
+      productionPhase: audit.productionPhase || '',
+      sampleSize: audit.sampleSize || '',
     });
     setShowEditModal(true);
   }
@@ -231,6 +289,15 @@ export default function AuditDetailPage() {
         specialInstructions: t(editForm.specialInstructions),
         requiresOpeningMeeting: editForm.requiresOpeningMeeting,
         requiresClosingMeeting: editForm.requiresClosingMeeting,
+        // IATF
+        processId: editForm.processId || null,
+        shifts: editForm.shifts,
+        triggerSource: editForm.triggerSource || null,
+        triggerDescription: t(editForm.triggerDescription),
+        reportDueDate: editForm.reportDueDate ? new Date(editForm.reportDueDate).toISOString() : null,
+        productName: t(editForm.productName),
+        productionPhase: t(editForm.productionPhase),
+        sampleSize: t(editForm.sampleSize),
       };
 
       const res = await apiFetch(`/audit/audits/${auditId}`, {
@@ -339,6 +406,24 @@ export default function AuditDetailPage() {
         </div>
       </div>
 
+      {/* Alertas IATF */}
+      {(audit.independenceWarning || audit.reportOverdue) && (
+        <div className="space-y-2">
+          {audit.independenceWarning && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-center gap-2 text-sm">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span><b>Alerta de independencia (§9.2.2 a):</b> el auditor líder es el responsable del proceso auditado. IATF exige que los auditores no auditen su propio trabajo — asignar otro auditor.</span>
+            </div>
+          )}
+          {audit.reportOverdue && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span><b>Informe vencido:</b> superó el plazo de emisión ({audit.reportDueDate ? formatDate(audit.reportDueDate) : ''}). Emitir el informe para cerrar la auditoría.</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="border-b border-gray-200">
         <nav className="flex gap-8">
@@ -436,6 +521,55 @@ export default function AuditDetailPage() {
                     {std.replace('_', ' ')}
                   </span>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Datos IATF 16949 */}
+          {(audit.linkedProcess || (audit.shifts || []).length > 0 || audit.triggerSource || audit.reportDueDate || audit.productName) && (
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Datos IATF 16949</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {audit.linkedProcess && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Proceso del mapa auditado</h4>
+                    <p className="text-gray-900 text-sm">
+                      {audit.linkedProcess.code ? `[${audit.linkedProcess.code}] ` : ''}{audit.linkedProcess.name}
+                    </p>
+                  </div>
+                )}
+                {(audit.shifts || []).length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Turnos cubiertos (IATF 9.2.2.2)</h4>
+                    <div className="flex gap-1.5">
+                      {audit.shifts.map((s) => (
+                        <span key={s} className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-800">{SHIFT_LABELS[s] || s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {audit.triggerSource && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Disparador (IATF 9.2.2.1)</h4>
+                    <p className="text-gray-900 text-sm">{TRIGGER_LABELS[audit.triggerSource] || audit.triggerSource}</p>
+                    {audit.triggerDescription && <p className="text-gray-500 text-xs">{audit.triggerDescription}</p>}
+                  </div>
+                )}
+                {audit.reportDueDate && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Plazo de emisión del informe</h4>
+                    <p className={`text-sm ${audit.reportOverdue ? 'text-red-600 font-medium' : 'text-gray-900'}`}>{formatDate(audit.reportDueDate)}</p>
+                  </div>
+                )}
+                {audit.productName && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">Auditoría de producto (IATF 9.2.2.3)</h4>
+                    <p className="text-gray-900 text-sm">{audit.productName}</p>
+                    <p className="text-gray-500 text-xs">
+                      {[audit.productionPhase && `Fase: ${audit.productionPhase}`, audit.sampleSize && `Muestra: ${audit.sampleSize}`].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -587,6 +721,9 @@ export default function AuditDetailPage() {
                     <option value="CERTIFICATION">Certificación</option>
                     <option value="RECERTIFICATION">Recertificación</option>
                     <option value="SURVEILLANCE">Vigilancia</option>
+                    <option value="SYSTEM">De Sistema (IATF)</option>
+                    <option value="MANUFACTURING_PROCESS">Proceso de Manufactura (IATF)</option>
+                    <option value="PRODUCT">De Producto (IATF)</option>
                   </select>
                 </div>
               </div>
@@ -663,6 +800,118 @@ export default function AuditDetailPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                 />
+              </div>
+
+              {/* Datos IATF 16949 */}
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowIatfEdit(!showIatfEdit)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-emerald-50 hover:bg-emerald-100 transition-colors text-left"
+                >
+                  <span className="text-sm font-semibold text-emerald-900">Cumplimiento IATF 16949</span>
+                  <span className="text-xs text-emerald-600">{showIatfEdit ? '▲ Ocultar' : '▼ Expandir'}</span>
+                </button>
+                {showIatfEdit && (
+                  <div className="p-4 space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Proceso del Mapa de Procesos</label>
+                      <select
+                        value={editForm.processId}
+                        onChange={(e) => {
+                          const pid = e.target.value;
+                          const proc = processes.find((p) => p.id === pid);
+                          setEditForm({ ...editForm, processId: pid, process: proc ? proc.name : editForm.process });
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="">— Sin vincular al mapa —</option>
+                        {processes.map((p) => (
+                          <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ''}{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Disparador (9.2.2.1)</label>
+                        <select
+                          value={editForm.triggerSource}
+                          onChange={(e) => setEditForm({ ...editForm, triggerSource: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          <option value="">— Sin definir —</option>
+                          {Object.entries(TRIGGER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Justificación</label>
+                        <input
+                          type="text"
+                          value={editForm.triggerDescription}
+                          onChange={(e) => setEditForm({ ...editForm, triggerDescription: e.target.value })}
+                          placeholder="Ej: reclamo de cliente, scorecard < 90"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    </div>
+
+                    {editForm.type === 'MANUFACTURING_PROCESS' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Turnos cubiertos (9.2.2.2)</label>
+                        <div className="flex gap-4">
+                          {Object.entries(SHIFT_LABELS).map(([v, l]) => (
+                            <label key={v} className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={editForm.shifts.includes(v)}
+                                onChange={() => setEditForm({
+                                  ...editForm,
+                                  shifts: editForm.shifts.includes(v) ? editForm.shifts.filter((s) => s !== v) : [...editForm.shifts, v],
+                                })}
+                                className="w-4 h-4 text-emerald-600 rounded"
+                              />
+                              <span className="text-sm text-gray-700">{l}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {editForm.type === 'PRODUCT' && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Producto / muestra</label>
+                          <input type="text" value={editForm.productName}
+                            onChange={(e) => setEditForm({ ...editForm, productName: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Fase de producción</label>
+                          <input type="text" value={editForm.productionPhase}
+                            onChange={(e) => setEditForm({ ...editForm, productionPhase: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Tamaño de muestra</label>
+                          <input type="text" value={editForm.sampleSize}
+                            onChange={(e) => setEditForm({ ...editForm, sampleSize: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de emisión del informe</label>
+                      <input
+                        type="date"
+                        value={editForm.reportDueDate}
+                        onChange={(e) => setEditForm({ ...editForm, reportDueDate: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Planificación y Coordinación */}
