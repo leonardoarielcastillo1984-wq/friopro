@@ -25,6 +25,27 @@ export function useDraggableFab(storageKey: string) {
     } catch { /* noop */ }
   }, [storageKey]);
 
+  // Si el viewport se achicó después de guardar la posición (o se guardó en otra
+  // pantalla), el FAB quedaría fuera de vista. Re-clamar al montar y en resize.
+  useEffect(() => {
+    const clampToViewport = () => {
+      setPos(p => {
+        if (!p) return p;
+        const el = ref.current;
+        const w = el?.offsetWidth || 120;
+        const h = el?.offsetHeight || 48;
+        const left = Math.min(Math.max(p.left, 4), Math.max(4, window.innerWidth - w - 4));
+        const top = Math.min(Math.max(p.top, 4), Math.max(4, window.innerHeight - h - 4));
+        if (left === p.left && top === p.top) return p;
+        try { localStorage.setItem('fab-pos:' + storageKey, JSON.stringify({ left, top })); } catch { /* noop */ }
+        return { left, top };
+      });
+    };
+    clampToViewport();
+    window.addEventListener('resize', clampToViewport);
+    return () => window.removeEventListener('resize', clampToViewport);
+  }, [storageKey]);
+
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     const el = ref.current;
     if (!el) return;
