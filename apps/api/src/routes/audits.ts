@@ -231,6 +231,45 @@ export async function registerAuditRoutes(app: FastifyInstance) {
     },
   );
 
+  // AUDITORS
+  // GET /audit/auditors — lista auditores + cantidad de auditorías ejecutadas
+  // (como líder + como miembro de equipo) para mantenimiento de competencia §7.2.3
+  app.get('/audit/auditors', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+
+    const rows = await app.runWithDbContext(req, async (tx) => {
+      const auditors = await tx.auditor.findMany({
+        where: { tenantId, deletedAt: null, isActive: true },
+        orderBy: { name: 'asc' },
+      });
+
+      const leadRows = await tx.audit.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { leadAuditorId: true },
+      });
+      const memberRows = await tx.auditAuditor.findMany({
+        where: { auditorId: { in: auditors.map((a) => a.id) } },
+        select: { auditorId: true },
+      }).catch(() => [] as { auditorId: string | null }[]);
+
+      const counts = new Map<string, number>();
+      for (const r of leadRows) {
+        if (r.leadAuditorId) counts.set(r.leadAuditorId, (counts.get(r.leadAuditorId) ?? 0) + 1);
+      }
+      for (const r of memberRows) {
+        if (r.auditorId) counts.set(r.auditorId, (counts.get(r.auditorId) ?? 0) + 1);
+      }
+
+      return auditors.map((a) => ({
+        ...a,
+        auditsCount: counts.get(a.id) ?? 0,
+      }));
+    });
+
+    return reply.send({ auditors: rows });
+  });
+
   app.post(
     '/audit/auditors',
     async (req: FastifyRequest<{ Body: z.infer<typeof CreateAuditorSchema> }>, reply: FastifyReply) => {
