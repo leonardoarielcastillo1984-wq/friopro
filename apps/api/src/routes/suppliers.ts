@@ -595,6 +595,9 @@ export async function registerSupplierRoutes(app: FastifyInstance) {
           status: body.status ?? existing.status,
           providerType: body.providerType !== undefined ? body.providerType : existing.providerType,
           isCritical: body.isCritical ?? existing.isCritical,
+          // ISO 45001 §8.1.4 / ISO 14001 §8.1 — requisitos EHS a contratistas
+          ehsRequirements: body.ehsRequirements !== undefined ? body.ehsRequirements : existing.ehsRequirements,
+          ehsApproved: body.ehsApproved !== undefined ? body.ehsApproved : existing.ehsApproved,
           notes: body.notes !== undefined ? body.notes : existing.notes,
         },
       });
@@ -704,5 +707,24 @@ export async function registerSupplierRoutes(app: FastifyInstance) {
     });
 
     return reply.send({ success: true });
+  });
+
+  // GET /suppliers/:id/audits — auditorías de segunda parte IATF 8.4.2.4.1
+  app.get('/:id/audits', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const audits = await app.runWithDbContext(req, async (tx: any) => {
+      return tx.audit.findMany({
+        where: { supplierId: id, tenantId, deletedAt: null },
+        select: {
+          id: true, code: true, title: true, type: true, status: true,
+          plannedStartDate: true, actualStartDate: true, actualEndDate: true,
+        },
+        orderBy: { plannedStartDate: 'desc' },
+      });
+    });
+    return reply.send({ audits });
   });
 }

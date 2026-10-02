@@ -42,6 +42,10 @@ model NonConformity {
   reworkVerifiedAt         DateTime? @db.Timestamptz
   customerNotifiedAt       DateTime? @db.Timestamptz
 
+  // IATF 16949 §10.3.1 — mejora continua: lecciones aprendidas del análisis
+  // (documentadas al cerrar la NC, alimentan riesgos/FMEA/planes de control)
+  lessonsLearned String? @db.Text
+
   assignedToId String?       @db.Uuid
   assignedTo   PlatformUser? @relation("NcrAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
@@ -2359,6 +2363,10 @@ model Audit {
   productionPhase String? // fase del proceso productivo donde se tomó la muestra
   sampleSize      String? // tamaño o referencia de la muestra
 
+  // Auditoría de segunda parte a proveedor (IATF 8.4.2.4.1 / ISO 9001 8.4)
+  // FK escalar débil — habilita listar auditorías en la ficha del proveedor
+  supplierId String? @db.Uuid
+
   // Metadata
   createdById    String               @db.Uuid
   createdAt      DateTime             @default(now()) @db.Timestamptz
@@ -4668,6 +4676,8 @@ model EnvironmentalAspect {
   category            String // EMISSIONS, WASTE, ENERGY, WATER, SOIL, BIODIVERSITY, NOISE, OTHER
   condition           String    @default("NORMAL") // NORMAL, ABNORMAL, EMERGENCY
   naturalness         String    @default("DIRECT") // DIRECT, INDIRECT
+  // ISO 14001:2015 §6.1.2 — perspectiva de ciclo de vida
+  lifeCycleStage      String?   // RAW_MATERIAL | PRODUCTION | DISTRIBUTION | USE | END_OF_LIFE
   magnitude           Int
   severity            Int
   frequency           Int
@@ -4857,6 +4867,11 @@ model GestionCambio {
   // de producción: PFMEA / Plan de Control / instrucciones de trabajo.
   requiresCoreToolsReview Boolean @default(false)
   coreToolsReviewNotes    String?
+  // IATF 16949 §8.5.6.1.1 — controles de proceso temporales/alternativos
+  // (ej. inspección 100% mientras se repara un poka-yoke o equipo)
+  usesTemporaryControls     Boolean   @default(false)
+  temporaryControlsDesc     String?   @db.Text // qué control temporal se aplica
+  temporaryControlsEndDate  DateTime? @db.Timestamptz // fecha límite del control temporal
   verificacion          String?
   creadoPor             String?
   // Planificación del cambio (aditivo)
@@ -5144,6 +5159,143 @@ model Incident {
   @@map("incidents")
 }
 
+// ──────────────────────────────────────────────────────────────
+// Requisitos legales y otros requisitos (ISO 9001/14001/45001 §6.1.3)
+// con evaluación periódica del cumplimiento (ISO 14001/45001 §9.1.2)
+// ──────────────────────────────────────────────────────────────
+
+model LegalRequirement {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  framework   String // ENVIRONMENTAL | OHAS | QUALITY | OTHER
+  source      String // ley/decreto/resolución/contrato/CSR (ej. "Ley 24.051")
+  title       String
+  description String?  @db.Text
+  appliesTo   String?  // proceso/actividad al que aplica
+  // Evaluación de cumplimiento periódica (9.1.2)
+  lastEvaluationDate   DateTime? @db.Timestamptz
+  lastEvaluationResult String?   // COMPLIANT | PARTIAL | NON_COMPLIANT
+  nextEvaluationDate   DateTime? @db.Timestamptz
+  evaluationFrequency  String    @default("YEARLY") // MONTHLY | QUARTERLY | BIANNUAL | YEARLY
+  responsibleId String?  @db.Uuid // empleado responsable
+  evidence      String?
+  isActive      Boolean  @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+
+  evaluations LegalComplianceEvaluation[]
+
+  @@index([tenantId])
+  @@index([framework])
+  @@index([nextEvaluationDate])
+  @@map("legal_requirements")
+}
+
+model LegalComplianceEvaluation {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @db.Uuid
+  requirementId      String   @db.Uuid
+  evaluationDate     DateTime @default(now()) @db.Timestamptz
+  result             String // COMPLIANT | PARTIAL | NON_COMPLIANT
+  findings           String?  @db.Text
+  correctiveRequired Boolean  @default(false)
+  evaluatedBy        String?
+  evidence           String?
+  createdAt          DateTime @default(now()) @db.Timestamptz
+
+  requirement LegalRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([requirementId])
+  @@index([evaluationDate])
+  @@map("legal_compliance_evaluations")
+}
+
+// ──────────────────────────────────────────────────────────────
+// ISO 45001 §8.1 — SST operacional del SGI (independiente de SEH360)
+// ──────────────────────────────────────────────────────────────
+
+// Entrega de EPP a trabajadores (ISO 45001 §8.1.2 jerarquía de controles)
+model PpeDelivery {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  employeeId  String?  @db.Uuid // FK débil a Employee (patrón del codebase)
+  employeeName String? // nombre libre si no está en RRHH
+  item        String // tipo de EPP (casco, guantes, protección auditiva...)
+  size        String?
+  quantity    Int      @default(1)
+  deliveredAt DateTime @default(now()) @db.Timestamptz
+  expiryDate  DateTime? @db.Timestamptz
+  receivedBy  String? // firma/confirmación de recepción
+  deliveredBy String?
+  notes       String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([expiryDate])
+  @@map("ppe_deliveries")
+}
+
+// Permiso de trabajo de alto riesgo (ISO 45001 §8.1)
+model WorkPermit {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  code         String
+  type         String // HEIGHTS | HOT_WORK | CONFINED_SPACE | ELECTRICAL | EXCAVATION | LIFTING | OTHER
+  title        String
+  location     String
+  description  String?  @db.Text
+  status       String   @default("REQUESTED") // REQUESTED | APPROVED | IN_PROGRESS | SUSPENDED | CLOSED | REJECTED
+  requestedBy  String?
+  approvedBy   String?
+  approvedAt   DateTime? @db.Timestamptz
+  startDate    DateTime @db.Timestamptz
+  endDate      DateTime @db.Timestamptz
+  workers      String[] @default([]) // personal autorizado
+  hazards      String?  @db.Text // peligros identificados
+  controls     String?  @db.Text // medidas de control/aislamiento
+  ppeRequired  String[] @default([])
+  contractorId String?  @db.Uuid // proveedor/contratista (FK débil a Supplier)
+  closedAt     DateTime? @db.Timestamptz
+  closureNotes String?
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([status])
+  @@index([startDate])
+  @@map("work_permits")
+}
+
+// Exámenes médicos ocupacionales (ISO 45001 §9.1.1)
+model MedicalExam {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  employeeId   String?  @db.Uuid // FK débil a Employee
+  employeeName String?  // nombre libre si no está en RRHH
+  examType     String // PRE_EMPLOYMENT | PERIODIC | RETURN_TO_WORK | EXIT | SPECIAL
+  examDate     DateTime @db.Timestamptz
+  result       String // FIT | FIT_WITH_RESTRICTIONS | UNFIT | PENDING
+  restrictions String?  @db.Text // restricciones/recomendaciones médicas
+  nextExamDate DateTime? @db.Timestamptz
+  performedBy  String? // médico/centro de salud ocupacional
+  notes        String?
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([nextExamDate])
+  @@map("medical_exams")
+}
+
 model License {
   id        String        @id @default(uuid()) @db.Uuid
   userId    String        @map("user_id") @db.Uuid
@@ -5303,6 +5455,10 @@ model MeasuringEquipment {
   lastCalibrationDate  DateTime?
   nextCalibrationDate  DateTime?
   acquisitionDate      DateTime?
+  // IATF 16949 §7.1.5.3 — requisitos de laboratorio (interno/externo)
+  isExternalLab        Boolean  @default(false) // calibración/ensayo en laboratorio externo
+  labAccreditation     String?  // ej. "ISO/IEC 17025 — certificado nº ..."
+  labScope             String?  // alcance del laboratorio (qué ensayos/calibraciones cubre)
   notes                String?
   deletedAt            DateTime?
   createdAt            DateTime  @default(now()) @db.Timestamptz
@@ -7138,6 +7294,10 @@ model Supplier {
   evaluationScore    Float?
   lastEvaluationDate DateTime?
   nextEvaluationDate DateTime?
+  // ISO 45001 §8.1.4 / ISO 14001 §8.1 — requisitos SST/ambientales a contratistas
+  // y proveedores que operan en las instalaciones o afectan el desempeño EHS
+  ehsRequirements String? // requisitos legales/SST/ambientales comunicados al proveedor
+  ehsApproved     Boolean @default(false) // cumple requisitos EHS para trabajar en planta
   notes              String?
   deletedAt          DateTime?
   createdAt          DateTime  @default(now()) @db.Timestamptz

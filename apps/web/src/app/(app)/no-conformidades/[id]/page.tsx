@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import type { NonConformity, NCRSeverity } from '@/lib/types';
 import {
   ArrowLeft, AlertTriangle, Edit3, Trash2, AlertCircle,
-  CheckCircle2, Clock, User, Calendar, Shield, Sparkles, Loader2,
+  CheckCircle2, Clock, User, Calendar, Shield, Sparkles, Loader2, Lightbulb,
 } from 'lucide-react';
 
 const SEVERITY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -63,6 +63,8 @@ type NCRDetail = NonConformity & {
   reworkInstruction?: string | null;
   reworkVerifiedAt?: string | null;
   customerNotifiedAt?: string | null;
+  // IATF 10.3.1 — lecciones aprendidas
+  lessonsLearned?: string | null;
 };
 
 export default function NCRDetailPage() {
@@ -112,6 +114,7 @@ export default function NCRDetailPage() {
     reworkInstruction: '',
     reworkVerifiedAt: '',
     customerNotifiedAt: '',
+    lessonsLearned: '',
   });
 
   const [aiSuggestion, setAiSuggestion] = useState<{
@@ -151,6 +154,7 @@ export default function NCRDetailPage() {
         reworkInstruction: res.ncr.reworkInstruction || '',
         reworkVerifiedAt: dstr(res.ncr.reworkVerifiedAt),
         customerNotifiedAt: dstr(res.ncr.customerNotifiedAt),
+        lessonsLearned: res.ncr.lessonsLearned || '',
       });
 
       // Si es NCR grave, analizar con IA para sugerir riesgo
@@ -230,7 +234,7 @@ export default function NCRDetailPage() {
     try {
       const payload: any = { ...editForm };
       // Normalizar campos de disposición: '' → null para limpiar en BD
-      for (const k of ['disposition', 'dispositionNotes', 'concessionRef', 'concessionApprovedBy', 'concessionApprovedAt', 'concessionExpiry', 'reworkInstruction', 'reworkVerifiedAt', 'customerNotifiedAt']) {
+      for (const k of ['disposition', 'dispositionNotes', 'concessionRef', 'concessionApprovedBy', 'concessionApprovedAt', 'concessionExpiry', 'reworkInstruction', 'reworkVerifiedAt', 'customerNotifiedAt', 'lessonsLearned']) {
         if (payload[k] === '') payload[k] = null;
       }
       const res = await apiFetch<{ ncr: NCRDetail }>(`/ncr/${id}`, {
@@ -499,6 +503,17 @@ export default function NCRDetailPage() {
               placeholder="Resultado de la verificación de eficacia..."
             />
           </div>
+          {/* IATF 10.3.1 — lecciones aprendidas */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Lecciones aprendidas (IATF 10.3.1)</label>
+            <textarea
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm focus:border-brand-500 outline-none"
+              rows={2}
+              value={editForm.lessonsLearned}
+              onChange={(e) => setEditForm({ ...editForm, lessonsLearned: e.target.value })}
+              placeholder="Qué aprendimos — alimenta FMEA, planes de control y matriz de riesgos..."
+            />
+          </div>
           {editForm.status === 'VERIFICATION' || editForm.status === 'CLOSED' ? (
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">¿Fue efectiva la acción?</label>
@@ -676,6 +691,14 @@ export default function NCRDetailPage() {
               {ncr.verificationNotes && (
                 <p className="mt-2 text-sm text-neutral-700 whitespace-pre-wrap">{ncr.verificationNotes}</p>
               )}
+            </div>
+          )}
+          {ncr.lessonsLearned && (
+            <div className="lg:col-span-2 bg-white rounded-xl border border-emerald-200 p-6">
+              <h2 className="font-semibold text-neutral-900 mb-3 flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-emerald-500" /> Lecciones aprendidas
+              </h2>
+              <p className="text-sm text-neutral-700 whitespace-pre-wrap">{ncr.lessonsLearned}</p>
             </div>
           )}
         </div>

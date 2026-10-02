@@ -36,6 +36,13 @@ export default function AspectosAmbientalesPage() {
           { value: 'DIRECT', label: 'Directo' },
           { value: 'INDIRECT', label: 'Indirecto' },
         ]},
+        { key: 'lifeCycleStage', label: 'Etapa ciclo de vida (ISO 14001 §6.1.2)', type: 'select', options: [
+          { value: 'RAW_MATERIAL', label: 'Materia prima / aprovisionamiento' },
+          { value: 'PRODUCTION', label: 'Producción' },
+          { value: 'DISTRIBUTION', label: 'Distribución / transporte' },
+          { value: 'USE', label: 'Uso del producto/servicio' },
+          { value: 'END_OF_LIFE', label: 'Fin de vida / disposición' },
+        ]},
         { key: 'magnitude', label: 'Magnitud (1-5)', type: 'number', required: true },
         { key: 'severity', label: 'Severidad (1-5)', type: 'number', required: true },
         { key: 'frequency', label: 'Frecuencia (1-5)', type: 'number', required: true },

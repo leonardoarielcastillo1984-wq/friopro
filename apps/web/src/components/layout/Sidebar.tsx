@@ -12,6 +12,7 @@ import {
   BarChart3,
   FileText,
   BookOpen,
+  Scale,
   BrainCircuit,
   Shield,
   TrendingUp,
@@ -59,6 +60,7 @@ const mainNav = [
 
   // 3. Marco normativo
   { label: 'Normativos', icon: BookOpen, href: '/cumplimiento' },
+  { label: 'Requisitos Legales', icon: Scale, href: '/requisitos-legales' },
 
   // 4. Contexto estratégico (ISO §4, §6)
   { label: 'Contexto del SGI', icon: Compass, href: '/contexto-sgi' },

@@ -82,6 +82,7 @@ export default function NuevaAuditoriaPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [normativeStandards, setNormativeStandards] = useState<NormativeStandard[]>([]);
   const [processes, setProcesses] = useState<ProcessOption[]>([]);
+  const [suppliers, setSuppliers] = useState<{ id: string; code: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -124,6 +125,8 @@ export default function NuevaAuditoriaPage() {
     productName: '',
     productionPhase: '',
     sampleSize: '',
+    // IATF 8.4.2.4.1 — auditoría de segunda parte
+    supplierId: '',
   });
   const [showPlanningSection, setShowPlanningSection] = useState(false);
 
@@ -133,12 +136,13 @@ export default function NuevaAuditoriaPage() {
 
   async function loadProgramsAndAuditors() {
     try {
-      const [programsRes, auditorsRes, departmentsRes, normativesRes, processesRes] = await Promise.all([
+      const [programsRes, auditorsRes, departmentsRes, normativesRes, processesRes, extra0] = await Promise.all([
         apiFetch('/audit/programs') as Promise<{ programs: AuditProgram[] }>,
         apiFetch('/audit/auditors') as Promise<{ auditors: Auditor[] }>,
         apiFetch('/hr/departments') as Promise<{ departments: Department[] }>,
         apiFetch('/audit/normative-standards') as Promise<{ standards: NormativeStandard[] }>,
         apiFetch('/objectives/processes').catch(() => [] as ProcessOption[]),
+        apiFetch('/suppliers').catch(() => ({ items: [] })) as Promise<{ items: { id: string; code: string; name: string }[] }>,
       ]);
 
       if (programsRes.programs) setPrograms(programsRes.programs);
@@ -146,6 +150,8 @@ export default function NuevaAuditoriaPage() {
       if (departmentsRes.departments) setDepartments(departmentsRes.departments);
       if (normativesRes.standards) setNormativeStandards(normativesRes.standards);
       setProcesses(Array.isArray(processesRes) ? processesRes : []);
+      const suppliersRes = extra0;
+      if (suppliersRes?.items) setSuppliers(suppliersRes.items);
     } catch (err) {
       console.error('Error loading data:', err);
     }
@@ -195,6 +201,7 @@ export default function NuevaAuditoriaPage() {
         productName: trimOrUndef(formData.productName),
         productionPhase: trimOrUndef(formData.productionPhase),
         sampleSize: trimOrUndef(formData.sampleSize),
+        supplierId: formData.supplierId || undefined,
       };
 
       const res = await apiFetch('/audit/audits', {
@@ -328,6 +335,23 @@ export default function NuevaAuditoriaPage() {
                 ))}
               </select>
             </div>
+            {formData.type === 'SUPPLIER' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Proveedor auditado <span className="text-xs text-gray-400 font-normal">(IATF 8.4.2.4.1)</span>
+                </label>
+                <select
+                  value={formData.supplierId}
+                  onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">— Seleccionar proveedor —</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.code} — {s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Auditor Líder <span className="text-red-500">*</span>

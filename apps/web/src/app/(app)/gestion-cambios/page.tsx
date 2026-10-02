@@ -40,6 +40,10 @@ interface Cambio {
   capacitacionRequerida: boolean;
   requiresCoreToolsReview?: boolean;
   coreToolsReviewNotes?: string;
+  // IATF 8.5.6.1.1 — controles de proceso temporales
+  usesTemporaryControls?: boolean;
+  temporaryControlsDesc?: string;
+  temporaryControlsEndDate?: string;
   documentosAfectados?: string;
   riesgosIdentificados?: string;
   verificacion?: string;
@@ -100,6 +104,7 @@ const emptyForm = {
   responsableId: '', aprobadorId: '', fechaPrevista: '',
   recursosNecesarios: '', capacitacionRequerida: false,
   requiresCoreToolsReview: false, coreToolsReviewNotes: '',
+  usesTemporaryControls: false, temporaryControlsDesc: '', temporaryControlsEndDate: '',
   documentosAfectados: '', riesgosIdentificados: '',
 };
 
@@ -499,6 +504,26 @@ export default function GestionCambiosPage() {
                     className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white"
                     placeholder="Qué revisar: PFMEA, Plan de Control, instrucciones de trabajo..." />
                 )}
+                <div className="flex items-center gap-3 border-t border-amber-200 pt-2">
+                  <input type="checkbox" id="tcReq" checked={form.usesTemporaryControls}
+                    onChange={e => setForm({ ...form, usesTemporaryControls: e.target.checked })}
+                    className="rounded border-gray-300 text-amber-600" />
+                  <label htmlFor="tcReq" className="text-sm text-amber-800 font-medium">
+                    Usa controles de proceso temporales <span className="text-xs font-normal text-amber-600">IATF 8.5.6.1.1</span>
+                  </label>
+                </div>
+                {form.usesTemporaryControls && (
+                  <div className="space-y-2">
+                    <input value={form.temporaryControlsDesc} onChange={e => setForm({ ...form, temporaryControlsDesc: e.target.value })}
+                      className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white"
+                      placeholder="Control temporal aplicado (ej. inspección 100% mientras se repara poka-yoke)..." />
+                    <div>
+                      <label className="block text-xs text-amber-700 mb-1">Fecha límite del control temporal</label>
+                      <input type="date" value={form.temporaryControlsEndDate} onChange={e => setForm({ ...form, temporaryControlsEndDate: e.target.value })}
+                        className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white" />
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Documentos afectados</label>
@@ -596,6 +621,7 @@ export default function GestionCambiosPage() {
                 <span className="px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-600">{ORIGEN_LABELS[showDetail.origen]}</span>
                 {showDetail.capacitacionRequerida && <span className="px-3 py-1 rounded-full text-sm bg-orange-100 text-orange-700">Requiere capacitación</span>}
                 {showDetail.requiresCoreToolsReview && <span className="px-3 py-1 rounded-full text-sm bg-amber-100 text-amber-800" title={showDetail.coreToolsReviewNotes || ''}>Revisar Core Tools</span>}
+                {showDetail.usesTemporaryControls && <span className="px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-800" title={showDetail.temporaryControlsDesc || ''}>Control temporal</span>}
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-1">Descripción</h3>

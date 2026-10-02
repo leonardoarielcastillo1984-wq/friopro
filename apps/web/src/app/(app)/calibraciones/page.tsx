@@ -19,6 +19,10 @@ type Equipment = {
   lastCalibrationDate?: string;
   nextCalibrationDate?: string;
   acquisitionDate?: string;
+  // IATF 16949 §7.1.5.3 — laboratorio
+  isExternalLab?: boolean;
+  labAccreditation?: string;
+  labScope?: string;
   notes?: string;
   calibrations?: Calibration[];
 };
@@ -519,6 +523,42 @@ export default function CalibracionesPage() {
                   onChange={(e) => setEquipmentForm({ ...equipmentForm, nextCalibrationDate: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
+              </div>
+              {/* IATF 16949 §7.1.5.3 — laboratorio interno/externo */}
+              <div className="col-span-2 border-t border-gray-200 pt-4 mt-1">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={equipmentForm.isExternalLab || false}
+                    onChange={(e) => setEquipmentForm({ ...equipmentForm, isExternalLab: e.target.checked })}
+                    className="rounded border-gray-300"
+                  />
+                  La calibración/ensayo se realiza en laboratorio externo (IATF 7.1.5.3)
+                </label>
+                {equipmentForm.isExternalLab && (
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Acreditación del laboratorio</label>
+                      <input
+                        type="text"
+                        value={equipmentForm.labAccreditation || ''}
+                        onChange={(e) => setEquipmentForm({ ...equipmentForm, labAccreditation: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        placeholder="ISO/IEC 17025 — cert. nº..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Alcance del laboratorio</label>
+                      <input
+                        type="text"
+                        value={equipmentForm.labScope || ''}
+                        onChange={(e) => setEquipmentForm({ ...equipmentForm, labScope: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        placeholder="Ensayos/calibraciones cubiertos"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>

@@ -5,7 +5,8 @@ import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { ArrowLeft, Star, ClipboardCheck, AlertTriangle, X, TrendingDown, TrendingUp } from 'lucide-react';
 
-interface Supplier { id: string; code: string; name: string; legalName?: string; taxId?: string; email?: string; phone?: string; address?: string; category?: string; contactName?: string; contactPosition?: string; status: string; providerType?: string | null; isCritical: boolean; evaluationScore?: number | null; avgScore?: number | null; computedStatus?: string; lastEvaluationDate?: string | null; nextEvaluationDate?: string | null; notes?: string; }
+interface Supplier { id: string; code: string; name: string; legalName?: string; taxId?: string; email?: string; phone?: string; address?: string; category?: string; contactName?: string; contactPosition?: string; status: string; providerType?: string | null; isCritical: boolean; ehsRequirements?: string | null; ehsApproved?: boolean; evaluationScore?: number | null; avgScore?: number | null; computedStatus?: string; lastEvaluationDate?: string | null; nextEvaluationDate?: string | null; notes?: string; }
+interface SupplierAudit { id: string; code: string; title: string; type: string; status: string; plannedStartDate?: string | null; actualStartDate?: string | null; actualEndDate?: string | null; }
 interface Evaluation { id: string; date: string; qualityScore: number; deliveryScore: number; priceScore: number; serviceScore: number; documentationScore: number; overallScore: number; result: string; comments?: string; deliveredPpm?: number | null; customerDisruptions?: number; premiumFreightIncidents?: number; specialStatusNotifications?: number; specialStatusNotes?: string | null; }
 interface DevPlan { id: string; title: string; objective?: string | null; actions?: any[] | null; status: string; targetDate?: string | null; completedAt?: string | null; evidence?: string | null; }
 const sb = (s: string) => { const m: Record<string,string> = { APPROVED:'bg-green-100 text-green-700', CONDITIONAL:'bg-amber-100 text-amber-700', REJECTED:'bg-red-100 text-red-700', PENDING:'bg-gray-100 text-gray-700', SUSPENDED:'bg-purple-100 text-purple-700' }; const l: Record<string,string> = { APPROVED:'Aprobado', CONDITIONAL:'Condicional', REJECTED:'Rechazado', PENDING:'Pendiente', SUSPENDED:'Suspendido' }; return <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${m[s]||m.PENDING}`}>{l[s]||s}</span>; };
@@ -17,10 +18,11 @@ export default function SupplierDetailPage() {
   const [m, setM] = useState(false);
   const [f, setF] = useState({ qualityScore:3, deliveryScore:3, priceScore:3, serviceScore:3, documentationScore:3, comments:'', deliveredPpm:'', customerDisruptions:'0', premiumFreightIncidents:'0', specialStatusNotifications:'0', specialStatusNotes:'' });
   const [plans, setPlans] = useState<DevPlan[]>([]);
+  const [audits, setAudits] = useState<SupplierAudit[]>([]);
   const [showPlan, setShowPlan] = useState(false);
   const [planF, setPlanF] = useState({ title:'', objective:'', targetDate:'' });
   useEffect(() => { load(); }, [id]);
-  const load = async () => { try { setLo(true); const [sr, er, pr] = await Promise.all([apiFetch<{supplier:Supplier}>(`/suppliers/${id}`), apiFetch<{evaluations:Evaluation[]}>(`/suppliers/${id}/evaluations`).catch(()=>null), apiFetch<{plans:DevPlan[]}>(`/suppliers/${id}/development-plans`).catch(()=>null)]); if(sr?.supplier) setS(sr.supplier); if(er?.evaluations) setEv(er.evaluations); if(pr?.plans) setPlans(pr.plans); } catch(e){ console.error(e); } finally{ setLo(false); } };
+  const load = async () => { try { setLo(true); const [sr, er, pr, ar] = await Promise.all([apiFetch<{supplier:Supplier}>(`/suppliers/${id}`), apiFetch<{evaluations:Evaluation[]}>(`/suppliers/${id}/evaluations`).catch(()=>null), apiFetch<{plans:DevPlan[]}>(`/suppliers/${id}/development-plans`).catch(()=>null), apiFetch<{audits:SupplierAudit[]}>(`/suppliers/${id}/audits`).catch(()=>null)]); if(sr?.supplier) setS(sr.supplier); if(er?.evaluations) setEv(er.evaluations); if(pr?.plans) setPlans(pr.plans); if(ar?.audits) setAudits(ar.audits); } catch(e){ console.error(e); } finally{ setLo(false); } };
   const save = async (e: React.FormEvent) => { e.preventDefault(); try { await apiFetch(`/suppliers/${id}/evaluations`, { method:'POST', json:{ ...f, deliveredPpm: f.deliveredPpm===''?null:Number(f.deliveredPpm), customerDisruptions: Number(f.customerDisruptions)||0, premiumFreightIncidents: Number(f.premiumFreightIncidents)||0, specialStatusNotifications: Number(f.specialStatusNotifications)||0, specialStatusNotes: f.specialStatusNotes||null } }); setM(false); setF({ qualityScore:3, deliveryScore:3, priceScore:3, serviceScore:3, documentationScore:3, comments:'', deliveredPpm:'', customerDisruptions:'0', premiumFreightIncidents:'0', specialStatusNotifications:'0', specialStatusNotes:'' }); await load(); } catch(e){ console.error(e); alert('Error al guardar evaluacion'); } };
   const savePlan = async (e: React.FormEvent) => { e.preventDefault(); try { await apiFetch(`/suppliers/${id}/development-plans`, { method:'POST', json:{ title: planF.title, objective: planF.objective||null, targetDate: planF.targetDate||null } }); setShowPlan(false); setPlanF({ title:'', objective:'', targetDate:'' }); await load(); } catch(e){ console.error(e); alert('Error al crear plan'); } };
   const planStatus = async (planId: string, status: string) => { try { await apiFetch(`/suppliers/development-plans/${planId}`, { method:'PATCH', json:{ status } }); await load(); } catch(e){ console.error(e); } };
@@ -51,6 +53,33 @@ export default function SupplierDetailPage() {
         <div><div className="text-gray-500">Tipo</div><div className="font-medium">{s.providerType||'—'}</div></div>
         <div><div className="text-gray-500">Ultima eval.</div><div className="font-medium">{s.lastEvaluationDate?new Date(s.lastEvaluationDate).toLocaleDateString('es-AR'):'—'}</div></div>
         <div><div className="text-gray-500">Proxima eval.</div><div className="font-medium">{s.nextEvaluationDate?new Date(s.nextEvaluationDate).toLocaleDateString('es-AR'):'—'}</div></div>
+        <div><div className="text-gray-500">EHS (ISO 45001 §8.1.4)</div><div className="font-medium">{s.ehsApproved?<span className="text-emerald-600">Cumple requisitos EHS</span>:<span className="text-gray-400">No evaluado</span>}</div></div>
+      </div>
+      {s.ehsRequirements && (
+        <div className="bg-emerald-50/50 rounded-xl border border-emerald-200 p-4">
+          <p className="text-xs font-semibold text-emerald-800 mb-1">Requisitos EHS comunicados al proveedor/contratista</p>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{s.ehsRequirements}</p>
+        </div>
+      )}
+      {/* IATF 8.4.2.4.1 — Auditorías de segunda parte */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-900">Auditorías de segunda parte <span className="text-xs font-normal text-gray-400">IATF 8.4.2.4.1</span></h3>
+          <span className="text-sm text-gray-500">{audits.length} registros</span>
+        </div>
+        {audits.length===0 ? <p className="text-sm text-gray-500">Sin auditorías vinculadas — al crear una auditoría de tipo SUPPLIER, asociá el proveedor.</p> : (
+          <ul className="divide-y divide-gray-100">
+            {audits.map(a=>(
+              <li key={a.id} className="py-2 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Link href={`/auditorias/${a.id}`} className="font-medium text-blue-600 hover:underline">{a.code} — {a.title}</Link>
+                  <p className="text-xs text-gray-500">{a.plannedStartDate?new Date(a.plannedStartDate).toLocaleDateString('es-AR'):'sin fecha'}{a.actualEndDate?` → ejecutada ${new Date(a.actualEndDate).toLocaleDateString('es-AR')}`:''}</p>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 flex-shrink-0">{a.status}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       {/* IATF 8.4.2.5 — Planes de desarrollo del proveedor */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">

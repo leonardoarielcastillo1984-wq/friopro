@@ -36,6 +36,10 @@ const createSchema = z.object({
   // IATF 8.5.6.1 — el cambio obliga a revisar PFMEA / Plan de Control / instrucciones
   requiresCoreToolsReview: z.boolean().optional(),
   coreToolsReviewNotes: z.string().optional(),
+  // IATF 8.5.6.1.1 — controles de proceso temporales/alternativos
+  usesTemporaryControls: z.boolean().optional(),
+  temporaryControlsDesc: z.string().optional(),
+  temporaryControlsEndDate: z.string().optional(),
 });
 
 // Recalcula el nivel global a partir de las columnas resumen de un registro.
@@ -132,6 +136,7 @@ export default async function gestionCambiosRoutes(app: FastifyInstance) {
           tenantId,
           nivelGlobal,
           fechaPrevista: data.fechaPrevista ? new Date(data.fechaPrevista) : null,
+          temporaryControlsEndDate: data.temporaryControlsEndDate ? new Date(data.temporaryControlsEndDate) : null,
           creadoPor: req.db.userId || null,
         },
       });
@@ -151,6 +156,7 @@ export default async function gestionCambiosRoutes(app: FastifyInstance) {
     if (data.fechaPrevista) data.fechaPrevista = new Date(data.fechaPrevista);
     if (data.fechaAprobacion) data.fechaAprobacion = new Date(data.fechaAprobacion);
     if (data.fechaCierre) data.fechaCierre = new Date(data.fechaCierre);
+    if (data.temporaryControlsEndDate) data.temporaryControlsEndDate = new Date(data.temporaryControlsEndDate);
     const cambio = await app.runWithDbContext(req, async (tx: any) => {
       const existing = await tx.gestionCambio.findFirst({ where: { id, tenantId: req.db.tenantId, deletedAt: null } });
       if (!existing) throw new Error('Cambio no encontrado');

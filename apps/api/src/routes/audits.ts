@@ -165,6 +165,8 @@ const CreateAuditSchema = z.object({
   productName: z.string().optional(),
   productionPhase: z.string().optional(),
   sampleSize: z.string().optional(),
+  // IATF 8.4.2.4.1 — auditoría de segunda parte vinculada a proveedor
+  supplierId: z.string().uuid().optional(),
 });
 
 const CreateAuditorSchema = z.object({

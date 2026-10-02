@@ -11,6 +11,8 @@ interface Supplier {
   id: string; code: string; name: string; legalName?: string; taxId?: string; email?: string; phone?: string;
   address?: string; category?: string; contactName?: string; contactPosition?: string;
   status: string; providerType?: string | null; isCritical: boolean;
+  // ISO 45001 §8.1.4 / ISO 14001 §8.1 — requisitos EHS a contratistas
+  ehsRequirements?: string | null; ehsApproved?: boolean;
   evaluationScore?: number | null; avgScore?: number | null; computedStatus?: string;
   lastEvaluationDate?: string | null; nextEvaluationDate?: string | null; notes?: string;
   createdAt: string; _count?: { evaluations: number };
@@ -255,6 +257,16 @@ export default function ProveedoresPage() {
                   </select></div>
               </div>
               <div className="flex items-center gap-2"><input type="checkbox" id="isCritical" checked={!!supplierForm.isCritical} onChange={e => setSupplierForm({...supplierForm,isCritical:e.target.checked})} className="rounded" /><label htmlFor="isCritical" className="text-sm text-gray-700">Proveedor crítico</label></div>
+              {/* ISO 45001 §8.1.4 / ISO 14001 §8.1 — contratistas y compras */}
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-emerald-800">
+                  <input type="checkbox" id="ehsApproved" checked={!!supplierForm.ehsApproved} onChange={e => setSupplierForm({...supplierForm,ehsApproved:e.target.checked})} className="rounded border-emerald-300 text-emerald-600" />
+                  Cumple requisitos EHS para operar en planta <span className="text-xs font-normal text-emerald-600">ISO 45001 §8.1.4 / 14001 §8.1</span>
+                </label>
+                <textarea value={supplierForm.ehsRequirements || ''} onChange={e => setSupplierForm({...supplierForm,ehsRequirements:e.target.value})}
+                  rows={2} className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm bg-white"
+                  placeholder="Requisitos SST/ambientales comunicados al proveedor/contratista (ART, seguro, protocolos, EPP propio...)" />
+              </div>
               <div className="flex justify-end gap-3 pt-4">
                 <button type="button" onClick={() => setShowSupplierModal(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{editingSupplier ? 'Guardar' : 'Crear'}</button>

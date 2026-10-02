@@ -1,12 +1,13 @@
 'use client';
 import { Suspense } from 'react';
-import { Shield, HardHat, Leaf, ClipboardCheck } from 'lucide-react';
+import { Shield, HardHat, Leaf, ClipboardCheck, FileSignature } from 'lucide-react';
 import PageTabs from '@/components/PageTabs';
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 const TABS = [
   { key: 'riesgos', label: 'Riesgos', icon: Shield },
   { key: 'iperc', label: 'IPERC — Peligros SST', icon: HardHat },
+  { key: 'sst', label: 'Permisos / EPP / Médicos', icon: FileSignature },
   { key: 'ambientales', label: 'Aspectos Ambientales', icon: Leaf },
   { key: 'simulacros', label: 'Simulacros', icon: ClipboardCheck },
 ];
@@ -15,6 +16,7 @@ import RiesgosContent from './_tabs/RiesgosContent';
 import IpercContent from './_tabs/IpercContent';
 import AmbientalesContent from './_tabs/AmbientalesContent';
 import SimulacrosContent from './_tabs/SimulacrosContent';
+import SstContent from './_tabs/SstContent';
 
 export default function SeguridadPage() {
   return (
@@ -29,6 +31,7 @@ export default function SeguridadPage() {
             <>
               {active === 'riesgos' && <RiesgosContent />}
               {active === 'iperc' && <IpercContent />}
+              {active === 'sst' && <SstContent />}
               {active === 'ambientales' && <AmbientalesContent />}
               {active === 'simulacros' && <SimulacrosContent />}
             </>

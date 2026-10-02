@@ -202,6 +202,8 @@ export const ncrRoutes: FastifyPluginAsync = async (app) => {
       reworkInstruction: z.string().optional().nullable(),
       reworkVerifiedAt: z.string().optional().nullable(),
       customerNotifiedAt: z.string().optional().nullable(),
+      // IATF 10.3.1 — lecciones aprendidas documentadas al cerrar
+      lessonsLearned: z.string().optional().nullable(),
     });
 
     const body = updateSchema.parse(req.body);
