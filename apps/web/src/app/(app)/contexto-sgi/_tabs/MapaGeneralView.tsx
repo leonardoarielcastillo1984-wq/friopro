@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   Search, MapPin, X, ArrowRight, ArrowDown, ArrowUp, ChevronRight, AlertTriangle,
   Target, Cog, Users, Layers, Network, FileText, Shield, BarChart3,
-  ArrowLeft, ExternalLink, ListTree, ShoppingCart,
+  ArrowLeft, ExternalLink, ListTree, ShoppingCart, PanelRightClose, PanelRightOpen,
   Truck, Package, Boxes, Wrench, Monitor, Landmark, Compass, ClipboardCheck,
   Plus, Pencil, Trash2, TrendingUp, BookOpen,
 } from 'lucide-react';
@@ -165,6 +165,8 @@ export default function MapaGeneralView({
   // Drag & drop entre bandas: id del mapa arrastrado + banda destino resaltada
   const [dragMapId, setDragMapId] = useState<string | null>(null);
   const [dropBand, setDropBand] = useState<Band | null>(null);
+  // Panel lateral "Detalle": el usuario puede ocultarlo/mostrarlo a voluntad.
+  const [showPanel, setShowPanel] = useState(true);
 
   // ── Índices derivados ────────────────────────────────────────────────────
   const byId = useMemo(() => {
@@ -949,6 +951,21 @@ export default function MapaGeneralView({
           >
             <Network className="h-3.5 w-3.5" aria-hidden /> Vínculos entre áreas
           </button>
+          <button
+            type="button"
+            onClick={() => setShowPanel(v => !v)}
+            aria-pressed={showPanel}
+            title={showPanel ? 'Ocultar panel de detalle' : 'Mostrar panel de detalle'}
+            aria-label={showPanel ? 'Ocultar panel de detalle' : 'Mostrar panel de detalle'}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              showPanel ? 'text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100' : 'text-neutral-500 border-neutral-200 hover:bg-neutral-50'
+            }`}
+          >
+            {showPanel
+              ? <PanelRightClose className="h-3.5 w-3.5" aria-hidden />
+              : <PanelRightOpen className="h-3.5 w-3.5" aria-hidden />}
+            Detalle
+          </button>
         </div>
 
         {maps.length === 0 ? (
@@ -1067,7 +1084,8 @@ export default function MapaGeneralView({
         )}
       </div>
 
-      {/* Panel lateral */}
+      {/* Panel lateral (ocultable desde la toolbar) */}
+      {showPanel && (
       <aside
         aria-label="Detalle de selección"
         className={`bg-white border border-neutral-200 rounded-xl shadow-sm flex-shrink-0 overflow-hidden flex flex-col w-80 max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:shadow-2xl max-lg:rounded-none max-lg:border-0 ${!panelOpen ? 'max-lg:hidden' : ''}`}
@@ -1082,6 +1100,7 @@ export default function MapaGeneralView({
         </div>
         <div className="flex-1 overflow-y-auto">{Panel()}</div>
       </aside>
+      )}
     </div>
   );
 }
