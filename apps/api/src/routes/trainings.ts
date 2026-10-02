@@ -1,8 +1,42 @@
 import { isSuperAdmin, getEffectiveTenantId } from '../utils/tenant-bypass.js';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { randomBytes } from 'crypto';
+import { sendEmail, notificationEmail } from '../services/email.js';
 
 const FEATURE_KEY = 'capacitaciones';
+
+const APP_URL = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+type QuizQuestion = { question: string; options: string[]; correct: number };
+
+// Preguntas por defecto cuando la capacitación no tiene quiz propio configurado
+function defaultQuizQuestions(title: string, category: string): QuizQuestion[] {
+  return [
+    { question: `¿Cuál es el objetivo principal de la capacitación "${title}"?`, options: ['Conocer los procedimientos de la empresa', 'Desarrollar competencias específicas', 'Cumplir con requisitos normativos', 'Mejorar el desempeño laboral'], correct: 1 },
+    { question: '¿Qué norma ISO establece los requisitos para la competencia del personal?', options: ['ISO 14001', 'ISO 9001:2015', 'ISO 45001', 'ISO 27001'], correct: 1 },
+    { question: '¿Cuándo debe evaluarse la eficacia de una capacitación según ISO 9001:2015?', options: ['Inmediatamente después', 'A los 30-90 días', 'Al final del año', 'No es necesario'], correct: 1 },
+    { question: `¿Qué se debe documentar según el contenido de "${category}"?`, options: ['Solo la asistencia', 'Objetivos, contenido y evaluación', 'Nada específico', 'Solo el instructor'], correct: 1 },
+    { question: '¿Quién es responsable de verificar la aplicación de conocimientos post-capacitación?', options: ['El empleado', 'RRHH o Supervisor', 'El instructor', 'Auditor externo'], correct: 1 },
+  ];
+}
+
+// Resuelve emails de asistentes: employeeId → Employee.email, sino user.email
+async function resolveAttendeeEmails(app: any, tenantId: string, attendees: any[]) {
+  const employeeIds = attendees.map(a => a.employeeId).filter(Boolean);
+  const employees = employeeIds.length
+    ? await app.prisma.employee.findMany({ where: { id: { in: employeeIds }, tenantId }, select: { id: true, email: true, firstName: true, lastName: true } })
+    : [];
+  const empMap = new Map(employees.map((e: any) => [e.id, e]));
+  return attendees.map(a => {
+    const emp: any = a.employeeId ? empMap.get(a.employeeId) : null;
+    return {
+      ...a,
+      email: emp?.email || a.user?.email || null,
+      displayName: emp ? `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim() || emp.email : (a.user?.email ?? 'Asistente'),
+    };
+  });
+}
 
 async function generateTrainingCode(tx: any, tenantId: string): Promise<string> {
   const year = new Date().getFullYear();
@@ -88,45 +122,240 @@ if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de ten
 
     if (!training) return reply.code(404).send({ error: 'Training not found' });
 
-    const questions = [
-      {
-        id: 'q1',
-        question: `¿Cuál es el objetivo principal de la capacitación "${training.title}"?`,
-        options: [
-          'Conocer los procedimientos de la empresa',
-          'Desarrollar competencias específicas',
-          'Cumplir con requisitos normativos',
-          'Mejorar el desempeño laboral',
-        ],
-        correctAnswer: 1,
-      },
-      {
-        id: 'q2',
-        question: '¿Qué norma ISO establece los requisitos para la competencia del personal?',
-        options: ['ISO 14001', 'ISO 9001:2015', 'ISO 45001', 'ISO 27001'],
-        correctAnswer: 1,
-      },
-      {
-        id: 'q3',
-        question: '¿Cuándo debe evaluarse la eficacia de una capacitación según ISO 9001:2015?',
-        options: ['Inmediatamente después', 'A los 30-90 días', 'Al final del año', 'No es necesario'],
-        correctAnswer: 1,
-      },
-      {
-        id: 'q4',
-        question: `¿Qué se debe documentar según el contenido de "${training.category}"?`,
-        options: ['Solo la asistencia', 'Objetivos, contenido y evaluación', 'Nada específico', 'Solo el instructor'],
-        correctAnswer: 1,
-      },
-      {
-        id: 'q5',
-        question: '¿Quién es responsable de verificar la aplicación de conocimientos post-capacitación?',
-        options: ['El empleado', 'RRHH o Supervisor', 'El instructor', 'Auditor externo'],
-        correctAnswer: 1,
-      },
-    ];
+    const custom = Array.isArray((training as any).quizQuestions) ? (training as any).quizQuestions as QuizQuestion[] : null;
+    const source = custom?.length ? custom : defaultQuizQuestions(training.title, training.category);
+    // Formato histórico del frontend: { id, question, options, correctAnswer }
+    const questions = source.map((q, i) => ({ id: `q${i + 1}`, question: q.question, options: q.options, correctAnswer: q.correct }));
 
     return reply.send({ questions, training: { title: training.title, category: training.category } });
+  });
+
+  // PUT /trainings/:id/quiz-config — Guardar cuestionario custom + % aprobación
+  app.put('/:id/quiz-config', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const body = z.object({
+      questions: z.array(z.object({
+        question: z.string().min(3).max(500),
+        options: z.array(z.string().min(1).max(300)).min(2).max(6),
+        correct: z.number().int().min(0),
+      })).min(1).max(30).nullable(),
+      minScore: z.number().int().min(1).max(100).optional(),
+    }).parse(req.body);
+
+    for (const q of body.questions ?? []) {
+      if (q.correct >= q.options.length) return reply.code(400).send({ error: 'La respuesta correcta debe ser una opción válida' });
+    }
+
+    const existing = await app.prisma.sgiTraining.findFirst({ where: { id, tenantId, deletedAt: null } });
+    if (!existing) return reply.code(404).send({ error: 'Training not found' });
+
+    const training = await app.prisma.sgiTraining.update({
+      where: { id },
+      data: {
+        quizQuestions: body.questions ?? undefined,
+        ...(body.minScore != null ? { quizMinScore: body.minScore } : {}),
+      },
+    });
+    return reply.send({ training });
+  });
+
+  // POST /trainings/:id/send-material — Enviar material didáctico por mail (link con acuse)
+  app.post('/:id/send-material', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const body = z.object({ materialUrl: z.string().url().optional() }).parse(req.body ?? {});
+
+    const existing = await app.prisma.sgiTraining.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: { attendees: { include: { user: { select: { email: true } } } } },
+    });
+    if (!existing) return reply.code(404).send({ error: 'Training not found' });
+
+    const materialUrl = body.materialUrl || existing.materialUrl;
+    if (!materialUrl) return reply.code(400).send({ error: 'La capacitación no tiene materialUrl — indicá el enlace del material' });
+    if (body.materialUrl && body.materialUrl !== existing.materialUrl) {
+      await app.prisma.sgiTraining.update({ where: { id }, data: { materialUrl: body.materialUrl } });
+    }
+    if (!existing.attendees.length) return reply.code(400).send({ error: 'La capacitación no tiene asistentes' });
+
+    const attendees = await resolveAttendeeEmails(app, tenantId, existing.attendees);
+    let sent = 0;
+    const skipped: string[] = [];
+    for (const a of attendees) {
+      if (!a.email) { skipped.push(a.displayName); continue; }
+      const token = a.materialToken ?? randomBytes(24).toString('hex');
+      const link = `${APP_URL}/capacitacion-doc/${token}`;
+      const res = await sendEmail(notificationEmail({
+        userEmail: a.email,
+        title: `Material de capacitación: ${existing.title}`,
+        message: `Se te asignó material de lectura de la capacitación <strong>${existing.title}</strong>. Al abrir el enlace y confirmar la lectura quedará registrado tu acuse como evidencia (ISO 9001 §7.2/§7.3 / IATF 16949).`,
+        actionLabel: 'Ver material y confirmar lectura',
+        actionUrl: link,
+        type: 'info',
+      }));
+      if (res.success) {
+        sent++;
+        await app.prisma.sgiTrainingAttendee.update({
+          where: { id: a.id },
+          data: { materialToken: token, materialSentAt: new Date() },
+        });
+      } else {
+        skipped.push(`${a.displayName} (envío falló)`);
+      }
+    }
+    return reply.send({ sent, skipped, total: attendees.length, materialUrl });
+  });
+
+  // POST /trainings/:id/send-quiz — Enviar evaluación de aprendizaje por mail
+  app.post('/:id/send-quiz', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const existing = await app.prisma.sgiTraining.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      include: { attendees: { include: { user: { select: { email: true } } } } },
+    });
+    if (!existing) return reply.code(404).send({ error: 'Training not found' });
+    if (!existing.attendees.length) return reply.code(400).send({ error: 'La capacitación no tiene asistentes' });
+
+    const attendees = await resolveAttendeeEmails(app, tenantId, existing.attendees);
+    let sent = 0;
+    const skipped: string[] = [];
+    for (const a of attendees) {
+      if (!a.email) { skipped.push(a.displayName); continue; }
+      if (a.quizCompletedAt) { skipped.push(`${a.displayName} (ya evaluado)`); continue; }
+      const token = a.quizToken ?? randomBytes(24).toString('hex');
+      const link = `${APP_URL}/capacitacion-quiz/${token}`;
+      const res = await sendEmail(notificationEmail({
+        userEmail: a.email,
+        title: `Evaluación de aprendizaje: ${existing.title}`,
+        message: `Completá la evaluación de la capacitación <strong>${existing.title}</strong> (aprobación ≥ ${existing.quizMinScore}%). Tu resultado queda registrado como evidencia de competencia — IATF 16949 §7.2.2 / ISO 9001 §7.2 d).`,
+        actionLabel: 'Responder evaluación',
+        actionUrl: link,
+        type: 'warning',
+      }));
+      if (res.success) {
+        sent++;
+        await app.prisma.sgiTrainingAttendee.update({
+          where: { id: a.id },
+          data: { quizToken: token, quizSentAt: new Date() },
+        });
+      } else {
+        skipped.push(`${a.displayName} (envío falló)`);
+      }
+    }
+    return reply.send({ sent, skipped, total: attendees.length });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PÚBLICO — material didáctico con acuse de lectura (sin auth, token único)
+  // ════════════════════════════════════════════════════════════════════════
+  app.get('/public/material/:token', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const attendee = await app.prisma.sgiTrainingAttendee.findFirst({
+      where: { materialToken: token },
+      include: { training: { select: { id: true, title: true, code: true, materialUrl: true, tenantId: true, deletedAt: true } } },
+    });
+    if (!attendee?.training || attendee.training.deletedAt) return reply.code(404).send({ error: 'Enlace inválido o expirado' });
+
+    let displayName: string | null = null;
+    if (attendee.employeeId) {
+      const emp = await app.prisma.employee.findFirst({ where: { id: attendee.employeeId }, select: { firstName: true, lastName: true } });
+      displayName = emp ? `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim() : null;
+    }
+
+    return reply.send({
+      training: { title: attendee.training.title, code: attendee.training.code },
+      materialUrl: attendee.training.materialUrl,
+      attendeeName: displayName,
+      materialSentAt: attendee.materialSentAt,
+      materialReadAt: attendee.materialReadAt,
+      alreadyRead: !!attendee.materialReadAt,
+    });
+  });
+
+  app.post('/public/material/:token/read', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const attendee = await app.prisma.sgiTrainingAttendee.findFirst({
+      where: { materialToken: token },
+      include: { training: { select: { id: true, deletedAt: true } } },
+    });
+    if (!attendee?.training || attendee.training.deletedAt) return reply.code(404).send({ error: 'Enlace inválido o expirado' });
+
+    const readAt = attendee.materialReadAt ?? new Date();
+    if (!attendee.materialReadAt) {
+      await app.prisma.sgiTrainingAttendee.update({ where: { id: attendee.id }, data: { materialReadAt: readAt } });
+    }
+    return reply.send({ ok: true, readAt });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PÚBLICO — evaluación de aprendizaje (quiz por mail, sin auth)
+  // ════════════════════════════════════════════════════════════════════════
+  app.get('/public/quiz/:token', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const attendee = await app.prisma.sgiTrainingAttendee.findFirst({
+      where: { quizToken: token },
+      include: { training: { select: { title: true, code: true, category: true, quizQuestions: true, quizMinScore: true, deletedAt: true } } },
+    });
+    if (!attendee?.training || (attendee.training as any).deletedAt) return reply.code(404).send({ error: 'Enlace inválido o expirado' });
+
+    let displayName: string | null = null;
+    if (attendee.employeeId) {
+      const emp = await app.prisma.employee.findFirst({ where: { id: attendee.employeeId }, select: { firstName: true, lastName: true } });
+      displayName = emp ? `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim() : null;
+    }
+
+    const custom = Array.isArray(attendee.training.quizQuestions) ? attendee.training.quizQuestions as QuizQuestion[] : null;
+    const source = custom?.length ? custom : defaultQuizQuestions(attendee.training.title, attendee.training.category);
+    // Nunca exponer la respuesta correcta al cliente
+    const questions = source.map((q, i) => ({ id: `q${i}`, question: q.question, options: q.options }));
+
+    return reply.send({
+      training: { title: attendee.training.title, code: attendee.training.code },
+      attendeeName: displayName,
+      minScore: attendee.training.quizMinScore,
+      questions,
+      alreadyCompleted: !!attendee.quizCompletedAt,
+      result: attendee.quizCompletedAt ? { score: attendee.quizScore, passed: attendee.quizPassed, completedAt: attendee.quizCompletedAt } : null,
+    });
+  });
+
+  app.post('/public/quiz/:token/submit', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as any;
+    const body = z.object({ answers: z.array(z.number().int().min(0)).min(1) }).safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Respuestas inválidas' });
+
+    const attendee = await app.prisma.sgiTrainingAttendee.findFirst({
+      where: { quizToken: token },
+      include: { training: { select: { title: true, category: true, quizQuestions: true, quizMinScore: true, deletedAt: true } } },
+    });
+    if (!attendee?.training || (attendee.training as any).deletedAt) return reply.code(404).send({ error: 'Enlace inválido o expirado' });
+    if (attendee.quizCompletedAt) {
+      return reply.send({ ok: true, alreadyCompleted: true, score: attendee.quizScore, passed: attendee.quizPassed, minScore: attendee.training.quizMinScore });
+    }
+
+    const custom = Array.isArray(attendee.training.quizQuestions) ? attendee.training.quizQuestions as QuizQuestion[] : null;
+    const source = custom?.length ? custom : defaultQuizQuestions(attendee.training.title, attendee.training.category);
+    if (body.data.answers.length !== source.length) {
+      return reply.code(400).send({ error: `Debés responder las ${source.length} preguntas` });
+    }
+
+    const detail = source.map((q, i) => ({ questionId: `q${i}`, selected: body.data.answers[i], isCorrect: body.data.answers[i] === q.correct }));
+    const correct = detail.filter(d => d.isCorrect).length;
+    const score = Math.round((correct / source.length) * 100);
+    const passed = score >= attendee.training.quizMinScore;
+
+    await app.prisma.sgiTrainingAttendee.update({
+      where: { id: attendee.id },
+      data: { quizScore: score, quizPassed: passed, quizCompletedAt: new Date(), quizAnswers: detail },
+    });
+
+    return reply.send({ ok: true, score, passed, minScore: attendee.training.quizMinScore, correct, total: source.length });
   });
 
   // POST /trainings/:id/quiz — Evaluación de aprendizaje

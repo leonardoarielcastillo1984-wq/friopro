@@ -488,6 +488,7 @@ model Tenant {
   // Flota 360 — Hub del chofer (QR público)
   flotaIncidentes           FlotaIncidente[]
   flotaDocumentos           FlotaDocumento[]
+  flotaDocumentoLecturas    FlotaDocumentoLectura[]
   servicioRegistros         ServicioRegistro[]
   flotaControlesPreServicio FlotaControlPreServicio[]
 
@@ -1089,6 +1090,10 @@ model SgiTraining {
   materialUrl         String? // Material didáctico
   certificateTemplate String? // Template de certificado
 
+  // Evaluación de aprendizaje enviada por mail (IATF 16949 7.2.2 / ISO 9001 7.2 d)
+  quizQuestions Json? // [{ question, options[], correct }] — si null, se usan preguntas por defecto
+  quizMinScore  Int   @default(70) // % mínimo para aprobar
+
   durationHours Float
   scheduledDate DateTime? @db.Timestamptz
   // Gestión del ciclo de vida de la capacitación
@@ -1152,10 +1157,18 @@ model SgiTrainingAttendee {
   attendanceMarkedAt   DateTime? @db.Timestamptz
   attendanceMarkedById String?   @db.Uuid
 
+  // Envío de material didáctico por mail con acuse de lectura (evidencia §7.2/§7.3)
+  materialToken   String?   @unique
+  materialSentAt  DateTime? @db.Timestamptz
+  materialReadAt  DateTime? @db.Timestamptz // acuse de lectura — el asistente confirmó
+
   // Evaluación de aprendizaje (Quiz)
   quizScore       Int?
   quizPassed      Boolean   @default(false)
   quizCompletedAt DateTime? @db.Timestamptz
+  quizToken       String?   @unique
+  quizSentAt      DateTime? @db.Timestamptz
+  quizAnswers     Json?     // [{ questionId, selected, isCorrect }]
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
@@ -8972,9 +8985,36 @@ model FlotaDocumento {
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
+  lecturas FlotaDocumentoLectura[]
+
   @@index([tenantId])
   @@index([vehiculoId])
   @@map("flota_documentos")
+}
+
+// Acuse de lectura: el chofer confirmó que vio/leyó un documento desde el hub QR.
+// Sirve como evidencia (SGI / ISO 39001 / políticas internas).
+model FlotaDocumentoLectura {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  documentoId String         @db.Uuid
+  documento   FlotaDocumento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+
+  // Unidad donde escaneó el QR cuando leyó (null = desde listado general)
+  vehiculoId String? @db.Uuid
+
+  // Chofer identificado por PIN (null si no se identificó — igual queda el acuse con nombre)
+  conductorId     String? @db.Uuid
+  conductorNombre String
+
+  viewedAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([documentoId])
+  @@index([conductorId])
+  @@map("flota_documento_lecturas")
 }
 
 // Registro de servicio del chofer: toma de servicio, fin de servicio, nota de bitácora

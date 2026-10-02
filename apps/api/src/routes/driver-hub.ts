@@ -162,6 +162,37 @@ export async function driverHubRoutes(app: FastifyInstance) {
       orderBy: [{ categoria: 'asc' }, { createdAt: 'desc' }],
     });
 
+    // Acuses de lectura: si el chofer se identificó (?conductorId=) marcamos
+    // qué docs le faltan por leer → el frontend muestra banner "docs nuevos".
+    const { conductorId, nombre } = req.query as any;
+    let pendientes: string[] = [];
+    if (documentos.length) {
+      const lecturas = await prisma().flotaDocumentoLectura.findMany({
+        where: {
+          tenantId: qr.tenantId,
+          documentoId: { in: documentos.map((d: any) => d.id) },
+          ...(conductorId ? { conductorId } : {}),
+        },
+        select: { documentoId: true },
+      }).catch(() => []);
+      const leidos = new Set(lecturas.map((l: any) => l.documentoId));
+      if (conductorId) {
+        // Identificado: pendiente = este chofer no lo leyó
+        pendientes = documentos.filter((d: any) => !leidos.has(d.id)).map((d: any) => d.id);
+      } else if (nombre) {
+        // Sin identificar pero con nombre libre: dedup por nombre (case-insensitive)
+        const lecturasNombre = await prisma().flotaDocumentoLectura.findMany({
+          where: { tenantId: qr.tenantId, documentoId: { in: documentos.map((d: any) => d.id) }, conductorNombre: { equals: String(nombre).trim(), mode: 'insensitive' } },
+          select: { documentoId: true },
+        }).catch(() => []);
+        const leidosNombre = new Set(lecturasNombre.map((l: any) => l.documentoId));
+        pendientes = documentos.filter((d: any) => !leidosNombre.has(d.id)).map((d: any) => d.id);
+      } else {
+        // Anónimo: pendiente = ningún chofer lo leyó todavía (doc "nuevo" para la flota)
+        pendientes = documentos.filter((d: any) => !leidos.has(d.id)).map((d: any) => d.id);
+      }
+    }
+
     // Vencimientos de la unidad (VTV, seguro, habilitación…) — documentación propia
     const vencimientos = vehiculo
       ? await prisma().vencimientoDocumento.findMany({
@@ -170,7 +201,44 @@ export async function driverHubRoutes(app: FastifyInstance) {
         })
       : [];
 
-    return reply.send({ documentos, vencimientos });
+    return reply.send({ documentos, vencimientos, pendientes });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // PÚBLICO — acuse de lectura de un documento (evidencia para la empresa)
+  // ════════════════════════════════════════════════════════════════════════
+  app.post('/public/:token/documentos/:docId/visto', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token, docId } = req.params as any;
+    const ctx = await resolveHubContext(prisma(), token);
+    if (!ctx) return reply.code(404).send({ error: 'QR no encontrado o inactivo' });
+    const { qr, vehiculo } = ctx;
+
+    const schema = z.object({
+      conductorId: z.string().uuid().optional(),
+      conductorNombre: z.string().min(1).max(200),
+    });
+    const body = schema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Datos inválidos' });
+
+    const doc = await prisma().flotaDocumento.findFirst({ where: { id: docId, tenantId: qr.tenantId } });
+    if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
+
+    // Idempotente: un acuse por documento+chofer (o por nombre si no está identificado)
+    const existente = body.data.conductorId
+      ? await prisma().flotaDocumentoLectura.findFirst({ where: { documentoId: doc.id, conductorId: body.data.conductorId } })
+      : await prisma().flotaDocumentoLectura.findFirst({ where: { documentoId: doc.id, conductorNombre: { equals: body.data.conductorNombre.trim(), mode: 'insensitive' } } });
+    if (existente) return reply.send({ ok: true, alreadyRead: true, viewedAt: existente.viewedAt });
+
+    const lectura = await prisma().flotaDocumentoLectura.create({
+      data: {
+        tenantId: qr.tenantId,
+        documentoId: doc.id,
+        vehiculoId: vehiculo?.id ?? null,
+        conductorId: body.data.conductorId ?? null,
+        conductorNombre: body.data.conductorNombre.trim(),
+      },
+    });
+    return reply.code(201).send({ ok: true, viewedAt: lectura.viewedAt });
   });
 
   // ════════════════════════════════════════════════════════════════════════
@@ -788,10 +856,28 @@ export async function driverHubRoutes(app: FastifyInstance) {
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
     const documentos = await prisma().flotaDocumento.findMany({
       where: { tenantId },
-      include: { vehiculo: { select: { id: true, dominio: true } } },
+      include: {
+        vehiculo: { select: { id: true, dominio: true } },
+        lecturas: { orderBy: { viewedAt: 'desc' }, take: 50 },
+      },
       orderBy: [{ categoria: 'asc' }, { createdAt: 'desc' }],
     });
     return reply.send({ documentos });
+  });
+
+  // EMPRESA — acuses de lectura de un documento (quién lo vio y cuándo)
+  app.get('/documentos/:id/lecturas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const doc = await prisma().flotaDocumento.findFirst({ where: { id, tenantId }, select: { id: true, titulo: true } });
+    if (!doc) return reply.code(404).send({ error: 'Documento no encontrado' });
+    const lecturas = await prisma().flotaDocumentoLectura.findMany({
+      where: { documentoId: id, tenantId },
+      orderBy: { viewedAt: 'desc' },
+      take: 200,
+    });
+    return reply.send({ documento: doc, lecturas });
   });
 
   app.post('/documentos/upload', async (req: FastifyRequest, reply: FastifyReply) => {

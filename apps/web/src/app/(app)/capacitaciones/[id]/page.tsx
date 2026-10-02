@@ -8,6 +8,7 @@ import {
   ArrowLeft, Edit3, Trash2, AlertCircle, GraduationCap,
   Calendar, Clock, Users, MapPin, User, Shield,
   CheckCircle2, PlayCircle, XCircle, UserPlus, X, Star,
+  Mail, ClipboardList, Eye, Send, Plus,
 } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -30,6 +31,9 @@ type Attendee = {
   attended: boolean;
   signatureData?: string | null;
   attendanceMarkedAt?: string | null;
+  materialSentAt?: string | null;
+  materialReadAt?: string | null;
+  quizSentAt?: string | null;
   quizScore?: number | null;
   quizPassed?: boolean;
   quizCompletedAt?: string | null;
@@ -41,6 +45,9 @@ type TrainingDetail = Training & {
   completedDate?: string | null;
   instructor?: string | null;
   location?: string | null;
+  materialUrl?: string | null;
+  quizQuestions?: { question: string; options: string[]; correct: number }[] | null;
+  quizMinScore?: number;
 };
 
 export default function TrainingDetailPage() {
@@ -66,6 +73,13 @@ export default function TrainingDetailPage() {
   const [showAttendanceSheet, setShowAttendanceSheet] = useState(false);
   const [quizQuestions, setQuizQuestions] = useState<any[]>([]);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
+  const [showSendMaterial, setShowSendMaterial] = useState(false);
+  const [materialUrlInput, setMaterialUrlInput] = useState('');
+  const [showQuizConfig, setShowQuizConfig] = useState(false);
+  const [quizCfgQuestions, setQuizCfgQuestions] = useState<{ question: string; options: string[]; correct: number }[]>([]);
+  const [quizCfgMinScore, setQuizCfgMinScore] = useState(70);
+  const [sendingMail, setSendingMail] = useState<'material' | 'quiz' | null>(null);
+  const [mailResult, setMailResult] = useState<string | null>(null);
   const [rescheduleForm, setRescheduleForm] = useState({ newDate: '', reason: '' });
   const [cancelReason, setCancelReason] = useState('');
   const [completionDate, setCompletionDate] = useState('');
@@ -78,6 +92,69 @@ export default function TrainingDetailPage() {
     comments: '',
   });
   const [submittingQuiz, setSubmittingQuiz] = useState(false);
+
+  async function handleSendMaterial() {
+    setSendingMail('material');
+    setMailResult(null);
+    setError(null);
+    try {
+      const res = await apiFetch<{ sent: number; skipped: string[]; total: number }>(`/trainings/${id}/send-material`, {
+        method: 'POST',
+        json: materialUrlInput.trim() ? { materialUrl: materialUrlInput.trim() } : {},
+      });
+      setMailResult(`Material enviado a ${res.sent}/${res.total} asistentes${res.skipped.length ? ` — sin enviar: ${res.skipped.join(', ')}` : ''}`);
+      setShowSendMaterial(false);
+      await loadTraining();
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al enviar material');
+    } finally {
+      setSendingMail(null);
+    }
+  }
+
+  async function handleSendQuiz() {
+    setSendingMail('quiz');
+    setMailResult(null);
+    setError(null);
+    try {
+      const res = await apiFetch<{ sent: number; skipped: string[]; total: number }>(`/trainings/${id}/send-quiz`, {
+        method: 'POST',
+        json: {},
+      });
+      setMailResult(`Evaluación enviada a ${res.sent}/${res.total} asistentes${res.skipped.length ? ` — omitidos: ${res.skipped.join(', ')}` : ''}`);
+      await loadTraining();
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al enviar evaluación');
+    } finally {
+      setSendingMail(null);
+    }
+  }
+
+  async function handleSaveQuizConfig() {
+    setError(null);
+    try {
+      const qs = quizCfgQuestions.filter(q => q.question.trim() && q.options.every(o => o.trim()));
+      await apiFetch(`/trainings/${id}/quiz-config`, {
+        method: 'PUT',
+        json: { questions: qs.length ? qs : null, minScore: quizCfgMinScore },
+      });
+      setShowQuizConfig(false);
+      setMailResult('Cuestionario de evaluación guardado');
+      await loadTraining();
+    } catch (err: any) {
+      setError(err?.message ?? 'Error al guardar el cuestionario');
+    }
+  }
+
+  function openQuizConfig() {
+    setQuizCfgQuestions(
+      training?.quizQuestions?.length
+        ? training.quizQuestions.map(q => ({ ...q, options: [...q.options] }))
+        : [{ question: '', options: ['', '', '', ''], correct: 0 }]
+    );
+    setQuizCfgMinScore(training?.quizMinScore ?? 70);
+    setShowQuizConfig(true);
+  }
   const [editForm, setEditForm] = useState({
     status: '',
     instructor: '',
@@ -355,6 +432,29 @@ export default function TrainingDetailPage() {
               </button>
             </>
           )}
+          <button
+            onClick={() => { setMaterialUrlInput(training.materialUrl || ''); setShowSendMaterial(true); }}
+            disabled={attendees.length === 0 || sendingMail !== null}
+            className="flex items-center gap-1.5 rounded-lg bg-cyan-100 px-3 py-2 text-sm text-cyan-700 hover:bg-cyan-200 disabled:opacity-50"
+            title="Enviar material didáctico por mail con acuse de lectura"
+          >
+            <Mail className="h-4 w-4" /> {sendingMail === 'material' ? 'Enviando…' : 'Material'}
+          </button>
+          <button
+            onClick={handleSendQuiz}
+            disabled={attendees.length === 0 || sendingMail !== null}
+            className="flex items-center gap-1.5 rounded-lg bg-purple-100 px-3 py-2 text-sm text-purple-700 hover:bg-purple-200 disabled:opacity-50"
+            title="Enviar evaluación de aprendizaje por mail"
+          >
+            <Send className="h-4 w-4" /> {sendingMail === 'quiz' ? 'Enviando…' : 'Evaluación'}
+          </button>
+          <button
+            onClick={openQuizConfig}
+            className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-50"
+            title="Configurar preguntas del cuestionario de evaluación"
+          >
+            <ClipboardList className="h-4 w-4" /> Quiz
+          </button>
           <button 
             onClick={() => setShowAttendanceSheet(true)}
             className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-50"
@@ -379,6 +479,11 @@ export default function TrainingDetailPage() {
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
+        </div>
+      )}
+      {mailResult && (
+        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> {mailResult}
         </div>
       )}
 
@@ -515,10 +620,25 @@ export default function TrainingDetailPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* Acuse de lectura del material */}
+                  {a.materialReadAt ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700 inline-flex items-center gap-1" title={`Leyó el material el ${new Date(a.materialReadAt).toLocaleString('es-AR')}`}>
+                      <Eye className="h-3 w-3" /> Leído {new Date(a.materialReadAt).toLocaleDateString('es-AR')}
+                    </span>
+                  ) : a.materialSentAt ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500" title={`Material enviado el ${new Date(a.materialSentAt).toLocaleString('es-AR')} — sin acuse`}>
+                      Material sin leer
+                    </span>
+                  ) : null}
+
                   {/* Quiz Status */}
                   {a.quizCompletedAt ? (
                     <span className={`text-xs px-2 py-0.5 rounded-full ${a.quizPassed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                       {a.quizPassed ? '✓ Quiz' : '✗ Quiz'} {a.quizScore}%
+                    </span>
+                  ) : a.quizSentAt ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-600" title={`Evaluación enviada el ${new Date(a.quizSentAt).toLocaleString('es-AR')} — pendiente`}>
+                      Quiz enviado
                     </span>
                   ) : (
                     <button 
@@ -958,6 +1078,113 @@ export default function TrainingDetailPage() {
                   <p>Documento controlado - No. de revisión: 1.0</p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Material Modal */}
+      {showSendMaterial && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full">
+            <div className="p-4 border-b border-neutral-200">
+              <h3 className="font-semibold text-neutral-900 flex items-center gap-2"><Mail className="h-4 w-4 text-cyan-600" /> Enviar material didáctico</h3>
+              <p className="text-sm text-neutral-500">Se envía un mail a cada asistente con un enlace único que registra el acuse de lectura (evidencia ISO 9001 §7.2 / IATF).</p>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">URL del material *</label>
+                <input
+                  type="url"
+                  value={materialUrlInput}
+                  onChange={(e) => setMaterialUrlInput(e.target.value)}
+                  placeholder="https://… (PDF, Drive, intranet)"
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-neutral-400 mt-1">El asistente abre el material y confirma la lectura desde el enlace del mail.</p>
+              </div>
+              <p className="text-xs text-neutral-500">Destinatarios: {attendees.length} asistente{attendees.length !== 1 ? 's' : ''}</p>
+            </div>
+            <div className="p-4 border-t border-neutral-200 flex justify-end gap-2">
+              <button onClick={() => setShowSendMaterial(false)} className="px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-100 rounded-lg">Cancelar</button>
+              <button
+                onClick={handleSendMaterial}
+                disabled={sendingMail === 'material' || !materialUrlInput.trim()}
+                className="px-4 py-2 bg-cyan-600 text-white text-sm rounded-lg hover:bg-cyan-700 disabled:opacity-50"
+              >
+                {sendingMail === 'material' ? 'Enviando…' : 'Enviar material'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quiz Config Modal */}
+      {showQuizConfig && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="p-4 border-b border-neutral-200 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-neutral-900 flex items-center gap-2"><ClipboardList className="h-4 w-4 text-purple-600" /> Cuestionario de evaluación</h3>
+                <p className="text-sm text-neutral-500">Preguntas que se envían por mail (IATF 16949 §7.2.2). Vacío = set genérico por defecto.</p>
+              </div>
+              <button onClick={() => setShowQuizConfig(false)} className="p-1 hover:bg-neutral-100 rounded-lg"><X className="h-5 w-5 text-neutral-500" /></button>
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto space-y-4">
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-neutral-700">% mínimo de aprobación</label>
+                <input
+                  type="number" min={1} max={100}
+                  value={quizCfgMinScore}
+                  onChange={(e) => setQuizCfgMinScore(Number(e.target.value))}
+                  className="w-20 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              {quizCfgQuestions.map((q, qi) => (
+                <div key={qi} className="border border-neutral-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-neutral-500">Pregunta {qi + 1}</span>
+                    {quizCfgQuestions.length > 1 && (
+                      <button onClick={() => setQuizCfgQuestions(quizCfgQuestions.filter((_, i) => i !== qi))} className="text-red-400 hover:text-red-600 text-xs">Quitar</button>
+                    )}
+                  </div>
+                  <input
+                    value={q.question}
+                    onChange={(e) => setQuizCfgQuestions(quizCfgQuestions.map((x, i) => i === qi ? { ...x, question: e.target.value } : x))}
+                    placeholder="Texto de la pregunta"
+                    className="w-full rounded-lg border border-neutral-300 px-2.5 py-1.5 text-sm"
+                  />
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {q.options.map((opt, oi) => (
+                      <div key={oi} className="flex items-center gap-2">
+                        <input
+                          type="radio" name={`cfg-correct-${qi}`}
+                          checked={q.correct === oi}
+                          onChange={() => setQuizCfgQuestions(quizCfgQuestions.map((x, i) => i === qi ? { ...x, correct: oi } : x))}
+                          title="Marcar como respuesta correcta"
+                        />
+                        <input
+                          value={opt}
+                          onChange={(e) => setQuizCfgQuestions(quizCfgQuestions.map((x, i) => i === qi ? { ...x, options: x.options.map((o, j) => j === oi ? e.target.value : o) } : x))}
+                          placeholder={`Opción ${oi + 1}`}
+                          className="flex-1 rounded-lg border border-neutral-300 px-2.5 py-1 text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-neutral-400">◉ = respuesta correcta</p>
+                </div>
+              ))}
+              <button
+                onClick={() => setQuizCfgQuestions([...quizCfgQuestions, { question: '', options: ['', '', '', ''], correct: 0 }])}
+                className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+              >
+                <Plus className="h-4 w-4" /> Agregar pregunta
+              </button>
+            </div>
+            <div className="p-4 border-t border-neutral-200 flex justify-end gap-2">
+              <button onClick={() => setShowQuizConfig(false)} className="px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-100 rounded-lg">Cancelar</button>
+              <button onClick={handleSaveQuizConfig} className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">Guardar cuestionario</button>
             </div>
           </div>
         </div>

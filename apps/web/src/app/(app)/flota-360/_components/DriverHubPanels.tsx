@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { FileText, Plus, X, Trash2, Upload, AlertTriangle, NotebookPen, MapPin, HeartPulse, CheckCircle2, XCircle, Download, Settings2, ShieldCheck, KeyRound, RefreshCw } from 'lucide-react';
+import { FileText, Plus, X, Trash2, Upload, AlertTriangle, NotebookPen, MapPin, HeartPulse, CheckCircle2, XCircle, Download, Settings2, ShieldCheck, KeyRound, RefreshCw, Eye } from 'lucide-react';
 
 const CAT_L: Record<string, string> = { SEGURIDAD_HIGIENE: 'Seguridad e higiene', COMUNICADO: 'Comunicado', DOCUMENTO_UNIDAD: 'Doc. de unidad', GENERAL: 'General' };
 const CAT_COLOR: Record<string, string> = { SEGURIDAD_HIGIENE: 'bg-red-50 text-red-700', COMUNICADO: 'bg-blue-50 text-blue-700', DOCUMENTO_UNIDAD: 'bg-cyan-50 text-cyan-700', GENERAL: 'bg-neutral-100 text-neutral-600' };
@@ -33,6 +33,19 @@ export function DocsChoferPanel({ vehiculos }: { vehiculos: any[] }) {
   const [form, setForm] = useState({ titulo: '', categoria: 'GENERAL', vehiculoId: '' });
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [lecturasDoc, setLecturasDoc] = useState<{ doc: any; lecturas: any[] } | null>(null);
+  const [lecturasLoad, setLecturasLoad] = useState(false);
+
+  const verLecturas = async (d: any) => {
+    setLecturasLoad(true);
+    setLecturasDoc({ doc: d, lecturas: [] });
+    try {
+      const r = await apiFetch<{ lecturas: any[] }>(`/driver-hub/documentos/${d.id}/lecturas`);
+      setLecturasDoc({ doc: d, lecturas: r.lecturas || [] });
+    } catch {
+      setLecturasDoc({ doc: d, lecturas: [] });
+    } finally { setLecturasLoad(false); }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -86,12 +99,13 @@ export function DocsChoferPanel({ vehiculos }: { vehiculos: any[] }) {
               <th className="text-left font-medium px-3 py-2">Categoría</th>
               <th className="text-left font-medium px-3 py-2">Alcance</th>
               <th className="text-left font-medium px-3 py-2">Fecha</th>
+              <th className="text-left font-medium px-3 py-2" title="Acuses de lectura de los choferes">Lecturas</th>
               <th className="text-left font-medium px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
-            {loading && <tr><td colSpan={5} className="px-3 py-6 text-center text-neutral-400">Cargando…</td></tr>}
-            {!loading && docs.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-neutral-400">Sin documentos para choferes</td></tr>}
+            {loading && <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-400">Cargando…</td></tr>}
+            {!loading && docs.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-400">Sin documentos para choferes</td></tr>}
             {docs.map(d => (
               <tr key={d.id} className="hover:bg-neutral-50">
                 <td className="px-3 py-2">
@@ -102,6 +116,15 @@ export function DocsChoferPanel({ vehiculos }: { vehiculos: any[] }) {
                 <td className="px-3 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${CAT_COLOR[d.categoria] || CAT_COLOR.GENERAL}`}>{CAT_L[d.categoria] || d.categoria}</span></td>
                 <td className="px-3 py-2 text-neutral-600">{d.vehiculo ? d.vehiculo.dominio : 'Toda la flota'}</td>
                 <td className="px-3 py-2 text-neutral-600">{new Date(d.createdAt).toLocaleDateString('es-AR')}</td>
+                <td className="px-3 py-2">
+                  {(d.lecturas?.length ?? 0) > 0 ? (
+                    <button onClick={() => verLecturas(d)} className="inline-flex items-center gap-1 rounded bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700 hover:bg-green-100" title="Ver quién lo leyó">
+                      <Eye className="h-3 w-3" /> {d.lecturas.length} acuse{d.lecturas.length !== 1 ? 's' : ''}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-neutral-300">Sin leer</span>
+                  )}
+                </td>
                 <td className="px-3 py-2"><button onClick={() => eliminar(d.id)} className="text-red-400 hover:text-red-600" title="Eliminar"><Trash2 className="h-3.5 w-3.5" /></button></td>
               </tr>
             ))}
@@ -150,6 +173,42 @@ export function DocsChoferPanel({ vehiculos }: { vehiculos: any[] }) {
             <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3">
               <button onClick={() => setShowNuevo(false)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700">Cancelar</button>
               <button onClick={crear} disabled={busy} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy ? 'Subiendo…' : 'Subir'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal acuses de lectura */}
+      {lecturasDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-neutral-900">Acuses de lectura</h2>
+                <p className="text-xs text-neutral-500">{lecturasDoc.doc.titulo}</p>
+              </div>
+              <button onClick={() => setLecturasDoc(null)}><X className="h-4 w-4 text-neutral-400" /></button>
+            </div>
+            <div className="max-h-80 overflow-y-auto p-4">
+              {lecturasLoad && <p className="text-sm text-neutral-400 text-center py-4">Cargando…</p>}
+              {!lecturasLoad && lecturasDoc.lecturas.length === 0 && (
+                <p className="text-sm text-neutral-400 text-center py-4">Nadie leyó este documento todavía</p>
+              )}
+              {lecturasDoc.lecturas.map((l: any) => (
+                <div key={l.id} className="flex items-center gap-3 border-b border-neutral-100 py-2 last:border-0">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-neutral-800 truncate">{l.conductorNombre}</p>
+                    {l.vehiculoId && <p className="text-[11px] text-neutral-400">Desde una unidad (QR)</p>}
+                  </div>
+                  <span className="text-xs text-neutral-500 whitespace-nowrap">
+                    {new Date(l.viewedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-neutral-200 px-4 py-3">
+              <p className="text-[11px] text-neutral-400">Este registro sirve como evidencia de que el chofer fue notificado y abrió el documento.</p>
             </div>
           </div>
         </div>

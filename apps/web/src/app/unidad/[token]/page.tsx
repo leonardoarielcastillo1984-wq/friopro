@@ -99,6 +99,14 @@ export default function UnidadHubPage() {
     const t = localStorage.getItem('hub_telefono'); if (t) setTelefono(t);
   }, []);
 
+  // Banner "documentos nuevos": consulta pendientes apenas entra al hub
+  // y cuando cambia la identificación del chofer (debounced por el nombre libre).
+  useEffect(() => {
+    if (!data) return;
+    const t = setTimeout(() => cargarDocs(), 400);
+    return () => clearTimeout(t);
+  }, [data, conductorId, nombre]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const gps = (): Promise<any> => new Promise(res => {
     if (!navigator.geolocation) return res({});
     navigator.geolocation.getCurrentPosition(p => res({ lat: p.coords.latitude, lng: p.coords.longitude }), () => res({}), { timeout: 5000 });
@@ -112,10 +120,36 @@ export default function UnidadHubPage() {
     } catch { }
     setSubiendo(false);
   };
+  const cargarDocs = () => {
+    const params = new URLSearchParams();
+    if (conductorId) params.set('conductorId', conductorId);
+    else if (nombre.trim()) params.set('nombre', nombre.trim());
+    setDocsLoad(true);
+    fetch(`${API}/driver-hub/public/${token}/documentos${params.toString() ? `?${params}` : ''}`)
+      .then(r => r.json())
+      .then(setDocs)
+      .catch(() => setDocs({ documentos: [], vencimientos: [], pendientes: [] }))
+      .finally(() => setDocsLoad(false));
+  };
+
   const irA = (v: Vista) => {
     setPaso('form'); setResultado(null); setError('');
-    if (v === 'documentos' && !docs) { setDocsLoad(true); fetch(`${API}/driver-hub/public/${token}/documentos`).then(r => r.json()).then(setDocs).catch(() => setDocs({ documentos: [], vencimientos: [] })).finally(() => setDocsLoad(false)); }
+    if (v === 'documentos' && !docs) cargarDocs();
     setVista(v);
+  };
+
+  // Acuse de lectura: al abrir un documento queda registrado quién lo vio.
+  const abrirDoc = (d: any) => {
+    window.open(d.fileUrl, '_blank', 'noopener,noreferrer');
+    const nombreEf = choferSel?.nombre || nombre.trim();
+    if (!nombreEf) return; // sin identificar no hay acuse (se pide identificación en la vista)
+    fetch(`${API}/driver-hub/public/${token}/documentos/${d.id}/visto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conductorId: conductorId || undefined, conductorNombre: nombreEf }),
+    }).then(() => {
+      setDocs((prev: any) => prev ? { ...prev, pendientes: (prev.pendientes || []).filter((id: string) => id !== d.id) } : prev);
+    }).catch(() => {});
   };
   const post = async (path: string, body: any): Promise<boolean> => {
     setPaso('enviando');
@@ -211,8 +245,8 @@ export default function UnidadHubPage() {
   );
 
   const veh = data.vehiculo; const act = data.activo;
-  const HubBtn = ({ icon, label, sub, color, onClick, href }: any) => {
-    const inner = <><div style={{ ...S.hubIcon, background: `${color}18`, color }}>{icon}</div><div style={{ flex: 1, textAlign: 'left' }}><div style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>{label}</div>{sub && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 1 }}>{sub}</div>}</div><ChevronRight size={18} color="#D1D5DB" /></>;
+  const HubBtn = ({ icon, label, sub, color, onClick, href, badge }: any) => {
+    const inner = <><div style={{ ...S.hubIcon, background: `${color}18`, color }}>{icon}</div><div style={{ flex: 1, textAlign: 'left' }}><div style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>{label}</div>{sub && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 1 }}>{sub}</div>}</div>{badge > 0 && <span style={{ ...S.badge, background: '#DC2626', color: '#fff', borderRadius: 999 }}>{badge}</span>}<ChevronRight size={18} color="#D1D5DB" /></>;
     return href ? <a href={href} style={{ ...S.hubBtn, textDecoration: 'none' }}>{inner}</a> : <button onClick={onClick} style={S.hubBtn}>{inner}</button>;
   };
   const FotoBtn = ({ t }: { t: 'i' | 't' }) => (
@@ -275,12 +309,22 @@ export default function UnidadHubPage() {
 
       {vista === 'hub' && (
         <div style={{ display: 'grid', gap: 10 }}>
+          {docs?.pendientes?.length > 0 && (
+            <button onClick={() => irA('documentos')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 12, border: '2px solid #0891B2', background: '#ECFEFF', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+              <FileText size={20} color="#0891B2" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#0E7490' }}>Tenés {docs.pendientes.length} documento{docs.pendientes.length !== 1 ? 's' : ''} nuevo{docs.pendientes.length !== 1 ? 's' : ''} para leer</div>
+                <div style={{ fontSize: 12, color: '#155E75' }}>Tocá acá para abrirlos — queda registro de tu lectura</div>
+              </div>
+              <ChevronRight size={18} color="#0891B2" />
+            </button>
+          )}
           {data.checklistUrl && <HubBtn href={data.checklistUrl} color="#2563EB" icon={<ClipboardCheck size={22} />} label="Checklist pre-viaje" sub="Verificación de la unidad antes de salir" />}
           <HubBtn onClick={() => irA('incidente')} color="#DC2626" icon={<AlertTriangle size={22} />} label="Reportar incidente" sub="Accidente, lesión, robo, carga, control…" />
           <HubBtn onClick={() => irA('combustible')} color="#D97706" icon={<Fuel size={22} />} label="Cargué combustible" sub="Litros o monto gastado" />
           <HubBtn onClick={() => irA('control')} color="#E11D48" icon={<HeartPulse size={22} />} label="Control pre-servicio" sub="Presión arterial, alcoholemia y aptitud" />
           <HubBtn onClick={() => { setSTipo('INICIO_SERVICIO'); irA('servicio'); }} color="#16A34A" icon={<PlayCircle size={22} />} label="Inicio / fin de servicio" sub="Tomar o cerrar la jornada" />
-          <HubBtn onClick={() => irA('documentos')} color="#0891B2" icon={<FileText size={22} />} label="Documentación" sub="Seguridad, comunicados y docs de la unidad" />
+          <HubBtn onClick={() => irA('documentos')} color="#0891B2" icon={<FileText size={22} />} label="Documentación" sub="Seguridad, comunicados y docs de la unidad" badge={docs?.pendientes?.length} />
           <HubBtn href={data.intervencionUrl} color="#6B7280" icon={<Wrench size={22} />} label="Intervención mecánica" sub="Service, reparación o emergencia mecánica" />
         </div>
       )}
@@ -510,14 +554,30 @@ export default function UnidadHubPage() {
               })}
             </div>}
             {docs.documentos?.length > 0 ? <>
+              {docs.pendientes?.length > 0 && !choferSel && !nombre.trim() && (
+                <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, background: '#FFFBEB', border: '1px solid #FCD34D' }}>
+                  <p style={{ fontSize: 12, color: '#92400E', fontWeight: 600, margin: '0 0 8px' }}>Identificáte para registrar tu lectura</p>
+                  {Chofer}
+                </div>
+              )}
               <p style={{ ...S.label, marginBottom: 8 }}>Documentos para consultar</p>
-              {docs.documentos.map((d: any) => (
-                <a key={d.id} href={d.fileUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderTop: '1px solid #F3F4F6', textDecoration: 'none' }}>
+              {docs.documentos.map((d: any) => {
+                const esNuevo = docs.pendientes?.includes(d.id);
+                return (
+                <button key={d.id} type="button" onClick={() => abrirDoc(d)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderTop: '1px solid #F3F4F6', borderLeft: 'none', borderRight: 'none', borderBottom: 'none', background: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
                   <div style={{ ...S.hubIcon, background: '#0891B218', color: '#0891B2', width: 36, height: 36 }}><FileText size={18} /></div>
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>{d.titulo}</div><div style={{ fontSize: 11, color: '#6B7280' }}>{CAT_L[d.categoria] || d.categoria}{d.vehiculoId ? ' · esta unidad' : ' · general'} · {new Date(d.createdAt).toLocaleDateString('es-AR')}</div></div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {d.titulo}
+                      {esNuevo && <span style={{ ...S.badge, background: '#DC2626', color: '#fff' }}>Nuevo</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6B7280' }}>{CAT_L[d.categoria] || d.categoria}{d.vehiculoId ? ' · esta unidad' : ' · general'} · {new Date(d.createdAt).toLocaleDateString('es-AR')}</div>
+                  </div>
                   <ChevronRight size={16} color="#D1D5DB" />
-                </a>
-              ))}
+                </button>
+                );
+              })}
+              <p style={{ ...S.muted, fontSize: 11, marginTop: 10 }}>Al abrir un documento se registra tu acuse de lectura.</p>
             </> : !docs.vencimientos?.length && <p style={S.muted}>No hay documentos disponibles.</p>}
           </>}
         </div>
