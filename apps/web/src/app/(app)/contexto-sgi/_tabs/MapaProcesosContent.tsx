@@ -7,6 +7,8 @@ import MapaGeneralModal from './MapaGeneralModal';
 import MapaGeneralView from './MapaGeneralView';
 import InteraccionesModal, { type Interaction, type InteractionDraft } from './InteraccionesModal';
 import ExternalizadosModal, { type OutsourcedProcess, type OutsourcedDraft } from './ExternalizadosModal';
+import TextosMapaModal from './TextosMapaModal';
+import type { MapLabels } from './mapaGeneralLabels';
 import ProcessTemplateWizard from './ProcessTemplateWizard';
 import ProcessAIWizard from './ProcessAIWizard';
 import {
@@ -327,6 +329,9 @@ export default function MapaProcesosContent() {
   const [outsourced, setOutsourced] = useState<OutsourcedProcess[]>([]);
   const [showInteractions, setShowInteractions] = useState(false);
   const [showOutsourced, setShowOutsourced] = useState(false);
+  // Etiquetas/textos editables del diagrama (company_settings.mapaGeneralLabels)
+  const [mapLabels, setMapLabels] = useState<MapLabels>({});
+  const [showLabels, setShowLabels] = useState(false);
 
   // Process drawer
   const [drawer, setDrawer] = useState<Partial<Process> | null>(null);
@@ -495,12 +500,15 @@ export default function MapaProcesosContent() {
   // Carga interacciones entre procesos y procesos externalizados (módulo aditivo).
   async function loadAux() {
     try {
-      const [ints, outs] = await Promise.all([
+      const [ints, outs, settings] = await Promise.all([
         apiFetch<Interaction[]>('/process-maps/interactions').catch(() => []),
         apiFetch<OutsourcedProcess[]>('/process-maps/outsourced').catch(() => []),
+        apiFetch<{ settings?: { mapaGeneralLabels?: MapLabels } | null }>('/company/settings').catch(() => null),
       ]);
       setInteractions(Array.isArray(ints) ? ints : []);
       setOutsourced(Array.isArray(outs) ? outs : []);
+      const lbls = (settings as any)?.settings?.mapaGeneralLabels;
+      setMapLabels(lbls && typeof lbls === 'object' ? lbls : {});
     } catch { /* módulo aditivo: sin endpoint todavía */ }
   }
 
@@ -544,6 +552,22 @@ export default function MapaProcesosContent() {
   async function deleteOutsourced(id: string) {
     await apiFetch(`/process-maps/outsourced/${id}`, { method: 'DELETE' });
     await loadAux();
+  }
+
+  // Guarda los textos editables del diagrama en company_settings (merge: el PUT
+  // actualiza solo el campo enviado, no pisa el resto de la configuración).
+  async function saveLabels(next: MapLabels) {
+    // Solo persistir overrides no vacíos; vacío = vuelve al default.
+    const clean: MapLabels = {};
+    Object.entries(next).forEach(([k, v]) => { if (v && v.trim()) clean[k] = v.trim(); });
+    setSaving(true);
+    try {
+      await apiFetch('/company/settings', { method: 'PUT', json: { mapaGeneralLabels: clean } });
+      setMapLabels(clean);
+      setShowLabels(false);
+    } catch (e: any) {
+      setError(e?.message || 'No se pudieron guardar los textos');
+    } finally { setSaving(false); }
   }
 
   async function loadDocOutput(mapId: string) {
@@ -1450,6 +1474,8 @@ export default function MapaProcesosContent() {
           onNewProcess={(mapId, parentId) => newProcessFromGeneral(mapId, parentId)}
           onOpenInteractions={() => setShowInteractions(true)}
           onOpenOutsourced={() => setShowOutsourced(true)}
+          onEditLabels={() => setShowLabels(true)}
+          labels={mapLabels}
           interactions={interactions}
           outsourced={outsourced}
           onNewMap={opts => { setEditingMapId(null); setMapForm({ ...EMPTY_MAP_FORM, mapBand: opts?.mapBand ?? '', norm: generalNormTab }); setShowMapForm(true); }}
@@ -2812,6 +2838,16 @@ export default function MapaProcesosContent() {
           onSave={saveOutsourced}
           onDelete={deleteOutsourced}
           onClose={() => setShowOutsourced(false)}
+        />
+      )}
+
+      {/* Modal: Textos/etiquetas editables del diagrama */}
+      {showLabels && (
+        <TextosMapaModal
+          labels={mapLabels}
+          saving={saving}
+          onSave={saveLabels}
+          onClose={() => setShowLabels(false)}
         />
       )}
 

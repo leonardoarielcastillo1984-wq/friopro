@@ -56,4 +56,7 @@ CREATE TABLE IF NOT EXISTS outsourced_processes (
 );
 CREATE INDEX IF NOT EXISTS outsourced_processes_tenantId_idx ON outsourced_processes ("tenantId");
 
+-- Etiquetas/textos editables del Mapa General (JSON por tenant)
+ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS "mapaGeneralLabels" JSONB;
+
 COMMIT;

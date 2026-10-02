@@ -38,6 +38,8 @@ const UpdateCompanySettingsSchema = z.object({
   footerText: z.string().optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   commSignature: z.string().optional(),
+  // Etiquetas/textos editables del Mapa General de Procesos (objeto clave→texto)
+  mapaGeneralLabels: z.record(z.string(), z.string()).nullable().optional(),
 });
 
 export async function registerCompanySettingsRoutes(app: FastifyInstance) {

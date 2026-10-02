@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { Interaction } from './InteraccionesModal';
 import type { OutsourcedProcess } from './ExternalizadosModal';
+import { resolveLabel, type MapLabels, type LabelKey } from './mapaGeneralLabels';
 
 // ── Tipos (mínimos, alineados al shape de GET /process-maps) ──────────────────
 export type GenProcess = {
@@ -162,6 +163,8 @@ export default function MapaGeneralView({
   onNewProcess,
   onOpenInteractions,
   onOpenOutsourced,
+  onEditLabels,
+  labels,
   interactions = [],
   outsourced = [],
   onNewMap,
@@ -184,6 +187,10 @@ export default function MapaGeneralView({
   onOpenInteractions: () => void;
   // Abre el editor de la sección "Procesos externalizados"
   onOpenOutsourced: () => void;
+  // Abre el editor de textos/etiquetas del diagrama
+  onEditLabels?: () => void;
+  // Overrides de textos del diagrama por tenant (vacío → default)
+  labels?: MapLabels;
   // Interacciones reales configuradas (origen → destino entre procesos)
   interactions?: Interaction[];
   // Procesos externalizados configurados por el tenant
@@ -199,6 +206,12 @@ export default function MapaGeneralView({
   normLock?: 'ISO9001' | 'IATF16949' | null;
 }) {
   const router = useRouter();
+  // Resolver de etiquetas del diagrama (override del tenant → default)
+  const L = (k: LabelKey) => resolveLabel(labels, k);
+  const BAND_LABEL_KEY: Record<string, LabelKey> = { STRATEGIC: 'bandStrategic', OPERATIONAL: 'bandOperational', SUPPORT: 'bandSupport', COMMERCIAL: 'bandOperational' };
+  const BAND_DESC_KEY: Record<string, LabelKey> = { STRATEGIC: 'bandStrategicDesc', OPERATIONAL: 'bandOperationalDesc', SUPPORT: 'bandSupportDesc', COMMERCIAL: 'bandOperationalDesc' };
+  const bandLabel = (band: Band) => L(BAND_LABEL_KEY[band] ?? 'bandOperational');
+  const bandDesc = (band: Band) => L(BAND_DESC_KEY[band] ?? 'bandOperationalDesc');
   const [sel, setSel] = useState<Sel>(null);
   const [panelTab, setPanelTab] = useState<PanelTab>('subs');
   const [query, setQuery] = useState('');
@@ -357,8 +370,8 @@ export default function MapaGeneralView({
   const enablerOutLabel = (m: GenMap): string => {
     const ids = new Set(m.processes.map(p => p.id));
     const hit = interactions.find(i => ids.has(i.fromId) && chainIds.has(i.toId));
-    if (hit) return hit.label || 'Proceso validado';
-    return toBullets(flowNodesOf(m).head?.outputs)[0] || 'Proceso validado';
+    if (hit) return hit.label || L('enablerDefault');
+    return toBullets(flowNodesOf(m).head?.outputs)[0] || L('enablerDefault');
   };
 
   function StatusDot({ status }: { status?: string }) {
@@ -418,7 +431,7 @@ export default function MapaGeneralView({
 
   // Chip de sede estilo manual ("Casa central / Córdoba" | "Sede por confirmar").
   function SiteChip({ sites }: { sites: string[] }) {
-    const label = sites.length ? sites.join(' / ') : 'Sede pendiente de definir';
+    const label = sites.length ? sites.join(' / ') : L('sitePending');
     return (
       <span className="inline-flex items-center gap-1 text-[9px] font-medium text-blue-600 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5">
         <MapPin className="h-2.5 w-2.5" aria-hidden />{label}
@@ -495,16 +508,17 @@ export default function MapaGeneralView({
   // (una línea por ítem, como en el manual).
   function EndBox({ kind }: { kind: 'in' | 'out' }) {
     const isIn = kind === 'in';
-    const labels = [...new Set(bands.OPERATIONAL.flatMap(m => toBullets(isIn ? m.inputLabel : m.outputLabel)))];
-    const fallback = isIn
-      ? ['Requisitos y CSR', 'Especificaciones', 'Programas de entrega']
-      : ['Productos conformes', 'Entregas acordadas', 'Trazabilidad'];
-    const lines = (labels.length ? labels : fallback).slice(0, 4);
+    const items = [...new Set(bands.OPERATIONAL.flatMap(m => toBullets(isIn ? m.inputLabel : m.outputLabel)))];
+    const fallback = toBullets(L(isIn ? 'endInItems' : 'endOutItems'));
+    const lines = (items.length ? items : fallback).slice(0, 4);
+    // El título puede partirse en dos líneas con "/" (ej. "Cliente / Entradas").
+    const titleParts = L(isIn ? 'endInTitle' : 'endOutTitle').split('/').map(s => s.trim()).filter(Boolean);
     return (
       <div className="flex-shrink-0 w-28 lg:w-32 self-stretch flex">
         <div className="bg-white border-2 border-emerald-300/80 rounded-md px-2 py-3 w-full flex flex-col items-center justify-center text-center shadow-sm">
-          <p className="text-[10px] font-extrabold text-neutral-800 uppercase leading-tight">Cliente /</p>
-          <p className="text-[10px] font-extrabold text-neutral-800 uppercase leading-tight">{isIn ? 'Entradas' : 'Resultados'}</p>
+          {titleParts.map((part, i) => (
+            <p key={i} className="text-[10px] font-extrabold text-neutral-800 uppercase leading-tight">{part}{i < titleParts.length - 1 ? ' /' : ''}</p>
+          ))}
           <ul className="mt-1.5 space-y-0.5">
             {lines.map(l => <li key={l} className="text-[8px] text-neutral-500 leading-snug break-words">{l}</li>)}
           </ul>
@@ -519,12 +533,12 @@ export default function MapaGeneralView({
       return (
         <div className="flex items-center justify-between px-10 sm:px-16 py-1 text-[9px] font-semibold">
           <span className="flex items-center gap-1.5 text-blue-700">
-            Objetivos, decisiones y recursos
+            {L('connStrategicDown')}
             <ArrowDown className="h-4 w-4 text-blue-600" strokeWidth={2.5} aria-hidden />
           </span>
           <span className="flex items-center gap-1.5 text-emerald-700">
             <ArrowUp className="h-4 w-4 text-emerald-600" strokeWidth={2.5} aria-hidden />
-            Indicadores y resultados
+            {L('connStrategicUp')}
           </span>
         </div>
       );
@@ -532,9 +546,9 @@ export default function MapaGeneralView({
     return (
       <div className="relative flex items-center justify-center py-1.5">
         <span className="flex items-center gap-2 text-[9px] font-semibold text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-full px-4 py-1">
-          Recursos y controles <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+          {L('connSupportUp')} <ArrowUp className="h-3.5 w-3.5" aria-hidden />
           <span className="text-neutral-300" aria-hidden>•</span>
-          Necesidades y resultados <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+          {L('connSupportDown')} <ArrowDown className="h-3.5 w-3.5" aria-hidden />
         </span>
         {/* Flecha punteada hacia "Procesos externalizados" (borde derecho de Soporte) */}
         <div className="absolute right-8 top-0 flex flex-col items-center" aria-hidden>
@@ -550,7 +564,7 @@ export default function MapaGeneralView({
   function LoopTag() {
     return (
       <div className="w-20 flex-shrink-0 flex flex-col items-center justify-end gap-0.5 pb-1">
-        <span className="text-[8px] text-neutral-500 text-center leading-tight">Desempeño, reclamos y cambios</span>
+        <span className="text-[8px] text-neutral-500 text-center leading-tight">{L('loopTag')}</span>
         <ArrowUp className="h-4 w-4 text-emerald-500" aria-hidden />
       </div>
     );
@@ -566,9 +580,9 @@ export default function MapaGeneralView({
         title="Configurar procesos externalizados"
         className="flex-1 min-w-[170px] max-w-[240px] rounded-lg border-2 border-dashed border-neutral-300 bg-white/50 px-3 py-2.5 text-center flex flex-col justify-center hover:border-indigo-300 hover:bg-white/80 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
       >
-        <p className="text-[9px] font-bold text-neutral-500 uppercase leading-tight">Procesos externalizados</p>
+        <p className="text-[9px] font-bold text-neutral-500 uppercase leading-tight">{L('outsourcedTitle')}</p>
         {outsourced.length === 0 ? (
-          <p className="text-[8px] text-neutral-400 mt-1 leading-snug">Identificar proveedor, proceso, controles e interfaces</p>
+          <p className="text-[8px] text-neutral-400 mt-1 leading-snug">{L('outsourcedHint')}</p>
         ) : (
           <ul className="mt-1 space-y-0.5">
             {outsourced.slice(0, 3).map(o => (
@@ -679,9 +693,9 @@ export default function MapaGeneralView({
         <div className={`w-24 lg:w-28 flex-shrink-0 ${meta.band} px-2.5 py-3 flex flex-col`}>
           <div className={`flex items-center gap-1 ${meta.text}`}>
             <Icon className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
-            <span className="text-[10px] font-extrabold uppercase tracking-wide leading-tight">{meta.label}</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wide leading-tight">{bandLabel(band)}</span>
           </div>
-          <p className={`text-[8px] leading-snug mt-1 ${meta.text} opacity-80`}>{meta.desc}</p>
+          <p className={`text-[8px] leading-snug mt-1 ${meta.text} opacity-80`}>{bandDesc(band)}</p>
           <button
             type="button"
             onClick={() => onNewMap({ mapBand: band })}
@@ -708,7 +722,7 @@ export default function MapaGeneralView({
         onClick={() => onNewMap({ mapBand: band })}
         className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-neutral-300 bg-white/40 py-3 text-xs text-neutral-400 hover:text-indigo-600 hover:border-indigo-300 hover:bg-white/70 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
       >
-        <Plus className="h-3.5 w-3.5" aria-hidden /> Agregar mapa a {meta.label}
+        <Plus className="h-3.5 w-3.5" aria-hidden /> Agregar mapa a {bandLabel(band)}
       </button>
     );
   }
@@ -749,7 +763,7 @@ export default function MapaGeneralView({
               </span>
               <h3 className="text-sm font-bold text-neutral-900 truncate">{selMap.name}</h3>
             </div>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badge}`}>{meta.label}</span>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badge}`}>{bandLabel(band)}</span>
             {selMap.norm && (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 ml-1">
                 {selMap.norm === 'IATF16949' ? 'IATF 16949' : 'ISO 9001'}
@@ -1042,9 +1056,9 @@ export default function MapaGeneralView({
         {/* Título + buscador + filtro sede */}
         <div className="mb-3">
           <h2 className="text-base font-bold text-neutral-900">
-            Mapa general de procesos{normLock === 'ISO9001' ? ' — ISO 9001' : normLock === 'IATF16949' ? ' — IATF 16949' : ''}
+            {L('title')}{normLock === 'ISO9001' ? ' — ISO 9001' : normLock === 'IATF16949' ? ' — IATF 16949' : ''}
           </h2>
-          <p className="text-xs text-neutral-400">Operaciones independientes, procesos conectados</p>
+          <p className="text-xs text-neutral-400">{L('subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <div className="relative flex-1 min-w-[200px] max-w-md">
@@ -1104,6 +1118,16 @@ export default function MapaGeneralView({
           >
             <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden /> Interacciones entre procesos
           </button>
+          {onEditLabels && (
+            <button
+              type="button"
+              onClick={onEditLabels}
+              title="Editar los textos del diagrama"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-600 border border-neutral-200 rounded-lg hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden /> Textos
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowPanel(v => !v)}
@@ -1208,7 +1232,7 @@ export default function MapaGeneralView({
                     <div className="flex items-center gap-1.5 px-6">
                       <ArrowUp className="h-3 w-3 text-emerald-600 flex-shrink-0" aria-hidden />
                       <div className="h-px flex-1 bg-emerald-400/70" />
-                      <span className="text-[8px] text-neutral-500 whitespace-nowrap">Desempeño, reclamos y cambios</span>
+                      <span className="text-[8px] text-neutral-500 whitespace-nowrap">{L('loopTag')}</span>
                       <div className="h-px flex-1 bg-emerald-400/70" />
                       <ArrowUp className="h-3 w-3 text-emerald-600 flex-shrink-0" aria-hidden />
                     </div>
@@ -1232,8 +1256,8 @@ export default function MapaGeneralView({
 
               {/* Leyenda al pie (como en el manual) */}
               <div className="flex items-start justify-between gap-6 px-1 pt-2">
-                <p className="text-[8px] text-neutral-400 leading-snug">Procesos e interacciones del sistema de gestión.</p>
-                <p className="text-[8px] text-neutral-400 leading-snug text-right">Cada proceso se vincula a su ficha: responsable, entradas/salidas, riesgos, controles e indicadores.</p>
+                <p className="text-[8px] text-neutral-400 leading-snug">{L('legendLeft')}</p>
+                <p className="text-[8px] text-neutral-400 leading-snug text-right">{L('legendRight')}</p>
               </div>
             </div>
           </div>

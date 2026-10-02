@@ -2209,6 +2209,10 @@ model CompanySettings {
   hrContractTypes      Json? // [{id, name, description, duration}]
   hrTrainingCategories Json? // [{id, name, description, standard}]
 
+  // Mapa General de Procesos — etiquetas/textos editables del diagrama
+  // { bandStrategic, bandStrategicDesc, bandOperational, ..., endInTitle, legendLeft, ... }
+  mapaGeneralLabels Json?
+
   // Metadata
   updatedAt   DateTime @updatedAt @db.Timestamptz
   updatedById String   @db.Uuid
