@@ -229,10 +229,11 @@ export default function MapaGeneralView({
     return emp ? `${emp.firstName} ${emp.lastName}`.trim() || emp.email : null;
   }
 
-  function selectMap(m: GenMap) { setSel({ kind: 'map', mapId: m.id }); }
+  function selectMap(m: GenMap) { setSel({ kind: 'map', mapId: m.id }); setShowPanel(true); }
   function selectProc(p: GenProcess) {
     setSel({ kind: 'process', processId: p.id });
     setPanelTab(p.parentId ? 'docs' : 'subs');
+    setShowPanel(true);
   }
 
   // Sedes únicas donde se ejecutan los procesos del mapa (para cards de banda).
@@ -1092,11 +1093,9 @@ export default function MapaGeneralView({
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Detalle</span>
-          {panelOpen && (
-            <button type="button" onClick={() => setSel(null)} aria-label="Cerrar panel" className="p-1 rounded-lg hover:bg-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
-              <X className="h-4 w-4 text-neutral-400" />
-            </button>
-          )}
+          <button type="button" onClick={() => { setSel(null); setShowPanel(false); }} aria-label="Ocultar panel de detalle" title="Ocultar panel" className="p-1 rounded-lg hover:bg-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+            <X className="h-4 w-4 text-neutral-400" />
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto">{Panel()}</div>
       </aside>
