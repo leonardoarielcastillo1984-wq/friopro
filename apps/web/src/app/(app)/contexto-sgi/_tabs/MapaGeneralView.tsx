@@ -49,10 +49,10 @@ type Sel = { kind: 'map'; mapId: string } | { kind: 'process'; processId: string
 type PanelTab = 'subs' | 'docs' | 'kpis' | 'risks';
 
 const BAND_META: Record<Band, { label: string; desc: string; band: string; border: string; text: string; badge: string; icon: any }> = {
-  STRATEGIC:   { label: 'Estratégicos', desc: 'Definen el rumbo, aseguran recursos y la mejora del sistema', band: 'bg-blue-50/80', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700', icon: Target },
-  OPERATIONAL: { label: 'Operativos', desc: 'Transforman requisitos en ruedas conformes para el cliente', band: 'bg-emerald-50/70', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700', icon: Cog },
-  COMMERCIAL:  { label: 'Comercial', desc: 'Gestión de solicitudes y requisitos', band: 'bg-violet-50/80', border: 'border-violet-200', text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700', icon: ShoppingCart },
-  SUPPORT:     { label: 'Soporte', desc: 'Proveen recursos, controles y servicios para el funcionamiento del sistema', band: 'bg-neutral-50', border: 'border-neutral-200', text: 'text-neutral-600', badge: 'bg-neutral-100 text-neutral-600', icon: Users },
+  STRATEGIC:   { label: 'Estratégicos', desc: 'Definen el rumbo, aseguran recursos y la mejora del sistema', band: 'bg-blue-200/70', border: 'border-blue-300', text: 'text-blue-800', badge: 'bg-blue-100 text-blue-700', icon: Target },
+  OPERATIONAL: { label: 'Operativos', desc: 'Transforman requisitos en ruedas conformes para el cliente', band: 'bg-emerald-200/60', border: 'border-emerald-300', text: 'text-emerald-800', badge: 'bg-emerald-100 text-emerald-700', icon: Cog },
+  COMMERCIAL:  { label: 'Comercial', desc: 'Gestión de solicitudes y requisitos', band: 'bg-violet-200/70', border: 'border-violet-300', text: 'text-violet-800', badge: 'bg-violet-100 text-violet-700', icon: ShoppingCart },
+  SUPPORT:     { label: 'Soporte', desc: 'Proveen recursos, controles y servicios para el funcionamiento del sistema', band: 'bg-neutral-200/80', border: 'border-neutral-300', text: 'text-neutral-600', badge: 'bg-neutral-100 text-neutral-600', icon: Users },
 };
 
 const LAYER_LABEL: Record<string, string> = { STRATEGIC: 'Estratégico', OPERATIONAL: 'Operativo', SUPPORT: 'Soporte' };
@@ -237,6 +237,14 @@ export default function MapaGeneralView({
   const sitesOf = (map: GenMap): string[] =>
     [...new Set(map.processes.flatMap(p => p.sites || []))];
 
+  // Operativos: separa "habilitadores" (industrialización, ingeniería, validación,
+  // cambios) que se dibujan arriba de la cadena, del resto que forma la cadena.
+  const enablerRe = /(industrializ|ingenier|desarrollo|apqp|amfe|validaci|cambio)/;
+  const opEnablers = bands.OPERATIONAL.filter(m => enablerRe.test(normalize(m.name)));
+  const opChainRest = bands.OPERATIONAL.filter(m => !enablerRe.test(normalize(m.name)));
+  const opChain = opChainRest.length ? opChainRest : bands.OPERATIONAL;
+  const opTop = opChainRest.length ? opEnablers : [];
+
   function StatusDot({ status }: { status?: string }) {
     return (
       <span
@@ -331,13 +339,13 @@ export default function MapaGeneralView({
             : 'border-emerald-300/80 hover:border-indigo-300 hover:shadow-sm'
         }`}
       >
-        <div className="flex items-start gap-1.5 min-w-0">
+        <div className="flex items-start justify-center gap-1.5">
           <Icon className="h-4 w-4 flex-shrink-0 mt-px text-emerald-600" aria-hidden />
-          <span className={`text-[11px] font-bold leading-tight break-words flex-1 ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{title}</span>
+          <span className={`text-[11px] font-bold leading-tight break-words text-center ${isSel ? 'text-indigo-800' : 'text-neutral-800'}`}>{title}</span>
           <StatusDot status={head?.status} />
         </div>
-        {bullets && <p className="text-[9px] text-neutral-500 mt-1 leading-snug break-words">{bullets}</p>}
-        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+        {bullets && <p className="text-[9px] text-neutral-500 mt-1 leading-snug break-words text-center">{bullets}</p>}
+        <div className="flex flex-wrap items-center justify-center gap-1 mt-1.5">
           <SiteChip sites={head?.sites?.length ? head.sites : sitesOf(map)} />
           <NormChip norm={map.norm} />
         </div>
@@ -362,17 +370,23 @@ export default function MapaGeneralView({
     );
   }
 
-  // Caja de extremo de la cadena: CLIENTE / ENTRADAS y CLIENTE / RESULTADOS.
+  // Caja de extremo de la cadena: CLIENTE / ENTRADAS y CLIENTE / RESULTADOS
+  // (una línea por ítem, como en el manual).
   function EndBox({ kind }: { kind: 'in' | 'out' }) {
     const isIn = kind === 'in';
-    const labels = [...new Set(bands.OPERATIONAL.map(m => ((isIn ? m.inputLabel : m.outputLabel) || '').trim()).filter(Boolean))];
+    const labels = [...new Set(bands.OPERATIONAL.flatMap(m => toBullets(isIn ? m.inputLabel : m.outputLabel)))];
+    const fallback = isIn
+      ? ['Requisitos y CSR', 'Especificaciones', 'Programas de entrega']
+      : ['Productos conformes', 'Entregas acordadas', 'Trazabilidad'];
+    const lines = (labels.length ? labels : fallback).slice(0, 4);
     return (
-      <div className="flex-shrink-0 w-28 self-stretch flex">
-        <div className="bg-white border border-neutral-300 rounded-md px-2 py-2.5 w-full flex flex-col justify-center text-center shadow-sm">
-          <p className="text-[9px] font-bold text-neutral-700 uppercase leading-tight">{isIn ? 'Cliente / Entradas' : 'Cliente / Resultados'}</p>
-          <p className="text-[8px] text-neutral-400 mt-1 leading-snug break-words">
-            {labels.length ? labels.join(' · ') : (isIn ? 'Requisitos, especificaciones, programas de entrega' : 'Productos conformes, entregas, trazabilidad')}
-          </p>
+      <div className="flex-shrink-0 w-28 lg:w-32 self-stretch flex">
+        <div className="bg-white border-2 border-emerald-300/80 rounded-md px-2 py-3 w-full flex flex-col items-center justify-center text-center shadow-sm">
+          <p className="text-[10px] font-extrabold text-neutral-800 uppercase leading-tight">Cliente /</p>
+          <p className="text-[10px] font-extrabold text-neutral-800 uppercase leading-tight">{isIn ? 'Entradas' : 'Resultados'}</p>
+          <ul className="mt-1.5 space-y-0.5">
+            {lines.map(l => <li key={l} className="text-[8px] text-neutral-500 leading-snug break-words">{l}</li>)}
+          </ul>
         </div>
       </div>
     );
@@ -380,21 +394,43 @@ export default function MapaGeneralView({
 
   // Barra conectora entre bandas (flechas de interacción del mapa tipo tortuga).
   function BandConnector({ kind }: { kind: 'strategic' | 'support' }) {
-    const s = kind === 'strategic';
-    const color = s ? 'text-blue-600' : 'text-neutral-500';
+    if (kind === 'strategic') {
+      return (
+        <div className="flex items-center justify-between px-10 sm:px-16 py-1 text-[9px] font-semibold">
+          <span className="flex items-center gap-1.5 text-blue-700">
+            Objetivos, decisiones y recursos
+            <ArrowDown className="h-4 w-4 text-blue-600" strokeWidth={2.5} aria-hidden />
+          </span>
+          <span className="flex items-center gap-1.5 text-emerald-700">
+            <ArrowUp className="h-4 w-4 text-emerald-600" strokeWidth={2.5} aria-hidden />
+            Indicadores y resultados
+          </span>
+        </div>
+      );
+    }
     return (
-      <div className={`flex items-center justify-center gap-6 py-1.5 text-[9px] font-semibold ${color}`}>
-        {s ? (
-          <>
-            <span className="flex items-center gap-1"><ArrowDown className="h-3 w-3" aria-hidden /> Objetivos, decisiones y recursos</span>
-            <span className="flex items-center gap-1"><ArrowUp className="h-3 w-3" aria-hidden /> Indicadores y resultados</span>
-          </>
-        ) : (
-          <>
-            <span className="flex items-center gap-1"><ArrowDown className="h-3 w-3" aria-hidden /> Recursos y controles</span>
-            <span className="flex items-center gap-1"><ArrowUp className="h-3 w-3" aria-hidden /> Necesidades y resultados</span>
-          </>
-        )}
+      <div className="relative flex items-center justify-center py-1.5">
+        <span className="flex items-center gap-2 text-[9px] font-semibold text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-full px-4 py-1">
+          Recursos y controles <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+          <span className="text-neutral-300" aria-hidden>•</span>
+          Necesidades y resultados <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+        </span>
+        {/* Flecha punteada hacia "Procesos externalizados" (borde derecho de Soporte) */}
+        <div className="absolute right-8 top-0 flex flex-col items-center" aria-hidden>
+          <div className="w-px h-3 border-l border-dashed border-neutral-400" />
+          <ArrowDown className="h-3 w-3 text-neutral-400 -mt-0.5" />
+        </div>
+      </div>
+    );
+  }
+
+  // Lazo lateral del mapa tortuga: retroalimentación de la cadena hacia los
+  // procesos habilitadores ("Desempeño, reclamos y cambios").
+  function LoopTag() {
+    return (
+      <div className="w-20 flex-shrink-0 flex flex-col items-center justify-end gap-0.5 pb-1">
+        <span className="text-[8px] text-neutral-500 text-center leading-tight">Desempeño, reclamos y cambios</span>
+        <ArrowUp className="h-4 w-4 text-emerald-500" aria-hidden />
       </div>
     );
   }
@@ -419,7 +455,7 @@ export default function MapaGeneralView({
     const bullets = bulletsOf(map);
     return (
       <div
-        className={`relative group flex-1 min-w-[180px] max-w-[280px] ${dragMapId === map.id ? 'opacity-40' : ''}`}
+        className={`relative group flex-1 min-w-[170px] ${band === 'STRATEGIC' ? 'max-w-[560px]' : 'max-w-[250px]'} ${dragMapId === map.id ? 'opacity-40' : ''}`}
         draggable
         onDragStart={startMapDrag(map)}
         onDragEnd={endMapDrag}
@@ -438,15 +474,15 @@ export default function MapaGeneralView({
               : 'border-neutral-300 hover:border-indigo-300 hover:shadow-sm'
         }`}
       >
-        <div className="flex items-start gap-1.5 min-w-0">
+        <div className="flex items-start justify-center gap-1.5">
           <Icon className={`h-4 w-4 flex-shrink-0 mt-px ${meta.text}`} aria-hidden />
-          <span className={`text-[11px] font-bold leading-tight break-words flex-1 ${isSel ? 'text-indigo-800' : 'text-neutral-800'} ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
+          <span className={`text-[11px] font-bold leading-tight break-words text-center ${isSel ? 'text-indigo-800' : 'text-neutral-800'} ${nameHit ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''}`}>
             {map.name}
           </span>
           <StatusDot />
         </div>
-        {bullets && <p className="text-[9px] text-neutral-500 mt-1 leading-snug break-words">{bullets}</p>}
-        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+        {bullets && <p className="text-[9px] text-neutral-500 mt-1 leading-snug break-words text-center">{bullets}</p>}
+        <div className="flex flex-wrap items-center justify-center gap-1 mt-1.5">
           <SiteChip sites={sitesOf(map)} />
           <NormChip norm={map.norm} />
         </div>
@@ -952,25 +988,58 @@ export default function MapaGeneralView({
               {/* Conector Estratégicos ↔ Operativos */}
               <BandConnector kind="strategic" />
 
-              {/* Franja Operativos: cadena única Entradas → mapas → Resultados */}
+              {/* Franja Operativos: habilitadores arriba + cadena Entradas → mapas → Resultados */}
               <BandSection band="OPERATIONAL">
                 {bands.OPERATIONAL.length === 0 ? <BandEmpty band="OPERATIONAL" /> : (
-                  <div className="flex items-stretch gap-1 overflow-x-auto py-1">
-                    {EndBox({ kind: 'in' })}
-                    {bands.OPERATIONAL.map((m, i) => {
-                      const prev = bands.OPERATIONAL[i - 1];
-                      const label = prev
-                        ? toBullets(flowNodesOf(prev).head?.outputs)[0] || ''
-                        : toBullets(flowNodesOf(m).head?.inputs)[0] || '';
-                      return (
-                        <Fragment key={m.id}>
-                          <ChainArrow label={label} />
-                          {OpCard({ map: m })}
-                        </Fragment>
-                      );
-                    })}
-                    <ChainArrow label={toBullets(flowNodesOf(bands.OPERATIONAL[bands.OPERATIONAL.length - 1]).head?.outputs)[0] || ''} />
-                    {EndBox({ kind: 'out' })}
+                  <div className="rounded-lg border-2 border-emerald-300/70 bg-emerald-50/40 p-2">
+                    {/* Habilitadores arriba de la cadena + lazos laterales */}
+                    {opTop.length > 0 && (
+                      <div className="flex items-stretch">
+                        <LoopTag />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-stretch justify-center gap-2">
+                            {opTop.map(m => <Fragment key={m.id}>{OpCard({ map: m })}</Fragment>)}
+                          </div>
+                          <div className="flex justify-center gap-10 mt-0.5">
+                            {opTop.map(m => (
+                              <span key={m.id} className="flex flex-col items-center w-24">
+                                <ArrowDown className="h-4 w-4 text-emerald-600" strokeWidth={2.5} aria-hidden />
+                                <span className="text-[8px] text-neutral-500 leading-tight text-center">
+                                  {toBullets(flowNodesOf(m).head?.outputs)[0] || 'Proceso validado'}
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <LoopTag />
+                      </div>
+                    )}
+                    {/* Cadena: Entradas → mapas → Resultados */}
+                    <div className="flex items-stretch gap-1 overflow-x-auto py-1">
+                      {EndBox({ kind: 'in' })}
+                      {opChain.map((m, i) => {
+                        const prev = opChain[i - 1];
+                        const label = prev
+                          ? toBullets(flowNodesOf(prev).head?.outputs)[0] || ''
+                          : toBullets(flowNodesOf(m).head?.inputs)[0] || '';
+                        return (
+                          <Fragment key={m.id}>
+                            <ChainArrow label={label} />
+                            {OpCard({ map: m })}
+                          </Fragment>
+                        );
+                      })}
+                      <ChainArrow label={toBullets(flowNodesOf(opChain[opChain.length - 1]).head?.outputs)[0] || ''} />
+                      {EndBox({ kind: 'out' })}
+                    </div>
+                    {/* Línea de retroalimentación bajo la cadena */}
+                    <div className="flex items-center gap-1.5 px-6">
+                      <ArrowUp className="h-3 w-3 text-emerald-600 flex-shrink-0" aria-hidden />
+                      <div className="h-px flex-1 bg-emerald-400/70" />
+                      <span className="text-[8px] text-neutral-500 whitespace-nowrap">Desempeño, reclamos y cambios</span>
+                      <div className="h-px flex-1 bg-emerald-400/70" />
+                      <ArrowUp className="h-3 w-3 text-emerald-600 flex-shrink-0" aria-hidden />
+                    </div>
                   </div>
                 )}
               </BandSection>
@@ -987,6 +1056,12 @@ export default function MapaGeneralView({
                   </div>
                 )}
               </BandSection>
+
+              {/* Leyenda al pie (como en el manual) */}
+              <div className="flex items-start justify-between gap-6 px-1 pt-2">
+                <p className="text-[8px] text-neutral-400 leading-snug">* Ubicación presunta: validar por planta.</p>
+                <p className="text-[8px] text-neutral-400 leading-snug text-right">Cada proceso se vincula a su ficha: responsable, entradas/salidas, riesgos, controles e indicadores.</p>
+              </div>
             </div>
           </div>
         )}
