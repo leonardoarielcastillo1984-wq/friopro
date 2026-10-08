@@ -56,6 +56,10 @@ export const MODULE_DESCRIPTIONS: Record<string, ModuleInfo> = {
     title: 'Políticas SGI',
     description: 'Políticas del sistema integrado de gestión (calidad, ambiente, seguridad).',
   },
+  '/resultados': {
+    title: 'Resultados del Negocio',
+    description: 'Consolidado económico: facturación, cobranzas, costos operativos (flota, mantenimiento, personal) y gastos de estructura, con resultado mensual y trazabilidad al origen de cada dato.',
+  },
   '/calidad': {
     title: 'No Conformidades y Plan de acción',
     description: 'Gestión de no conformidades (NCR) y acciones correctivas/preventivas (CAPA).',

@@ -26,6 +26,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/api/help': 'modo-de-uso',
   '/api/notifications': 'notificaciones',
   '/api/settings': 'configuracion',
+  '/api/finanzas': 'resultados',
+  '/finanzas': 'resultados',
 };
 
 export const userPermissionsPlugin = fp(async (app: FastifyInstance) => {

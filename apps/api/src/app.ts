@@ -149,6 +149,7 @@ import { hazardsRoutes } from './routes/hazards.js';
 import { aspectsRoutes } from './routes/aspects.js';
 import flotaRoutes from './routes/flota.js';
 import talleresRoutes from './routes/flota-talleres.js';
+import finanzasRoutes from './routes/finanzas.js';
 import fleetOpsRoutes from './routes/fleet-ops.js';
 import fleetRecurrenceRoutes from './routes/fleet-recurrence.js';
 import { driverHubRoutes } from './routes/driver-hub.js';
@@ -500,6 +501,10 @@ export async function buildApp() {
   await app.register(mecanicoQRRoutes, { prefix: '/mecanico-qr' });
   await app.register(flotaRoutes, { prefix: '/flota' });
   await app.register(talleresRoutes, { prefix: '/flota' });
+  // Resultados del Negocio — doble prefijo: en prod Nginx strippea /api,
+  // en local la web pega directo a la API con /api intacto.
+  await app.register(finanzasRoutes, { prefix: '/finanzas' });
+  await app.register(finanzasRoutes, { prefix: '/api/finanzas' });
   await app.register(fleetRecurrenceRoutes, { prefix: '/fleet-recurrence' });
   await app.register(fleetOpsRoutes, { prefix: '/fleet-ops' });
   await app.register(driverHubRoutes, { prefix: '/driver-hub' });

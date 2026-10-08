@@ -583,6 +583,11 @@ model Tenant {
   // Flota 360 — Episodios de indisponibilidad de unidades
   unidadIndisponibilidades   UnidadIndisponibilidad[]
 
+  // Resultados del Negocio — consolidador económico (aditivo)
+  finanzaCentrosCosto FinanzaCentroCosto[]
+  finanzaFacturas     FinanzaFactura[]
+  finanzaGastos       FinanzaGasto[]
+
   @@index([parentTenantId])
 }
 
@@ -1857,6 +1862,13 @@ model Employee {
 
   // Organigrama: línea/nivel manual (opcional). Permite intermedios (ej. 2.5). Fija la fila visual.
   orgLevel Float?
+
+  // Costo laboral mensual (sueldo + cargas). Fuente económica de personal para
+  // el módulo Resultados. Si el empleado también existe como Conductor de
+  // flota, el consolidado deduplica por DNI (gana este dato).
+  costoMensual  Decimal? @db.Decimal(14, 2)
+  // Imputación económica: centro de costo / unidad de negocio (escalar, sin FK)
+  centroCostoId String?  @db.Uuid
 
   // Profile
   profilePhoto String?
@@ -6165,6 +6177,7 @@ model Project360Task {
   title          String
   description    String?
   responsibleId  String?   @db.Uuid
+  responsibleName String?
   status         String    @default("PENDING")
   priority       String    @default("MEDIUM")
   dueDate        DateTime? @db.Timestamptz
@@ -8343,6 +8356,10 @@ model Vehiculo {
   // el gasto real del mes (combustible + OTs + facturas + multas).
   presupuestoMensual  Float?
 
+  // Imputación económica: centro de costo / unidad de negocio (escalar, sin FK).
+  // Resultados lo usa para filtrar costos de flota por unidad de negocio.
+  centroCostoId       String?  @db.Uuid
+
   // Ubicación declarada (dimensión separada: no determina disponibilidad).
   // SIN_DATOS = sin ubicación confiable registrada.
   ubicacionTipo    String?   // ESTACIONAMIENTO | TALLER_INTERNO | TALLER_EXTERNO | OTRO
@@ -8573,6 +8590,10 @@ model ConjuntoOperativoEvento {
   ubicacion String?
   viajeId   String?
   notas     String?
+
+  // Odómetro del tractor al momento del evento. El semi acumula km solo
+  // mientras está acoplado: delta = odoTractor(DESACOPLE) - odoTractor(ACOPLE).
+  odometroTractor Float?
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
@@ -12676,6 +12697,9 @@ model FlotaServicio {
   activo Boolean @default(true)
   notas  String?
 
+  // Imputación económica: centro de costo / unidad de negocio (escalar, sin FK)
+  centroCostoId String? @db.Uuid
+
   createdAt DateTime @default(now()) @db.Timestamptz
 
   unidades FlotaServicioUnidad[]
@@ -13165,4 +13189,188 @@ model FeedbackSugerencia {
   @@index([tenantId])
   @@index([createdAt])
   @@map("feedback_sugerencias")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RESULTADOS DEL NEGOCIO — consolidador económico transversal (módulo /resultados)
+// Solo registra lo que NO tiene fuente estructurada en SGI360 (facturación
+// emitida, cobros, gastos generales/estructura, centros de costo). Los costos
+// de flota, mantenimiento, personal e infraestructura se agregan desde sus
+// módulos de origen con reglas anti-duplicación — nunca se copian acá.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Centro de costo / unidad de negocio. Jerárquico vía parentId (sin FK dura,
+// patrón soft-delete del codebase): permite EMPRESA → UNIDAD → CENTRO sin
+// hardcodear niveles. tipo: UNIDAD_NEGOCIO (ej. "DADA Chile") | CENTRO_COSTO
+// (ej. "Administración").
+model FinanzaCentroCosto {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nombre String
+  tipo   String @default("CENTRO_COSTO") // UNIDAD_NEGOCIO, CENTRO_COSTO
+
+  parentId String? @db.Uuid // jerarquía opcional (escalar, sin FK)
+
+  activo Boolean @default(true)
+  notas  String?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([parentId])
+  @@map("finanza_centros_costo")
+}
+
+// Factura emitida a un cliente (ventas/devengado). El estado de cobro se
+// deriva de los FinanzaCobro asociados: EMITIDA → PARCIALMENTE_COBRADA →
+// COBRADA; VENCIDA se computa por fechaVencimiento; ANULADA es manual.
+model FinanzaFactura {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Datos del comprobante
+  numero          String?
+  puntoVenta      String?
+  tipoComprobante String   @default("FACTURA") // FACTURA, NOTA_CREDITO, BOLETA, OTRO
+  fechaEmision    DateTime @default(now()) @db.Timestamptz
+  fechaVencimiento DateTime? @db.Timestamptz
+
+  // Cliente: vínculo al maestro (Customer) + snapshot para histórico
+  clienteId     String? @db.Uuid // escalar, sin FK dura
+  clienteNombre String // snapshot (obligatorio: el reporte histórico no depende del maestro)
+
+  // Montos (Decimal: nunca Float para dinero)
+  neto   Decimal  @default(0) @db.Decimal(14, 2)
+  iva    Decimal  @default(0) @db.Decimal(14, 2)
+  total  Decimal  @db.Decimal(14, 2)
+  moneda String   @default("ARS") // ARS, CLP, USD… sin conversión: agregados por moneda
+
+  estado String @default("EMITIDA") // EMITIDA, PARCIALMENTE_COBRADA, COBRADA, VENCIDA, ANULADA
+
+  // Imputación económica (escalares, sin FK)
+  centroCostoId String? @db.Uuid
+  servicioId    String? @db.Uuid // FlotaServicio opcional
+
+  // Archivo PDF/imagen de la factura
+  fileUrl  String?
+  fileName String?
+  mimeType String?
+
+  notas String?
+
+  items  FinanzaFacturaItem[]
+  cobros FinanzaCobro[]
+
+  uploadedById     String? @db.Uuid
+  uploadedByNombre String?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([fechaEmision])
+  @@index([estado])
+  @@index([clienteId])
+  @@index([centroCostoId])
+  @@map("finanza_facturas")
+}
+
+// Línea de una factura emitida: una factura puede mezclar almacenamiento,
+// distribución, transporte, adicionales… habilita rentabilidad por servicio.
+model FinanzaFacturaItem {
+  id        String         @id @default(uuid()) @db.Uuid
+  facturaId String         @db.Uuid
+  factura   FinanzaFactura @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+
+  concepto       String
+  cantidad       Decimal @default(1) @db.Decimal(12, 2)
+  precioUnitario Decimal @db.Decimal(14, 2)
+  subtotal       Decimal @db.Decimal(14, 2)
+
+  servicioId    String? @db.Uuid
+  centroCostoId String? @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([facturaId])
+  @@map("finanza_factura_items")
+}
+
+// Cobro (parcial o total) aplicado a una factura. Una factura puede tener
+// muchos cobros; el saldo y el estado se derivan de su suma.
+model FinanzaCobro {
+  id        String         @id @default(uuid()) @db.Uuid
+  tenantId  String         @db.Uuid
+  facturaId String         @db.Uuid
+  factura   FinanzaFactura @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+
+  fecha   DateTime @default(now()) @db.Timestamptz
+  importe Decimal  @db.Decimal(14, 2)
+  moneda  String   @default("ARS")
+
+  referencia String? // nro de transferencia/depósito/cheque
+  medioPago  String? // TRANSFERENCIA, EFECTIVO, CHEQUE, OTRO
+  notas      String?
+
+  createdById     String? @db.Uuid
+  createdByNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([facturaId])
+  @@index([fecha])
+  @@map("finanza_cobros")
+}
+
+// Gasto manual: SOLO conceptos sin fuente automática en SGI360
+// (estructura, alquiler, seguros generales, administración…). Si el gasto
+// ya existe en Flota/Mantenimiento/RRHH, no se carga acá — el consolidado
+// lo trae del módulo origen.
+model FinanzaGasto {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  fecha     DateTime @default(now()) @db.Timestamptz
+  proveedor String?
+  concepto  String
+  categoria String  @default("OTRO") // SUELDOS, ALQUILER, SEGUROS, SERVICIOS, ADMINISTRACION, IMPUESTOS, OTRO
+  tipoGasto String  @default("OPERATIVO") // OPERATIVO, ESTRUCTURA, OTRO
+
+  centroCostoId String? @db.Uuid
+
+  total  Decimal @db.Decimal(14, 2)
+  moneda String  @default("ARS")
+
+  // Recurrencia: si esRecurrente, el consolidado prorratea `total` cada mes
+  // entre fechaDesde y fechaHasta (null = indefinido).
+  esRecurrente Boolean   @default(false)
+  fechaDesde   DateTime? @db.Timestamptz
+  fechaHasta   DateTime? @db.Timestamptz
+
+  fileUrl  String?
+  fileName String?
+  mimeType String?
+
+  notas String?
+
+  uploadedById     String? @db.Uuid
+  uploadedByNombre String?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([fecha])
+  @@index([tipoGasto])
+  @@index([centroCostoId])
+  @@map("finanza_gastos")
 }

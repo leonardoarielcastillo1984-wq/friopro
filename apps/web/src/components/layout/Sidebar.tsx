@@ -85,6 +85,9 @@ const mainNav = [
   { label: 'Infraestructura', icon: Package, href: '/infraestructura' },
   { label: 'Flota 360', icon: Truck, href: '/flota-360' },
 
+  // 8b. Resultados del Negocio — consolidador económico
+  { label: 'Resultados', icon: TrendingUp, href: '/resultados' },
+
   // 9. Admin
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
   { label: 'Centro de Ayuda', icon: HelpCircle, href: '/modo-de-uso' },
@@ -121,6 +124,7 @@ const MODULE_PLAN_REQUIREMENTS: Record<string, PlanTier> = {
   '/core-tools': 'PROFESSIONAL',
   '/rrhh': 'PREMIUM',
   '/clima': 'PREMIUM',
+  '/resultados': 'PREMIUM',
 };
 
 const PLAN_HIERARCHY: PlanTier[] = ['BASIC', 'PROFESSIONAL', 'PREMIUM'];
@@ -366,7 +370,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             const tooltipContent = isLocked ? (
               <div>
                 <div className="mb-0.5 font-semibold">{item.label}</div>
-                <div className="text-amber-300">Disponible en plan {requiredPlan}</div>
+                {planAllows ? (
+                  <div className="text-amber-300">Sin permiso — contactá a tu administrador</div>
+                ) : (
+                  <div className="text-amber-300">Disponible en plan {requiredPlan}</div>
+                )}
               </div>
             ) : (
               <div>

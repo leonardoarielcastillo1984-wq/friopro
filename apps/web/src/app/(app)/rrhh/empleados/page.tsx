@@ -630,6 +630,7 @@ export default function EmployeesPage() {
     { key: 'infraestructura', label: 'Infraestructura', icon: '📦' },
     { key: 'flota-360', label: 'Flota 360', icon: '🚛' },
     { key: 'reportes', label: 'Reportes', icon: '📊' },
+    { key: 'resultados', label: 'Resultados del Negocio', icon: '💰' },
     { key: 'modo-de-uso', label: 'Centro de Ayuda', icon: '❓' },
     { key: 'notificaciones', label: 'Notificaciones', icon: '🔔' },
     { key: 'configuracion', label: 'Configuración', icon: '⚙️' },
