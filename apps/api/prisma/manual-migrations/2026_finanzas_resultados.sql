@@ -116,7 +116,7 @@ CREATE INDEX IF NOT EXISTS finanza_gastos_tipo_idx    ON finanza_gastos("tipoGas
 CREATE INDEX IF NOT EXISTS finanza_gastos_cc_idx      ON finanza_gastos("centroCostoId");
 
 -- Campos nuevos en tablas existentes (imputación económica / costo laboral)
-ALTER TABLE employees      ADD COLUMN IF NOT EXISTS "costoMensual"  NUMERIC(14,2);
-ALTER TABLE employees      ADD COLUMN IF NOT EXISTS "centroCostoId" UUID;
-ALTER TABLE vehiculos      ADD COLUMN IF NOT EXISTS "centroCostoId" UUID;
-ALTER TABLE flota_servicios ADD COLUMN IF NOT EXISTS "centroCostoId" UUID;
+ALTER TABLE "Employee"       ADD COLUMN IF NOT EXISTS "costoMensual"  NUMERIC(14,2);
+ALTER TABLE "Employee"       ADD COLUMN IF NOT EXISTS "centroCostoId" UUID;
+ALTER TABLE flota_vehiculos  ADD COLUMN IF NOT EXISTS "centroCostoId" UUID;
+ALTER TABLE flota_servicios  ADD COLUMN IF NOT EXISTS "centroCostoId" UUID;
