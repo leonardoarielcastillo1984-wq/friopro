@@ -9,6 +9,7 @@ type Gasto = {
   id: string; fecha: string; proveedor: string | null; proveedorRut: string | null; concepto: string; categoria: string;
   tipoGasto: string; centroCostoId: string | null; neto: number | null; iva: number | null; total: number; moneda: string;
   tipoComprobante: string | null; numeroComprobante: string | null; origen: string;
+  ivaRecuperable?: boolean;
   esRecurrente: boolean; fechaDesde: string | null; fechaHasta: string | null;
   fileUrl: string | null; fileName: string | null; mimeType: string | null; notas: string | null;
 };
@@ -22,11 +23,12 @@ const TIPO_LABEL: Record<string, { label: string; color: string }> = {
 const hoy = () => new Date().toISOString().slice(0, 10);
 const nuevoForm = (moneda: string) => ({
   fecha: hoy(), proveedor: '', proveedorRut: '', concepto: '', categoria: 'OTRO', tipoGasto: 'OPERATIVO',
-  centroCostoId: '', conIva: false, neto: '', ivaRate: String(IVA_DEFAULT[moneda] ?? 0), iva: '', total: '', moneda,
+  centroCostoId: '', conIva: false, ivaRecuperable: true, neto: '', ivaRate: String(IVA_DEFAULT[moneda] ?? 0), iva: '', total: '', moneda,
   tipoComprobante: '', numeroComprobante: '', esRecurrente: false, fechaDesde: '', fechaHasta: '', notas: '',
 });
 type Form = ReturnType<typeof nuevoForm>;
-const costo = (g: Gasto) => (g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) * (g.neto !== null ? g.neto : g.total);
+// Costo real: neto solo si el IVA se recupera; si no, el impuesto es costo.
+const costo = (g: Gasto) => (g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) * (g.ivaRecuperable !== false && g.neto !== null ? g.neto : g.total);
 
 export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, onChanged }: { centros: any[]; moneda: string; monedas?: string[]; canEdit: boolean; onChanged: () => void }) {
   const [gastos, setGastos] = useState<Gasto[]>([]);
@@ -88,7 +90,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
     setEditId(g.id);
     setForm({
       fecha: toDateInput(g.fecha), proveedor: g.proveedor || '', proveedorRut: g.proveedorRut || '', concepto: g.concepto,
-      categoria: g.categoria, tipoGasto: g.tipoGasto, centroCostoId: g.centroCostoId || '', conIva,
+      categoria: g.categoria, tipoGasto: g.tipoGasto, centroCostoId: g.centroCostoId || '', conIva, ivaRecuperable: g.ivaRecuperable !== false,
       neto: g.neto !== null ? String(g.neto) : '', ivaRate: conIva && g.neto ? String(Math.round(((g.iva || 0) / g.neto) * 1000) / 10) : String(IVA_DEFAULT[g.moneda] ?? 0),
       iva: g.iva !== null ? String(g.iva) : '', total: String(g.total), moneda: g.moneda,
       tipoComprobante: g.tipoComprobante || '', numeroComprobante: g.numeroComprobante || '',
@@ -115,6 +117,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
         fecha: form.fecha, proveedor: form.proveedor.trim() || null, proveedorRut: form.proveedorRut.trim() || null,
         concepto: form.concepto.trim(), categoria: form.categoria, tipoGasto: form.tipoGasto, centroCostoId: form.centroCostoId || null,
         neto: form.conIva && form.neto ? Number(form.neto) : null, iva: form.conIva && form.iva ? Number(form.iva) : null,
+        ivaRecuperable: form.conIva ? form.ivaRecuperable : true,
         total: Number(form.total), moneda: form.moneda,
         tipoComprobante: form.tipoComprobante || null, numeroComprobante: form.numeroComprobante || null,
         esRecurrente: form.esRecurrente,
@@ -247,6 +250,10 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
               <div><label className={labelCls}>Neto</label><input type="number" value={form.neto} onChange={e => setNeto(e.target.value)} className={inputCls} /></div>
               <div><label className={labelCls}>IVA %</label><input type="number" value={form.ivaRate} onChange={e => set('ivaRate', e.target.value)} className={inputCls} /></div>
               <div><label className={labelCls}>IVA</label><input type="number" value={form.iva} onChange={e => set('iva', e.target.value)} className={inputCls} /></div>
+              <label className="flex items-end gap-2 pb-2 text-sm text-neutral-600">
+                <input type="checkbox" checked={!form.ivaRecuperable} onChange={e => set('ivaRecuperable', !e.target.checked)} className="rounded" />
+                El IVA NO se recupera (computa como costo)
+              </label>
             </>}
             <div><label className={labelCls}>Total *</label><input type="number" value={form.total} onChange={e => setTotal(e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Moneda</label>
@@ -304,6 +311,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                       {g.esRecurrente && <span title="Todos los meses"><Repeat size={11} className="ml-1.5 inline text-purple-500" /></span>}
                       {g.fileUrl && <a href={g.fileUrl} target="_blank" rel="noreferrer" className="ml-1.5 inline-block text-blue-500"><Paperclip size={11} /></a>}
                       {g.origen === 'IMPORT_RCV' && <span className="ml-1.5 rounded bg-sky-50 px-1 text-[10px] text-sky-600">SII</span>}
+                      {Number(g.iva) > 0 && <span title={g.ivaRecuperable === false ? 'El IVA computa como costo' : 'IVA recuperado como crédito fiscal'} className={`ml-1.5 rounded px-1 text-[10px] ${g.ivaRecuperable === false ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>IVA {g.ivaRecuperable === false ? 'al costo' : 'recuperable'}</span>}
                     </td>
                     <td className="px-4 py-2.5 text-neutral-600">{CATEGORIA_GASTO[g.categoria] || g.categoria}</td>
                     <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${t.color}`}>{t.label}</span></td>

@@ -9336,6 +9336,12 @@ model RegistroCombustible {
   precioPorLitroUrea Float?
   costoUrea          Float? // litrosUrea * precioPorLitroUrea
 
+  // IVA incluido en el precio de surtidor. Evidencia el crédito fiscal
+  // recuperable: si ivaRecuperable = false el IVA pasa a ser costo.
+  iva            Float?   // IVA contenido en costoTotal (combustible)
+  ivaUrea        Float?   // IVA contenido en costoUrea
+  ivaRecuperable Boolean @default(true)
+
   notas String?
 
   createdAt DateTime @default(now()) @db.Timestamptz
@@ -12545,6 +12551,10 @@ model FlotaFactura {
   proveedor       String?
   cuitProveedor   String?
 
+  // IVA crédito fiscal: si no se recupera (factura B / no válido como
+  // crédito) el impuesto pasa a formar parte del costo real.
+  ivaRecuperable Boolean @default(true)
+
   neto  Float?
   iva   Float?
   total Float
@@ -13371,6 +13381,10 @@ model FinanzaGasto {
   iva    Decimal? @db.Decimal(14, 2)
   total  Decimal @db.Decimal(14, 2)
   moneda String  @default("ARS")
+
+  // Evidencia del recupero de IVA crédito fiscal: false = el IVA no se
+  // recupera y computa como costo (neto efectivo = total).
+  ivaRecuperable Boolean @default(true)
 
   tipoComprobante   String? // FACTURA, NOTA_CREDITO, BOLETA, OTRO (NC resta)
   numeroComprobante String?

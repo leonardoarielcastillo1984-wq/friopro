@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, Loader2, X, AlertTriangle, MessageSquare, Sparkles, Send, Scale } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, Loader2, X, AlertTriangle, MessageSquare, Sparkles, Send, Scale, Receipt } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, CartesianGrid, Legend } from 'recharts';
 import { fmtMoney, fmtPct, fmtFecha, fmtActualizado, MESES, GRUPO_LABEL, labelRubro } from './fmt';
 
@@ -15,6 +15,7 @@ type Mes = {
 type Linea = {
   fecha: string; concepto: string; importe: number; grupo: string; fuente: string; rubro: string;
   modulo: string; origenId: string | null; origenUrl: string | null;
+  iva?: number; ivaBruto?: number; ivaRecuperable?: boolean;
 };
 type Comparativa = {
   actual: any; mesAnterior: any; mismoMesAnioAnterior: any;
@@ -79,6 +80,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [alertasAct, setAlertasAct] = useState<string | null>(null);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number } | null>(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
 
@@ -100,6 +102,9 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     apiFetch<Comparativa>(`/finanzas/comparativa?${params}`).then(setComp).catch(() => setComp(null));
     apiFetch<{ alertas: Alerta[]; actualizadoEn?: string }>(`/finanzas/alertas?${params}`).then(d => { setAlertas(d.alertas || []); setAlertasAct(d.actualizadoEn || null); }).catch(() => { setAlertas([]); setAlertasAct(null); });
     apiFetch<{ comentarios: Comentario[] }>(`/finanzas/comentarios-periodo?mesKey=${mesKey}`).then(d => setComentarios(d.comentarios || [])).catch(() => setComentarios([]));
+    apiFetch<{ meses: any[] }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`)
+      .then(d => { const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar } : null); })
+      .catch(() => setIva(null));
   }, [anio, mesSel, moneda, centroCostoId, mesKey]);
 
   const enviarComentario = async () => {
@@ -272,6 +277,32 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
         </div>
       )}
 
+      {/* IVA crédito fiscal — evidencia del recupero */}
+      {iva && (iva.recuperado > 0 || iva.noRecuperado > 0 || iva.estimado > 0 || iva.cargasSinDesagregar > 0) && (
+        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+          <div className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><Receipt size={14} className="text-teal-600" />IVA crédito fiscal — {MESES[mesSel - 1]} {anio}</div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="rounded-lg bg-emerald-50 p-3">
+              <div className="text-[11px] uppercase tracking-wide text-emerald-700">IVA recuperado</div>
+              <div className="mt-1 font-semibold text-emerald-800">{fmtMoney(iva.recuperado, moneda)}</div>
+            </div>
+            <div className={`rounded-lg p-3 ${iva.noRecuperado > 0 ? 'bg-amber-50' : 'bg-neutral-50'}`}>
+              <div className={`text-[11px] uppercase tracking-wide ${iva.noRecuperado > 0 ? 'text-amber-700' : 'text-neutral-500'}`}>IVA al costo (no recuperado)</div>
+              <div className={`mt-1 font-semibold ${iva.noRecuperado > 0 ? 'text-amber-800' : 'text-neutral-500'}`}>{fmtMoney(iva.noRecuperado, moneda)}</div>
+            </div>
+            <div className={`rounded-lg p-3 ${iva.estimado > 0 ? 'bg-amber-50' : 'bg-neutral-50'}`}>
+              <div className={`text-[11px] uppercase tracking-wide ${iva.estimado > 0 ? 'text-amber-700' : 'text-neutral-500'}`}>Estimado en combustible</div>
+              <div className={`mt-1 font-semibold ${iva.estimado > 0 ? 'text-amber-800' : 'text-neutral-500'}`}>~{fmtMoney(iva.estimado, moneda)}</div>
+            </div>
+            <div className={`rounded-lg p-3 ${iva.cargasSinDesagregar > 0 ? 'bg-red-50' : 'bg-neutral-50'}`}>
+              <div className={`text-[11px] uppercase tracking-wide ${iva.cargasSinDesagregar > 0 ? 'text-red-700' : 'text-neutral-500'}`}>Cargas sin IVA desagregado</div>
+              <div className={`mt-1 font-semibold ${iva.cargasSinDesagregar > 0 ? 'text-red-800' : 'text-neutral-500'}`}>{iva.cargasSinDesagregar}</div>
+            </div>
+          </div>
+          {iva.estimado > 0 && <p className="mt-2 text-[11px] text-neutral-400">Las cargas de combustible sin IVA desagregado no evidencian el crédito fiscal. Cargá el IVA del ticket en Flota 360 → Combustible para que computen.</p>}
+        </div>
+      )}
+
       {/* Comentario del período */}
       <div className="rounded-xl border border-neutral-200 bg-white p-4">
         <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><MessageSquare size={14} className="text-neutral-500" />Comentario del período — {MESES[mesSel - 1]} {anio}</div>
@@ -409,6 +440,8 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
                     <td className="px-4 py-2 text-neutral-800">
                       {l.origenUrl ? <a href={l.origenUrl} className="hover:text-blue-600 hover:underline">{l.concepto}</a> : l.concepto}
                       <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">{GRUPO_LABEL[l.grupo] || l.grupo}</span>
+                      {(l.iva ?? 0) > 0 && <span title={l.ivaRecuperable === false ? 'El IVA computa como costo' : 'IVA recuperado como crédito fiscal'} className={`ml-1.5 rounded px-1 py-0.5 text-[10px] ${l.ivaRecuperable === false ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>IVA {l.ivaRecuperable === false ? 'al costo' : 'recuperable'}</span>}
+                      {l.fuente === 'COMBUSTIBLE' && l.ivaRecuperable !== false && !(l.iva && l.iva > 0) && <span title="El precio de surtidor incluye IVA — desagregalo para evidenciar el crédito" className="ml-1.5 rounded bg-neutral-100 px-1 py-0.5 text-[10px] text-neutral-500">IVA sin desagregar</span>}
                     </td>
                     <td className="w-40 px-4 py-2 text-xs text-neutral-400">{['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo) ? labelRubro(l.rubro) : l.modulo}</td>
                     <td className={`w-36 px-4 py-2 text-right font-medium ${l.importe < 0 ? 'text-red-600' : ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo) ? 'text-amber-700' : 'text-neutral-900'}`}>

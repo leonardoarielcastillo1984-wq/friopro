@@ -444,6 +444,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     centroCostoId: z.string().uuid().optional().nullable(),
     neto: z.number().optional().nullable(),
     iva: z.number().optional().nullable(),
+    ivaRecuperable: z.boolean().optional(),
     total: z.number(),
     moneda: z.string().max(5).default('ARS'),
     tipoComprobante: z.string().max(20).optional().nullable(),
@@ -691,7 +692,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // Facturas de proveedor flota SUELTAS (sin OT). NC resta; PRESUPUESTO excluido.
     const flotaFacturas = await p.flotaFactura.findMany({
       where: { tenantId, fecha: { gte: desde, lt: hasta }, workOrderId: null, tipoComprobante: { not: 'PRESUPUESTO' } },
-      select: { id: true, fecha: true, total: true, concepto: true, categoria: true, tipoComprobante: true, proveedor: true, vehiculoId: true, neumaticoId: true, moneda: true },
+      select: { id: true, fecha: true, total: true, neto: true, iva: true, ivaRecuperable: true, concepto: true, categoria: true, tipoComprobante: true, proveedor: true, vehiculoId: true, neumaticoId: true, moneda: true },
     }).catch(() => []);
     const facturasNeumaticoIds = new Set<string>();
     for (const f of flotaFacturas) {
@@ -700,7 +701,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const cc = veh?.centroCostoId ?? null;
       if (!ccOk(cc)) continue;
       const sign = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
-      add({ fecha: f.fecha, concepto: `${f.concepto || f.categoria}${f.proveedor ? ' — ' + f.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}`, importe: sign * num(f.total), grupo: 'COSTO_OP', fuente: `FACTURA_${f.categoria || 'GASTO'}`, modulo: 'Flota 360', origenId: f.id, origenUrl: f.vehiculoId ? `/flota-360/vehiculos/${f.vehiculoId}` : '/flota-360', centroCostoId: cc });
+      // Costo real = neto cuando el IVA se recupera; si no, el IVA es costo.
+      const base = f.ivaRecuperable !== false && num(f.neto) > 0 ? num(f.neto) : num(f.total);
+      add({ fecha: f.fecha, concepto: `${f.concepto || f.categoria}${f.proveedor ? ' — ' + f.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}`, importe: sign * base, grupo: 'COSTO_OP', fuente: `FACTURA_${f.categoria || 'GASTO'}`, modulo: 'Flota 360', origenId: f.id, origenUrl: f.vehiculoId ? `/flota-360/vehiculos/${f.vehiculoId}` : '/flota-360', centroCostoId: cc, iva: num(f.iva), ivaRecuperable: f.ivaRecuperable !== false });
       if (f.neumaticoId) facturasNeumaticoIds.add(f.neumaticoId);
     }
     // También marcar neumáticos cubiertos por facturas vinculadas a OT
@@ -748,15 +751,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // Combustible + urea
     const combustible = await p.registroCombustible.findMany({
       where: { tenantId, fecha: { gte: desde, lt: hasta } },
-      select: { id: true, fecha: true, costoTotal: true, costoUrea: true, estacion: true, vehiculoId: true },
+      select: { id: true, fecha: true, costoTotal: true, costoUrea: true, estacion: true, vehiculoId: true, iva: true, ivaUrea: true, ivaRecuperable: true },
     }).catch(() => []);
     for (const c of combustible) {
       const veh = c.vehiculoId ? vehMap.get(c.vehiculoId) : null;
       const cc = veh?.centroCostoId ?? null;
       if (!ccOk(cc)) continue;
-      const total = num(c.costoTotal) + num(c.costoUrea);
-      if (total <= 0) continue;
-      add({ fecha: c.fecha, concepto: `Combustible${c.estacion ? ' — ' + c.estacion : ''}${veh ? ` (${veh.dominio})` : ''}`, importe: total, grupo: 'COSTO_OP', fuente: 'COMBUSTIBLE', modulo: 'Flota 360', origenId: c.id, origenUrl: '/flota-360/combustible', centroCostoId: cc });
+      const bruto = num(c.costoTotal) + num(c.costoUrea);
+      if (bruto <= 0) continue;
+      // Si el IVA se recupera y está desagregado, el costo real es sin impuesto.
+      // Sin dato de IVA → el total queda como costo (conservador) y se reporta
+      // como estimado en /iva-credito para evidenciar el posible recupero.
+      const ivaCont = c.ivaRecuperable !== false ? num(c.iva) + num(c.ivaUrea) : 0;
+      const total = bruto - Math.min(ivaCont, bruto);
+      add({ fecha: c.fecha, concepto: `Combustible${c.estacion ? ' — ' + c.estacion : ''}${veh ? ` (${veh.dominio})` : ''}`, importe: total, grupo: 'COSTO_OP', fuente: 'COMBUSTIBLE', modulo: 'Flota 360', origenId: c.id, origenUrl: '/flota-360/combustible', centroCostoId: cc, iva: ivaCont, ivaBruto: bruto, ivaRecuperable: c.ivaRecuperable !== false });
     }
 
     // Multas pagadas en el período
@@ -849,10 +857,11 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       // Recurrentes imputan una vez por mes dentro de su ventana
       const fecha = g.esRecurrente ? (g.fechaDesde && g.fechaDesde > desde ? g.fechaDesde : desde) : g.fecha;
       const grupo = g.tipoGasto === 'ESTRUCTURA' ? 'ESTRUCTURA' : 'GASTO_MANUAL';
-      // Costo real = neto (IVA crédito fiscal se recupera). Sin neto → total. NC resta.
+      // Costo real = neto solo cuando el IVA se recupera (crédito fiscal).
+      // ivaRecuperable=false → el impuesto es costo → se usa total. NC resta.
       const sign = g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
-      const base = g.neto !== null && g.neto !== undefined ? num(g.neto) : num(g.total);
-      add({ fecha, concepto: `${g.concepto}${g.proveedor ? ' — ' + g.proveedor : ''}${g.esRecurrente ? ' (recurrente)' : ''}`, importe: sign * base, grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: '/resultados?tab=gastos', centroCostoId: g.centroCostoId });
+      const base = g.ivaRecuperable !== false && g.neto !== null && g.neto !== undefined ? num(g.neto) : num(g.total);
+      add({ fecha, concepto: `${g.concepto}${g.proveedor ? ' — ' + g.proveedor : ''}${g.esRecurrente ? ' (recurrente)' : ''}`, importe: sign * base, grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: '/resultados?tab=gastos', centroCostoId: g.centroCostoId, iva: num(g.iva), ivaRecuperable: g.ivaRecuperable !== false });
     }
 
     return lineas;
@@ -1452,6 +1461,39 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // IVA CRÉDITO FISCAL — evidencia del recupero de IVA en costos.
+  // recuperado = IVA desagregado en documentos marcados recuperables;
+  // noRecuperado = IVA que computa como costo; estimado = IVA implícito
+  // en cargas de combustible sin desagregar (surtidor incluye IVA).
+  // ═══════════════════════════════════════════════════════════════
+  const IVA_TASA: Record<string, number> = { ARS: 0.21, CLP: 0.19, USD: 0, UYU: 0.22, PYG: 0.1, BRL: 0 };
+
+  app.get('/iva-credito', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const anio = Number(q.anio) || new Date().getUTCFullYear();
+    const moneda = q.moneda || null;
+    const tasa = moneda ? (IVA_TASA[moneda] ?? 0.21) : 0.21;
+    const hoy = new Date();
+    const ultimoMes = anio === hoy.getUTCFullYear() ? hoy.getUTCMonth() + 1 : 12;
+    const lineas = await recolectarLineas(tenantId, new Date(Date.UTC(anio, 0, 1)), new Date(Date.UTC(anio, ultimoMes, 1)), moneda, q.centroCostoId || null);
+    const meses = [];
+    const tot = { recuperado: 0, noRecuperado: 0, estimado: 0, cargasSinDesagregar: 0 };
+    for (let m = 1; m <= ultimoMes; m++) {
+      const ls = lineas.filter((l: any) => new Date(l.fecha).getUTCMonth() + 1 === m);
+      const recuperado = ls.filter(l => l.ivaRecuperable !== false && num(l.iva) > 0).reduce((s, l) => s + num(l.iva), 0);
+      const noRecuperado = ls.filter(l => l.ivaRecuperable === false && num(l.iva) > 0).reduce((s, l) => s + num(l.iva), 0);
+      const sinDesag = ls.filter(l => l.fuente === 'COMBUSTIBLE' && l.ivaRecuperable !== false && num(l.iva) === 0 && num(l.ivaBruto) > 0);
+      const estimado = sinDesag.reduce((s, l) => s + num(l.ivaBruto) * (tasa / (1 + tasa)), 0);
+      meses.push({ mes: m, mesKey: `${anio}-${String(m).padStart(2, '0')}`, recuperado, noRecuperado, estimado, cargasSinDesagregar: sinDesag.length });
+      tot.recuperado += recuperado; tot.noRecuperado += noRecuperado; tot.estimado += estimado; tot.cargasSinDesagregar += sinDesag.length;
+    }
+    const actualizadoEn = await ultimaAct(tenantId, moneda);
+    return reply.send({ anio, moneda, tasaEstimada: tasa, meses, totales: tot, actualizadoEn });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // ALERTAS GERENCIALES — reglas deterministas sobre datos reales.
   // Umbrales por tenant: resultadosConfig.alertas {atencion:10, critica:25}.
   // Severidad: INFO | ATENCION | CRITICA. Máximo 8, por impacto económico.
@@ -1542,6 +1584,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const prox7 = pendCxP.filter(i => i.diasVencimiento >= 0 && i.diasVencimiento <= 7).reduce((s, i) => s + i.saldo, 0);
     if (vencidoCxp > 0) push('CRITICA', 'CXP_VENCIDA', `${vencidoCxp.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en obligaciones están vencidas`, vencidoCxp);
     if (prox7 > 0) push('ATENCION', 'CXP_7D', `En los próximos 7 días vencen ${prox7.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en obligaciones`, prox7);
+
+    // IVA: no recuperado computa como costo; combustible sin desagregar
+    // no evidencia el crédito fiscal que podría estarse perdiendo.
+    const ivaNoRec = lineas.filter(l => l.ivaRecuperable === false && num(l.iva) > 0).reduce((s, l) => s + num(l.iva), 0);
+    if (ivaNoRec > 0)
+      push('ATENCION', 'IVA_NO_RECUPERADO', `${ivaNoRec.toLocaleString('es-AR', { maximumFractionDigits: 0 })} de IVA computó como costo (marcado no recuperable)`, ivaNoRec);
+    const combSinIva = lineas.filter(l => l.fuente === 'COMBUSTIBLE' && l.ivaRecuperable !== false && num(l.iva) === 0 && num(l.ivaBruto) > 0);
+    if (combSinIva.length > 0) {
+      const bruto = combSinIva.reduce((s, l) => s + num(l.ivaBruto), 0);
+      push('INFO', 'IVA_SIN_DESAGREGAR', `${combSinIva.length} cargas de combustible sin IVA desagregado — posible crédito fiscal sin evidenciar`, bruto * 0.21 / 1.21);
+    }
 
     // Orden: CRITICA → ATENCION → INFO, dentro por impacto. Máximo 8.
     const sev: Record<string, number> = { CRITICA: 3, ATENCION: 2, INFO: 1 };
