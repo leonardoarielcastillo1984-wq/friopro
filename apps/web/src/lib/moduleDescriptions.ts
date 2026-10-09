@@ -57,7 +57,7 @@ export const MODULE_DESCRIPTIONS: Record<string, ModuleInfo> = {
     description: 'Políticas del sistema integrado de gestión (calidad, ambiente, seguridad).',
   },
   '/resultados': {
-    title: 'Resultados del Negocio',
+    title: 'Resultado de Negocio',
     description: 'Consolidado económico: facturación, cobranzas, costos operativos (flota, mantenimiento, personal) y gastos de estructura, con resultado mensual y trazabilidad al origen de cada dato.',
   },
   '/calidad': {

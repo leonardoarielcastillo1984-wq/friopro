@@ -87,7 +87,7 @@ function ResultadosPageInner() {
     <div className="mx-auto max-w-7xl px-4 py-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-neutral-900">Resultados del Negocio</h1>
+          <h1 className="text-xl font-bold text-neutral-900">Resultado de Negocio</h1>
           <p className="mt-0.5 text-sm text-neutral-500">Cuánto vendimos, cuánto gastamos y cuánto ganamos (o perdimos) cada mes.</p>
           {!canEdit && <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-500"><Eye size={11} />Modo consulta</p>}
         </div>

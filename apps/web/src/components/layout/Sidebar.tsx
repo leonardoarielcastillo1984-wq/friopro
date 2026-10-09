@@ -48,6 +48,10 @@ import {
 const mainNav = [
   // 1. Visión general
   { label: 'Inicio', icon: LayoutDashboard, href: '/dashboard' },
+
+  // Resultado de Negocio — consolidador económico (justo debajo de Inicio)
+  { label: 'Resultado de Negocio', icon: TrendingUp, href: '/resultados' },
+
   { label: 'Command Center', icon: Brain, href: '/command-center' },
   { label: 'Preparación de Auditoría', icon: ListChecks, href: '/auditoria-readiness' },
   { label: 'Documentos', icon: FileText, href: '/documents' },
@@ -84,9 +88,6 @@ const mainNav = [
   // 8. Infraestructura
   { label: 'Infraestructura', icon: Package, href: '/infraestructura' },
   { label: 'Flota 360', icon: Truck, href: '/flota-360' },
-
-  // 8b. Resultados del Negocio — consolidador económico
-  { label: 'Resultados', icon: TrendingUp, href: '/resultados' },
 
   // 9. Admin
   { label: 'Reportes', icon: FileBarChart, href: '/reportes' },
