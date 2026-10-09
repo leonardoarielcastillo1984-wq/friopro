@@ -16,6 +16,19 @@ import { randomBytes } from 'crypto';
 
 const num = (v: any) => (v === null || v === undefined ? 0 : Number(v));
 
+// Rubro de costo para el análisis "¿en qué se va la plata?". Gastos manuales
+// y facturas de flota usan su categoría; el resto se mapea por fuente.
+const RUBRO_FUENTE: Record<string, string> = {
+  MANTENIMIENTO_OT: 'MANTENIMIENTO', MANTENIMIENTO: 'MANTENIMIENTO', NEUMATICO: 'NEUMATICOS',
+  PERSONAL: 'SUELDOS', PERSONAL_FLOTA: 'SUELDOS', COMBUSTIBLE: 'COMBUSTIBLE', MULTA: 'MULTAS',
+  FINANCIACION: 'FINANCIACION',
+};
+function rubroDe(fuente: string): string {
+  if (fuente.startsWith('GASTO_')) return fuente.slice(6);
+  if (fuente.startsWith('FACTURA_') && fuente !== 'FACTURA_EMITIDA') return fuente.slice(8);
+  return RUBRO_FUENTE[fuente] || 'OTRO';
+}
+
 async function resolveUser(prisma: any, userId?: string | null) {
   if (!userId) return { id: null as string | null, nombre: null as string | null };
   try {
@@ -135,11 +148,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   const facturaSchema = z.object({
     numero: z.string().max(50).optional().nullable(),
     puntoVenta: z.string().max(20).optional().nullable(),
-    tipoComprobante: z.enum(['FACTURA', 'NOTA_CREDITO', 'BOLETA', 'OTRO']).default('FACTURA'),
+    tipoComprobante: z.enum(['FACTURA', 'NOTA_CREDITO', 'NOTA_DEBITO', 'BOLETA', 'OTRO']).default('FACTURA'),
     fechaEmision: z.string().optional(),
     fechaVencimiento: z.string().optional().nullable(),
     clienteId: z.string().uuid().optional().nullable(),
     clienteNombre: z.string().min(1).max(200),
+    clienteRut: z.string().max(20).optional().nullable(),
     neto: z.number().optional(),
     iva: z.number().optional(),
     total: z.number(),
@@ -286,6 +300,28 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return reply.code(201).send({ cobro, factura: { ...actualizada, cobrado, saldo: Math.max(0, num(actualizada.total) - cobrado), estado: estadoEfectivo(actualizada) } });
   });
 
+  app.patch('/cobros/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const schema = z.object({
+      fecha: z.string().optional(),
+      importe: z.number().positive().optional(),
+      referencia: z.string().max(100).optional().nullable(),
+      medioPago: z.string().max(30).optional().nullable(),
+      notas: z.string().max(500).optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const cobro = await prisma().finanzaCobro.findFirst({ where: { id, tenantId } });
+    if (!cobro) return reply.code(404).send({ error: 'Cobro no encontrado' });
+    const data: any = { ...body.data };
+    if (data.fecha) data.fecha = new Date(data.fecha);
+    await prisma().finanzaCobro.update({ where: { id }, data });
+    await syncFacturaEstado(app.prisma, cobro.facturaId);
+    return reply.send({ ok: true });
+  });
+
   app.delete('/cobros/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
@@ -308,8 +344,13 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     categoria: z.string().max(50).default('OTRO'),
     tipoGasto: z.enum(['OPERATIVO', 'ESTRUCTURA', 'OTRO']).default('OPERATIVO'),
     centroCostoId: z.string().uuid().optional().nullable(),
+    neto: z.number().optional().nullable(),
+    iva: z.number().optional().nullable(),
     total: z.number(),
     moneda: z.string().max(5).default('ARS'),
+    tipoComprobante: z.string().max(20).optional().nullable(),
+    numeroComprobante: z.string().max(50).optional().nullable(),
+    proveedorRut: z.string().max(20).optional().nullable(),
     esRecurrente: z.boolean().default(false),
     fechaDesde: z.string().optional().nullable(),
     fechaHasta: z.string().optional().nullable(),
@@ -370,6 +411,27 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  // Reclasifica en bloque todos los gastos de un proveedor (por RUT o nombre).
+  // Clasificar un proveedor una vez aplica a todo su histórico importado.
+  app.post('/gastos/reclasificar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const schema = z.object({
+      proveedorRut: z.string().max(20).optional().nullable(),
+      proveedor: z.string().max(200).optional().nullable(),
+      categoria: z.string().max(50).optional(),
+      tipoGasto: z.enum(['OPERATIVO', 'ESTRUCTURA', 'OTRO']).optional(),
+      centroCostoId: z.string().uuid().optional().nullable(),
+    });
+    const body = schema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const { proveedorRut, proveedor, ...data } = body.data;
+    if (!proveedorRut && !proveedor) return reply.code(400).send({ error: 'Indicá proveedorRut o proveedor' });
+    const where: any = { tenantId, deletedAt: null, ...(proveedorRut ? { proveedorRut } : { proveedor }) };
+    const r = await prisma().finanzaGasto.updateMany({ where, data });
+    return reply.send({ ok: true, actualizados: r.count });
+  });
+
   app.delete('/gastos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
@@ -377,6 +439,45 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const r = await prisma().finanzaGasto.updateMany({ where: { id, tenantId }, data: { deletedAt: new Date() } });
     if (!r.count) return reply.code(404).send({ error: 'Gasto no encontrado' });
     return reply.send({ ok: true });
+  });
+
+  // Monedas en uso (ordenadas por cantidad de movimientos) — el dashboard
+  // nunca suma monedas distintas, arranca en la más usada.
+  app.get('/monedas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const [f, g] = await Promise.all([
+      prisma().finanzaFactura.groupBy({ by: ['moneda'], where: { tenantId, deletedAt: null }, _count: { _all: true } }).catch(() => []),
+      prisma().finanzaGasto.groupBy({ by: ['moneda'], where: { tenantId, deletedAt: null }, _count: { _all: true } }).catch(() => []),
+    ]);
+    const cnt: Record<string, number> = {};
+    for (const r of [...f, ...g]) cnt[r.moneda] = (cnt[r.moneda] || 0) + r._count._all;
+    const monedas = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([m]) => m);
+    return reply.send({ monedas });
+  });
+
+  // Clientes ya facturados (para autocompletar nombre + RUT)
+  app.get('/clientes', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const rows = await prisma().finanzaFactura.groupBy({
+      by: ['clienteNombre', 'clienteRut'], where: { tenantId, deletedAt: null }, _count: { _all: true },
+    }).catch(() => []);
+    const clientes = rows.sort((a: any, b: any) => b._count._all - a._count._all).map((r: any) => ({ nombre: r.clienteNombre, rut: r.clienteRut }));
+    return reply.send({ clientes });
+  });
+
+  // Proveedores ya cargados en gastos (para reclasificar en bloque)
+  app.get('/proveedores', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const rows = await prisma().finanzaGasto.groupBy({
+      by: ['proveedor', 'proveedorRut', 'categoria', 'tipoGasto'], where: { tenantId, deletedAt: null, proveedor: { not: null } },
+      _count: { _all: true }, _sum: { total: true },
+    }).catch(() => []);
+    const proveedores = rows.map((r: any) => ({ nombre: r.proveedor, rut: r.proveedorRut, categoria: r.categoria, tipoGasto: r.tipoGasto, cantidad: r._count._all, total: num(r._sum.total) }))
+      .sort((a: any, b: any) => b.total - a.total);
+    return reply.send({ proveedores });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -388,7 +489,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // grupo: FACTURADO | INGRESO_OPERATIVO | COBRADO | COSTO_OP | ESTRUCTURA | GASTO_MANUAL
   async function recolectarLineas(tenantId: string, desde: Date, hasta: Date, moneda: string | null, centroCostoId: string | null) {
     const lineas: any[] = [];
-    const add = (l: any) => lineas.push(l);
+    const add = (l: any) => lineas.push({ ...l, rubro: rubroDe(l.fuente) });
     const ccOk = (cc: string | null | undefined) => !centroCostoId || cc === centroCostoId;
     const monOk = (m: string | null | undefined) => !moneda || !m || m === moneda;
     const p = prisma();
@@ -410,7 +511,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     }).catch(() => []);
     for (const f of facturas) {
       const sign = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
-      add({ fecha: f.fechaEmision, concepto: `Factura ${[f.puntoVenta, f.numero].filter(Boolean).join('-') || 's/n'} — ${f.clienteNombre}`, importe: sign * num(f.total), grupo: 'FACTURADO', fuente: 'FACTURA_EMITIDA', modulo: 'Resultados', origenId: f.id, origenUrl: '/resultados?tab=facturacion', centroCostoId: f.centroCostoId });
+      // Venta = base sin IVA (el IVA no es ingreso de la empresa). Sin neto cargado → total.
+      const base = num(f.neto) > 0 ? num(f.neto) : num(f.total);
+      const label = f.tipoComprobante === 'NOTA_CREDITO' ? 'Nota de crédito' : 'Factura';
+      add({ fecha: f.fechaEmision, concepto: `${label} ${[f.puntoVenta, f.numero].filter(Boolean).join('-') || 's/n'} — ${f.clienteNombre}`, importe: sign * base, grupo: 'FACTURADO', fuente: 'FACTURA_EMITIDA', modulo: 'Resultados', origenId: f.id, origenUrl: '/resultados?tab=facturacion', centroCostoId: f.centroCostoId });
     }
 
     // Cobros de facturas emitidas (caja)
@@ -570,7 +674,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       // Recurrentes imputan una vez por mes dentro de su ventana
       const fecha = g.esRecurrente ? (g.fechaDesde && g.fechaDesde > desde ? g.fechaDesde : desde) : g.fecha;
       const grupo = g.tipoGasto === 'ESTRUCTURA' ? 'ESTRUCTURA' : 'GASTO_MANUAL';
-      add({ fecha, concepto: `${g.concepto}${g.proveedor ? ' — ' + g.proveedor : ''}${g.esRecurrente ? ' (recurrente)' : ''}`, importe: num(g.total), grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: '/resultados?tab=gastos', centroCostoId: g.centroCostoId });
+      // Costo real = neto (IVA crédito fiscal se recupera). Sin neto → total. NC resta.
+      const sign = g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
+      const base = g.neto !== null && g.neto !== undefined ? num(g.neto) : num(g.total);
+      add({ fecha, concepto: `${g.concepto}${g.proveedor ? ' — ' + g.proveedor : ''}${g.esRecurrente ? ' (recurrente)' : ''}`, importe: sign * base, grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: '/resultados?tab=gastos', centroCostoId: g.centroCostoId });
     }
 
     return lineas;
@@ -605,12 +712,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       const ventas = facturado + ingresosOperativos;
       const resultado = ventas - costosOperativos - estructura;
       const margen = ventas > 0 ? Math.round((resultado / ventas) * 1000) / 10 : null;
+      const porRubro: Record<string, number> = {};
+      for (const l of lineas) {
+        if (!['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo)) continue;
+        porRubro[l.rubro] = (porRubro[l.rubro] || 0) + l.importe;
+      }
 
       meses.push({
         mes: m, mesKey: `${anio}-${String(m).padStart(2, '0')}`,
         facturado, ingresosOperativos, ventas, cobrado,
         costosOperativos, estructura, costosTotales: costosOperativos + estructura,
-        resultado, margen, lineas: lineas.length,
+        resultado, margen, lineas: lineas.length, porRubro,
       });
     }
 
@@ -623,6 +735,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       resultado: acc.resultado + m.resultado,
     }), { facturado: 0, ventas: 0, cobrado: 0, costos: 0, resultado: 0 });
     totales.margen = totales.ventas > 0 ? Math.round((totales.resultado / totales.ventas) * 1000) / 10 : null;
+    totales.porRubro = {} as Record<string, number>;
+    for (const m of meses) for (const [r, v] of Object.entries(m.porRubro as Record<string, number>)) totales.porRubro[r] = (totales.porRubro[r] || 0) + v;
+    totales.mesesPositivos = meses.filter(m => m.resultado > 0).length;
+    totales.mesesNegativos = meses.filter(m => m.resultado < 0).length;
 
     return reply.send({ anio, moneda, centroCostoId, meses, totales });
   });
@@ -648,6 +764,190 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       porGrupo[l.grupo] = (porGrupo[l.grupo] || 0) + l.importe;
       porFuente[l.fuente] = (porFuente[l.fuente] || 0) + l.importe;
     }
-    return reply.send({ anio, mes, lineas, porGrupo, porFuente });
+    const porRubro: Record<string, number> = {};
+    for (const l of lineas) {
+      if (!['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo)) continue;
+      porRubro[l.rubro] = (porRubro[l.rubro] || 0) + l.importe;
+    }
+    return reply.send({ anio, mes, lineas, porGrupo, porFuente, porRubro });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // CUENTAS POR COBRAR — cuánto debe cada cliente, cada cuánto paga
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/cuentas-por-cobrar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const facturas = await prisma().finanzaFactura.findMany({
+      where: { tenantId, deletedAt: null, estado: { not: 'ANULADA' }, ...(q.moneda ? { moneda: q.moneda } : {}) },
+      include: { cobros: { orderBy: { fecha: 'asc' } } },
+      orderBy: { fechaEmision: 'asc' },
+    });
+    const hoy = Date.now();
+    const DIA = 86400000;
+    const porCliente = new Map<string, any>();
+    for (const f of facturas) {
+      const key = (f.clienteRut || f.clienteNombre).trim().toUpperCase();
+      if (!porCliente.has(key)) porCliente.set(key, {
+        cliente: f.clienteNombre, rut: f.clienteRut, facturado: 0, cobrado: 0, notasCredito: 0, saldo: 0,
+        aging: { corriente: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90: 0 },
+        diasPago: [] as number[], fechasCobro: [] as number[], pendientes: [] as any[], ultimoCobro: null as Date | null,
+      });
+      const c = porCliente.get(key);
+      const total = num(f.total);
+      if (f.tipoComprobante === 'NOTA_CREDITO') { c.notasCredito += total; continue; }
+      const cobrado = f.cobros.reduce((s: number, x: any) => s + num(x.importe), 0);
+      c.facturado += total; c.cobrado += cobrado;
+      for (const x of f.cobros) {
+        c.fechasCobro.push(new Date(x.fecha).getTime());
+        if (!c.ultimoCobro || x.fecha > c.ultimoCobro) c.ultimoCobro = x.fecha;
+      }
+      const saldo = Math.max(0, total - cobrado);
+      if (saldo <= 0.5 && f.cobros.length) {
+        // Días de pago = emisión → cobro que la canceló
+        const last = new Date(f.cobros[f.cobros.length - 1].fecha).getTime();
+        c.diasPago.push(Math.max(0, Math.round((last - new Date(f.fechaEmision).getTime()) / DIA)));
+        continue;
+      }
+      if (saldo <= 0.5) continue;
+      c.saldo += saldo;
+      const venc = f.fechaVencimiento ? new Date(f.fechaVencimiento).getTime() : new Date(f.fechaEmision).getTime();
+      const atraso = Math.floor((hoy - venc) / DIA);
+      if (atraso <= 0) c.aging.corriente += saldo;
+      else if (atraso <= 30) c.aging.d1_30 += saldo;
+      else if (atraso <= 60) c.aging.d31_60 += saldo;
+      else if (atraso <= 90) c.aging.d61_90 += saldo;
+      else c.aging.d90 += saldo;
+      c.pendientes.push({
+        id: f.id, numero: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null, fechaEmision: f.fechaEmision,
+        fechaVencimiento: f.fechaVencimiento, total, cobrado, saldo, diasAtraso: Math.max(0, atraso), moneda: f.moneda,
+        fileUrl: f.fileUrl, diasDesdeEmision: Math.floor((hoy - new Date(f.fechaEmision).getTime()) / DIA),
+      });
+    }
+    const clientes = [...porCliente.values()].map(c => {
+      const fechas = [...new Set(c.fechasCobro.map((t: number) => Math.floor(t / DIA)))].sort((a: any, b: any) => a - b) as number[];
+      const intervalos = fechas.slice(1).map((d, i) => d - fechas[i]);
+      const { diasPago, fechasCobro, ...rest } = c;
+      // NC sin aplicar a una factura puntual: se descuenta de la deuda más vieja primero
+      let credito = c.notasCredito;
+      for (const b of ['d90', 'd61_90', 'd31_60', 'd1_30', 'corriente'] as const) {
+        const aplica = Math.min(credito, c.aging[b]);
+        c.aging[b] -= aplica; credito -= aplica;
+      }
+      return {
+        ...rest,
+        saldo: Math.max(0, c.saldo - c.notasCredito),
+        diasPagoPromedio: diasPago.length ? Math.round(diasPago.reduce((s: number, d: number) => s + d, 0) / diasPago.length) : null,
+        frecuenciaPagoDias: intervalos.length ? Math.round(intervalos.reduce((s, d) => s + d, 0) / intervalos.length) : null,
+        facturasPagadas: diasPago.length,
+      };
+    }).sort((a, b) => b.saldo - a.saldo);
+    const totales = clientes.reduce((t, c) => ({
+      saldo: t.saldo + c.saldo,
+      vencido: t.vencido + c.aging.d1_30 + c.aging.d31_60 + c.aging.d61_90 + c.aging.d90,
+      d90: t.d90 + c.aging.d90,
+    }), { saldo: 0, vencido: 0, d90: 0 });
+    return reply.send({ clientes, totales });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // IMPORTACIÓN RCV (Registro de Compras y Ventas — SII Chile)
+  // El front parsea el CSV y envía filas normalizadas. Deduplica por
+  // tipo + folio + RUT: re-importar el mismo mes no duplica.
+  // ═══════════════════════════════════════════════════════════════
+  const filaRcvSchema = z.object({
+    tipoDoc: z.string().max(10),
+    folio: z.string().min(1).max(50),
+    rut: z.string().max(20).optional().nullable(),
+    razonSocial: z.string().max(200).optional().nullable(),
+    fecha: z.string(),
+    exento: z.number().default(0),
+    neto: z.number().default(0),
+    iva: z.number().default(0),
+    ivaNoRecuperable: z.number().default(0),
+    total: z.number(),
+  });
+  const importRcvSchema = z.object({
+    tipo: z.enum(['VENTAS', 'COMPRAS']),
+    moneda: z.string().max(5).default('CLP'),
+    centroCostoId: z.string().uuid().optional().nullable(),
+    diasVencimiento: z.number().int().min(0).max(365).default(30),
+    categoriaDefault: z.string().max(50).default('OTRO'),
+    tipoGastoDefault: z.enum(['OPERATIVO', 'ESTRUCTURA', 'OTRO']).default('OPERATIVO'),
+    filas: z.array(filaRcvSchema).min(1).max(5000),
+  });
+  // Códigos de documento SII → tipo interno
+  const tipoDesdeSii = (cod: string) => {
+    const c = String(cod).trim();
+    if (c === '61') return 'NOTA_CREDITO';
+    if (c === '56') return 'NOTA_DEBITO';
+    if (c === '39' || c === '41') return 'BOLETA';
+    if (c === '33' || c === '34' || c === '30' || c === '32' || c === '46') return 'FACTURA';
+    return 'OTRO';
+  };
+
+  app.post('/importar-rcv', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const body = importRcvSchema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const { tipo, moneda, centroCostoId, diasVencimiento, categoriaDefault, tipoGastoDefault, filas } = body.data;
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
+    const p = prisma();
+    let creados = 0, duplicados = 0;
+    const errores: string[] = [];
+
+    // Clasificación previa por proveedor: si ya existe un gasto de ese RUT, se reutiliza
+    const clasif = new Map<string, any>();
+    if (tipo === 'COMPRAS') {
+      const ruts = [...new Set(filas.map(f => f.rut).filter(Boolean))] as string[];
+      const prev = ruts.length ? await p.finanzaGasto.findMany({
+        where: { tenantId, deletedAt: null, proveedorRut: { in: ruts } },
+        orderBy: { updatedAt: 'desc' }, select: { proveedorRut: true, categoria: true, tipoGasto: true, centroCostoId: true },
+      }) : [];
+      for (const g of prev) if (!clasif.has(g.proveedorRut)) clasif.set(g.proveedorRut, g);
+    }
+
+    for (const f of filas) {
+      const fecha = new Date(f.fecha);
+      if (isNaN(fecha.getTime())) { errores.push(`Folio ${f.folio}: fecha inválida`); continue; }
+      const tipoComprobante = tipoDesdeSii(f.tipoDoc);
+      try {
+        if (tipo === 'VENTAS') {
+          const existe = await p.finanzaFactura.findFirst({ where: { tenantId, deletedAt: null, numero: f.folio, tipoComprobante, ...(f.rut ? { clienteRut: f.rut } : {}) }, select: { id: true } });
+          if (existe) { duplicados++; continue; }
+          await p.finanzaFactura.create({
+            data: {
+              tenantId, numero: f.folio, tipoComprobante, fechaEmision: fecha,
+              fechaVencimiento: tipoComprobante === 'NOTA_CREDITO' ? null : new Date(fecha.getTime() + diasVencimiento * 86400000),
+              clienteNombre: f.razonSocial || f.rut || 'Sin nombre', clienteRut: f.rut || null,
+              neto: f.neto + f.exento, iva: f.iva, total: f.total, moneda, centroCostoId: centroCostoId || null,
+              origen: 'IMPORT_RCV', uploadedById: user.id, uploadedByNombre: user.nombre,
+            },
+          });
+        } else {
+          const existe = await p.finanzaGasto.findFirst({ where: { tenantId, deletedAt: null, numeroComprobante: f.folio, tipoComprobante, ...(f.rut ? { proveedorRut: f.rut } : {}) }, select: { id: true } });
+          if (existe) { duplicados++; continue; }
+          const prev = f.rut ? clasif.get(f.rut) : null;
+          await p.finanzaGasto.create({
+            data: {
+              tenantId, fecha, proveedor: f.razonSocial || null, proveedorRut: f.rut || null,
+              concepto: `${tipoComprobante === 'NOTA_CREDITO' ? 'NC' : 'Factura'} ${f.folio}${f.razonSocial ? ' — ' + f.razonSocial : ''}`,
+              categoria: prev?.categoria || categoriaDefault, tipoGasto: prev?.tipoGasto || tipoGastoDefault,
+              centroCostoId: prev?.centroCostoId ?? centroCostoId ?? null,
+              // IVA no recuperable es costo; el recuperable no
+              neto: f.neto + f.exento + f.ivaNoRecuperable, iva: f.iva, total: f.total, moneda,
+              tipoComprobante, numeroComprobante: f.folio, origen: 'IMPORT_RCV',
+              uploadedById: user.id, uploadedByNombre: user.nombre,
+            },
+          });
+        }
+        creados++;
+      } catch (e: any) {
+        errores.push(`Folio ${f.folio}: ${e?.message?.slice(0, 120) || 'error'}`);
+      }
+    }
+    return reply.send({ ok: true, creados, duplicados, errores: errores.slice(0, 50), totalErrores: errores.length });
   });
 }

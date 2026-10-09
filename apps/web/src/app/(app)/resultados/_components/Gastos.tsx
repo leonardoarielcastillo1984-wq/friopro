@@ -1,15 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { Plus, X, Loader2, Paperclip, Trash2, Repeat } from 'lucide-react';
-import { fmtMoney, fmtFecha, CATEGORIA_GASTO } from './fmt';
+import { Plus, X, Loader2, Paperclip, Trash2, Repeat, Pencil, Search, Tags } from 'lucide-react';
+import { fmtMoney, fmtFecha, CATEGORIA_GASTO, TIPO_COMPROBANTE, IVA_DEFAULT, MONEDAS, toDateInput } from './fmt';
 
 type Gasto = {
-  id: string; fecha: string; proveedor: string | null; concepto: string; categoria: string;
-  tipoGasto: string; centroCostoId: string | null; total: number; moneda: string;
+  id: string; fecha: string; proveedor: string | null; proveedorRut: string | null; concepto: string; categoria: string;
+  tipoGasto: string; centroCostoId: string | null; neto: number | null; iva: number | null; total: number; moneda: string;
+  tipoComprobante: string | null; numeroComprobante: string | null; origen: string;
   esRecurrente: boolean; fechaDesde: string | null; fechaHasta: string | null;
-  fileUrl: string | null; fileName: string | null; notas: string | null;
+  fileUrl: string | null; fileName: string | null; mimeType: string | null; notas: string | null;
 };
 
 const TIPO_LABEL: Record<string, { label: string; color: string }> = {
@@ -18,39 +19,90 @@ const TIPO_LABEL: Record<string, { label: string; color: string }> = {
   OTRO: { label: 'Otro', color: 'bg-neutral-100 text-neutral-600' },
 };
 
-export default function Gastos({ centros, onChanged }: { centros: any[]; onChanged: () => void }) {
+const hoy = () => new Date().toISOString().slice(0, 10);
+const nuevoForm = (moneda: string) => ({
+  fecha: hoy(), proveedor: '', proveedorRut: '', concepto: '', categoria: 'OTRO', tipoGasto: 'OPERATIVO',
+  centroCostoId: '', conIva: false, neto: '', ivaRate: String(IVA_DEFAULT[moneda] ?? 0), iva: '', total: '', moneda,
+  tipoComprobante: '', numeroComprobante: '', esRecurrente: false, fechaDesde: '', fechaHasta: '', notas: '',
+});
+type Form = ReturnType<typeof nuevoForm>;
+const costo = (g: Gasto) => (g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) * (g.neto !== null ? g.neto : g.total);
+
+export default function Gastos({ centros, moneda, canEdit, onChanged }: { centros: any[]; moneda: string; canEdit: boolean; onChanged: () => void }) {
   const [gastos, setGastos] = useState<Gasto[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filtroTipo, setFiltroTipo] = useState('');
-  const [form, setForm] = useState({
-    fecha: new Date().toISOString().slice(0, 10), proveedor: '', concepto: '',
-    categoria: 'OTRO', tipoGasto: 'OPERATIVO', centroCostoId: '', total: '', moneda: 'ARS',
-    esRecurrente: false, fechaDesde: '', fechaHasta: '', notas: '',
-  });
+  const [filtroCat, setFiltroCat] = useState('');
+  const [filtroMes, setFiltroMes] = useState('');
+  const [buscar, setBuscar] = useState('');
+  const [form, setForm] = useState<Form>(nuevoForm(moneda));
+  const [showProv, setShowProv] = useState(false);
+  const [proveedores, setProveedores] = useState<any[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileData, setFileData] = useState<{ url: string; name: string; mimeType: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const q = filtroTipo ? `?tipoGasto=${filtroTipo}` : '';
-      const d = await apiFetch<{ gastos: Gasto[] }>(`/finanzas/gastos${q}`);
-      setGastos(d.gastos);
-    } finally { setLoading(false); }
+      const params = new URLSearchParams({ moneda });
+      if (filtroTipo) params.set('tipoGasto', filtroTipo);
+      if (filtroCat) params.set('categoria', filtroCat);
+      if (filtroMes) {
+        const [y, m] = filtroMes.split('-').map(Number);
+        params.set('desde', new Date(Date.UTC(y, m - 1, 1)).toISOString());
+        params.set('hasta', new Date(Date.UTC(y, m, 1)).toISOString());
+      }
+      const d = await apiFetch<{ gastos: Gasto[] }>(`/finanzas/gastos?${params}`);
+      setGastos(d.gastos.map(g => ({ ...g, total: Number(g.total), neto: g.neto === null ? null : Number(g.neto), iva: g.iva === null ? null : Number(g.iva) })));
+    } catch (e: any) { setError(e?.message || 'No se pudieron cargar los gastos'); }
+    finally { setLoading(false); }
+  };
+  const loadProv = () => apiFetch<{ proveedores: any[] }>('/finanzas/proveedores').then(d => setProveedores(d.proveedores)).catch(() => {});
+  useEffect(() => { load(); }, [filtroTipo, filtroCat, filtroMes, moneda]);
+  useEffect(() => { if (showProv) loadProv(); }, [showProv]);
+
+  const visibles = useMemo(() => {
+    const q = buscar.trim().toLowerCase();
+    return gastos.filter(g => !q || g.concepto.toLowerCase().includes(q) || (g.proveedor || '').toLowerCase().includes(q) || (g.proveedorRut || '').includes(q));
+  }, [gastos, buscar]);
+  const totalCosto = visibles.reduce((s, g) => s + costo(g), 0);
+
+  const set = (k: keyof Form, v: any) => setForm(f => ({ ...f, [k]: v }));
+  const setNeto = (v: string) => setForm(f => {
+    const n = Number(v) || 0, r = Number(f.ivaRate) || 0, iva = Math.round(n * r) / 100;
+    return { ...f, neto: v, iva: v ? String(iva) : '', total: v ? String(Math.round((n + iva) * 100) / 100) : '' };
+  });
+  const setTotal = (v: string) => setForm(f => {
+    if (!f.conIva) return { ...f, total: v };
+    const t = Number(v) || 0, r = Number(f.ivaRate) || 0, n = Math.round((t / (1 + r / 100)) * 100) / 100;
+    return { ...f, total: v, neto: v ? String(n) : '', iva: v ? String(Math.round((t - n) * 100) / 100) : '' };
+  });
+
+  const abrirNuevo = () => { setEditId(null); setForm(nuevoForm(moneda)); setFileData(null); setShowForm(true); setError(null); };
+  const abrirEditar = (g: Gasto) => {
+    const conIva = g.neto !== null && g.iva !== null && g.iva > 0;
+    setEditId(g.id);
+    setForm({
+      fecha: toDateInput(g.fecha), proveedor: g.proveedor || '', proveedorRut: g.proveedorRut || '', concepto: g.concepto,
+      categoria: g.categoria, tipoGasto: g.tipoGasto, centroCostoId: g.centroCostoId || '', conIva,
+      neto: g.neto !== null ? String(g.neto) : '', ivaRate: conIva && g.neto ? String(Math.round(((g.iva || 0) / g.neto) * 1000) / 10) : String(IVA_DEFAULT[g.moneda] ?? 0),
+      iva: g.iva !== null ? String(g.iva) : '', total: String(g.total), moneda: g.moneda,
+      tipoComprobante: g.tipoComprobante || '', numeroComprobante: g.numeroComprobante || '',
+      esRecurrente: g.esRecurrente, fechaDesde: toDateInput(g.fechaDesde), fechaHasta: toDateInput(g.fechaHasta), notas: g.notas || '',
+    });
+    setFileData(g.fileUrl ? { url: g.fileUrl, name: g.fileName || 'comprobante', mimeType: g.mimeType || '' } : null);
+    setShowForm(true); setError(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  useEffect(() => { load(); }, [filtroTipo]);
-
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
-
   const uploadFile = async (file: File) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    const res = await apiFetch<{ url: string; name: string; mimeType: string }>('/finanzas/gastos/upload', { method: 'POST', body: fd });
-    setFileData(res);
+    const fd = new FormData(); fd.append('file', file);
+    try { setFileData(await apiFetch('/finanzas/gastos/upload', { method: 'POST', body: fd })); }
+    catch (e: any) { setError(e?.message || 'No se pudo subir el archivo'); }
   };
 
   const guardar = async () => {
@@ -59,21 +111,20 @@ export default function Gastos({ centros, onChanged }: { centros: any[]; onChang
     if (!Number(form.total)) return setError('El total es obligatorio');
     setSaving(true);
     try {
-      await apiFetch('/finanzas/gastos', {
-        method: 'POST',
-        json: {
-          fecha: form.fecha, proveedor: form.proveedor || null, concepto: form.concepto,
-          categoria: form.categoria, tipoGasto: form.tipoGasto, centroCostoId: form.centroCostoId || null,
-          total: Number(form.total), moneda: form.moneda,
-          esRecurrente: form.esRecurrente,
-          fechaDesde: form.esRecurrente ? (form.fechaDesde || form.fecha) : null,
-          fechaHasta: form.esRecurrente && form.fechaHasta ? form.fechaHasta : null,
-          notas: form.notas || null,
-          fileUrl: fileData?.url || null, fileName: fileData?.name || null, mimeType: fileData?.mimeType || null,
-        },
-      });
-      setShowForm(false); setFileData(null);
-      setForm({ ...form, concepto: '', proveedor: '', total: '', notas: '', esRecurrente: false, fechaDesde: '', fechaHasta: '' });
+      const json = {
+        fecha: form.fecha, proveedor: form.proveedor.trim() || null, proveedorRut: form.proveedorRut.trim() || null,
+        concepto: form.concepto.trim(), categoria: form.categoria, tipoGasto: form.tipoGasto, centroCostoId: form.centroCostoId || null,
+        neto: form.conIva && form.neto ? Number(form.neto) : null, iva: form.conIva && form.iva ? Number(form.iva) : null,
+        total: Number(form.total), moneda: form.moneda,
+        tipoComprobante: form.tipoComprobante || null, numeroComprobante: form.numeroComprobante || null,
+        esRecurrente: form.esRecurrente,
+        fechaDesde: form.esRecurrente ? (form.fechaDesde || form.fecha) : null,
+        fechaHasta: form.esRecurrente && form.fechaHasta ? form.fechaHasta : null,
+        notas: form.notas || null,
+        fileUrl: fileData?.url || null, fileName: fileData?.name || null, mimeType: fileData?.mimeType || null,
+      };
+      await apiFetch(editId ? `/finanzas/gastos/${editId}` : '/finanzas/gastos', { method: editId ? 'PATCH' : 'POST', json });
+      setShowForm(false); setEditId(null); setFileData(null);
       await load(); onChanged();
     } catch (e: any) { setError(e?.message || 'Error al guardar'); }
     finally { setSaving(false); }
@@ -85,120 +136,199 @@ export default function Gastos({ centros, onChanged }: { centros: any[]; onChang
     await load(); onChanged();
   };
 
+  const reclasificar = async (p: any, cambios: { categoria?: string; tipoGasto?: string }) => {
+    try {
+      const r = await apiFetch<{ actualizados: number }>('/finanzas/gastos/reclasificar', {
+        method: 'POST', json: { ...(p.rut ? { proveedorRut: p.rut } : { proveedor: p.nombre }), ...cambios },
+      });
+      setError(null);
+      await Promise.all([loadProv(), load()]); onChanged();
+      if (!r.actualizados) setError('No se actualizó ningún gasto');
+    } catch (e: any) { setError(e?.message || 'No se pudo reclasificar'); }
+  };
+
   const inputCls = 'w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-neutral-400 focus:outline-none';
   const labelCls = 'block text-[11px] font-medium uppercase tracking-wide text-neutral-500 mb-1';
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} className={`${inputCls} w-44`}>
+        <div className="relative">
+          <Search size={14} className="absolute left-2.5 top-2.5 text-neutral-400" />
+          <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Concepto, proveedor, RUT…" className={`${inputCls} w-56 pl-8`} />
+        </div>
+        <input type="month" value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} w-40`} title="Filtrar por mes" />
+        <select value={filtroCat} onChange={e => setFiltroCat(e.target.value)} className={`${inputCls} w-48`}>
+          <option value="">Todas las categorías</option>
+          {Object.entries(CATEGORIA_GASTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} className={`${inputCls} w-36`}>
           <option value="">Todos los tipos</option>
           <option value="OPERATIVO">Operativo</option><option value="ESTRUCTURA">Estructura</option><option value="OTRO">Otro</option>
         </select>
-        <button onClick={() => setShowForm(true)} className="ml-auto flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800">
-          <Plus size={15} /> Nuevo gasto
-        </button>
+        <div className="ml-auto flex gap-2">
+          {canEdit && <button onClick={() => setShowProv(s => !s)} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"><Tags size={14} /> Clasificar proveedores</button>}
+          {canEdit && <button onClick={abrirNuevo} className="flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"><Plus size={15} /> Nuevo gasto</button>}
+        </div>
       </div>
       <p className="text-xs text-neutral-400">
-        Cargá acá solo los gastos que <b>no</b> están en otro módulo (alquiler, seguros, administración, servicios generales).
-        Combustible, mantenimiento, repuestos, sueldos de empleados y multas ya entran automáticamente al consolidado.
+        Cargá acá fletes, sueldos, seguros, arriendo y todo lo que no esté en otro módulo — o importalos desde el RCV de Compras del SII.
+        Combustible, OTs de mantenimiento, cubiertas y multas de Flota 360 entran solos al resultado: no los repitas.
+        El resultado usa el <b>neto sin IVA</b> cuando el IVA es recuperable.
       </p>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+      {showProv && (
+        <div className="rounded-xl border border-neutral-200 bg-white">
+          <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2.5">
+            <span className="text-sm font-semibold">Clasificar por proveedor <span className="font-normal text-neutral-400">— cambia todos sus gastos y los próximos que importes</span></span>
+            <button onClick={() => setShowProv(false)} className="text-neutral-400"><X size={16} /></button>
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                {proveedores.map((p, i) => (
+                  <tr key={i} className="border-b border-neutral-100 last:border-0">
+                    <td className="px-4 py-2"><div className="font-medium text-neutral-900">{p.nombre}</div><div className="text-[11px] text-neutral-400">{p.rut || 'sin RUT'} · {p.cantidad} gastos · {fmtMoney(p.total, moneda)}</div></td>
+                    <td className="px-2 py-2 w-56">
+                      <select value={p.categoria} onChange={e => reclasificar(p, { categoria: e.target.value })} className="w-full rounded border border-neutral-200 px-2 py-1 text-xs">
+                        {Object.entries(CATEGORIA_GASTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-2 py-2 w-36">
+                      <select value={p.tipoGasto} onChange={e => reclasificar(p, { tipoGasto: e.target.value })} className="w-full rounded border border-neutral-200 px-2 py-1 text-xs">
+                        <option value="OPERATIVO">Operativo</option><option value="ESTRUCTURA">Estructura</option><option value="OTRO">Otro</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+                {proveedores.length === 0 && <tr><td className="px-4 py-6 text-center text-neutral-400">Todavía no hay gastos con proveedor.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-sm font-semibold">Nuevo gasto</span>
-            <button onClick={() => setShowForm(false)} className="text-neutral-400 hover:text-neutral-600"><X size={16} /></button>
+            <span className="text-sm font-semibold">{editId ? 'Editar gasto' : 'Nuevo gasto'}</span>
+            <button onClick={() => { setShowForm(false); setEditId(null); }} className="text-neutral-400 hover:text-neutral-600"><X size={16} /></button>
           </div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="col-span-2"><label className={labelCls}>Concepto *</label><input value={form.concepto} onChange={e => set('concepto', e.target.value)} placeholder="Ej. Alquiler depósito" className={inputCls} /></div>
+            <div className="col-span-2"><label className={labelCls}>Concepto *</label><input value={form.concepto} onChange={e => set('concepto', e.target.value)} placeholder="Ej. Sueldos marzo, Seguro camiones, Flete subcontratado" className={inputCls} /></div>
             <div><label className={labelCls}>Proveedor</label><input value={form.proveedor} onChange={e => set('proveedor', e.target.value)} className={inputCls} /></div>
+            <div><label className={labelCls}>RUT / CUIT proveedor</label><input value={form.proveedorRut} onChange={e => set('proveedorRut', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Fecha</label><input type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Categoría</label>
               <select value={form.categoria} onChange={e => set('categoria', e.target.value)} className={inputCls}>
                 {Object.entries(CATEGORIA_GASTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </div>
+              </select></div>
             <div><label className={labelCls}>Tipo</label>
               <select value={form.tipoGasto} onChange={e => set('tipoGasto', e.target.value)} className={inputCls}>
-                <option value="OPERATIVO">Operativo</option><option value="ESTRUCTURA">Estructura (fijo mensual)</option><option value="OTRO">Otro</option>
-              </select>
-            </div>
-            <div><label className={labelCls}>Centro de costo</label>
+                <option value="OPERATIVO">Operativo (varía con la operación)</option><option value="ESTRUCTURA">Estructura (fijo mensual)</option><option value="OTRO">Otro</option>
+              </select></div>
+            <div><label className={labelCls}>Unidad / centro de costo</label>
               <select value={form.centroCostoId} onChange={e => set('centroCostoId', e.target.value)} className={inputCls}>
-                <option value="">—</option>
-                {centros.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </select>
+                <option value="">—</option>{centros.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select></div>
+            <div><label className={labelCls}>Comprobante</label>
+              <select value={form.tipoComprobante} onChange={e => set('tipoComprobante', e.target.value)} className={inputCls}>
+                <option value="">Sin comprobante</option>{Object.entries(TIPO_COMPROBANTE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select></div>
+            <div><label className={labelCls}>Nº comprobante</label><input value={form.numeroComprobante} onChange={e => set('numeroComprobante', e.target.value)} className={inputCls} /></div>
+            <div className="col-span-2 flex items-end pb-2">
+              <label className="flex items-center gap-2 text-sm text-neutral-600">
+                <input type="checkbox" checked={form.conIva} onChange={e => set('conIva', e.target.checked)} className="rounded" />
+                Tiene IVA recuperable (crédito fiscal)
+              </label>
             </div>
-            <div><label className={labelCls}>Total *</label><input type="number" value={form.total} onChange={e => set('total', e.target.value)} className={inputCls} /></div>
+            {form.conIva && <>
+              <div><label className={labelCls}>Neto</label><input type="number" value={form.neto} onChange={e => setNeto(e.target.value)} className={inputCls} /></div>
+              <div><label className={labelCls}>IVA %</label><input type="number" value={form.ivaRate} onChange={e => set('ivaRate', e.target.value)} className={inputCls} /></div>
+              <div><label className={labelCls}>IVA</label><input type="number" value={form.iva} onChange={e => set('iva', e.target.value)} className={inputCls} /></div>
+            </>}
+            <div><label className={labelCls}>Total *</label><input type="number" value={form.total} onChange={e => setTotal(e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Moneda</label>
-              <select value={form.moneda} onChange={e => set('moneda', e.target.value)} className={inputCls}>
-                <option>ARS</option><option>CLP</option><option>USD</option>
-              </select>
-            </div>
-            <div className="col-span-2 flex items-end gap-2 pb-1">
+              <select value={form.moneda} onChange={e => set('moneda', e.target.value)} className={inputCls}>{MONEDAS.map(m => <option key={m}>{m}</option>)}</select></div>
+            <div className="col-span-2 flex flex-wrap items-end gap-2 pb-1">
               <label className="flex items-center gap-2 text-sm text-neutral-600">
                 <input type="checkbox" checked={form.esRecurrente} onChange={e => set('esRecurrente', e.target.checked)} className="rounded" />
-                Recurrente mensual
+                Se repite todos los meses
               </label>
-              {form.esRecurrente && (
-                <>
-                  <input type="date" value={form.fechaDesde} onChange={e => set('fechaDesde', e.target.value)} className={`${inputCls} w-36`} title="Desde" />
-                  <input type="date" value={form.fechaHasta} onChange={e => set('fechaHasta', e.target.value)} className={`${inputCls} w-36`} title="Hasta (vacío = indefinido)" />
-                </>
-              )}
+              {form.esRecurrente && <>
+                <input type="date" value={form.fechaDesde} onChange={e => set('fechaDesde', e.target.value)} className={`${inputCls} w-36`} title="Desde" />
+                <input type="date" value={form.fechaHasta} onChange={e => set('fechaHasta', e.target.value)} className={`${inputCls} w-36`} title="Hasta (vacío = sin fin)" />
+              </>}
             </div>
-            <div>
-              <label className={labelCls}>Comprobante</label>
-              <button type="button" onClick={() => fileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-500 hover:border-neutral-400">
-                <Paperclip size={14} />{fileData ? fileData.name : 'Adjuntar'}
-              </button>
-              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={e => e.target.files?.[0] && uploadFile(e.target.files[0])} />
-            </div>
+            <div className="col-span-2"><label className={labelCls}>Comprobante (PDF/imagen)</label>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => fileRef.current?.click()} className="flex flex-1 items-center gap-2 truncate rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-500 hover:border-neutral-400">
+                  <Paperclip size={14} />{fileData ? fileData.name : 'Adjuntar'}
+                </button>
+                {fileData && <button type="button" onClick={() => setFileData(null)} className="text-neutral-400 hover:text-red-500"><X size={14} /></button>}
+              </div>
+              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={e => e.target.files?.[0] && uploadFile(e.target.files[0])} /></div>
+            <div className="col-span-2"><label className={labelCls}>Notas</label><input value={form.notas} onChange={e => set('notas', e.target.value)} className={inputCls} /></div>
           </div>
           <div className="mt-3 flex justify-end gap-2">
-            <button onClick={() => setShowForm(false)} className="rounded-lg px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100">Cancelar</button>
+            <button onClick={() => { setShowForm(false); setEditId(null); }} className="rounded-lg px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100">Cancelar</button>
             <button onClick={guardar} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-              {saving && <Loader2 size={14} className="animate-spin" />} Guardar
+              {saving && <Loader2 size={14} className="animate-spin" />} {editId ? 'Guardar cambios' : 'Guardar'}
             </button>
           </div>
         </div>
       )}
 
       {loading ? <div className="py-10 text-center text-neutral-400"><Loader2 className="inline animate-spin" size={18} /></div> : (
-        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+        <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-[11px] uppercase tracking-wide text-neutral-500">
                 <th className="px-4 py-2.5 font-medium">Fecha</th><th className="px-4 py-2.5 font-medium">Concepto</th>
                 <th className="px-4 py-2.5 font-medium">Categoría</th><th className="px-4 py-2.5 font-medium">Tipo</th>
-                <th className="px-4 py-2.5 text-right font-medium">Total</th><th className="px-4 py-2.5 w-10"></th>
+                <th className="px-4 py-2.5 text-right font-medium">Costo (neto)</th><th className="px-4 py-2.5 text-right font-medium">Total</th>
+                <th className="px-4 py-2.5 w-20"></th>
               </tr>
             </thead>
             <tbody>
-              {gastos.map(g => {
+              {visibles.map(g => {
                 const t = TIPO_LABEL[g.tipoGasto] || TIPO_LABEL.OTRO;
+                const c = costo(g);
                 return (
                   <tr key={g.id} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/60">
                     <td className="px-4 py-2.5 text-xs text-neutral-500">{fmtFecha(g.fecha)}</td>
                     <td className="px-4 py-2.5">
                       <span className="font-medium text-neutral-900">{g.concepto}</span>
-                      {g.proveedor && <span className="ml-1 text-xs text-neutral-400">— {g.proveedor}</span>}
-                      {g.esRecurrente && <span title="Recurrente mensual"><Repeat size={11} className="ml-1.5 inline text-purple-500" /></span>}
+                      {g.proveedor && !g.concepto.includes(g.proveedor) && <span className="ml-1 text-xs text-neutral-400">— {g.proveedor}</span>}
+                      {g.esRecurrente && <span title="Todos los meses"><Repeat size={11} className="ml-1.5 inline text-purple-500" /></span>}
                       {g.fileUrl && <a href={g.fileUrl} target="_blank" rel="noreferrer" className="ml-1.5 inline-block text-blue-500"><Paperclip size={11} /></a>}
+                      {g.origen === 'IMPORT_RCV' && <span className="ml-1.5 rounded bg-sky-50 px-1 text-[10px] text-sky-600">SII</span>}
                     </td>
                     <td className="px-4 py-2.5 text-neutral-600">{CATEGORIA_GASTO[g.categoria] || g.categoria}</td>
                     <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${t.color}`}>{t.label}</span></td>
-                    <td className="px-4 py-2.5 text-right font-medium">{fmtMoney(g.total, g.moneda)}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button onClick={() => eliminar(g)} className="text-neutral-300 hover:text-red-500"><Trash2 size={14} /></button>
+                    <td className={`px-4 py-2.5 text-right font-medium ${c < 0 ? 'text-green-700' : ''}`}>{fmtMoney(c, g.moneda)}</td>
+                    <td className="px-4 py-2.5 text-right text-neutral-400">{fmtMoney(g.total, g.moneda)}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-right">
+                      {canEdit && <>
+                        <button onClick={() => abrirEditar(g)} className="p-1 text-neutral-400 hover:text-blue-600" title="Editar"><Pencil size={14} /></button>
+                        <button onClick={() => eliminar(g)} className="p-1 text-neutral-300 hover:text-red-500" title="Eliminar"><Trash2 size={14} /></button>
+                      </>}
                     </td>
                   </tr>
                 );
               })}
-              {gastos.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-neutral-400">Sin gastos cargados.</td></tr>}
+              {visibles.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-neutral-400">Sin gastos en {moneda} con estos filtros.</td></tr>}
             </tbody>
+            {visibles.length > 0 && (
+              <tfoot>
+                <tr className="border-t border-neutral-200 bg-neutral-50 text-sm font-semibold">
+                  <td colSpan={4} className="px-4 py-2.5 text-neutral-500">{visibles.length} gastos</td>
+                  <td className="px-4 py-2.5 text-right">{fmtMoney(totalCosto, moneda)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       )}

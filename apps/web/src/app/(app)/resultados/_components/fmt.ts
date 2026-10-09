@@ -23,6 +23,27 @@ export const ESTADO_FACTURA: Record<string, { label: string; color: string }> = 
 };
 
 export const CATEGORIA_GASTO: Record<string, string> = {
-  SUELDOS: 'Sueldos', ALQUILER: 'Alquiler', SEGUROS: 'Seguros', SERVICIOS: 'Servicios',
-  ADMINISTRACION: 'Administración', IMPUESTOS: 'Impuestos', OTRO: 'Otro',
+  FLETE: 'Fletes / subcontratados', SUELDOS: 'Sueldos', LEYES_SOCIALES: 'Leyes sociales / cargas',
+  COMBUSTIBLE: 'Combustible', MANTENIMIENTO: 'Mantenimiento / repuestos', NEUMATICOS: 'Neumáticos',
+  PEAJES: 'Peajes / estacionamiento', SEGUROS: 'Seguros', ALQUILER: 'Arriendo / alquiler',
+  SERVICIOS: 'Servicios (luz, agua, internet)', HONORARIOS: 'Honorarios / contador', ADMINISTRACION: 'Administración',
+  BANCARIOS: 'Gastos bancarios', IMPUESTOS: 'Impuestos / patentes', OTRO: 'Otro',
 };
+
+export const RUBRO_LABEL: Record<string, string> = {
+  ...CATEGORIA_GASTO, MULTAS: 'Multas', FINANCIACION: 'Cuotas de unidades', REPUESTOS: 'Repuestos',
+  GASTO: 'Facturas flota', SEGURO: 'Seguros',
+};
+export const labelRubro = (r: string) =>
+  RUBRO_LABEL[r] || r.charAt(0) + r.slice(1).toLowerCase().replace(/_/g, ' ');
+
+export const MONEDAS = ['CLP', 'ARS', 'USD'];
+
+// Tasa de IVA sugerida por moneda (editable en cada formulario)
+export const IVA_DEFAULT: Record<string, number> = { CLP: 19, ARS: 21, USD: 0 };
+
+export const TIPO_COMPROBANTE: Record<string, string> = {
+  FACTURA: 'Factura', NOTA_CREDITO: 'Nota de crédito', NOTA_DEBITO: 'Nota de débito', BOLETA: 'Boleta', OTRO: 'Otro',
+};
+
+export const toDateInput = (d: string | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : '');

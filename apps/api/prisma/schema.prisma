@@ -13243,6 +13243,9 @@ model FinanzaFactura {
   // Cliente: vínculo al maestro (Customer) + snapshot para histórico
   clienteId     String? @db.Uuid // escalar, sin FK dura
   clienteNombre String // snapshot (obligatorio: el reporte histórico no depende del maestro)
+  clienteRut    String? // identificación fiscal (RUT/CUIT) — clave de deduplicación al importar
+
+  origen String @default("MANUAL") // MANUAL | IMPORT_RCV
 
   // Montos (Decimal: nunca Float para dinero)
   neto   Decimal  @default(0) @db.Decimal(14, 2)
@@ -13278,6 +13281,7 @@ model FinanzaFactura {
   @@index([estado])
   @@index([clienteId])
   @@index([centroCostoId])
+  @@index([clienteRut])
   @@map("finanza_facturas")
 }
 
@@ -13346,8 +13350,16 @@ model FinanzaGasto {
 
   centroCostoId String? @db.Uuid
 
+  // neto = costo real sin IVA recuperable (null = se usa total)
+  neto   Decimal? @db.Decimal(14, 2)
+  iva    Decimal? @db.Decimal(14, 2)
   total  Decimal @db.Decimal(14, 2)
   moneda String  @default("ARS")
+
+  tipoComprobante   String? // FACTURA, NOTA_CREDITO, BOLETA, OTRO (NC resta)
+  numeroComprobante String?
+  proveedorRut      String?
+  origen            String  @default("MANUAL") // MANUAL | IMPORT_RCV
 
   // Recurrencia: si esRecurrente, el consolidado prorratea `total` cada mes
   // entre fechaDesde y fechaHasta (null = indefinido).
@@ -13372,5 +13384,6 @@ model FinanzaGasto {
   @@index([fecha])
   @@index([tipoGasto])
   @@index([centroCostoId])
+  @@index([proveedorRut])
   @@map("finanza_gastos")
 }
