@@ -13400,11 +13400,22 @@ model FinanzaGasto {
   // FIJO | VARIABLE | MIXTO (null = no clasificado → lo decide el rubro o queda fuera)
   claseCosto String?
 
-  // Recurrencia: si esRecurrente, el consolidado prorratea `total` cada mes
+  // Recurrencia: si esRecurrente, el consolidado imputa `total` cada mes
   // entre fechaDesde y fechaHasta (null = indefinido).
   esRecurrente Boolean   @default(false)
   fechaDesde   DateTime? @db.Timestamptz
   fechaHasta   DateTime? @db.Timestamptz
+
+  // Amortización de gasto anual: el `total` se prorratea en partes iguales
+  // por mes dentro de [fechaDesde, fechaHasta] (seguro/anualidad).
+  esAmortizable Boolean @default(false)
+  // Cuota variable (préstamo/leasing): importe del mes k = total + (k-1)*variacionCuota.
+  // Negativo = cuota decreciente. Solo aplica con esRecurrente = true.
+  variacionCuota Decimal? @db.Decimal(14, 2)
+
+  // Imputación opcional a una unidad de flota (lavado, peaje, etc. cargado
+  // como gasto manual). Resuelve centro de costo desde el vehículo.
+  vehiculoId String? @db.Uuid
 
   fileUrl  String?
   fileName String?

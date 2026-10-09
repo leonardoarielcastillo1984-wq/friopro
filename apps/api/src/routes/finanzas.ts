@@ -455,6 +455,9 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     esRecurrente: z.boolean().default(false),
     fechaDesde: z.string().optional().nullable(),
     fechaHasta: z.string().optional().nullable(),
+    esAmortizable: z.boolean().optional(),
+    variacionCuota: z.number().optional().nullable(),
+    vehiculoId: z.string().uuid().optional().nullable(),
     fileUrl: z.string().optional().nullable(),
     fileName: z.string().optional().nullable(),
     mimeType: z.string().optional().nullable(),
@@ -569,7 +572,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { country: true, monedaResultados: true, resultadosConfig: true } });
     const monedaLocal = (t?.country && MONEDA_PAIS[t.country]) || null;
     const ivaTasa = ((t?.resultadosConfig as any)?.ivaTasa as Record<string, number> | undefined) || {};
-    return { country: t?.country || null, monedaLocal, monedaDefault: t?.monedaResultados || monedaLocal, ivaTasa };
+    const presupuesto = ((t?.resultadosConfig as any)?.presupuesto as Record<string, number> | undefined) || {};
+    return { country: t?.country || null, monedaLocal, monedaDefault: t?.monedaResultados || monedaLocal, ivaTasa, presupuesto };
   };
 
   app.get('/config', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -588,11 +592,13 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       alertas: z.object({ atencion: z.number().min(1).max(100), critica: z.number().min(1).max(200) }).optional(),
       // Tasa de IVA por moneda (0–0.5): ARS 0.21, CLP 0.19… anula el default por moneda
       ivaTasa: z.record(z.string().regex(/^[A-Z]{3}$/), z.number().min(0).max(0.5).nullable()).optional(),
+      // Presupuesto mensual por categoría de gasto (null = sin tope)
+      presupuesto: z.record(z.string().max(50), z.number().min(0).nullable()).optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     const data: any = {};
     if (body.data.monedaDefault !== undefined) data.monedaResultados = body.data.monedaDefault;
-    if (body.data.saldoInicial || body.data.claseCosto || body.data.alertas || body.data.ivaTasa) {
+    if (body.data.saldoInicial || body.data.claseCosto || body.data.alertas || body.data.ivaTasa || body.data.presupuesto) {
       const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
       const conf = ((t?.resultadosConfig as any) || {}) as any;
       if (body.data.saldoInicial) conf.saldoInicial = body.data.saldoInicial;
@@ -601,6 +607,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       if (body.data.ivaTasa) {
         conf.ivaTasa = { ...(conf.ivaTasa || {}), ...Object.fromEntries(Object.entries(body.data.ivaTasa).filter(([, v]) => v !== null)) };
         for (const [k, v] of Object.entries(body.data.ivaTasa)) if (v === null) delete conf.ivaTasa[k];
+      }
+      if (body.data.presupuesto) {
+        conf.presupuesto = { ...(conf.presupuesto || {}), ...Object.fromEntries(Object.entries(body.data.presupuesto).filter(([, v]) => v !== null)) };
+        for (const [k, v] of Object.entries(body.data.presupuesto)) if (v === null) delete conf.presupuesto[k];
       }
       data.resultadosConfig = conf;
     }
@@ -849,26 +859,60 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     }
 
     // ── GASTOS MANUALES / ESTRUCTURA ────────────────────────────
+    // Un gasto con vehiculoId sin centroCostoId hereda el CC de la unidad
+    const vehIdsCC = centroCostoId ? vehiculos.filter((v: any) => v.centroCostoId === centroCostoId).map((v: any) => v.id) : [];
     const gastos = await p.finanzaGasto.findMany({
       where: {
         tenantId, deletedAt: null,
         ...(moneda ? { moneda } : {}),
-        ...(centroCostoId ? { centroCostoId } : {}),
-        OR: [
-          { fecha: { gte: desde, lt: hasta }, esRecurrente: false },
-          { esRecurrente: true, OR: [{ fechaDesde: null }, { fechaDesde: { lt: hasta } }], AND: [{ OR: [{ fechaHasta: null }, { fechaHasta: { gte: desde } }] }] },
+        AND: [
+          { OR: [
+            { fecha: { gte: desde, lt: hasta }, esRecurrente: false, esAmortizable: false },
+            { esRecurrente: true, OR: [{ fechaDesde: null }, { fechaDesde: { lt: hasta } }], AND: [{ OR: [{ fechaHasta: null }, { fechaHasta: { gte: desde } }] }] },
+            // Amortizable: entra en cualquier mes que intersecte [fechaDesde, fechaHasta]
+            { esAmortizable: true, fechaDesde: { not: null, lt: hasta }, fechaHasta: { not: null, gte: desde } },
+          ] },
+          ...(centroCostoId ? [{ OR: [{ centroCostoId }, { vehiculoId: { in: vehIdsCC } }] }] : []),
         ],
       },
     }).catch(() => []);
     for (const g of gastos) {
-      // Recurrentes imputan una vez por mes dentro de su ventana
-      const fecha = g.esRecurrente ? (g.fechaDesde && g.fechaDesde > desde ? g.fechaDesde : desde) : g.fecha;
+      const veh = g.vehiculoId ? vehMap.get(g.vehiculoId) : null;
+      const cc = g.centroCostoId ?? veh?.centroCostoId ?? null;
+      if (!ccOk(cc)) continue;
       const grupo = g.tipoGasto === 'ESTRUCTURA' ? 'ESTRUCTURA' : 'GASTO_MANUAL';
       // Costo real = neto solo cuando el IVA se recupera (crédito fiscal).
       // ivaRecuperable=false → el impuesto es costo → se usa total. NC resta.
       const sign = g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
       const base = g.ivaRecuperable !== false && g.neto !== null && g.neto !== undefined ? num(g.neto) : num(g.total);
-      add({ fecha, concepto: `${g.concepto}${g.proveedor ? ' — ' + g.proveedor : ''}${g.esRecurrente ? ' (recurrente)' : ''}`, importe: sign * base, grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: '/resultados?tab=gastos', centroCostoId: g.centroCostoId, iva: num(g.iva), ivaRecuperable: g.ivaRecuperable !== false });
+      let fecha = new Date(g.fecha);
+      let importe = sign * base;
+      let tag = '';
+      if (g.esAmortizable && g.fechaDesde && g.fechaHasta) {
+        // Gasto anual prorrateado: el total se divide en partes iguales
+        // por cada mes de la ventana (seguro, alquiler anual, etc.)
+        const ini = new Date(g.fechaDesde), fin = new Date(g.fechaHasta);
+        const meses = (fin.getUTCFullYear() - ini.getUTCFullYear()) * 12 + fin.getUTCMonth() - ini.getUTCMonth() + 1;
+        if (meses > 0) {
+          const k = (desde.getUTCFullYear() - ini.getUTCFullYear()) * 12 + desde.getUTCMonth() - ini.getUTCMonth() + 1;
+          importe = sign * (base / meses);
+          fecha = ini > desde ? ini : desde;
+          tag = ` (amort. ${k}/${meses})`;
+        }
+      } else if (g.esRecurrente) {
+        const ini = g.fechaDesde ? new Date(g.fechaDesde) : new Date(g.fecha);
+        fecha = ini > desde ? ini : desde;
+        const dv = num(g.variacionCuota);
+        if (dv !== 0) {
+          // Cuota variable (préstamo/leasing): mes k = base + (k-1)·variación
+          const k = (desde.getUTCFullYear() - ini.getUTCFullYear()) * 12 + desde.getUTCMonth() - ini.getUTCMonth() + 1;
+          importe = sign * Math.max(0, base + (k - 1) * dv);
+          tag = ` (cuota ${k})`;
+        } else {
+          tag = ' (recurrente)';
+        }
+      }
+      add({ fecha, concepto: `${g.concepto}${g.proveedor ? ' — ' + g.proveedor : ''}${veh ? ` (${veh.dominio})` : ''}${tag}`, importe, grupo, fuente: `GASTO_${g.categoria}`, modulo: 'Resultados', origenId: g.id, origenUrl: veh ? `/flota-360/vehiculos/${veh.id}` : '/resultados?tab=gastos', centroCostoId: cc, iva: num(g.iva), ivaRecuperable: g.ivaRecuperable !== false });
     }
 
     return lineas;
@@ -1183,7 +1227,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       p.finanzaPago.findMany({ where: { tenantId, fecha: { gte: desde, lte: horizonte }, ...(moneda ? { moneda } : {}) }, select: { fecha: true, importe: true } }).catch(() => []),
       p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, fecha: { gte: desde, lte: hoy }, ...(moneda ? { moneda } : {}), pagos: { none: {} } }, select: { fecha: true, total: true, tipoComprobante: true } }).catch(() => []),
       p.flotaFactura.findMany({ where: { tenantId, tipoComprobante: { notIn: ['PRESUPUESTO', 'NOTA_CREDITO'] }, ...(moneda ? { moneda } : {}), OR: [{ pagadaAt: { not: null } }, { fechaVencimiento: null, fecha: { gte: desde, lte: hoy } }] }, select: { fecha: true, pagadaAt: true, total: true } }).catch(() => []),
-      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, esRecurrente: true, ...(moneda ? { moneda } : {}), OR: [{ fechaHasta: null }, { fechaHasta: { gte: hoy } }] }, select: { total: true } }).catch(() => []),
+      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, ...(moneda ? { moneda } : {}), OR: [
+        { esRecurrente: true, OR: [{ fechaHasta: null }, { fechaHasta: { gte: hoy } }] },
+        { esAmortizable: true, fechaDesde: { not: null, lte: horizonte }, fechaHasta: { not: null, gte: hoy } },
+      ] }, select: { total: true, neto: true, ivaRecuperable: true, esAmortizable: true, fechaDesde: true, fechaHasta: true } }).catch(() => []),
       p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null),
     ]);
 
@@ -1243,7 +1290,17 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       proximosCobros: proximosCobros.sort((a, b) => a.fecha.getTime() - b.fecha.getTime()),
       proximosPagos: proximosPagos.sort((a, b) => a.fecha.getTime() - b.fecha.getTime()),
       proyeccion,
-      recurrentesMensual: recurrentes.reduce((s: number, r: any) => s + num(r.total), 0),
+      // Equivalente mensual: recurrentes al total del mes (neto si el IVA se
+      // recupera); amortizables a su prorrateo por la ventana.
+      recurrentesMensual: recurrentes.reduce((s: number, r: any) => {
+        const base = r.ivaRecuperable !== false && r.neto !== null ? num(r.neto) : num(r.total);
+        if (r.esAmortizable && r.fechaDesde && r.fechaHasta) {
+          const ini = new Date(r.fechaDesde), fin = new Date(r.fechaHasta);
+          const m = (fin.getUTCFullYear() - ini.getUTCFullYear()) * 12 + fin.getUTCMonth() - ini.getUTCMonth() + 1;
+          return s + (m > 0 ? base / m : base);
+        }
+        return s + base;
+      }, 0),
       actualizadoEn: await ultimaAct(tenantId, moneda),
     });
   });
@@ -1584,6 +1641,20 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       else if (a > prom && prom > 0 && varPct(a, prom)! >= UMB_CR)
         push('ATENCION', 'RUBRO_HIST',
           `${r} está ${(((a - prom) / prom) * 100).toFixed(0)} % por encima del promedio de los últimos ${mesesHist} meses`, a - prom);
+    }
+
+    // Presupuesto mensual por categoría (resultadosConfig.presupuesto):
+    // el real del mes superando el tope dispara alerta.
+    const presupuesto = ((tenant?.resultadosConfig as any)?.presupuesto as Record<string, number> | undefined) || {};
+    for (const [cat, tope] of Object.entries(presupuesto)) {
+      const t = num(tope);
+      if (t <= 0) continue;
+      const real = rubAct[cat] || 0;
+      if (real > t) {
+        const exceso = real - t;
+        push(exceso / t >= UMB_CR / 100 ? 'CRITICA' : 'ATENCION', 'PRESUPUESTO_EXCEDIDO',
+          `${cat} superó el presupuesto mensual en ${((exceso / t) * 100).toFixed(0)} % (${real.toLocaleString('es-AR', { maximumFractionDigits: 0 })} de ${t.toLocaleString('es-AR', { maximumFractionDigits: 0 })})`, exceso, '/resultados?tab=gastos');
+      }
     }
 
     // CxC vencida

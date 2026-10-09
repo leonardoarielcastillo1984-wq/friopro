@@ -11,6 +11,7 @@ type Gasto = {
   tipoComprobante: string | null; numeroComprobante: string | null; origen: string;
   ivaRecuperable?: boolean;
   esRecurrente: boolean; fechaDesde: string | null; fechaHasta: string | null;
+  esAmortizable?: boolean; variacionCuota?: number | null; vehiculoId?: string | null;
   fileUrl: string | null; fileName: string | null; mimeType: string | null; notas: string | null;
 };
 
@@ -24,7 +25,11 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 const nuevoForm = (moneda: string) => ({
   fecha: hoy(), proveedor: '', proveedorRut: '', concepto: '', categoria: 'OTRO', tipoGasto: 'OPERATIVO',
   centroCostoId: '', conIva: false, ivaRecuperable: true, neto: '', ivaRate: String(IVA_DEFAULT[moneda] ?? 0), iva: '', total: '', moneda,
-  tipoComprobante: '', numeroComprobante: '', esRecurrente: false, fechaDesde: '', fechaHasta: '', notas: '',
+  tipoComprobante: '', numeroComprobante: '',
+  // modo: PUNTUAL | FIJO (repite igual) | CUOTA (varía por mes) | AMORTIZA (divide el total)
+  modo: 'PUNTUAL' as 'PUNTUAL' | 'FIJO' | 'CUOTA' | 'AMORTIZA',
+  esRecurrente: false, esAmortizable: false, variacionCuota: '', fechaDesde: '', fechaHasta: '',
+  vehiculoId: '', notas: '',
 });
 type Form = ReturnType<typeof nuevoForm>;
 // Costo real: neto solo si el IVA se recupera; si no, el impuesto es costo.
@@ -44,6 +49,9 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
   const [form, setForm] = useState<Form>(nuevoForm(moneda));
   const [showProv, setShowProv] = useState(false);
   const [proveedores, setProveedores] = useState<any[]>([]);
+  const [vehiculos, setVehiculos] = useState<{ id: string; dominio: string }[]>([]);
+  const [showPres, setShowPres] = useState(false);
+  const [presupuesto, setPresupuesto] = useState<Record<string, number>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileData, setFileData] = useState<{ url: string; name: string; mimeType: string } | null>(null);
 
@@ -66,6 +74,16 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
   const loadProv = () => apiFetch<{ proveedores: any[] }>('/finanzas/proveedores').then(d => setProveedores(d.proveedores)).catch(() => {});
   useEffect(() => { load(); }, [filtroTipo, filtroCat, filtroMes, moneda]);
   useEffect(() => { if (showProv) loadProv(); }, [showProv]);
+  useEffect(() => {
+    apiFetch<{ vehiculos: any[] }>('/flota/vehiculos').then(d => setVehiculos((d.vehiculos || []).map((v: any) => ({ id: v.id, dominio: v.dominio })))).catch(() => {});
+    apiFetch<{ presupuesto?: Record<string, number> }>('/finanzas/config').then(d => setPresupuesto(d.presupuesto || {})).catch(() => {});
+  }, []);
+  const guardarPresupuesto = async (cat: string, valor: string) => {
+    const v = valor.trim() === '' ? null : Number(valor);
+    if (v !== null && (!Number.isFinite(v) || v < 0)) return;
+    setPresupuesto(prev => { const n = { ...prev }; if (v === null) delete n[cat]; else n[cat] = v; return n; });
+    await apiFetch('/finanzas/config', { method: 'PUT', json: { presupuesto: { [cat]: v } } }).catch(() => {});
+  };
 
   const visibles = useMemo(() => {
     const q = buscar.trim().toLowerCase();
@@ -94,7 +112,9 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
       neto: g.neto !== null ? String(g.neto) : '', ivaRate: conIva && g.neto ? String(Math.round(((g.iva || 0) / g.neto) * 1000) / 10) : String(IVA_DEFAULT[g.moneda] ?? 0),
       iva: g.iva !== null ? String(g.iva) : '', total: String(g.total), moneda: g.moneda,
       tipoComprobante: g.tipoComprobante || '', numeroComprobante: g.numeroComprobante || '',
-      esRecurrente: g.esRecurrente, fechaDesde: toDateInput(g.fechaDesde), fechaHasta: toDateInput(g.fechaHasta), notas: g.notas || '',
+      modo: g.esAmortizable ? 'AMORTIZA' : g.esRecurrente ? (g.variacionCuota ? 'CUOTA' : 'FIJO') : 'PUNTUAL',
+      esRecurrente: g.esRecurrente, esAmortizable: !!g.esAmortizable, variacionCuota: g.variacionCuota ? String(g.variacionCuota) : '',
+      fechaDesde: toDateInput(g.fechaDesde), fechaHasta: toDateInput(g.fechaHasta), vehiculoId: g.vehiculoId || '', notas: g.notas || '',
     });
     setFileData(g.fileUrl ? { url: g.fileUrl, name: g.fileName || 'comprobante', mimeType: g.mimeType || '' } : null);
     setShowForm(true); setError(null);
@@ -120,9 +140,12 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
         ivaRecuperable: form.conIva ? form.ivaRecuperable : true,
         total: Number(form.total), moneda: form.moneda,
         tipoComprobante: form.tipoComprobante || null, numeroComprobante: form.numeroComprobante || null,
-        esRecurrente: form.esRecurrente,
-        fechaDesde: form.esRecurrente ? (form.fechaDesde || form.fecha) : null,
-        fechaHasta: form.esRecurrente && form.fechaHasta ? form.fechaHasta : null,
+        esRecurrente: form.modo === 'FIJO' || form.modo === 'CUOTA',
+        esAmortizable: form.modo === 'AMORTIZA',
+        variacionCuota: form.modo === 'CUOTA' && form.variacionCuota !== '' ? Number(form.variacionCuota) : null,
+        vehiculoId: form.vehiculoId || null,
+        fechaDesde: form.modo !== 'PUNTUAL' ? (form.fechaDesde || form.fecha) : null,
+        fechaHasta: form.modo !== 'PUNTUAL' && form.fechaHasta ? form.fechaHasta : null,
         notas: form.notas || null,
         fileUrl: fileData?.url || null, fileName: fileData?.name || null, mimeType: fileData?.mimeType || null,
       };
@@ -170,6 +193,7 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
           <option value="OPERATIVO">Operativo</option><option value="ESTRUCTURA">Estructura</option><option value="OTRO">Otro</option>
         </select>
         <div className="ml-auto flex gap-2">
+          {canEdit && <button onClick={() => setShowPres(s => !s)} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"><Tags size={14} /> Presupuesto</button>}
           {canEdit && <button onClick={() => setShowProv(s => !s)} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"><Tags size={14} /> Clasificar proveedores</button>}
           {canEdit && <button onClick={abrirNuevo} className="flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"><Plus size={15} /> Nuevo gasto</button>}
         </div>
@@ -209,6 +233,26 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {showPres && (
+        <div className="rounded-xl border border-neutral-200 bg-white">
+          <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2.5">
+            <span className="text-sm font-semibold">Presupuesto mensual por categoría <span className="font-normal text-neutral-400">— en {moneda}; si el gasto real del mes supera el tope, dispara una alerta en Resultados</span></span>
+            <button onClick={() => setShowPres(false)} className="text-neutral-400"><X size={16} /></button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
+            {Object.entries(CATEGORIA_GASTO).map(([k, v]) => (
+              <div key={k}>
+                <label className={labelCls}>{v}</label>
+                <input type="number" min={0} defaultValue={presupuesto[k] ?? ''} placeholder="sin tope"
+                  onBlur={e => guardarPresupuesto(k, e.target.value)}
+                  className={inputCls} />
+              </div>
+            ))}
+          </div>
+          <p className="px-4 pb-3 text-[11px] text-neutral-400">Se guarda al salir del campo. Vacío = sin tope. Aplica a la moneda que estás viendo.</p>
         </div>
       )}
 
@@ -258,16 +302,29 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
             <div><label className={labelCls}>Total *</label><input type="number" value={form.total} onChange={e => setTotal(e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Moneda</label>
               <select value={form.moneda} onChange={e => set('moneda', e.target.value)} className={inputCls}>{monedas.map(m => <option key={m}>{m}</option>)}</select></div>
-            <div className="col-span-2 flex flex-wrap items-end gap-2 pb-1">
-              <label className="flex items-center gap-2 text-sm text-neutral-600">
-                <input type="checkbox" checked={form.esRecurrente} onChange={e => set('esRecurrente', e.target.checked)} className="rounded" />
-                Se repite todos los meses
-              </label>
-              {form.esRecurrente && <>
-                <input type="date" value={form.fechaDesde} onChange={e => set('fechaDesde', e.target.value)} className={`${inputCls} w-36`} title="Desde" />
-                <input type="date" value={form.fechaHasta} onChange={e => set('fechaHasta', e.target.value)} className={`${inputCls} w-36`} title="Hasta (vacío = sin fin)" />
-              </>}
-            </div>
+            <div><label className={labelCls}>Imputación mensual</label>
+              <select value={form.modo} onChange={e => set('modo', e.target.value as Form['modo'])} className={inputCls}>
+                <option value="PUNTUAL">Una sola vez</option>
+                <option value="FIJO">Se repite igual cada mes</option>
+                <option value="CUOTA">Cuota que varía (préstamo / leasing)</option>
+                <option value="AMORTIZA">Se amortiza (seguro / pago anual)</option>
+              </select></div>
+            {form.modo !== 'PUNTUAL' && <>
+              <div><label className={labelCls}>Desde</label><input type="date" value={form.fechaDesde || form.fecha} onChange={e => set('fechaDesde', e.target.value)} className={inputCls} /></div>
+              <div><label className={labelCls}>Hasta{form.modo !== 'AMORTIZA' ? ' (vacío = sin fin)' : ' *'}</label><input type="date" value={form.fechaHasta} onChange={e => set('fechaHasta', e.target.value)} className={inputCls} /></div>
+            </>}
+            {form.modo === 'CUOTA' &&
+              <div><label className={labelCls}>Variación por cuota</label>
+                <input type="number" value={form.variacionCuota} onChange={e => set('variacionCuota', e.target.value)} placeholder="ej. -15000 (baja cada mes)" className={inputCls} />
+                <p className="mt-0.5 text-[10px] text-neutral-400">Mes 1 = total; cada mes siguiente suma esta variación.</p></div>}
+            {form.modo === 'AMORTIZA' &&
+              <div className="flex items-end pb-2 text-[11px] text-neutral-400">El total se divide en partes iguales entre los meses del rango — el resultado mensual muestra solo su porción.</div>}
+            <div><label className={labelCls}>Vehículo (opcional)</label>
+              <select value={form.vehiculoId} onChange={e => set('vehiculoId', e.target.value)} className={inputCls}>
+                <option value="">— sin unidad</option>
+                {vehiculos.map(v => <option key={v.id} value={v.id}>{v.dominio}</option>)}
+              </select>
+              <p className="mt-0.5 text-[10px] text-neutral-400">Imputa el costo a la unidad (lavado, peaje…) y hereda su centro de costo.</p></div>
             <div className="col-span-2"><label className={labelCls}>Comprobante (PDF/imagen)</label>
               <div className="flex gap-2">
                 <button type="button" onClick={() => fileRef.current?.click()} className="flex flex-1 items-center gap-2 truncate rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-500 hover:border-neutral-400">
@@ -308,7 +365,9 @@ export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, on
                     <td className="px-4 py-2.5">
                       <span className="font-medium text-neutral-900">{g.concepto}</span>
                       {g.proveedor && !g.concepto.includes(g.proveedor) && <span className="ml-1 text-xs text-neutral-400">— {g.proveedor}</span>}
-                      {g.esRecurrente && <span title="Todos los meses"><Repeat size={11} className="ml-1.5 inline text-purple-500" /></span>}
+                      {g.esRecurrente && <span title={g.variacionCuota ? `Cuota variable (${fmtMoney(g.variacionCuota, g.moneda)}/mes)` : 'Todos los meses'}><Repeat size={11} className="ml-1.5 inline text-purple-500" /></span>}
+                      {g.esAmortizable && <span title="Gasto anual amortizado: el resultado muestra su porción mensual" className="ml-1.5 rounded bg-indigo-50 px-1 text-[10px] text-indigo-600">amortizado</span>}
+                      {g.vehiculoId && <span title="Imputado a unidad de flota" className="ml-1.5 rounded bg-neutral-100 px-1 text-[10px] text-neutral-500">{vehiculos.find(v => v.id === g.vehiculoId)?.dominio || 'unidad'}</span>}
                       {g.fileUrl && <a href={g.fileUrl} target="_blank" rel="noreferrer" className="ml-1.5 inline-block text-blue-500"><Paperclip size={11} /></a>}
                       {g.origen === 'IMPORT_RCV' && <span className="ml-1.5 rounded bg-sky-50 px-1 text-[10px] text-sky-600">SII</span>}
                       {Number(g.iva) > 0 && <span title={g.ivaRecuperable === false ? 'El IVA computa como costo' : 'IVA recuperado como crédito fiscal'} className={`ml-1.5 rounded px-1 text-[10px] ${g.ivaRecuperable === false ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>IVA {g.ivaRecuperable === false ? 'al costo' : 'recuperable'}</span>}
