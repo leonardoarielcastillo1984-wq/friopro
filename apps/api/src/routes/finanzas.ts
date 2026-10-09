@@ -615,6 +615,19 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       add({ fecha: c.date, concepto: `Mantenimiento ${c.costType}${c.description ? ' — ' + c.description : ''}`, importe: num(c.amount), grupo: 'COSTO_OP', fuente: 'MANTENIMIENTO', modulo: 'Infraestructura', origenId: c.id, origenUrl: '/infraestructura', centroCostoId: cc });
     }
 
+    // Historial de mantenimiento de vehículos SUELTO (sin OT — si tiene
+    // workOrderId el costo ya está dentro de totalCost de la OT).
+    const histMant = await p.vehiculoHistorialMantenimiento.findMany({
+      where: { tenantId, fecha: { gte: desde, lt: hasta }, workOrderId: null, costo: { gt: 0 } },
+      select: { id: true, fecha: true, tipo: true, descripcion: true, costo: true, vehiculoId: true },
+    }).catch(() => []);
+    for (const h of histMant) {
+      const veh = h.vehiculoId ? vehMap.get(h.vehiculoId) : null;
+      const cc = veh?.centroCostoId ?? null;
+      if (!ccOk(cc)) continue;
+      add({ fecha: h.fecha, concepto: `${h.descripcion || 'Mantenimiento'}${veh ? ` (${veh.dominio})` : ''}`, importe: num(h.costo), grupo: 'COSTO_OP', fuente: 'MANTENIMIENTO', modulo: 'Flota 360', origenId: h.id, origenUrl: h.vehiculoId ? `/flota-360/vehiculos/${h.vehiculoId}` : '/flota-360', centroCostoId: cc });
+    }
+
     // Combustible + urea
     const combustible = await p.registroCombustible.findMany({
       where: { tenantId, fecha: { gte: desde, lt: hasta } },
@@ -660,6 +673,24 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       if (idx >= 1 && idx <= v.cuotasTotales) {
         add({ fecha: desde, concepto: `Cuota financiación ${v.dominio} (${idx}/${v.cuotasTotales})`, importe: cuota, grupo: 'COSTO_OP', fuente: 'FINANCIACION', modulo: 'Flota 360', origenId: v.id, origenUrl: `/flota-360/vehiculos/${v.id}`, centroCostoId: v.centroCostoId });
       }
+    }
+
+    // Calibraciones de equipos de medición (costo del servicio de calibración)
+    const calibraciones = await p.calibration.findMany({
+      where: { tenantId, date: { gte: desde, lt: hasta }, cost: { gt: 0 } },
+      select: { id: true, date: true, cost: true, provider: true, equipment: { select: { name: true, code: true } } },
+    }).catch(() => []);
+    for (const cal of calibraciones) {
+      add({ fecha: cal.date, concepto: `Calibración ${cal.equipment?.name || ''}${cal.provider ? ' — ' + cal.provider : ''}`, importe: num(cal.cost), grupo: 'COSTO_OP', fuente: 'CALIBRACION', modulo: 'Infraestructura', origenId: cal.id, origenUrl: '/infraestructura?tab=calibraciones', centroCostoId: null });
+    }
+
+    // Capacitaciones con costo (fecha = createdAt; no hay campo de fecha de dictado)
+    const trainings = await p.training.findMany({
+      where: { tenantId, deletedAt: null, cost: { gt: 0 }, createdAt: { gte: desde, lt: hasta } },
+      select: { id: true, title: true, cost: true, createdAt: true },
+    }).catch(() => []);
+    for (const t of trainings) {
+      add({ fecha: t.createdAt, concepto: `Capacitación — ${t.title}`, importe: num(t.cost), grupo: 'COSTO_OP', fuente: 'CAPACITACION', modulo: 'RRHH', origenId: t.id, origenUrl: '/capacitaciones', centroCostoId: null });
     }
 
     // ── COSTO DE PERSONAL (dedup Conductor↔Employee por DNI) ────
