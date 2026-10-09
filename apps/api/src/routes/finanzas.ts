@@ -1328,6 +1328,12 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     DESPENSA: 'VARIABLE', LIMPIEZA: 'FIJO', VIGILANCIA: 'FIJO', EPP: 'VARIABLE',
     EMBALAJE: 'VARIABLE', HERRAMIENTAS: 'VARIABLE', VIATICOS: 'VARIABLE',
     TECNOLOGIA: 'FIJO', MERMAS: 'VARIABLE', COMERCIAL: 'FIJO',
+    // Circuito industrial / terceros
+    CONSULTORIA: 'FIJO', ALQUILER_MAQUINARIA: 'FIJO', EXPENSAS: 'FIJO',
+    PLAGAS: 'FIJO', RESIDUOS: 'FIJO', INSUMOS: 'VARIABLE',
+    CERTIFICACIONES: 'FIJO', MEDICINA_LABORAL: 'FIJO', LEYES_SOCIALES: 'FIJO',
+    FLETE: 'VARIABLE', PEAJES: 'VARIABLE', HONORARIOS: 'FIJO', BANCARIOS: 'FIJO',
+    OTRO: 'MIXTO',
   };
 
   app.get('/punto-equilibrio', async (req: FastifyRequest, reply: FastifyReply) => {

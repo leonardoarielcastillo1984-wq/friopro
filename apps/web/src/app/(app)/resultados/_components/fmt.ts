@@ -26,16 +26,23 @@ export const ESTADO_FACTURA: Record<string, { label: string; color: string }> = 
 // predio (recepción / almacenamiento / distribución) y administración —
 // no solo vehículos. Cada una se convierte en rubro del análisis.
 export const CATEGORIA_GASTO: Record<string, string> = {
-  FLETE: 'Fletes / subcontratados', SUELDOS: 'Sueldos', LEYES_SOCIALES: 'Leyes sociales / cargas',
-  COMBUSTIBLE: 'Combustible', MANTENIMIENTO: 'Mantenimiento / repuestos', NEUMATICOS: 'Neumáticos',
-  PEAJES: 'Peajes / estacionamiento', SEGUROS: 'Seguros', ALQUILER: 'Arriendo / alquiler',
-  SERVICIOS: 'Servicios (luz, agua, internet)', HONORARIOS: 'Honorarios / contador', ADMINISTRACION: 'Administración',
-  BANCARIOS: 'Gastos bancarios', IMPUESTOS: 'Impuestos / patentes',
-  // Operación del predio / depósito (no-flota)
-  DESPENSA: 'Despensa / víveres', LIMPIEZA: 'Limpieza del predio', VIGILANCIA: 'Seguridad / vigilancia',
-  EPP: 'EPP / uniformes', EMBALAJE: 'Embalaje / film / pallets', HERRAMIENTAS: 'Herramientas / equipamiento',
-  VIATICOS: 'Viáticos / comidas', TECNOLOGIA: 'Software / tecnología', MERMAS: 'Mermas / faltantes',
-  COMERCIAL: 'Comercial / marketing',
+  // Flota
+  FLETE: 'Fletes / subcontratados', COMBUSTIBLE: 'Combustible', MANTENIMIENTO: 'Mantenimiento / repuestos',
+  NEUMATICOS: 'Neumáticos', PEAJES: 'Peajes / estacionamiento', MULTAS: 'Multas',
+  // Personal
+  SUELDOS: 'Sueldos', LEYES_SOCIALES: 'Leyes sociales / cargas', EPP: 'EPP / uniformes',
+  VIATICOS: 'Viáticos / comidas', CAPACITACIONES: 'Capacitaciones', MEDICINA_LABORAL: 'Medicina laboral / exámenes',
+  // Predio / depósito
+  ALQUILER: 'Arriendo / alquiler (predio o depósito)', ALQUILER_MAQUINARIA: 'Alquiler de maquinaria / equipos',
+  EXPENSAS: 'Expensas / gastos comunes', LIMPIEZA: 'Limpieza del predio', VIGILANCIA: 'Seguridad / vigilancia',
+  PLAGAS: 'Control de plagas / fumigación', RESIDUOS: 'Gestión de residuos', EMBALAJE: 'Embalaje / film / pallets',
+  HERRAMIENTAS: 'Herramientas / equipamiento', DESPENSA: 'Despensa / víveres',
+  // Administración / terceros
+  SEGUROS: 'Seguros', SERVICIOS: 'Servicios (luz, agua, internet)', HONORARIOS: 'Honorarios / contador',
+  CONSULTORIA: 'Consultorías / asesorías', ADMINISTRACION: 'Administración', INSUMOS: 'Insumos / librería',
+  BANCARIOS: 'Gastos bancarios', IMPUESTOS: 'Impuestos / patentes', TECNOLOGIA: 'Software / tecnología',
+  COMERCIAL: 'Comercial / marketing', CERTIFICACIONES: 'Certificaciones / auditorías externas',
+  CALIBRACIONES: 'Calibraciones / verificaciones', MERMAS: 'Mermas / faltantes',
   OTRO: 'Otro',
 };
 
