@@ -858,6 +858,29 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return lineas;
   }
 
+  // Fecha del último dato económico registrado/modificado. Alimenta la
+  // leyenda "actualizado hoy 08:32" de cada cuadro del módulo.
+  async function ultimaAct(tenantId: string, moneda: string | null): Promise<Date | null> {
+    const p = prisma();
+    const fMon = moneda ? { moneda } : {};
+    const aggs = await Promise.all([
+      p.finanzaFactura.aggregate({ _max: { updatedAt: true }, where: { tenantId, deletedAt: null, ...fMon } }).catch(() => null),
+      p.finanzaCobro.aggregate({ _max: { createdAt: true }, where: { tenantId, ...fMon } }).catch(() => null),
+      p.finanzaGasto.aggregate({ _max: { updatedAt: true }, where: { tenantId, deletedAt: null, ...fMon } }).catch(() => null),
+      p.finanzaPago.aggregate({ _max: { createdAt: true }, where: { tenantId, ...fMon } }).catch(() => null),
+      p.finanzaComentarioPeriodo.aggregate({ _max: { updatedAt: true }, where: { tenantId, deletedAt: null } }).catch(() => null),
+      p.flotaFactura.aggregate({ _max: { createdAt: true }, where: { tenantId, ...fMon } }).catch(() => null),
+      p.flotaIngreso.aggregate({ _max: { createdAt: true }, where: { tenantId } }).catch(() => null),
+      p.registroCombustible.aggregate({ _max: { createdAt: true }, where: { tenantId } }).catch(() => null),
+    ]);
+    let max: Date | null = null;
+    for (const a of aggs) {
+      const d = a?._max?.updatedAt || a?._max?.createdAt || null;
+      if (d && (!max || d > max)) max = d;
+    }
+    return max;
+  }
+
   // GET /resultado-mensual?anio=YYYY&moneda=&centroCostoId=
   // Devuelve la serie de meses con KPIs devengado + caja.
   app.get('/resultado-mensual', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -915,7 +938,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     totales.mesesPositivos = meses.filter(m => m.resultado > 0).length;
     totales.mesesNegativos = meses.filter(m => m.resultado < 0).length;
 
-    return reply.send({ anio, moneda, centroCostoId, meses, totales });
+    const actualizadoEn = await ultimaAct(tenantId, moneda);
+    return reply.send({ anio, moneda, centroCostoId, meses, totales, actualizadoEn });
   });
 
   // GET /resultado-mensual/detalle?anio=&mes=&moneda=&centroCostoId=&grupo=
@@ -1023,7 +1047,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       vencido: t.vencido + c.aging.d1_30 + c.aging.d31_60 + c.aging.d61_90 + c.aging.d90,
       d90: t.d90 + c.aging.d90,
     }), { saldo: 0, vencido: 0, d90: 0 });
-    return reply.send({ clientes, totales });
+    const actualizadoEn = await ultimaAct(tenantId, q.moneda || null);
+    return reply.send({ clientes, totales, actualizadoEn });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -1112,7 +1137,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       porProveedor.set(k, e);
     }
     const ranking = [...porProveedor.values()].sort((a, b) => b.saldo - a.saldo);
-    return reply.send({ items, totales, ranking });
+    const actualizadoEn = await ultimaAct(tenantId, q.moneda || null);
+    return reply.send({ items, totales, ranking, actualizadoEn });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -1202,6 +1228,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       proximosPagos: proximosPagos.sort((a, b) => a.fecha.getTime() - b.fecha.getTime()),
       proyeccion,
       recurrentesMensual: recurrentes.reduce((s: number, r: any) => s + num(r.total), 0),
+      actualizadoEn: await ultimaAct(tenantId, moneda),
     });
   });
 
@@ -1281,6 +1308,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       porCliente: fin(porCliente, true),
       porServicio: fin(porServicio, true),
       notaCostos: 'Costos por cliente imputados proporcional a su participación en ventas. Por centro de costo y servicio: atribución directa.',
+      actualizadoEn: await ultimaAct(tenantId, moneda),
     });
   });
 
@@ -1347,6 +1375,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       vsPuntoEquilibrio: peMensual && ventasMensualProm > 0 ? Math.round(((ventasMensualProm - peMensual) / peMensual) * 1000) / 10 : null,
       porRubro: Object.entries(porRubroClase).map(([rubro, v]) => ({ rubro, ...v, clase: mapConf[rubro] || CLASE_DEFAULT[rubro] || null })),
       config: mapConf,
+      actualizadoEn: await ultimaAct(tenantId, moneda),
     });
   });
 
@@ -1408,6 +1437,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       margenProyectado: ventasProj > 0 ? Math.round((resultadoProj / ventasProj) * 1000) / 10 : null,
       confianza, confianzaLabel: confianza >= 70 ? 'ALTA' : confianza >= 40 ? 'MEDIA' : 'BAJA',
       metodo: 'Real registrado + compromisos (CxP con vencimiento en el mes) + ritmo diario de los últimos 3 meses con datos.',
+      actualizadoEn: await ultimaAct(tenantId, moneda),
     });
   });
 
@@ -1506,7 +1536,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     // Orden: CRITICA → ATENCION → INFO, dentro por impacto. Máximo 8.
     const sev: Record<string, number> = { CRITICA: 3, ATENCION: 2, INFO: 1 };
     alertas.sort((a, b) => sev[b.severidad] - sev[a.severidad] || b.impacto - a.impacto);
-    return reply.send({ alertas: alertas.slice(0, 8), umbrales: { atencion: UMB_AT, critica: UMB_CR } });
+    const actualizadoEn = await ultimaAct(tenantId, moneda);
+    return reply.send({ alertas: alertas.slice(0, 8), umbrales: { atencion: UMB_AT, critica: UMB_CR }, actualizadoEn });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -1582,6 +1613,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       vsMesAnterior: compara(A, P),
       vsAnioAnterior: huboYoy ? compara(A, Y) : null,
       drivers: drivers.slice(0, 8),
+      actualizadoEn: await ultimaAct(tenantId, moneda),
     });
   });
 

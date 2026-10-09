@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Loader2, Wallet, ArrowDownToLine, ArrowUpFromLine, TrendingUp, TrendingDown, CalendarClock } from 'lucide-react';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Legend } from 'recharts';
-import { fmtMoney, fmtFecha, MESES } from './fmt';
+import { fmtMoney, fmtFecha, fmtActualizado, MESES } from './fmt';
 
 type FlujoData = {
   saldoInicial: number; saldoActual: number;
@@ -14,6 +14,7 @@ type FlujoData = {
   proximosPagos: { fecha: string; importe: number; concepto: string; tipo: string }[];
   proyeccion: { dias: number; cobros: number; pagos: number; saldoProyectado: number }[];
   recurrentesMensual: number;
+  actualizadoEn?: string;
 };
 
 const compact = (n: number) => {
@@ -47,7 +48,10 @@ export default function FlujoCaja({ moneda }: { moneda: string }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-2.5 text-xs text-blue-800">
-        <strong>Flujo de caja</strong> muestra la plata que <strong>efectivamente entró y salió</strong>. Es distinto del resultado económico (devengado): una venta suma resultado al facturarse pero suma caja cuando se cobra.
+        <div className="flex items-center justify-between gap-2">
+          <span><strong>Flujo de caja</strong> muestra la plata que <strong>efectivamente entró y salió</strong>. Es distinto del resultado económico (devengado): una venta suma resultado al facturarse pero suma caja cuando se cobra.</span>
+          {data.actualizadoEn && <span className="shrink-0 text-[10px] text-blue-700/60">act. {fmtActualizado(data.actualizadoEn)}</span>}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -87,7 +91,7 @@ export default function FlujoCaja({ moneda }: { moneda: string }) {
 
       <div className="rounded-xl border border-neutral-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm font-semibold text-neutral-900"><CalendarClock size={14} className="mr-1 inline" />Proyección de caja</span>
+          <span className="text-sm font-semibold text-neutral-900"><CalendarClock size={14} className="mr-1 inline" />Proyección de caja{data.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado(data.actualizadoEn)}</span>}</span>
           <div className="flex gap-1">
             {[7, 30, 60, 90].map(d => (
               <button key={d} onClick={() => setHorizonte(d)}

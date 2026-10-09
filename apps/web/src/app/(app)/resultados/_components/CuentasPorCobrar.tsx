@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Loader2, Wallet, AlertTriangle, Clock, CalendarClock, Paperclip } from 'lucide-react';
-import { fmtMoney, fmtFecha } from './fmt';
+import { fmtMoney, fmtFecha, fmtActualizado } from './fmt';
 
 type Cliente = {
   cliente: string; rut: string | null; facturado: number; cobrado: number; notasCredito: number; saldo: number;
@@ -21,7 +21,7 @@ const BUCKETS: { key: keyof Cliente['aging']; label: string; color: string }[] =
 ];
 
 export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: string; onIrFacturacion: () => void }) {
-  const [data, setData] = useState<{ clientes: Cliente[]; totales: { saldo: number; vencido: number; d90: number } } | null>(null);
+  const [data, setData] = useState<{ clientes: Cliente[]; totales: { saldo: number; vencido: number; d90: number }; actualizadoEn?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +37,7 @@ export default function CuentasPorCobrar({ moneda, onIrFacturacion }: { moneda: 
 
   return (
     <div className="space-y-4">
+      {data.actualizadoEn && <div className="-mb-1 text-right text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</div>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500"><Wallet size={13} className="text-blue-600" />Nos deben en total</div>

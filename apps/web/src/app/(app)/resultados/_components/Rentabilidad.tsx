@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Loader2, Target, TrendingUp, TrendingDown, AlertTriangle, Users, Building2, Layers, Scale } from 'lucide-react';
-import { fmtMoney, fmtPct, labelRubro } from './fmt';
+import { fmtMoney, fmtPct, fmtActualizado, labelRubro } from './fmt';
 
 type Fila = { key: string; nombre: string; metodo: string; ventas: number; costos: number | null; resultado: number | null; margen: number | null };
 type PE = {
@@ -12,6 +12,7 @@ type PE = {
   peMensual: number | null; ventasMensualProm: number; vsPuntoEquilibrio: number | null;
   porRubro: { rubro: string; fijo: number; variable: number; mixto: number; clase: string | null }[];
   mesesConsiderados: number;
+  actualizadoEn?: string;
 };
 type Proy = {
   esMesActual: boolean; diasTranscurridos: number; diasRestantes: number;
@@ -19,6 +20,7 @@ type Proy = {
   costos: { real: number; compromisos: number; estimacion: number; proyectado: number };
   resultadoProyectado: number; margenProyectado: number | null;
   confianza: number; confianzaLabel: string; metodo: string;
+  actualizadoEn?: string;
 };
 
 const MESES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -59,7 +61,7 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
       {/* Punto de equilibrio */}
       {pe && pe.peMensual !== null && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-900"><Target size={15} className="text-blue-600" />Punto de equilibrio <span className="font-normal text-neutral-400">— facturación mensual mínima para no perder</span></div>
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-900"><Target size={15} className="text-blue-600" />Punto de equilibrio <span className="font-normal text-neutral-400">— facturación mensual mínima para no perder</span>{pe.actualizadoEn && <span className="ml-auto text-[10px] font-normal text-neutral-400">act. {fmtActualizado(pe.actualizadoEn)}</span>}</div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <div className="rounded-lg bg-neutral-50 p-3">
               <div className="text-[11px] uppercase tracking-wide text-neutral-500">Punto de equilibrio</div>
@@ -103,7 +105,7 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
       {proy && proy.esMesActual && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-semibold text-neutral-900"><Scale size={15} className="mr-1 inline text-purple-600" />Proyección de cierre — {MESES_CORTO[new Date().getUTCMonth()]} {new Date().getUTCFullYear()}</span>
+            <span className="text-sm font-semibold text-neutral-900"><Scale size={15} className="mr-1 inline text-purple-600" />Proyección de cierre — {MESES_CORTO[new Date().getUTCMonth()]} {new Date().getUTCFullYear()}{proy.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado(proy.actualizadoEn)}</span>}</span>
             <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${confColor}`}>Confianza {proy.confianzaLabel} ({proy.confianza}% respaldado)</span>
           </div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -134,7 +136,7 @@ export default function Rentabilidad({ anio, moneda, centroCostoId }: { anio: nu
       {/* Rentabilidad por dimensión */}
       <div className="rounded-xl border border-neutral-200 bg-white">
         <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 px-4 py-3">
-          <span className="text-sm font-semibold text-neutral-900">Rentabilidad por</span>
+          <span className="text-sm font-semibold text-neutral-900">Rentabilidad por{(rent as any)?.actualizadoEn && <span className="ml-1 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((rent as any).actualizadoEn)}</span>}</span>
           <div className="ml-2 flex gap-1">
             {([['centro', 'Unidad / centro de costo', Building2], ['cliente', 'Cliente', Users], ['servicio', 'Servicio', Layers]] as const).map(([k, l, Icon]) => (
               <button key={k} onClick={() => setVista(k)}

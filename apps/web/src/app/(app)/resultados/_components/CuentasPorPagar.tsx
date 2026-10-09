@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { Loader2, AlertTriangle, Clock, CheckCircle2, Plus, X, Building2 } from 'lucide-react';
-import { fmtMoney, fmtFecha } from './fmt';
+import { fmtMoney, fmtFecha, fmtActualizado } from './fmt';
 
 type Item = {
   id: string; origen: 'GASTO' | 'FLOTA'; proveedor: string; proveedorRut: string | null;
@@ -23,7 +23,7 @@ const ESTADO_STYLE: Record<string, string> = {
 };
 
 export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }: { moneda: string; centros: any[]; canEdit: boolean; onChanged: () => void }) {
-  const [data, setData] = useState<{ items: Item[]; totales: any; ranking: any[] } | null>(null);
+  const [data, setData] = useState<{ items: Item[]; totales: any; ranking: any[]; actualizadoEn?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [soloPendientes, setSoloPendientes] = useState(true);
   const [pagando, setPagando] = useState<Item | null>(null);
@@ -34,7 +34,7 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
 
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch<{ items: Item[]; totales: any; ranking: any[] }>(`/finanzas/cuentas-por-pagar${moneda ? `?moneda=${moneda}` : ''}`)
+    apiFetch<{ items: Item[]; totales: any; ranking: any[]; actualizadoEn?: string }>(`/finanzas/cuentas-por-pagar${moneda ? `?moneda=${moneda}` : ''}`)
       .then(setData).catch(() => setData(null)).finally(() => setLoading(false));
   }, [moneda]);
 
@@ -72,6 +72,7 @@ export default function CuentasPorPagar({ moneda, centros, canEdit, onChanged }:
 
   return (
     <div className="space-y-4">
+      {data.actualizadoEn && <div className="-mb-1 text-right text-[10px] text-neutral-400">Datos actualizados {fmtActualizado(data.actualizadoEn)}</div>}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: 'Total por pagar', value: fmtMoney(totales.porPagar, moneda), icon: Building2, color: 'text-neutral-700' },

@@ -47,3 +47,19 @@ export const TIPO_COMPROBANTE: Record<string, string> = {
 };
 
 export const toDateInput = (d: string | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+
+// Leyenda "última actualización" relativa: ahora / hace N min / hoy 08:32 / ayer / hace N días.
+export const fmtActualizado = (d: string | null | undefined) => {
+  if (!d) return 'sin datos';
+  const dt = new Date(d);
+  const ahora = new Date();
+  const diffMin = Math.floor((ahora.getTime() - dt.getTime()) / 60000);
+  if (diffMin < 1) return 'ahora';
+  if (diffMin < 60) return `hace ${diffMin} min`;
+  const hora = dt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  if (dt.toDateString() === ahora.toDateString()) return `hoy ${hora}`;
+  if (dt.toDateString() === new Date(ahora.getTime() - 86400000).toDateString()) return `ayer ${hora}`;
+  const dias = Math.floor(diffMin / 1440);
+  if (dias < 30) return `hace ${dias} días`;
+  return fmtFecha(d);
+};

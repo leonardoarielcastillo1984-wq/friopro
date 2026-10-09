@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, ChevronRight, Loader2, X, AlertTriangle, MessageSquare, Sparkles, Send, Scale } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, CartesianGrid, Legend } from 'recharts';
-import { fmtMoney, fmtPct, fmtFecha, MESES, GRUPO_LABEL, labelRubro } from './fmt';
+import { fmtMoney, fmtPct, fmtFecha, fmtActualizado, MESES, GRUPO_LABEL, labelRubro } from './fmt';
 
 type Mes = {
   mes: number; mesKey: string; facturado: number; ingresosOperativos: number;
@@ -19,6 +19,7 @@ type Linea = {
 type Comparativa = {
   actual: any; mesAnterior: any; mismoMesAnioAnterior: any;
   vsMesAnterior: any; vsAnioAnterior: any; drivers: Driver[];
+  actualizadoEn?: string;
 };
 type Driver = { tipo: 'INGRESO' | 'COSTO'; clave: string; variacion: number; actual: number; anterior: number };
 type Alerta = { severidad: 'INFO' | 'ATENCION' | 'CRITICA'; tipo: string; mensaje: string; impacto: number };
@@ -37,7 +38,7 @@ const compact = (n: number) => {
   return String(Math.round(n));
 };
 
-function Rubros({ porRubro, moneda, titulo }: { porRubro: Record<string, number>; moneda: string; titulo: string }) {
+function Rubros({ porRubro, moneda, titulo, act }: { porRubro: Record<string, number>; moneda: string; titulo: string; act?: string | null }) {
   const items = Object.entries(porRubro).filter(([, v]) => Math.abs(v) > 0.5).sort((a, b) => b[1] - a[1]);
   const total = items.reduce((s, [, v]) => s + v, 0);
   const max = Math.max(1, ...items.map(([, v]) => Math.abs(v)));
@@ -45,7 +46,7 @@ function Rubros({ porRubro, moneda, titulo }: { porRubro: Record<string, number>
     <div className="rounded-xl border border-neutral-200 bg-white p-4">
       <div className="mb-3 flex items-baseline justify-between">
         <span className="text-sm font-semibold text-neutral-900">{titulo}</span>
-        <span className="text-xs text-neutral-500">Total {fmtMoney(total, moneda)}</span>
+        <span className="text-xs text-neutral-500">Total {fmtMoney(total, moneda)}{act !== undefined && <span className="ml-2 text-[10px] text-neutral-400">· act. {fmtActualizado(act)}</span>}</span>
       </div>
       {items.length === 0 ? <div className="py-4 text-center text-sm text-neutral-400">Sin costos registrados.</div> : (
         <div className="space-y-2">
@@ -76,6 +77,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [mesSel, setMesSel] = useState(anio === hoy.getUTCFullYear() ? hoy.getUTCMonth() + 1 : 12);
   const [comp, setComp] = useState<Comparativa | null>(null);
   const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [alertasAct, setAlertasAct] = useState<string | null>(null);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
@@ -96,7 +98,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     const params = new URLSearchParams({ anio: String(anio), mes: String(mesSel), moneda });
     if (centroCostoId) params.set('centroCostoId', centroCostoId);
     apiFetch<Comparativa>(`/finanzas/comparativa?${params}`).then(setComp).catch(() => setComp(null));
-    apiFetch<{ alertas: Alerta[] }>(`/finanzas/alertas?${params}`).then(d => setAlertas(d.alertas || [])).catch(() => setAlertas([]));
+    apiFetch<{ alertas: Alerta[]; actualizadoEn?: string }>(`/finanzas/alertas?${params}`).then(d => { setAlertas(d.alertas || []); setAlertasAct(d.actualizadoEn || null); }).catch(() => { setAlertas([]); setAlertasAct(null); });
     apiFetch<{ comentarios: Comentario[] }>(`/finanzas/comentarios-periodo?mesKey=${mesKey}`).then(d => setComentarios(d.comentarios || [])).catch(() => setComentarios([]));
   }, [anio, mesSel, moneda, centroCostoId, mesKey]);
 
@@ -135,6 +137,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
 
   return (
     <div className="space-y-4">
+      <div className="-mb-1 text-right text-[10px] text-neutral-400">Datos actualizados {fmtActualizado((data as any)?.actualizadoEn)}</div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {[
           { label: `Ventas ${anio}`, value: fmtMoney(totales.ventas, moneda), icon: DollarSign, color: 'text-blue-600', sub: 'sin IVA' },
@@ -158,7 +161,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
         {comp && comp.actual.lineas > 0 && (
           <div className="rounded-xl border border-neutral-200 bg-white p-4">
             <div className="mb-2 flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><Sparkles size={14} className="text-purple-600" />Resumen — {MESES[mesSel - 1]} {anio}</span>
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><Sparkles size={14} className="text-purple-600" />Resumen — {MESES[mesSel - 1]} {anio}{comp.actualizadoEn && <span className="text-[10px] font-normal text-neutral-400">· act. {fmtActualizado(comp.actualizadoEn)}</span>}</span>
               <select value={mesSel} onChange={e => setMesSel(Number(e.target.value))} className="rounded-lg border border-neutral-200 px-2 py-1 text-xs">
                 {meses.map(m => <option key={m.mes} value={m.mes}>{MESES[m.mes - 1]}</option>)}
               </select>
@@ -224,7 +227,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
         {/* Alertas gerenciales */}
         {alertas.length > 0 && (
           <div className="rounded-xl border border-neutral-200 bg-white p-4">
-            <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><AlertTriangle size={14} className="text-amber-500" />Alertas — {MESES[mesSel - 1]}</div>
+            <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><AlertTriangle size={14} className="text-amber-500" />Alertas — {MESES[mesSel - 1]}{alertasAct && <span className="text-[10px] font-normal text-neutral-400">· act. {fmtActualizado(alertasAct)}</span>}</div>
             <div className="space-y-1.5">
               {alertas.map((a, i) => (
                 <div key={i} className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
@@ -245,7 +248,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><Scale size={14} className="text-blue-600" />¿Qué explica el resultado de {MESES[mesSel - 1]}?</span>
-            <span className="text-[11px] text-neutral-400">vs {MESES[Number(comp.mesAnterior.mesKey.slice(5)) - 1]} · variaciones sobre el resultado</span>
+            <span className="text-[11px] text-neutral-400">vs {MESES[Number(comp.mesAnterior.mesKey.slice(5)) - 1]} · variaciones sobre el resultado{comp.actualizadoEn && <> · act. {fmtActualizado(comp.actualizadoEn)}</>}</span>
           </div>
           <div className="space-y-2">
             {comp.drivers.map((d: Driver, i: number) => (
@@ -295,7 +298,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-2 text-sm font-semibold text-neutral-900">Resultado por mes <span className="font-normal text-neutral-400">— verde ganó, rojo perdió · clic para ver el detalle</span></div>
+          <div className="mb-2 text-sm font-semibold text-neutral-900">Resultado por mes <span className="font-normal text-neutral-400">— verde ganó, rojo perdió · clic para ver el detalle</span>{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -312,7 +315,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
           </div>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-2 text-sm font-semibold text-neutral-900">Ventas vs costos</div>
+          <div className="mb-2 text-sm font-semibold text-neutral-900">Ventas vs costos{(data as any)?.actualizadoEn && <span className="ml-2 text-[10px] font-normal text-neutral-400">· act. {fmtActualizado((data as any).actualizadoEn)}</span>}</div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -329,9 +332,10 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
         </div>
       </div>
 
-      <Rubros porRubro={totales.porRubro || {}} moneda={moneda} titulo={`¿En qué se fue la plata en ${anio}?`} />
+      <Rubros porRubro={totales.porRubro || {}} moneda={moneda} titulo={`¿En qué se fue la plata en ${anio}?`} act={(data as any)?.actualizadoEn} />
 
       <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
+        {(data as any)?.actualizadoEn && <div className="border-b border-neutral-100 px-4 py-1.5 text-right text-[10px] text-neutral-400">Datos actualizados {fmtActualizado((data as any).actualizadoEn)}</div>}
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-[11px] uppercase tracking-wide text-neutral-500">
