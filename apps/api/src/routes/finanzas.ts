@@ -1324,6 +1324,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     COMBUSTIBLE: 'VARIABLE', MANTENIMIENTO: 'VARIABLE', NEUMATICOS: 'VARIABLE',
     MULTAS: 'VARIABLE', REPUESTO: 'VARIABLE', SERVICE: 'VARIABLE', REPARACION: 'VARIABLE',
     CALIBRACIONES: 'VARIABLE', CAPACITACIONES: 'FIJO',
+    // Operación del predio / depósito
+    DESPENSA: 'VARIABLE', LIMPIEZA: 'FIJO', VIGILANCIA: 'FIJO', EPP: 'VARIABLE',
+    EMBALAJE: 'VARIABLE', HERRAMIENTAS: 'VARIABLE', VIATICOS: 'VARIABLE',
+    TECNOLOGIA: 'FIJO', MERMAS: 'VARIABLE', COMERCIAL: 'FIJO',
   };
 
   app.get('/punto-equilibrio', async (req: FastifyRequest, reply: FastifyReply) => {

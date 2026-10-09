@@ -22,12 +22,21 @@ export const ESTADO_FACTURA: Record<string, { label: string; color: string }> = 
   ANULADA: { label: 'Anulada', color: 'bg-neutral-100 text-neutral-500' },
 };
 
+// Categorías de gasto manual. Cubren la operación completa — flota,
+// predio (recepción / almacenamiento / distribución) y administración —
+// no solo vehículos. Cada una se convierte en rubro del análisis.
 export const CATEGORIA_GASTO: Record<string, string> = {
   FLETE: 'Fletes / subcontratados', SUELDOS: 'Sueldos', LEYES_SOCIALES: 'Leyes sociales / cargas',
   COMBUSTIBLE: 'Combustible', MANTENIMIENTO: 'Mantenimiento / repuestos', NEUMATICOS: 'Neumáticos',
   PEAJES: 'Peajes / estacionamiento', SEGUROS: 'Seguros', ALQUILER: 'Arriendo / alquiler',
   SERVICIOS: 'Servicios (luz, agua, internet)', HONORARIOS: 'Honorarios / contador', ADMINISTRACION: 'Administración',
-  BANCARIOS: 'Gastos bancarios', IMPUESTOS: 'Impuestos / patentes', OTRO: 'Otro',
+  BANCARIOS: 'Gastos bancarios', IMPUESTOS: 'Impuestos / patentes',
+  // Operación del predio / depósito (no-flota)
+  DESPENSA: 'Despensa / víveres', LIMPIEZA: 'Limpieza del predio', VIGILANCIA: 'Seguridad / vigilancia',
+  EPP: 'EPP / uniformes', EMBALAJE: 'Embalaje / film / pallets', HERRAMIENTAS: 'Herramientas / equipamiento',
+  VIATICOS: 'Viáticos / comidas', TECNOLOGIA: 'Software / tecnología', MERMAS: 'Mermas / faltantes',
+  COMERCIAL: 'Comercial / marketing',
+  OTRO: 'Otro',
 };
 
 export const RUBRO_LABEL: Record<string, string> = {

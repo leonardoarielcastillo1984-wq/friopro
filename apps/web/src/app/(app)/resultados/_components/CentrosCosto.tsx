@@ -109,8 +109,8 @@ export default function CentrosCosto({ centros, canEdit, reload }: { centros: Ce
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
         <p className="text-xs text-neutral-400">
-          Unidades de negocio y centros de costo para ver el resultado por operación (ej. "Chile" → "Operación Stellantis").
-          Filtrá el dashboard por unidad desde el selector de arriba.
+          Unidades de negocio y centros de costo para ver el resultado por operación (ej. "Chile" → "Almacenamiento" → "Distribución").
+          Sirven para toda la operación: predio, depósito, recepción — no solo la flota. Filtrá el dashboard por unidad desde el selector de arriba.
         </p>
         {canEdit && (
           <button onClick={() => { setShowForm(true); setEditId(null); setForm(vacio); }} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800">
