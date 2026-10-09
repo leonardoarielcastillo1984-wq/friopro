@@ -1,5 +1,6 @@
 'use client';
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -242,7 +243,8 @@ export default function ClientesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Gestión de Clientes <PageTitleHelp moduleHref="/clientes" /></h1>
           <p className="text-gray-600 mt-1">Clientes y encuestas de satisfacción</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          <DocCodeBadge outputKey="clientes.gestion" title="Gestión de Clientes" module="clientes" outputType="LIST" />
           <button
             onClick={() => setActiveTab('customers')}
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${

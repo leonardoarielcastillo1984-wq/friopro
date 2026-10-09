@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import { Scale, Plus, Trash2, X, CheckCircle2, AlertTriangle, ClipboardCheck } from 'lucide-react';
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
@@ -113,10 +114,13 @@ export default function RequisitosLegalesPage() {
             <p className="mt-1 text-sm text-gray-500">Registro de requisitos legales y evaluación del cumplimiento — ISO 14001/45001 §6.1.3 y §9.1.2</p>
           </div>
         </div>
-        <button onClick={() => { setEditItem(null); setForm(emptyForm); setShowModal(true); }}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-          <Plus className="h-4 w-4" /> Nuevo requisito
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <DocCodeBadge outputKey="cumplimiento.requisitos-legales" title="Requisitos Legales" module="cumplimiento" subModule="requisitos-legales" outputType="LIST" />
+          <button onClick={() => { setEditItem(null); setForm(emptyForm); setShowModal(true); }}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            <Plus className="h-4 w-4" /> Nuevo requisito
+          </button>
+        </div>
       </div>
 
       {summary && (

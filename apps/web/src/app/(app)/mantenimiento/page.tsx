@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import {
   Wrench, Calendar, Users, AlertTriangle, CheckCircle, Clock, TrendingUp,
   Filter, Search, Plus, Eye, Edit, Trash2, FileText, BarChart3, Settings,
@@ -1230,6 +1231,7 @@ export default function MantenimientoPage() {
           <p className="text-gray-600">Gestión integral de mantenimiento y planes preventivos</p>
         </div>
         <div className="flex items-center gap-3">
+          <DocCodeBadge outputKey="infraestructura.mantenimiento" title="Mantenimiento Industrial" module="infraestructura" subModule="mantenimiento" outputType="LIST" />
           <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
             <Upload className="w-4 h-4" />
             Importar

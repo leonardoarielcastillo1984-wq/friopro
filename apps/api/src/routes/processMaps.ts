@@ -177,6 +177,46 @@ function summarizeTemplate(t: ParsedTemplate) {
   return { maps: 1, macroprocesos: macro, subprocesos: sub, procesos: t.processes.length, documentos: docs, riesgos: risks, indicadores: indicators, actividades: activities };
 }
 
+/**
+ * Sincroniza ProcessMap.docCode (código editable en el formulario del mapa) con la
+ * salida documental vinculada. Sin esto, el código quedaba solo en el mapa y la
+ * exportación controlada salía SIN-CODIGO. Es idempotente y no pisa códigos ya
+ * asignados ni códigos que estén en uso por otra salida.
+ */
+async function syncMapDocCode(prisma: any, tenantId: string, mapId: string, userId?: string | null) {
+  try {
+    const map = await prisma.processMap.findFirst({
+      where: { id: mapId, deletedAt: null },
+      select: { docCode: true },
+    });
+    const docCode = map?.docCode?.trim();
+    if (!docCode) return;
+    const output = await prisma.documentOutputDefinition.findFirst({
+      where: { tenantId, entityRef: mapId, deletedAt: null },
+    });
+    if (!output || output.documentCode === docCode) return;
+    const taken = await prisma.documentOutputDefinition.findFirst({
+      where: { tenantId, documentCode: docCode, id: { not: output.id }, deletedAt: null },
+    });
+    if (taken) return; // el código ya está en uso por otra salida: no pisar
+    let maestroDoc = await prisma.document.findFirst({
+      where: { tenantId, documentCode: docCode, deletedAt: null },
+    });
+    if (!maestroDoc) {
+      maestroDoc = await prisma.document.create({
+        data: {
+          tenantId, title: output.screenName, type: 'Mapa', documentCode: docCode,
+          status: 'EFFECTIVE', process: 'contexto-sgi', createdById: userId ?? null,
+        },
+      });
+    }
+    await prisma.documentOutputDefinition.update({
+      where: { id: output.id },
+      data: { documentCode: docCode, documentId: maestroDoc.id, status: 'EFFECTIVE' },
+    });
+  } catch { /* sincronización best-effort: no romper el request */ }
+}
+
 export const processMapsRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /process-maps ──────────────────────────────────────────
   app.get('/', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -576,6 +616,10 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
         });
       } catch { /* no crítico */ }
     }
+    // Sincronizar el código documental del mapa con su salida documental
+    if (body.docCode !== undefined) {
+      await syncMapDocCode(app.prisma, tenantId, req.params.id, (req as any).auth?.userId);
+    }
 
     return reply.send(map);
   });
@@ -829,6 +873,11 @@ export const processMapsRoutes: FastifyPluginAsync = async (app) => {
           data: { screenName, entityRef: map.id },
         });
       }
+      // Propagar docCode del mapa a la salida si no lo tiene (ej. CON-017 en el form)
+      await syncMapDocCode(app.prisma, tenantId, map.id, (req as any).auth?.userId);
+      output = await (app.prisma as any).documentOutputDefinition.findFirst({
+        where: { id: output.id },
+      }) ?? output;
       return reply.send({ output, created: false });
     }
 

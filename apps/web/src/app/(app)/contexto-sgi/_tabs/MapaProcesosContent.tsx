@@ -287,9 +287,15 @@ const EMPTY_MAP_FORM = {
   name: '', description: '', scope: '',
   inputLabel: 'Requisitos del cliente / PI', outputLabel: 'Satisfacción del cliente / PI',
   mapBand: '', norm: '', order: 0,
+  // Sedes del mapa: se propagan a todos sus procesos al guardar.
+  sites: [] as string[],
   // Control documental del mapa
   docCode: '', docVersion: '', docStatus: '', docApprovedBy: '', docReviewDate: '',
 };
+
+// Sedes del mapa = unión de las sedes de todos sus procesos.
+const mapSitesOf = (m: { processes?: { sites?: string[] | null }[] }) =>
+  [...new Set((m.processes ?? []).flatMap(p => p.sites ?? []))].sort();
 
 const EMPTY_PROCESS: Partial<Process> = {
   layer: 'OPERATIONAL', name: '', code: '', status: 'active', description: '', owner: '',
@@ -310,6 +316,8 @@ export default function MapaProcesosContent() {
   // Document code state
   const [docOutput, setDocOutput] = useState<DocOutputInfo>(null);
   const [showCodeModal, setShowCodeModal] = useState(false);
+  // Mapa al que se le asigna código (puede venir del Mapa General sin `selected`).
+  const [codeMapId, setCodeMapId] = useState<string | null>(null);
   const [newCode, setNewCode] = useState('');
   const [suggestingCode, setSuggestingCode] = useState(false);
   const [hasRuleForCode, setHasRuleForCode] = useState(false);
@@ -534,6 +542,22 @@ export default function MapaProcesosContent() {
     await loadAux();
   }
 
+  // Modo vinculación por click del Mapa General: togglear el par origen↔destino.
+  // Si existe la interacción (en cualquier dirección) la borra; si no, la crea sin etiqueta.
+  async function toggleInteractionPair(fromId: string, toId: string) {
+    const existing = interactions.find(i =>
+      (i.fromId === fromId && i.toId === toId) || (i.fromId === toId && i.toId === fromId));
+    if (existing) {
+      await apiFetch(`/process-maps/interactions/${existing.id}`, { method: 'DELETE' });
+    } else {
+      await apiFetch('/process-maps/interactions', {
+        method: 'POST',
+        json: { fromId, toId, label: null, fromSite: null, toSite: null, notes: null },
+      });
+    }
+    await loadAux();
+  }
+
   async function saveOutsourced(draft: OutsourcedDraft, id?: string) {
     const body = {
       name: draft.name.trim(),
@@ -573,25 +597,33 @@ export default function MapaProcesosContent() {
   async function loadDocOutput(mapId: string) {
     try {
       const res = await apiFetch<{ output: DocOutputInfo }>(`/process-maps/${mapId}/document-output`);
-      setDocOutput(res?.output ?? null);
+      if (res?.output) {
+        setDocOutput(res.output);
+        return;
+      }
+      // Sin salida: crearla (idempotente) para que el export controle el código del mapa
+      const created = await apiFetch<{ output: DocOutputInfo }>(`/process-maps/${mapId}/document-output`, { method: 'POST' });
+      setDocOutput(created?.output ?? null);
     } catch {
       setDocOutput(null);
     }
   }
 
-  async function openAssignCode() {
-    if (!selected) return;
+  async function openAssignCode(mapId?: string) {
+    const targetId = mapId ?? selected?.id;
+    if (!targetId) return;
+    setCodeMapId(targetId);
     setShowCodeModal(true);
     setNewCode('');
     setHasRuleForCode(false);
     setSuggestingCode(true);
     try {
       // Asegurar que existe la salida documental
-      await apiFetch(`/process-maps/${selected.id}/document-output`, { method: 'POST' });
+      await apiFetch(`/process-maps/${targetId}/document-output`, { method: 'POST' });
       // Cargar la salida actualizada
-      await loadDocOutput(selected.id);
+      await loadDocOutput(targetId);
       // Sugerir código
-      const res = await apiFetch<{ suggestedCode: string; hasRule: boolean }>(`/process-maps/${selected.id}/suggest-code`);
+      const res = await apiFetch<{ suggestedCode: string; hasRule: boolean }>(`/process-maps/${targetId}/suggest-code`);
       setNewCode(res.suggestedCode || '');
       setHasRuleForCode(res.hasRule ?? false);
     } catch (e: any) {
@@ -602,14 +634,16 @@ export default function MapaProcesosContent() {
   }
 
   async function assignCode() {
-    if (!selected || !newCode.trim()) return;
+    const targetId = codeMapId ?? selected?.id;
+    if (!targetId || !newCode.trim()) return;
     setAssigningCode(true);
     try {
-      await apiFetch(`/process-maps/${selected.id}/assign-code`, {
+      await apiFetch(`/process-maps/${targetId}/assign-code`, {
         method: 'POST',
         json: { documentCode: newCode.trim() },
       });
-      await loadDocOutput(selected.id);
+      await loadDocOutput(targetId);
+      await load();
       setShowCodeModal(false);
     } catch (e: any) {
       setError(e?.message || 'Error al asignar código');
@@ -837,6 +871,7 @@ export default function MapaProcesosContent() {
     }).join('');
 
     const overviewPage = `
+      <div class="pdf-fit">
       <div id="top"></div>
       <h1 style="text-align:center;">${escapePdfHtml(map.name) || 'Mapa de Procesos'}</h1>
       ${map.description ? `<p style="text-align:center;font-size:10px;color:#64748b;margin-bottom:10px;">${escapePdfHtml(map.description)}</p>` : ''}
@@ -845,6 +880,7 @@ export default function MapaProcesosContent() {
         <td style="width:50%;text-align:center;font-size:9px;color:#15803d;background:#f0fdf4;border-radius:8px;padding:6px;border:none;">SALIDAS GENERALES<br/><strong>${pdfOrNotDefined(map.outputLabel)}</strong></td>
       </tr></table>
       ${overviewSections}
+      </div>
     `;
 
     // ── Índice de procesos ──
@@ -857,6 +893,7 @@ export default function MapaProcesosContent() {
     `).join('');
     const indexPage = `
       <div class="page-break"></div>
+      <div class="pdf-fit">
       <div class="npm-nav"><a href="#top">⌂ Mapa General</a></div>
       <h2>Índice de Procesos</h2>
       <table style="width:100%;border-collapse:collapse;">
@@ -867,6 +904,7 @@ export default function MapaProcesosContent() {
         </tr></thead>
         <tbody>${indexRows || `<tr><td colspan="3" style="padding:8px;text-align:center;color:#94a3b8;">Sin macroprocesos registrados</td></tr>`}</tbody>
       </table>
+      </div>
     `;
 
     // ── Páginas de macroproceso + subprocesos ──
@@ -891,6 +929,7 @@ export default function MapaProcesosContent() {
 
       const macroPage = `
         <div class="page-break" id="macro-${macro.id}"></div>
+        <div class="pdf-fit">
         <div class="npm-nav"><a href="#top">⌂ Mapa General</a></div>
         <div class="npm-breadcrumb">Mapa General &gt; ${cfg.label} &gt; ${escapePdfHtml(macro.name)}</div>
         <h1>${escapePdfHtml(macro.name)}</h1>
@@ -903,6 +942,7 @@ export default function MapaProcesosContent() {
         ${macro.objective ? `<div class="npm-section-title">Objetivo</div><p style="font-size:10px;">${escapePdfHtml(macro.objective)}</p>` : ''}
         <div class="npm-section-title">Subprocesos</div>
         ${subCards}
+        </div>
       `;
 
       const subPages = subs.map(s => {
@@ -917,6 +957,7 @@ export default function MapaProcesosContent() {
 
         return `
           <div class="page-break" id="sub-${s.id}"></div>
+          <div class="pdf-fit">
           <div class="npm-nav"><a href="#macro-${macro.id}">← ${escapePdfHtml(macro.name)}</a> &nbsp;|&nbsp; <a href="#top">⌂ Mapa General</a></div>
           <div class="npm-breadcrumb">Mapa General &gt; ${cfg.label} &gt; <a href="#macro-${macro.id}">${escapePdfHtml(macro.name)}</a> &gt; ${escapePdfHtml(s.name)}</div>
           <h1>${escapePdfHtml(s.name).toUpperCase()}</h1>
@@ -959,6 +1000,7 @@ export default function MapaProcesosContent() {
           <p class="npm-empty">Sin registros asociados</p>
 
           <div class="npm-nav" style="margin-top:14px;"><a href="#macro-${macro.id}">← ${escapePdfHtml(macro.name)}</a> &nbsp;|&nbsp; <a href="#top">⌂ Mapa General</a></div>
+          </div>
         `;
       }).join('');
 
@@ -997,6 +1039,7 @@ export default function MapaProcesosContent() {
           title: `Mapa de Procesos — ${selected.name}`,
           orientation: 'landscape',
           pageSize: 'A3',
+          fitToPage: true,
         }),
       });
 
@@ -1125,10 +1168,21 @@ export default function MapaProcesosContent() {
   async function saveMap() {
     setSaving(true);
     try {
+      // 'sites' no es campo del mapa: se propaga a cada proceso por PATCH.
+      const { sites: mapSites, ...mapBody } = mapForm;
       if (editingMapId) {
-        await apiFetch(`/process-maps/${editingMapId}`, { method: 'PUT', json: mapForm });
+        await apiFetch(`/process-maps/${editingMapId}`, { method: 'PUT', json: mapBody });
+        const m = maps.find(x => x.id === editingMapId);
+        if (m && mapSites) {
+          const target = [...mapSites].sort().join('|');
+          await Promise.all(
+            m.processes
+              .filter(p => [...(p.sites ?? [])].sort().join('|') !== target)
+              .map(p => apiFetch(`/process-maps/${editingMapId}/processes/${p.id}`, { method: 'PATCH', json: { sites: mapSites } })),
+          );
+        }
       } else {
-        await apiFetch('/process-maps', { method: 'POST', json: mapForm });
+        await apiFetch('/process-maps', { method: 'POST', json: mapBody });
       }
       setShowMapForm(false);
       setEditingMapId(null);
@@ -1479,9 +1533,11 @@ export default function MapaProcesosContent() {
           interactions={interactions}
           outsourced={outsourced}
           onNewMap={opts => { setEditingMapId(null); setMapForm({ ...EMPTY_MAP_FORM, mapBand: opts?.mapBand ?? '', norm: generalNormTab }); setShowMapForm(true); }}
-          onEditMap={m => { setEditingMapId(m.id); setMapForm({ ...EMPTY_MAP_FORM, name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? EMPTY_MAP_FORM.inputLabel, outputLabel: m.outputLabel ?? EMPTY_MAP_FORM.outputLabel, mapBand: m.mapBand ?? '', norm: m.norm ?? '', order: m.order ?? 0, docCode: m.docCode ?? '', docVersion: m.docVersion ?? '', docStatus: m.docStatus ?? '', docApprovedBy: m.docApprovedBy ?? '', docReviewDate: m.docReviewDate ? m.docReviewDate.slice(0, 10) : '' }); setShowMapForm(true); }}
+          onEditMap={m => { setEditingMapId(m.id); setMapForm({ ...EMPTY_MAP_FORM, name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? EMPTY_MAP_FORM.inputLabel, outputLabel: m.outputLabel ?? EMPTY_MAP_FORM.outputLabel, mapBand: m.mapBand ?? '', norm: m.norm ?? '', order: m.order ?? 0, sites: mapSitesOf(m), docCode: m.docCode ?? '', docVersion: m.docVersion ?? '', docStatus: m.docStatus ?? '', docApprovedBy: m.docApprovedBy ?? '', docReviewDate: m.docReviewDate ? m.docReviewDate.slice(0, 10) : '' }); setShowMapForm(true); }}
           onDeleteMap={m => deleteMap(m.id)}
           onMoveMap={(m, band) => moveMapToBand(m.id, band)}
+          onToggleLink={(fromId, toId) => { toggleInteractionPair(fromId, toId); }}
+          onAssignCode={m => { openAssignCode(m.id); }}
           normLock={maps.some(m => m.norm) ? (generalNormTab || null) : null}
         />
         </>
@@ -1523,7 +1579,7 @@ export default function MapaProcesosContent() {
             </div>
             <p className="text-xs text-neutral-400 mt-0.5 truncate pl-6">{m.processes.filter(p => !p.parentId).length} macroprocesos</p>
             <div className="absolute right-1 top-1 hidden group-hover:flex gap-0.5">
-              <button onClick={e => { e.stopPropagation(); setEditingMapId(m.id); setMapForm({ ...EMPTY_MAP_FORM, name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? EMPTY_MAP_FORM.inputLabel, outputLabel: m.outputLabel ?? EMPTY_MAP_FORM.outputLabel, mapBand: m.mapBand ?? '', norm: m.norm ?? '', order: m.order ?? 0, docCode: m.docCode ?? '', docVersion: m.docVersion ?? '', docStatus: m.docStatus ?? '', docApprovedBy: m.docApprovedBy ?? '', docReviewDate: m.docReviewDate ? m.docReviewDate.slice(0, 10) : '' }); setShowMapForm(true); }} className="p-1 rounded hover:bg-white"><Pencil className="h-3 w-3 text-neutral-400" /></button>
+              <button onClick={e => { e.stopPropagation(); setEditingMapId(m.id); setMapForm({ ...EMPTY_MAP_FORM, name: m.name, description: m.description ?? '', scope: m.scope ?? '', inputLabel: m.inputLabel ?? EMPTY_MAP_FORM.inputLabel, outputLabel: m.outputLabel ?? EMPTY_MAP_FORM.outputLabel, mapBand: m.mapBand ?? '', norm: m.norm ?? '', order: m.order ?? 0, sites: mapSitesOf(m), docCode: m.docCode ?? '', docVersion: m.docVersion ?? '', docStatus: m.docStatus ?? '', docApprovedBy: m.docApprovedBy ?? '', docReviewDate: m.docReviewDate ? m.docReviewDate.slice(0, 10) : '' }); setShowMapForm(true); }} className="p-1 rounded hover:bg-white"><Pencil className="h-3 w-3 text-neutral-400" /></button>
               <button onClick={e => { e.stopPropagation(); deleteMap(m.id); }} className="p-1 rounded hover:bg-white"><Trash2 className="h-3 w-3 text-red-400" /></button>
             </div>
           </div>
@@ -1596,7 +1652,7 @@ export default function MapaProcesosContent() {
               <div className="flex items-center gap-2 flex-wrap">
                 {!viewMacro && (
                   <>
-                    <button onClick={openAssignCode} disabled={!selected} title="Asignar o modificar código documental del mapa" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 border border-indigo-700 rounded-lg hover:bg-indigo-700 disabled:opacity-40">
+                    <button onClick={() => openAssignCode()} disabled={!selected} title="Asignar o modificar código documental del mapa" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 border border-indigo-700 rounded-lg hover:bg-indigo-700 disabled:opacity-40">
                       <Hash className="h-3.5 w-3.5" /> {docOutput?.documentCode ? `Código: ${docOutput.documentCode}` : 'Asignar código'}
                     </button>
 
@@ -1770,7 +1826,7 @@ export default function MapaProcesosContent() {
             </div>
 
             {/* Layout: entrada → capas → salida */}
-            <div ref={mapContainerRef} className="flex gap-4 items-stretch" id="map-diagram-area">
+            <div ref={mapContainerRef} className="flex gap-4 items-stretch" id="map-diagram-area" data-doc-capture-root>
               {viewMacro ? (
                 /* Ítem 6: panel dinámico con el resumen del proceso */
                 <div className="w-64 flex-shrink-0">
@@ -2154,6 +2210,17 @@ export default function MapaProcesosContent() {
               </select>
               <p className="text-[10px] text-neutral-400 mt-1">Define en qué vista del Mapa General aparece este mapa (filtro por norma arriba del mapa).</p>
             </div>
+            {editingMapId && (
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> Sedes donde se ejecuta</label>
+                <SitesEditor
+                  sites={mapForm.sites}
+                  onChange={s => setMapForm(p => ({ ...p, sites: s }))}
+                  suggestions={[...new Set(maps.flatMap(m => m.processes.flatMap(x => x.sites ?? [])))].sort()}
+                />
+                <p className="text-[10px] text-neutral-400 mt-1">Se aplica a todos los procesos del mapa al guardar.</p>
+              </div>
+            )}
             {/* Control documental del mapa (documento controlado del SGI) */}
             <div className="pt-3 border-t border-neutral-100">
               <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-2">Control documental</p>
@@ -3000,7 +3067,7 @@ export default function MapaProcesosContent() {
       )}
 
       {/* Modal: Asignar código documental */}
-      {showCodeModal && selected && (
+      {showCodeModal && codeMapId && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
@@ -3014,7 +3081,7 @@ export default function MapaProcesosContent() {
             <div className="px-5 py-4 space-y-4">
               <div>
                 <p className="text-xs text-neutral-500 mb-1">Mapa de procesos</p>
-                <p className="text-sm font-medium text-neutral-800">{selected.name}</p>
+                <p className="text-sm font-medium text-neutral-800">{maps.find(m => m.id === codeMapId)?.name ?? ''}</p>
               </div>
               {docOutput?.documentCode && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">

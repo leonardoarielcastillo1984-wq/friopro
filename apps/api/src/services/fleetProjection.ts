@@ -28,6 +28,7 @@ export const COMPONENTES_DEF: {
   key: string; label: string; sistema: string; match: RegExp;
   metricaDefault: 'INTERVALO_MANTENIMIENTO' | 'VIDA_SERVICIO_REF' | 'CONDICION_MEDIDA';
 }[] = [
+  { key: 'motor',                 label: 'Motor (rectificación / overhaul)', sistema: 'MOTOR',               metricaDefault: 'VIDA_SERVICIO_REF',       match: /rectificaci[oó]n.*motor|motor.*rectific|overhaul|tapa.*cilindro|bloque.*motor/i },
   { key: 'aceite_motor',          label: 'Aceite de motor',                 sistema: 'MOTOR',                metricaDefault: 'INTERVALO_MANTENIMIENTO', match: /aceite(?!.*(caja|transmisi|hidr))|cambio de aceite|service/i },
   { key: 'filtro_aceite',         label: 'Filtro de aceite',                sistema: 'MOTOR',                metricaDefault: 'INTERVALO_MANTENIMIENTO', match: /filtro.*aceite|aceite.*filtro/i },
   { key: 'filtro_aire',           label: 'Filtro de aire',                  sistema: 'MOTOR',                metricaDefault: 'INTERVALO_MANTENIMIENTO', match: /filtro.*aire|aire.*filtro/i },
@@ -52,6 +53,7 @@ const ORIGEN_LABEL: Record<string, string> = {
   ORIGINAL_CONFIRMADO: 'original confirmado',
   REEMPLAZO_DOCUMENTADO: 'reemplazo documentado',
   ORIGEN_DESCONOCIDO: 'origen desconocido',
+  ASUMIDO_FABRICA: 'asumido de fábrica (sin registro de reemplazo)',
 };
 const ESTADO_REF_LABEL: Record<string, string> = {
   VERIFICADA: 'referencia verificada',
@@ -163,7 +165,40 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
   });
   if (!vehiculo) return null;
 
-  const km = vehiculo.currentOdometer || 0;
+  // ── SEMI: el km lo tracciona el tractor — el semi suma kilometraje
+  // solo mientras está acoplado. Si no tiene odómetro propio, hereda el
+  // del tractor del conjunto operativo vigente (cota superior: se asume
+  // acoplado desde el km 0 del tractor). ──
+  let km = vehiculo.currentOdometer || 0;
+  let kmMesHeredado: number | null = null;
+  let tractorAcoplado: string | null = null;
+  let kmSemiTramoVigente = false;
+  if (vehiculo.tipo === 'SEMI') {
+    const conjunto = await prisma.conjuntoOperativo.findFirst({
+      where: { semiId: vehiculoId, tenantId, estado: 'ACOPLADO' },
+      include: { tractor: { select: { dominio: true, currentOdometer: true, kmMesEstimado: true } } },
+      orderBy: { fechaAcople: 'desc' },
+    }).catch(() => null);
+    if (conjunto?.tractor) {
+      tractorAcoplado = conjunto.tractor.dominio;
+      // Km del semi = km acumulado propio (consolidado en cada desacople)
+      // + tramo vigente = odoTractor ahora - odoTractor al acople.
+      const ultimoAcople = await prisma.conjuntoOperativoEvento.findFirst({
+        where: { conjuntoId: conjunto.id, tipo: 'ACOPLE' }, orderBy: { fecha: 'desc' },
+        select: { odometroTractor: true },
+      }).catch(() => null);
+      const odoTractorAhora = conjunto.tractor.currentOdometer || 0;
+      if (odoTractorAhora != null && ultimoAcople?.odometroTractor != null) {
+        km += Math.max(0, odoTractorAhora - ultimoAcople.odometroTractor);
+        kmSemiTramoVigente = true;
+      } else if (!km) {
+        // Sin snapshot del acople: cota superior = odómetro del tractor.
+        km = odoTractorAhora || 0;
+      }
+      if (!vehiculo.kmMesEstimado && conjunto.tractor.kmMesEstimado) kmMesHeredado = conjunto.tractor.kmMesEstimado;
+    }
+  }
+
   const kmFinal = km + kmProyectar;
   const perfil = opts.perfil || vehiculo.perfilUso || null;
 
@@ -176,6 +211,7 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
   let kmMes: number | null = ritmo?.kmMes ?? null;
   if (kmMes == null && opts.kmMesHipotesis) { kmMes = opts.kmMesHipotesis; ritmoFuente = 'HIPOTESIS_USUARIO'; }
   else if (kmMes == null && vehiculo.kmMesEstimado) { kmMes = vehiculo.kmMesEstimado; ritmoFuente = 'DECLARADO_VEHICULO'; }
+  else if (kmMes == null && kmMesHeredado) { kmMes = kmMesHeredado; ritmoFuente = 'TRACTOR_ACOPLADO'; }
 
   const mesesProyectar = opts.mesesProyectar ?? (kmMes ? kmProyectar / kmMes : null);
   const fechaEstimada = mesesProyectar != null ? new Date(now.getTime() + mesesProyectar * MS_MES) : null;
@@ -220,11 +256,15 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
   function refPara(key: string) {
     const cands = referencias.filter((r: any) => r.componentKey === key);
     if (!cands.length) return null;
-    const score = (r: any) =>
-      (r.tenantId === tenantId ? 100 : 0) +
-      (r.marcaVehiculo && vehiculo.marca && r.marcaVehiculo.toLowerCase() === vehiculo.marca.toLowerCase() ? 10 : 0) +
-      (r.modeloVehiculo && vehiculo.modelo && r.modeloVehiculo.toLowerCase() === vehiculo.modelo.toLowerCase() ? 10 : 0) +
-      (r.regimenUso && perfil && r.regimenUso === perfil ? 5 : 0);
+    const score = (r: any) => {
+      const tieneValores = r.intervaloKm != null || r.intervaloMeses != null || r.intervaloHoras != null || r.rangoMinKm != null || r.rangoMaxKm != null;
+      return (r.tenantId === tenantId ? 100 : 0) +
+        (tieneValores ? 50 : 0) +                       // referencia utilizable > placeholder sin datos
+        (r.estado === 'VERIFICADA' ? 20 : r.estado === 'INTERNA_APROBADA' ? 15 : r.estado === 'PROVISIONAL' ? 5 : 0) +
+        (r.marcaVehiculo && vehiculo.marca && r.marcaVehiculo.toLowerCase() === vehiculo.marca.toLowerCase() ? 10 : 0) +
+        (r.modeloVehiculo && vehiculo.modelo && r.modeloVehiculo.toLowerCase() === vehiculo.modelo.toLowerCase() ? 10 : 0) +
+        (r.regimenUso && perfil && r.regimenUso === perfil ? 5 : 0);
+    };
     return cands.sort((a: any, b: any) => score(b) - score(a))[0];
   }
 
@@ -254,6 +294,27 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
       evidencia: ref ? ref.estado : 'FALTANTE',
       porQue,
     };
+
+    // Historial de desgaste complementario al km: ciclos de instalación
+    // cerrados del componente en esta unidad (cuándo se reemplazó, a qué
+    // km, motivo y por qué).
+    const compId = keyToComponentId.get(def.key);
+    if (compId) {
+      const cerradas = instalaciones
+        .filter((i: any) => i.instance?.componentId === compId && i.removedAt)
+        .map((i: any) => ({
+          instalado: { fecha: i.installedAt, km: i.installedKm },
+          removido: { fecha: i.removedAt, km: i.removedKm },
+          kmEnServicio: i.installedKm != null && i.removedKm != null ? Math.round(i.removedKm - i.installedKm) : null,
+          motivo: i.motivo || null,
+          origen: i.origen,
+          notas: i.origenNotas || null,
+        }));
+      if (cerradas.length) {
+        out.historialReemplazos = cerradas;
+        porQue.push(`Historial: ${cerradas.length} ciclo(s) de instalación previo(s) en esta unidad.`);
+      }
+    }
 
     // ── A) Intervalo de mantenimiento ──
     if (tipoMetrica === 'INTERVALO_MANTENIMIENTO') {
@@ -344,9 +405,20 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
         porQue.push(`Componente ${ORIGEN_LABEL[inst.origen] || 'de origen desconocido'}${kmInst != null ? `, instalado a ${Math.round(kmInst).toLocaleString('es-AR')} km del vehículo` : ''}.`);
         if (kmComp != null) porQue.push(`El componente lleva ${Math.round(kmComp).toLocaleString('es-AR')} km; en el escenario alcanzaría ${Math.round(kmCompProy!).toLocaleString('es-AR')} km (el vehículo llega a ${Math.round(kmFinal).toLocaleString('es-AR')} km).`);
         if (inst.origen === 'ORIGEN_DESCONOCIDO') porQue.push('Origen desconocido: el recorrido del componente es una estimación con incertidumbre, confirmar fecha/km de instalación.');
+      } else if (km > 0) {
+        // Sin registro de instalación → el componente es el de fábrica.
+        // El desgaste va por km: la cota superior honesta es el odómetro
+        // de la unidad. Se informa con su nivel de incertidumbre.
+        out.instancia = {
+          origen: 'ASUMIDO_FABRICA', origenLabel: ORIGEN_LABEL.ASUMIDO_FABRICA,
+          installedKm: 0, installedAt: null,
+          kmComponente: km, kmComponenteProyectado: kmFinal,
+          serial: null,
+        };
+        porQue.push(`Sin registro de reemplazo de este componente: se asume que es el de fábrica con ${Math.round(km).toLocaleString('es-AR')} km recorridos (cota superior — si fue reemplazado, su recorrido real es menor).`);
       } else {
         out.instancia = null;
-        porQue.push('Sin ciclo de instalación registrado para este componente: no se puede calcular su recorrido sin inventar el punto de partida.');
+        porQue.push('Sin ciclo de instalación registrado y unidad sin odómetro: no se puede calcular el recorrido del componente.');
       }
 
       if (rangoMin != null || rangoMax != null) {
@@ -534,6 +606,7 @@ export async function proyectarVehiculo(prisma: any, tenantId: string, vehiculoI
     seen.add(k); return true;
   }).sort((a, b) => a.km - b.km);
 
+  if (tractorAcoplado && !kmSemiTramoVigente) advertencias.push(`Semirremolque acoplado a ${tractorAcoplado} sin snapshot de odómetro en el acople: se usa el odómetro del tractor como cota superior. El semi solo suma km mientras está acoplado.`);
   if (kmMes == null) advertencias.push('Sin ritmo de uso estimable ni hipótesis declarada: el escenario se muestra solo por distancia, sin fechas.');
   if (conceptosSinPrecio > 0) advertencias.push(`${conceptosSinPrecio} concepto(s) sin cotización: el total es una estimación incompleta, no $0 ni el costo real.`);
   if (escenario === 'SIN_MANTENIMIENTO') advertencias.push('Escenario sin mantenimiento: se muestran tareas vencidas y su exceso de intervalo. No se calcula fecha de avería.');

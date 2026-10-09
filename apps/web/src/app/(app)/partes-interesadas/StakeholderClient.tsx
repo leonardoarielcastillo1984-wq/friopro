@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import { t } from '@/lib/dictionary';
 
 export default function StakeholderClient() {
@@ -96,7 +97,10 @@ export default function StakeholderClient() {
         <select value={filter} onChange={e=>setFilter(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
           <option value="ALL">Todos</option><option value="COMPLIES">Cumple</option><option value="PARTIAL">Parcial</option><option value="NON_COMPLIANT">No cumple</option>
         </select>
-        <button onClick={()=>open()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"><Plus className="w-4 h-4"/>Nueva</button>
+        <div className="flex items-center gap-2">
+          <DocCodeBadge outputKey="contexto-sgi.partes-interesadas" title="Partes Interesadas" module="contexto-sgi" subModule="partes-interesadas" outputType="LIST" />
+          <button onClick={()=>open()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"><Plus className="w-4 h-4"/>Nueva</button>
+        </div>
       </div>
       {loading?<div className="text-center py-12">Cargando...</div>:
       <div className="bg-white rounded-xl border overflow-hidden">

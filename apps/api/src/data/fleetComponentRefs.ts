@@ -2,10 +2,12 @@
 // FLOTA 360 — Catálogo semilla de referencias técnicas por componente
 //
 // Reglas del enunciado:
-//  - Los intervalos preexistentes del sistema se preservan como
-//    INTERNA_APROBADA rotulados "intervalo de servicio" — NO vida útil.
-//  - La hipótesis de embrague 200.000–300.000 km del usuario se carga
-//    como PROVISIONAL "hipótesis ilustrativa, pendiente de validación".
+//  - Los intervalos de servicio se preservan como INTERNA_APROBADA
+//    rotulados "intervalo de servicio" — NO vida útil.
+//  - Las referencias de vida en servicio (motor, embrague, caja,
+//    burro, alternador, batería) son estándares internos aprobados
+//    por la empresa. Alcanzar el rango dispara evaluación de
+//    condición, no reemplazo obligatorio.
 //  - Componentes sin fuente verificable quedan FALTANTE: visibles con
 //    sus datos conocidos pero sin porcentajes inventados.
 //  - Las fuentes primarias (Eaton, DTNA) se registran con su URL y
@@ -18,18 +20,18 @@ export const FLEET_COMPONENT_REFS_SEED: any[] = [
   {
     componentKey: 'aceite_motor', componentLabel: 'Aceite de motor', sistema: 'MOTOR',
     tipoMetrica: 'INTERVALO_MANTENIMIENTO', tarea: 'Cambio de aceite y filtro de motor',
-    intervaloKm: 10000, unidad: 'km',
-    fuente: 'Configuración interna preexistente del sistema', documentoSeccion: 'Constante PROGRAMA original',
+    intervaloKm: 30000, unidad: 'km',
+    fuente: 'Estándar interno de mantenimiento — aprobado por la empresa', documentoSeccion: 'Programa de mantenimiento vigente',
     estado: 'INTERNA_APROBADA', matchRegex: 'aceite(?!.*(caja|transmisi|hidr))|cambio de aceite|service',
-    notas: 'Intervalo de servicio heredado de la configuración anterior. Verificar contra manual del motor y especificación del lubricante.',
+    notas: 'Cambio de aceite y filtro cada 30.000 km — estándar de la empresa.',
   },
   {
     componentKey: 'filtro_aceite', componentLabel: 'Filtro de aceite', sistema: 'MOTOR',
     tipoMetrica: 'INTERVALO_MANTENIMIENTO', tarea: 'Cambio de filtro de aceite (junto con aceite)',
-    intervaloKm: 10000, unidad: 'km',
-    fuente: 'Configuración interna preexistente del sistema', documentoSeccion: 'Constante PROGRAMA original',
+    intervaloKm: 30000, unidad: 'km',
+    fuente: 'Estándar interno de mantenimiento — aprobado por la empresa', documentoSeccion: 'Programa de mantenimiento vigente',
     estado: 'INTERNA_APROBADA', matchRegex: 'filtro.*aceite|aceite.*filtro',
-    notas: 'Vinculado al cambio de aceite cuando el plan lo indique. Intervalo propio solo si el fabricante lo define.',
+    notas: 'Se cambia junto con el aceite cada 30.000 km.',
   },
   {
     componentKey: 'filtro_aire', componentLabel: 'Filtro de aire', sistema: 'MOTOR',
@@ -104,14 +106,54 @@ export const FLEET_COMPONENT_REFS_SEED: any[] = [
     notas: 'Inspección y tareas documentadas; sin vida universal obligatoria.',
   },
 
-  // ── Referencia orientativa de vida en servicio — hipótesis del usuario ──
+  // ── Referencias orientativas de vida en servicio — estándar aprobado ──
+  {
+    componentKey: 'motor', componentLabel: 'Motor (rectificación / overhaul)', sistema: 'MOTOR',
+    tipoMetrica: 'VIDA_SERVICIO_REF',
+    rangoMinKm: 700000, rangoMaxKm: 900000, unidad: 'km',
+    fuente: 'Estándar interno de mantenimiento — aprobado por la empresa', documentoSeccion: 'Vida útil de bloque motor — transporte pesado',
+    estado: 'INTERNA_APROBADA', matchRegex: 'rectificaci[oó]n.*motor|motor.*rectific|overhaul|tapa.*cilindro|bloque.*motor',
+    notas: 'Rango orientativo de rectificación/overhaul del bloque motor en uso de ruta. Alcanzarlo dispara evaluación de condición (compresión, consumo de aceite, análisis), no reemplazo obligatorio.',
+  },
   {
     componentKey: 'embrague', componentLabel: 'Embrague', sistema: 'TRANSMISION',
     tipoMetrica: 'VIDA_SERVICIO_REF',
     rangoMinKm: 200000, rangoMaxKm: 300000, unidad: 'km',
-    fuente: 'Hipótesis ilustrativa del usuario', documentoSeccion: 'Escenario de demostración',
-    estado: 'PROVISIONAL', matchRegex: 'embrague|clutch',
-    notas: 'Rango 200.000–300.000 km propuesto por el usuario como EJEMPLO. NO es una cifra técnica verificada. Alcanzarlo dispara revisión/evaluación de condición, no reemplazo obligatorio. Pendiente de validación con manual Eaton del modelo de embrague aplicable.',
+    fuente: 'Estándar interno de mantenimiento — aprobado por la empresa', documentoSeccion: 'Vida útil de embrague — transporte pesado',
+    estado: 'INTERNA_APROBADA', matchRegex: 'embrague|clutch',
+    notas: 'Rango orientativo de vida útil del embrague. Alcanzarlo dispara revisión/evaluación de condición, no reemplazo obligatorio.',
+  },
+  {
+    componentKey: 'caja_cambios', componentLabel: 'Caja de cambios (revisión general)', sistema: 'TRANSMISION',
+    tipoMetrica: 'VIDA_SERVICIO_REF',
+    rangoMinKm: 600000, rangoMaxKm: 900000, unidad: 'km',
+    fuente: 'Estándar interno de mantenimiento — aprobado por la empresa', documentoSeccion: 'Vida útil de caja de cambios — transporte pesado',
+    estado: 'INTERNA_APROBADA', matchRegex: 'caja|cambios|transmisi(?!.*aceite)',
+    notas: 'Rango orientativo de revisión general/overhaul de la caja, independiente del cambio de aceite. Alcanzarlo dispara evaluación de condición.',
+  },
+  {
+    componentKey: 'burro_arranque', componentLabel: 'Burro de arranque', sistema: 'ELECTRICO',
+    tipoMetrica: 'VIDA_SERVICIO_REF',
+    rangoMinKm: 300000, rangoMaxKm: 500000, unidad: 'km',
+    fuente: 'Estándar interno de mantenimiento — aprobado por la empresa', documentoSeccion: 'Vida útil de burro de arranque',
+    estado: 'INTERNA_APROBADA', matchRegex: 'burro|arranque|starter',
+    notas: 'Rango orientativo de vida útil del burro de arranque. Alcanzarlo dispara evaluación, no reemplazo obligatorio.',
+  },
+  {
+    componentKey: 'alternador', componentLabel: 'Alternador', sistema: 'ELECTRICO',
+    tipoMetrica: 'VIDA_SERVICIO_REF',
+    rangoMinKm: 350000, rangoMaxKm: 550000, unidad: 'km',
+    fuente: 'Estándar interno de mantenimiento — aprobado por la empresa', documentoSeccion: 'Vida útil de alternador',
+    estado: 'INTERNA_APROBADA', matchRegex: 'alternador',
+    notas: 'Rango orientativo de vida útil del alternador. Alcanzarlo dispara evaluación, no reemplazo obligatorio.',
+  },
+  {
+    componentKey: 'bateria', componentLabel: 'Batería', sistema: 'ELECTRICO',
+    tipoMetrica: 'VIDA_SERVICIO_REF',
+    rangoMinKm: 200000, rangoMaxKm: 300000, unidad: 'km',
+    fuente: 'Estándar interno de mantenimiento — aprobado por la empresa', documentoSeccion: 'Vida útil de batería',
+    estado: 'INTERNA_APROBADA', matchRegex: 'bater[ií]a',
+    notas: 'Rango orientativo de vida útil de la batería (equivale a ~24–36 meses en uso de ruta). Alcanzarlo dispara prueba de carga/estado.',
   },
 
   // ── Fuentes primarias registradas, pendientes de verificación de alcance ──
@@ -145,9 +187,5 @@ export const FLEET_COMPONENT_REFS_SEED: any[] = [
 
   // ── Componentes sin referencia validada: visibles, sin % inventado ──
   { componentKey: 'frenos', componentLabel: 'Frenos (pastillas/zapatas)', sistema: 'FRENOS', tipoMetrica: 'CONDICION_MEDIDA', unidad: 'mm', estado: 'FALTANTE', matchRegex: 'freno|brake|pastilla|zapata', notas: 'Espesor/condición e inspecciones. No tratar cambio de pastillas como renovación completa del sistema.' },
-  { componentKey: 'caja_cambios', componentLabel: 'Caja de cambios (inspección)', sistema: 'TRANSMISION', tipoMetrica: 'VIDA_SERVICIO_REF', unidad: 'km', estado: 'FALTANTE', matchRegex: 'caja|cambios|transmisi(?!.*aceite)', notas: 'Historial, inspecciones y condición. Independiente del aceite. Sin vida universal obligatoria.' },
   { componentKey: 'direccion_suspension', componentLabel: 'Dirección y suspensión', sistema: 'DIRECCION_SUSPENSION', tipoMetrica: 'CONDICION_MEDIDA', unidad: 'mm', estado: 'FALTANTE', matchRegex: 'direcci[oó]n|suspensi[oó]n|amortiguador', notas: 'Inspecciones/mediciones y reparaciones. Sin porcentaje arbitrario por odómetro.' },
-  { componentKey: 'burro_arranque', componentLabel: 'Burro de arranque', sistema: 'ELECTRICO', tipoMetrica: 'VIDA_SERVICIO_REF', unidad: 'km', estado: 'FALTANTE', matchRegex: 'burro|arranque|starter', notas: 'Historial, antigüedad y pruebas. Incorporar recurrencias si el proyecto las registra.' },
-  { componentKey: 'alternador', componentLabel: 'Alternador', sistema: 'ELECTRICO', tipoMetrica: 'VIDA_SERVICIO_REF', unidad: 'km', estado: 'FALTANTE', matchRegex: 'alternador', notas: 'Historial, antigüedad y pruebas de carga.' },
-  { componentKey: 'bateria', componentLabel: 'Batería', sistema: 'ELECTRICO', tipoMetrica: 'VIDA_SERVICIO_REF', unidad: 'meses', estado: 'FALTANTE', matchRegex: 'bater[ií]a', notas: 'Antigüedad y pruebas de carga/estado.' },
 ];

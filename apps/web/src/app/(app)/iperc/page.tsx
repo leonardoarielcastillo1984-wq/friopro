@@ -7,6 +7,7 @@ import {
   TrendingDown, ShieldCheck, AlertOctagon, Wrench, Eye, Ban
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 // Types
 interface RiskAction {
@@ -308,9 +309,12 @@ export default function IPERCPage() {
             <p className="text-sm text-neutral-500">Identificación, evaluación y gestión de riesgos (ISO 45001)</p>
           </div>
         </div>
-        <button onClick={openCreate} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-          <Plus className="w-4 h-4" /> Nuevo riesgo
-        </button>
+        <div className="flex items-center gap-2">
+          <DocCodeBadge outputKey="seguridad.iperc" title="IPERC — Peligros SST" module="seguridad" subModule="iperc" outputType="LIST" />
+          <button onClick={openCreate} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+            <Plus className="w-4 h-4" /> Nuevo riesgo
+          </button>
+        </div>
       </div>
 
       {/* Alerts banner */}

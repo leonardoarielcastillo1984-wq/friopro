@@ -25,6 +25,7 @@ export interface ExportRequest {
   sections?: ExcelSection[];
   orientationOverride?: string;
   pageSizeOverride?: string;
+  fitToPage?: boolean;
 }
 
 export interface ExportResult {
@@ -53,6 +54,7 @@ export async function executeExport(
     },
     include: {
       template: true,
+      document: { select: { id: true, documentCode: true } },
     },
   });
 
@@ -62,6 +64,29 @@ export async function executeExport(
 
   if (!outputDef.allowExport) {
     throw new Error('Esta salida no permite exportación');
+  }
+
+  // Resolver el código documental si la definición no lo tiene asignado:
+  // 1) documento del Maestro vinculado; 2) docCode de la entidad origen (entityRef).
+  // Cuando se resuelve se persiste en la definición (saneamiento de datos).
+  if (!outputDef.documentCode) {
+    let resolvedCode: string | null = outputDef.document?.documentCode || null;
+    if (!resolvedCode && outputDef.entityRef) {
+      if (outputDef.outputType === 'MAP' || outputDef.subModule === 'mapa-de-procesos') {
+        const map = await prismaAny.processMap.findFirst({
+          where: { id: outputDef.entityRef, deletedAt: null },
+          select: { docCode: true },
+        });
+        resolvedCode = map?.docCode || null;
+      }
+    }
+    if (resolvedCode) {
+      await prismaAny.documentOutputDefinition.update({
+        where: { id: outputDef.id },
+        data: { documentCode: resolvedCode },
+      }).catch(() => null);
+      outputDef.documentCode = resolvedCode;
+    }
   }
 
   // 2. Solo documentos EFFECTIVE pueden exportarse como CONTROLLED
@@ -178,6 +203,7 @@ export async function executeExport(
       bodyHtml: fullBody,
       validationUrl: outputDef.includeQR ? validationUrl : undefined,
       userName: ctx.userName,
+      fitToPage: req.fitToPage,
     });
     resultBuffer = pdfResult.buffer;
     resultHash = pdfResult.fileHash;

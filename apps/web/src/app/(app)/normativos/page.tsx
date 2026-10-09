@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import type { NormativeStandard, NormativeProcessingStatus } from '@/lib/types';
 import {
   BookOpen, Upload, Search, Loader2, CheckCircle2, AlertCircle,
@@ -338,13 +339,16 @@ export default function NormativosPage() {
           <h1 className="text-2xl font-semibold text-neutral-900">Normativos</h1>
           <p className="mt-1 text-sm text-neutral-500">Gestión de normas y estándares de cumplimiento</p>
         </div>
-        <button
-          onClick={() => setShowUpload(!showUpload)}
-          className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
-        >
-          {showUpload ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          {showUpload ? 'Cancelar' : 'Subir norma'}
-        </button>
+        <div className="flex items-center gap-2">
+          <DocCodeBadge outputKey="cumplimiento.normativos" title="Normativos" module="cumplimiento" subModule="normativos" outputType="LIST" />
+          <button
+            onClick={() => setShowUpload(!showUpload)}
+            className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
+          >
+            {showUpload ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {showUpload ? 'Cancelar' : 'Subir norma'}
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}

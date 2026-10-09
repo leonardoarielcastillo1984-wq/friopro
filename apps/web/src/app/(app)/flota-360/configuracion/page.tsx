@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { Settings, Users, PackageSearch, ScanLine, ArrowRight, Database, CheckCircle2, TrendingUp, Activity } from 'lucide-react';
+import ReferenciasPanel from '../_components/ReferenciasPanel';
 
 const REEMPLAZO_CAMPOS: { key: string; label: string; ayuda: string; suffix: string }[] = [
   { key: 'vidaUtilAnios', label: 'Vida útil de referencia', ayuda: 'Años para prorratear el costo de una unidad nueva', suffix: 'años' },
@@ -224,6 +225,9 @@ export default function ConfiguracionFlotaPage() {
           {reemplazoMsg && <p className="text-xs text-neutral-600">{reemplazoMsg}</p>}
         </div>
       </div>
+
+      {/* Referencias técnicas configurables por componente */}
+      <ReferenciasPanel />
 
       <div className="rounded-lg border border-neutral-200 bg-white p-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">

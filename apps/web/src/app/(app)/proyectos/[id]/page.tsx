@@ -3,13 +3,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import Link from 'next/link';
 import {
   ArrowLeft, Target, Calendar, User, CheckCircle, Clock,
   AlertTriangle, Flag, FileText, Plus, Edit, Trash2, Check, Download, Users, Upload,
   TrendingUp, TrendingDown, Zap, RefreshCw, X, Shield, Send, ArrowRight,
   BarChart3, Cpu, Briefcase, Wallet, FileSpreadsheet, Lightbulb, MessageSquare,
-  DollarSign
+  DollarSign, GripVertical
 } from 'lucide-react';
 
 import BusinessCaseTab from '@/components/project360/BusinessCaseTab';
@@ -73,6 +74,9 @@ export default function ProjectDetailPage() {
   const [showEditTaskModal, setShowEditTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
   const [newTask, setNewTask] = useState({ title: '', responsible: '', dueDate: '', status: 'PENDING' });
+  const [editingLeader, setEditingLeader] = useState(false);
+  const [savingLeader, setSavingLeader] = useState(false);
+  const dragTaskId = useRef<string | null>(null);
 
   // Activity History state
   const [activityHistory, setActivityHistory] = useState<any[]>([]);
@@ -431,57 +435,118 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // Task management functions
-  const toggleTaskStatus = (taskId: string) => {
-    const updatedTasks = tasks.map(t => 
-      t.id === taskId 
-        ? { ...t, status: t.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED' }
-        : t
-    );
-    setTasks(updatedTasks);
-    updateProjectProgress(updatedTasks);
+  // Task management functions — todos persisten vía API; el backend recalcula project.progress
+  const applyTaskUpdate = (taskList: any[], projectProgress?: number) => {
+    setTasks(taskList);
+    setProject(prev => prev ? {
+      ...prev,
+      tasks: taskList,
+      progress: projectProgress ?? prev.progress,
+      _count: { tasks: taskList.length }
+    } : prev);
   };
 
-  const handleAddTask = () => {
-    if (!newTask.title.trim()) return;
-    const task = {
-      id: Date.now().toString(),
-      ...newTask
-    };
-    const updatedTasks = [...tasks, task];
-    setTasks(updatedTasks);
-    updateProjectProgress(updatedTasks);
-    setNewTask({ title: '', responsible: '', dueDate: '', status: 'PENDING' });
-    setShowAddTaskModal(false);
-  };
-
-  const handleEditTask = () => {
-    if (!editingTask?.title.trim()) return;
-    const updatedTasks = tasks.map(t => 
-      t.id === editingTask.id ? editingTask : t
-    );
-    setTasks(updatedTasks);
-    updateProjectProgress(updatedTasks);
-    setEditingTask(null);
-    setShowEditTaskModal(false);
-  };
-
-  const updateProjectProgress = async (taskList: any[]) => {
-    if (taskList.length === 0) return;
-    const completed = taskList.filter(t => t.status === 'COMPLETED').length;
-    const progress = Math.round((completed / taskList.length) * 100);
-    
-    const updatedProject = { ...project, progress, tasks: taskList, _count: { tasks: taskList.length } };
-    setProject(prev => prev ? updatedProject : null);
-    
-    // Persist to backend
+  const toggleTaskStatus = async (taskId: string) => {
+    const current = tasks.find(t => t.id === taskId);
+    if (!current) return;
+    const nextStatus = current.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
     try {
-      await apiFetch(`/project360-v1/projects/${params.id}`, {
+      const res = await apiFetch(`/project360-v1/tasks/${taskId}`, {
+        method: 'PATCH',
+        json: { status: nextStatus }
+      }) as any;
+      applyTaskUpdate(tasks.map(t => t.id === taskId ? res.task : t), res.projectProgress);
+    } catch (err) {
+      console.error('Error updating task:', err);
+      alert('Error al actualizar la tarea');
+    }
+  };
+
+  const handleAddTask = async () => {
+    if (!newTask.title.trim()) return;
+    try {
+      const res = await apiFetch(`/project360-v1/projects/${params.id}/tasks`, {
+        method: 'POST',
+        json: {
+          title: newTask.title.trim(),
+          responsible: newTask.responsible?.trim() || null,
+          dueDate: newTask.dueDate || null,
+          status: newTask.status || 'PENDING',
+        }
+      }) as any;
+      applyTaskUpdate([...tasks, res.task], res.projectProgress);
+      setNewTask({ title: '', responsible: '', dueDate: '', status: 'PENDING' });
+      setShowAddTaskModal(false);
+    } catch (err) {
+      console.error('Error creating task:', err);
+      alert('Error al crear la tarea');
+    }
+  };
+
+  const handleEditTask = async () => {
+    if (!editingTask?.title?.trim()) return;
+    try {
+      const res = await apiFetch(`/project360-v1/tasks/${editingTask.id}`, {
+        method: 'PATCH',
+        json: {
+          title: editingTask.title.trim(),
+          responsible: typeof editingTask.responsible === 'string' ? (editingTask.responsible.trim() || null) : editingTask.responsibleName || null,
+          dueDate: editingTask.dueDate || null,
+          status: editingTask.status,
+          progress: editingTask.progress,
+        }
+      }) as any;
+      applyTaskUpdate(tasks.map(t => t.id === editingTask.id ? res.task : t), res.projectProgress);
+      setEditingTask(null);
+      setShowEditTaskModal(false);
+    } catch (err) {
+      console.error('Error updating task:', err);
+      alert('Error al actualizar la tarea');
+    }
+  };
+
+  // Cambiar líder de proyecto (responsibleId) — persiste vía PUT y refresca el proyecto enriquecido
+  const changeLeader = async (newResponsibleId: string) => {
+    if (!newResponsibleId || savingLeader) return;
+    setSavingLeader(true);
+    try {
+      const res = await apiFetch(`/project360-v1/projects/${params.id}`, {
         method: 'PUT',
-        json: { tasks: taskList, progress, _count: { tasks: taskList.length } }
+        json: { responsibleId: newResponsibleId }
+      }) as any;
+      if (res.project) setProject(res.project);
+      setEditingLeader(false);
+    } catch (err) {
+      console.error('Error updating leader:', err);
+      alert('Error al actualizar el líder de proyecto');
+    } finally {
+      setSavingLeader(false);
+    }
+  };
+
+  // Reordenar tareas por drag & drop — reordena local y persiste el orden en bulk
+  const reorderTasks = async (targetTaskId: string) => {
+    const draggedId = dragTaskId.current;
+    dragTaskId.current = null;
+    if (!draggedId || draggedId === targetTaskId) return;
+
+    const from = tasks.findIndex(t => t.id === draggedId);
+    const to = tasks.findIndex(t => t.id === targetTaskId);
+    if (from === -1 || to === -1) return;
+
+    const reordered = [...tasks];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+    setTasks(reordered);
+
+    try {
+      await apiFetch(`/project360-v1/projects/${params.id}/tasks/reorder`, {
+        method: 'POST',
+        json: { taskIds: reordered.map(t => t.id) },
       });
     } catch (err) {
-      console.error('Error saving tasks:', err);
+      console.error('Error reordering tasks:', err);
+      setTasks(tasks); // revertir si falla
     }
   };
 
@@ -778,13 +843,37 @@ export default function ProjectDetailPage() {
         </div>
 
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center gap-2 text-gray-500 mb-1">
-            <Users className="w-4 h-4" />
-            <span className="text-sm">Líder de Proyecto</span>
+          <div className="flex items-center justify-between text-gray-500 mb-1">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              <span className="text-sm">Líder de Proyecto</span>
+            </div>
+            {!editingLeader && (
+              <button
+                onClick={() => setEditingLeader(true)}
+                className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                title="Cambiar líder de proyecto"
+              >
+                <Edit className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
-          <p className="text-gray-900 font-medium">
-            {project.responsible?.name || project.responsible?.email || 'Sin asignar'}
-          </p>
+          {editingLeader ? (
+            <div>
+              <EmployeeCombobox
+                value={project.responsible?.id || ''}
+                onChange={id => changeLeader(id)}
+                placeholder="Buscar responsable..."
+              />
+              {savingLeader
+                ? <p className="text-xs text-blue-600 mt-1">Guardando...</p>
+                : <button onClick={() => setEditingLeader(false)} className="text-xs text-gray-500 mt-1 hover:text-gray-700">Cancelar</button>}
+            </div>
+          ) : (
+            <p className="text-gray-900 font-medium">
+              {project.responsible?.name || project.responsible?.email || 'Sin asignar'}
+            </p>
+          )}
         </div>
       </div>
 
@@ -885,9 +974,20 @@ export default function ProjectDetailPage() {
             <p className="text-gray-500">No hay tareas asignadas</p>
           </div>
         ) : (
+          <>
+          <p className="text-xs text-gray-400 mb-2">Arrastrá las tareas para cambiar el orden de prioridad</p>
           <div className="space-y-2">
             {tasks.map(task => (
-              <div key={task.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <div
+                key={task.id}
+                draggable
+                onDragStart={e => { dragTaskId.current = task.id; e.dataTransfer.effectAllowed = 'move'; }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={() => reorderTasks(task.id)}
+                onDragEnd={() => { dragTaskId.current = null; }}
+                className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-grab active:cursor-grabbing"
+              >
+                <GripVertical className="w-4 h-4 text-gray-300 shrink-0" />
                 <button
                   onClick={() => toggleTaskStatus(task.id)}
                   className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
@@ -902,13 +1002,18 @@ export default function ProjectDetailPage() {
                   {task.title}
                 </span>
                 <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded">
-                  {task.responsible}
+                  {task.responsibleName || 'Sin asignar'}
+                </span>
+                <span className={`text-xs font-medium px-2 py-1 rounded ${
+                  task.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 'bg-white text-gray-500'
+                }`} title="Avance de la tarea">
+                  {Math.round(task.status === 'COMPLETED' ? 100 : (task.progress || 0))}%
                 </span>
                 <span className="text-xs text-gray-500">
-                  {task.dueDate}
+                  {task.dueDate ? new Date(task.dueDate).toLocaleDateString('es-AR') : '—'}
                 </span>
                 <button
-                  onClick={() => { setEditingTask(task); setShowEditTaskModal(true); }}
+                  onClick={() => { setEditingTask({ ...task, responsible: task.responsibleName || '', dueDate: task.dueDate ? String(task.dueDate).slice(0, 10) : '' }); setShowEditTaskModal(true); }}
                   className="p-1 text-gray-400 hover:text-blue-600"
                 >
                   <Edit className="w-4 h-4" />
@@ -916,6 +1021,7 @@ export default function ProjectDetailPage() {
               </div>
             ))}
           </div>
+          </>
         )}
       </div>
 
@@ -1623,17 +1729,34 @@ export default function ProjectDetailPage() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-                <select
-                  value={editingTask.status}
-                  onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="PENDING">Pendiente</option>
-                  <option value="IN_PROGRESS">En Progreso</option>
-                  <option value="COMPLETED">Completado</option>
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                  <select
+                    value={editingTask.status}
+                    onChange={(e) => setEditingTask({
+                      ...editingTask,
+                      status: e.target.value,
+                      progress: e.target.value === 'COMPLETED' ? 100 : (editingTask.status === 'COMPLETED' ? 0 : editingTask.progress),
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="PENDING">Pendiente</option>
+                    <option value="IN_PROGRESS">En Progreso</option>
+                    <option value="COMPLETED">Completado</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Avance (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={editingTask.status === 'COMPLETED' ? 100 : (editingTask.progress ?? 0)}
+                    onChange={(e) => setEditingTask({ ...editingTask, progress: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
             </div>
             <div className="p-6 border-t border-gray-200 flex gap-3">

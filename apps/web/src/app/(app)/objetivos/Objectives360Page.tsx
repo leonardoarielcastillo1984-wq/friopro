@@ -1,5 +1,6 @@
 'use client';
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
@@ -2217,9 +2218,12 @@ export default function Objectives360Page() {
             Gestión integral de objetivos estratégicos — ISO 9001/14001/45001 §6.2
           </p>
         </div>
-        <Button onClick={handleCreate}>
-          <Plus className="w-4 h-4 mr-2" /> Nuevo objetivo
-        </Button>
+        <div className="flex items-center gap-2">
+          <DocCodeBadge outputKey="objetivos.sgi360" title="Objetivos SGI 360" module="objetivos" outputType="DASHBOARD" />
+          <Button onClick={handleCreate}>
+            <Plus className="w-4 h-4 mr-2" /> Nuevo objetivo
+          </Button>
+        </div>
       </div>
 
       {Dashboard()}

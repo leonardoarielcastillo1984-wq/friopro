@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import ComboSelect from '@/components/ComboSelect';
 import {
   Shield, AlertTriangle, Users, Calendar, Clock, CheckCircle, XCircle,
@@ -702,6 +703,7 @@ export default function SimulacrosPage() {
           <p className="text-gray-600">Gestión de simulacros, planes de emergencia y recursos de contingencia</p>
         </div>
         <div className="flex items-center gap-3">
+          <DocCodeBadge outputKey="seguridad.simulacros" title="Simulacros y Planes de Contingencia" module="seguridad" subModule="simulacros" outputType="LIST" />
           <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
             <Upload className="w-4 h-4" />
             Importar

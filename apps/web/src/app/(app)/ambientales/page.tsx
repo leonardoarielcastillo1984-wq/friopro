@@ -12,6 +12,7 @@ export default function AspectosAmbientalesPage() {
       endpoint="/aspects"
       icon={Leaf}
       outputKey="aspectos-ambientales-listado"
+      docModule="seguridad"
       defaultValues={{ condition: 'NORMAL', naturalness: 'DIRECT', magnitude: 3, severity: 3, frequency: 3, legalCompliance: 3, significance: 27, status: 'OPEN' }}
       fields={[
         { key: 'process', label: 'Proceso / Actividad', type: 'text', required: true },

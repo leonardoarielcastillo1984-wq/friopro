@@ -1,5 +1,6 @@
 'use client';
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -507,15 +508,18 @@ export default function DocumentsPage() {
           <h1 className="text-2xl font-bold text-neutral-900">Documentos <PageTitleHelp moduleHref="/documents" /></h1>
           <p className="mt-1 text-sm text-neutral-500">Gestión documental del sistema integrado</p>
         </div>
-        {activeTab === 'lista' && (
-          <button
-            onClick={() => { setShowUpload(!showUpload); setError(null); setSuccess(null); }}
-            className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
-          >
-            {showUpload ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {showUpload ? 'Cancelar' : 'Subir documento'}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <DocCodeBadge outputKey="documentos.gestion" title="Gestión Documental" module="documentos" outputType="LIST" />
+          {activeTab === 'lista' && (
+            <button
+              onClick={() => { setShowUpload(!showUpload); setError(null); setSuccess(null); }}
+              className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
+            >
+              {showUpload ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {showUpload ? 'Cancelar' : 'Subir documento'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

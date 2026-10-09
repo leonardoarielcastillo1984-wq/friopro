@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, X, RefreshCw, Sparkles, Loader2, Download, Filter } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import ExportButton from '@/components/ExportButton';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 export type FieldType = 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'checkbox';
 
@@ -50,6 +51,8 @@ interface Props {
   filterFields?: FilterDef[];
   showExport?: boolean;
   outputKey?: string;
+  // Módulo SGI para el badge "Asignar código" (requiere outputKey).
+  docModule?: string;
 }
 
 export default function GenericCrudPage({
@@ -64,6 +67,7 @@ export default function GenericCrudPage({
   filterFields = [],
   showExport = false,
   outputKey,
+  docModule,
 }: Props) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -196,6 +200,9 @@ export default function GenericCrudPage({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {docModule && outputKey && (
+              <DocCodeBadge outputKey={outputKey} title={title} module={docModule} outputType="LIST" />
+            )}
             {showExport && (
               <button onClick={handleExport} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-200" title="Exportar CSV">
                 <Download className="h-4 w-4" /> CSV

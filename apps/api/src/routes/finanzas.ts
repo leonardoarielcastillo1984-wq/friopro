@@ -21,7 +21,7 @@ const num = (v: any) => (v === null || v === undefined ? 0 : Number(v));
 const RUBRO_FUENTE: Record<string, string> = {
   MANTENIMIENTO_OT: 'MANTENIMIENTO', MANTENIMIENTO: 'MANTENIMIENTO', NEUMATICO: 'NEUMATICOS',
   PERSONAL: 'SUELDOS', PERSONAL_FLOTA: 'SUELDOS', COMBUSTIBLE: 'COMBUSTIBLE', MULTA: 'MULTAS',
-  FINANCIACION: 'FINANCIACION',
+  FINANCIACION: 'FINANCIACION', CALIBRACION: 'CALIBRACIONES', CAPACITACION: 'CAPACITACIONES',
 };
 function rubroDe(fuente: string): string {
   if (fuente.startsWith('GASTO_')) return fuente.slice(6);
@@ -334,6 +334,104 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // PAGOS — espejo de cobros del lado de egresos (CxP).
+  // Un gasto puede tener pagos parciales; sin pagos y sin vencimiento
+  // se asume pagado en su fecha (comportamiento previo a CxP).
+  // ═══════════════════════════════════════════════════════════════
+
+  const pagoSchema = z.object({
+    fecha: z.string().optional(),
+    importe: z.number().positive(),
+    moneda: z.string().max(5).optional(),
+    referencia: z.string().max(100).optional().nullable(),
+    medioPago: z.string().max(30).optional().nullable(),
+    notas: z.string().max(500).optional().nullable(),
+  });
+
+  app.post('/gastos/:id/pagos', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const gasto = await prisma().finanzaGasto.findFirst({ where: { id, tenantId, deletedAt: null } });
+    if (!gasto) return reply.code(404).send({ error: 'Gasto no encontrado' });
+    const body = pagoSchema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
+    const pago = await prisma().finanzaPago.create({
+      data: {
+        ...body.data, tenantId, gastoId: id,
+        fecha: body.data.fecha ? new Date(body.data.fecha) : new Date(),
+        moneda: body.data.moneda || gasto.moneda,
+        createdById: user.id, createdByNombre: user.nombre,
+      },
+    });
+    const pagos = await prisma().finanzaPago.findMany({ where: { gastoId: id }, orderBy: { fecha: 'asc' } });
+    const pagado = pagos.reduce((s: number, x: any) => s + num(x.importe), 0);
+    return reply.code(201).send({ pago, gasto: { ...gasto, pagos, pagado, saldo: Math.max(0, num(gasto.total) - pagado) } });
+  });
+
+  app.patch('/pagos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const body = pagoSchema.partial().safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const pago = await prisma().finanzaPago.findFirst({ where: { id, tenantId } });
+    if (!pago) return reply.code(404).send({ error: 'Pago no encontrado' });
+    const data: any = { ...body.data };
+    if (data.fecha) data.fecha = new Date(data.fecha);
+    await prisma().finanzaPago.update({ where: { id }, data });
+    return reply.send({ ok: true });
+  });
+
+  app.delete('/pagos/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const pago = await prisma().finanzaPago.findFirst({ where: { id, tenantId } });
+    if (!pago) return reply.code(404).send({ error: 'Pago no encontrado' });
+    await prisma().finanzaPago.delete({ where: { id } });
+    return reply.send({ ok: true });
+  });
+
+  // Marca una factura de proveedor de flota como pagada (pago simple)
+  app.post('/flota-facturas/:id/pagar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const body = z.object({ fecha: z.string().optional() }).safeParse(req.body);
+    const r = await prisma().flotaFactura.updateMany({
+      where: { id, tenantId },
+      data: { pagadaAt: body.success && body.data.fecha ? new Date(body.data.fecha) : new Date() },
+    });
+    if (!r.count) return reply.code(404).send({ error: 'Factura no encontrada' });
+    return reply.send({ ok: true });
+  });
+
+  app.post('/flota-facturas/:id/despagar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const r = await prisma().flotaFactura.updateMany({ where: { id, tenantId }, data: { pagadaAt: null } });
+    if (!r.count) return reply.code(404).send({ error: 'Factura no encontrada' });
+    return reply.send({ ok: true });
+  });
+
+  app.patch('/flota-facturas/:id/vencimiento', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const body = z.object({ fechaVencimiento: z.string().nullable() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const r = await prisma().flotaFactura.updateMany({
+      where: { id, tenantId },
+      data: { fechaVencimiento: body.data.fechaVencimiento ? new Date(body.data.fechaVencimiento) : null },
+    });
+    if (!r.count) return reply.code(404).send({ error: 'Factura no encontrada' });
+    return reply.send({ ok: true });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // GASTOS MANUALES / ESTRUCTURA
   // ═══════════════════════════════════════════════════════════════
 
@@ -351,6 +449,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     tipoComprobante: z.string().max(20).optional().nullable(),
     numeroComprobante: z.string().max(50).optional().nullable(),
     proveedorRut: z.string().max(20).optional().nullable(),
+    fechaVencimiento: z.string().optional().nullable(),
+    claseCosto: z.enum(['FIJO', 'VARIABLE', 'MIXTO']).optional().nullable(),
     esRecurrente: z.boolean().default(false),
     fechaDesde: z.string().optional().nullable(),
     fechaHasta: z.string().optional().nullable(),
@@ -388,6 +488,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       data: {
         ...body.data, tenantId,
         fecha: body.data.fecha ? new Date(body.data.fecha) : new Date(),
+        fechaVencimiento: body.data.fechaVencimiento ? new Date(body.data.fechaVencimiento) : null,
         fechaDesde: body.data.fechaDesde ? new Date(body.data.fechaDesde) : null,
         fechaHasta: body.data.fechaHasta ? new Date(body.data.fechaHasta) : null,
         uploadedById: user.id, uploadedByNombre: user.nombre,
@@ -404,6 +505,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     const data: any = { ...body.data };
     if (data.fecha) data.fecha = new Date(data.fecha);
+    if (data.fechaVencimiento !== undefined) data.fechaVencimiento = data.fechaVencimiento ? new Date(data.fechaVencimiento) : null;
     if (data.fechaDesde !== undefined) data.fechaDesde = data.fechaDesde ? new Date(data.fechaDesde) : null;
     if (data.fechaHasta !== undefined) data.fechaHasta = data.fechaHasta ? new Date(data.fechaHasta) : null;
     const r = await prisma().finanzaGasto.updateMany({ where: { id, tenantId, deletedAt: null }, data });
@@ -477,9 +579,24 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   app.put('/config', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
-    const body = z.object({ monedaDefault: z.string().regex(/^[A-Z]{3}$/).nullable() }).safeParse(req.body);
-    if (!body.success) return reply.code(400).send({ error: 'Moneda inválida' });
-    await app.prisma.tenant.update({ where: { id: tenantId }, data: { monedaResultados: body.data.monedaDefault } });
+    const body = z.object({
+      monedaDefault: z.string().regex(/^[A-Z]{3}$/).nullable().optional(),
+      saldoInicial: z.record(z.string(), z.number()).optional(),
+      claseCosto: z.record(z.string(), z.enum(['FIJO', 'VARIABLE', 'MIXTO'])).optional(),
+      alertas: z.object({ atencion: z.number().min(1).max(100), critica: z.number().min(1).max(200) }).optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const data: any = {};
+    if (body.data.monedaDefault !== undefined) data.monedaResultados = body.data.monedaDefault;
+    if (body.data.saldoInicial || body.data.claseCosto || body.data.alertas) {
+      const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
+      const conf = ((t?.resultadosConfig as any) || {}) as any;
+      if (body.data.saldoInicial) conf.saldoInicial = body.data.saldoInicial;
+      if (body.data.claseCosto) conf.claseCosto = body.data.claseCosto;
+      if (body.data.alertas) conf.alertas = body.data.alertas;
+      data.resultadosConfig = conf;
+    }
+    if (Object.keys(data).length) await app.prisma.tenant.update({ where: { id: tenantId }, data });
     return reply.send(await configMoneda(tenantId));
   });
 
@@ -907,6 +1024,616 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       d90: t.d90 + c.aging.d90,
     }), { saldo: 0, vencido: 0, d90: 0 });
     return reply.send({ clientes, totales });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // CUENTAS POR PAGAR — obligaciones futuras con proveedores.
+  // Fuentes: finanza_gastos con vencimiento o pagos + flota_facturas
+  // con vencimiento o marca de pago. Sin vencimiento ni pago registrado,
+  // el gasto se asume pagado al contado en su fecha (no aparece pendiente).
+  // ═══════════════════════════════════════════════════════════════
+  async function obtenerCxPInterno(p: any, tenantId: string, moneda: string | null) {
+    const hoy = Date.now();
+    const DIA = 86400000;
+    const [gastos, flota] = await Promise.all([
+      p.finanzaGasto.findMany({
+        where: {
+          tenantId, deletedAt: null, tipoComprobante: { not: 'NOTA_CREDITO' },
+          ...(moneda ? { moneda } : {}),
+          OR: [{ fechaVencimiento: { not: null } }, { pagos: { some: {} } }],
+        },
+        include: { pagos: { orderBy: { fecha: 'asc' } } },
+        orderBy: { fechaVencimiento: 'asc' },
+      }).catch(() => []),
+      p.flotaFactura.findMany({
+        where: {
+          tenantId, tipoComprobante: { notIn: ['PRESUPUESTO', 'NOTA_CREDITO'] },
+          ...(moneda ? { moneda } : {}),
+          OR: [{ fechaVencimiento: { not: null } }, { pagadaAt: { not: null } }],
+        },
+        select: { id: true, fecha: true, numero: true, puntoVenta: true, proveedor: true, cuitProveedor: true, concepto: true, categoria: true, total: true, moneda: true, fechaVencimiento: true, pagadaAt: true, vehiculoId: true },
+        orderBy: { fechaVencimiento: 'asc' },
+      }).catch(() => []),
+    ]);
+
+    const items: any[] = [];
+    for (const g of gastos) {
+      const pagado = g.pagos.reduce((s: number, x: any) => s + num(x.importe), 0);
+      const saldo = Math.max(0, num(g.total) - pagado);
+      const venc = g.fechaVencimiento ? new Date(g.fechaVencimiento).getTime() : new Date(g.fecha).getTime();
+      const diasVenc = Math.floor((venc - hoy) / DIA);
+      const estado = saldo <= 0.5 ? 'PAGADO' : pagado > 0 ? (diasVenc < 0 ? 'VENCIDO' : 'PARCIAL') : diasVenc < 0 ? 'VENCIDO' : 'PENDIENTE';
+      items.push({
+        id: g.id, origen: 'GASTO', proveedor: g.proveedor || 'Sin proveedor', proveedorRut: g.proveedorRut,
+        comprobante: [g.tipoComprobante, g.numeroComprobante].filter(Boolean).join(' ') || null,
+        concepto: g.concepto, fechaEmision: g.fecha, fechaVencimiento: g.fechaVencimiento,
+        total: num(g.total), pagado, saldo, moneda: g.moneda, centroCostoId: g.centroCostoId,
+        estado, diasVencimiento: diasVenc, categoria: g.categoria,
+        pagos: g.pagos.map((x: any) => ({ id: x.id, fecha: x.fecha, importe: num(x.importe), moneda: x.moneda, referencia: x.referencia, medioPago: x.medioPago })),
+        origenUrl: '/resultados?tab=gastos', modulo: 'Resultados',
+      });
+    }
+    for (const f of flota) {
+      const pagado = f.pagadaAt ? num(f.total) : 0;
+      const saldo = Math.max(0, num(f.total) - pagado);
+      const venc = f.fechaVencimiento ? new Date(f.fechaVencimiento).getTime() : new Date(f.fecha).getTime();
+      const diasVenc = Math.floor((venc - hoy) / DIA);
+      const estado = f.pagadaAt ? 'PAGADO' : diasVenc < 0 ? 'VENCIDO' : 'PENDIENTE';
+      items.push({
+        id: f.id, origen: 'FLOTA', proveedor: f.proveedor || 'Sin proveedor', proveedorRut: f.cuitProveedor,
+        comprobante: [f.puntoVenta, f.numero].filter(Boolean).join('-') || null,
+        concepto: f.concepto || f.categoria, fechaEmision: f.fecha, fechaVencimiento: f.fechaVencimiento,
+        total: num(f.total), pagado, saldo, moneda: f.moneda, centroCostoId: null,
+        estado, diasVencimiento: diasVenc, categoria: f.categoria, pagadaAt: f.pagadaAt, pagos: [],
+        origenUrl: f.vehiculoId ? `/flota-360/vehiculos/${f.vehiculoId}` : '/flota-360', modulo: 'Flota 360',
+      });
+    }
+    items.sort((a, b) => new Date(a.fechaVencimiento || a.fechaEmision).getTime() - new Date(b.fechaVencimiento || b.fechaEmision).getTime());
+    return items;
+  }
+
+  app.get('/cuentas-por-pagar', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const items = await obtenerCxPInterno(prisma(), tenantId, q.moneda || null);
+    const pend = items.filter(i => i.saldo > 0.5);
+    const totales = {
+      porPagar: pend.reduce((s, i) => s + i.saldo, 0),
+      vencido: pend.filter(i => i.diasVencimiento < 0).reduce((s, i) => s + i.saldo, 0),
+      vence7: pend.filter(i => i.diasVencimiento >= 0 && i.diasVencimiento <= 7).reduce((s, i) => s + i.saldo, 0),
+      vence30: pend.filter(i => i.diasVencimiento >= 0 && i.diasVencimiento <= 30).reduce((s, i) => s + i.saldo, 0),
+    };
+    const porProveedor = new Map<string, any>();
+    for (const i of pend) {
+      const k = (i.proveedorRut || i.proveedor).trim().toUpperCase();
+      const e = porProveedor.get(k) || { proveedor: i.proveedor, rut: i.proveedorRut, saldo: 0, vencido: 0, cantidad: 0 };
+      e.saldo += i.saldo; if (i.diasVencimiento < 0) e.vencido += i.saldo; e.cantidad++;
+      porProveedor.set(k, e);
+    }
+    const ranking = [...porProveedor.values()].sort((a, b) => b.saldo - a.saldo);
+    return reply.send({ items, totales, ranking });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // FLUJO DE CAJA — cobros/pagos REALES por fecha + proyección.
+  // Distinto del resultado económico: acá importa cuándo entró/salió
+  // la plata. Reglas: cobro = FinanzaCobro.fecha / FlotaIngreso.cobradoAt;
+  // pago = FinanzaPago.fecha / FlotaFactura.pagadaAt / gasto o factura
+  // sin tracking → se asume pagado en su fecha (legacy).
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/flujo-caja', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const moneda = q.moneda || null;
+    const p = prisma();
+    const hoy = new Date();
+    const anio = Number(q.anio) || hoy.getUTCFullYear();
+    const desde = new Date(Date.UTC(anio, 0, 1));
+    const horizonte = new Date(hoy.getTime() + 90 * 86400000);
+
+    const [cobros, ingresosCobrados, ingresosPend, facturasPend, pagos, gastosLegacy, flotaFacts, recurrentes, tenant] = await Promise.all([
+      p.finanzaCobro.findMany({ where: { tenantId, fecha: { gte: desde, lte: horizonte }, ...(moneda ? { moneda } : {}) }, select: { fecha: true, importe: true } }).catch(() => []),
+      p.flotaIngreso.findMany({ where: { tenantId, cobradoAt: { gte: desde, lte: horizonte } }, select: { cobradoAt: true, monto: true } }).catch(() => []),
+      p.flotaIngreso.findMany({ where: { tenantId, cobradoAt: null, fechaCobroEstimada: { gte: hoy, lte: horizonte } }, select: { fechaCobroEstimada: true, monto: true, concepto: true, cliente: true } }).catch(() => []),
+      p.finanzaFactura.findMany({ where: { tenantId, deletedAt: null, estado: { in: ['EMITIDA', 'PARCIALMENTE_COBRADA'] }, ...(moneda ? { moneda } : {}) }, include: { cobros: true } }).catch(() => []),
+      p.finanzaPago.findMany({ where: { tenantId, fecha: { gte: desde, lte: horizonte }, ...(moneda ? { moneda } : {}) }, select: { fecha: true, importe: true } }).catch(() => []),
+      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, fecha: { gte: desde, lte: hoy }, ...(moneda ? { moneda } : {}), pagos: { none: {} } }, select: { fecha: true, total: true, tipoComprobante: true } }).catch(() => []),
+      p.flotaFactura.findMany({ where: { tenantId, tipoComprobante: { notIn: ['PRESUPUESTO', 'NOTA_CREDITO'] }, ...(moneda ? { moneda } : {}), OR: [{ pagadaAt: { not: null } }, { fechaVencimiento: null, fecha: { gte: desde, lte: hoy } }] }, select: { fecha: true, pagadaAt: true, total: true } }).catch(() => []),
+      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, esRecurrente: true, ...(moneda ? { moneda } : {}), OR: [{ fechaHasta: null }, { fechaHasta: { gte: hoy } }] }, select: { total: true } }).catch(() => []),
+      p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null),
+    ]);
+
+    const entradas: { fecha: Date; importe: number }[] = [
+      ...cobros.map((c: any) => ({ fecha: new Date(c.fecha), importe: num(c.importe) })),
+      ...ingresosCobrados.map((i: any) => ({ fecha: new Date(i.cobradoAt), importe: num(i.monto) })),
+    ];
+    const salidas: { fecha: Date; importe: number }[] = [
+      ...pagos.map((x: any) => ({ fecha: new Date(x.fecha), importe: num(x.importe) })),
+      ...gastosLegacy.map((g: any) => ({ fecha: new Date(g.fecha), importe: num(g.total) * (g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) })),
+      ...flotaFacts.map((f: any) => ({ fecha: new Date(f.pagadaAt || f.fecha), importe: num(f.total) })),
+    ];
+
+    const conf = (tenant?.resultadosConfig as any) || {};
+    const saldoInicial = num(conf?.saldoInicial?.[moneda || ''] ?? conf?.saldoInicial?.['*'] ?? 0);
+
+    const movs = [...entradas.map(e => ({ fecha: e.fecha, delta: e.importe })), ...salidas.map(s => ({ fecha: s.fecha, delta: -s.importe }))]
+      .filter(m => m.fecha <= hoy).sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+
+    const meses: any[] = [];
+    let saldoCorrida = saldoInicial;
+    for (let m = 0; m < 12; m++) {
+      const d = new Date(Date.UTC(anio, m, 1)), h = new Date(Date.UTC(anio, m + 1, 1));
+      if (d > hoy) break;
+      const en = movs.filter(x => x.fecha >= d && x.fecha < h && x.delta > 0).reduce((s, x) => s + x.delta, 0);
+      const sa = movs.filter(x => x.fecha >= d && x.fecha < h && x.delta < 0).reduce((s, x) => s - x.delta, 0);
+      saldoCorrida += en - sa;
+      meses.push({ mes: m + 1, mesKey: `${anio}-${String(m + 1).padStart(2, '0')}`, cobros: en, pagos: sa, flujoNeto: en - sa, saldo: saldoCorrida });
+    }
+
+    const proximosCobros = [
+      ...facturasPend.map((f: any) => {
+        const cobrado = f.cobros.reduce((s: number, c: any) => s + num(c.importe), 0);
+        const saldo = Math.max(0, num(f.total) - cobrado);
+        return { fecha: new Date(f.fechaVencimiento || f.fechaEmision), importe: saldo, concepto: `Cobro ${[f.puntoVenta, f.numero].filter(Boolean).join('-')} — ${f.clienteNombre}`, tipo: 'FACTURA' };
+      }).filter((x: any) => x.importe > 0.5 && x.fecha <= horizonte),
+      ...ingresosPend.map((i: any) => ({ fecha: new Date(i.fechaCobroEstimada), importe: num(i.monto), concepto: `${i.concepto}${i.cliente ? ' — ' + i.cliente : ''}`, tipo: 'INGRESO_FLOTA' })),
+    ];
+    const pendCxP = await obtenerCxPInterno(p, tenantId, moneda).catch(() => [] as any[]);
+    const proximosPagos = pendCxP.filter((i: any) => i.saldo > 0.5)
+      .map((i: any) => ({ fecha: new Date(i.fechaVencimiento || i.fechaEmision), importe: i.saldo, concepto: `${i.proveedor} — ${i.concepto}`, tipo: i.origen }));
+
+    const bucket = (lista: any[], dias: number) => lista.filter(x => x.fecha >= hoy && x.fecha <= new Date(hoy.getTime() + dias * 86400000));
+    const suma = (lista: any[]) => lista.reduce((s, x) => s + x.importe, 0);
+    const saldoActual = saldoInicial + movs.reduce((s, m) => s + m.delta, 0);
+    const proyeccion = [7, 30, 60, 90].map(d => ({
+      dias: d, cobros: suma(bucket(proximosCobros, d)), pagos: suma(bucket(proximosPagos, d)),
+      saldoProyectado: saldoActual + suma(bucket(proximosCobros, d)) - suma(bucket(proximosPagos, d)),
+    }));
+
+    return reply.send({
+      saldoInicial, saldoActual,
+      cobrosPeriodo: entradas.filter(e => e.fecha <= hoy).reduce((s, e) => s + e.importe, 0),
+      pagosPeriodo: salidas.filter(s => s.fecha <= hoy).reduce((s, x) => s + x.importe, 0),
+      flujoNeto: meses.reduce((s, m) => s + m.flujoNeto, 0),
+      meses,
+      proximosCobros: proximosCobros.sort((a, b) => a.fecha.getTime() - b.fecha.getTime()),
+      proximosPagos: proximosPagos.sort((a, b) => a.fecha.getTime() - b.fecha.getTime()),
+      proyeccion,
+      recurrentesMensual: recurrentes.reduce((s: number, r: any) => s + num(r.total), 0),
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // RENTABILIDAD — por centro de costo / cliente / servicio.
+  // Ingresos: atribución directa (centroCostoId / cliente / servicioId).
+  // Costos: directos por centroCostoId; para cliente se distribuyen
+  // proporcional a su participación en ventas (regla explícita —
+  // nunca se inventan datos).
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/rentabilidad', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const anio = Number(q.anio) || new Date().getUTCFullYear();
+    const mesQ = q.mes ? Number(q.mes) : null;
+    const moneda = q.moneda || null;
+    const p = prisma();
+    const desde = mesQ ? new Date(Date.UTC(anio, mesQ - 1, 1)) : new Date(Date.UTC(anio, 0, 1));
+    const hasta = mesQ ? new Date(Date.UTC(anio, mesQ, 1)) : new Date(Date.UTC(anio + 1, 0, 1));
+
+    const [lineas, facturas, ingresos, centros, servicios] = await Promise.all([
+      recolectarLineas(tenantId, desde, hasta, moneda, q.centroCostoId || null),
+      p.finanzaFactura.findMany({ where: { tenantId, deletedAt: null, estado: { not: 'ANULADA' }, fechaEmision: { gte: desde, lt: hasta }, ...(moneda ? { moneda } : {}) }, select: { clienteNombre: true, clienteRut: true, centroCostoId: true, servicioId: true, neto: true, total: true, tipoComprobante: true } }).catch(() => []),
+      p.flotaIngreso.findMany({ where: { tenantId, fecha: { gte: desde, lt: hasta } }, select: { cliente: true, servicioId: true, monto: true, vehiculoId: true } }).catch(() => []),
+      p.finanzaCentroCosto.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, nombre: true, tipo: true } }).catch(() => []),
+      p.flotaServicio.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, nombre: true } }).catch(() => []),
+    ]);
+
+    const lineasCosto = lineas.filter(l => ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo));
+    const lineasIngreso = lineas.filter(l => ['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo));
+    const centroNombre = new Map<string, string>(centros.map((c: any) => [c.id, c.nombre]));
+    const servicioNombre = new Map<string, string>(servicios.map((s: any) => [s.id, s.nombre]));
+
+    const acum = (map: Map<string, any>, key: string, label: string) => {
+      if (!map.has(key)) map.set(key, { key, nombre: label, ventas: 0, costosDirectos: 0 });
+      return map.get(key);
+    };
+
+    // Por centro de costo / unidad de negocio (atribución directa)
+    const porCentro = new Map<string, any>();
+    for (const l of lineasIngreso) acum(porCentro, l.centroCostoId || '_SIN', centroNombre.get(l.centroCostoId) || 'Sin asignar').ventas += l.importe;
+    for (const l of lineasCosto) acum(porCentro, l.centroCostoId || '_SIN', centroNombre.get(l.centroCostoId) || 'Sin asignar').costosDirectos += l.importe;
+
+    // Por cliente: ventas directas; costos proporcionales a participación
+    const porCliente = new Map<string, any>();
+    for (const f of facturas) {
+      const sign = f.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1;
+      const base = num(f.neto) > 0 ? num(f.neto) : num(f.total);
+      acum(porCliente, (f.clienteRut || f.clienteNombre || 'Sin nombre').toUpperCase(), f.clienteNombre || 'Sin nombre').ventas += sign * base;
+    }
+    for (const i of ingresos) {
+      acum(porCliente, (i.cliente || 'Sin cliente').toUpperCase(), i.cliente || 'Sin cliente').ventas += num(i.monto);
+    }
+    const ventasTotalesClientes = [...porCliente.values()].reduce((s, c) => s + Math.max(0, c.ventas), 0);
+    const totalCostos = lineasCosto.reduce((s, l) => s + l.importe, 0);
+    for (const c of porCliente.values()) {
+      c.costosDirectos = ventasTotalesClientes > 0 ? (Math.max(0, c.ventas) / ventasTotalesClientes) * totalCostos : 0;
+      c.metodo = 'PROPORCIONAL_VENTAS';
+    }
+
+    // Por servicio (ventas con servicioId; costos requieren imputación que aún no existe)
+    const porServicio = new Map<string, any>();
+    for (const f of facturas) if (f.servicioId) acum(porServicio, f.servicioId, servicioNombre.get(f.servicioId) || 'Servicio').ventas += num(f.neto) > 0 ? num(f.neto) : num(f.total);
+    for (const i of ingresos) if (i.servicioId) acum(porServicio, i.servicioId, servicioNombre.get(i.servicioId) || 'Servicio').ventas += num(i.monto);
+
+    const fin = (map: Map<string, any>, conCostos: boolean) => [...map.values()].map(x => ({
+      key: x.key, nombre: x.nombre, metodo: x.metodo || 'DIRECTO',
+      ventas: x.ventas, costos: conCostos ? x.costosDirectos : null,
+      resultado: conCostos ? x.ventas - x.costosDirectos : null,
+      margen: conCostos && x.ventas > 0 ? Math.round(((x.ventas - x.costosDirectos) / x.ventas) * 1000) / 10 : null,
+    })).sort((a, b) => b.ventas - a.ventas);
+
+    return reply.send({
+      anio, mes: mesQ, moneda,
+      porCentroCosto: fin(porCentro, true),
+      porCliente: fin(porCliente, true),
+      porServicio: fin(porServicio, true),
+      notaCostos: 'Costos por cliente imputados proporcional a su participación en ventas. Por centro de costo y servicio: atribución directa.',
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // PUNTO DE EQUILIBRIO — clase FIJO/VARIABLE por línea de costo:
+  //   1) gasto.claseCosto (manual por documento), 2) config.claseCosto[rubro]
+  //   (parametrizable por tenant), 3) CLASE_DEFAULT sugerida por rubro.
+  //   ESTRUCTURA sin clase → FIJO. Sin clasificar se reporta aparte.
+  // ═══════════════════════════════════════════════════════════════
+  const CLASE_DEFAULT: Record<string, string> = {
+    SUELDOS: 'FIJO', FINANCIACION: 'FIJO', ALQUILER: 'FIJO', SEGUROS: 'FIJO',
+    ADMINISTRACION: 'FIJO', IMPUESTOS: 'FIJO', SERVICIOS: 'FIJO',
+    COMBUSTIBLE: 'VARIABLE', MANTENIMIENTO: 'VARIABLE', NEUMATICOS: 'VARIABLE',
+    MULTAS: 'VARIABLE', REPUESTO: 'VARIABLE', SERVICE: 'VARIABLE', REPARACION: 'VARIABLE',
+    CALIBRACIONES: 'VARIABLE', CAPACITACIONES: 'FIJO',
+  };
+
+  app.get('/punto-equilibrio', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const anio = Number(q.anio) || new Date().getUTCFullYear();
+    const moneda = q.moneda || null;
+    const p = prisma();
+    const hoy = new Date();
+    const ultimoMes = anio === hoy.getUTCFullYear() ? hoy.getUTCMonth() + 1 : 12;
+    const desde = new Date(Date.UTC(anio, 0, 1));
+    const hasta = new Date(Date.UTC(anio, ultimoMes, 1));
+
+    const [lineas, tenant, gastosClase] = await Promise.all([
+      recolectarLineas(tenantId, desde, hasta, moneda, q.centroCostoId || null),
+      p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null),
+      p.finanzaGasto.findMany({ where: { tenantId, deletedAt: null, fecha: { gte: desde, lt: hasta }, claseCosto: { not: null } }, select: { id: true, claseCosto: true } }).catch(() => []),
+    ]);
+    const conf = (tenant?.resultadosConfig as any) || {};
+    const mapConf: Record<string, string> = conf?.claseCosto || {};
+    const clasePorGasto = new Map(gastosClase.map((g: any) => [g.id, g.claseCosto]));
+
+    const porRubroClase: Record<string, { fijo: number; variable: number; mixto: number }> = {};
+    let fijos = 0, variables = 0, sinClasificar = 0;
+    for (const l of lineas) {
+      if (!['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo)) continue;
+      const r = porRubroClase[l.rubro] || (porRubroClase[l.rubro] = { fijo: 0, variable: 0, mixto: 0 });
+      let clase = mapConf[l.rubro] || clasePorGasto.get(l.origenId) || CLASE_DEFAULT[l.rubro] || null;
+      if (l.grupo === 'ESTRUCTURA' && !clase) clase = 'FIJO';
+      if (clase === 'FIJO') { fijos += l.importe; r.fijo += l.importe; }
+      else if (clase === 'VARIABLE') { variables += l.importe; r.variable += l.importe; }
+      else if (clase === 'MIXTO') { fijos += l.importe / 2; variables += l.importe / 2; r.mixto += l.importe; }
+      else sinClasificar += l.importe;
+    }
+    const ventas = lineas.filter(l => ['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo)).reduce((s, l) => s + l.importe, 0);
+    const mesesConDatos = Math.max(1, ultimoMes);
+    const margenContribucion = ventas - variables;
+    const ratioContribucion = ventas > 0 ? margenContribucion / ventas : 0;
+    const puntoEquilibrio = ratioContribucion > 0 ? fijos / ratioContribucion : null;
+    const ventasMensualProm = ventas / mesesConDatos;
+    const peMensual = puntoEquilibrio !== null ? puntoEquilibrio / mesesConDatos : null;
+
+    return reply.send({
+      anio, moneda, mesesConsiderados: mesesConDatos,
+      costosFijos: fijos, costosVariables: variables, sinClasificar,
+      ventas, margenContribucion, ratioContribucion: Math.round(ratioContribucion * 1000) / 10,
+      puntoEquilibrio, peMensual, ventasMensualProm,
+      vsPuntoEquilibrio: peMensual && ventasMensualProm > 0 ? Math.round(((ventasMensualProm - peMensual) / peMensual) * 1000) / 10 : null,
+      porRubro: Object.entries(porRubroClase).map(([rubro, v]) => ({ rubro, ...v, clase: mapConf[rubro] || CLASE_DEFAULT[rubro] || null })),
+      config: mapConf,
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // PROYECCIÓN DE CIERRE — real hasta hoy + compromisos conocidos +
+  // estimación del resto (ritmo diario de los últimos 3 meses).
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/proyeccion-cierre', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const hoy = new Date();
+    const anio = Number(q.anio) || hoy.getUTCFullYear();
+    const mes = Number(q.mes) || hoy.getUTCMonth() + 1;
+    const moneda = q.moneda || null;
+    const p = prisma();
+    const desde = new Date(Date.UTC(anio, mes - 1, 1));
+    const hasta = new Date(Date.UTC(anio, mes, 1));
+    const esActual = hoy >= desde && hoy < hasta;
+    const corte = esActual ? hoy : hasta;
+    const diasMes = Math.round((hasta.getTime() - desde.getTime()) / 86400000);
+    const diasTranscurridos = Math.max(1, Math.round((corte.getTime() - desde.getTime()) / 86400000));
+    const diasRestantes = Math.max(0, diasMes - diasTranscurridos);
+
+    const [lineas, lineasPrev, pendCxP] = await Promise.all([
+      recolectarLineas(tenantId, desde, corte, moneda, q.centroCostoId || null),
+      recolectarLineas(tenantId, new Date(Date.UTC(anio, mes - 4, 1)), desde, moneda, q.centroCostoId || null),
+      obtenerCxPInterno(p, tenantId, moneda).catch(() => [] as any[]),
+    ]);
+
+    const esIng = (l: any) => ['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo);
+    const esCosto = (l: any) => ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo);
+    const ventasReal = lineas.filter(esIng).reduce((s, l) => s + l.importe, 0);
+    const costosReal = lineas.filter(esCosto).reduce((s, l) => s + l.importe, 0);
+
+    // Compromisos conocidos: CxP que vence dentro del resto del mes
+    const compromisosPago = pendCxP
+      .filter((i: any) => i.saldo > 0.5 && new Date(i.fechaVencimiento || i.fechaEmision) >= corte && new Date(i.fechaVencimiento || i.fechaEmision) < hasta)
+      .reduce((s: number, i: any) => s + i.saldo, 0);
+
+    // Ritmo histórico: promedio diario de los últimos 3 meses con datos
+    const mesesPrevConDatos = Math.max(1, new Set(lineasPrev.map(l => `${new Date(l.fecha).getUTCFullYear()}-${new Date(l.fecha).getUTCMonth()}`)).size);
+    const ventasPrev = lineasPrev.filter(esIng).reduce((s, l) => s + l.importe, 0);
+    const costosPrev = lineasPrev.filter(esCosto).reduce((s, l) => s + l.importe, 0);
+    const estVentas = esActual ? (ventasPrev / (mesesPrevConDatos * 30.44)) * diasRestantes : 0;
+    const estCostos = Math.max(0, esActual ? (costosPrev / (mesesPrevConDatos * 30.44)) * diasRestantes - compromisosPago : 0);
+
+    const ventasProj = ventasReal + estVentas;
+    const costosProj = costosReal + compromisosPago + estCostos;
+    const resultadoProj = ventasProj - costosProj;
+    const base = ventasProj + costosProj;
+    const confianza = base > 0 ? Math.round(((ventasReal + costosReal + compromisosPago) / base) * 100) : 0;
+
+    return reply.send({
+      anio, mes, moneda, esMesActual: esActual, diasTranscurridos, diasRestantes,
+      ventas: { real: ventasReal, compromisos: 0, estimacion: estVentas, proyectado: ventasProj },
+      costos: { real: costosReal, compromisos: compromisosPago, estimacion: estCostos, proyectado: costosProj },
+      resultadoProyectado: resultadoProj,
+      margenProyectado: ventasProj > 0 ? Math.round((resultadoProj / ventasProj) * 1000) / 10 : null,
+      confianza, confianzaLabel: confianza >= 70 ? 'ALTA' : confianza >= 40 ? 'MEDIA' : 'BAJA',
+      metodo: 'Real registrado + compromisos (CxP con vencimiento en el mes) + ritmo diario de los últimos 3 meses con datos.',
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // ALERTAS GERENCIALES — reglas deterministas sobre datos reales.
+  // Umbrales por tenant: resultadosConfig.alertas {atencion:10, critica:25}.
+  // Severidad: INFO | ATENCION | CRITICA. Máximo 8, por impacto económico.
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/alertas', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const hoy = new Date();
+    const anio = Number(q.anio) || hoy.getUTCFullYear();
+    const mes = Number(q.mes) || hoy.getUTCMonth() + 1;
+    const moneda = q.moneda || null;
+    const p = prisma();
+
+    const tenant = await p.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null);
+    const umbrales = ((tenant?.resultadosConfig as any)?.alertas) || {};
+    const UMB_AT = num(umbrales.atencion) || 10;
+    const UMB_CR = num(umbrales.critica) || 25;
+
+    const desde = new Date(Date.UTC(anio, mes - 1, 1));
+    const hasta = new Date(Date.UTC(anio, mes, 1));
+    const desdePrev = new Date(Date.UTC(anio, mes - 2, 1));
+    const desdeHist = new Date(Date.UTC(anio, mes - 7, 1));
+
+    const [lineas, lineasPrev, lineasHist, cxp, cxc] = await Promise.all([
+      recolectarLineas(tenantId, desde, hasta, moneda, q.centroCostoId || null),
+      recolectarLineas(tenantId, desdePrev, desde, moneda, q.centroCostoId || null),
+      recolectarLineas(tenantId, desdeHist, desdePrev, moneda, q.centroCostoId || null),
+      obtenerCxPInterno(p, tenantId, moneda).catch(() => [] as any[]),
+      p.finanzaFactura.findMany({ where: { tenantId, deletedAt: null, estado: { in: ['EMITIDA', 'PARCIALMENTE_COBRADA'] }, ...(moneda ? { moneda } : {}) }, include: { cobros: true } }).catch(() => []),
+    ]);
+
+    const sumaGrupo = (ls: any[], g: string[]) => ls.filter(l => g.includes(l.grupo)).reduce((s, l) => s + l.importe, 0);
+    const porRubro = (ls: any[]) => {
+      const r: Record<string, number> = {};
+      for (const l of ls) if (['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo)) r[l.rubro] = (r[l.rubro] || 0) + l.importe;
+      return r;
+    };
+    const ing = (ls: any[]) => sumaGrupo(ls, ['FACTURADO', 'INGRESO_OPERATIVO']);
+    const cst = (ls: any[]) => sumaGrupo(ls, ['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL']);
+
+    const alertas: any[] = [];
+    const push = (severidad: string, tipo: string, mensaje: string, impacto: number, ref?: string) =>
+      alertas.push({ severidad, tipo, mensaje, impacto: Math.abs(impacto), ref: ref || null });
+
+    const vAct = ing(lineas), vPrev = ing(lineasPrev);
+    const cAct = cst(lineas), cPrev = cst(lineasPrev);
+    const rAct = vAct - cAct, rPrev = vPrev - cPrev;
+    const varPct = (a: number, b: number) => (b !== 0 ? ((a - b) / Math.abs(b)) * 100 : null);
+
+    // Variación de facturación / resultado / margen
+    const vVentas = varPct(vAct, vPrev);
+    if (vVentas !== null && Math.abs(vVentas) >= UMB_AT)
+      push(vVentas >= UMB_CR ? 'CRITICA' : Math.abs(vVentas) >= UMB_CR ? 'CRITICA' : 'ATENCION', vVentas > 0 ? 'VENTAS_UP' : 'VENTAS_DOWN',
+        `Ventas ${vVentas > 0 ? 'aumentaron' : 'cayeron'} ${Math.abs(vVentas).toFixed(1)} % respecto del mes anterior`, vAct - vPrev);
+    const vRes = varPct(rAct, rPrev);
+    if (vRes !== null && Math.abs(vRes) >= UMB_AT)
+      push(rAct < rPrev ? 'ATENCION' : 'INFO', 'RESULTADO',
+        `Resultado ${vRes! > 0 ? 'mejoró' : 'empeoró'} ${Math.abs(vRes!).toFixed(1)} % respecto del mes anterior`, rAct - rPrev);
+
+    // Variación por rubro vs mes anterior y vs promedio 6 meses
+    const rubAct = porRubro(lineas), rubPrev = porRubro(lineasPrev), rubHist = porRubro(lineasHist);
+    const mesesHist = Math.max(1, new Set(lineasHist.map(l => `${new Date(l.fecha).getUTCFullYear()}-${new Date(l.fecha).getUTCMonth()}`)).size);
+    const rubros = new Set([...Object.keys(rubAct), ...Object.keys(rubPrev)]);
+    for (const r of rubros) {
+      const a = rubAct[r] || 0, b = rubPrev[r] || 0;
+      const prom = (rubHist[r] || 0) / mesesHist;
+      const vM = varPct(a, b);
+      if (vM !== null && a > b && Math.abs(vM) >= UMB_AT)
+        push(Math.abs(vM) >= UMB_CR ? 'CRITICA' : 'ATENCION', 'RUBRO_UP',
+          `${r} aumentó ${Math.abs(vM).toFixed(1)} % respecto del mes anterior`, a - b);
+      else if (a > prom && prom > 0 && varPct(a, prom)! >= UMB_CR)
+        push('ATENCION', 'RUBRO_HIST',
+          `${r} está ${(((a - prom) / prom) * 100).toFixed(0)} % por encima del promedio de los últimos ${mesesHist} meses`, a - prom);
+    }
+
+    // CxC vencida
+    const vencidoCxc = cxc.reduce((s: number, f: any) => {
+      const cobrado = f.cobros.reduce((x: number, c: any) => x + num(c.importe), 0);
+      const saldo = Math.max(0, num(f.total) - cobrado);
+      return saldo > 0.5 && f.fechaVencimiento && new Date(f.fechaVencimiento) < hoy ? s + saldo : s;
+    }, 0);
+    if (vencidoCxc > 0) push('ATENCION', 'CXC_VENCIDA', `${moneda || ''} ${vencidoCxc.toLocaleString('es-AR', { maximumFractionDigits: 0 })} están vencidos de cobro`.trim(), vencidoCxc);
+
+    // CxP vencida / próxima
+    const pendCxP = cxp.filter((i: any) => i.saldo > 0.5);
+    const vencidoCxp = pendCxP.filter(i => i.diasVencimiento < 0).reduce((s, i) => s + i.saldo, 0);
+    const prox7 = pendCxP.filter(i => i.diasVencimiento >= 0 && i.diasVencimiento <= 7).reduce((s, i) => s + i.saldo, 0);
+    if (vencidoCxp > 0) push('CRITICA', 'CXP_VENCIDA', `${vencidoCxp.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en obligaciones están vencidas`, vencidoCxp);
+    if (prox7 > 0) push('ATENCION', 'CXP_7D', `En los próximos 7 días vencen ${prox7.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en obligaciones`, prox7);
+
+    // Orden: CRITICA → ATENCION → INFO, dentro por impacto. Máximo 8.
+    const sev: Record<string, number> = { CRITICA: 3, ATENCION: 2, INFO: 1 };
+    alertas.sort((a, b) => sev[b.severidad] - sev[a.severidad] || b.impacto - a.impacto);
+    return reply.send({ alertas: alertas.slice(0, 8), umbrales: { atencion: UMB_AT, critica: UMB_CR } });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // COMPARATIVA + "¿QUÉ EXPLICA EL RESULTADO?" — determinístico:
+  // mes vs mes anterior y mismo mes año anterior. La explicación
+  // descompone la variación del resultado en sus drivers reales.
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/comparativa', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const anio = Number(q.anio) || new Date().getUTCFullYear();
+    const mes = Number(q.mes) || new Date().getUTCMonth() + 1;
+    const moneda = q.moneda || null;
+    const cc = q.centroCostoId || null;
+
+    const rango = (a: number, m: number) => [new Date(Date.UTC(a, m - 1, 1)), new Date(Date.UTC(a, m, 1))] as const;
+    const [dA, hA] = rango(anio, mes);
+    const prevMes = mes === 1 ? { a: anio - 1, m: 12 } : { a: anio, m: mes - 1 };
+    const [dM, hM] = rango(prevMes.a, prevMes.m);
+    const [dY, hY] = rango(anio - 1, mes);
+
+    const [act, prev, yoy] = await Promise.all([
+      recolectarLineas(tenantId, dA, hA, moneda, cc),
+      recolectarLineas(tenantId, dM, hM, moneda, cc),
+      recolectarLineas(tenantId, dY, hY, moneda, cc),
+    ]);
+
+    const resumen = (ls: any[]) => {
+      const g = (gr: string[]) => ls.filter(l => gr.includes(l.grupo)).reduce((s, l) => s + l.importe, 0);
+      const ventas = g(['FACTURADO', 'INGRESO_OPERATIVO']);
+      const costos = g(['COSTO_OP', 'GASTO_MANUAL']) , estructura = g(['ESTRUCTURA']);
+      const porRubro: Record<string, number> = {};
+      for (const l of ls) if (['COSTO_OP', 'ESTRUCTURA', 'GASTO_MANUAL'].includes(l.grupo)) porRubro[l.rubro] = (porRubro[l.rubro] || 0) + l.importe;
+      const porFuenteIng: Record<string, number> = {};
+      for (const l of ls) if (['FACTURADO', 'INGRESO_OPERATIVO'].includes(l.grupo)) porFuenteIng[l.fuente] = (porFuenteIng[l.fuente] || 0) + l.importe;
+      const cobrado = g(['COBRADO']);
+      const resultado = ventas - costos - estructura;
+      return { ventas, costos, estructura, costosTotales: costos + estructura, cobrado, resultado, margen: ventas > 0 ? (resultado / ventas) * 100 : null, porRubro, porFuenteIng, lineas: ls.length };
+    };
+    const A = resumen(act), P = resumen(prev), Y = resumen(yoy);
+
+    const delta = (a: number, b: number) => ({ abs: a - b, pct: b !== 0 ? ((a - b) / Math.abs(b)) * 100 : null });
+    const compara = (a: typeof A, b: typeof A) => ({
+      ventas: delta(a.ventas, b.ventas), costos: delta(a.costosTotales, b.costosTotales),
+      resultado: delta(a.resultado, b.resultado),
+      margen: a.margen !== null && b.margen !== null ? { abs: a.margen - b.margen } : null,
+      cobrado: delta(a.cobrado, b.cobrado),
+    });
+
+    // Drivers: variación del resultado = Δventas − Δcostos. Se descompone.
+    const drivers: any[] = [];
+    if (A.lineas || P.lineas) {
+      const fuentesIng = new Set([...Object.keys(A.porFuenteIng), ...Object.keys(P.porFuenteIng)]);
+      for (const f of fuentesIng) {
+        const d = (A.porFuenteIng[f] || 0) - (P.porFuenteIng[f] || 0);
+        if (Math.abs(d) > 0.5) drivers.push({ tipo: 'INGRESO', clave: f, variacion: d, actual: A.porFuenteIng[f] || 0, anterior: P.porFuenteIng[f] || 0 });
+      }
+      const rubros = new Set([...Object.keys(A.porRubro), ...Object.keys(P.porRubro)]);
+      for (const r of rubros) {
+        const d = (A.porRubro[r] || 0) - (P.porRubro[r] || 0);
+        if (Math.abs(d) > 0.5) drivers.push({ tipo: 'COSTO', clave: r, variacion: -d, actual: A.porRubro[r] || 0, anterior: P.porRubro[r] || 0 });
+      }
+      drivers.sort((a, b) => Math.abs(b.variacion) - Math.abs(a.variacion));
+    }
+
+    const huboPrev = P.lineas > 0, huboYoy = Y.lineas > 0;
+    return reply.send({
+      anio, mes, moneda,
+      actual: A,
+      mesAnterior: { ...P, mesKey: `${prevMes.a}-${String(prevMes.m).padStart(2, '0')}`, hayDatos: huboPrev },
+      mismoMesAnioAnterior: { ...Y, mesKey: `${anio - 1}-${String(mes).padStart(2, '0')}`, hayDatos: huboYoy },
+      vsMesAnterior: compara(A, P),
+      vsAnioAnterior: huboYoy ? compara(A, Y) : null,
+      drivers: drivers.slice(0, 8),
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // COMENTARIO DEL PERÍODO — nota gerencial con autor y fecha.
+  // Se diferencia del resumen automático: es texto de un humano.
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/comentarios-periodo', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const where: any = { tenantId, deletedAt: null };
+    if (q.mesKey) where.mesKey = q.mesKey;
+    if (q.centroCostoId) where.centroCostoId = q.centroCostoId;
+    const comentarios = await prisma().finanzaComentarioPeriodo.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }).catch(() => []);
+    return reply.send({ comentarios });
+  });
+
+  app.post('/comentarios-periodo', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const body = z.object({
+      mesKey: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+      centroCostoId: z.string().uuid().optional().nullable(),
+      texto: z.string().min(1).max(2000),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const user = await resolveUser(app.prisma, (req as any).auth?.userId);
+    const c = await prisma().finanzaComentarioPeriodo.create({
+      data: { tenantId, mesKey: body.data.mesKey, centroCostoId: body.data.centroCostoId || null, texto: body.data.texto, createdById: user.id, createdByNombre: user.nombre },
+    });
+    return reply.code(201).send({ comentario: c });
+  });
+
+  app.patch('/comentarios-periodo/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const body = z.object({ texto: z.string().min(1).max(2000) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
+    const r = await prisma().finanzaComentarioPeriodo.updateMany({ where: { id, tenantId, deletedAt: null }, data: { texto: body.data.texto } });
+    if (!r.count) return reply.code(404).send({ error: 'Comentario no encontrado' });
+    return reply.send({ ok: true });
+  });
+
+  app.delete('/comentarios-periodo/:id', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const { id } = req.params as any;
+    const r = await prisma().finanzaComentarioPeriodo.updateMany({ where: { id, tenantId }, data: { deletedAt: new Date() } });
+    if (!r.count) return reply.code(404).send({ error: 'Comentario no encontrado' });
+    return reply.send({ ok: true });
   });
 
   // ═══════════════════════════════════════════════════════════════

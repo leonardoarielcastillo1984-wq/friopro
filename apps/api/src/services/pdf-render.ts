@@ -63,6 +63,12 @@ export interface PdfRenderOptions {
   bodyHtml: string;
   validationUrl?: string;
   userName?: string;
+  /**
+   * Si es true, escala (CSS zoom) cada sección marcada con .pdf-fit —o todo
+   * .content cuando no hay secciones— para que entre en una sola página.
+   * Pensado para mapas/diagramas que desbordan la hoja.
+   */
+  fitToPage?: boolean;
 }
 
 export interface PdfRenderResult {
@@ -274,8 +280,13 @@ function buildCoverPage(template: PdfTemplateConfig, metadata: PdfDocumentMetada
   `;
 }
 
+const PAGE_SIZES_MM: Record<string, [number, number]> = {
+  A4: [210, 297], A3: [297, 420], A5: [148, 210],
+  LETTER: [215.9, 279.4], LEGAL: [215.9, 355.6],
+};
+
 export async function renderPdf(options: PdfRenderOptions): Promise<PdfRenderResult> {
-  const { template, metadata, bodyHtml, validationUrl, userName } = options;
+  const { template, metadata, bodyHtml, validationUrl, userName, fitToPage } = options;
 
   const qrData = validationUrl || `${metadata.documentCode}-R${String(metadata.revision).padStart(2, '0')}`;
   const qrDataUrl = await generateQR(qrData);
@@ -310,6 +321,7 @@ export async function renderPdf(options: PdfRenderOptions): Promise<PdfRenderRes
         h2 { font-size: 16px; }
         h3 { font-size: 14px; }
         .page-break { page-break-before: always; }
+        .pdf-fit { break-inside: avoid; page-break-inside: avoid; }
         .document-header { position: running(header); }
         .document-footer { position: running(footer); }
         .rounded-lg, .border { break-inside: avoid; page-break-inside: avoid; }
@@ -365,6 +377,26 @@ export async function renderPdf(options: PdfRenderOptions): Promise<PdfRenderRes
     const isLandscape = template.orientation === 'landscape';
     await page.setViewport({ width: isLandscape ? 1400 : 900, height: isLandscape ? 900 : 1200, deviceScaleFactor: 1 });
     await page.setContent(fullHtml, { waitUntil: 'load', timeout: 90000 });
+
+    // Ajuste a una hoja: reduce con zoom cada bloque .pdf-fit (o .content si no hay)
+    // hasta que entre en el área útil de la página (tamaño - márgenes).
+    if (fitToPage) {
+      const [pw, ph] = PAGE_SIZES_MM[(template.pageSize || 'A4').toUpperCase()] || PAGE_SIZES_MM.A4;
+      const pageWmm = isLandscape ? ph : pw;
+      const pageHmm = isLandscape ? pw : ph;
+      const MM = 96 / 25.4;
+      const availW = (pageWmm - (template.marginLeft || 20) - (template.marginRight || 20)) * MM;
+      const availH = (pageHmm - (template.marginTop || 25) - (template.marginBottom || 25)) * MM * 0.97;
+      await page.evaluate(({ availW, availH }: { availW: number; availH: number }) => {
+        const marked = Array.from(document.querySelectorAll<HTMLElement>('.pdf-fit'));
+        const targets = marked.length ? marked : [document.querySelector<HTMLElement>('.content')];
+        for (const el of targets) {
+          if (!el) continue;
+          const z = Math.min(1, availH / el.scrollHeight, availW / el.scrollWidth);
+          if (z < 0.999) el.style.zoom = String(z);
+        }
+      }, { availW, availH });
+    }
 
     const pdfBuffer = await page.pdf({
       format: (template.pageSize || 'A4') as any,

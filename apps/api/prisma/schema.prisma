@@ -341,6 +341,12 @@ model Tenant {
   // null = moneda local según country (AR→ARS, CL→CLP...).
   monedaResultados String?
 
+  // Configuración de Resultado de Negocio (JSON): saldo inicial de caja,
+  // clasificación fijo/variable por rubro, umbrales de alertas.
+  // Ej: {"saldoInicial":{"ARS":0},"claseCosto":{"SUELDOS":"FIJO","COMBUSTIBLE":"VARIABLE"},
+  //      "alertas":{"atencion":10,"critica":25}}
+  resultadosConfig Json?
+
   // Demo mode
   isDemo        Boolean   @default(false)
   demoStartedAt DateTime? @db.Timestamptz
@@ -588,9 +594,10 @@ model Tenant {
   unidadIndisponibilidades   UnidadIndisponibilidad[]
 
   // Resultados del Negocio — consolidador económico (aditivo)
-  finanzaCentrosCosto FinanzaCentroCosto[]
-  finanzaFacturas     FinanzaFactura[]
-  finanzaGastos       FinanzaGasto[]
+  finanzaCentrosCosto      FinanzaCentroCosto[]
+  finanzaFacturas          FinanzaFactura[]
+  finanzaGastos            FinanzaGasto[]
+  finanzaComentariosPeriodo FinanzaComentarioPeriodo[]
 
   @@index([parentTenantId])
 }
@@ -12562,6 +12569,11 @@ model FlotaFactura {
   // (se excluye de costoExterno para no duplicar el gasto)
   montoRepuestosPropios Float @default(0)
 
+  // Cuentas por pagar: null en pagadaAt = pendiente de pago al proveedor.
+  // (flota usa pago simple — no hay pagos parciales por ahora)
+  fechaVencimiento DateTime? @db.Timestamptz
+  pagadaAt         DateTime? @db.Timestamptz
+
   // Idempotencia de carga (doble clic / retry): clave única por tenant
   cargaKey String?
 
@@ -13365,6 +13377,15 @@ model FinanzaGasto {
   proveedorRut      String?
   origen            String  @default("MANUAL") // MANUAL | IMPORT_RCV
 
+  // Cuentas por pagar: fecha de vencimiento del compromiso + pagos parciales
+  // (saldo y estado PENDIENTE/PARCIAL/PAGADO/VENCIDO se derivan de FinanzaPago)
+  fechaVencimiento DateTime? @db.Timestamptz
+  pagos            FinanzaPago[]
+
+  // Clasificación de costo para punto de equilibrio / proyección:
+  // FIJO | VARIABLE | MIXTO (null = no clasificado → lo decide el rubro o queda fuera)
+  claseCosto String?
+
   // Recurrencia: si esRecurrente, el consolidado prorratea `total` cada mes
   // entre fechaDesde y fechaHasta (null = indefinido).
   esRecurrente Boolean   @default(false)
@@ -13389,5 +13410,56 @@ model FinanzaGasto {
   @@index([tipoGasto])
   @@index([centroCostoId])
   @@index([proveedorRut])
+  @@index([fechaVencimiento])
   @@map("finanza_gastos")
+}
+
+// Pago (parcial o total) aplicado a un gasto/obligación. Espejo de
+// FinanzaCobro pero del lado de egresos: un gasto puede tener muchos pagos;
+// el saldo y el estado (PENDIENTE/PARCIAL/PAGADO/VENCIDO) se derivan de la suma.
+model FinanzaPago {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  gastoId  String @db.Uuid
+  gasto    FinanzaGasto @relation(fields: [gastoId], references: [id], onDelete: Cascade)
+
+  fecha   DateTime @default(now()) @db.Timestamptz
+  importe Decimal  @db.Decimal(14, 2)
+  moneda  String   @default("ARS")
+
+  referencia String? // nro de transferencia/depósito/cheque
+  medioPago  String? // TRANSFERENCIA, EFECTIVO, CHEQUE, OTRO
+  notas      String?
+
+  createdById     String? @db.Uuid
+  createdByNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenantId])
+  @@index([gastoId])
+  @@index([fecha])
+  @@map("finanza_pagos")
+}
+
+// Comentario gerencial de un período (mesKey "2026-10" + centroCosto opcional).
+// Se diferencia del resumen automático del sistema: tiene autor e historial.
+model FinanzaComentarioPeriodo {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  mesKey        String  // "YYYY-MM"
+  centroCostoId String? @db.Uuid
+  texto         String
+
+  createdById     String? @db.Uuid
+  createdByNombre String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([tenantId, mesKey])
+  @@map("finanza_comentarios_periodo")
 }

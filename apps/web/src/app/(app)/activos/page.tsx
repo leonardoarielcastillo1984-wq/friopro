@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import {
   Package, Plus, Search, Filter, Edit, Trash2, Eye, Archive,
   AlertTriangle, CheckCircle, Clock, Calendar, DollarSign,
@@ -308,6 +309,7 @@ export default function AssetsPage() {
           <p className="text-gray-600">Gestión de inventario y control de activos</p>
         </div>
         <div className="flex items-center gap-3">
+          <DocCodeBadge outputKey="infraestructura.activos" title="Activos" module="infraestructura" subModule="activos" outputType="LIST" />
           <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
             <Upload className="w-4 h-4" />
             Importar

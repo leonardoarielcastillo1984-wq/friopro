@@ -1,10 +1,11 @@
 'use client';
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 import { useState, useEffect } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import Link from 'next/link';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getTenantId } from '@/lib/api';
 import { EditProjectModal, TasksModal } from './components';
 import { exportProjectsToExcel } from '@/lib/project360-export';
 import { BoardCard } from './board-card';
@@ -117,6 +118,7 @@ export default function Project360Page() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTasksModal, setShowTasksModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ActionProject | null>(null);
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
   // Pro states
   const [templates, setTemplates] = useState<any[]>([]);
@@ -179,6 +181,43 @@ export default function Project360Page() {
       onTimeCompletionRate: 0
     });
   }, [projects]);
+
+  // Descarga el informe ejecutivo PDF del proyecto (para presentar a dirección)
+  const downloadProjectPdf = async (project: ActionProject) => {
+    try {
+      setExportingId(project.id);
+      const token = window.localStorage.getItem('accessToken');
+      const headers: Record<string, string> = {};
+      if (token) headers['authorization'] = `Bearer ${token}`;
+      const tenantId = getTenantId();
+      if (tenantId) headers['x-tenant-id'] = tenantId;
+
+      const res = await fetch(`/api/project360-v1/projects/${project.id}/report`, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err?.error || 'Error al generar el informe del proyecto');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project.code}_informe.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading project report:', error);
+      alert('Error al generar el informe del proyecto');
+    } finally {
+      setExportingId(null);
+    }
+  };
 
   const loadProjects = async () => {
     try {
@@ -367,6 +406,7 @@ export default function Project360Page() {
           <p className="text-gray-600">Gestión de Planes de Acción y Mejora Continua</p>
         </div>
         <div className="flex items-center gap-3">
+          <DocCodeBadge outputKey="proyectos.gestion" title="Proyectos" module="proyectos" outputType="LIST" />
           <Link
             href="/proyectos/pmo"
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
@@ -694,6 +734,16 @@ export default function Project360Page() {
                           title="Ver tareas"
                         >
                           <FileText className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => downloadProjectPdf(project)}
+                          disabled={exportingId === project.id}
+                          className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg disabled:opacity-50"
+                          title="Exportar informe PDF"
+                        >
+                          {exportingId === project.id
+                            ? <RefreshCw className="w-4 h-4 animate-spin" />
+                            : <Download className="w-4 h-4" />}
                         </button>
                         <button 
                           onClick={async () => {

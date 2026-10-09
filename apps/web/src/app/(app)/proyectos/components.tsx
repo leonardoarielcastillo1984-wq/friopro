@@ -126,10 +126,8 @@ export function TasksModal({ project, onClose, onUpdateProject }: {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskResponsible, setNewTaskResponsible] = useState('');
-  const [tasks, setTasks] = useState<any[]>(project.tasks || [
-    { id: '1', title: 'Revisar requerimientos', status: 'PENDING', responsible: 'Juan', dueDate: '15/04' },
-    { id: '2', title: 'Planificar recursos', status: 'COMPLETED', responsible: 'María', dueDate: 'Completada' },
-  ]);
+  const [tasks, setTasks] = useState<any[]>(project.tasks || []);
+  const [savingTask, setSavingTask] = useState(false);
   
   // Comments state
   const [selectedTask, setSelectedTask] = useState<any>(null);
@@ -144,48 +142,63 @@ export function TasksModal({ project, onClose, onUpdateProject }: {
     return Math.round((completed / taskList.length) * 100);
   };
 
-  const handleAddTask = () => {
-    if (!newTaskTitle.trim()) return;
-    const newTask = {
-      id: Date.now().toString(),
-      title: newTaskTitle,
-      status: 'PENDING',
-      responsible: newTaskResponsible || 'Sin asignar',
-      dueDate: 'Sin fecha'
-    };
-    const updatedTasks = [...tasks, newTask];
-    setTasks(updatedTasks);
-    
-    // Update project with new tasks and progress
-    const progress = calculateProgress(updatedTasks);
-    onUpdateProject({ 
-      ...project, 
-      tasks: updatedTasks,
-      progress,
-      _count: { tasks: updatedTasks.length }
-    });
-    
-    setNewTaskTitle('');
-    setNewTaskResponsible('');
-    setShowAddForm(false);
+  const handleAddTask = async () => {
+    if (!newTaskTitle.trim() || savingTask) return;
+    setSavingTask(true);
+    try {
+      const res = await apiFetch(`/project360-v1/projects/${project.id}/tasks`, {
+        method: 'POST',
+        json: {
+          title: newTaskTitle.trim(),
+          responsible: newTaskResponsible.trim() || null,
+          status: 'PENDING',
+        }
+      }) as any;
+      const created = res.task;
+      const updatedTasks = [...tasks, created];
+      setTasks(updatedTasks);
+      onUpdateProject({
+        ...project,
+        tasks: updatedTasks,
+        progress: calculateProgress(updatedTasks),
+        _count: { tasks: updatedTasks.length }
+      });
+      setNewTaskTitle('');
+      setNewTaskResponsible('');
+      setShowAddForm(false);
+    } catch (err) {
+      console.error('Error creating task:', err);
+      alert('Error al crear la tarea');
+    } finally {
+      setSavingTask(false);
+    }
   };
 
-  const toggleTaskStatus = (taskId: string) => {
-    const updatedTasks = tasks.map(t => 
-      t.id === taskId 
-        ? { ...t, status: t.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED' }
-        : t
-    );
-    setTasks(updatedTasks);
-    
-    // Recalculate progress
-    const progress = calculateProgress(updatedTasks);
-    onUpdateProject({ 
-      ...project, 
-      tasks: updatedTasks,
-      progress,
-      _count: { tasks: updatedTasks.length }
-    });
+  const toggleTaskStatus = async (taskId: string) => {
+    const current = tasks.find(t => t.id === taskId);
+    if (!current) return;
+    const nextStatus = current.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
+    // Optimistic update
+    const optimistic = tasks.map(t => t.id === taskId ? { ...t, status: nextStatus } : t);
+    setTasks(optimistic);
+    try {
+      const res = await apiFetch(`/project360-v1/tasks/${taskId}`, {
+        method: 'PATCH',
+        json: { status: nextStatus }
+      }) as any;
+      const updatedTasks = tasks.map(t => t.id === taskId ? res.task : t);
+      setTasks(updatedTasks);
+      onUpdateProject({
+        ...project,
+        tasks: updatedTasks,
+        progress: res.projectProgress ?? calculateProgress(updatedTasks),
+        _count: { tasks: updatedTasks.length }
+      });
+    } catch (err) {
+      console.error('Error updating task:', err);
+      setTasks(tasks); // revert
+      alert('Error al actualizar la tarea');
+    }
   };
 
   const openComments = async (task: any) => {
@@ -193,8 +206,7 @@ export function TasksModal({ project, onClose, onUpdateProject }: {
     setShowComments(true);
     // Load comments from API
     try {
-      const response = await fetch(`/project360/tasks/${task.id}/comments`);
-      const data = await response.json();
+      const data = await apiFetch(`/project360-v1/tasks/${task.id}/comments`) as any;
       setComments(data.comments || []);
     } catch (err) {
       console.error('Error loading comments:', err);
@@ -206,12 +218,10 @@ export function TasksModal({ project, onClose, onUpdateProject }: {
     if (!newComment.trim() || !selectedTask) return;
     
     try {
-      const response = await fetch(`/project360/tasks/${selectedTask.id}/comments`, {
+      const data = await apiFetch(`/project360-v1/tasks/${selectedTask.id}/comments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: newComment })
-      });
-      const data = await response.json();
+        json: { text: newComment }
+      }) as any;
       setComments([data.comment, ...comments]);
       setNewComment('');
     } catch (err) {
@@ -259,7 +269,7 @@ export function TasksModal({ project, onClose, onUpdateProject }: {
                     {task.title}
                   </span>
                   <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded">
-                    {task.responsible}
+                    {task.responsibleName || task.responsible?.name || task.responsible || 'Sin asignar'}
                   </span>
                   <span className={`text-xs px-2 py-1 rounded-full ${
                     task.status === 'COMPLETED' 

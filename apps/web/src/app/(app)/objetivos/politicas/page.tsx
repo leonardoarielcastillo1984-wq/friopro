@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -134,10 +135,13 @@ export default function PoliciesPage() {
           <Shield className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-bold">Políticas SGI</h1>
         </div>
-        <Button onClick={openNew}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nueva política
-        </Button>
+        <div className="flex items-center gap-2">
+          <DocCodeBadge outputKey="objetivos.politicas" title="Políticas SGI" module="objetivos" subModule="politicas" outputType="LIST" />
+          <Button onClick={openNew}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nueva política
+          </Button>
+        </div>
       </div>
 
       <p className="text-muted-foreground text-sm">

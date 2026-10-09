@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import { Ruler, Plus, Edit2, Trash2, X, Calendar, FileText, Upload, ChevronDown, ChevronUp, Download, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
@@ -270,7 +271,9 @@ export default function CalibracionesPage() {
           </h1>
           <p className="text-gray-600 mt-1">Inventario y cronograma de calibraciones (ISO 9001 §7.1.5)</p>
         </div>
-        <button
+        <div className="flex items-center gap-2">
+          <DocCodeBadge outputKey="infraestructura.calibraciones" title="Equipos de Medición / Calibraciones" module="infraestructura" subModule="calibraciones" outputType="LIST" />
+          <button
           onClick={() => {
             setEditingEquipment(null);
             setEquipmentForm({ status: 'ACTIVE', calibrationFrequency: 'YEARLY' });
@@ -281,6 +284,7 @@ export default function CalibracionesPage() {
           <Plus className="w-4 h-4" />
           Nuevo Equipo
         </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

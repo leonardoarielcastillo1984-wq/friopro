@@ -3,6 +3,8 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { createGroqOnlyLLMProvider } from '../services/llm/factory.js';
 import { sendEmail, notificationEmail } from '../services/email.js';
+import { renderPdf, type PdfTemplateConfig } from '../services/pdf-render.js';
+import { buildProjectReportHtml } from '../services/project-report.js';
 
 const createProjectSchema = z.object({
   name: z.string().min(1),
@@ -26,14 +28,34 @@ const createProjectSchema = z.object({
 });
 
 async function enrichProjects(prisma: any, projects: any[]) {
-  const ids = [...new Set(projects.map(p => p.responsibleId).filter(Boolean))];
+  const respIds = projects.map(p => p.responsibleId).filter(Boolean);
+  const creatorIds = projects.map(p => p.createdById).filter(Boolean);
+  const ids = [...new Set([...respIds, ...creatorIds])];
   if (ids.length === 0) return projects;
-  const users = await prisma.platformUser.findMany({ where: { id: { in: ids } }, select: { id: true, email: true } });
-  const userMap = Object.fromEntries(users.map((u: any) => [u.id, u]));
-  return projects.map(p => ({
-    ...p,
-    responsible: userMap[p.responsibleId] ? { id: userMap[p.responsibleId].id, name: userMap[p.responsibleId].email, email: userMap[p.responsibleId].email } : { id: p.responsibleId, name: 'Usuario', email: '' },
-  }));
+
+  const nameOf = (first?: string | null, last?: string | null, email?: string | null) =>
+    `${first || ''} ${last || ''}`.trim() || email || '';
+
+  // responsibleId puede ser un empleado (EmployeeCombobox) o un platformUser
+  const [users, employees] = await Promise.all([
+    prisma.platformUser.findMany({ where: { id: { in: ids } }, select: { id: true, email: true, firstName: true, lastName: true } }).catch(() => []),
+    prisma.employee.findMany({ where: { id: { in: ids } }, select: { id: true, firstName: true, lastName: true, email: true } }).catch(() => []),
+  ]);
+  const byId = new Map<string, { id: string; name: string; email: string }>();
+  for (const u of users as any[]) byId.set(u.id, { id: u.id, name: nameOf(u.firstName, u.lastName, u.email), email: u.email });
+  for (const e of employees as any[]) byId.set(e.id, { id: e.id, name: nameOf(e.firstName, e.lastName, e.email), email: e.email });
+
+  return projects.map(p => {
+    const creator = p.createdById ? byId.get(p.createdById) : undefined;
+    const resolved = p.responsibleId ? byId.get(p.responsibleId) : undefined;
+    return {
+      ...p,
+      responsible: resolved
+        ? resolved
+        : { id: p.responsibleId, name: creator?.name || 'Sin asignar', email: '' },
+      createdByName: creator?.name || null,
+    };
+  });
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -47,12 +69,42 @@ const STATUS_LABELS: Record<string, string> = {
 };
 function translateStatus(s: string): string { return STATUS_LABELS[s] ?? s; }
 
+async function resolveUserName(prisma: any, userId?: string | null): Promise<string | null> {
+  if (!userId) return null;
+  try {
+    const u = await prisma.platformUser.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true, email: true } });
+    if (!u) return null;
+    const name = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+    if (name) return name;
+    // PlatformUser sin nombre → buscar el Employee con ese email (nombre completo real)
+    if (u.email) {
+      const emp = await prisma.employee.findFirst({ where: { email: u.email, deletedAt: null }, select: { firstName: true, lastName: true } }).catch(() => null);
+      if (emp) return `${emp.firstName} ${emp.lastName}`.trim();
+    }
+    return u.email || null;
+  } catch { return null; }
+}
+
 async function logHistory(prisma: any, projectId: string, tenantId: string, action: string, details: string, userId?: string, userName?: string) {
   try {
+    // req.db no trae userName — resolver desde el userId si falta
+    const resolvedName = userName || await resolveUserName(prisma, userId);
     await prisma.project360History.create({
-      data: { projectId, tenantId, action, details, userId: userId || null, userName: userName || null },
+      data: { projectId, tenantId, action, details, userId: userId || null, userName: resolvedName },
     });
   } catch { /* no bloquear */ }
+}
+
+async function recalcTaskProgress(prisma: any, projectId: string, tenantId: string): Promise<number> {
+  try {
+    const total = await prisma.project360Task.count({ where: { projectId, tenantId, deletedAt: null } });
+    const done = await prisma.project360Task.count({ where: { projectId, tenantId, deletedAt: null, status: 'COMPLETED' } });
+    const progress = total === 0 ? 0 : Math.round((done / total) * 100);
+    await prisma.project360.update({ where: { id: projectId }, data: { progress } });
+    return progress;
+  } catch {
+    return 0;
+  }
 }
 
 export default async function project360Routes(app: FastifyInstance) {
@@ -259,6 +311,111 @@ export default async function project360Routes(app: FastifyInstance) {
     return reply.send({ message: 'Project deleted successfully' });
   });
 
+  // GET /project360/projects/:id/report — informe ejecutivo PDF (presentación a dirección)
+  app.get('/projects/:id/report', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { id } = req.params as { id: string };
+
+    try {
+      const project = await prisma.project360.findFirst({
+        where: { id, tenantId, deletedAt: null },
+        include: {
+          tasks: { where: { deletedAt: null }, orderBy: { order: 'asc' } },
+          milestones: { orderBy: [{ order: 'asc' }, { targetDate: 'asc' }] },
+          budgetItems: { orderBy: { createdAt: 'asc' } },
+          aprobaciones: { orderBy: { solicitadoEn: 'asc' } },
+          attachments: { orderBy: { createdAt: 'asc' } },
+          reminders: { where: { isCompleted: false }, orderBy: { reminderDate: 'asc' } },
+          history: { orderBy: { createdAt: 'desc' }, take: 15 },
+          aiAnalyses: { orderBy: { createdAt: 'desc' }, take: 3 },
+        },
+      });
+      if (!project) return reply.code(404).send({ error: 'Proyecto no encontrado' });
+
+      // Resolver nombres de responsables (PlatformUser y/o Employee)
+      const personIds = new Set<string>();
+      if (project.responsibleId) personIds.add(project.responsibleId);
+      for (const t of project.tasks) if (t.responsibleId) personIds.add(t.responsibleId);
+      for (const h of project.history) if (h.userId) personIds.add(h.userId);
+      const names = new Map<string, string>();
+      if (personIds.size) {
+        const idList = [...personIds];
+        const [users, employees] = await Promise.all([
+          prisma.platformUser.findMany({ where: { id: { in: idList } }, select: { id: true, email: true, firstName: true, lastName: true } }).catch(() => []),
+          prisma.employee.findMany({ where: { id: { in: idList } }, select: { id: true, firstName: true, lastName: true, email: true } }).catch(() => []),
+        ]);
+        for (const u of users as any[]) names.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email);
+        for (const e of employees as any[]) names.set(e.id, `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.email);
+      }
+
+      // Branding institucional desde companySettings
+      const companySettings = await prisma.companySettings.findUnique({
+        where: { tenantId },
+        select: { logoUrl: true, companyName: true, address: true, taxId: true, website: true, footerText: true, primaryColor: true },
+      }).catch(() => null);
+
+      const appUrl = process.env.APP_URL || process.env.PUBLIC_URL || 'https://logismart.ar';
+      const logoUrl = companySettings?.logoUrl
+        ? (companySettings.logoUrl.startsWith('/') ? `${appUrl}${companySettings.logoUrl}` : companySettings.logoUrl)
+        : undefined;
+
+      const template: PdfTemplateConfig = {
+        headerLogoUrl: logoUrl,
+        companyName: companySettings?.companyName || undefined,
+        companyAddress: companySettings?.address || undefined,
+        companyCuit: companySettings?.taxId || undefined,
+        companySite: companySettings?.website || undefined,
+        footerText: companySettings?.footerText || 'Informe confidencial — uso interno',
+        footerShowPageNum: true,
+        footerShowDate: true,
+        footerShowUser: true,
+        footerShowStatus: false,
+        pageSize: 'A4',
+        orientation: 'portrait',
+        primaryColor: companySettings?.primaryColor || '#1e40af',
+        secondaryColor: '#475569',
+        fontSize: 11,
+        showCoverPage: true,
+        showSignatures: true,
+        signatureStyle: 'table',
+      };
+
+      const userName = (req.db as any)?.userName || undefined;
+      const statusMap: Record<string, string> = {
+        PENDING: 'PENDIENTE', IN_PROGRESS: 'EN CURSO', COMPLETED: 'COMPLETADO',
+        DONE: 'COMPLETADO', ON_HOLD: 'EN PAUSA', CANCELLED: 'CANCELADO', ARCHIVED: 'ARCHIVADO',
+      };
+
+      const bodyHtml = buildProjectReportHtml(project, { names });
+
+      const pdf = await renderPdf({
+        template,
+        metadata: {
+          documentCode: project.code,
+          revision: 0,
+          title: `Informe de Proyecto — ${project.name}`,
+          status: statusMap[project.status] || 'VIGENTE',
+          exportType: 'CONTROLLED',
+          module: 'proyectos',
+          elaboratedBy: names.get(project.responsibleId) || userName,
+          createdAt: project.createdAt,
+        },
+        bodyHtml,
+        userName,
+      });
+
+      const fileName = `${project.code.replace(/[^a-zA-Z0-9-]/g, '_')}_informe_${new Date().toISOString().slice(0, 10)}.pdf`;
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `attachment; filename="${fileName}"`)
+        .send(pdf.buffer);
+    } catch (err: any) {
+      (req.log as any)?.error?.(err, 'Error generando informe PDF de proyecto');
+      return reply.code(500).send({ error: 'Error al generar el informe del proyecto', detail: err?.message });
+    }
+  });
+
   // GET /project360/stats
   app.get('/stats', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -286,7 +443,7 @@ export default async function project360Routes(app: FastifyInstance) {
       if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
       const { id } = req.params as { id: string };
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
-      const { title, description, priority, status, dueDate, responsibleId } = body;
+      const { title, description, priority, status, dueDate, responsibleId, responsible } = body;
       if (!title) return reply.code(400).send({ error: 'Se requiere título' });
 
       const count = await prisma.project360Task.count({ where: { projectId: id, tenantId } });
@@ -299,11 +456,76 @@ export default async function project360Routes(app: FastifyInstance) {
           order: count,
           dueDate: dueDate ? new Date(dueDate) : null,
           responsibleId: responsibleId || null,
+          responsibleName: responsible || null,
         },
       });
+      await recalcTaskProgress(prisma, id, tenantId);
+      await logHistory(prisma, id, tenantId, 'TASK_ADDED', `Tarea "${title}" creada`, req.db?.userId, (req.db as any)?.userName);
       return reply.code(201).send({ task });
     } catch (err: any) {
       console.error('[POST /projects/:id/tasks] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // PATCH /project360/tasks/:taskId — actualizar tarea (estado, título, responsable, fecha, prioridad)
+  app.patch('/tasks/:taskId', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { taskId } = req.params as { taskId: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+
+      const task = await prisma.project360Task.findFirst({ where: { id: taskId, tenantId, deletedAt: null } });
+      if (!task) return reply.code(404).send({ error: 'Tarea no encontrada' });
+
+      const data: any = {};
+      if (body.title !== undefined) data.title = body.title;
+      if (body.description !== undefined) data.description = body.description;
+      if (body.status !== undefined) {
+        data.status = body.status;
+        data.completedAt = body.status === 'COMPLETED' ? (task.completedAt || new Date()) : null;
+        if (body.status === 'COMPLETED') data.progress = 100;
+        else if (task.status === 'COMPLETED') data.progress = 0; // reabierta → reset avance
+      }
+      if (body.priority !== undefined) data.priority = body.priority;
+      if (body.dueDate !== undefined) data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
+      if (body.responsibleId !== undefined) data.responsibleId = body.responsibleId || null;
+      if (body.responsible !== undefined) data.responsibleName = body.responsible || null;
+      if (body.progress !== undefined) data.progress = Math.min(100, Math.max(0, Number(body.progress) || 0));
+      if (body.estimatedHours !== undefined) data.estimatedHours = body.estimatedHours === null ? null : Number(body.estimatedHours);
+      if (body.actualHours !== undefined) data.actualHours = body.actualHours === null ? null : Number(body.actualHours);
+      if (body.order !== undefined) data.order = Number(body.order) || 0;
+
+      const updated = await prisma.project360Task.update({ where: { id: taskId }, data });
+      const progress = await recalcTaskProgress(prisma, task.projectId, tenantId);
+
+      if (body.status !== undefined && body.status !== task.status) {
+        const label = body.status === 'COMPLETED' ? 'completada' : 'reabierta';
+        await logHistory(prisma, task.projectId, tenantId, 'TASK_STATUS', `Tarea "${task.title}" marcada como ${label}`, req.db?.userId, (req.db as any)?.userName);
+      }
+      return reply.send({ task: updated, projectProgress: progress });
+    } catch (err: any) {
+      console.error('[PATCH /tasks/:taskId] Error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // DELETE /project360/tasks/:taskId — soft delete de tarea
+  app.delete('/tasks/:taskId', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { taskId } = req.params as { taskId: string };
+
+      const task = await prisma.project360Task.findFirst({ where: { id: taskId, tenantId, deletedAt: null } });
+      if (!task) return reply.code(404).send({ error: 'Tarea no encontrada' });
+
+      await prisma.project360Task.update({ where: { id: taskId }, data: { deletedAt: new Date() } });
+      const progress = await recalcTaskProgress(prisma, task.projectId, tenantId);
+      await logHistory(prisma, task.projectId, tenantId, 'TASK_DELETED', `Tarea "${task.title}" eliminada`, req.db?.userId, (req.db as any)?.userName);
+      return reply.send({ message: 'Tarea eliminada', projectProgress: progress });
+    } catch (err: any) {
       return reply.code(500).send({ error: err.message });
     }
   });
@@ -406,7 +628,76 @@ export default async function project360Routes(app: FastifyInstance) {
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
     const { id } = req.params as { id: string };
     const history = await prisma.project360History.findMany({ where: { projectId: id, tenantId: req.db.tenantId }, orderBy: { createdAt: 'desc' }, take: 50 });
+
+    // Backfill: entradas viejas sin userName pero con userId → resolver nombre
+    const missing = [...new Set(history.filter((h: any) => !h.userName && h.userId).map((h: any) => h.userId))];
+    if (missing.length) {
+      const users = await prisma.platformUser.findMany({
+        where: { id: { in: missing } },
+        select: { id: true, firstName: true, lastName: true, email: true },
+      }).catch(() => []);
+      // Si el PlatformUser no tiene nombre, buscar el Employee con ese email
+      const namelessEmails = (users as any[]).filter(u => !`${u.firstName || ''} ${u.lastName || ''}`.trim() && u.email).map(u => u.email);
+      const employees = namelessEmails.length
+        ? await prisma.employee.findMany({ where: { email: { in: namelessEmails }, deletedAt: null }, select: { firstName: true, lastName: true, email: true } }).catch(() => [])
+        : [];
+      const empByEmail = new Map((employees as any[]).map(e => [e.email, `${e.firstName} ${e.lastName}`.trim()]));
+      const byId = new Map((users as any[]).map(u => [u.id,
+        `${u.firstName || ''} ${u.lastName || ''}`.trim() || empByEmail.get(u.email) || u.email]));
+      for (const h of history as any[]) if (!h.userName && h.userId && byId.get(h.userId)) h.userName = byId.get(h.userId);
+    }
     return reply.send({ history });
+  });
+
+  // PATCH /project360/history/:historyId — editar detalle de una entrada
+  app.patch('/history/:historyId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { historyId } = req.params as { historyId: string };
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+
+    const entry = await prisma.project360History.findFirst({ where: { id: historyId, tenantId } });
+    if (!entry) return reply.code(404).send({ error: 'Entrada no encontrada' });
+
+    const data: any = {};
+    if (body.details !== undefined) data.details = String(body.details);
+    if (body.action !== undefined) data.action = String(body.action);
+    const updated = await prisma.project360History.update({ where: { id: historyId }, data });
+    return reply.send({ entry: updated });
+  });
+
+  // DELETE /project360/history/:historyId — eliminar una entrada del historial
+  app.delete('/history/:historyId', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+    const { historyId } = req.params as { historyId: string };
+
+    const entry = await prisma.project360History.findFirst({ where: { id: historyId, tenantId } });
+    if (!entry) return reply.code(404).send({ error: 'Entrada no encontrada' });
+    await prisma.project360History.delete({ where: { id: historyId } });
+    return reply.send({ message: 'Entrada eliminada' });
+  });
+
+  // POST /project360/projects/:id/tasks/reorder — reordenar tareas en bulk (drag & drop)
+  app.post('/projects/:id/tasks/reorder', async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await getEffectiveTenantId(req, app.prisma);
+      if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
+      const { id } = req.params as { id: string };
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body as any;
+      const taskIds: string[] = Array.isArray(body.taskIds) ? body.taskIds.filter((t: any) => typeof t === 'string') : [];
+      if (!taskIds.length) return reply.code(400).send({ error: 'taskIds requerido' });
+
+      const owned = await prisma.project360Task.count({ where: { id: { in: taskIds }, projectId: id, tenantId } });
+      if (owned !== taskIds.length) return reply.code(400).send({ error: 'Tareas no pertenecen al proyecto' });
+
+      await prisma.$transaction(taskIds.map((tid, i) =>
+        prisma.project360Task.update({ where: { id: tid }, data: { order: i } })
+      ));
+      return reply.send({ message: 'Orden actualizado' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
   });
 
   // POST /project360/projects/:id/reminders
@@ -463,7 +754,7 @@ export default async function project360Routes(app: FastifyInstance) {
   app.get('/templates', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
     if (!tenantId) return reply.code(400).send({ error: 'Se requiere contexto de tenant' });
-    const templates = await prisma.project360Template.findMany({ where: { tenantId, isActive: true }, orderBy: { category: 'asc', name: 'asc' } });
+    const templates = await prisma.project360Template.findMany({ where: { tenantId, isActive: true }, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
     return reply.send({ templates });
   });
 

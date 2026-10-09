@@ -10,6 +10,8 @@ export default function ObjetivosContent() {
       subtitle="Objetivos estratégicos del Sistema de Gestión (ISO §6.2)"
       endpoint="/objectives"
       icon={Target}
+      outputKey="contexto-sgi.objetivos"
+      docModule="contexto-sgi"
       defaultValues={{ year: currentYear, status: 'PLANNED', progress: 0 }}
       fields={[
         { key: 'title', label: 'Título del objetivo', type: 'text', required: true, fullWidth: true },

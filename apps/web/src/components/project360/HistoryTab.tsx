@@ -11,6 +11,9 @@ interface Props {
 export default function HistoryTab({ projectId }: Props) {
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -22,6 +25,33 @@ export default function HistoryTab({ projectId }: Props) {
   };
 
   useEffect(() => { load(); }, [projectId]);
+
+  const saveEdit = async (id: string) => {
+    if (!editText.trim() || saving) return;
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/project360-v1/history/${id}`, {
+        method: 'PATCH',
+        json: { details: editText.trim() },
+      }) as any;
+      setHistory(prev => prev.map(h => h.id === id ? { ...h, details: res.entry?.details ?? editText.trim() } : h));
+      setEditingId(null);
+    } catch (e) {
+      console.error(e);
+      alert('Error al editar el registro');
+    } finally { setSaving(false); }
+  };
+
+  const deleteEntry = async (id: string) => {
+    if (!confirm('¿Eliminar este registro del historial?')) return;
+    try {
+      await apiFetch(`/project360-v1/history/${id}`, { method: 'DELETE' });
+      setHistory(prev => prev.filter(h => h.id !== id));
+    } catch (e) {
+      console.error(e);
+      alert('Error al eliminar el registro');
+    }
+  };
 
   const getActionIcon = (action: string) => {
     const m: Record<string, any> = {
@@ -71,12 +101,59 @@ export default function HistoryTab({ projectId }: Props) {
                     <Icon className="w-4 h-4 text-white" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-800">{entry.details}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs font-medium text-gray-600">{entry.userName}</span>
-                      <span className="text-xs text-gray-400">• {new Date(entry.createdAt).toLocaleString('es-AR')}</span>
-                    </div>
+                    {editingId === entry.id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={editText}
+                          onChange={e => setEditText(e.target.value)}
+                          rows={2}
+                          className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => saveEdit(entry.id)}
+                            disabled={saving || !editText.trim()}
+                            className="px-3 py-1 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {saving ? 'Guardando...' : 'Guardar'}
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="px-3 py-1 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-gray-800">{entry.details}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs font-medium text-gray-600">{entry.userName || '—'}</span>
+                          <span className="text-xs text-gray-400">• {new Date(entry.createdAt).toLocaleString('es-AR')}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
+                  {editingId !== entry.id && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => { setEditingId(entry.id); setEditText(entry.details || ''); }}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                        title="Editar registro"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteEntry(entry.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                        title="Eliminar registro"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}

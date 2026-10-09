@@ -1,5 +1,6 @@
 'use client';
 import PageTitleHelp from '@/components/ui/PageTitleHelp';
+import DocCodeBadge from '@/components/DocCodeBadge';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -159,11 +160,14 @@ export default function RRHHPage() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Recursos Humanos <PageTitleHelp moduleHref="/rrhh" /></h1>
-        <p className="text-gray-500 mt-2">
-          Gestión integral de empleados, competencias y desarrollo organizacional
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Recursos Humanos <PageTitleHelp moduleHref="/rrhh" /></h1>
+          <p className="text-gray-500 mt-2">
+            Gestión integral de empleados, competencias y desarrollo organizacional
+          </p>
+        </div>
+        <DocCodeBadge outputKey="rrhh.dashboard" title="Recursos Humanos" module="rrhh" outputType="DASHBOARD" />
       </div>
 
       {/* Loading State */}

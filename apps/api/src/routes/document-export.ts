@@ -80,6 +80,7 @@ const exportSchema = z.object({
   sections: z.array(z.any()).optional(),
   orientation: z.string().optional(),
   pageSize: z.string().optional(),
+  fitToPage: z.boolean().optional(),
 }).refine(
   (data) => data.outputDefinitionId || data.outputKey,
   { message: 'Se requiere outputDefinitionId o outputKey' }
@@ -352,14 +353,24 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
         // Auto-create definition so exports work without manual seed
         const template = await prisma.documentTemplate.findFirst({ where: { tenantId, isDefault: true, deletedAt: null } });
         const parts = data.outputKey.split('.');
+        // Claves contexto-sgi.mapa-de-procesos.<id>: vincular al mapa y copiar su docCode
+        const mapMatch = /^contexto-sgi\.mapa-de-procesos\.([0-9a-f-]{36})$/i.exec(data.outputKey);
+        const map = mapMatch
+          ? await prisma.processMap.findFirst({
+              where: { id: mapMatch[1], deletedAt: null },
+              select: { id: true, name: true, docCode: true },
+            })
+          : null;
         const newDef = await prisma.documentOutputDefinition.create({
           data: {
             tenantId,
             module: parts[0] || 'general',
             subModule: parts.slice(1, -1).join('.') || null,
-            screenName: data.title || data.outputKey,
+            screenName: map ? `Mapa de Procesos — ${map.name}` : (data.title || data.outputKey),
             outputKey: data.outputKey,
-            outputType: 'LIST',
+            outputType: map ? 'MAP' : 'LIST',
+            entityRef: map?.id,
+            documentCode: map?.docCode || undefined,
             status: 'EFFECTIVE',
             allowExport: true,
             includeQR: data.exportType === 'CONTROLLED',
@@ -392,6 +403,7 @@ export const documentExportRoutes: FastifyPluginAsync = async (app) => {
         sections: data.sections as any,
         orientationOverride: data.orientation,
         pageSizeOverride: data.pageSize,
+        fitToPage: data.fitToPage,
       });
       const isExcel = data.exportType === 'EXCEL_CONTROLLED';
       return reply

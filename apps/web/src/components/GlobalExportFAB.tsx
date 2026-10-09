@@ -183,8 +183,21 @@ function getPageOrientation(path: string): { orientation: string; pageSize: stri
   return { orientation: 'portrait', pageSize: 'A4' };
 }
 
-function capturePageContent(path?: string): string {
-  const main = document.querySelector('main');
+// Serializa todas las hojas de estilo accesibles (same-origin, incluye el CSS
+// compilado de Tailwind/Next) para que el clon del DOM renderice igual que en
+// pantalla dentro del PDF generado por Puppeteer.
+function collectPageCss(): string {
+  let css = '';
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      for (const rule of Array.from(sheet.cssRules || [])) css += rule.cssText + '\n';
+    } catch { /* hoja cross-origin: saltear */ }
+  }
+  return css;
+}
+
+function capturePageContent(path?: string, rootEl?: Element | null): string {
+  const main = rootEl ?? document.querySelector('main');
   if (!main) return document.body.innerHTML;
 
   const clone = main.cloneNode(true) as HTMLElement;
@@ -203,13 +216,30 @@ function capturePageContent(path?: string): string {
 
   // Remove interactive and non-printable elements
   const removeSelectors = [
-    'button', 'input', 'textarea', 'form',
-    '[data-no-export]', '[data-pdf-ignore]', '.fixed', '[aria-modal]',
-    'script', 'style', 'nav',
+    'input', 'textarea', 'canvas', 'video', 'audio', 'iframe',
+    '[data-pdf-ignore]', '[data-no-export]', '.no-print', '.no-export',
+    'script', 'style', 'link', 'nav', 'header:not(.doc-header)',
   ];
   removeSelectors.forEach(sel => {
     clone.querySelectorAll(sel).forEach(el => el.remove());
   });
+
+  // Botones: en capturas de diagrama (capture-root) las cards de procesos son
+  // <button>; convertirlos a <div> conserva su contenido visual. En capturas
+  // genéricas de página se eliminan (son acciones, no contenido).
+  if (rootEl) {
+    clone.querySelectorAll('button').forEach(btn => {
+      const div = document.createElement('div');
+      for (const attr of Array.from(btn.attributes)) {
+        if (attr.name === 'type' || attr.name.startsWith('on')) continue;
+        div.setAttribute(attr.name, attr.value);
+      }
+      div.innerHTML = btn.innerHTML;
+      btn.replaceWith(div);
+    });
+  } else {
+    clone.querySelectorAll('button').forEach(el => el.remove());
+  }
 
   // Essential CSS to preserve visual appearance (Tailwind utility classes used in reports)
   const essentialCss = `
@@ -367,7 +397,8 @@ function capturePageContent(path?: string): string {
   const extraStyle = isMapPage
     ? `<style>.flex.gap-4.items-stretch { display: flex !important; gap: 16px !important; align-items: stretch !important; } .flex-1 { flex: 1 1 0% !important; } .flex-shrink-0 { flex-shrink: 0 !important; } .grid.grid-cols-1.sm\:grid-cols-2.lg\:grid-cols-3 { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }</style>`
     : '';
-  return `<div style="font-family:Arial,sans-serif;font-size:${isMapPage ? '10' : '12'}px;color:#1e293b;"><style>${essentialCss}</style>${extraStyle}${clone.innerHTML}</div>`;
+  const pageCss = collectPageCss();
+  return `<div style="font-family:Arial,sans-serif;font-size:${isMapPage ? '10' : '12'}px;color:#1e293b;"><style>${essentialCss}</style><style>${pageCss}</style>${extraStyle}${clone.innerHTML}</div>`;
 }
 
 export default function GlobalExportFAB() {
@@ -391,15 +422,26 @@ export default function GlobalExportFAB() {
     try {
       const isExcel = exportType === 'EXCEL_CONTROLLED';
       const { orientation, pageSize } = getPageOrientation(pathname || '');
-      const bodyHtml = isExcel ? '' : capturePageContent(pathname || '');
-      const sections = isExcel ? capturePageContentForExcel() : undefined;
       const token = localStorage.getItem('accessToken');
       const tenantId = localStorage.getItem('tenantId');
       const csrf = localStorage.getItem('csrfToken');
 
-      // Si hay un mapa seleccionado con su outputKey específico, usarlo en lugar del genérico de la página
-      const domOutputKey = document.querySelector('[data-doc-output-key]')?.getAttribute('data-doc-output-key');
-      const effectiveOutputKey = (domOutputKey && domOutputKey.trim()) ? domOutputKey.trim() : outputKey;
+      // outputKey: primer elemento con valor no vacío (el board interno del mapa
+      // gana sobre el panel padre, que puede estar vacío sin mapa seleccionado)
+      const outKeyEls = document.querySelectorAll('[data-doc-output-key]');
+      let domOutputKey = '';
+      outKeyEls.forEach(el => {
+        const v = el.getAttribute('data-doc-output-key');
+        if (!domOutputKey && v && v.trim()) domOutputKey = v.trim();
+      });
+      const effectiveOutputKey = domOutputKey || outputKey;
+      // Captura: si la vista marca un root de captura (ej. el diagrama), exportar solo eso
+      const captureRoot = document.querySelector('[data-doc-capture-root]');
+      const docTitle = captureRoot?.getAttribute('data-doc-title');
+      const bodyHtml = isExcel ? '' : capturePageContent(pathname || '', captureRoot);
+      const sections = isExcel ? capturePageContentForExcel() : undefined;
+      // En vistas de mapa/diagrama, ajustar el contenido a una hoja horizontal
+      const fitToPage = outKeyEls.length > 0;
 
       const res = await fetch('/api/doc-export/export', {
         method: 'POST',
@@ -409,7 +451,7 @@ export default function GlobalExportFAB() {
           ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
           ...(csrf ? { 'x-csrf-token': csrf } : {}),
         },
-        body: JSON.stringify({ outputKey: effectiveOutputKey, exportType, bodyHtml, title, sections, orientation, pageSize }),
+        body: JSON.stringify({ outputKey: effectiveOutputKey, exportType, bodyHtml, title: docTitle || title, sections, orientation, pageSize, fitToPage }),
       });
 
       if (!res.ok) {

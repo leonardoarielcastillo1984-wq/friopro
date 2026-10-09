@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { UsersRound, Plus, Edit, Trash2, AlertCircle, CheckCircle, XCircle, AlertTriangle, Clock, Copy, History, FileText, Sparkles, Download, TrendingUp, TrendingDown, Minus, Settings, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import { t } from '@/lib/dictionary';
 import { generatePDF, exportCSV, exportExcel, criticalityStars } from './partesReport';
 
@@ -352,6 +353,7 @@ export default function PartesContent() {
           <p className="text-sm text-gray-600">Stakeholders con evaluación de cumplimiento por período</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <DocCodeBadge outputKey="contexto-sgi.partes-interesadas" title="Partes Interesadas" module="contexto-sgi" subModule="partes-interesadas" outputType="LIST" />
           {/* Selector con semáforo */}
           <div className="flex items-center gap-2 bg-white border rounded-lg pl-3 pr-1 py-1">
             <span className={`inline-block w-2.5 h-2.5 rounded-full ${sem.dot}`} title={sem.label} />

@@ -2569,6 +2569,8 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
             ubicacion: body.data.ubicacion,
             viajeId: body.data.viajeId,
             notas: body.data.notas,
+            // Snapshot: el semi empieza a sumar km desde este odómetro del tractor
+            odometroTractor: tractor.currentOdometer ?? null,
           },
         },
       },
@@ -2599,16 +2601,38 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     if (conjunto.estado === 'DESACOPLADO') return reply.code(409).send({ error: 'Ya está desacoplado' });
 
     const ahora = new Date();
+
+    // El semi acumula km solo mientras estuvo acoplado: se consolida el
+    // tramo real (odoTractor al desacople - odoTractor al acople) en su
+    // odómetro propio, y así cada ciclo tractor→semi queda contabilizado.
+    const [tractor, ultimoAcople] = await Promise.all([
+      prisma().vehiculo.findFirst({ where: { id: conjunto.tractorId, tenantId }, select: { currentOdometer: true } }),
+      prisma().conjuntoOperativoEvento.findFirst({
+        where: { conjuntoId: id, tipo: 'ACOPLE' }, orderBy: { fecha: 'desc' },
+        select: { odometroTractor: true },
+      }),
+    ]);
+    const odoTractorAhora = tractor?.currentOdometer ?? null;
+    const kmTramo = odoTractorAhora != null && ultimoAcople?.odometroTractor != null
+      ? Math.max(0, odoTractorAhora - ultimoAcople.odometroTractor)
+      : null;
+
     await prisma().conjuntoOperativo.update({
       where: { id },
       data: {
         estado: 'DESACOPLADO',
         fechaDesacople: ahora,
         eventos: {
-          create: { tenantId, tipo: 'DESACOPLE', ubicacion: body.data.ubicacion, notas: body.data.notas },
+          create: { tenantId, tipo: 'DESACOPLE', ubicacion: body.data.ubicacion, notas: body.data.notas, odometroTractor: odoTractorAhora },
         },
       },
     });
+    if (kmTramo != null && kmTramo > 0) {
+      await prisma().vehiculo.update({
+        where: { id: conjunto.semiId },
+        data: { currentOdometer: { increment: kmTramo } },
+      });
+    }
 
     // Si el tractor sigue en servicio, el intervalo del semi termina al
     // desacople: cada semi conserva únicamente su tramo real de utilización.

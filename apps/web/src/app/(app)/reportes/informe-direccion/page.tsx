@@ -3,6 +3,7 @@ import PageTitleHelp from '@/components/ui/PageTitleHelp';
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { 
@@ -206,13 +207,16 @@ export default function InformeDireccionPage() {
             Gestiona los informes de revisión por la dirección según normas ISO
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Nuevo Informe
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <DocCodeBadge outputKey="revision-direccion.informe" title="Informe para la Dirección" module="revision-direccion" subModule="informe" outputType="REPORT" />
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo Informe
+          </button>
+        </div>
       </div>
 
       {/* Reviews List */}

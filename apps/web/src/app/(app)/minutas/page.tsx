@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { EmployeeCombobox } from '@/components/ui/EmployeeCombobox';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import { Plus, FileText, Calendar, Users, AlertCircle, CheckCircle, Clock, Filter, Search, MessageCircle, CheckSquare, ArrowRight, Trash2, Edit, Sparkles, Loader2, Target, AlertTriangle, FolderKanban, Mic, Upload, History, Volume2, BarChart3, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -580,10 +581,13 @@ export default function MinutasPage() {
           <h1 className="text-3xl font-bold">MINUTAS</h1>
           <p className="text-gray-500">Centro inteligente de decisiones y seguimiento corporativo</p>
         </div>
-        <Button onClick={openNew} className="bg-blue-600 hover:bg-blue-700">
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva Minuta
-        </Button>
+        <div className="flex items-center gap-2">
+          <DocCodeBadge outputKey="minutas.listado" title="Minutas" module="minutas" outputType="LIST" />
+          <Button onClick={openNew} className="bg-blue-600 hover:bg-blue-700">
+            <Plus className="h-4 w-4 mr-2" />
+            Nueva Minuta
+          </Button>
+        </div>
       </div>
 
       {/* Buscador y filtros */}

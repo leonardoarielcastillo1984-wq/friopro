@@ -1,10 +1,12 @@
 'use client';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import {
-  Search, MapPin, X, ArrowRight, ArrowDown, ArrowUp, ChevronRight, AlertTriangle,
+  Search, MapPin, X, ArrowRight, ArrowDown, ArrowUp, ChevronDown, ChevronUp, ChevronRight, AlertTriangle,
   Target, Cog, Users, Layers, Network, FileText, Shield, BarChart3,
-  ArrowLeft, ArrowLeftRight, ExternalLink, ListTree, ShoppingCart, PanelRightClose, PanelRightOpen,
+  ArrowLeft, ArrowLeftRight, ExternalLink, ListTree, ShoppingCart, PanelRightClose, PanelRightOpen, Hash,
   Truck, Package, Boxes, Wrench, Monitor, Landmark, Compass, ClipboardCheck,
   Plus, Pencil, Trash2, TrendingUp, BookOpen,
 } from 'lucide-react';
@@ -171,6 +173,8 @@ export default function MapaGeneralView({
   onEditMap,
   onDeleteMap,
   onMoveMap,
+  onToggleLink,
+  onAssignCode,
   normLock,
 }: {
   maps: GenMap[];
@@ -201,6 +205,10 @@ export default function MapaGeneralView({
   onDeleteMap: (m: GenMap) => void;
   // Drag & drop: mover un mapa a otra banda (persiste mapBand)
   onMoveMap: (m: GenMap, band: Band) => void;
+  // Modo vinculación por click: crea/quita una interacción origen↔destino
+  onToggleLink: (fromProcId: string, toProcId: string) => void;
+  // Abre el modal "Asignar código documental" del mapa (codificación SGI)
+  onAssignCode?: (m: GenMap) => void;
   // Cuando viene seteado, la vista muestra SOLO mapas de esa norma (pestañas ISO/IATF)
   // y se oculta el selector interno de norma.
   normLock?: 'ISO9001' | 'IATF16949' | null;
@@ -261,7 +269,9 @@ export default function MapaGeneralView({
       // Filtro por norma: un mapa tagueado solo aparece en su vista; sin norma = aplica a todas.
       // Con normLock (pestaña dedicada) el mapa DEBE tener esa norma exacta.
       if (normLock ? m.norm !== normLock : (normScope && m.norm && m.norm !== normScope)) return;
-      if (!m.processes.some(matchesSite)) return;
+      // Mapa sin procesos (recién creado) no se filtra por sede: .some() sobre
+      // array vacío da false y lo descartaba antes de llegar a su banda.
+      if (m.processes.length > 0 && !m.processes.some(matchesSite)) return;
       const nameHit = q && normalize(m.name).includes(q);
       if (nameHit) mapNameSet.add(m.id);
       if (q) m.processes.forEach(p => { if (matchesSearch(p, q)) matchSet.add(p.id); });
@@ -274,6 +284,16 @@ export default function MapaGeneralView({
 
   // Selección resuelta contra datos frescos: si el elemento ya no existe tras recargar, queda sin panel.
   const selMap = sel?.kind === 'map' ? maps.find(m => m.id === sel.mapId) ?? null : null;
+  // Trae el código documental asignado (salida documental) del mapa seleccionado.
+  useEffect(() => {
+    setSelMapCode(null);
+    if (!selMap) return;
+    let dead = false;
+    apiFetch<{ output: { documentCode: string | null } | null }>(`/process-maps/${selMap.id}/document-output`)
+      .then(res => { if (!dead) setSelMapCode(res?.output?.documentCode ?? null); })
+      .catch(() => {});
+    return () => { dead = true; };
+  }, [selMap?.id, maps]);
   const selProcEntry = sel?.kind === 'process' ? byId.get(sel.processId) ?? null : null;
   const selProc = selProcEntry?.p ?? null;
   const selProcMap = selProcEntry?.map ?? null;
@@ -312,7 +332,18 @@ export default function MapaGeneralView({
 
   const chainItems: ChainItem[] = [];
   opChain.forEach((m, origIdx) => {
-    const { head, nodes } = flowNodesOf(m);
+    const { head, nodes: rawNodes } = flowNodesOf(m);
+    // En mapas multi-raíz solo los procesos de capa OPERATIONAL forman la
+    // cadena de valor: las raíces STRATEGIC/SUPPORT son contexto de la tortuga
+    // (Dirección, Gestión de Calidad, Compras, Sistemas…) y van a sus bandas.
+    const nodes = head ? rawNodes : rawNodes.filter(n => n.layer === 'OPERATIONAL');
+    // Sin procesos cargados aún (mapa recién creado) → card placeholder igual.
+    if (!nodes.length && !head) {
+      if (!m.processes.some(p => !p.parentId)) {
+        chainItems.push({ map: m, head, nodes, stage: opStageOf(m.name), origIdx });
+      }
+      return; // con raíces pero ninguna operativa → fuera de la cadena
+    }
     if (!nodes.length) {
       chainItems.push({ map: m, head, nodes, stage: opStageOf(m.name), origIdx });
       return;
@@ -347,6 +378,136 @@ export default function MapaGeneralView({
     return ids;
   };
   const chainIds = new Set(chainSorted.flatMap(it => [...procIdsOf(it)]));
+
+  // ── Vínculos soporte ↔ operación (líneas ortogonales + hover) ────────────
+  // Cada ítem de la cadena se ancla por `${map.id}:${i}` y cada mapa de soporte
+  // por su `map.id`. El vínculo real sale de `interactions`; si no hay ninguna
+  // configurada entre bandas, el fallback asume que todo soporte asiste a toda
+  // la cadena (convención del mapa tortuga ISO 9001).
+  const [hoverLink, setHoverLink] = useState<{ kind: 'op' | 'sup'; key: string } | null>(null);
+  // Modo "vinculación por click": se entra con una card seleccionada desde el
+  // botón "Interacciones entre procesos"; cada click en otra card togglea el vínculo.
+  const [linkMode, setLinkMode] = useState<{ fromId: string; label: string } | null>(null);
+  // Acordeón de subprocesos de la cadena operativa (exclusivo: una card abierta).
+  const [expandedOp, setExpandedOp] = useState<string | null>(null);
+  // Código documental (salida documental) del mapa seleccionado en el panel.
+  const [selMapCode, setSelMapCode] = useState<string | null>(null);
+  const linkedToSrc = useMemo(() => {
+    const s = new Set<string>();
+    if (linkMode) interactions.forEach(i => {
+      if (i.fromId === linkMode.fromId) s.add(i.toId);
+      if (i.toId === linkMode.fromId) s.add(i.fromId);
+    });
+    return s;
+  }, [interactions, linkMode]);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const anchorsRef = useRef(new Map<string, HTMLElement>());
+  const [boardSize, setBoardSize] = useState({ w: 0, h: 0 });
+  const [linkPaths, setLinkPaths] = useState<{ k: string; d: string; op: string; sup: string }[]>([]);
+
+  const supProcIds = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    bands.SUPPORT.forEach(sm => m.set(sm.id, new Set(sm.processes.map(p => p.id))));
+    return m;
+  }, [bands.SUPPORT]);
+  const chainKeys = chainSorted.map((it, i) => `${it.map.id}:${i}`);
+  const chainProcIdsByKey = new Map(chainSorted.map((it, i) => [`${it.map.id}:${i}`, procIdsOf(it)]));
+
+  const realPairs = new Set<string>();
+  interactions.forEach(i => {
+    chainProcIdsByKey.forEach((ids, ok) => {
+      supProcIds.forEach((sids, sid) => {
+        if ((ids.has(i.fromId) && sids.has(i.toId)) || (sids.has(i.fromId) && ids.has(i.toId))) realPairs.add(`${ok}|${sid}`);
+      });
+    });
+  });
+  // Fallback por card de soporte: si el mapa tiene ≥1 interacción real con la
+  // cadena, se vincula SOLO a esas operaciones (configuración explícita);
+  // si no tiene ninguna, asiste a toda la cadena por convención tortuga.
+  const supsWithLinks = new Set([...realPairs].map(k => k.split('|')[1]));
+  const pairLinked = (ok: string, sk: string) =>
+    supsWithLinks.has(sk) ? realPairs.has(`${ok}|${sk}`) : true;
+
+  // Proceso "representante" de un mapa para anclar vínculos por click:
+  // 1ra raíz operativa; si no hay, la primera raíz disponible.
+  const repProcOf = (m: GenMap) => macrosOf(m, 'OPERATIONAL')[0] ?? macrosOf(m)[0] ?? null;
+  // Entra al modo vinculación desde la selección actual; sin selección → modal clásico.
+  const startLinkMode = () => {
+    const src = selProc ?? (selMap ? repProcOf(selMap) : null);
+    if (!src) { onOpenInteractions(); return; }
+    setLinkMode({ fromId: src.id, label: selProc?.name ?? selMap?.name ?? '' });
+    setHoverLink(null);
+  };
+  // Click en card durante el modo: si ya tiene un proc vinculado → lo desvincula;
+  // si no, crea el vínculo contra su proceso representante.
+  const toggleLinkTo = (procIds: (string | undefined)[], repId?: string) => {
+    if (!linkMode) return false;
+    const toId = procIds.find((id): id is string => !!id && linkedToSrc.has(id))
+      ?? repId
+      ?? procIds.find((id): id is string => !!id && id !== linkMode.fromId);
+    if (!toId || toId === linkMode.fromId) return true; // card fuente o sin procesos → ignorar
+    onToggleLink(linkMode.fromId, toId);
+    return true;
+  };
+  const cardLinked = (procIds: (string | undefined)[]) => procIds.some(id => !!id && linkedToSrc.has(id));
+
+  const litOps = new Set<string>();
+  const litSups = new Set<string>();
+  if (hoverLink?.kind === 'op') {
+    litOps.add(hoverLink.key);
+    supProcIds.forEach((_, sid) => { if (pairLinked(hoverLink.key, sid)) litSups.add(sid); });
+  } else if (hoverLink?.kind === 'sup') {
+    litSups.add(hoverLink.key);
+    chainKeys.forEach(ok => { if (pairLinked(ok, hoverLink.key)) litOps.add(ok); });
+  }
+  const pairLit = (op: string, sup: string) =>
+    !!hoverLink && ((hoverLink.kind === 'op' && op === hoverLink.key && pairLinked(op, sup)) ||
+                    (hoverLink.kind === 'sup' && sup === hoverLink.key && pairLinked(op, sup)));
+
+  const setAnchor = (key: string) => (el: HTMLElement | null) => {
+    if (el) anchorsRef.current.set(key, el); else anchorsRef.current.delete(key);
+  };
+
+  // Recalcula los paths ortogonales: baja desde la base de la operación hasta
+  // un carril horizontal intermedio y baja hasta el tope de la card de soporte.
+  useLayoutEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const compute = () => {
+      const br = board.getBoundingClientRect();
+      setBoardSize({ w: br.width, h: br.height });
+      const ops = new Map<string, { x: number; y: number }>();
+      const sups = new Map<string, { x: number; y: number; left: number; cy: number }>();
+      let maxOpB = 0, minSupT = Infinity;
+      anchorsRef.current.forEach((el, k) => {
+        const r = el.getBoundingClientRect();
+        const x = r.left - br.left + r.width / 2;
+        if (k.startsWith('op:')) { const y = r.bottom - br.top; ops.set(k.slice(3), { x, y }); maxOpB = Math.max(maxOpB, y); }
+        else if (k.startsWith('sup:')) {
+          sups.set(k.slice(4), { x, y: r.top - br.top, left: r.left - br.left, cy: r.top - br.top + r.height / 2 });
+          minSupT = Math.min(minSupT, r.top - br.top);
+        }
+      });
+      if (!ops.size || !sups.size || minSupT === Infinity || minSupT <= maxOpB) { setLinkPaths([]); return; }
+      const busY = maxOpB + (minSupT - maxOpB) / 2;
+      const next: { k: string; d: string; op: string; sup: string }[] = [];
+      // Ruteo lateral: baja al carril, corre hasta la canaleta entre columnas
+      // (4px antes del borde de la card), baja por la canaleta y entra por el
+      // costado a media altura. Ningún tramo vertical cruza otra tarjeta.
+      ops.forEach((o, ok) => sups.forEach((s, sk) => {
+        const gx = s.left - 4;
+        next.push({ k: `${ok}|${sk}`, d: `M ${o.x} ${o.y} V ${busY} H ${gx} V ${s.cy} H ${s.left}`, op: ok, sup: sk });
+      }));
+      setLinkPaths(prev =>
+        prev.length === next.length && prev.every((p, i) => p.d === next[i].d && p.k === next[i].k) ? prev : next);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(board);
+    window.addEventListener('resize', compute);
+    return () => { ro.disconnect(); window.removeEventListener('resize', compute); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maps, q, site, normScope, normLock, expandedOp]);
 
   // Etiqueta de flecha desde una interacción REAL configurada (origen → destino).
   const interLabel = (from: ChainItem, to: ChainItem): string | null => {
@@ -442,7 +603,7 @@ export default function MapaGeneralView({
   // Nodo de la cadena operativa: card "tortuga" del mapa (o de su macro raíz)
   // con bullets de subprocesos y chip de sede. `nodes` permite renderizar solo
   // un subconjunto cuando el mapa se divide entre etapas de la secuencia.
-  function OpCard({ map, nodes }: { map: GenMap; nodes?: GenProcess[] }) {
+  function OpCard({ map, nodes, anchorId }: { map: GenMap; nodes?: GenProcess[]; anchorId?: string }) {
     const flow = flowNodesOf(map);
     const itemNodes = nodes ?? flow.nodes;
     const head = nodes ? (itemNodes.length === 1 ? itemNodes[0] : null) : flow.head;
@@ -454,23 +615,47 @@ export default function MapaGeneralView({
     const bullets = head ? childNames(head) : itemNodes.map(n => n.name).join(' · ');
     const itemSites = [...new Set(itemNodes.flatMap(n => n.sites || []))];
     const dim = !!(q && !nameHit && !map.processes.some(p => matchSet.has(p.id)));
+    const lit = !!(anchorId && litOps.has(anchorId));
+    const linkIds = [...itemNodes.map(n => n.id), head?.id];
+    const linked = cardLinked(linkIds);
+    // Acordeón de subprocesos (exclusivo: una card abierta, clave = anchorId o map.id).
+    // Si la card muestra un único nodo, lista SUS hijos; si muestra varios nodos
+    // que ya son hijos (mapa mono-raíz), los lista tal cual; si son raíces,
+    // concatena los subprocesos de cada una.
+    const cardKey = anchorId ?? map.id;
+    const expanded = expandedOp === cardKey;
+    const subList: GenProcess[] = head
+      ? subsOf(map.id, head.id)
+      : itemNodes.some(n => n.parentId)
+        ? itemNodes
+        : itemNodes.flatMap(n => subsOf(map.id, n.id));
+    // Padre para "+ Agregar subproceso": el head de la card, la raíz única del
+    // mapa, o la primera raíz mostrada (mapa multi-raíz).
+    const subParentId = head?.id ?? flow.head?.id ?? itemNodes.find(n => !n.parentId)?.id ?? null;
     return (
       <div
-        className={`relative group flex-1 min-w-[150px] max-w-[210px] ${dragMapId === map.id || dim ? 'opacity-40 saturate-50' : ''}`}
-        draggable
+        ref={anchorId ? setAnchor(`op:${anchorId}`) : undefined}
+        className={`relative group flex-1 min-w-[150px] max-w-[210px] self-start ${dragMapId === map.id || dim ? 'opacity-40 saturate-50' : ''}`}
+        draggable={!linkMode}
         onDragStart={startMapDrag(map)}
         onDragEnd={endMapDrag}
         title="Arrastrar para cambiar de franja"
       >
       <button
         type="button"
-        onClick={() => (head ? selectProc(head) : selectMap(map))}
+        onClick={() => { if (toggleLinkTo(linkIds, head?.id ?? repProcOf(map)?.id)) return; head ? selectProc(head) : selectMap(map); }}
+        onMouseEnter={anchorId && !linkMode ? () => setHoverLink({ kind: 'op', key: anchorId }) : undefined}
+        onMouseLeave={anchorId && !linkMode ? () => setHoverLink(h => h?.key === anchorId ? null : h) : undefined}
         aria-pressed={isSel}
-        title={head?.description || map.description || map.name}
-        className={`w-full h-full text-left bg-white border rounded-lg px-3 py-2.5 min-h-[64px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-          isSel
+        title={linkMode ? 'Click para vincular/desvincular' : (head?.description || map.description || map.name)}
+        className={`w-full h-full text-left bg-white border rounded-lg px-3 py-2.5 min-h-[64px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${linkMode ? 'cursor-pointer' : ''} ${
+          linkMode && linked
+            ? 'border-emerald-500 ring-2 ring-emerald-500/70 bg-emerald-50/60 shadow-sm'
+            : isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
-            : 'border-emerald-300/80 hover:border-indigo-300 hover:shadow-sm'
+            : lit
+              ? 'border-emerald-400 ring-2 ring-emerald-400/70 shadow-sm'
+              : 'border-emerald-300/80 hover:border-indigo-300 hover:shadow-sm'
         }`}
       >
         <div className="flex items-start justify-center gap-1.5">
@@ -484,9 +669,93 @@ export default function MapaGeneralView({
           <NormChip norm={map.norm} />
         </div>
       </button>
-      {head
+      {/* Drill-down vertical: botón acordeón + lista de subprocesos que empuja Soporte.
+          data-pdf-ignore: el export documental muestra las cards sin expandir. */}
+      {subList.length > 0 ? (
+        <div className="mt-1" data-pdf-ignore>
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setExpandedOp(expanded ? null : cardKey); }}
+            aria-expanded={expanded}
+            aria-controls={`subs-${cardKey}`}
+            className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-emerald-700 bg-emerald-100/70 hover:bg-emerald-100 border border-emerald-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            {expanded ? 'Ocultar subprocesos' : `${subList.length} ${subList.length === 1 ? 'Subproceso' : 'Subprocesos'}`}
+            {expanded ? <ChevronUp className="h-3 w-3" aria-hidden /> : <ChevronDown className="h-3 w-3" aria-hidden />}
+          </button>
+          {/* Animación de alto: grid-template-rows 0fr→1fr empuja el carril inferior suavemente */}
+          <div
+            id={`subs-${cardKey}`}
+            className={`grid transition-all duration-300 ease-in-out ${expanded ? 'grid-rows-[1fr] opacity-100 mt-1.5' : 'grid-rows-[0fr] opacity-0'}`}
+          >
+            <div className="overflow-hidden">
+              <div className="bg-emerald-50/60 border border-emerald-300 rounded-xl p-3 flex flex-col gap-2 shadow-inner">
+                {subList.map((s, i) => (
+                  <Fragment key={s.id}>
+                    {i > 0 && <ArrowDown className="h-3 w-3 text-emerald-400 self-center -my-0.5" aria-hidden />}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => { if (linkMode) { toggleLinkTo([s.id], s.id); return; } selectProc(s); }}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (linkMode) toggleLinkTo([s.id], s.id); else selectProc(s); } }}
+                      title={linkMode ? 'Click para vincular/desvincular' : `Ver ficha técnica de ${s.name}`}
+                      className={`group/sub bg-white border rounded-lg p-2.5 shadow-sm transition-colors flex items-center justify-between gap-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                        linkMode && linkedToSrc.has(s.id)
+                          ? 'border-emerald-500 ring-2 ring-emerald-500/70 bg-emerald-50/60'
+                          : 'border-emerald-200 hover:border-emerald-400'
+                      }`}
+                    >
+                      <span className="text-xs font-medium text-slate-800 min-w-0 truncate">{i + 1}. {s.name}</span>
+                      <span className="flex items-center gap-1 flex-shrink-0">
+                        <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                          {(s.sites || [])[0] || 'Sin sede'}
+                        </span>
+                        {!linkMode && (
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); onDeleteProcess(s); }}
+                            title={`Quitar ${s.name}`}
+                            aria-label={`Eliminar subproceso ${s.name}`}
+                            className="hidden group-hover/sub:inline-flex p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                          >
+                            <Trash2 className="h-3 w-3" aria-hidden />
+                          </button>
+                        )}
+                        <ChevronRight className="h-3 w-3 text-slate-300 group-hover/sub:text-slate-400" aria-hidden />
+                      </span>
+                    </div>
+                  </Fragment>
+                ))}
+                {!linkMode && (
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); onNewProcess(map.id, subParentId); }}
+                    title="Agregar subproceso a este proceso"
+                    className="w-full flex items-center justify-center gap-1 rounded-lg border border-dashed border-emerald-300 bg-white/40 px-2 py-1.5 text-[10px] font-semibold text-emerald-600 hover:border-emerald-400 hover:bg-white/80 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  >
+                    <Plus className="h-3 w-3" aria-hidden /> Agregar subproceso
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        // Card sin subprocesos: alta directa del primero (sin acordeón).
+        !linkMode && subParentId && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); onNewProcess(map.id, subParentId); }}
+            title="Agregar subproceso a este proceso"
+            className="mt-1 w-full flex items-center justify-center gap-1 rounded-md border border-dashed border-emerald-300/80 px-2 py-1 text-[9px] font-medium text-emerald-600/80 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50/60 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            <Plus className="h-3 w-3" aria-hidden /> Subproceso
+          </button>
+        )
+      )}
+      {!linkMode && (head
         ? CardActions({ onEdit: () => onEditProcess(head), onDelete: () => onDeleteProcess(head), title: head.name })
-        : CardActions({ onEdit: () => onEditMap(map), onDelete: () => onDeleteMap(map), title: map.name })}
+        : CardActions({ onEdit: () => onEditMap(map), onDelete: () => onDeleteMap(map), title: map.name }))}
       </div>
     );
   }
@@ -494,7 +763,7 @@ export default function MapaGeneralView({
   // Flecha de la cadena con etiqueta (lo que "viaja" entre procesos).
   function ChainArrow({ label }: { label?: string }) {
     return (
-      <div className="flex flex-col items-center justify-center self-center w-14 sm:w-16 flex-shrink-0 px-0.5">
+      <div className="flex flex-col items-center justify-center self-start mt-9 w-14 sm:w-16 flex-shrink-0 px-0.5">
         <span className="text-[8px] text-neutral-500 text-center leading-tight mb-0.5 min-h-[16px] break-words w-full">{label || ''}</span>
         <div className="flex items-center w-full">
           <div className="h-px flex-1 bg-neutral-300" />
@@ -514,7 +783,7 @@ export default function MapaGeneralView({
     // El título puede partirse en dos líneas con "/" (ej. "Cliente / Entradas").
     const titleParts = L(isIn ? 'endInTitle' : 'endOutTitle').split('/').map(s => s.trim()).filter(Boolean);
     return (
-      <div className="flex-shrink-0 w-28 lg:w-32 self-stretch flex">
+      <div className="flex-shrink-0 w-28 lg:w-32 self-start flex">
         <div className="bg-white border-2 border-emerald-300/80 rounded-md px-2 py-3 w-full flex flex-col items-center justify-center text-center shadow-sm">
           {titleParts.map((part, i) => (
             <p key={i} className="text-[10px] font-extrabold text-neutral-800 uppercase leading-tight">{part}{i < titleParts.length - 1 ? ' /' : ''}</p>
@@ -599,32 +868,42 @@ export default function MapaGeneralView({
   }
 
   // Card "tortuga" para Estratégicos/Soporte: nombre + bullets de subprocesos + chip de sede.
-  function MapCard({ map, band }: { map: GenMap; band: Band }) {
+  function MapCard({ map, band, anchorId }: { map: GenMap; band: Band; anchorId?: string }) {
     const meta = BAND_META[band];
     const Icon = iconFor(map.name);
     const isSel = selMap?.id === map.id;
     const nameHit = mapNameSet.has(map.id);
     const mapHasMatch = q && (nameHit || map.processes.some(p => matchSet.has(p.id)));
     const bullets = bulletsOf(map);
+    const lit = !!(anchorId && litSups.has(anchorId));
+    const linkIds = map.processes.map(p => p.id);
+    const linked = cardLinked(linkIds);
     return (
       <div
+        ref={anchorId ? setAnchor(`sup:${anchorId}`) : undefined}
         className={`relative group flex-1 min-w-[170px] ${band === 'STRATEGIC' ? 'max-w-[560px]' : 'max-w-[250px]'} ${dragMapId === map.id ? 'opacity-40' : ''}`}
-        draggable
+        draggable={!linkMode}
         onDragStart={startMapDrag(map)}
         onDragEnd={endMapDrag}
         title="Arrastrar para cambiar de franja"
       >
       <button
         type="button"
-        onClick={() => selectMap(map)}
+        onClick={() => { if (toggleLinkTo(linkIds, repProcOf(map)?.id)) return; selectMap(map); }}
+        onMouseEnter={anchorId && !linkMode ? () => setHoverLink({ kind: 'sup', key: anchorId }) : undefined}
+        onMouseLeave={anchorId && !linkMode ? () => setHoverLink(h => h?.key === anchorId ? null : h) : undefined}
         aria-pressed={isSel}
-        title={map.description || map.name}
-        className={`w-full h-full text-left bg-white border rounded-lg px-3 py-2.5 min-h-[56px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-          isSel
+        title={linkMode ? 'Click para vincular/desvincular' : (map.description || map.name)}
+        className={`w-full h-full text-left bg-white border rounded-lg px-3 py-2.5 min-h-[56px] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${linkMode ? 'cursor-pointer' : ''} ${
+          linkMode && linked
+            ? 'border-emerald-500 ring-2 ring-emerald-500/70 bg-emerald-50/60 shadow-sm'
+            : isSel
             ? 'border-indigo-400 ring-2 ring-indigo-500/60 bg-indigo-50 shadow-sm'
-            : mapHasMatch
-              ? 'border-amber-300 ring-1 ring-amber-300 hover:border-indigo-300'
-              : 'border-neutral-300 hover:border-indigo-300 hover:shadow-sm'
+            : lit
+              ? 'border-emerald-400 ring-2 ring-emerald-400/70 shadow-sm'
+              : mapHasMatch
+                ? 'border-amber-300 ring-1 ring-amber-300 hover:border-indigo-300'
+                : 'border-neutral-300 hover:border-indigo-300 hover:shadow-sm'
         }`}
       >
         <div className="flex items-start justify-center gap-1.5">
@@ -640,7 +919,7 @@ export default function MapaGeneralView({
           <NormChip norm={map.norm} />
         </div>
       </button>
-      {CardActions({ onEdit: () => onEditMap(map), onDelete: () => onDeleteMap(map), title: map.name })}
+      {!linkMode && CardActions({ onEdit: () => onEditMap(map), onDelete: () => onDeleteMap(map), title: map.name })}
       </div>
     );
   }
@@ -782,6 +1061,29 @@ export default function MapaGeneralView({
               {selMap.docReviewDate && <div><dt className="text-neutral-400">Próx. revisión</dt><dd className="text-neutral-700 font-medium">{new Date(selMap.docReviewDate).toLocaleDateString('es-AR')}</dd></div>}
             </dl>
           )}
+          {/* Código documental del SGI (salida documental): asignar/cambiar desde acá */}
+          <div className="border-t border-neutral-100 pt-3 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wide">Código documental</p>
+              {selMapCode ? (
+                <span className="inline-flex items-center gap-1 mt-1 text-xs font-mono font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                  <Hash className="h-3 w-3" aria-hidden /> {selMapCode}
+                </span>
+              ) : (
+                <p className="text-[11px] text-neutral-400 mt-0.5">Sin codificar</p>
+              )}
+            </div>
+            {onAssignCode && (
+              <button
+                type="button"
+                onClick={() => onAssignCode(selMap)}
+                title="Asignar o modificar el código documental del mapa"
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 border border-indigo-700 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                <Hash className="h-3.5 w-3.5" aria-hidden /> {selMapCode ? 'Cambiar' : 'Asignar código'}
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {(Object.entries(bandCounts) as [string, number][]).map(([layer, n]) => (
               <span key={layer} className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600">
@@ -1113,10 +1415,16 @@ export default function MapaGeneralView({
           )}
           <button
             type="button"
-            onClick={onOpenInteractions}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-600 border border-neutral-200 rounded-lg hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            onClick={() => (linkMode ? setLinkMode(null) : startLinkMode())}
+            title={linkMode ? 'Terminar de vincular' : 'Seleccioná una card y tocá acá para vincularla por click'}
+            className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              linkMode
+                ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 font-semibold'
+                : 'text-neutral-600 border-neutral-200 hover:bg-neutral-50'
+            }`}
           >
-            <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden /> Interacciones entre procesos
+            <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden />
+            {linkMode ? 'Finalizar interacción' : 'Interacciones entre procesos'}
           </button>
           {onEditLabels && (
             <button
@@ -1143,6 +1451,14 @@ export default function MapaGeneralView({
               : <PanelRightOpen className="h-3.5 w-3.5" aria-hidden />}
             Detalle
           </button>
+          {/* Código documental del diagrama (salida documental del módulo), como en otros módulos */}
+          <DocCodeBadge
+            outputKey={`contexto-sgi.mapa-general${normLock ? `.${normLock.toLowerCase()}` : ''}`}
+            title={`${L('title')}${normLock === 'ISO9001' ? ' — ISO 9001' : normLock === 'IATF16949' ? ' — IATF 16949' : ''}`}
+            module="contexto-sgi"
+            subModule="mapa-general"
+            outputType="MAP"
+          />
         </div>
 
         {maps.length === 0 ? (
@@ -1169,7 +1485,62 @@ export default function MapaGeneralView({
           </div>
         ) : (
           <div className="flex-1 overflow-auto">
-            <div className="min-w-[960px] pb-4">
+            {/* Banner del modo vinculación por click */}
+            {linkMode && (
+              <div className="mb-3 flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5">
+                <ArrowLeftRight className="h-4 w-4 text-indigo-600 flex-shrink-0" aria-hidden />
+                <p className="text-xs text-indigo-800">
+                  <span className="font-semibold">Vinculando “{linkMode.label}”</span> — tocá las cards a vincular; se marcan en verde. Tocá de nuevo para desvincular.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setLinkMode(null)}
+                  className="ml-auto flex-shrink-0 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                >
+                  Finalizar interacción
+                </button>
+              </div>
+            )}
+            <div
+              ref={boardRef}
+              className="relative min-w-[960px] pb-4"
+              data-doc-capture-root
+              data-doc-title={`${L('title')}${normLock === 'ISO9001' ? ' — ISO 9001' : normLock === 'IATF16949' ? ' — IATF 16949' : ''}`}
+              data-doc-output-key={`contexto-sgi.mapa-general${normLock ? `.${normLock.toLowerCase()}` : ''}`}
+            >
+              {/* Capa de vínculos soporte↔operación: líneas ortogonales.
+                  Sutiles por defecto; al hover resaltan en esmeralda las
+                  del proceso activo y el resto se atenúa. */}
+              <svg
+                className="absolute inset-0 pointer-events-none z-[5]"
+                width={boardSize.w || undefined}
+                height={boardSize.h || undefined}
+                aria-hidden
+              >
+                <defs>
+                  <marker id="linkArrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 1 L 7 4 L 0 7 z" className="fill-slate-400" />
+                  </marker>
+                  <marker id="linkArrowLit" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 1 L 7 4 L 0 7 z" className="fill-emerald-500" />
+                  </marker>
+                </defs>
+                {linkPaths.filter(p => pairLinked(p.op, p.sup)).map(p => {
+                  const lit = pairLit(p.op, p.sup);
+                  const dimmed = !!hoverLink && !lit;
+                  return (
+                    <path
+                      key={p.k}
+                      d={p.d}
+                      fill="none"
+                      strokeWidth={lit ? 2 : 1}
+                      className={lit ? 'stroke-emerald-500' : dimmed ? 'stroke-neutral-200/40' : 'stroke-slate-300/80'}
+                      strokeLinecap="round"
+                      markerEnd={lit ? 'url(#linkArrowLit)' : 'url(#linkArrow)'}
+                    />
+                  );
+                })}
+              </svg>
               {/* Franja Estratégicos */}
               <BandSection band="STRATEGIC">
                 {bands.STRATEGIC.length === 0 ? <BandEmpty band="STRATEGIC" /> : (
@@ -1221,10 +1592,20 @@ export default function MapaGeneralView({
                         return (
                           <Fragment key={`${it.map.id}-${it.stage}-${i}`}>
                             <ChainArrow label={label} />
-                            {OpCard({ map: it.map, nodes: it.nodes })}
+                            {OpCard({ map: it.map, nodes: it.nodes, anchorId: `${it.map.id}:${i}` })}
                           </Fragment>
                         );
                       })}
+                      {/* + Agregar Operación: alta rápida de un mapa operativo en la cadena */}
+                      <button
+                        type="button"
+                        onClick={() => onNewMap({ mapBand: 'OPERATIONAL' })}
+                        title="Agregar operación a la cadena de valor"
+                        className="flex-shrink-0 self-start w-20 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-emerald-300 bg-white/40 px-1 py-6 text-emerald-600 hover:border-emerald-400 hover:bg-white/80 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      >
+                        <Plus className="h-4 w-4" aria-hidden />
+                        <span className="text-[8px] font-semibold leading-tight text-center">Agregar Operación</span>
+                      </button>
                       <ChainArrow label={chainSorted.length ? firstIO(chainSorted[chainSorted.length - 1], 'outputs') : ''} />
                       {EndBox({ kind: 'out' })}
                     </div>
@@ -1243,12 +1624,13 @@ export default function MapaGeneralView({
               {/* Conector Operativos ↔ Soporte */}
               <BandConnector kind="support" />
 
-              {/* Franja Soporte + procesos externalizados (sección configurable) */}
+              {/* Franja Soporte: grilla modular de 4 columnas (filas según
+                  cantidad) + procesos externalizados al final. */}
               <BandSection band="SUPPORT">
                 <div className="flex flex-col gap-2">
                   {bands.SUPPORT.length === 0 && <BandEmpty band="SUPPORT" />}
-                  <div className="flex flex-wrap items-stretch gap-2">
-                    {bands.SUPPORT.map(m => <Fragment key={m.id}>{MapCard({ map: m, band: 'SUPPORT' })}</Fragment>)}
+                  <div className="grid grid-cols-4 items-stretch gap-2">
+                    {bands.SUPPORT.map(m => <Fragment key={m.id}>{MapCard({ map: m, band: 'SUPPORT', anchorId: m.id })}</Fragment>)}
                     {OutsourcedBox()}
                   </div>
                 </div>
@@ -1257,6 +1639,18 @@ export default function MapaGeneralView({
               {/* Leyenda al pie (como en el manual) */}
               <div className="flex items-start justify-between gap-6 px-1 pt-2">
                 <p className="text-[8px] text-neutral-400 leading-snug">{L('legendLeft')}</p>
+                {hoverLink && (
+                  <p className="text-[9px] font-medium text-emerald-600 leading-snug" role="status">
+                    Vínculos de soporte activos: {
+                      hoverLink.kind === 'op'
+                        ? (() => {
+                            const it = chainSorted[Number(hoverLink.key.split(':').pop())];
+                            return it ? (it.head?.name || it.map.name) : 'operación';
+                          })()
+                        : (maps.find(m => m.id === hoverLink.key)?.name ?? 'soporte')
+                    }
+                  </p>
+                )}
                 <p className="text-[8px] text-neutral-400 leading-snug text-right">{L('legendRight')}</p>
               </div>
             </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
+import DocCodeBadge from '@/components/DocCodeBadge';
 import { Plus, Trash2, X, FileSignature, HardHat, Stethoscope } from 'lucide-react';
 
 // ── Tipos ─────────────────────────────────────────────────────
@@ -122,9 +123,12 @@ function PermitsSection() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">Permisos de trabajo de alto riesgo — ISO 45001 §8.1</p>
-        <button onClick={() => setShowModal(true)} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
+        <div className="flex items-center gap-2">
+          <DocCodeBadge outputKey="seguridad.sst-permisos" title="Permisos de Trabajo SST" module="seguridad" subModule="sst" outputType="LIST" />
+          <button onClick={() => setShowModal(true)} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
           <Plus className="h-4 w-4" /> Nuevo permiso
-        </button>
+          </button>
+        </div>
       </div>
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
         <table className="w-full text-sm">
