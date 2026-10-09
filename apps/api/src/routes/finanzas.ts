@@ -1917,4 +1917,206 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     }
     return reply.send({ ok: true, creados, duplicados, errores: errores.slice(0, 50), totalErrores: errores.length });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // INFORME EJECUTIVO — §30. HTML imprimible que consolida todos los
+  // endpoints existentes del módulo (app.inject → cero duplicación de
+  // lógica). ?anio=&mes=&moneda=&centroCostoId=  (mes vacío = anual)
+  // ═══════════════════════════════════════════════════════════════
+  app.get('/informe-ejecutivo', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const q = req.query as any;
+    const hoy = new Date();
+    const anio = Number(q.anio) || hoy.getUTCFullYear();
+    const mes = q.mes ? Number(q.mes) : null;
+    const moneda = q.moneda || null;
+    const cc = q.centroCostoId || null;
+
+    const fwd: Record<string, string> = {};
+    if (req.headers.authorization) fwd.authorization = req.headers.authorization;
+    if (req.headers.cookie) fwd.cookie = req.headers.cookie as string;
+    if (req.headers['x-tenant-id']) fwd['x-tenant-id'] = req.headers['x-tenant-id'] as string;
+
+    const call = async (path: string) => {
+      try {
+        const r = await app.inject({ method: 'GET', url: `/finanzas${path}`, headers: fwd });
+        return r.statusCode < 400 ? r.json() : null;
+      } catch { return null; }
+    };
+
+    const ccQ = cc ? `&centroCostoId=${cc}` : '';
+    const monQ = moneda ? `&moneda=${moneda}` : '';
+    const mesQ = mes ? `&mes=${mes}` : `&mes=${hoy.getUTCMonth() + 1}`;
+    const mesKey = mes ? `${anio}-${String(mes).padStart(2, '0')}` : `${anio}-${String(hoy.getUTCMonth() + 1).padStart(2, '0')}`;
+
+    const [res, alerts, cxc, cxp, caja, rent, pe, proy, comentarios] = await Promise.all([
+      call(`/resultado-mensual?anio=${anio}${monQ}${ccQ}`),
+      call(`/alertas?anio=${anio}${mesQ}${monQ}${ccQ}`),
+      call(`/cuentas-por-cobrar?${monQ}`),
+      call(`/cuentas-por-pagar?${monQ}`),
+      call(`/flujo-caja?${monQ}`),
+      call(`/rentabilidad?anio=${anio}${monQ}${ccQ}`),
+      call(`/punto-equilibrio?anio=${anio}${monQ}${ccQ}`),
+      call(`/proyeccion-cierre?anio=${anio}${mesQ}${monQ}${ccQ}`),
+      call(`/comentarios-periodo?mesKey=${mesKey}${ccQ}`),
+    ]);
+
+    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const periodo = mes ? `${MESES[mes - 1]} ${anio}` : `Año ${anio}`;
+    const fm = (n: number | null | undefined) => n === null || n === undefined ? '—' : `${moneda || ''} ${Math.round(n).toLocaleString('es-AR')}`.trim();
+    const fp = (n: number | null | undefined) => n === null || n === undefined ? '—' : `${n.toFixed(1)} %`;
+    const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const signo = (n: number | null | undefined) => (n ?? 0) >= 0 ? 'var(--ok)' : 'var(--bad)';
+
+    const tenant = await prisma().tenant.findUnique({ where: { id: tenantId }, select: { nombre: true, name: true } }).catch(() => null);
+    const empresa = esc(tenant?.nombre || tenant?.name || 'Empresa');
+
+    // Mes del informe (o acumulado anual si no hay mes)
+    const mm = mes ? (res?.meses || []).find((m: any) => m.mes === mes) : null;
+    const acum = res?.totales;
+    const datos = mm || (acum ? { ventas: acum.ventas, cobrado: acum.cobrado, costosTotales: acum.costos, resultado: acum.resultado, margen: acum.margen, porRubro: acum.porRubro, mesesPositivos: acum.mesesPositivos, mesesNegativos: acum.mesesNegativos } : null);
+
+    // Comparativa vs mes anterior
+    let compHtml = '';
+    if (mes && mm && res?.meses?.length) {
+      const prev = res.meses.find((m: any) => m.mes === mes - 1) || (mes === 1 ? null : null);
+      const varPct = (a: number, b: number) => b !== 0 ? (((a - b) / Math.abs(b)) * 100).toFixed(1) : null;
+      if (prev) compHtml = `<table><tr><th></th><th>${MESES[mes - 1]}</th><th>${MESES[mes - 2]}</th><th>Var</th></tr>
+        ${[['Facturación', 'ventas'], ['Costos', 'costosTotales'], ['Resultado', 'resultado'], ['Cobrado', 'cobrado']].map(([l, k]) => {
+          const v = varPct(mm[k], prev[k]);
+          return `<tr><td>${l}</td><td class="num">${fm(mm[k])}</td><td class="num">${fm(prev[k])}</td><td class="num" style="color:${signo(mm[k] - prev[k])}">${v !== null ? (Number(v) >= 0 ? '+' : '') + v + ' %' : '—'}</td></tr>`;
+        }).join('')}</table>`;
+    }
+
+    // Mejor / peor mes
+    let mpHtml = '';
+    if (res?.meses?.length > 1) {
+      const conVentas = res.meses.filter((m: any) => m.ventas > 0 || m.costosTotales > 0);
+      if (conVentas.length) {
+        const mejor = [...conVentas].sort((a: any, b: any) => b.resultado - a.resultado)[0];
+        const peor = [...conVentas].sort((a: any, b: any) => a.resultado - b.resultado)[0];
+        const prom = conVentas.reduce((s: number, m: any) => s + m.resultado, 0) / conVentas.length;
+        mpHtml = `<div class="grid3"><div class="card"><div class="lbl">Mejor mes</div><div class="val" style="color:var(--ok)">${MESES[mejor.mes - 1]} · ${fm(mejor.resultado)}</div><div class="sub">margen ${fp(mejor.margen)}</div></div>
+          <div class="card"><div class="lbl">Peor mes</div><div class="val" style="color:var(--bad)">${MESES[peor.mes - 1]} · ${fm(peor.resultado)}</div><div class="sub">margen ${fp(peor.margen)}</div></div>
+          <div class="card"><div class="lbl">Promedio mensual</div><div class="val">${fm(prom)}</div><div class="sub">${conVentas.length} meses con datos</div></div></div>`;
+      }
+    }
+
+    // Principales costos (por rubro del período o del año)
+    const rubros = Object.entries((datos?.porRubro || {}) as Record<string, number>).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const rubHtml = rubros.length ? `<table><tr><th>Rubro</th><th class="num">Importe</th><th class="num">% costos</th></tr>
+      ${rubros.map(([r, v]) => `<tr><td>${esc(r)}</td><td class="num">${fm(v)}</td><td class="num">${datos!.costosTotales ? ((v / datos!.costosTotales) * 100).toFixed(1) + ' %' : '—'}</td></tr>`).join('')}</table>` : '<p class="muted">Sin costos en el período.</p>';
+
+    // Alertas
+    const alertasList = alerts?.alertas || [];
+    const alHtml = alertasList.length ? `<table><tr><th>Severidad</th><th>Alerta</th><th class="num">Impacto</th></tr>
+      ${alertasList.map((a: any) => `<tr><td><span class="sev ${a.severidad}">${a.severidad}</span></td><td>${esc(a.mensaje)}</td><td class="num">${fm(a.impacto)}</td></tr>`).join('')}</table>` : '<p class="muted">Sin alertas en el período.</p>';
+
+    // Rentabilidad por cliente (top + negativos)
+    let rentHtml = '<p class="muted">Sin datos de rentabilidad.</p>';
+    if (rent?.porCliente?.length) {
+      const neg = rent.porCliente.filter((f: any) => (f.resultado ?? 0) < 0);
+      rentHtml = `<table><tr><th>Cliente</th><th class="num">Facturación</th><th class="num">Costos</th><th class="num">Resultado</th><th class="num">Margen</th></tr>
+        ${rent.porCliente.slice(0, 15).map((f: any) => `<tr${(f.resultado ?? 0) < 0 ? ' class="neg"' : ''}><td>${esc(f.nombre)}</td><td class="num">${fm(f.ventas)}</td><td class="num">${f.costos === null ? '—' : fm(f.costos)}</td><td class="num" style="color:${signo(f.resultado)}">${f.resultado === null ? '—' : fm(f.resultado)}</td><td class="num" style="color:${signo(f.margen)}">${fp(f.margen)}</td></tr>`).join('')}</table>
+        ${neg.length ? `<p class="warn">⚠ ${neg.length} cliente(s) con margen negativo: ${esc(neg.map((f: any) => f.nombre).join(', '))}</p>` : ''}
+        ${rent.notaCostos ? `<p class="muted">${esc(rent.notaCostos)}</p>` : ''}`;
+    }
+
+    // Punto de equilibrio
+    let peHtml = '<p class="muted">No hay suficiente información para el punto de equilibrio.</p>';
+    if (pe?.peMensual != null) {
+      const vs = pe.vsPuntoEquilibrio;
+      peHtml = `<div class="grid3"><div class="card"><div class="lbl">Punto de equilibrio</div><div class="val">${fm(pe.peMensual)}/mes</div><div class="sub">facturación mínima para no perder</div></div>
+        <div class="card"><div class="lbl">Costos fijos / variables</div><div class="val">${fm(pe.costosFijos)} / ${fm(pe.costosVariables)}</div><div class="sub">${pe.sinClasificar > 0 ? `${fm(pe.sinClasificar)} sin clasificar` : 'todo clasificado'}</div></div>
+        <div class="card"><div class="lbl">Estado</div><div class="val" style="color:${(vs ?? 0) >= 0 ? 'var(--ok)' : 'var(--bad)'}">${vs === null ? '—' : `${Math.abs(vs).toFixed(1)} % ${vs >= 0 ? 'por encima' : 'por debajo'}`}</div><div class="sub">ventas prom. ${fm(pe.ventasMensualProm)}</div></div></div>`;
+    }
+
+    // Proyección de cierre
+    let proyHtml = '';
+    if (proy?.esMesActual) {
+      proyHtml = `<div class="card" style="margin-bottom:12px"><div class="lbl">Proyección de cierre ${MESES[(proy.mes || 1) - 1]}</div>
+        <div class="val" style="color:${signo(proy.resultadoProyectado)}">${fm(proy.resultadoProyectado)} <span class="sub">(margen ${fp(proy.margenProyectado)})</span></div>
+        <div class="sub">Confianza ${proy.confianzaLabel} — ${proy.confianza} % respaldado por datos reales/compromisos</div></div>
+        <table><tr><th></th><th class="num">Real</th><th class="num">Compromisos</th><th class="num">Estimación</th><th class="num">Proyectado</th></tr>
+        <tr><td>Ventas</td><td class="num">${fm(proy.ventas.real)}</td><td class="num">${fm(proy.ventas.compromisos)}</td><td class="num">${fm(proy.ventas.estimacion)}</td><td class="num"><b>${fm(proy.ventas.proyectado)}</b></td></tr>
+        <tr><td>Costos</td><td class="num">${fm(proy.costos.real)}</td><td class="num">${fm(proy.costos.compromisos)}</td><td class="num">${fm(proy.costos.estimacion)}</td><td class="num"><b>${fm(proy.costos.proyectado)}</b></td></tr></table>`;
+    }
+
+    // Comentarios del período
+    const comHtml = (comentarios?.comentarios || []).length ? `<div class="comentario">${comentarios.comentarios.map((c: any) => `<p>“${esc(c.texto)}”</p><p class="muted">— ${esc(c.createdByNombre || 'Anónimo')} · ${new Date(c.createdAt).toLocaleDateString('es-AR')}${c.updatedAt && c.updatedAt !== c.createdAt ? ' (editado)' : ''}</p>`).join('<hr style="border:none;border-top:1px solid #eee;margin:8px 0">')}</div>` : '';
+
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe Ejecutivo — ${periodo}</title>
+<style>
+:root{--ok:#15803d;--bad:#b91c1c;--muted:#737373}
+*{box-sizing:border-box}body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#171717;margin:0;padding:32px;max-width:900px;font-size:13px}
+h1{font-size:20px;margin:0}h2{font-size:14px;margin:24px 0 8px;border-bottom:2px solid #171717;padding-bottom:4px}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #171717;padding-bottom:12px;margin-bottom:16px}
+.muted{color:var(--muted);font-size:11px}.warn{color:#b45309;font-size:12px;margin:8px 0}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:8px}
+.card{border:1px solid #e5e5e5;border-radius:8px;padding:10px}
+.lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.val{font-size:18px;font-weight:700;margin-top:2px}.sub{font-size:11px;color:var(--muted);font-weight:400}
+table{width:100%;border-collapse:collapse;margin:6px 0;font-size:12px}
+th{text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid #e5e5e5;padding:4px 6px}
+td{padding:4px 6px;border-bottom:1px solid #f5f5f5}.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.neg td{background:#fef2f2}
+.sev{font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px}
+.sev.CRITICA{background:#fee2e2;color:#b91c1c}.sev.ATENCION{background:#fef3c7;color:#b45309}.sev.INFO{background:#dcfce7;color:#15803d}
+.comentario{background:#fafaf9;border-left:3px solid #a3a3a3;padding:10px 14px;border-radius:0 8px 8px 0;margin:8px 0;font-style:italic}
+.btn{position:fixed;top:12px;right:12px;background:#171717;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px}
+@media print{.btn{display:none}body{padding:0}}
+</style></head><body>
+<button class="btn" onclick="window.print()">Imprimir / PDF</button>
+<div class="hdr"><div><h1>Informe Ejecutivo — Resultado de Negocio</h1><div class="muted">${empresa} · ${periodo}${moneda ? ` · ${moneda}` : ''}${cc ? ' · filtrado por centro de costo' : ''}</div></div>
+<div class="muted" style="text-align:right">Generado ${new Date().toLocaleString('es-AR')}<br>SGI360 · Datos del sistema</div></div>
+
+<h2>Resultado del período</h2>
+${datos ? `<div class="grid4">
+<div class="card"><div class="lbl">Ventas</div><div class="val">${fm(datos.ventas)}</div></div>
+<div class="card"><div class="lbl">Costos</div><div class="val">${fm(datos.costosTotales)}</div></div>
+<div class="card"><div class="lbl">Resultado</div><div class="val" style="color:${signo(datos.resultado)}">${fm(datos.resultado)}</div><div class="sub">margen ${fp(datos.margen)}</div></div>
+<div class="card"><div class="lbl">Cobrado</div><div class="val">${fm(datos.cobrado)}</div></div></div>
+${!mes && datos.mesesPositivos !== undefined ? `<p class="muted">Meses positivos: ${datos.mesesPositivos} · negativos: ${datos.mesesNegativos}</p>` : ''}` : '<p class="muted">Sin datos para el período.</p>'}
+
+${compHtml ? `<h2>Comparación con el mes anterior</h2>${compHtml}` : ''}
+${mpHtml ? `<h2>Récord del año</h2>${mpHtml}` : ''}
+${proyHtml ? `<h2>Proyección de cierre</h2>${proyHtml}` : ''}
+${comHtml ? `<h2>Comentario del período</h2>${comHtml}` : ''}
+
+<h2>Cuentas por cobrar</h2>
+${cxc?.totales ? `<div class="grid3"><div class="card"><div class="lbl">Por cobrar</div><div class="val">${fm(cxc.totales.saldo)}</div></div>
+<div class="card"><div class="lbl">Vencido</div><div class="val" style="color:${cxc.totales.vencido > 0 ? 'var(--bad)' : 'var(--ok)'}">${fm(cxc.totales.vencido)}</div></div>
+<div class="card"><div class="lbl">>90 días</div><div class="val" style="color:${cxc.totales.d90 > 0 ? 'var(--bad)' : 'inherit'}">${fm(cxc.totales.d90)}</div></div></div>
+${(cxc.clientes || []).filter((c: any) => c.saldo > 0.5).length ? `<table><tr><th>Cliente</th><th class="num">Saldo</th><th class="num">Vencido</th><th class="num">Paga en ~días</th></tr>
+${cxc.clientes.filter((c: any) => c.saldo > 0.5).slice(0, 10).map((c: any) => `<tr><td>${esc(c.cliente)}</td><td class="num">${fm(c.saldo)}</td><td class="num">${fm(c.aging.d1_30 + c.aging.d31_60 + c.aging.d61_90 + c.aging.d90)}</td><td class="num">${c.diasPagoPromedio ?? '—'}</td></tr>`).join('')}</table>` : ''}` : '<p class="muted">Sin cuentas por cobrar.</p>'}
+
+<h2>Cuentas por pagar</h2>
+${cxp?.totales ? `<div class="grid4"><div class="card"><div class="lbl">Por pagar</div><div class="val">${fm(cxp.totales.porPagar)}</div></div>
+<div class="card"><div class="lbl">Vencido</div><div class="val" style="color:${cxp.totales.vencido > 0 ? 'var(--bad)' : 'var(--ok)'}">${fm(cxp.totales.vencido)}</div></div>
+<div class="card"><div class="lbl">Vence 7d</div><div class="val">${fm(cxp.totales.vence7)}</div></div>
+<div class="card"><div class="lbl">Vence 30d</div><div class="val">${fm(cxp.totales.vence30)}</div></div></div>
+${(cxp.ranking || []).length ? `<table><tr><th>Proveedor</th><th class="num">Saldo</th><th class="num">Vencido</th><th class="num">Docs</th></tr>
+${cxp.ranking.slice(0, 10).map((r: any) => `<tr><td>${esc(r.proveedor)}</td><td class="num">${fm(r.saldo)}</td><td class="num" style="color:${r.vencido > 0 ? 'var(--bad)' : 'inherit'}">${fm(r.vencido)}</td><td class="num">${r.cantidad}</td></tr>`).join('')}</table>` : ''}` : '<p class="muted">Sin cuentas por pagar.</p>'}
+
+${caja ? `<h2>Flujo de caja</h2><div class="grid4">
+<div class="card"><div class="lbl">Saldo inicial</div><div class="val">${fm(caja.saldoInicial)}</div></div>
+<div class="card"><div class="lbl">Cobros</div><div class="val" style="color:var(--ok)">+${fm(caja.cobros)}</div></div>
+<div class="card"><div class="lbl">Pagos</div><div class="val" style="color:var(--bad)">-${fm(caja.pagos)}</div></div>
+<div class="card"><div class="lbl">Saldo actual</div><div class="val">${fm(caja.saldoActual)}</div></div></div>
+${(caja.proyeccion || []).length ? `<table><tr><th>Horizonte</th><th class="num">Cobros prev.</th><th class="num">Pagos prev.</th><th class="num">Saldo proyectado</th></tr>
+${caja.proyeccion.map((p: any) => `<tr><td>${p.dias} días</td><td class="num">+${fm(p.cobros)}</td><td class="num">-${fm(p.pagos)}</td><td class="num"><b>${fm(p.saldoProyectado)}</b></td></tr>`).join('')}</table>` : ''}` : ''}
+
+<h2>Principales costos${mes ? ' del mes' : ' del año'}</h2>${rubHtml}
+<h2>Rentabilidad por cliente</h2>${rentHtml}
+<h2>Punto de equilibrio</h2>${peHtml}
+<h2>Alertas gerenciales</h2>${alHtml}
+
+<p class="muted" style="margin-top:24px;border-top:1px solid #e5e5e5;padding-top:8px">Documento generado automáticamente por SGI360 — Resultado de Negocio. Los importes corresponden a la moneda seleccionada sin conversión. Los datos proyectados están diferenciados de los reales.</p>
+</body></html>`;
+
+    reply.header('content-type', 'text/html; charset=utf-8');
+    return reply.send(html);
+  });
 }

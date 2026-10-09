@@ -14,6 +14,7 @@ import CuentasPorPagar from './_components/CuentasPorPagar';
 import FlujoCaja from './_components/FlujoCaja';
 import Rentabilidad from './_components/Rentabilidad';
 import ImportarSII from './_components/ImportarSII';
+import { MESES } from './_components/fmt';
 
 type Tab = 'resultados' | 'facturacion' | 'cobrar' | 'gastos' | 'pagar' | 'caja' | 'rentabilidad' | 'importar' | 'centros';
 
@@ -81,6 +82,21 @@ function ResultadosPageInner() {
 
   const onChanged = () => { loadMonedas(); };
 
+  // Informe ejecutivo imprimible (§30): abre el HTML consolidado en pestaña nueva.
+  const informeEjecutivo = async (mes: number | null) => {
+    const params = new URLSearchParams({ anio: String(anio) });
+    if (mes) params.set('mes', String(mes));
+    if (moneda) params.set('moneda', moneda);
+    if (centroCostoId) params.set('centroCostoId', centroCostoId);
+    const res = await fetch(`/api/finanzas/informe-ejecutivo?${params}`, {
+      headers: { authorization: `Bearer ${localStorage.getItem('accessToken') || ''}`, 'x-tenant-id': localStorage.getItem('tenantId') || '' },
+    });
+    if (!res.ok) return;
+    const html = await res.text();
+    const blob = new Blob([html], { type: 'text/html' });
+    window.open(URL.createObjectURL(blob), '_blank');
+  };
+
   const anioActual = new Date().getFullYear();
   const anios: number[] = [];
   for (let a = anioActual; a >= anioActual - 4; a--) anios.push(a);
@@ -117,6 +133,11 @@ function ResultadosPageInner() {
               {centros.filter(c => c.activo).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
           )}
+          <select value="" onChange={e => { const v = e.target.value; if (!v) return; informeEjecutivo(v === 'anual' ? null : Number(v)); e.target.value = ''; }} className={sel} title="Informe ejecutivo imprimible del período">
+            <option value="">📄 Informe…</option>
+            <option value="anual">Anual {anio}</option>
+            {MESES.map((m, i) => <option key={i} value={i + 1}>{m} {anio}</option>)}
+          </select>
         </div>
       </div>
 
