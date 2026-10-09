@@ -93,7 +93,7 @@ async function leerTexto(file: File) {
   catch { return new TextDecoder('windows-1252').decode(buf); }
 }
 
-export default function ImportarSII({ centros, moneda, onChanged }: { centros: any[]; moneda: string; onChanged: () => void }) {
+export default function ImportarSII({ centros, moneda, monedas = MONEDAS, onChanged }: { centros: any[]; moneda: string; monedas?: string[]; onChanged: () => void }) {
   const [tipo, setTipo] = useState<'VENTAS' | 'COMPRAS'>('VENTAS');
   const [mon, setMon] = useState(moneda);
   const [centroCostoId, setCentroCostoId] = useState('');
@@ -167,7 +167,7 @@ export default function ImportarSII({ centros, moneda, onChanged }: { centros: a
               <option value="VENTAS">Ventas → facturas emitidas</option><option value="COMPRAS">Compras → gastos</option>
             </select></div>
           <div><label className={labelCls}>Moneda</label>
-            <select value={mon} onChange={e => setMon(e.target.value)} className={inputCls}>{MONEDAS.map(m => <option key={m}>{m}</option>)}</select></div>
+            <select value={mon} onChange={e => setMon(e.target.value)} className={inputCls}>{monedas.map(m => <option key={m}>{m}</option>)}</select></div>
           <div><label className={labelCls}>Unidad / centro de costo</label>
             <select value={centroCostoId} onChange={e => setCentroCostoId(e.target.value)} className={inputCls}>
               <option value="">—</option>{centros.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}

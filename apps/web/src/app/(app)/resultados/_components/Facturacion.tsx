@@ -26,7 +26,7 @@ const nuevoForm = (moneda: string) => ({
 });
 type Form = ReturnType<typeof nuevoForm>;
 
-export default function Facturacion({ centros, moneda, canEdit, onChanged }: { centros: any[]; moneda: string; canEdit: boolean; onChanged: () => void }) {
+export default function Facturacion({ centros, moneda, monedas = MONEDAS, canEdit, onChanged }: { centros: any[]; moneda: string; monedas?: string[]; canEdit: boolean; onChanged: () => void }) {
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [clientes, setClientes] = useState<{ nombre: string; rut: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,7 +201,7 @@ export default function Facturacion({ centros, moneda, canEdit, onChanged }: { c
             <div><label className={labelCls}>IVA</label><input type="number" value={form.iva} onChange={e => set('iva', e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Total *</label><input type="number" value={form.total} onChange={e => setTotal(e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Moneda</label>
-              <select value={form.moneda} onChange={e => set('moneda', e.target.value)} className={inputCls}>{MONEDAS.map(m => <option key={m}>{m}</option>)}</select></div>
+              <select value={form.moneda} onChange={e => set('moneda', e.target.value)} className={inputCls}>{monedas.map(m => <option key={m}>{m}</option>)}</select></div>
             <div><label className={labelCls}>Unidad / centro de costo</label>
               <select value={form.centroCostoId} onChange={e => set('centroCostoId', e.target.value)} className={inputCls}>
                 <option value="">—</option>{centros.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}

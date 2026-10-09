@@ -456,6 +456,33 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     return reply.send({ monedas });
   });
 
+  // Configuración de moneda por empresa: la local sale del país del tenant;
+  // la de inicio es configurable (ej. USD). USD siempre disponible.
+  const MONEDA_PAIS: Record<string, string> = {
+    AR: 'ARS', CL: 'CLP', BR: 'BRL', UY: 'UYU', PY: 'PYG', BO: 'BOB', PE: 'PEN',
+    EC: 'USD', CO: 'COP', VE: 'VES', MX: 'MXN', US: 'USD', ES: 'EUR',
+  };
+  const configMoneda = async (tenantId: string) => {
+    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { country: true, monedaResultados: true } });
+    const monedaLocal = (t?.country && MONEDA_PAIS[t.country]) || null;
+    return { country: t?.country || null, monedaLocal, monedaDefault: t?.monedaResultados || monedaLocal };
+  };
+
+  app.get('/config', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    return reply.send(await configMoneda(tenantId));
+  });
+
+  app.put('/config', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const body = z.object({ monedaDefault: z.string().regex(/^[A-Z]{3}$/).nullable() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Moneda inválida' });
+    await app.prisma.tenant.update({ where: { id: tenantId }, data: { monedaResultados: body.data.monedaDefault } });
+    return reply.send(await configMoneda(tenantId));
+  });
+
   // Clientes ya facturados (para autocompletar nombre + RUT)
   app.get('/clientes', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);

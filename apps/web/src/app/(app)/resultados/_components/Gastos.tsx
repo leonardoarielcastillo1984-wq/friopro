@@ -28,7 +28,7 @@ const nuevoForm = (moneda: string) => ({
 type Form = ReturnType<typeof nuevoForm>;
 const costo = (g: Gasto) => (g.tipoComprobante === 'NOTA_CREDITO' ? -1 : 1) * (g.neto !== null ? g.neto : g.total);
 
-export default function Gastos({ centros, moneda, canEdit, onChanged }: { centros: any[]; moneda: string; canEdit: boolean; onChanged: () => void }) {
+export default function Gastos({ centros, moneda, monedas = MONEDAS, canEdit, onChanged }: { centros: any[]; moneda: string; monedas?: string[]; canEdit: boolean; onChanged: () => void }) {
   const [gastos, setGastos] = useState<Gasto[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -250,7 +250,7 @@ export default function Gastos({ centros, moneda, canEdit, onChanged }: { centro
             </>}
             <div><label className={labelCls}>Total *</label><input type="number" value={form.total} onChange={e => setTotal(e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Moneda</label>
-              <select value={form.moneda} onChange={e => set('moneda', e.target.value)} className={inputCls}>{MONEDAS.map(m => <option key={m}>{m}</option>)}</select></div>
+              <select value={form.moneda} onChange={e => set('moneda', e.target.value)} className={inputCls}>{monedas.map(m => <option key={m}>{m}</option>)}</select></div>
             <div className="col-span-2 flex flex-wrap items-end gap-2 pb-1">
               <label className="flex items-center gap-2 text-sm text-neutral-600">
                 <input type="checkbox" checked={form.esRecurrente} onChange={e => set('esRecurrente', e.target.checked)} className="rounded" />

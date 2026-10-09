@@ -4,14 +4,13 @@ import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { useModulePermission } from '@/hooks/useModulePermission';
-import { TrendingUp, Receipt, Wallet, Building2, HandCoins, Upload, Eye } from 'lucide-react';
+import { TrendingUp, Receipt, Wallet, Building2, HandCoins, Upload, Eye, Pin } from 'lucide-react';
 import Dashboard from './_components/Dashboard';
 import Facturacion from './_components/Facturacion';
 import Gastos from './_components/Gastos';
 import CentrosCosto from './_components/CentrosCosto';
 import CuentasPorCobrar from './_components/CuentasPorCobrar';
 import ImportarSII from './_components/ImportarSII';
-import { MONEDAS } from './_components/fmt';
 
 type Tab = 'resultados' | 'facturacion' | 'cobrar' | 'gastos' | 'importar' | 'centros';
 
@@ -23,8 +22,6 @@ const TABS: { key: Tab; label: string; icon: any; edit?: boolean }[] = [
   { key: 'importar', label: 'Importar SII', icon: Upload, edit: true },
   { key: 'centros', label: 'Centros de costo', icon: Building2 },
 ];
-
-const MONEDA_KEY = 'resultados.moneda';
 
 export default function ResultadosPage() {
   return (
@@ -43,35 +40,46 @@ function ResultadosPageInner() {
   const tabParam = searchParams.get('tab') as Tab | null;
   const [tab, setTabState] = useState<Tab>(tabParam && TABS.some(t => t.key === tabParam) ? tabParam : 'resultados');
   const [anio, setAnio] = useState(new Date().getFullYear());
-  const [moneda, setMonedaState] = useState<string>('');
+  const [moneda, setMoneda] = useState<string>('');
   const [monedasUsadas, setMonedasUsadas] = useState<string[]>([]);
+  const [config, setConfig] = useState<{ monedaLocal: string | null; monedaDefault: string | null } | null>(null);
   const [centroCostoId, setCentroCostoId] = useState('');
   const [centros, setCentros] = useState<any[]>([]);
 
   const setTab = (t: Tab) => { setTabState(t); router.replace(`/resultados?tab=${t}`, { scroll: false }); };
-  const setMoneda = (m: string) => { setMonedaState(m); try { localStorage.setItem(MONEDA_KEY, m); } catch {} };
 
   const loadCentros = useCallback(() => {
     apiFetch<{ centros: any[] }>('/finanzas/centros-costo').then(d => setCentros(d.centros)).catch(() => {});
   }, []);
   const loadMonedas = useCallback(() => {
-    apiFetch<{ monedas: string[] }>('/finanzas/monedas').then(d => {
-      setMonedasUsadas(d.monedas);
-      setMonedaState(prev => {
-        if (prev) return prev;
-        const guardada = typeof window !== 'undefined' ? localStorage.getItem(MONEDA_KEY) : null;
-        return guardada || d.monedas[0] || MONEDAS[0];
-      });
-    }).catch(() => setMonedaState(prev => prev || MONEDAS[0]));
+    apiFetch<{ monedas: string[] }>('/finanzas/monedas').then(d => setMonedasUsadas(d.monedas)).catch(() => {});
   }, []);
-  useEffect(() => { loadCentros(); loadMonedas(); }, [loadCentros, loadMonedas]);
+  // Arranca en la moneda configurada para la empresa activa (Argentina → ARS, Chile → CLP, o la elegida)
+  useEffect(() => {
+    loadCentros();
+    Promise.all([
+      apiFetch<{ monedaLocal: string | null; monedaDefault: string | null }>('/finanzas/config').catch(() => null),
+      apiFetch<{ monedas: string[] }>('/finanzas/monedas').catch(() => ({ monedas: [] as string[] })),
+    ]).then(([cfg, usadas]) => {
+      setConfig(cfg);
+      setMonedasUsadas(usadas.monedas);
+      setMoneda(cfg?.monedaDefault || usadas.monedas[0] || 'USD');
+    });
+  }, [loadCentros, loadMonedas]);
+
+  const fijarMoneda = async () => {
+    try {
+      setConfig(await apiFetch('/finanzas/config', { method: 'PUT', json: { monedaDefault: moneda === config?.monedaLocal ? null : moneda } }));
+    } catch {}
+  };
 
   const onChanged = () => { loadMonedas(); };
 
   const anioActual = new Date().getFullYear();
   const anios: number[] = [];
   for (let a = anioActual; a >= anioActual - 4; a--) anios.push(a);
-  const opcionesMoneda = [...new Set([...monedasUsadas, ...MONEDAS])];
+  // Moneda local de la empresa + USD + cualquier otra con documentos cargados
+  const opcionesMoneda = [...new Set([config?.monedaLocal, 'USD', ...monedasUsadas, moneda].filter(Boolean) as string[])];
   const tabsVisibles = TABS.filter(t => !t.edit || canEdit);
   const sel = 'rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:outline-none';
 
@@ -89,9 +97,14 @@ function ResultadosPageInner() {
               {anios.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           )}
-          <select value={moneda} onChange={e => setMoneda(e.target.value)} className={sel} title="Los importes nunca se mezclan entre monedas">
-            {opcionesMoneda.map(m => <option key={m} value={m}>{m}</option>)}
+          <select value={moneda} onChange={e => setMoneda(e.target.value)} className={sel} title="Muestra solo los documentos cargados en esa moneda (no convierte)">
+            {opcionesMoneda.map(m => <option key={m} value={m}>{m === config?.monedaLocal ? `${m} (local)` : m}</option>)}
           </select>
+          {canEdit && moneda && config && moneda !== config.monedaDefault && (
+            <button onClick={fijarMoneda} className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs text-neutral-600 hover:bg-neutral-50" title="Que esta empresa abra siempre en esta moneda">
+              <Pin size={12} /> Abrir siempre en {moneda}
+            </button>
+          )}
           {tab === 'resultados' && (
             <select value={centroCostoId} onChange={e => setCentroCostoId(e.target.value)} className={sel}>
               <option value="">Toda la empresa</option>
@@ -115,10 +128,10 @@ function ResultadosPageInner() {
       {moneda && (
         <div key={moneda}>
           {tab === 'resultados' && <Dashboard anio={anio} moneda={moneda} centroCostoId={centroCostoId} />}
-          {tab === 'facturacion' && <Facturacion centros={centros} moneda={moneda} canEdit={canEdit} onChanged={onChanged} />}
+          {tab === 'facturacion' && <Facturacion centros={centros} moneda={moneda} monedas={opcionesMoneda} canEdit={canEdit} onChanged={onChanged} />}
           {tab === 'cobrar' && <CuentasPorCobrar moneda={moneda} onIrFacturacion={() => setTab('facturacion')} />}
-          {tab === 'gastos' && <Gastos centros={centros} moneda={moneda} canEdit={canEdit} onChanged={onChanged} />}
-          {tab === 'importar' && canEdit && <ImportarSII centros={centros} moneda={moneda} onChanged={onChanged} />}
+          {tab === 'gastos' && <Gastos centros={centros} moneda={moneda} monedas={opcionesMoneda} canEdit={canEdit} onChanged={onChanged} />}
+          {tab === 'importar' && canEdit && <ImportarSII centros={centros} moneda={moneda} monedas={opcionesMoneda} onChanged={onChanged} />}
           {tab === 'centros' && <CentrosCosto centros={centros} canEdit={canEdit} reload={loadCentros} />}
         </div>
       )}

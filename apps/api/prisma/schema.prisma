@@ -337,6 +337,10 @@ model Tenant {
   country        String? // ISO-3166 alpha-2: AR, CL, BR...
   parentTenantId String? @db.Uuid
 
+  // Resultados del Negocio: moneda con la que abre el dashboard.
+  // null = moneda local según country (AR→ARS, CL→CLP...).
+  monedaResultados String?
+
   // Demo mode
   isDemo        Boolean   @default(false)
   demoStartedAt DateTime? @db.Timestamptz
