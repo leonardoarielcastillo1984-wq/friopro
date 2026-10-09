@@ -80,7 +80,8 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [alertasAct, setAlertasAct] = useState<string | null>(null);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
-  const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number } | null>(null);
+  const [iva, setIva] = useState<{ recuperado: number; noRecuperado: number; estimado: number; cargasSinDesagregar: number; tasaEstimada: number } | null>(null);
+  const [ivaTasaEdit, setIvaTasaEdit] = useState<string | null>(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [enviandoComentario, setEnviandoComentario] = useState(false);
 
@@ -102,10 +103,19 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
     apiFetch<Comparativa>(`/finanzas/comparativa?${params}`).then(setComp).catch(() => setComp(null));
     apiFetch<{ alertas: Alerta[]; actualizadoEn?: string }>(`/finanzas/alertas?${params}`).then(d => { setAlertas(d.alertas || []); setAlertasAct(d.actualizadoEn || null); }).catch(() => { setAlertas([]); setAlertasAct(null); });
     apiFetch<{ comentarios: Comentario[] }>(`/finanzas/comentarios-periodo?mesKey=${mesKey}`).then(d => setComentarios(d.comentarios || [])).catch(() => setComentarios([]));
-    apiFetch<{ meses: any[] }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`)
-      .then(d => { const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar } : null); })
+    apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`)
+      .then(d => { const m = (d.meses || []).find((x: any) => x.mes === mesSel); setIva(m ? { recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, tasaEstimada: d.tasaEstimada ?? 0.21 } : null); })
       .catch(() => setIva(null));
   }, [anio, mesSel, moneda, centroCostoId, mesKey]);
+
+  const guardarTasaIva = async () => {
+    const v = Number(ivaTasaEdit);
+    if (!Number.isFinite(v) || v < 0 || v > 50 || !moneda) return;
+    setIvaTasaEdit(null);
+    await apiFetch('/finanzas/config', { method: 'PUT', json: { ivaTasa: { [moneda]: v / 100 } } }).catch(() => {});
+    const d = await apiFetch<{ meses: any[]; tasaEstimada?: number }>(`/finanzas/iva-credito?anio=${anio}&moneda=${moneda}${centroCostoId ? `&centroCostoId=${centroCostoId}` : ''}`).catch(() => null);
+    if (d) { const m = (d.meses || []).find((x: any) => x.mes === mesSel); if (m) setIva({ recuperado: m.recuperado, noRecuperado: m.noRecuperado, estimado: m.estimado, cargasSinDesagregar: m.cargasSinDesagregar, tasaEstimada: d.tasaEstimada ?? v / 100 }); }
+  };
 
   const enviarComentario = async () => {
     if (!nuevoComentario.trim()) return;
@@ -280,7 +290,19 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
       {/* IVA crédito fiscal — evidencia del recupero */}
       {iva && (iva.recuperado > 0 || iva.noRecuperado > 0 || iva.estimado > 0 || iva.cargasSinDesagregar > 0) && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-neutral-900"><Receipt size={14} className="text-teal-600" />IVA crédito fiscal — {MESES[mesSel - 1]} {anio}</div>
+          <div className="mb-3 flex flex-wrap items-center gap-1.5 text-sm font-semibold text-neutral-900"><Receipt size={14} className="text-teal-600" />IVA crédito fiscal — {MESES[mesSel - 1]} {anio}
+            {ivaTasaEdit === null ? (
+              canEdit ? (
+                <button onClick={() => setIvaTasaEdit(String(Math.round(iva.tasaEstimada * 100)))} title="Editar la tasa de IVA estimada para esta moneda (ej.: ARS 21, CLP 19)" className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500 hover:bg-neutral-200">estimado al {(iva.tasaEstimada * 100).toFixed(0)} % · editar</button>
+              ) : <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500">estimado al {(iva.tasaEstimada * 100).toFixed(0)} %</span>
+            ) : (
+              <span className="ml-2 flex items-center gap-1 text-[11px] font-normal text-neutral-500">estimado al
+                <input autoFocus type="number" min={0} max={50} step={1} value={ivaTasaEdit} onChange={e => setIvaTasaEdit(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') guardarTasaIva(); if (e.key === 'Escape') setIvaTasaEdit(null); }} className="w-14 rounded border border-neutral-200 px-1.5 py-0.5 text-xs" />%
+                <button onClick={guardarTasaIva} className="rounded bg-neutral-900 px-2 py-0.5 text-white hover:bg-neutral-700">ok</button>
+                <button onClick={() => setIvaTasaEdit(null)} className="text-neutral-400 hover:text-neutral-600"><X size={12} /></button>
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="rounded-lg bg-emerald-50 p-3">
               <div className="text-[11px] uppercase tracking-wide text-emerald-700">IVA recuperado</div>
@@ -299,7 +321,7 @@ export default function Dashboard({ anio, moneda, centroCostoId, canEdit }: { an
               <div className={`mt-1 font-semibold ${iva.cargasSinDesagregar > 0 ? 'text-red-800' : 'text-neutral-500'}`}>{iva.cargasSinDesagregar}</div>
             </div>
           </div>
-          {iva.estimado > 0 && <p className="mt-2 text-[11px] text-neutral-400">Las cargas de combustible sin IVA desagregado no evidencian el crédito fiscal. Cargá el IVA del ticket en Flota 360 → Combustible para que computen.</p>}
+          {iva.estimado > 0 && <p className="mt-2 text-[11px] text-neutral-400">El estimado supone que el precio de surtidor incluye IVA al {(iva.tasaEstimada * 100).toFixed(0)} %{canEdit && ' (editable arriba — AR 21 %, CL 19 %)'} — cargá el IVA real del ticket en Flota 360 → Combustible para que compute como crédito evidenciado.</p>}
         </div>
       )}
 

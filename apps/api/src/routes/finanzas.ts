@@ -566,9 +566,10 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     EC: 'USD', CO: 'COP', VE: 'VES', MX: 'MXN', US: 'USD', ES: 'EUR',
   };
   const configMoneda = async (tenantId: string) => {
-    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { country: true, monedaResultados: true } });
+    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { country: true, monedaResultados: true, resultadosConfig: true } });
     const monedaLocal = (t?.country && MONEDA_PAIS[t.country]) || null;
-    return { country: t?.country || null, monedaLocal, monedaDefault: t?.monedaResultados || monedaLocal };
+    const ivaTasa = ((t?.resultadosConfig as any)?.ivaTasa as Record<string, number> | undefined) || {};
+    return { country: t?.country || null, monedaLocal, monedaDefault: t?.monedaResultados || monedaLocal, ivaTasa };
   };
 
   app.get('/config', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -585,16 +586,22 @@ export default async function finanzasRoutes(app: FastifyInstance) {
       saldoInicial: z.record(z.string(), z.number()).optional(),
       claseCosto: z.record(z.string(), z.enum(['FIJO', 'VARIABLE', 'MIXTO'])).optional(),
       alertas: z.object({ atencion: z.number().min(1).max(100), critica: z.number().min(1).max(200) }).optional(),
+      // Tasa de IVA por moneda (0–0.5): ARS 0.21, CLP 0.19… anula el default por moneda
+      ivaTasa: z.record(z.string().regex(/^[A-Z]{3}$/), z.number().min(0).max(0.5).nullable()).optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Validation failed', details: body.error.issues });
     const data: any = {};
     if (body.data.monedaDefault !== undefined) data.monedaResultados = body.data.monedaDefault;
-    if (body.data.saldoInicial || body.data.claseCosto || body.data.alertas) {
+    if (body.data.saldoInicial || body.data.claseCosto || body.data.alertas || body.data.ivaTasa) {
       const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } });
       const conf = ((t?.resultadosConfig as any) || {}) as any;
       if (body.data.saldoInicial) conf.saldoInicial = body.data.saldoInicial;
       if (body.data.claseCosto) conf.claseCosto = body.data.claseCosto;
       if (body.data.alertas) conf.alertas = body.data.alertas;
+      if (body.data.ivaTasa) {
+        conf.ivaTasa = { ...(conf.ivaTasa || {}), ...Object.fromEntries(Object.entries(body.data.ivaTasa).filter(([, v]) => v !== null)) };
+        for (const [k, v] of Object.entries(body.data.ivaTasa)) if (v === null) delete conf.ivaTasa[k];
+      }
       data.resultadosConfig = conf;
     }
     if (Object.keys(data).length) await app.prisma.tenant.update({ where: { id: tenantId }, data });
@@ -1467,6 +1474,13 @@ export default async function finanzasRoutes(app: FastifyInstance) {
   // en cargas de combustible sin desagregar (surtidor incluye IVA).
   // ═══════════════════════════════════════════════════════════════
   const IVA_TASA: Record<string, number> = { ARS: 0.21, CLP: 0.19, USD: 0, UYU: 0.22, PYG: 0.1, BRL: 0 };
+  // Tasa efectiva: override del tenant en resultadosConfig.ivaTasa[moneda], sino el default por moneda
+  const tasaIva = async (tenantId: string, moneda: string | null) => {
+    const t = await app.prisma.tenant.findUnique({ where: { id: tenantId }, select: { resultadosConfig: true } }).catch(() => null);
+    const over = (t?.resultadosConfig as any)?.ivaTasa as Record<string, number> | undefined;
+    if (moneda && over && over[moneda] !== undefined) return Number(over[moneda]);
+    return moneda ? (IVA_TASA[moneda] ?? 0.21) : 0.21;
+  };
 
   app.get('/iva-credito', async (req: FastifyRequest, reply: FastifyReply) => {
     const tenantId = await getEffectiveTenantId(req, app.prisma);
@@ -1474,7 +1488,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const q = req.query as any;
     const anio = Number(q.anio) || new Date().getUTCFullYear();
     const moneda = q.moneda || null;
-    const tasa = moneda ? (IVA_TASA[moneda] ?? 0.21) : 0.21;
+    const tasa = await tasaIva(tenantId, moneda);
     const hoy = new Date();
     const ultimoMes = anio === hoy.getUTCFullYear() ? hoy.getUTCMonth() + 1 : 12;
     const lineas = await recolectarLineas(tenantId, new Date(Date.UTC(anio, 0, 1)), new Date(Date.UTC(anio, ultimoMes, 1)), moneda, q.centroCostoId || null);
@@ -1512,6 +1526,8 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const umbrales = ((tenant?.resultadosConfig as any)?.alertas) || {};
     const UMB_AT = num(umbrales.atencion) || 10;
     const UMB_CR = num(umbrales.critica) || 25;
+    const ivaOver = ((tenant?.resultadosConfig as any)?.ivaTasa as Record<string, number> | undefined) || {};
+    const tasaIvaAlerta = moneda && ivaOver[moneda] !== undefined ? Number(ivaOver[moneda]) : moneda ? (IVA_TASA[moneda] ?? 0.21) : 0.21;
 
     const desde = new Date(Date.UTC(anio, mes - 1, 1));
     const hasta = new Date(Date.UTC(anio, mes, 1));
@@ -1593,7 +1609,7 @@ export default async function finanzasRoutes(app: FastifyInstance) {
     const combSinIva = lineas.filter(l => l.fuente === 'COMBUSTIBLE' && l.ivaRecuperable !== false && num(l.iva) === 0 && num(l.ivaBruto) > 0);
     if (combSinIva.length > 0) {
       const bruto = combSinIva.reduce((s, l) => s + num(l.ivaBruto), 0);
-      push('INFO', 'IVA_SIN_DESAGREGAR', `${combSinIva.length} cargas de combustible sin IVA desagregado — posible crédito fiscal sin evidenciar`, bruto * 0.21 / 1.21);
+      push('INFO', 'IVA_SIN_DESAGREGAR', `${combSinIva.length} cargas de combustible sin IVA desagregado — posible crédito fiscal sin evidenciar`, tasaIvaAlerta > 0 ? bruto * tasaIvaAlerta / (1 + tasaIvaAlerta) : 0);
     }
 
     // Orden: CRITICA → ATENCION → INFO, dentro por impacto. Máximo 8.
