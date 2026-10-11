@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Wrench, Truck, Container, Link2, CalendarClock,
   ScanLine, PackageSearch, Disc, Fuel, Users, FileWarning, DollarSign,
   FileBarChart, LayoutGrid, ArrowLeft, Settings, Menu, X, TrendingUp, BookOpen,
-  HardHat, Activity, Building2, Briefcase,
+  HardHat, Activity, Building2, Briefcase, Radar,
 } from 'lucide-react';
 
 const GROUPS: { label: string | null; items: { href: string; label: string; icon: any; exact?: boolean }[] }[] = [
@@ -16,6 +16,7 @@ const GROUPS: { label: string | null; items: { href: string; label: string; icon
     label: null,
     items: [
       { href: '/flota-360', label: 'Centro de trabajo', icon: LayoutDashboard, exact: true },
+      { href: '/flota-360/centro-control', label: 'Centro de Control', icon: Radar },
     ],
   },
   {
