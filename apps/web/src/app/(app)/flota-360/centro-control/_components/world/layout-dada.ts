@@ -2,13 +2,12 @@
 // Centro de Control — escenario DADA (predio real)
 // Distribución según referencia aérea del establecimiento:
 //   · Garita y acceso: esquina noroeste, sobre la calle externa norte
-//   · Estacionamiento de livianos: playa de autos en franja norte,
-//     entre la garita y la nave del taller
+//   · Lavadero de camiones: franja norte, entre la garita y el taller
 //   · Taller: nave industrial dominante centro-este (multi-caballete),
 //     con dársenas de camiones en su cara oeste y sur
 //   · Playa de camiones: gran patio de hormigón abierto centro-sur,
 //     con filas de semirremolques DADA al sur
-//   · Depósito: galpón largo pegado al cerco oeste, con silos
+//   · Acopio: patios de guarda a ambos lados de la calle oeste, al sur
 //   · Fuera de servicio: esquina sudeste cercada con rayado
 //   · Inactivas: lote de tierra al este (portón de servicio)
 //   · Alrededores: tierra pelada al noroeste, naves vecinas al noreste,
@@ -46,16 +45,14 @@ export const BUILDINGS: BuildingDef[] = [
   { key: 'garita', model: 'site-office', label: 'GARITA', sub: 'Control de acceso', x: -99, z: -87, rot: 0.5, scale: 1, labelY: 6 },
   // Taller: nave industrial dominante del predio (multi-caballete)
   { key: 'taller', model: 'factory', label: 'TALLER', sub: 'Mantenimiento y reparación', x: 68, z: -24, rot: 0, scale: 1.7, labelY: 30 },
-  { key: 'taller-of', model: 'site-office', label: 'OFICINAS', sub: 'Administración de mantenimiento', x: 44, z: 22, rot: 0, scale: 0.9, labelY: 7 },
-  // Galpón largo del borde oeste (depósito / acopio)
-  { key: 'deposito', model: 'warehouse', label: 'DEPÓSITO', sub: 'Acopio y guarda', x: -101, z: 32, rot: Math.PI / 2, scale: 0.95, labelY: 16 },
+  // Lavadero de camiones (franja norte, junto a la garita)
+  { key: 'lavadero', model: 'car-wash', label: 'LAVADERO', sub: 'Lavado de unidades', x: 20, z: -87, rot: 0, scale: 1.2, labelY: 10 },
   // Naves vecinas del noreste (fondo, fuera del cerco)
   { key: 'vecino-n1', model: 'warehouse', label: '', sub: '', x: 78, z: -140, rot: 0, scale: 1.7, labelY: 20 },
   { key: 'vecino-n2', model: 'factory', label: '', sub: '', x: 143, z: -142, rot: Math.PI / 2, scale: 1.35, labelY: 20 },
   { key: 'vecino-e1', model: 'warehouse', label: '', sub: '', x: 152, z: -60, rot: Math.PI / 2, scale: 1.5, labelY: 20 },
-  // Carteles flotantes de zonas (sin edificio)
-  { key: 'z-park', model: '', label: 'ESTACIONAMIENTO', sub: 'Camiones y semirremolques', x: -8, z: 18, rot: 0, scale: 1, labelY: 9 },
-  { key: 'z-cars', model: '', label: 'ESTACIONAMIENTO', sub: 'Vehículos livianos', x: -14, z: -76, rot: 0, scale: 1, labelY: 7 },
+  // Cartel flotante de zona (sin edificio)
+  { key: 'z-acopio', model: '', label: 'ACOPIO', sub: 'Guarda y repuestos', x: -96, z: 53, rot: 0, scale: 1, labelY: 8 },
 ];
 
 // ── Slots por estado ──
@@ -99,7 +96,7 @@ function shopSlots(): Slot[] {
       approach: [[24, z], [33, z]], exit: [[22, z], [22, 26]],
     });
   });
-  [68, 84, 98].forEach((x, i) => {
+  [52, 68, 84, 98].forEach((x, i) => {
     out.push({
       key: `T-S${i + 1}`, x, z: 20, heading: H_S, attach: [22, 20],
       approach: [[22, 20], [x - 12, 20], [x, 20]], exit: [[x - 12, 20], [22, 20]],
@@ -108,15 +105,14 @@ function shopSlots(): Slot[] {
   return out;
 }
 
-// Vehículos livianos: playa de autos en la franja norte, tres filas
+// Lavadero: 2 boxes de lavado dentro de la nave + cola de espera
 function livianosSlots(): Slot[] {
   const out: Slot[] = [];
-  for (let x = -50; x <= 24; x += 3.4) {
-    out.push({ key: `L-A${out.length + 1}`, x, z: -88, heading: H_S, attach: [-50, -54], approach: [[-50, -60], [x, -60], [x, -82], [x, -88]], exit: [[x, -60], [-50, -60], [-50, -54]] });
-  }
-  for (let x = -50; x <= 24; x += 6.8) {
-    out.push({ key: `L-B${out.length + 1}`, x, z: -78, heading: H_N, attach: [-50, -54], approach: [[-50, -60], [x, -60], [x, -72], [x, -78]], exit: [[x, -60], [-50, -60], [-50, -54]] });
-    out.push({ key: `L-C${out.length + 1}`, x, z: -68, heading: H_S, attach: [-50, -54], approach: [[-50, -60], [x, -60], [x, -68]], exit: [[x, -60], [-50, -60], [-50, -54]] });
+  [10, 25].forEach((x, i) => {
+    out.push({ key: `L-W${i + 1}`, x, z: -87, heading: H_E, attach: [-50, -54], approach: [[-50, -60], [x - 16, -60], [x - 16, -80], [x, -87]], exit: [[x + 8, -87], [40, -80], [40, -60], [-50, -60], [-50, -54]] });
+  });
+  for (let x = -46; x <= 24; x += 7) {
+    out.push({ key: `L-C${out.length + 1}`, x, z: -74, heading: H_N, attach: [-50, -54], approach: [[-50, -60], [x, -60], [x, -74]], exit: [[x, -60], [-50, -60], [-50, -54]] });
   }
   return out;
 }
@@ -188,7 +184,7 @@ export function extraSlots(group: SlotGroup): Slot[] {
       for (let i = 0; i < 4; i++) out.push(mk(`IX${i}`, 154, -16 + i * 10, H_N));
       break;
     case 'livianos':
-      for (let i = 0; i < 6; i++) out.push(mk(`LX${i}`, -50 + i * 6.8, -78, H_N));
+      [-60, -53, 31, 38, 45, 52].forEach((x, i) => out.push(mk(`LX${i}`, x, -74, H_N)));
       break;
     default:
       break;
@@ -210,13 +206,13 @@ export function groupFor(status: VisualStatus, kind: VehicleKind): SlotGroup {
 }
 
 export const GROUP_LABEL: Record<SlotGroup, string> = {
-  park: 'Estacionamiento', semi: 'Semirremolques', shop: 'Taller', hold: 'Fuera de servicio',
-  inactive: 'Inactivas', livianos: 'Vehículos livianos', route: 'En ruta',
+  park: 'Playa de camiones', semi: 'Semirremolques', shop: 'Taller', hold: 'Fuera de servicio',
+  inactive: 'Inactivas', livianos: 'Lavadero', route: 'En ruta',
 };
 
 export const GROUP_ANCHOR: Record<SlotGroup, V2> = {
   park: [-28, -2], semi: [4, 44], shop: [30, -22], hold: [92, 40],
-  inactive: [132, 6], livianos: [-14, -76], route: [60, HIGHWAY_Z - 9],
+  inactive: [132, 6], livianos: [-10, -78], route: [60, HIGHWAY_Z - 9],
 };
 
 // ── Sectores para navegación de cámara ──
@@ -224,8 +220,8 @@ export const SECTORS: Sector[] = [
   { key: 'general', label: 'Vista general', x: -2, z: -14, zoom: 1.5 },
   { key: 'garita', label: 'Garita', x: -88, z: -74, zoom: 3.2 },
   { key: 'taller', label: 'Taller', x: 62, z: -22, zoom: 2.2 },
-  { key: 'parking', label: 'Estacionamiento', x: -10, z: 16, zoom: 2.4 },
-  { key: 'livianos', label: 'Vehículos livianos', x: -14, z: -76, zoom: 3 },
+  { key: 'parking', label: 'Playa de camiones', x: -10, z: 16, zoom: 2.4 },
+  { key: 'livianos', label: 'Lavadero', x: -10, z: -78, zoom: 3 },
   { key: 'hold', label: 'Fuera de servicio', x: 90, z: 40, zoom: 3 },
 ];
 
@@ -254,16 +250,24 @@ function buildPropsList(): { props: PropDef[]; lamps: V2[] } {
   // Portón de servicio este + lote de inactivas
   p('traffic-barrel', 108, 20); p('traffic-barrel', 108, 32);
   p('dumpster', 150, -20, 0);
-  // Silos junto a la punta sur del depósito (como en la imagen)
-  for (let i = 0; i < 4; i++) p('fuel-tank', -104 + i * 3.4, 49 + i * 1.6, Math.PI / 2, 1.1);
+  // Tanques de agua del lavadero (a la espalda de la nave)
+  p('fuel-tank', 36, -91, 0, 1); p('fuel-tank', 36, -85, 0, 1);
+  p('traffic-barrel', 3, -80); p('traffic-barrel', 34, -80);
+  p('toolbox', 4, -90, 0.4);
+  // Patio de acopio oeste: racks, pallets y caños a ambos lados de la calle
+  for (let z = 12; z <= 42; z += 6) { p('pallet-rack', -103, z, Math.PI / 2); p('pallet-rack', -96, z, Math.PI / 2); }
+  for (let z = 12; z <= 30; z += 6) p('pallet-rack', -70, z, Math.PI / 2);
+  for (let i = 0; i < 6; i++) p('wooden-pallet', -104 + (i % 3) * 5, 48 + Math.floor(i / 3) * 4, i * 0.3);
+  for (let i = 0; i < 4; i++) p('concrete-pipe', -68, 36 + i * 4.4, Math.PI / 2);
+  for (let i = 0; i < 3; i++) p('gas-cylinder', -93 + i * 1.4, 20 + (i % 2) * 2);
+  p('steel-beam-stack', -99, 44, Math.PI / 2); p('conveyor-belt', -99, 38, Math.PI / 2);
+  p('toolbox', -92, 14, -0.3); p('dumpster', -66, 54, Math.PI / 2);
   // Silos y torre del fondo noreste (vecinos, como en la imagen)
   for (let i = 0; i < 3; i++) p('fuel-tank', 116 + i * 8.5, -72, 0, 1.25);
   p('water-tower', 132, -58, 0, 0.85);
-  // Autos de personal (relleno visual de la playa de livianos)
-  const cars = ['hatchback', 'pickup-truck', 'hatchback', 'hatchback', 'delivery-van', 'hatchback'];
-  [-43.2, -36.4, -29.6, -15.2, -8.4, -1.6].forEach((x, i) => p(cars[i], x, -64.5, i % 2 ? Math.PI : 0));
-  const cars2 = ['hatchback', 'hatchback', 'delivery-van', 'pickup-truck', 'hatchback', 'hatchback', 'hatchback', 'delivery-van', 'pickup-truck', 'hatchback', 'hatchback', 'hatchback'];
-  for (let i = 0; i < cars2.length; i++) p(cars2[i], -46.6 + i * 6.4, -84, Math.PI);
+  // Algunos livianos de personal cerca del lavadero
+  const cars = ['hatchback', 'pickup-truck', 'hatchback'];
+  [-43.2, -36.4, -29.6].forEach((x, i) => p(cars[i], x, -64.5, i % 2 ? Math.PI : 0));
   // Luminarias
   const lamps: V2[] = [];
   const lamp = (x: number, z: number, r: number) => { props.push({ n: 'street-light', x, z, r, lamp: true }); lamps.push([x, z]); };
@@ -312,7 +316,8 @@ function buildVegetationList(): VegItem[] {
   for (let x = 34; x < 100; x += 11) plant(x, -80);            // jardín noreste interior
   for (let x = 34; x < 100; x += 11) { if (r() > 0.4) plant(x + 5, -86); }
   for (let z = -50; z < 0; z += 12) plant(106, z);             // borde este del taller
-  for (let x = -100; x < -80; x += 9) plant(x, 52);            // sudoeste junto al depósito
+  items.push({ x: -60, z: 54, model: 'oak-tree', scale: 1.1 });
+  items.push({ x: -56, z: 46, model: 'oak-tree', scale: 1 });
   for (let x = -52; x <= 60; x += 6) hedge(x, -59.5);          // seto divisor de la playa de autos
   bush(-100, -80); bush(-104, -72); bush(-76, -52); bush(28, -56);
   items.push({ x: -66, z: 46, model: 'oak-tree', scale: 1.2 });
@@ -328,7 +333,7 @@ const WALKERS: WalkerDef[] = [
   { model: 'people/character-female-b', path: [[28, -10]], idle: 'interact-right' },            // mecánico en dársena
   { model: 'people/character-male-a', path: [[96, 12]], idle: 'pick-up' },                      // operario con pallets
   { model: 'people/character-male-c', path: [[-44, 34], [44, 34]] },                            // operario por las filas de semis
-  { model: 'people/character-female-b', path: [[-48, -58], [12, -58]] },                        // personal hacia la playa
+  { model: 'people/character-female-b', path: [[-16, -70], [20, -70]] },                        // operaria del lavadero
 ];
 
 const SHUTTLES: ShuttleDef[] = [
@@ -354,7 +359,6 @@ export function paintYard(t: GroundTools) {
   lawn(-76, -68, -62, -58);            // isla del acceso (junto a la garita)
   lawn(32, -92, 100, -62);             // jardín noreste interior
   lawn(102, -92, 108, 24);             // franja este interior
-  lawn(-108, -62, -94, -8);            // franja oeste interior (sobre el depósito)
   lawn(-108, -92, -60, -70);           // entorno de la garita
   lawn(-108, 52, -94, 56);             // esquina sudoeste
 
@@ -370,8 +374,11 @@ export function paintYard(t: GroundTools) {
   asphalt(44, 4, 106, 20);
   // Losa de la nave del taller
   t.concrete(34, -58, 102, 8);
-  // Playa de vehículos livianos (franja norte)
+  // Apron del lavadero (franja norte)
   asphalt(-52, -92, 28, -62);
+  // Patios de acopio del oeste (a ambos lados de la calle)
+  t.concrete(-106, 8, -90, 56);
+  t.concrete(-74, 8, -64, 56);
   // Franja de semirremolques (sur)
   asphalt(-58, 32, 66, 56);
   // Calle al portón de servicio este
@@ -409,10 +416,14 @@ export function paintYard(t: GroundTools) {
     line(s.x - 4.4, z0, s.x - 4.4, z0 + 12, WHITE, 0.13);
     line(s.x + 4.4, z0, s.x + 4.4, z0 + 12, WHITE, 0.13);
   }
-  // Cajones de la playa de livianos
+  // Carriles del lavadero: dos vías de lavado + cola pintada
+  line(2, -92, 2, -78, WHITE, 0.13);
+  line(36, -92, 36, -78, WHITE, 0.13);
+  line(19, -92, 19, -66, WHITE, 0.1, [2.5, 2.5]);
+  text('LAVADERO', 10, -63.5, 'rgba(240,240,232,.7)', 2.4);
   for (const s of SLOTS.livianos) {
-    const z0 = s.key.startsWith('L-A') ? -92 : s.key.startsWith('L-B') ? -80 : -70;
-    line(s.x - 1.6, z0, s.x - 1.6, z0 + 6, WHITE, 0.1);
+    if (s.key.startsWith('L-W')) continue;
+    line(s.x - 3.4, -78, s.x - 3.4, -70, WHITE, 0.1);
   }
 
   // Dársenas del taller: recuadros amarillos frente a los portones

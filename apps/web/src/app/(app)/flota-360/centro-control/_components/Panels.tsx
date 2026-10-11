@@ -259,11 +259,11 @@ const SECTOR_KPIS: Record<string, { title: string; metrics: (units: CCUnit[], kp
     ],
   },
   livianos: {
-    title: 'Vehículos livianos',
+    title: 'Lavadero',
     metrics: (units) => [
-      { label: 'Disponibles', value: `${units.filter((u) => u.status === 'disponible' && /PICKUP|CAMIONETA|AUTO|LIVIANO/i.test(u.tipo)).length}` },
-      { label: 'En servicio', value: `${units.filter((u) => u.status === 'en_viaje' && /PICKUP|CAMIONETA|AUTO|LIVIANO/i.test(u.tipo)).length}` },
-      { label: 'Inmovilizados', value: `${units.filter((u) => /PICKUP|CAMIONETA|AUTO|LIVIANO/i.test(u.tipo) && (u.status === 'en_taller' || u.status === 'fuera_servicio')).length}` },
+      { label: 'En cola / lavado', value: `${units.filter((u) => u.status === 'disponible' && /PICKUP|CAMIONETA|AUTO|LIVIANO/i.test(u.tipo)).length}` },
+      { label: 'Livianos en servicio', value: `${units.filter((u) => u.status === 'en_viaje' && /PICKUP|CAMIONETA|AUTO|LIVIANO/i.test(u.tipo)).length}` },
+      { label: 'Livianos inmovilizados', value: `${units.filter((u) => /PICKUP|CAMIONETA|AUTO|LIVIANO/i.test(u.tipo) && (u.status === 'en_taller' || u.status === 'fuera_servicio')).length}` },
     ],
   },
 };
