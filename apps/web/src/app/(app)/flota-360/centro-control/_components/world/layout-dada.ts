@@ -10,8 +10,9 @@
 //   · Acopio: patios de guarda a ambos lados de la calle oeste, al sur
 //   · Fuera de servicio: esquina sudeste cercada con rayado
 //   · Inactivas: lote de tierra al este (portón de servicio)
-//   · Alrededores: tierra pelada al noroeste, naves vecinas al noreste,
-//     franja de pasto y árboles al este
+//   · Frente del taller (sur): boxes interiores con unidad a medio entrar
+//     + dársenas amplias de espera identificadas con recuadro amarillo
+//   · Alrededores: tierra pelada al noroeste, franja de pasto y árboles al este
 // Eje X = este, eje Z = sur. La cámara mira desde el sudeste.
 // ============================================================
 import type { VisualStatus } from '../types';
@@ -44,13 +45,9 @@ const H_W = -Math.PI / 2;   // mirando al oeste (-X): culata contra la nave
 export const BUILDINGS: BuildingDef[] = [
   { key: 'garita', model: 'site-office', label: 'GARITA', sub: 'Control de acceso', x: -99, z: -87, rot: 0.5, scale: 1, labelY: 6 },
   // Taller: nave industrial dominante del predio (multi-caballete)
-  { key: 'taller', model: 'factory', label: 'TALLER', sub: 'Mantenimiento y reparación', x: 68, z: -24, rot: 0, scale: 1.7, labelY: 30 },
+  { key: 'taller', model: 'factory', label: 'TALLER', sub: 'Mantenimiento y reparación', x: 64, z: -20, rot: 0, scale: 1.8, labelY: 30 },
   // Lavadero de camiones (franja norte, junto a la garita)
   { key: 'lavadero', model: 'car-wash', label: 'LAVADERO', sub: 'Lavado de unidades', x: 20, z: -87, rot: 0, scale: 1.2, labelY: 10 },
-  // Naves vecinas del noreste (fondo, fuera del cerco)
-  { key: 'vecino-n1', model: 'warehouse', label: '', sub: '', x: 78, z: -140, rot: 0, scale: 1.7, labelY: 20 },
-  { key: 'vecino-n2', model: 'factory', label: '', sub: '', x: 143, z: -142, rot: Math.PI / 2, scale: 1.35, labelY: 20 },
-  { key: 'vecino-e1', model: 'warehouse', label: '', sub: '', x: 152, z: -60, rot: Math.PI / 2, scale: 1.5, labelY: 20 },
   // Cartel flotante de zona (sin edificio)
   { key: 'z-acopio', model: '', label: 'ACOPIO', sub: 'Guarda y repuestos', x: -96, z: 53, rot: 0, scale: 1, labelY: 8 },
 ];
@@ -87,19 +84,20 @@ function semiSlots(): Slot[] {
   return out;
 }
 
-// Dársenas del taller: cara oeste (culata a la nave) + cara sur
+// Taller: boxes interiores (unidad a medio entrar por el portón del frente)
+// + dársenas de espera amplias sobre el frente sur (esperando reparación)
 function shopSlots(): Slot[] {
   const out: Slot[] = [];
-  [-46, -34, -22, -10, 2].forEach((z, i) => {
+  [50, 66, 82].forEach((x, i) => {
     out.push({
-      key: `T-W${i + 1}`, x: 33, z, heading: H_W, attach: [22, z],
-      approach: [[24, z], [33, z]], exit: [[22, z], [22, 26]],
+      key: `T-I${i + 1}`, x, z: 15.5, heading: H_N, attach: [20, 24],
+      approach: [[20, 24], [x - 14, 24], [x, 15.5]], exit: [[x - 14, 24], [20, 24]],
     });
   });
-  [52, 68, 84, 98].forEach((x, i) => {
+  [44, 60, 76, 92].forEach((x, i) => {
     out.push({
-      key: `T-S${i + 1}`, x, z: 20, heading: H_S, attach: [22, 20],
-      approach: [[22, 20], [x - 12, 20], [x, 20]], exit: [[x - 12, 20], [22, 20]],
+      key: `T-S${i + 1}`, x, z: 26, heading: H_N, attach: [20, 24],
+      approach: [[20, 24], [x - 14, 24], [x, 26]], exit: [[x - 14, 24], [20, 24]],
     });
   });
   return out;
@@ -175,7 +173,7 @@ export function extraSlots(group: SlotGroup): Slot[] {
       out.push(mk('SX-B0', 21, 52, H_N)); out.push(mk('SX-B1', 57, 52, H_N)); out.push(mk('SX-B2', -51, 52, H_N));
       break;
     case 'shop':
-      out.push(mk('TX0', 36, 20, H_S)); out.push(mk('TX1', 56, 20, H_S));
+      for (let i = 0; i < 3; i++) out.push(mk(`TX${i}`, 23, -2 - i * 14, H_W));
       break;
     case 'hold':
       [36, 46].forEach((z, r) => out.push(mk(`HX${r}`, 76, z, H_E)));
@@ -211,7 +209,7 @@ export const GROUP_LABEL: Record<SlotGroup, string> = {
 };
 
 export const GROUP_ANCHOR: Record<SlotGroup, V2> = {
-  park: [-28, -2], semi: [4, 44], shop: [30, -22], hold: [92, 40],
+  park: [-28, -2], semi: [4, 44], shop: [66, 22], hold: [92, 40],
   inactive: [132, 6], livianos: [-10, -78], route: [60, HIGHWAY_Z - 9],
 };
 
@@ -219,7 +217,7 @@ export const GROUP_ANCHOR: Record<SlotGroup, V2> = {
 export const SECTORS: Sector[] = [
   { key: 'general', label: 'Vista general', x: -2, z: -14, zoom: 1.5 },
   { key: 'garita', label: 'Garita', x: -88, z: -74, zoom: 3.2 },
-  { key: 'taller', label: 'Taller', x: 62, z: -22, zoom: 2.2 },
+  { key: 'taller', label: 'Taller', x: 64, z: -18, zoom: 2.2 },
   { key: 'parking', label: 'Playa de camiones', x: -10, z: 16, zoom: 2.4 },
   { key: 'livianos', label: 'Lavadero', x: -10, z: -78, zoom: 3 },
   { key: 'hold', label: 'Fuera de servicio', x: 90, z: 40, zoom: 3 },
@@ -234,15 +232,15 @@ function buildPropsList(): { props: PropDef[]; lamps: V2[] } {
   p('bollard', -94, -95); p('bollard', -78, -95);
   p('stop-sign', -77.5, -90, Math.PI / 2);
   p('traffic-barrel', -94, -60); p('traffic-barrel', -78, -60);
-  // Dársenas del taller: herramientas junto a la cara oeste
-  p('workbench', 36, -52); p('toolbox', 38.5, -52.3, 0.4);
-  p('air-compressor', 36, 6, Math.PI); p('toolbox', 34, 6.5, -0.3);
-  p('gas-cylinder', 37, -49.5); p('gas-cylinder', 37.8, -48.7);
+  // Junto a los portones del taller: bancos de trabajo y herramientas
+  p('workbench', 40, 17); p('toolbox', 42.5, 17.3, 0.4);
+  p('air-compressor', 96, 17, Math.PI); p('toolbox', 94, 17.5, -0.3);
+  p('gas-cylinder', 43, 19.5); p('gas-cylinder', 43.8, 20.3);
   p('dumpster', 106, 12, Math.PI / 2);
-  // Pallets y acopio en la cara sur del taller (como en la imagen)
-  for (let i = 0; i < 9; i++) p('wooden-pallet', 94 + (i % 3) * 2.4, 10 + Math.floor(i / 3) * 2.6, i * 0.2);
-  p('cardboard-box-stack', 100, 9, 0.3); p('cardboard-box-stack', 102.4, 10.2, -0.4);
-  p('pallet-jack', 90, 12, 0.8); p('pallet-jack', 104, 16, -0.6);
+  // Pallets junto al borde oeste del frente del taller
+  for (let i = 0; i < 9; i++) p('wooden-pallet', 26 + (i % 3) * 2.4, 14 + Math.floor(i / 3) * 2.6, i * 0.2);
+  p('cardboard-box-stack', 34, 16.5, 0.3); p('cardboard-box-stack', 36.5, 17.5, -0.4);
+  p('pallet-jack', 40, 16, -0.6); p('pallet-jack', 104, 16, -0.6);
   p('steel-beam-stack', 108, 18, Math.PI / 2); p('concrete-pipe', 110, 24, Math.PI / 2);
   // Sector fuera de servicio: barreras perimetrales
   for (let i = 0; i < 5; i++) p('jersey-barrier', 78, 32 + i * 4.6, Math.PI / 2);
@@ -262,9 +260,6 @@ function buildPropsList(): { props: PropDef[]; lamps: V2[] } {
   for (let i = 0; i < 3; i++) p('gas-cylinder', -93 + i * 1.4, 20 + (i % 2) * 2);
   p('steel-beam-stack', -99, 44, Math.PI / 2); p('conveyor-belt', -99, 38, Math.PI / 2);
   p('toolbox', -92, 14, -0.3); p('dumpster', -66, 54, Math.PI / 2);
-  // Silos y torre del fondo noreste (vecinos, como en la imagen)
-  for (let i = 0; i < 3; i++) p('fuel-tank', 116 + i * 8.5, -72, 0, 1.25);
-  p('water-tower', 132, -58, 0, 0.85);
   // Algunos livianos de personal cerca del lavadero
   const cars = ['hatchback', 'pickup-truck', 'hatchback'];
   [-43.2, -36.4, -29.6].forEach((x, i) => p(cars[i], x, -64.5, i % 2 ? Math.PI : 0));
@@ -329,15 +324,14 @@ function buildVegetationList(): VegItem[] {
 const WALKERS: WalkerDef[] = [
   { model: 'people/character-male-e', path: [[-84, -89]], idle: 'idle' },                       // guardia en la garita
   { model: 'people/character-male-a', path: [[26, -44], [26, -6]] },                            // mecánico por las dársenas
-  { model: 'people/character-male-c', path: [[28, -34]], idle: 'interact-right' },              // mecánico en dársena
-  { model: 'people/character-female-b', path: [[28, -10]], idle: 'interact-right' },            // mecánico en dársena
-  { model: 'people/character-male-a', path: [[96, 12]], idle: 'pick-up' },                      // operario con pallets
+  { model: 'people/character-male-c', path: [[42, 23]], idle: 'interact-right' },              // mecánico en dársena de espera
+  { model: 'people/character-female-b', path: [[88, 23]], idle: 'interact-right' },            // mecánico en dársena de espera
+  { model: 'people/character-male-a', path: [[29, 15]], idle: 'pick-up' },                      // operario con pallets
   { model: 'people/character-male-c', path: [[-44, 34], [44, 34]] },                            // operario por las filas de semis
   { model: 'people/character-female-b', path: [[-16, -70], [20, -70]] },                        // operaria del lavadero
 ];
 
 const SHUTTLES: ShuttleDef[] = [
-  { a: [[24, -40], [30, -28], [36, -18]], start: [20, -46] },  // autoelevador del taller
   { a: [[-44, 36], [4, 36], [40, 36]], start: [-50, 38] },     // autoelevador de los semis
 ];
 
@@ -369,11 +363,11 @@ export function paintYard(t: GroundTools) {
   asphalt(RING.x0 - hw, RING.z1 - hw, RING.x1 + hw, RING.z1 + hw);  // calle sur
   asphalt(RING.x0 - hw, RING.z0 - hw, RING.x0 + hw, RING.z1 + hw);  // calle oeste
   asphalt(RING.x1 - hw, RING.z0 - hw, RING.x1 + hw, RING.z1 + hw);  // calle este
-  // Apron de dársenas del taller (cara oeste y sur)
-  asphalt(22, -58, 44, 10);
-  asphalt(44, 4, 106, 20);
+  // Apron oeste del taller (calle de maniobra) + frente sur amplio con dársenas
+  asphalt(14, -54, 28, 12);
+  asphalt(20, 14, 104, 32);
   // Losa de la nave del taller
-  t.concrete(34, -58, 102, 8);
+  t.concrete(28, -56, 102, 14);
   // Apron del lavadero (franja norte)
   asphalt(-52, -92, 28, -62);
   // Patios de acopio del oeste (a ambos lados de la calle)
@@ -386,8 +380,7 @@ export function paintYard(t: GroundTools) {
   // Zona fuera de servicio: piso de hormigón
   t.concrete(76, 30, 106, 52);
 
-  // Veredas junto al taller y la garita
-  vereda(44, -54, 46, 4);
+  // Vereda junto a la garita
   vereda(-102, -92, -92, -84);
 
   // Eje central del lazo (discontinuo) + bordes
@@ -426,12 +419,13 @@ export function paintYard(t: GroundTools) {
     line(s.x - 3.4, -78, s.x - 3.4, -70, WHITE, 0.1);
   }
 
-  // Dársenas del taller: recuadros amarillos frente a los portones
+  // Dársenas de espera del taller: recuadros amarillos amplios (esperan reparación)
   for (const s of SLOTS.shop) {
+    if (s.key.startsWith('T-I')) continue;   // boxes interiores: sin recuadro
     t.g.strokeStyle = YELLOW; t.g.lineWidth = 0.18 * t.S;
-    if (s.key.startsWith('T-W')) t.g.strokeRect(t.X(30), t.Z(s.z - 3.6), 16 * t.S, 7.2 * t.S);
-    else t.g.strokeRect(t.X(s.x - 8), t.Z(15), 16 * t.S, 11 * t.S);
+    t.g.strokeRect(t.X(s.x - 8), t.Z(19.5), 16 * t.S, 13 * t.S);
   }
+  text('ESPERA TALLER', 62, 33.8, 'rgba(245,197,24,.7)', 2.2);
   // Sector fuera de servicio: rayado + leyenda
   hatchRect(76, 30, 106, 52);
   text('FUERA DE SERVICIO', 91, 34.4, 'rgba(245,197,24,.75)', 2.2);
