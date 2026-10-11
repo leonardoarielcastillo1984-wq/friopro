@@ -14,6 +14,10 @@ import { fetchCentroData } from './_components/data';
 import { applyDemoTick, advanceRoute, createDemoState, demoKpis } from './_components/DemoEngine';
 import type { CCUnit, CCEvent, Kpis, Mode, DemoSpeed } from './_components/types';
 import { scenarioForTenant } from './_components/world/scenario';
+import Taller3D from './_components/Taller3D';
+import TallerPanel from './_components/TallerPanel';
+import { fetchTallerResumen, demoTallerSnapshot } from './_components/taller-data';
+import { buildTallerAlertas, type TallerSnapshot } from './_components/taller-types';
 import './centro.css';
 
 const POLL_MS = 30_000;
@@ -32,6 +36,9 @@ export default function CentroControlPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [sector, setSector] = useState('general');
+  const [tallerInside, setTallerInside] = useState(false);
+  const [tallerSnap, setTallerSnap] = useState<TallerSnapshot | null>(null);
+  const [tallerAttention, setTallerAttention] = useState(false);
   const restoreRef = useRef<{ unitId?: string; sector?: string } | null>(null);
   const restored = useRef(false);
 
@@ -84,6 +91,16 @@ export default function CentroControlPage() {
     const t = setInterval(() => { if (!document.hidden) loadReal(); }, POLL_MS);
     return () => clearInterval(t);
   }, [mode, loadReal]);
+
+  // ── Taller Inteligente: snapshot agregado (REAL) o demo ──
+  const inTaller = sector === 'taller' || tallerInside;
+  useEffect(() => {
+    if (!inTaller) return;
+    if (mode === 'demo') { setTallerSnap(demoTallerSnapshot(units)); return; }
+    let alive = true;
+    fetchTallerResumen().then((s) => { if (alive) setTallerSnap(s); });
+    return () => { alive = false; };
+  }, [inTaller, mode, units]);
 
   // ── Modo demo: tick engine ──
   useEffect(() => {
@@ -190,17 +207,56 @@ export default function CentroControlPage() {
       {/* main grid */}
       <div className="cc-main">
         <div className="cc-area-map">
-          <Scene3D
-            units={units}
-            selectedId={selected?.id ?? null}
-            onSelect={onSelect}
-            flashId={flashId}
-            mode={mode}
-            sector={sector}
-            onSectorChange={setSector}
-            scenario={scenario}
-          />
-          <SectorPanel sector={sector} units={units} kpis={kpis} scenario={scenario} />
+          {tallerInside ? (
+            <Taller3D
+              snapshot={tallerSnap}
+              selectedUnitId={selected?.id ?? null}
+              attentionIds={tallerAttention && tallerSnap ? new Set(buildTallerAlertas(tallerSnap).map((a) => a.unidadId).filter(Boolean) as string[]) : null}
+              onSelectUnit={onSelectById}
+              onSelectBay={(key) => {
+                const idx = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'].indexOf(key);
+                const ocupadas = tallerSnap?.unidadesTaller
+                  .filter((u) => u.fechaIngresoTaller || ['EN_TALLER', 'EN_REPARACION'].includes(u.estadoOperativo))
+                  .sort((a, b) => (a.fechaIngresoTaller ?? '').localeCompare(b.fechaIngresoTaller ?? '')) ?? [];
+                const u = ocupadas[idx];
+                if (u) onSelectById(u.id);
+              }}
+            />
+          ) : (
+            <Scene3D
+              units={units}
+              selectedId={selected?.id ?? null}
+              onSelect={onSelect}
+              flashId={flashId}
+              mode={mode}
+              sector={sector}
+              onSectorChange={setSector}
+              scenario={scenario}
+            />
+          )}
+          {!tallerInside && <SectorPanel sector={sector} units={units} kpis={kpis} scenario={scenario} />}
+          {inTaller && tallerSnap && (
+            <div className="cc-taller-overlay">
+              <div className="cc-taller-head">
+                <b>TALLER</b>
+                <small>{tallerSnap.kpis.unidadesEnTaller} unidades · {tallerSnap.kpis.otsAbiertas} OTs</small>
+                <button
+                  className="cc-taller-toggle"
+                  onClick={() => setTallerInside((v) => !v)}
+                >
+                  {tallerInside ? '← Volver al predio' : 'Ingresar al taller 3D'}
+                </button>
+              </div>
+              <TallerPanel
+                snapshot={tallerSnap}
+                mode={mode}
+                attention={tallerAttention}
+                onToggleAttention={() => setTallerAttention((v) => !v)}
+                onSelectUnit={onSelectById}
+                onChanged={loadReal}
+              />
+            </div>
+          )}
         </div>
         <aside className="cc-side">
           {selected && <UnitDetail unit={selected} detail={detail} loading={detailLoading} />}

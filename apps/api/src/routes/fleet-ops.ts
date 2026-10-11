@@ -5160,4 +5160,230 @@ export default async function fleetOpsRoutes(app: FastifyInstance) {
     const delConjunto = await restriccionesDelConjunto(prisma(), tenantId, id);
     return reply.send({ restricciones, conjunto: delConjunto.conjunto, restriccionesConjunto: delConjunto.restricciones });
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // TALLER RESUMEN — snapshot agregado de solo lectura para el
+  // Taller Inteligente 3D del Centro de Control. No escribe nada;
+  // compone OTs, episodios de indisponibilidad, mecánicos FLEET,
+  // repuestos comprometidos y KPIs derivados (MTTR, costo del mes,
+  // cumplimiento preventivo).
+  // ─────────────────────────────────────────────────────────────
+  app.get('/taller-resumen', async (req: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = await getEffectiveTenantId(req, app.prisma);
+    if (!tenantId) return reply.code(401).send({ error: 'Unauthorized' });
+    const p = prisma();
+    const now = new Date();
+    const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1);
+    const hace90 = new Date(now.getTime() - 90 * 86400e3);
+
+    // Assets de flota: maintenanceAssetId de cada Vehiculo (misma regla que maintenance.ts scope=fleet)
+    const vehiculos = await p.vehiculo.findMany({
+      where: { tenantId, deletedAt: null },
+      select: {
+        id: true, dominio: true, tipo: true, marca: true, modelo: true,
+        estadoOperativo: true, status: true, currentOdometer: true,
+        maintenanceAssetId: true, estadoComentario: true,
+      },
+    });
+    const assetPorVeh = new Map(vehiculos.filter((v: any) => v.maintenanceAssetId).map((v: any) => [v.maintenanceAssetId, v]));
+    const vehPorId = new Map(vehiculos.map((v: any) => [v.id, v]));
+    const fleetAssetIds = [...assetPorVeh.keys()];
+
+    const [otsAbiertas, episodios, mecanicos, costsMes, otsCompletadas90, planesEjecutados, planesProgramados] = await Promise.all([
+      p.workOrder.findMany({
+        where: {
+          tenantId,
+          status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] },
+          OR: [{ assetId: { in: fleetAssetIds } }, { asset: { category: 'VEHICLE' } }],
+        },
+        include: {
+          asset: { select: { id: true, name: true, code: true, category: true } },
+          technician: { select: { id: true, name: true, code: true, specialization: true, availabilityStatus: true } },
+          taller: { select: { id: true, nombre: true, tipo: true } },
+          tareas: { select: { id: true, status: true, plan: { select: { title: true, componentKey: true } } } },
+          sparePartsUsed: {
+            include: { sparePart: { select: { id: true, name: true, code: true, currentStock: true } } },
+          },
+        },
+        orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+        take: 150,
+      }),
+      p.unidadIndisponibilidad.findMany({
+        where: { tenantId, estado: 'ABIERTA' },
+        include: {
+          vehiculo: { select: { id: true, dominio: true, tipo: true, estadoOperativo: true, estadoComentario: true } },
+          etapas: { orderBy: { inicioAt: 'desc' }, take: 1 },
+        },
+        orderBy: { inicioAt: 'asc' },
+        take: 200,
+      }),
+      p.maintenanceTechnician.findMany({
+        where: { tenantId, isActive: true, scope: 'FLEET' },
+        select: {
+          id: true, code: true, name: true, specialization: true,
+          availabilityStatus: true, dailyCapacityHours: true,
+          workOrders: {
+            where: { status: { in: ['PENDING', 'IN_PROGRESS', 'ON_HOLD'] } },
+            select: { id: true, code: true, status: true, title: true, priority: true, scheduledDate: true },
+          },
+        },
+        orderBy: { name: 'asc' },
+      }),
+      p.maintenanceCost.findMany({
+        where: { tenantId, date: { gte: mesInicio }, assetId: { in: fleetAssetIds } },
+        select: { amount: true, costType: true, assetId: true, workOrderId: true },
+      }),
+      // MTTR: OTs completadas en 90d con startedAt+completedAt (horas reales de trabajo)
+      p.workOrder.findMany({
+        where: {
+          tenantId, status: 'COMPLETED', completedAt: { gte: hace90 }, startedAt: { not: null },
+          OR: [{ assetId: { in: fleetAssetIds } }, { asset: { category: 'VEHICLE' } }],
+        },
+        select: { startedAt: true, completedAt: true, actualDuration: true, type: true },
+        take: 500,
+      }),
+      // Cumplimiento preventivo: tareas de plan ejecutadas vs programadas en 90d
+      p.workOrderTask.count({ where: { tenantId, status: 'COMPLETED', completedAt: { gte: hace90 } } }),
+      p.workOrderTask.count({ where: { tenantId, createdAt: { gte: hace90 } } }),
+    ]);
+
+    // Índice OT abierta por vehículo (vía asset)
+    const otPorVeh = new Map<string, any>();
+    for (const ot of otsAbiertas) {
+      const v: any = ot.assetId ? assetPorVeh.get(ot.assetId) : null;
+      if (v) otPorVeh.set(v.id, ot);
+    }
+
+    // Repuestos pendientes: ítems PROPIOS no descontados de OTs abiertas con stock insuficiente
+    const repuestosPend: any[] = [];
+    for (const ot of otsAbiertas) {
+      const v: any = ot.assetId ? assetPorVeh.get(ot.assetId) : null;
+      for (const sp of ot.sparePartsUsed ?? []) {
+        if (sp.origen !== 'PROPIO' || sp.stockDeducted) continue;
+        const falta = (sp.sparePart?.currentStock ?? 0) < sp.quantity;
+        repuestosPend.push({
+          workOrderId: ot.id, otCode: ot.code,
+          vehiculoId: v?.id ?? null, vehiculo: v?.dominio ?? null,
+          sparePartId: sp.sparePartId,
+          repuesto: sp.sparePart?.name ?? 'Repuesto',
+          codigo: sp.sparePart?.code ?? null,
+          requerido: sp.quantity, stock: sp.sparePart?.currentStock ?? 0,
+          falta,
+          costoUnit: sp.unitCost,
+        });
+      }
+    }
+
+    // Unidades vinculadas al taller: episodio abierto o estadoOperativo EN_TALLER/EN_REPARACION
+    const epPorVeh = new Map<string, any>((episodios as any[]).map((e: any) => [e.vehiculoId, e]));
+    const unidadesTaller = vehiculos
+      .filter((v: any) => epPorVeh.has(v.id) || ['EN_TALLER', 'EN_REPARACION'].includes(v.estadoOperativo))
+      .map((v: any) => {
+        const ep = epPorVeh.get(v.id);
+        const etapa = ep?.etapas?.[0]?.etapa ?? null;
+        const dias = ep ? Math.floor((now.getTime() - new Date(ep.inicioAt).getTime()) / 86400e3) : null;
+        return {
+          id: v.id, dominio: v.dominio, tipo: v.tipo, marca: v.marca, modelo: v.modelo,
+          estadoOperativo: v.estadoOperativo, estadoComentario: v.estadoComentario,
+          currentOdometer: v.currentOdometer,
+          episodioId: ep?.id ?? null,
+          diasInmovilizada: dias,
+          etapa,
+          tallerTipo: ep?.tallerTipo ?? null,
+          fechaIngresoTaller: ep?.fechaIngresoTaller ?? null,
+          ot: otPorVeh.get(v.id) ? {
+            id: otPorVeh.get(v.id).id, code: otPorVeh.get(v.id).code,
+            title: otPorVeh.get(v.id).title, status: otPorVeh.get(v.id).status,
+            priority: otPorVeh.get(v.id).priority, type: otPorVeh.get(v.id).type,
+          } : null,
+        };
+      });
+
+    const costoMes = costsMes.reduce((s: number, c: any) => s + (c.amount || 0), 0);
+    const porTipo = { PREVENTIVE: 0, CORRECTIVE: 0, PREDICTIVE: 0, EMERGENCY: 0, OTHER: 0 } as Record<string, number>;
+    for (const c of costsMes) porTipo[c.costType] = (porTipo[c.costType] ?? 0) + (c.amount || 0);
+    const porUnidad = new Map<string, number>();
+    for (const c of costsMes) {
+      const v: any = assetPorVeh.get(c.assetId);
+      if (v) porUnidad.set(v.id, (porUnidad.get(v.id) ?? 0) + c.amount);
+    }
+    const costoPorUnidad = [...porUnidad.entries()].map(([id, total]) => ({
+      vehiculoId: id, dominio: (vehPorId.get(id) as any)?.dominio ?? null, total,
+    })).sort((a, b) => b.total - a.total);
+
+    const duraciones = otsCompletadas90.map((o: any) =>
+      (new Date(o.completedAt).getTime() - new Date(o.startedAt).getTime()) / 36e5).filter((h: number) => h >= 0);
+    const mttrHoras = duraciones.length ? duraciones.reduce((a: number, b: number) => a + b, 0) / duraciones.length : null;
+    const prev90 = otsCompletadas90.filter((o: any) => o.type === 'PREVENTIVE').length;
+    const corr90 = otsCompletadas90.filter((o: any) => o.type !== 'PREVENTIVE').length;
+
+    return reply.send({
+      kpis: {
+        unidadesEnTaller: unidadesTaller.filter((u: any) => u.fechaIngresoTaller || ['EN_TALLER', 'EN_REPARACION'].includes(u.estadoOperativo)).length,
+        unidadesInmovilizadas: unidadesTaller.length,
+        otsAbiertas: otsAbiertas.length,
+        otsEnEjecucion: otsAbiertas.filter((o: any) => o.status === 'IN_PROGRESS').length,
+        otsPendientes: otsAbiertas.filter((o: any) => o.status === 'PENDING').length,
+        otsEnEspera: otsAbiertas.filter((o: any) => o.status === 'ON_HOLD').length,
+        otsUrgentes: otsAbiertas.filter((o: any) => ['HIGH', 'CRITICAL'].includes(o.priority)).length,
+        mecanicosTotal: mecanicos.length,
+        mecanicosOcupados: mecanicos.filter((m: any) => m.workOrders.some((o: any) => o.status === 'IN_PROGRESS')).length,
+        mecanicosDisponibles: mecanicos.filter((m: any) => m.availabilityStatus === 'AVAILABLE' && !m.workOrders.some((o: any) => o.status === 'IN_PROGRESS')).length,
+        repuestosFaltantes: repuestosPend.filter((r) => r.falta).length,
+        repuestosComprometidos: repuestosPend.length,
+        costoMes,
+        mttrHoras,
+        trabajosFinalizados90d: otsCompletadas90.length,
+        cumplimientoPreventivoPct: planesProgramados ? Math.round((planesEjecutados / planesProgramados) * 100) : null,
+        preventivoVsCorrectivo: { preventivo: prev90, correctivo: corr90 },
+      },
+      unidadesTaller,
+      ots: otsAbiertas.map((ot: any) => {
+        const v: any = ot.assetId ? assetPorVeh.get(ot.assetId) : null;
+        const tareas = ot.tareas ?? [];
+        return {
+          id: ot.id, code: ot.code, title: ot.title, description: ot.description,
+          type: ot.type, priority: ot.priority, status: ot.status,
+          vehiculoId: v?.id ?? null, vehiculo: v?.dominio ?? null,
+          vehiculoTipo: v?.tipo ?? null,
+          assetNombre: ot.asset?.name ?? ot.activoNombreLibre ?? null,
+          tecnico: ot.technician ? { id: ot.technician.id, name: ot.technician.name, specialization: ot.technician.specialization } : null,
+          taller: ot.taller ? { id: ot.taller.id, nombre: ot.taller.nombre, tipo: ot.taller.tipo } : null,
+          ejecutorTipo: ot.ejecutorTipo,
+          scheduledDate: ot.scheduledDate, startedAt: ot.startedAt, completedAt: ot.completedAt,
+          estimatedDuration: ot.estimatedDuration, actualDuration: ot.actualDuration,
+          fechaIngresoTaller: ot.fechaIngresoTaller, fechaEntregaEstimada: ot.fechaEntregaEstimada,
+          laborCost: ot.laborCost, partsCost: ot.partsCost, totalCost: ot.totalCost,
+          costoExterno: ot.costoExterno,
+          tareas: { total: tareas.length, completadas: tareas.filter((t: any) => t.status === 'COMPLETED').length },
+          repuestos: (ot.sparePartsUsed ?? []).filter((s: any) => s.origen === 'PROPIO' && !s.stockDeducted).map((s: any) => ({
+            id: s.id, repuesto: s.sparePart?.name, cantidad: s.quantity,
+            stock: s.sparePart?.stock ?? 0, falta: (s.sparePart?.stock ?? 0) < s.quantity,
+          })),
+        };
+      }),
+      episodios: episodios.map((e: any) => ({
+        id: e.id, vehiculoId: e.vehiculoId, dominio: e.vehiculo?.dominio,
+        tipo: e.vehiculo?.tipo, estadoOperativo: e.vehiculo?.estadoOperativo,
+        inicioAt: e.inicioAt, motivo: e.motivo, origen: e.origen,
+        dias: Math.floor((now.getTime() - new Date(e.inicioAt).getTime()) / 86400e3),
+        etapa: e.etapas?.[0]?.etapa ?? null,
+        etapaInicioAt: e.etapas?.[0]?.inicioAt ?? null,
+        tallerTipo: e.tallerTipo, tallerNombre: e.tallerNombre,
+        fechaIngresoTaller: e.fechaIngresoTaller, fechaDevolucionEstimada: e.fechaDevolucionEstimada,
+        responsableSeguimientoNombre: e.responsableSeguimientoNombre,
+        workOrderIds: e.workOrderIds,
+      })),
+      mecanicos: mecanicos.map((m: any) => ({
+        id: m.id, code: m.code, name: m.name, specialization: m.specialization,
+        availabilityStatus: m.availabilityStatus, dailyCapacityHours: m.dailyCapacityHours,
+        otsActivas: m.workOrders.filter((o: any) => o.status === 'IN_PROGRESS').length,
+        otsPendientes: m.workOrders.filter((o: any) => o.status !== 'IN_PROGRESS').length,
+        ordenes: m.workOrders,
+      })),
+      repuestosPendientes: repuestosPend,
+      costoPorUnidad,
+      porTipoCosto: porTipo,
+    });
+  });
 }
