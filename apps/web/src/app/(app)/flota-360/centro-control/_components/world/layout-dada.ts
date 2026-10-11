@@ -290,6 +290,10 @@ function buildPropsList(): { props: PropDef[]; lamps: V2[] } {
   lamp(-30, 44, Math.PI); lamp(30, 44, Math.PI);               // filas de semis
   lamp(94, 28, Math.PI);                                       // fuera de servicio
   lamp(120, -20, 0); lamp(146, 28, Math.PI);                   // lote de inactivas
+  // El taller opera 4–23 hs: frente sur bien iluminado + perímetro de la nave
+  for (const x of [36, 52, 68, 84, 100]) lamp(x, 34, Math.PI); // entre dársenas de espera
+  lamp(46, -58, 0); lamp(82, -58, 0);                          // cara norte
+  lamp(104, -20, Math.PI / 2); lamp(24, -32, -Math.PI / 2);    // hastiales este y oeste
   return { props, lamps };
 }
 
