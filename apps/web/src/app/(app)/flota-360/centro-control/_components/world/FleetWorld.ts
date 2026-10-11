@@ -46,7 +46,9 @@ interface Entry {
   tagEl: HTMLDivElement;
   hw?: { dir: 1 | -1; mode: 'loop' | 'leaving' | 'joining' };
   attachedTo?: string | null;   // trailer viajando dentro de la combi de este tractor
+  attachedVia?: 'data' | 'anim';// origen del vínculo: conjunto real (API) o pickup animado
   carrying?: string | null;     // tractor que lleva acoplado este semi (id de unidad)
+  carryingVia?: 'data' | 'anim';
   headlight?: THREE.Sprite;
   taillight?: THREE.Sprite;
   beacon?: THREE.Sprite;
@@ -71,6 +73,7 @@ interface Shuttle {
 }
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
 // Glow radial (halos de luminarias, faros, balizas)
 function radialTexture() {
@@ -426,15 +429,25 @@ export class FleetWorld {
     for (const [id, e] of this.entries) {
       if (!ids.has(id)) { e.vehicle?.dispose(); e.tag.removeFromParent(); this.entries.delete(id); }
     }
-
     // Agrupar por destino
+    const unitsById = new Set(units.map((u) => u.id));
     const byGroup = new Map<SlotGroup, CCUnit[]>();
     for (const u of units) {
-      let g = this.S.groupFor(u.status, kindFor(u.tipo));
-      // Tractor que vuelve acoplado y no desacopla: estaciona el conjunto junto (rig)
+      const kind = kindFor(u.tipo);
+      let g = this.S.groupFor(u.status, kind);
       const prev = this.entries.get(u.id);
-      if (prev?.carrying && u.status === 'disponible' && kindFor(u.tipo) === 'tractor'
-        && this.S.slots.rig?.length && keepsRig(u.id)) g = 'rig';
+      // Semi con tractor presente (conjunto real acoplado): va oculto dentro
+      // de la combi, no consume slot propio
+      if (u.parejaId && kind === 'trailer' && unitsById.has(u.parejaId) && this.S.slots.rig?.length) {
+        const e = prev ?? this.createEntry(u);
+        e.unit = u; e.group = 'rig'; e.slot = null; e.shown = true;
+        e.attachedTo = u.parejaId; e.attachedVia = 'data';
+        this.applyEntry(e, false, animate);
+        continue;
+      }
+      // Tractor acoplado (real o por acople animado) que no desacopla: rig
+      if (u.status === 'disponible' && kind === 'tractor' && this.S.slots.rig?.length
+        && (u.parejaId || (prev?.carrying && keepsRig(u.id)))) g = 'rig';
       if (!byGroup.has(g)) byGroup.set(g, []);
       byGroup.get(g)!.push(u);
     }
@@ -480,7 +493,35 @@ export class FleetWorld {
       }
       overflow.set(group, Math.max(0, list.length - cap));
     }
+    this.syncLinks();
     this.updateBadges(overflow, byGroup);
+  }
+
+  // Vínculos tractor↔semi declarados por la API (conjuntos operativos acoplados).
+  // El tractor muestra su trailer; el semi queda oculto dentro de la combi.
+  private syncLinks() {
+    for (const e of this.entries.values()) {
+      const p = e.unit.parejaId;
+      if (!p || kindFor(e.unit.tipo) !== 'tractor') continue;
+      const te = this.entries.get(p);
+      if (!te || kindFor(te.unit.tipo) !== 'trailer') continue;
+      if (e.carrying !== p) e.carrying = p;
+      e.carryingVia = 'data';
+      if (te.attachedTo !== e.unit.id) { te.attachedTo = e.unit.id; te.attachedVia = 'data'; }
+    }
+    // Limpiar vínculos 'data' que la API ya no reporta (desacople real)
+    for (const e of this.entries.values()) {
+      if (e.carryingVia === 'data' && e.carrying && e.unit.parejaId !== e.carrying) {
+        const te = this.entries.get(e.carrying);
+        if (te?.attachedTo === e.unit.id && te.attachedVia === 'data') { te.attachedTo = null; te.attachedVia = undefined; }
+        e.carrying = null; e.carryingVia = undefined;
+      }
+      if (e.attachedVia === 'data' && e.attachedTo && e.unit.parejaId !== e.attachedTo) {
+        const tr = this.entries.get(e.attachedTo);
+        if (tr?.carrying === e.unit.id && tr.carryingVia === 'data') { tr.carrying = null; tr.carryingVia = undefined; }
+        e.attachedTo = null; e.attachedVia = undefined;
+      }
+    }
   }
 
   private createEntry(u: CCUnit): Entry {
@@ -598,8 +639,20 @@ export class FleetWorld {
     e.outline.position.z = off;
     e.tag.position.set(0, 6, off + (v.kind === 'tractor' ? 2 : 0));
     const crit = e.unit.status === 'fuera_servicio';
-    e.tagEl.innerHTML = `<i style="background:#${color.toString(16).padStart(6, '0')}"></i><span class="cc3-tag-txt"><b>${e.unit.dominio}</b><span class="cc3-tag-sub">${e.unit.statusLabel}</span></span>${crit || e.unit.alerts.length ? '<em aria-hidden="true">!</em>' : ''}`;
-    e.tagEl.dataset.status = e.unit.status;
+    const u = e.unit;
+    // Línea secundaria: estado + destino del servicio vigente (si hay)
+    const dest = u.servicio?.destino || u.servicio?.nombre;
+    const sub = dest ? `${u.statusLabel} · → ${dest}` : u.statusLabel;
+    // Semáforo de mantenimiento: chip "Svc en X km" (o días) por estado
+    let mantHtml = '';
+    if (u.mant) {
+      const rest = u.mant.kmRestantes != null
+        ? `${Math.max(0, Math.round(u.mant.kmRestantes)).toLocaleString('es-AR')} km`
+        : u.mant.diasRestantes != null ? `${Math.round(u.mant.diasRestantes)} d` : '';
+      mantHtml = `<span class="cc3-tag-mant cc3-tag-mant--${u.mant.estado.toLowerCase()}" title="${esc(u.mant.componente)}">◷ Svc${rest ? ` ${rest}` : ''}</span>`;
+    }
+    e.tagEl.innerHTML = `<i style="background:#${color.toString(16).padStart(6, '0')}"></i><span class="cc3-tag-txt"><b>${esc(u.dominio)}</b><span class="cc3-tag-sub">${esc(sub)}</span>${mantHtml}</span>${crit || u.alerts.length ? '<em aria-hidden="true">!</em>' : ''}`;
+    e.tagEl.dataset.status = u.status;
   }
 
   // ── Rutas ──
@@ -754,19 +807,27 @@ export class FleetWorld {
         el.style.pointerEvents = 'auto';
         el.style.cursor = 'pointer';
         el.title = 'Ver unidades agrupadas';
-        el.addEventListener('click', () => this.expandGroup(g));
+        el.addEventListener('click', (ev) => {
+          const t = (ev.target as HTMLElement).closest<HTMLElement>('[data-unit]');
+          if (t?.dataset.unit) { ev.stopPropagation(); this.opts.onSelect(t.dataset.unit); return; }
+          this.expandGroup(g);
+        });
         b = { obj, el };
         this.badges.set(g, b);
       }
       b.obj.visible = true;
-      const total = byGroup.get(g)?.length ?? 0;
-      b.el.innerHTML = `<b>+${n}</b><span>${this.S.groupLabel[g] ?? g} · ${total} en total</span>`;
+      const list = byGroup.get(g) ?? [];
+      b.el.classList.toggle('is-open', this.expandedGroup === g);
+      b.el.innerHTML = `<b>+${n}</b><span>${this.S.groupLabel[g] ?? g} · ${list.length} en total</span>`
+        + `<ul class="cc3-cluster-list">${list.slice(0, 14).map((u) =>
+          `<li><button type="button" data-unit="${u.id}">${esc(u.dominio)}</button></li>`).join('')}</ul>`;
     }
   }
 
   // Despliega las unidades ocultas de un agrupamiento en slots de desborde
+  // (toggle: un segundo click sobre el mismo badge lo colapsa)
   expandGroup(g: SlotGroup) {
-    if (this.expandedGroup === g) return;
+    if (this.expandedGroup === g) { this.collapseGroups(); return; }
     this.expandedGroup = g;
     this.setUnits(this.lastUnits, false);
     const [x, z] = this.S.groupAnchor[g];
@@ -1051,8 +1112,9 @@ export class FleetWorld {
       if (e.headlight) e.headlight.visible = night && v.moving;
       if (e.taillight) e.taillight.visible = night && v.moving;
       if (e.beacon) {
-        const alert = crit || e.unit.alerts.length > 0 || e.group === 'hold';
-        e.beacon.visible = alert && (night || crit) && this.ambientOn;
+        const severe = crit || e.unit.mant?.estado === 'VENCIDO' || e.unit.mant?.estado === 'URGENTE';
+        const alert = severe || e.unit.alerts.length > 0 || e.group === 'hold';
+        e.beacon.visible = alert && (night || severe) && this.ambientOn;
         if (e.beacon.visible) (e.beacon.material as THREE.SpriteMaterial).opacity = 0.35 + 0.55 * Math.abs(Math.sin(this.time * 5 + p.x));
       }
     }

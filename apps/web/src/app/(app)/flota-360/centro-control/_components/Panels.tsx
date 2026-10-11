@@ -155,7 +155,29 @@ export function UnitDetail({ unit, detail, loading }: {
           <div><dt>Próximo service</dt><dd>{k?.proximaFechaMantenimiento ? new Date(k.proximaFechaMantenimiento).toLocaleDateString('es-AR') : '—'}</dd></div>
           <div><dt>OTs abiertas</dt><dd>{loading ? '…' : k ? `${k.otsPendientes} de ${k.otsTotal}` : 'Sin datos'}</dd></div>
           <div><dt>Costo mant./km</dt><dd>{costoKm != null ? `$${fmt(costoKm)}` : '—'}</dd></div>
+          {unit.parejaDominio && (
+            <div><dt>Conjunto</dt><dd>Acoplado a {unit.parejaDominio}</dd></div>
+          )}
+          {unit.servicio && (
+            <div><dt>Servicio</dt><dd>{unit.servicio.nombre}{unit.servicio.destino ? ` → ${unit.servicio.destino}` : ''}{unit.servicio.cliente ? ` · ${unit.servicio.cliente}` : ''}</dd></div>
+          )}
+          {unit.checklist && (
+            <div><dt>Checklist</dt><dd>{unit.checklist.resultado} · {new Date(unit.checklist.at).toLocaleDateString('es-AR')}</dd></div>
+          )}
         </dl>
+
+        {unit.mant && (
+          <p className={`cc-unit-mant cc-unit-mant--${unit.mant.estado.toLowerCase()}`} role="alert">
+            <CalendarClock size={11} aria-hidden="true" />
+            <span>
+              <b>{unit.mant.componente}</b>
+              {unit.mant.estado === 'VENCIDO' && ' — service vencido'}
+              {unit.mant.estado !== 'VENCIDO' && (
+                <> — {unit.mant.kmRestantes != null ? `faltan ${fmt(unit.mant.kmRestantes)} km` : unit.mant.diasRestantes != null ? `faltan ${Math.round(unit.mant.diasRestantes)} días` : 'próximo'}</>
+              )}
+            </span>
+          </p>
+        )}
 
         {loading && <p className="cc-unit-sub">Cargando ficha…</p>}
         {!loading && unit.source === 'real' && !detail && <p className="cc-unit-sub">Sin ficha de mantenimiento disponible.</p>}
@@ -293,6 +315,52 @@ export function SectorPanel({ sector, units, kpis, scenario }: {
   );
 }
 
+// ── Alertas activas ──
+type AlertRow = { unit: CCUnit; text: string; sev: 0 | 1 | 2 }; // 0 vencido/crit, 1 urgente/alerta, 2 proximo
+
+export function AlertsPanel({ units, onSelectUnit }: {
+  units: CCUnit[];
+  onSelectUnit: (id: string) => void;
+}) {
+  const rows: AlertRow[] = [];
+  for (const u of units) {
+    if (u.mant) {
+      rows.push({
+        unit: u,
+        sev: u.mant.estado === 'VENCIDO' ? 0 : u.mant.estado === 'URGENTE' ? 1 : 2,
+        text: `${u.mant.componente}${u.mant.estado === 'VENCIDO' ? ' · service vencido'
+          : u.mant.kmRestantes != null ? ` · en ${Math.round(u.mant.kmRestantes).toLocaleString('es-AR')} km`
+          : u.mant.diasRestantes != null ? ` · en ${Math.round(u.mant.diasRestantes)} días` : ''}`,
+      });
+    }
+    for (const a of u.alerts.slice(0, 2)) {
+      rows.push({ unit: u, sev: u.status === 'fuera_servicio' ? 0 : 1, text: a });
+    }
+  }
+  rows.sort((a, b) => a.sev - b.sev || a.unit.dominio.localeCompare(b.unit.dominio));
+  if (!rows.length) return null;
+  const SEV_CLS = ['cc-alert--crit', 'cc-alert--warn', 'cc-alert--info'] as const;
+  return (
+    <section className="cc-alerts" aria-label="Alertas activas">
+      <header className="cc-panel-head">
+        <AlertTriangle size={14} aria-hidden="true" />
+        <h2>ALERTAS ACTIVAS</h2>
+        <span className="cc-badge">{rows.length}</span>
+      </header>
+      <ul className="cc-alerts-list">
+        {rows.slice(0, 12).map((r, i) => (
+          <li key={`${r.unit.id}-${i}`}>
+            <button className={`cc-alert ${SEV_CLS[r.sev]}`} onClick={() => onSelectUnit(r.unit.id)}>
+              <strong>{r.unit.dominio}</strong>
+              <span>{r.text}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 // ── Mapa de rutas (Argentina simplificada) ──
 const CITIES = [
   { name: 'Córdoba', x: 38, y: 46 },
@@ -345,7 +413,9 @@ export function RouteMap({ units, onSelectUnit }: {
           {viajando.slice(0, 8).map((u) => (
             <button key={u.id} className="cc-route-row" onClick={() => onSelectUnit(u.id)}>
               <span className="cc-route-plate">{u.dominio}</span>
-              <span className="cc-route-meta">{u.conductor ?? 'sin conductor'} · jornada abierta</span>
+              <span className="cc-route-meta">
+                {u.servicio?.destino ? `→ ${u.servicio.destino}` : 'jornada abierta'} · {u.conductor ?? 'sin conductor'}
+              </span>
             </button>
           ))}
         </div>

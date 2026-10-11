@@ -9,7 +9,7 @@ import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { FlaskConical, Pause, Play, RotateCcw } from 'lucide-react';
 import Scene3D from './_components/Scene3D';
-import { KpiBar, EventsPanel, UnitDetail, RouteMap, SectorPanel } from './_components/Panels';
+import { KpiBar, EventsPanel, UnitDetail, RouteMap, SectorPanel, AlertsPanel } from './_components/Panels';
 import { fetchCentroData } from './_components/data';
 import { applyDemoTick, advanceRoute, createDemoState, demoKpis } from './_components/DemoEngine';
 import type { CCUnit, CCEvent, Kpis, Mode, DemoSpeed } from './_components/types';
@@ -204,6 +204,7 @@ export default function CentroControlPage() {
         </div>
         <aside className="cc-side">
           {selected && <UnitDetail unit={selected} detail={detail} loading={detailLoading} />}
+          <AlertsPanel units={units} onSelectUnit={onSelectById} />
           <EventsPanel events={events} onSelectUnit={onSelectById} />
           <RouteMap units={units} onSelectUnit={onSelectById} />
         </aside>

@@ -37,7 +37,14 @@ function toVisualStatus(v: ApiVehiculo, alertaServicio: boolean): VisualStatus {
   return 'disponible';
 }
 
-function toUnit(v: ApiVehiculo, alertasPorVeh: Map<string, string[]>): CCUnit {
+interface Extras {
+  parejaPorVeh: Map<string, { id: string; dominio: string }>;
+  servicioPorVeh: Map<string, { nombre: string; destino?: string | null; cliente?: string | null }>;
+  mantPorVeh: Map<string, NonNullable<CCUnit['mant']>>;
+  checkPorVeh: Map<string, { at: string; resultado: string }>;
+}
+
+function toUnit(v: ApiVehiculo, alertasPorVeh: Map<string, string[]>, ex: Extras): CCUnit {
   const c = v.estadoCompuesto;
   const alertas: string[] = [
     ...(alertasPorVeh.get(v.id) ?? []),
@@ -45,6 +52,7 @@ function toUnit(v: ApiVehiculo, alertasPorVeh: Map<string, string[]>): CCUnit {
     ...(c?.restricciones ?? []).map((r) => `Restringida: ${r.motivo}`),
   ];
   const status = toVisualStatus(v, alertas.length > 0 && !!c?.disponible);
+  const pareja = ex.parejaPorVeh.get(v.id);
   return {
     id: v.id,
     dominio: v.dominio,
@@ -54,6 +62,11 @@ function toUnit(v: ApiVehiculo, alertasPorVeh: Map<string, string[]>): CCUnit {
     conductor: v.conductor?.nombre ?? null,
     currentOdometer: v.currentOdometer ?? null,
     alerts: alertas,
+    parejaId: pareja?.id ?? null,
+    parejaDominio: pareja?.dominio ?? null,
+    servicio: ex.servicioPorVeh.get(v.id) ?? null,
+    mant: ex.mantPorVeh.get(v.id) ?? null,
+    checklist: ex.checkPorVeh.get(v.id) ?? null,
     source: 'real',
     x: 0, y: 0,
   };
@@ -133,27 +146,71 @@ export async function fetchCentroData(): Promise<CentroData> {
     }
   };
 
-  const [vehiculos, disp, alertas, inspecciones] = await Promise.all([
+  const [vehiculos, disp, alertas, inspecciones, conjuntos, servicios] = await Promise.all([
     safe('/flota/vehiculos', (r) => r?.vehiculos ?? [], [] as ApiVehiculo[]),
     safe('/fleet-ops/disponibilidad?dias=30', (r) => r, null as any),
     safe('/fleet-ops/alertas-servicio', (r) => r?.alertas ?? r?.items ?? [], [] as any[]),
-    safe('/inspecciones?take=20', (r) => r?.inspecciones ?? [], [] as any[]),
+    safe('/inspecciones?take=40', (r) => r?.inspecciones ?? [], [] as any[]),
+    safe('/fleet-ops/conjuntos?estado=ACOPLADO', (r) => r?.conjuntos ?? [], [] as any[]),
+    safe('/flota/servicios?activos=1', (r) => r?.servicios ?? [], [] as any[]),
   ]);
 
-  // Índice de alertas de servicio por vehículo
+  // Índice de alertas de servicio por vehículo + semáforo de mantenimiento.
+  // El endpoint devuelve la unidad en a.activo (no a.vehiculoId).
   const alertasPorVeh = new Map<string, string[]>();
+  const mantPorVeh = new Map<string, NonNullable<CCUnit['mant']>>();
+  const rank: Record<string, number> = { VENCIDO: 0, URGENTE: 1, PROXIMO: 2 };
   for (const a of alertas) {
-    const vid = a.vehiculoId ?? a.vehiculo?.id;
+    const vid = a.vehiculoId ?? a.activo?.id ?? a.vehiculo?.id;
     if (!vid) continue;
     const vencido = a.estado === 'VENCIDO' || a.vencido === true || (a.kmRestantes ?? 1) <= 0 || (a.diasRestantes ?? 1) <= 0;
     const arr = alertasPorVeh.get(vid) ?? [];
     arr.push(vencido ? 'Servicio vencido' : 'Servicio próximo a vencer');
     alertasPorVeh.set(vid, arr);
+    const estado = (a.estado === 'VENCIDO' || a.estado === 'URGENTE' || a.estado === 'PROXIMO') ? a.estado : (vencido ? 'VENCIDO' : 'PROXIMO');
+    const cur = mantPorVeh.get(vid);
+    if (!cur || rank[estado] < rank[cur.estado]) {
+      mantPorVeh.set(vid, {
+        estado,
+        kmRestantes: a.kmRestantes ?? null,
+        diasRestantes: a.diasRestantes ?? null,
+        componente: a.componente ?? a.plan?.nombre ?? a.nombre ?? 'Plan de mantenimiento',
+      });
+    }
   }
 
+  // Parejas reales de conjuntos operativos acoplados (tractor↔semi)
+  const parejaPorVeh = new Map<string, { id: string; dominio: string }>();
+  for (const c of conjuntos) {
+    if (c?.tractor?.id && c?.semi?.id) {
+      parejaPorVeh.set(c.tractor.id, { id: c.semi.id, dominio: c.semi.dominio });
+      parejaPorVeh.set(c.semi.id, { id: c.tractor.id, dominio: c.tractor.dominio });
+    }
+  }
+
+  // Servicio vigente por unidad (asignaciones abiertas: hasta === null)
+  const servicioPorVeh = new Map<string, { nombre: string; destino?: string | null; cliente?: string | null }>();
+  for (const s of servicios) {
+    for (const a of s?.unidades ?? []) {
+      if (!a.hasta && a.vehiculoId && !servicioPorVeh.has(a.vehiculoId)) {
+        servicioPorVeh.set(a.vehiculoId, { nombre: s.nombre, destino: s.destino ?? null, cliente: s.cliente ?? null });
+      }
+    }
+  }
+
+  // Último checklist por unidad (inspecciones vienen ordenadas por fecha desc)
+  const checkPorVeh = new Map<string, { at: string; resultado: string }>();
+  for (const i of inspecciones) {
+    const vid = i.vehiculoId ?? i.vehiculo?.id;
+    if (!vid || checkPorVeh.has(vid)) continue;
+    const resultado = i.resultado ?? (i.apto === false ? 'NO_APTO' : i.tieneFallosCriticos ? 'NO_APTO' : i.tieneObservaciones ? 'APTO_CON_OBSERVACIONES' : 'APTO');
+    checkPorVeh.set(vid, { at: i.createdAt ?? i.fecha ?? '', resultado });
+  }
+
+  const ex: Extras = { parejaPorVeh, servicioPorVeh, mantPorVeh, checkPorVeh };
   const units = vehiculos
     .filter((v) => v.status !== 'BAJA')
-    .map((v) => toUnit(v, alertasPorVeh));
+    .map((v) => toUnit(v, alertasPorVeh, ex));
 
   const flota = disp?.flota ?? {};
   const estadias: any[] = disp?.alertasEstadia ?? [];

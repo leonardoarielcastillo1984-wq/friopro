@@ -20,6 +20,20 @@ export interface CCUnit {
   currentOdometer?: number | null;
   alerts: string[];         // advertencias + restricciones + alertas de servicio
   source: 'real' | 'demo';
+  // Conjunto operativo acoplado (real): tractor→semi y semi→tractor
+  parejaId?: string | null;
+  parejaDominio?: string | null;
+  // Servicio vigente asignado a la unidad
+  servicio?: { nombre: string; destino?: string | null; cliente?: string | null } | null;
+  // Semáforo de mantenimiento: peor alerta de servicio activa
+  mant?: {
+    estado: 'VENCIDO' | 'URGENTE' | 'PROXIMO';
+    kmRestantes: number | null;
+    diasRestantes: number | null;
+    componente: string;
+  } | null;
+  // Último checklist de control registrado
+  checklist?: { at: string; resultado: string } | null;
   // Posición lógica en el mapa iso (la asigna el engine/escena)
   x: number;
   y: number;
